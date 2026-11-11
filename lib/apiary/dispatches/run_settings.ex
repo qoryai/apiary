@@ -59,12 +59,14 @@ defmodule Apiary.Dispatches.RunSettings do
   # above, with the fallback's model and effort and the tiers that go with its provider
   # (`Apiary.ModelChoices.Resolution.fallback/3`), and that has a key not in cooldown; a
   # fallback that does not form is passed over and ends nothing. A run takes the keys of
-  # one provider alone. With none, `build/2` returns `:cooling`: the claim leaves the run
-  # waiting (`Apiary.Dispatches.Handover`).
+  # one provider alone. With none, `build/2` returns `{:cooling, built, ids}`: the claim
+  # checks what can end the run first, then leaves it waiting with `ids`, the providers
+  # it checked, as the ones it waits for (`Apiary.Dispatches.Handover`).
   #
-  # The keys are in the order of `Apiary.ModelKeys.Order`, the key the choice names first
-  # while it is not in cooldown, at most 6; the first is the start key, never one in
-  # cooldown.
+  # The run gets at most 6 keys, picked in the order of `Apiary.ModelKeys.Order`, the key
+  # the choice names first while it is not in cooldown; the first of that order is the
+  # start key, never one in cooldown. They are kept in the order the run configuration
+  # sends them (`Apiary.ModelKeys.Order.sent/2`), the start key marked.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
   # integration.
@@ -294,13 +296,18 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # build/2 is the run settings of what `hold/1` held, for a claim at `now`: `{:ok, nil}`
-  # for a run with none, `{:ok, built}`, `{:end, cause}`, `:cooling` where every key of
-  # the choice's provider and of each usable fallback is in cooldown, `:unstable` where
-  # the choices changed while `hold/1` read them, or `:unavailable` where the run settings
-  # take more than 64 KiB.
+  # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
+  # every key of the choice's provider and of each usable fallback is in cooldown, with
+  # the choice's settings without keys and those providers' row ids, the choice's first,
+  # `:unstable` where the choices changed while `hold/1` read them, or `:unavailable`
+  # where the run settings take more than 64 KiB.
   @doc false
   @spec build(map | :unstable | nil, DateTime.t()) ::
-          {:ok, built | nil} | {:end, cause} | :cooling | :unstable | :unavailable
+          {:ok, built | nil}
+          | {:end, cause}
+          | {:cooling, built, [Ecto.UUID.t()]}
+          | :unstable
+          | :unavailable
   def build(held, now \\ DateTime.utc_now())
   def build(nil, _now), do: {:ok, nil}
   def build(:unstable, _now), do: :unstable
@@ -338,10 +345,24 @@ defmodule Apiary.Dispatches.RunSettings do
                  held.workspace.id
                ),
              {:ok, built} <-
-               keyed(built, provider, named_value_id(input), now) ||
-                 fallback(input, resolution, providers, runtime, held.workspace.id, now) ||
-                 :cooling,
+               keys(built, provider, {input, resolution, providers, runtime}, held, now),
              do: sealed(with_time_limit(built, held))
+    end
+  end
+
+  # The settings `built` of the choice's provider with its keys, else those of the first
+  # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
+  # choice's settings without keys, and the providers whose keys were checked, the
+  # choice's and each fallback that forms, every one with each key in cooldown.
+  defp keys(built, provider, {input, resolution, providers, runtime}, held, now) do
+    with nil <- keyed(built, provider, named_value_id(input), now) do
+      case fallback(input, resolution, providers, runtime, held.workspace.id, now) do
+        {:ok, _built} = fallen ->
+          fallen
+
+        {:cooling, ids} ->
+          {:cooling, with_time_limit(built, held), Enum.uniq([provider.id | ids])}
+      end
     end
   end
 
@@ -397,7 +418,8 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The first of the choice's fallbacks, in their order, that forms and has a key not in
-  # cooldown at `now`, with its model and effort: `{:ok, built}`, or nil for none. A
+  # cooldown at `now`, with its model and effort: `{:ok, built}`, or `{:cooling, ids}`
+  # for none, with the fallbacks that formed, each with every key in cooldown. A
   # fallback that does not form, for any of the causes that end a run on the choice's
   # provider, is passed over.
   defp fallback(
@@ -408,15 +430,19 @@ defmodule Apiary.Dispatches.RunSettings do
          ws,
          now
        ) do
-    Enum.find_value(fallbacks, fn %{connection_id: id} = fallback ->
+    Enum.reduce_while(fallbacks, {:cooling, []}, fn %{connection_id: id} = fallback,
+                                                    {:cooling, ids} ->
       provider = Map.fetch!(providers, id)
       fallen = Resolution.fallback(input, resolution, fallback)
 
       with true <- Connections.intact?(provider),
            {:ok, built} <- form(fallen, provider, Connections.provider(provider), runtime, ws) do
-        keyed(built, provider, nil, now)
+        case keyed(built, provider, nil, now) do
+          {:ok, _built} = keyed -> {:halt, keyed}
+          nil -> {:cont, {:cooling, ids ++ [provider.id]}}
+        end
       else
-        _not_formed -> nil
+        _not_formed -> {:cont, {:cooling, ids}}
       end
     end)
   end

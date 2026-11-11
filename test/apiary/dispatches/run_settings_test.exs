@@ -430,6 +430,67 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert value_ids(Repo.get!(Run, run.id)) == ["spare", "main"]
     end
 
+    test "leave a run that waits for its keys unclaimed by the next claims", ctx do
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      until = in_seconds(3600)
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: until)
+
+      handler = "run-settings-claims-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if self() == parent and meta.source == "dispatches" and
+               String.starts_with?(meta.query, "INSERT"),
+             do: send(parent, :dispatch_inserted)
+        end,
+        nil
+      )
+
+      try do
+        for _claim <- 1..3 do
+          assert {:ok, :none} =
+                   Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+        end
+      after
+        :telemetry.detach(handler)
+      end
+
+      # The first claim takes the run and leaves it waiting for the provider; the next two
+      # pass it by.
+      assert_received :dispatch_inserted
+      refute_received :dispatch_inserted
+
+      waiting = Repo.get!(DispatchRun, queued.id)
+      assert %DispatchRun{state: :waiting} = waiting
+      assert waiting.model_provider_ids == [ctx.provider.id]
+      assert waiting.updated_at == queued.updated_at
+      assert {:cooldown, name, at} = Apiary.Runs.Waiting.reason(waiting)
+      assert name == ctx.provider.name
+      assert DateTime.compare(at, until) == :eq
+    end
+
+    test "end the run for its cause before leaving it waiting for its keys", ctx do
+      # Queued before the choice, so the claim's filter passes it, as in the test above.
+      work_item = work_item_fixture(ctx.scope)
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+
+      # A second active key of the gateway, without the stored-secrets flag.
+      Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
+
+      assert {:ok, :none} =
+               Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now(), @body)
+
+      dispatch = Repo.one!(from d in Dispatch, where: d.dispatch_run_id == ^queued.id)
+      ended!(queued, dispatch, :secrets_not_allowed)
+    end
+
     test "are never built with a start key in cooldown or two chosen keys", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, key: "main"})
 

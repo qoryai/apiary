@@ -1258,8 +1258,8 @@ defmodule Apiary.Dispatches do
       {:ended, changed} ->
         pick(key, pool, through, now, default, max - 1, staged(run) ++ changed ++ ended, skipped)
 
-      :wait ->
-        unclaim(claimed)
+      {:wait, provider_ids} ->
+        unclaim(claimed, provider_ids)
         pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
 
       {:error, :unavailable} = error ->
@@ -1392,14 +1392,20 @@ defmodule Apiary.Dispatches do
   end
 
   # The claim of `claimed` taken back, in the claim's transaction, for a run its handover
-  # leaves waiting (`Apiary.Dispatches.Handover.register/2`, `:wait`): the dispatch the
-  # claim inserted goes, and the run of the queue waits again, as it was.
-  defp unclaim(%{dispatch: %Dispatch{id: dispatch_id}, run: %DispatchRun{id: run_id}}) do
+  # leaves waiting (`Apiary.Dispatches.Handover.register/2`, `{:wait, provider_ids}`): the
+  # dispatch the claim inserted goes, and the run of the queue waits again, as it was,
+  # with its `updated_at` from before the claim, now for `provider_ids`, the providers the
+  # claim found with every key in cooldown, so the claim's filter passes it
+  # (`Apiary.ModelKeys.claimable/1`) until one of their keys is free.
+  defp unclaim(
+         %{dispatch: %Dispatch{id: dispatch_id}, run: %DispatchRun{id: run_id} = run},
+         provider_ids
+       ) do
     {1, _rows} = Repo.delete_all(from d in Dispatch, where: d.id == ^dispatch_id)
 
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^run_id and r.state == :claimed),
-        set: [state: :waiting]
+        set: [state: :waiting, model_provider_ids: provider_ids, updated_at: run.updated_at]
       )
 
     :ok

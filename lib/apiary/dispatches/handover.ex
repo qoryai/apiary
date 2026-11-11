@@ -123,15 +123,16 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
   # provider's row id, its keys' secret's row id, its model keys in their order, the
   # provider's chain and the API of the provider the run uses; later reads take those,
-  # never the choices. Where every key of the choice's provider and of each fallback
-  # that forms is in cooldown, the claim registers nothing: `register/2` answers
-  # `:wait`, and the run waits again (`Apiary.Dispatches`). Its input is formed with the name of the workspace's domain
-  # (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run whose
-  # work item has none, and takes what the rest of the run's documents leave of their
-  # limit: it leaves out its oldest comments first (`comments_omitted`). The documents'
-  # limit is what the 201 to the code's redemption leaves them within 1 MiB, the rest of
-  # that 201 measured with a run key of the run's grant, less 1,024 bytes. The claim
-  # encodes the documents once and keeps the bytes on the registered run
+  # never the choices. Where every key of the choice's provider and of each fallback that
+  # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
+  # `register/2` answers `{:wait, provider_ids}`, and the run waits again for those
+  # providers (`Apiary.Dispatches`). Its input is formed with the name of the workspace's
+  # domain (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run
+  # whose work item has none, and takes what the rest of the run's documents leave of
+  # their limit: it leaves out its oldest comments first (`comments_omitted`). The
+  # documents' limit is what the 201 to the code's redemption leaves them within 1 MiB,
+  # the rest of that 201 measured with a run key of the run's grant, less 1,024 bytes. The
+  # claim encodes the documents once and keeps the bytes on the registered run
   # (`runs.run_documents`), which every redemption answers as they are.
   #
   # An explore run of the Qory harness (`Apiary.Harnesses.Qory`), or of the built-in one,
@@ -306,14 +307,18 @@ defmodule Apiary.Dispatches.Handover do
   # register/2 registers the run of the queue `claimed.run`, which the claim took, with
   # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
-  # ended, `:wait` when every key of its model choice's provider and of each fallback is
-  # in cooldown (`Apiary.Dispatches.RunSettings`), with no run registered, or
+  # ended, `{:wait, provider_ids}` when every key of its model choice's provider and of
+  # each fallback that forms is in cooldown (`Apiary.Dispatches.RunSettings`), with those
+  # providers and no run registered, or
   # `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the dispatch, the
   # run of the queue, the gateway and its workspace, the gateway's active keys, at most
   # two, the clock and the claim's body.
   @doc false
   @spec register(map, DateTime.t()) ::
-          {:ok, registered} | {:ended, [Ecto.UUID.t()]} | :wait | {:error, :unavailable}
+          {:ok, registered}
+          | {:ended, [Ecto.UUID.t()]}
+          | {:wait, [Ecto.UUID.t()]}
+          | {:error, :unavailable}
   def register(%{run: %DispatchRun{} = dispatch_run} = claimed, %DateTime{} = now) do
     case RunSettings.hold(dispatch_run) do
       :unstable ->
@@ -374,8 +379,8 @@ defmodule Apiary.Dispatches.Handover do
 
         {:error, :unavailable}
 
-      :cooling ->
-        :wait
+      {:ok, %{cooling: [_ | _] = provider_ids}} ->
+        {:wait, provider_ids}
 
       {:ok, formed} ->
         documents = formed.answer |> DispatchAnswer.documents() |> Jason.encode!()
@@ -782,8 +787,9 @@ defmodule Apiary.Dispatches.Handover do
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          harness = lowered_access(harness, dispatch_run),
-         {:ok, settings} <- RunSettings.build(held, locked.now) do
-      formed(dispatch_run, workspace, target, work_item, settings, harness, fn domain ->
+         {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
+      dispatch_run
+      |> formed(workspace, target, work_item, settings, harness, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
           documents_limit: locked.documents_limit,
@@ -796,14 +802,24 @@ defmodule Apiary.Dispatches.Handover do
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
       end)
+      |> with_cooling(cooling)
     else
       true -> {:end, :inputs_invalid}
       {:end, _cause} = ended -> ended
       :unavailable -> :unavailable
       :unstable -> :unstable
-      :cooling -> :cooling
     end
   end
+
+  # The run settings, and the providers whose keys are all in cooldown, nil where the run
+  # has keys: a run whose keys are all in cooldown is formed with the choice's settings,
+  # so that every check that ends a run runs before the claim leaves it waiting.
+  defp cooling({:ok, settings}), do: {:ok, settings, nil}
+  defp cooling({:cooling, settings, provider_ids}), do: {:ok, settings, provider_ids}
+  defp cooling(other), do: other
+
+  defp with_cooling({:ok, formed}, cooling), do: {:ok, Map.put(formed, :cooling, cooling)}
+  defp with_cooling(not_formed, _cooling), do: not_formed
 
   # The bytes of the documents' limit that the rest of the run's documents leave its
   # input: the limit less the documents encoded with an empty input.
