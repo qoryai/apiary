@@ -396,19 +396,28 @@ replaces the navigation it is in.
   vCPUs. On Edit, a changed key makes Save show a warning in place of the buttons
   (`#machine-type-key-warning`): "Changing the key breaks every file that uses browser.",
   the counts Qory Apiary updates, the `process.yaml` files to fix, and **Change key** and
-  **Cancel**. The counts leave out a workspace type whose newest process is a copy of the
-  Qory harness's: the key change keeps that copy, and its runs start on the default type
-  until the harness changes the key. The files are those the current and trial processes
-  that use the key were read from, where the version read from the file uses the key too,
-  and the Qory harness's where a workspace type's copy of it uses the key, each with its
-  repository, its path (its module for a harness repository's file), its commit and its
-  workspaces. After **Change key**, the list shows the name, the key and the files to fix
-  in a message at the bottom right (`#machine-type-key-saved`) until **Dismiss**. Where a
+  **Cancel**. The counts, such as "Qory Apiary updates 3 workspaces, 2 workspace types, 1
+  waiting run.", leave out a workspace type whose newest process is a copy of the Qory
+  harness's: the key change keeps that copy, and its runs start on the default type until
+  the harness changes the key. The files are those the current and trial processes that
+  use the key were read from, where the version read from the file uses the key too, and
+  the Qory harness's where a workspace type's copy of it uses the key. Under "Fix these
+  files yourself:", each file of the Qory harness has a line with its repository, its path
+  (its module for a commit whose files are not kept) and its commit. Under "Organisations
+  fix the files in their harnesses:", each organisation has one line with the number of
+  its files, such as "2 files in Acme's harness". No workspace name, workflow name or
+  repository address of an organisation is on the warning. After **Change key**, the list
+  shows the name, the key and the files to fix in the same lines, in a message at the
+  bottom right (`#machine-type-key-saved`) until **Dismiss**. Where a
   workspace type is saved at the same moment, the key change saves nothing, and the form
   stays with the toast "Change the key again. A workspace type was saved at the same
   moment, so the key change was not saved." A deletion that fails leaves a line under the
-  table: the default, or the workflows that use the type, such as "Large cannot be
-  deleted: these workflows use it: Main: explore-a-ticket." A change needs a recent
+  table: the default, or how many workflows in how many organisations use the type, how
+  many workspaces in how many organisations have it as their default machine type, and
+  the names of the instance's workspace types that use it, such as "Large cannot be
+  deleted: 4 workflows in 2 organisations use it, 1 workspace in 1 organisation has it as
+  its default machine type, and the workspace type Software factory uses it." A change
+  needs a recent
   sign-in, and the page leads to the log-in page otherwise; anyone else gets a page not
   found.
 

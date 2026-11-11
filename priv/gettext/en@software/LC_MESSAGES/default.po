@@ -520,10 +520,24 @@ msgstr[1] ""
 msgid "%{count} exploring"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} file in %{organisation}'s harness"
+msgid_plural "%{count} files in %{organisation}'s harness"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} of %{total} %{collections}"
 msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} organisation"
+msgid_plural "%{count} organisations"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
@@ -546,13 +560,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{count} running"
 msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "%{count} template"
-msgid_plural "%{count} templates"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
@@ -605,8 +612,29 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
+msgid "%{count} workflow in %{organisations} uses it"
+msgid_plural "%{count} workflows in %{organisations} use it"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
 msgid "%{count} workspace"
 msgid_plural "%{count} workspaces"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} workspace in %{organisations} has it as its default machine type"
+msgid_plural "%{count} workspaces in %{organisations} have it as their default machine type"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} workspace type"
+msgid_plural "%{count} workspace types"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1372,12 +1400,22 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} cannot be deleted: it is the default. Make another type the default first."
+msgid "%{name} cannot be deleted: %{first}, %{second}, and %{third}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} cannot be deleted: these workflows use it: %{workflows}."
+msgid "%{name} cannot be deleted: %{first}, and %{second}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} cannot be deleted: %{uses}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} cannot be deleted: it is the default. Make another type the default first."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -3060,11 +3098,6 @@ msgstr "%{person}, updated from commit %{commit}, %{date}"
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{person}, updated from tag %{tag} at %{commit}, %{date}"
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "%{place}: %{workflow}"
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -8292,7 +8325,6 @@ msgstr ""
 msgid "Default gateway"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
@@ -11692,6 +11724,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Its key arrived at %{time} and is active."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Its key is now %{key}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -15447,6 +15484,11 @@ msgstr ""
 msgid "Organisations"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Organisations fix the files in their harnesses:"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/set_up.ex
 #, elixir-autogen, elixir-format
 msgid "Organisations on this instance bring in tickets from %{adapter} once its adapter is set up. Set up opens the %{adapter} adapter's set-up page in a new tab, and this step shows the new state without a reload."
@@ -16400,12 +16442,12 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary updates %{workspaces}, %{templates} and %{waiting}."
+msgid "Qory Apiary updates %{workspaces}, %{types}, %{waiting}."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary updates %{workspaces}, %{templates} and %{waiting}. Fix these files yourself:"
+msgid "Qory Apiary updates %{workspaces}, %{types}, %{waiting}. Fix these files yourself:"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/node.ex
@@ -26260,6 +26302,13 @@ msgstr ""
 msgid "the workspace %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "the workspace type %{names} uses it"
+msgid_plural "the workspace types %{names} use it"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace's default"
@@ -26445,13 +26494,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "workspace"
 msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "workspace %{names}"
-msgid_plural "workspaces %{names}"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
