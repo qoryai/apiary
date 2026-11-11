@@ -1058,6 +1058,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   minute to 7 days.” Empty, it is 1 minute for an API key and 1 hour for a
   subscription. **Workspace settings › Secrets and variables** has both fields on **Add
   value** and **Change value** of a model provider's key.
+- A key's cooldown ends when **Change value** saves a new value of the key. A save with
+  **New value** empty and a rename keep the cooldown.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with

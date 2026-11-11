@@ -550,11 +550,28 @@ defmodule Apiary.Connections.ProvidersTest do
     test "change with the value, in one transaction", %{scope: scope} do
       provider = openrouter!(scope)
       id = value!(provider, "spare").id
+      main = value!(provider, "main").id
+      until = Apiary.ModelKeysFixtures.in_seconds(3_600)
+      Apiary.ModelKeysFixtures.key_state!(provider, "spare", until: until)
+      Apiary.ModelKeysFixtures.key_state!(provider, "main", until: until)
+
+      # Settings that cannot be saved leave the value and its cooldown.
+      assert {:error, %Ecto.Changeset{data: %Setting{}}} =
+               Connections.set_provider_key(scope, provider, "spare", "sk-new", %{
+                 "pause_seconds" => 604_801
+               })
+
+      assert [%{status: "rejected"}] = ModelKeys.provider_states(provider, DateTime.utc_now())[id]
 
       assert {:ok, _provider} =
                Connections.set_provider_key(scope, provider, "spare", "sk-new", @settings)
 
       assert ModelKeys.setting(id).pause_seconds == 7200
+
+      # The new value is out of cooldown; the other key keeps its state.
+      states = ModelKeys.provider_states(provider, DateTime.utc_now())
+      refute states[id]
+      assert [%{status: "rejected"}] = states[main]
 
       assert Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), id) ==
                {:ok, "sk-new"}

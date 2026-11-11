@@ -8,6 +8,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Connections, ModelKeys, Repo, Secrets}
@@ -239,6 +240,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
   test "Change value with New value empty saves a key's settings and keeps its value", ctx do
     %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
     value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+    key_state!(provider, "main", until: in_seconds(3_600))
 
     {:ok, lv, _html} =
       live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
@@ -261,6 +263,27 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     setting = ModelKeys.setting(value.id)
     assert {setting.reset_weekday, setting.reset_time} == {5, ~T[14:00:00]}
     assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
+
+    # The value stays, and so does its cooldown.
+    assert [%{status: "rejected"}] =
+             ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
+  end
+
+  test "Change value with a new value clears the key's cooldown", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+    key_state!(provider, "main", until: in_seconds(3_600))
+
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+    lv
+    |> form("#secret-form", secret_value: %{value: "second-key"})
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, "second-key"}
+    refute ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
   end
 
   test "another secret's value has no settings", ctx do

@@ -1784,9 +1784,11 @@ defmodule Apiary.Connections do
 
   @doc """
   set_provider_key/5 replaces the value of a model provider's key with the value id
-  `value_id` (`provider.write`), and, with `settings`, its settings, in one transaction.
-  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.set_value/5` answers, or a
-  changeset of the settings, which leaves the value as it was.
+  `value_id` (`provider.write`), and, with `settings`, its settings, in one transaction,
+  which also deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
+  is out of cooldown. `{:ok, provider}`, or `{:error, refusal}` as
+  `Apiary.Secrets.set_value/5` answers, or a changeset of the settings, which leaves the
+  value and the states as they were.
   """
   @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1804,6 +1806,7 @@ defmodule Apiary.Connections do
           fn scope, secret, current ->
             with {:ok, _secret} <-
                    Secrets.set_value(scope, secret, value_id, value, provider: current),
+                 :ok <- ModelKeys.clear_states(current.secret_id, value_id),
                  {:ok, _setting} <- put_key_setting(current, value_id, settings),
                  do: {:ok, %{details: %{value_id: value_id}}}
           end
@@ -1813,8 +1816,10 @@ defmodule Apiary.Connections do
   update_provider_key/4 changes a model provider's key with the value id `value_id`
   (`provider.write`), but its value: `attrs` has its new `value_id`, which renames it as
   `rename_provider_key/4` does, and its `settings` (`Apiary.ModelKeys.Setting.changeset/2`).
-  A rename keeps the settings and the states, which are the value's row's. Both are
-  written in one transaction, and a save that changes neither leaves no entry.
+  A rename keeps the settings and the states, which are the value's row's: the value
+  stays as it is, and only a new value deletes the states (`set_provider_key/5`). The
+  name and the settings are written in one transaction, and a save that changes neither
+  leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
   keys do not have, a refusal of the rename as `rename_provider_key/4` answers, or a
   changeset of the settings, which leaves the name as it was.

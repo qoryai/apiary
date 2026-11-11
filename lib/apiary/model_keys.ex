@@ -16,7 +16,8 @@ defmodule Apiary.ModelKeys do
   sent it. A read leaves out the utilization of a window whose `resets_at` has passed
   (`current/2`). `provider_states/2` is the states of a provider's keys, and
   `cooldown_counts/2` how many keys of each provider are in cooldown. A key is in
-  cooldown while one of its windows has a `cooldown_until` in the future.
+  cooldown while one of its windows has a `cooldown_until` in the future. A new value of
+  a key deletes its states (`clear_states/2`); a rename keeps them.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration. A report and its answer reach a key only
@@ -464,6 +465,22 @@ defmodule Apiary.ModelKeys do
           updated_at: fragment("EXCLUDED.updated_at")
         ]
       ]
+  end
+
+  @doc """
+  Deletes the states of the key `value_id` of the secret `secret_id`, in the caller's
+  transaction: a key whose value changes leaves its cooldowns, which were the old
+  value's. Returns `:ok`.
+  """
+  @spec clear_states(Ecto.UUID.t(), String.t()) :: :ok
+  def clear_states(secret_id, value_id) when is_binary(secret_id) and is_binary(value_id) do
+    values = from v in Value, where: v.secret_id == ^secret_id and v.value_id == ^value_id
+
+    Repo.delete_all(
+      from s in State, where: s.secret_value_id in subquery(select(values, [v], v.id))
+    )
+
+    :ok
   end
 
   @doc """
