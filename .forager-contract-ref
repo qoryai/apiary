@@ -90,7 +90,7 @@
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-f35d0cc68d77107ae9c62244f9557fbf158a2bd4
+ddda67a71031cd3223009f0e7c485f191eee6036
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
