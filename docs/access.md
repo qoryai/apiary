@@ -846,8 +846,8 @@ for each other and never on each other at once:
    locks of their state rows in one order, so two reports of the same keys at once cannot
    deadlock, a key deleted before the report writes is left out of it, and a new value of
    a key, which updates its row and then deletes its state rows, waits for the report or
-   comes before it: the report then leaves out a key whose value was set after the value
-   the run has.
+   comes before it: the report then leaves out a key whose value is not the one the run
+   has, a `value_set_at` other than the run's copy.
    A provider's deletion is refused while a pending or running run uses it, so the run's
    provider columns are empty only on a run that ended, and the request for such a run is
    refused.

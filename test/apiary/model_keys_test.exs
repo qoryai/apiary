@@ -11,7 +11,7 @@ defmodule Apiary.ModelKeysTest do
 
   alias Apiary.{Connections, ModelKeys}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.{Order, Report, Setting, State}
+  alias Apiary.ModelKeys.{Copy, Order, Report, Setting, State}
   alias Apiary.Runs.Run
   alias Apiary.Secrets.Value
 
@@ -38,7 +38,8 @@ defmodule Apiary.ModelKeysTest do
       name: name,
       secret_value_id: value.id,
       organisation_id: value.organisation_id,
-      copy_set_at: value.value_set_at
+      copy_set_at: value.value_set_at,
+      copy_kept: true
     }
 
   defp item(attrs) do
@@ -253,13 +254,15 @@ defmodule Apiary.ModelKeysTest do
                  name: "model-1",
                  secret_value_id: ctx.values["spare"].id,
                  organisation_id: ctx.scope.organisation.id,
-                 copy_set_at: nil
+                 copy_set_at: nil,
+                 copy_kept: false
                },
                %{
                  name: "model-2",
                  secret_value_id: ctx.values["main"].id,
                  organisation_id: ctx.scope.organisation.id,
-                 copy_set_at: nil
+                 copy_set_at: nil,
+                 copy_kept: false
                }
              ]
 
@@ -787,6 +790,24 @@ defmodule Apiary.ModelKeysTest do
       :ok = report.()
       assert [%State{status: "rejected", cooldown_until: cooldown_until}] = states(value)
       assert DateTime.compare(cooldown_until, until) == :eq
+    end
+
+    test "of a key whose new value was set before the run's copy by its clock leave out the report",
+         ctx do
+      value = ctx.values["spare"]
+      run = keys_run(ctx, value)
+      :ok = seal(run, value)
+      [%Copy{value_set_at: copy_set_at}] = Repo.all(from c in Copy, where: c.run_id == ^run.id)
+
+      # A new value set by a server whose clock runs a second behind the one that kept the
+      # copy: its `value_set_at` is before the copy's, and differs from it.
+      {1, _rows} =
+        Repo.update_all(from(v in Value, where: v.id == ^value.id),
+          set: [value_set_at: DateTime.add(copy_set_at, -1, :second)]
+        )
+
+      :ok = ModelKeys.record(ModelKeys.run_keys(run), [item([])], DateTime.utc_now())
+      assert states(value) == []
     end
 
     test "of a run no secrets request sealed the key for leave out a value set since the run",

@@ -34,7 +34,8 @@ defmodule Apiary.ModelKeysRacesTest do
       name: name,
       secret_value_id: value.id,
       organisation_id: value.organisation_id,
-      copy_set_at: value.value_set_at
+      copy_set_at: value.value_set_at,
+      copy_kept: true
     }
 
   defp item(credential, window, observed_at, status \\ "allowed") do

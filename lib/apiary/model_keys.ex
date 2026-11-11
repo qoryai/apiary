@@ -48,14 +48,17 @@ defmodule Apiary.ModelKeys do
 
   @typedoc """
   A model key of a run: `name`, the credential's name in the run's run configuration;
-  `secret_value_id`, the value's row id; `organisation_id`, the value's organisation; and
-  `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown.
+  `secret_value_id`, the value's row id; `organisation_id`, the value's organisation;
+  `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown; and
+  `copy_kept`, true when `copy_set_at` is the `value_set_at` a secrets request kept for
+  the run (`keep_copies/2`), false when it is the time the run's row was written.
   """
   @type run_key :: %{
           name: String.t(),
           secret_value_id: Ecto.UUID.t(),
           organisation_id: Ecto.UUID.t(),
-          copy_set_at: DateTime.t() | nil
+          copy_set_at: DateTime.t() | nil,
+          copy_kept: boolean
         }
 
   ## Settings
@@ -163,9 +166,9 @@ defmodule Apiary.ModelKeys do
   run whose provider's row no longer has that secret, is not a key of the run.
 
   Each has `copy_set_at`, when the value the run has was set: that of the value a secrets
-  request sealed for the run last (`keep_copies/2`); for a key no request sealed, the
-  time the run's row was written, as the run has no value set later than that; nil for a
-  run not stored.
+  request sealed for the run last (`keep_copies/2`), with `copy_kept` true; for a key no
+  request sealed, the time the run's row was written, as the run has no value set later
+  than that, with `copy_kept` false; nil for a run not stored.
   """
   @spec run_keys(Run.t()) :: [run_key]
   def run_keys(
@@ -200,7 +203,8 @@ defmodule Apiary.ModelKeys do
             name: name,
             secret_value_id: id,
             organisation_id: organisation_id,
-            copy_set_at: Map.get(copies, id, run.inserted_at)
+            copy_set_at: Map.get(copies, id, run.inserted_at),
+            copy_kept: Map.has_key?(copies, id)
           }
     else
       []
@@ -440,15 +444,18 @@ defmodule Apiary.ModelKeys do
   newer counts. The rows are written in the order of their key's row id and window. A
   key deleted before the write is left out: its value's row is locked `FOR SHARE`
   first, so a deletion waits for the write or comes before it. So does a new value of
-  the key (`clear_states/2`): a key whose value was set after the value the run has
-  (`value_set_at` after the key's `copy_set_at`, both by this server's clock, or a nil
-  `copy_set_at`) is left out, so a run that still has the old value brings back no
-  cooldown on the new one. A rename leaves `value_set_at` as it is. Returns `:ok`.
+  the key (`clear_states/2`): a key whose value is not the value the run has is left
+  out, so a run that still has the old value brings back no cooldown on the new one. A
+  key with a kept copy (`copy_kept`) is the run's value when its `value_set_at` equals
+  the copy's `copy_set_at`, which is an exact copy of that column, so the clocks of
+  several servers do not matter. A key with no kept copy is the run's value when its
+  `value_set_at` is not after the run's insert (`copy_set_at`). A nil `copy_set_at` is
+  left out. A rename leaves `value_set_at` as it is. Returns `:ok`.
   """
   @spec record([run_key], [map], DateTime.t()) :: :ok
   def record(keys, items, %DateTime{} = now) do
     by_name = Map.new(keys, &{&1.name, &1})
-    copies = Map.new(keys, &{&1.secret_value_id, &1.copy_set_at})
+    copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
 
     rows =
       items
@@ -504,12 +511,18 @@ defmodule Apiary.ModelKeys do
     end
   end
 
-  # Whether the run has the key's value: the run's value was set no earlier than the
-  # key's value.
+  # Whether the run has the key's value: a kept copy of exactly the key's `value_set_at`,
+  # or, with no kept copy, a run written no earlier than the key's value was set.
   defp current?(row, set, copies) do
     case {Map.fetch(set, row.secret_value_id), Map.get(copies, row.secret_value_id)} do
-      {{:ok, set_at}, %DateTime{} = copy_set_at} -> DateTime.compare(copy_set_at, set_at) != :lt
-      _gone_or_unknown -> false
+      {{:ok, set_at}, {true, %DateTime{} = copy_set_at}} ->
+        DateTime.compare(copy_set_at, set_at) == :eq
+
+      {{:ok, set_at}, {false, %DateTime{} = inserted_at}} ->
+        DateTime.compare(inserted_at, set_at) != :lt
+
+      _gone_or_unknown ->
+        false
     end
   end
 

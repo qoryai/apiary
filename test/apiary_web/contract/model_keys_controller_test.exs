@@ -110,7 +110,8 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
               name: "other",
               secret_value_id: ctx.value.id,
               organisation_id: ctx.value.organisation_id,
-              copy_set_at: ctx.value.value_set_at
+              copy_set_at: ctx.value.value_set_at,
+              copy_kept: true
             }
           ],
           [
