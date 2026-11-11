@@ -837,6 +837,21 @@ defmodule Apiary.Runs.Record.TimelineTest do
                ])
     end
 
+    test "a paused end of a completed run reads as a completed run's end, with no reason" do
+      events = [
+        event(1, "run.started"),
+        event(2, "run.exited", %{"state" => "paused", "reason" => "model_key_limit"})
+      ]
+
+      # The run pushed its result before the limit, so it ended completed.
+      assert [_started, %{kind: :run_exited, state: "completed", reason: nil}] =
+               build(events, run: %{state: "completed"})
+
+      # A run that paused and is continued keeps its paused end.
+      assert [_started, %{kind: :run_exited, state: "paused", reason: "model_key_limit"}] =
+               build(events, run: %{state: "paused"})
+    end
+
     test "a tool: the summary is Forager's, the wells are its input and its response" do
       input = %{
         "command" => "npm test",

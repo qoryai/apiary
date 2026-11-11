@@ -2165,7 +2165,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        `dev.qory.session.exited`, with the exit's state: Paused, with the ring of a paused
        run, for an exit `paused`, or `cancelled` with the reason `model_key_limit` from a
        gateway of the earlier contract. The session's Agent session is Paused too, unless
-       one of its steps failed, runs or was cancelled. It opens to Started; Finished,
+       one of its steps failed, runs or was cancelled. On a run that ended Completed after
+       it pushed its questions or a proposal, such an exit is Succeeded, with the check of
+       a session that succeeded. It opens to Started; Finished,
        the time of the session's last `dev.qory.runtime.result`, or of its exit for a
        session with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
        (an exit code of -1 is no exit status and is left out); and Model, from the
@@ -2430,7 +2432,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
   a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
   Cancelled, a neutral pause for Paused, an amber signal-slash for Lost and a red x-mark
-  for Failed. A run that did
+  for Failed. A run that paused after it pushed its questions or a proposal ended
+  Completed, and its last item is a completed run's, with no reason. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.
 - **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";

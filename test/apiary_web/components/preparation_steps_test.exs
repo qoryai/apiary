@@ -125,7 +125,8 @@ defmodule ApiaryWeb.PreparationStepsTest do
     render_component(&PreparationComponents.run_list/1,
       preparation: preparation,
       alive: Keyword.get(opts, :alive, false),
-      machine_log: Keyword.get(opts, :machine_log, :hidden)
+      machine_log: Keyword.get(opts, :machine_log, :hidden),
+      run_state: Keyword.get(opts, :run_state)
     )
   end
 
@@ -764,6 +765,33 @@ defmodule ApiaryWeb.PreparationStepsTest do
           assert summary |> LazyHTML.query(".q-st-paused") |> Enum.count() == 1
           assert summary |> LazyHTML.query(".sr-only") |> text() =~ "Paused"
         end
+      end
+    end
+
+    test "on a run that ended completed, as after it pushed its result, shows Succeeded" do
+      for exit <- [
+            %{state: "paused", reason: "model_key_limit"},
+            %{state: "cancelled", reason: "model_key_limit"}
+          ] do
+        session_end = Map.merge(session_end(), exit)
+        html = preparation(%{session_end: session_end}) |> section(run_state: "completed")
+
+        for id <- ~w(prepare-machine-session-agent prepare-machine-session) do
+          assert html |> LazyHTML.query("##{id}[data-state=succeeded]") |> Enum.count() == 1,
+                 inspect({id, exit})
+
+          summary = LazyHTML.query(html, "##{id} > summary")
+          assert summary |> LazyHTML.query(".q-prep-ok") |> Enum.count() == 1
+          assert summary |> LazyHTML.query(".q-st-paused") |> Enum.count() == 0
+          assert summary |> LazyHTML.query(".sr-only") |> text() =~ "Succeeded"
+        end
+
+        # A run that paused and is continued keeps its paused session.
+        html = preparation(%{session_end: session_end}) |> section(run_state: "paused")
+
+        assert html
+               |> LazyHTML.query("#prepare-machine-session-agent[data-state=paused]")
+               |> Enum.count() == 1
       end
     end
 

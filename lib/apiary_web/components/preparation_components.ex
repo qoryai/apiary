@@ -208,7 +208,8 @@ defmodule ApiaryWeb.PreparationComponents do
   what Remove the machine shows (`clean_up/3`), nil for no report. `session_open` is the
   `sequence` of the start of the agent session whose Agent session and Run the agent
   open when they appear on a run that ended, as for a link to an event inside it; nil
-  for none. `run_state` is the run's state, for the heading. `wall` is whether the run
+  for none. `run_state` is the run's state, for the heading, and a session that paused
+  on a run that is `completed` reads as one that succeeded. `wall` is whether the run
   has a wall: only then does a Start the wall that did not run have a row. The `session`
   slot is a session's Timeline, inside its Run the agent, called with that `sequence`.
   """
@@ -223,7 +224,7 @@ defmodule ApiaryWeb.PreparationComponents do
   slot :session
 
   def run_list(assigns) do
-    preparation = assigns.preparation
+    preparation = finished(assigns.preparation, assigns.run_state)
     alive = assigns.alive
     machine = preparation.machine
     removed = removed_row(assigns.clean_up, machine)
@@ -1711,6 +1712,27 @@ defmodule ApiaryWeb.PreparationComponents do
 
     %{state: state, at: at, duration_ms: exited_at && ms_between(at, exited_at)}
   end
+
+  # A run that paused after it pushed its questions or a proposal ended completed
+  # (`Apiary.Runs.Fold.settle/1`), so each of its sessions that paused reads as one that
+  # succeeded. A run that paused and is continued keeps its paused sessions.
+  defp finished(preparation, "completed") do
+    Map.new(preparation, fn
+      {:session_end, finished} -> {:session_end, succeeded(finished)}
+      {:sessions, sessions} -> {:sessions, Enum.map(sessions, &%{&1 | end: succeeded(&1.end)})}
+      pair -> pair
+    end)
+  end
+
+  defp finished(preparation, _run_state), do: preparation
+
+  defp succeeded(%{} = finished) do
+    if exit_state(finished) == "paused",
+      do: Map.merge(finished, %{state: "succeeded", reason: nil}),
+      else: finished
+  end
+
+  defp succeeded(finished), do: finished
 
   defp exit_state(%{state: "paused"}), do: "paused"
   # The shape of a pause until every gateway sends `paused`: Qory Apiary is deployed
