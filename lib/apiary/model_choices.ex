@@ -1210,8 +1210,8 @@ defmodule Apiary.ModelChoices do
   # and is neither the choice's provider nor an earlier fallback's, and a model and an
   # effort that go with it. Each fallback goes on with its provider (`connection`). Where
   # the save chooses a provider other than the place's, a fallback of the chosen provider
-  # is dropped, not refused, as Workspace settings › Model sends the rows it had when the
-  # choice moves to one of them; each other fallback keeps its index for its refusal.
+  # is dropped, with no error, as Workspace settings › Model sends the rows it had when
+  # the choice moves to one of them; each other fallback keeps its index for its error.
   defp check_fallbacks(changeset, nil, _at, _runtime), do: changeset
 
   defp check_fallbacks(changeset, %Connection{} = provider, at, runtime) do
