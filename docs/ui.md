@@ -2072,11 +2072,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      start machine type large", under the fold, where the run has no spec.
   4. "Waiting for a model key: every key of Northwind Claude is in cooldown until
      14:00." while every key of each of the run's model providers, its model choice's
-     provider and its fallbacks, is in cooldown: a claim that leaves the run waiting
-     stores the providers it checked (`dispatch_runs.model_provider_ids`,
-     `Apiary.ModelKeys.first_to_leave/2`), and the line reads them: the
-     provider whose key leaves its cooldown first, and when, the time as a key's row on
-     Model providers shows it. Nothing runs when the cooldown ends: the first claim after
+     provider and its fallbacks, is in cooldown: the run's queueing stores those
+     providers (`dispatch_runs.model_provider_ids`), each claim that leaves the run
+     waiting stores again the providers it checked, and the line reads them
+     (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
+     first, and when, the time as a key's row on Model providers shows it. Nothing runs
+     when the cooldown ends: the first claim after
      that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with

@@ -559,8 +559,9 @@ A model choice's fallbacks, on Workspace settings › Model, are saved with the 
 under the choice's action: `model_choice.write` of the workspace or the target, owners'
 and admins', of the feature `factory`.
 
-Two requests of the run endpoint are a gateway's for a run, signed by its access key, and
-no action of the access model covers them:
+Two requests of the run endpoint are a gateway's for a run, signed by its access key: the
+model keys report, checked under the action `run.post_events`, and the transcript of a
+paused run, checked under no action, by the run alone:
 
 - **The model keys report**, `POST /v1/runs/<run_id>/model-keys`, needs the features
   `factory` and `secrets`. The run must be, as for the gateway's secrets request, a run
