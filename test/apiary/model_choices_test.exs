@@ -934,14 +934,24 @@ defmodule Apiary.ModelChoicesTest do
                {1, deepseek.public_id, nil, nil}
              ]
 
-      # The fallbacks kept are checked again: the chosen provider is refused among them.
+      # A choice of a fallback's provider drops that fallback, and keeps the others in
+      # their order.
+      assert {:ok, choice} =
+               ModelChoices.put_choice(scope, :workspace, %{
+                 "provider" => subscription.public_id
+               })
+
+      assert stored(choice) == [{0, deepseek.public_id, nil, nil}]
+
+      # Sent fallbacks are checked as they are: the chosen provider is refused among them.
       assert [
                {0, :provider,
                 "Choose another provider: Claude subscription token is chosen already."}
              ] =
                fallback_errors(
                  ModelChoices.put_choice(scope, :workspace, %{
-                   "provider" => subscription.public_id
+                   "provider" => subscription.public_id,
+                   "fallbacks" => [fallback(subscription)]
                  })
                )
     end

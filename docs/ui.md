@@ -478,7 +478,8 @@ replaces the navigation it is in.
   provider that serves Claude Code in Organisation settings › Model providers, then add
   it here as a fallback.", the place a link. Save writes the rows with the choice, and
   an error shows under its row's field, such as "Choose another provider: Northwind
-  Claude is chosen already."
+  Claude is chosen already." A save that sends no rows, as the set-up's Model step
+  saves, keeps the rows but one of the chosen provider, which it drops.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one

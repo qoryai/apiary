@@ -4577,6 +4577,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {deepseek.id, "ds", hd(models(deepseek))}
   end
 
+  test "a fallback's provider chosen on the step is saved, and that fallback is dropped",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    deepseek = provider!(scope, "deepseek", "ds")
+
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, :workspace, %{
+        provider: anthropic.public_id,
+        fallbacks: [%{provider: deepseek.public_id}]
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_submit()
+
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == deepseek.id
+    assert Repo.preload(choice, :fallbacks, force: true).fallbacks == []
+  end
+
   # A provider of the workspace alone, and one that applies to every workspace. By name,
   # the workspace's comes first (Anthropic before DeepSeek).
   defp own_and_shared!(scope) do

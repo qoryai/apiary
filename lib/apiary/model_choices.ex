@@ -407,7 +407,8 @@ defmodule Apiary.ModelChoices do
   # keys, `model`, a model id, `effort`, one of that model's offered effort values,
   # `tiers`, a map of tiers, `fallbacks`, a list in order of maps of `provider`, `model`
   # and `effort`, and, at the workspace, `locked`. Each but `provider` and `tiers` may be
-  # left out; one of those two is needed. Left out, `fallbacks` keeps the place's. `{:ok, choice}`, or
+  # left out; one of those two is needed. Left out, `fallbacks` keeps the place's, but a
+  # fallback of the chosen provider, which is dropped. `{:ok, choice}`, or
   # `{:error, refusal}`: a changeset with the reason on its field (the moduledoc). `chain`
   # is "organisation" by default; "operator" sets the operator's choice at `:organisation`
   # alone, for a scope that writes that chain, with a provider of that chain; any other
@@ -426,17 +427,21 @@ defmodule Apiary.ModelChoices do
     end)
   end
 
-  # `attrs` with the place's fallbacks where they send none, as a save sends them. Read
+  # `attrs` with the place's fallbacks where they send none, as a save sends them, but a
+  # fallback of the provider `attrs` chooses: that provider is no fallback of itself. Read
   # under the place's lock (`hold_place/4`): the workspace's row, or the organisation's
   # integrations lock for its default, so no other save of the place runs meanwhile.
   defp with_kept_fallbacks(attrs, at) do
     if Map.has_key?(attrs, :fallbacks) or Map.has_key?(attrs, "fallbacks") do
       attrs
     else
+      chosen = attrs[:provider] || attrs["provider"]
+
       case Repo.one(from c in at_place(at), preload: [fallbacks: :connection]) do
         %ModelChoice{fallbacks: [_ | _] = fallbacks} ->
           kept =
             for fallback <- fallbacks,
+                fallback.connection.public_id != chosen,
                 do: %{
                   "provider" => fallback.connection.public_id,
                   "model" => fallback.model_id,
