@@ -6,8 +6,11 @@ defmodule Apiary.Dispatches.Pause do
   # continues it (`Apiary.Dispatches.requeue_for_pause/2`).
   #
   # `of/1` is, for each paused run of `run_ids` (`runs.id`), `%{provider: name | nil,
-  # until: time | nil, number: n | nil, workspace_id: id | nil}`: the name of the run's
-  # model provider, nil once the provider is deleted; when every key of that provider was
+  # operator: boolean, until: time | nil, number: n | nil, workspace_id: id | nil}`: the
+  # name of the run's model provider, nil once the provider is deleted, and nil for a
+  # provider of an operator's chain, of another organisation than the run's, whose name
+  # the run's organisation's people do not read (`operator: true`, as
+  # `Apiary.Runs.SecretsRequest` records its seal); when every key of that provider was
   # in cooldown as the run ended, the earliest end of those cooldowns
   # (`dispatch_runs.paused_until`), else nil; and the run number and workspace of the run
   # that continues it, nil for a paused run that no run continues, such as a prebuild or
@@ -23,6 +26,7 @@ defmodule Apiary.Dispatches.Pause do
 
   @type t :: %{
           provider: String.t() | nil,
+          operator: boolean,
           until: DateTime.t() | nil,
           number: pos_integer | nil,
           workspace_id: Ecto.UUID.t() | nil
@@ -51,7 +55,14 @@ defmodule Apiary.Dispatches.Pause do
         select:
           {field(r, ^key),
            %{
-             provider: p.name,
+             provider:
+               fragment(
+                 "CASE WHEN ? = ? THEN ? END",
+                 p.organisation_id,
+                 r.organisation_id,
+                 p.name
+               ),
+             operator: coalesce(p.organisation_id != r.organisation_id, false),
              until: d.paused_until,
              number: next.number,
              workspace_id: next.workspace_id

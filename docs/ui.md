@@ -1904,9 +1904,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   key of Northwind Claude reached its limit. It continues in run 15."; "Paused: a key of
   Northwind Claude reached its limit." where no run continues it; and, once the provider
   is deleted, "Paused: a model key reached its limit. It continues in run 15.", or
-  "Paused: a model key reached its limit." where no run continues it. On the work item's
-  page, the run's row on Explore and the stage's round
-  show the same line in place of the run's state, the number a link where the reader may
+  "Paused: a model key reached its limit." where no run continues it. A provider of an
+  operator's chain, of another organisation than the run's, is not named: "Paused: every
+  model key is in cooldown until Fri 14:00. It continues in run 15." while that time is
+  still to come, else the lines of a deleted provider. On the work item's page, the
+  run's row on Explore and the stage's round show the same line in place of the run's
+  state, the number a link where the reader may
   read the workspace of the run that continues it. For a run that a failed step of its preparation
   stopped, the line states what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
@@ -2079,9 +2082,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      waiting stores again the providers it checked, a change of a model choice or of a
      model provider stores them again from the choice in effect, and the line reads them
      (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
-     first, and when, the time as a key's row on Model providers shows it. Nothing runs
-     when the cooldown ends: the first claim after
-     that time takes the run.
+     first, and when, the time as a key's row on Model providers shows it. For a
+     provider of an operator's chain, of another organisation than the run's, the line
+     has no name: "Waiting for a model key: every model key is in cooldown until 14:00."
+     Nothing runs when the cooldown ends: the first claim after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
      no build live, while it is held for its target's build. A run whose machine type

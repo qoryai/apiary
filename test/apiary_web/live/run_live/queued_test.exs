@@ -342,6 +342,36 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
                  "#{ApiaryWeb.Format.week_time(until, now)}."
     end
 
+    @tag needs: [:factory, :secrets]
+    test "says a run waits for a model key, without the name of an operator's provider",
+         %{conn: conn, scope: scope} do
+      %{scope: operator} = Apiary.OrganisationsFixtures.sign_up_fixture()
+
+      {:ok, theirs} =
+        Apiary.Connections.create_provider(operator, %{
+          provider: "anthropic",
+          name: "Operator keys",
+          keys: [%{value_id: "main", value: "sk-ant-queued-page-operator"}]
+        })
+
+      {_work_item, queued} = queue!(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [model_provider_ids: [theirs.id]]
+        )
+
+      now = DateTime.utc_now()
+      until = DateTime.add(now, 2, :day)
+      cooling!(theirs, until)
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: every model key is in cooldown until " <>
+                 "#{ApiaryWeb.Format.week_time(until, now)}."
+    end
+
     test "becomes the page of a registered run at the claim, with no reload",
          %{conn: conn, scope: scope} = ctx do
       {_work_item, queued} = queue!(scope)

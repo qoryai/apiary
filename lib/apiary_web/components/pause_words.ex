@@ -8,8 +8,9 @@ defmodule ApiaryWeb.PauseWords do
   # cooldown, in the reader's time zone, as the waiting line shows it
   # (`ApiaryWeb.PreparationComponents.cooldown_time/2`); once that time has passed, or
   # with no such time, or with no run that continues it, the line shows that a key reached
-  # its limit. A provider deleted since has no name, and the line is about a model key. The
-  # provider's name came from a person and is shown as a text an external system sent.
+  # its limit. A provider deleted since, or an operator's, has no name, and the line is
+  # about a model key. The provider's name came from a person and is shown as a text an
+  # external system sent.
 
   use Gettext, backend: ApiaryWeb.Gettext
 
@@ -20,6 +21,20 @@ defmodule ApiaryWeb.PauseWords do
 
   @spec line(Apiary.Dispatches.Pause.t(), String.t() | nil, DateTime.t()) :: list
   def line(pause, path, now \\ DateTime.utc_now())
+
+  # An operator's provider: no name, and its cooldown while it lasts.
+  def line(%{operator: true, until: %DateTime{} = until, number: number} = pause, path, now)
+      when is_integer(number) do
+    if DateTime.compare(until, now) == :gt do
+      rich_gettext(
+        "Paused: every model key is in cooldown until %{time}. It continues in run %{number}.",
+        time: PreparationComponents.cooldown_time(until, now),
+        number: number(number, path)
+      )
+    else
+      line(%{pause | until: nil}, path, now)
+    end
+  end
 
   def line(%{provider: nil, number: nil}, _path, _now),
     do: rich_gettext("Paused: a model key reached its limit.", [])

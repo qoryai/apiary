@@ -108,8 +108,10 @@ defmodule Apiary.Dispatches.PauseTest do
     # One key is not in cooldown: the line says a key reached its limit.
     continuation = registered(next)
 
+    # The run's organisation's provider is named, and is no operator's.
     assert Pause.of_run(paused) == %{
              provider: ctx.provider.name,
+             operator: false,
              until: nil,
              number: continuation.number,
              workspace_id: ctx.scope.workspace.id
@@ -187,6 +189,49 @@ defmodule Apiary.Dispatches.PauseTest do
            |> ApiaryWeb.PauseWords.line("/runs/#{number}")
            |> ApiaryWeb.RichText.plain_text() ==
              "Paused: a key of #{ctx.provider.name} reached its limit. It continues in run #{number}."
+  end
+
+  test "an operator's provider has no name in the line", ctx do
+    %{scope: operator} = sign_up_fixture()
+    keys = [%{value_id: "main", value: "sk-ant-operator-main-0123456789"}]
+    {:ok, theirs} = Connections.create_provider(operator, %{provider: "anthropic", keys: keys})
+
+    given = %{
+      ctx.given
+      | provider_connection_id: theirs.id,
+        provider_secret_id: theirs.secret_id,
+        provider_chain: "operator"
+    }
+
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, given)
+    exit!(run, @paused)
+
+    until = DateTime.add(DateTime.utc_now(), 3_600, :second)
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [paused_until: until]
+      )
+
+    number = registered(run_of(dispatch_run.work_item_id, 2)).number
+    assert %{provider: nil, operator: true} = pause = Pause.of_run(Repo.get!(Run, run.id))
+
+    line = fn pause ->
+      pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text()
+    end
+
+    assert line.(pause) ==
+             "Paused: every model key is in cooldown until " <>
+               "#{ApiaryWeb.PreparationComponents.cooldown_time(until)}. It continues in run #{number}."
+
+    # Once the cooldown has ended, and with no run that continues it.
+    past = DateTime.add(DateTime.utc_now(), -60, :second)
+
+    assert line.(%{pause | until: past}) ==
+             "Paused: a model key reached its limit. It continues in run #{number}."
+
+    assert line.(%{pause | number: nil}) == "Paused: a model key reached its limit."
+    refute line.(pause) =~ theirs.name
   end
 
   test "an outcome before the exit is refused, and the exit pauses the run", ctx do

@@ -1264,6 +1264,12 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(:no_pool), do: gettext("Waiting: no pool can take the run")
 
+  defp waiting_words({:cooldown, nil, until}),
+    do:
+      gettext("Waiting for a model key: every model key is in cooldown until %{time}.",
+        time: cooldown_time(until)
+      )
+
   defp waiting_words({:cooldown, provider, until}),
     do:
       gettext(
