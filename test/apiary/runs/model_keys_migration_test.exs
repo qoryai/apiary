@@ -81,6 +81,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     run = claimed!(ctx, "acme/shop#1")
     gone = claimed!(ctx, "acme/shop#2")
     ended = claimed!(ctx, "acme/shop#4")
+    subscription = claimed!(ctx, "acme/shop#5")
     assert [%{"name" => name} | _] = Repo.get!(Run, run.id).model_keys
     assert name == "#{ctx.provider.public_id}-1"
 
@@ -100,6 +101,15 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
       Repo.query!(
         "UPDATE runs SET state = 'completed', provider_connection_id = NULL WHERE id = $1",
         [Ecto.UUID.dump!(ended.id)]
+      )
+
+    # A run of a subscription, whose API's `auth` has `oauth: true`, through the key with
+    # no setting.
+    %{num_rows: 1} =
+      Repo.query!(
+        "UPDATE runs SET provider_value_id = 'main', " <>
+          "provider_api = jsonb_set(provider_api, '{auth}', '{\"oauth\": true}') WHERE id = $1",
+        [Ecto.UUID.dump!(subscription.id)]
       )
 
     # The key's setting, written before the upgrade.
@@ -126,6 +136,12 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
                "pause_for_s" => 60
              }
            ]
+
+    # A subscription's default, 1 hour.
+    assert [%{"id" => main_id, "pause_for_s" => 3600}] =
+             Repo.get!(Run, subscription.id).model_keys
+
+    assert main_id == value(ctx, "main").id
 
     # The run configuration has the Pause for, and a later change of the setting leaves it.
     {:ok, _setting} = ModelKeys.put_setting(value(ctx, "spare"), %{pause_seconds: 120})
