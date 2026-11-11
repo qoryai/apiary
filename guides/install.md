@@ -106,8 +106,12 @@ TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database answered; `version` is the release's, `revision` the commit its image was built from, `null` in a build without one |
+| `200` | `{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…","set_up":true}` | the database answered; `version` is the release's, `revision` the commit its image was built from, `null` in a build without one; `set_up` is `false` until the instance's first set-up and `true` after it |
 | `503` | `{"status":"degraded","database":"error","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database did not answer |
+
+The `503` has no `set_up`, because the release reads `set_up` from the database. A `200`
+has no `set_up` either when that read fails after `SELECT 1` succeeded, or takes more than
+five seconds; the log then has a warning with the cause.
 
 ## Logs
 
