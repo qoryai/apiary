@@ -7,10 +7,10 @@ defmodule Apiary.Artifacts.SchemaError do
   # "First" is in one order for one file and one schema: JSV's errors sorted by their
   # data path, segment by segment, then by keyword, the ties in JSV's order. An error
   # that only points at a deeper one, such as "property 'gaps' did not conform to the
-  # property schema", is passed over while a deeper error exists. An `allOf` error, which
-  # a `$ref` to a definition with a limit on its length makes, is the errors of its
-  # schemas that failed, so "value did not conform to all of the given schemas" is
-  # replaced by the failing limit's message.
+  # property schema", is passed over while a deeper error exists. With `unwrap: true`, as
+  # for the type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit
+  # on its length makes, is the errors of its schemas that failed, so "value did not
+  # conform to all of the given schemas" is replaced by the failing limit's message.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
@@ -33,10 +33,12 @@ defmodule Apiary.Artifacts.SchemaError do
 
   # first/1 is the first failing place of JSV's `error`.
   @doc false
-  @spec first(JSV.ValidationError.t()) :: t
-  def first(%JSV.ValidationError{errors: errors}) do
-    sorted =
-      errors |> Enum.flat_map(&failed/1) |> Enum.sort_by(&{Enum.reverse(&1.data_path), &1.kind})
+  @spec first(JSV.ValidationError.t(), keyword) :: t
+  def first(%JSV.ValidationError{errors: errors}, opts \\ []) do
+    errors =
+      if Keyword.get(opts, :unwrap, false), do: Enum.flat_map(errors, &failed/1), else: errors
+
+    sorted = Enum.sort_by(errors, &{Enum.reverse(&1.data_path), &1.kind})
 
     {error, message} =
       Enum.find_value(sorted, fn error ->

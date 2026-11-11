@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://qory.dev/contracts/harness/v1/mockup.schema.json",
+  "$id": "https://qory.dev/schemas/artifacts/mockup.schema.json",
   "title": "The mockup format, version 1",
   "description": "screens.json, the index of a version of the artifact type mockup: its screens and the links between them. Each screen is one HTML page of the version, named in file. start is the id of a screen in screens; ids are unique; file is the screen's id and .html; each to is the id of a screen; every screen is reachable from start through links; and the to values of a screen are the screens its page links to. A JSON Schema cannot check these, so Qory Apiary checks them beside it. No object has a member this schema does not define.",
   "type": "object",

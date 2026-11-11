@@ -911,8 +911,11 @@ defmodule Apiary.Artifacts.Format do
 
     if Bounds.within?(document, limits) do
       case JSV.validate(document, Schema.file!(path, &Schema.code_point_lengths/1), cast: false) do
-        {:ok, _document} -> once(name, document)
-        {:error, %JSV.ValidationError{} = error} -> {:error, {:schema, SchemaError.first(error)}}
+        {:ok, _document} ->
+          once(name, document)
+
+        {:error, %JSV.ValidationError{} = error} ->
+          {:error, {:schema, SchemaError.first(error, unwrap: name == "mockup")}}
       end
     else
       {:error, {:schema, refused(:limits)}}

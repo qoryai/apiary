@@ -346,7 +346,7 @@ defmodule Apiary.Artifacts.Mockup do
            {:error,
             SchemaError.detail(
               "#/screens/#{at}/id",
-              "use an id that no earlier screen has: #{id} is the id of an earlier screen"
+              "use an id that no earlier screen has: `#{id}` is the id of an earlier screen"
             )}},
         else: {:cont, MapSet.put(seen, id)}
     end)
@@ -365,7 +365,7 @@ defmodule Apiary.Artifacts.Mockup do
           {:error,
            SchemaError.detail(
              "#/screens/#{at}/file",
-             "use #{id}.html, the screen's id and .html"
+             "use `#{id}.html`, the screen's id and `.html`"
            )}
     end)
   end
@@ -391,7 +391,7 @@ defmodule Apiary.Artifacts.Mockup do
   defp start(start, ids) do
     if start in ids,
       do: :ok,
-      else: {:error, SchemaError.detail("#/start", "use the id of a screen, not #{start}")}
+      else: {:error, SchemaError.detail("#/start", "use the id of a screen, not `#{start}`")}
   end
 
   defp targets(screens, ids) do
@@ -406,7 +406,7 @@ defmodule Apiary.Artifacts.Mockup do
             {:error,
              SchemaError.detail(
                "#/screens/#{at}/links/#{link_at}/to",
-               "use the id of a screen, not #{to}"
+               "use the id of a screen, not `#{to}`"
              )}
       end)
     end)
@@ -426,8 +426,8 @@ defmodule Apiary.Artifacts.Mockup do
           {:error,
            SchemaError.detail(
              "#/screens/#{at}",
-             "add a link to #{id} on the start screen, or on a screen that its links " <>
-               "reach: they do not reach #{id}"
+             "add a link to `#{id}` on the start screen, or on a screen that its links " <>
+               "reach: they do not reach `#{id}`"
            )}
     end)
   end

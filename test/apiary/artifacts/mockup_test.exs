@@ -431,16 +431,17 @@ defmodule Apiary.Artifacts.MockupTest do
       [start, next] = screens()["screens"]
 
       for {document, path, error} <- [
-            {screens(start: "gone"), "#/start", "use the id of a screen, not gone"},
+            {screens(start: "gone"), "#/start", "use the id of a screen, not `gone`"},
             {screens(screens: [start, %{next | "id" => "start", "file" => "start.html"}]),
              "#/screens/1/id",
-             "use an id that no earlier screen has: start is the id of an earlier screen"},
+             "use an id that no earlier screen has: `start` is the id of an earlier screen"},
             {screens(screens: [start, %{next | "file" => "other.html"}]), "#/screens/1/file",
-             "use next.html, the screen's id and .html"},
+             "use `next.html`, the screen's id and `.html`"},
             {screens(screens: [%{start | "links" => [%{"to" => "gone", "label" => "x"}]}, next]),
-             "#/screens/0/links/0/to", "use the id of a screen, not gone"},
+             "#/screens/0/links/0/to", "use the id of a screen, not `gone`"},
             {screens(screens: [%{start | "links" => []}, next]), "#/screens/1",
-             "add a link to next on the start screen, or on a screen that its links reach: they do not reach next"}
+             "add a link to `next` on the start screen, or on a screen that its links reach: " <>
+               "they do not reach `next`"}
           ] do
         assert {:error, {:schema, 0, %{path: ^path, error: ^error}}} =
                  version(context, [{"screens.json", document} | pages()])

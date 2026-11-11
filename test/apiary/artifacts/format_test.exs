@@ -241,6 +241,18 @@ defmodule Apiary.Artifacts.FormatTest do
     defp questions(context, list),
       do: check(context, "questions", "questions.json", Jason.encode!(%{"questions" => list}))
 
+    test "an over-long question has the schema's message of the allOf around its limit",
+         context do
+      # Only the type `mockup` reads the errors inside the `allOf`.
+      assert {:error,
+              {:schema,
+               %{
+                 path: "#/questions/0/question",
+                 error: "value did not conform to all of the given schemas"
+               }}} =
+               questions(context, [question(%{"question" => String.duplicate("a", 501)})])
+    end
+
     test "a question is 1 to 500 characters on one line", context do
       assert {:ok, "application/json"} =
                questions(context, [question(%{"question" => String.duplicate("a", 500)})])
