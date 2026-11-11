@@ -181,7 +181,10 @@ defmodule Apiary.ModelKeys do
   Each has `copy_set_at`, when the value the run has was set: that of the value a secrets
   request sealed for the run last (`keep_copies/2`), with `copy_kept` true; for a key no
   request sealed, the time the run's row was written, as the run has no value set later
-  than that, with `copy_kept` false; nil for a run not stored.
+  than that, with `copy_kept` false; nil for a run not stored. The upgrade that added the
+  copies wrote one for each key of each pending or running run, with the key's
+  `value_set_at` at the upgrade, so such a run is not compared by the time its row was
+  written.
   """
   @spec run_keys(Run.t()) :: [run_key]
   def run_keys(
