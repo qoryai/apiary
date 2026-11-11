@@ -112,7 +112,8 @@ defmodule Apiary.ModelKeys do
   for settings with no reset. The reset is the weekday and time in the setting's time
   zone: a time that the clocks skip is the first moment after the gap, and a time that
   happens twice is the first of the two. A zone that the time zone database no longer
-  has is read as UTC, with one warning in the log.
+  has is read as UTC, with one warning in the log for each key and zone, the first time
+  the node reads that zone for that key.
   """
   @spec next_reset(Setting.t() | nil, DateTime.t()) :: DateTime.t() | nil
   def next_reset(setting, %DateTime{} = time) do
@@ -135,12 +136,24 @@ defmodule Apiary.ModelKeys do
         setting
 
       {:error, _reason} ->
-        Logger.warning(
-          "a model key's reset time zone is not in the time zone database; " <>
-            "its reset is read in UTC key=#{setting.secret_value_id}"
-        )
-
+        warn_unknown_zone(setting)
         %{setting | reset_time_zone: "Etc/UTC"}
+    end
+  end
+
+  # One warning for each key and zone on this node: a `:persistent_term` mark, written
+  # once, so later reads of the key log nothing. The marks are as many as the keys whose
+  # zone the database dropped.
+  defp warn_unknown_zone(%Setting{secret_value_id: id, reset_time_zone: zone}) do
+    mark = {__MODULE__, :unknown_zone, id, zone}
+
+    unless :persistent_term.get(mark, false) do
+      :persistent_term.put(mark, true)
+
+      Logger.warning(
+        "a model key's reset time zone is not in the time zone database; " <>
+          "its reset is read in UTC key=#{id}"
+      )
     end
   end
 

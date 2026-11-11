@@ -202,14 +202,29 @@ defmodule Apiary.ModelKeysTest do
       # update that dropped it.
       gone = %{weekly(1, ~T[09:00:00], "Europe/Nowhere") | secret_value_id: Ecto.UUID.generate()}
 
+      # Two reads of the key log one line.
       log =
         ExUnit.CaptureLog.capture_log(fn ->
           assert ModelKeys.next_reset(gone, ~U[2026-11-11 10:00:00Z]) ==
                    ~U[2026-11-16 09:00:00.000000Z]
+
+          assert ModelKeys.next_reset(gone, ~U[2026-11-17 10:00:00Z]) ==
+                   ~U[2026-11-23 09:00:00.000000Z]
         end)
 
       assert [_one] = Regex.scan(~r/reset time zone is not in the time zone database/, log)
       assert log =~ gone.secret_value_id
+
+      # Another key with that zone logs one line too.
+      other = %{gone | secret_value_id: Ecto.UUID.generate()}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          ModelKeys.next_reset(other, ~U[2026-11-11 10:00:00Z])
+        end)
+
+      assert [_one] = Regex.scan(~r/reset time zone is not in the time zone database/, log)
+      assert log =~ other.secret_value_id
     end
 
     test "follows the zone's clock across a daylight-saving week" do
