@@ -10955,6 +10955,16 @@ msgstr ""
 msgid "How long an audit log entry keeps the IP address and the browser or program it came from, never longer than the entries."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "How long the audit log keeps an entry. Older entries are deleted once a day."
@@ -15392,24 +15402,9 @@ msgstr ""
 msgid "Optional, none"
 msgstr ""
 
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 hour."
-msgstr ""
-
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 minute."
-msgstr ""
-
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Optional. Log-in links keep working either way."
-msgstr ""
-
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Optional. The weekly time when this key's allowance resets. Set it if the provider's answers give no reset time."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -21656,6 +21651,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The wall refuses link-local addresses and the machine's addresses,"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

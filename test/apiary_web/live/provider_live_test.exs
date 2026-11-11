@@ -791,13 +791,13 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#key_reset_day-resets-hint",
-               "Optional. The weekly time when this key's allowance resets. Set it if the provider's answers give no reset time."
+               "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
              )
 
       assert has_element?(
                lv,
                "#key_pause_number-pause-hint",
-               "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 minute."
+               "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
              )
 
       assert has_element?(lv, ~s{#key_reset_zone option[value="Europe/Berlin"][selected]})
@@ -847,7 +847,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#key_pause_number-pause-hint",
-               "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 hour."
+               "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
              )
 
       assert has_element?(lv, ~s{#key_pause_unit option[value="hours"][selected]})

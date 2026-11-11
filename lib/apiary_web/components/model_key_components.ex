@@ -213,7 +213,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
         errors={@resets_errors}
         hint={
           gettext(
-            "Optional. The weekly time when this key's allowance resets. Set it if the provider's answers give no reset time."
+            "The weekly time when this key's allowance resets. Set it if the provider's answers have no reset time."
           )
         }
       />
@@ -270,13 +270,13 @@ defmodule ApiaryWeb.ModelKeyComponents do
   defp pause_hint(true),
     do:
       gettext(
-        "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 hour."
+        "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
       )
 
   defp pause_hint(false),
     do:
       gettext(
-        "Optional. How long runs skip this key after the provider refuses it, when no reset time is known. Empty: 1 minute."
+        "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
       )
 
   defp group_note(id, group, []), do: "#{id}-#{group}-hint"
