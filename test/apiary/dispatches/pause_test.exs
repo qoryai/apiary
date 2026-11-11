@@ -289,6 +289,7 @@ defmodule Apiary.Dispatches.PauseTest do
 
       assert %Run{state: "completed"} = Repo.get!(Run, run.id)
       assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+      assert %DispatchRun{result_outcome: :proposal} = Repo.get!(DispatchRun, dispatch_run.id)
     end
   end
 
@@ -310,6 +311,26 @@ defmodule Apiary.Dispatches.PauseTest do
     assert %Run{state: "completed"} = Repo.get!(Run, run.id)
     assert runs_of(work_item.id) == [{1, :ended, :run_ended}]
     assert %WorkItem{stage_state: :waiting_answers} = Repo.get!(WorkItem, work_item.id)
+  end
+
+  @tag needs: [:factory, :secrets, :workflow_model]
+  test "the stage of a run that pushed a proposal, then reached the limit, moves on", ctx do
+    work_item = Apiary.StagesFixtures.taken_in_fixture(ctx.scope)
+    queued = Apiary.StagesFixtures.newest_run(work_item)
+    %{run: run} = handed_over(ctx.scope, ctx.key, queued, ctx.given)
+    dispatch_run = Repo.get!(DispatchRun, queued.id)
+
+    Apiary.WorkItemsFixtures.push_output!(
+      dispatch_run,
+      run,
+      Apiary.WorkItemsFixtures.understood_result()
+    )
+
+    exit!(run, @paused)
+
+    assert %Run{state: "completed"} = Repo.get!(Run, run.id)
+    assert runs_of(work_item.id) == [{1, :ended, :run_ended}]
+    assert %WorkItem{stage_state: :at_gate} = Repo.get!(WorkItem, work_item.id)
   end
 
   test "a proposal of an earlier run alone leaves the run paused", ctx do
