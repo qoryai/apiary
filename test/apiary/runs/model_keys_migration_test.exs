@@ -152,6 +152,51 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     assert Repo.get!(Run, ended.id).model_keys == []
   end
 
+  test "down keeps the first of several keys, and clears a run whose first key is gone",
+       ctx do
+    first_main = claimed!(ctx, "acme/shop#6")
+    first_gone = claimed!(ctx, "acme/shop#7")
+    name = fn n -> "#{ctx.provider.public_id}-#{n}" end
+
+    set_keys = fn run, ids ->
+      keys =
+        ids
+        |> Enum.with_index(1)
+        |> Enum.map(fn {id, n} -> %{"id" => id, "name" => name.(n), "pause_for_s" => 60} end)
+
+      %{num_rows: 1} =
+        Repo.query!("UPDATE runs SET model_keys = $2 WHERE id = $1", [
+          Ecto.UUID.dump!(run.id),
+          keys
+        ])
+    end
+
+    main = value(ctx, "main").id
+    spare = value(ctx, "spare").id
+    set_keys.(first_main, [main, spare])
+    set_keys.(first_gone, [Ecto.UUID.generate(), spare])
+
+    assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
+
+    assert provider_value_id(first_main.id) == "main"
+    assert provider_value_id(first_gone.id) == nil
+
+    %{rows: [[connection_id, secret_id, chain, api]]} =
+      Repo.query!(
+        "SELECT provider_connection_id, provider_secret_id, provider_chain, provider_api " <>
+          "FROM runs WHERE id = $1",
+        [Ecto.UUID.dump!(first_gone.id)]
+      )
+
+    assert {connection_id, secret_id, chain, api} == {nil, nil, nil, nil}
+
+    assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
+    assert [%{"id" => ^main, "name" => kept_name}] = Repo.get!(Run, first_main.id).model_keys
+    assert kept_name == ctx.provider.public_id
+    # A run with no provider has no list, as runs_provider_check has it.
+    assert Repo.get!(Run, first_gone.id).model_keys == nil
+  end
+
   test "the list is at most 6 keys, each with a row id and a credential name", ctx do
     run = claimed!(ctx, "acme/shop#3")
 
