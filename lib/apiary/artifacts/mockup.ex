@@ -308,9 +308,9 @@ defmodule Apiary.Artifacts.Mockup do
       value == "" ->
         "Write #{field} in `screens.json`: it is empty."
 
-      String.length(value) > 200 ->
+      code_points(value) > 200 ->
         "Shorten #{field} in `screens.json` to at most 200 characters: it has " <>
-          "#{String.length(value)}."
+          "#{code_points(value)}."
 
       Regex.match?(~r/[\x00-\x1f\x7f-\x9f]/u, value) ->
         "Remove the control character from #{field} in `screens.json`: a tab, a line " <>

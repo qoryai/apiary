@@ -356,6 +356,9 @@ defmodule Apiary.Artifacts.MockupTest do
             {%{start | "title" => String.duplicate("x", 201)},
              "Shorten the title of screen `start` in `screens.json` to at most 200 " <>
                "characters: it has 201."},
+            {%{start | "title" => String.duplicate("e\u0301", 150)},
+             "Shorten the title of screen `start` in `screens.json` to at most 200 " <>
+               "characters: it has 300."},
             {%{start | "title" => "A\tB"}, "#{control} the title of screen `start` #{rest}"},
             {%{start | "title" => ""},
              "Write the title of screen `start` in `screens.json`: it is empty."},
