@@ -382,8 +382,11 @@ Checks, in order, after the checks of every request:
 
    The version's page shows a mockup of pages under "Mockup": the start screen in a
    frame with the sandbox and no permission, so the page runs no script, and the list of
-   screens beside it. A person's version of `mockup`, added on **Add a version**, is a
-   mockup of images, as before.
+   screens beside it. The frame loads each screen from
+   `/<organisation>/<workspace>/work/<number>/artifacts/<version_id>/mockup/<token>/<id>.html`,
+   where `<token>` is signed for the page's reader, valid for 3600 seconds, and checked
+   again on each request with the reader's access to the work item. A person's version
+   of `mockup`, added on **Add a version**, is a mockup of images, as before.
 7. A version of `questions` or `review-comments` that changes what members wrote,
    compared with the newest version, or a version of `questions` that breaks one of the
    `decision` rules of this check: `422` `invalid_artifact`, with the file in `names`

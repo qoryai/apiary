@@ -244,9 +244,6 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       view_id = "#artifact-view-#{version.public_id}"
       frame = "artifact-view-#{version.public_id}-frame"
 
-      screen =
-        &ArtifactComponents.mockup_path(ctx.scope, ctx.work_item.number, version.public_id, &1)
-
       assert has_element?(view, "#artifact-view-title", "Mockup")
 
       assert view |> element("#artifact-type") |> render() =~
@@ -257,6 +254,26 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       [attributes] = LazyHTML.attributes(iframe)
       attributes = Map.new(attributes)
+
+      # The frame's address has the reader's token for the version, which verifies.
+      prefix =
+        "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/work/" <>
+          "#{ctx.work_item.number}/artifacts/#{version.public_id}/mockup/"
+
+      assert [_all, token] =
+               Regex.run(~r/\A#{Regex.escape(prefix)}([^\/]+)\/home\.html\z/, attributes["src"])
+
+      assert {:ok, %{v: version.public_id, w: ctx.work_item.id, u: ctx.scope.user.id}} ==
+               ApiaryWeb.ArtifactMockupController.verify(ApiaryWeb.Endpoint, token)
+
+      screen =
+        &ArtifactComponents.mockup_path(
+          ctx.scope,
+          ctx.work_item.number,
+          version.public_id,
+          token,
+          &1
+        )
 
       assert attributes["sandbox"] == ""
       assert attributes["src"] == screen.("home")

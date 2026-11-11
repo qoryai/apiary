@@ -1,19 +1,29 @@
 defmodule ApiaryWeb.ArtifactMockupController do
   # One screen of a mockup of pages (`Apiary.Artifacts.Mockup`), the page the version
-  # page shows in its frame, for a person signed in who may read the work item. Not a
-  # page of the console: the frame loads it, and its links load the other screens.
+  # page shows in its frame. Not a page of the console: the frame loads it, and its links
+  # load the other screens.
   #
-  #     GET /:org/:workspace/work/:number/artifacts/:version_id/mockup/:screen
+  #     GET /:org/:workspace/work/:number/artifacts/:version_id/mockup/:token/:page
   #
-  # Scoped as the version's files are (`ApiaryWeb.ArtifactFileController`): the
-  # organisation and the workspace of the path resolved for a member, the work item by
-  # its number read with `work_item.read` (`Apiary.Access`), the version one of that work
-  # item's (`av_…`), a mockup of pages, and `:screen` the id of one of its screens, or
-  # the id and `.html`, the address a page's link `<id>.html` resolves to. Its
-  # pipeline, `:mockup_frame`, sends no redirect to sign in and sets no security header of
-  # the console's pages, so every answer, a refusal included, carries only this route's
-  # headers. Anything else, also a request with no session, is `404` with a page of one
-  # line, "Reload the page to try again. This screen cannot be shown."
+  # The frame is sandboxed with no token, so its page has an opaque origin, and a browser
+  # sends no session cookie with a request from a link inside it (`SameSite=Lax`). So the
+  # route reads no session and no cookie: `:token` (`token/3`), which the version page
+  # signs when it shows the viewer, carries the version, the work item and the person,
+  # and `:page` is a screen's `<id>.html`, the address a page's relative link resolves to.
+  #
+  # Every request is checked again: the token verifies, at most `@max_age` seconds old;
+  # its version and work item are the path's, the work item the one at the path's
+  # organisation, workspace and number; the person in it still reaches that workspace and
+  # may read the work item (`work_item.read`, `Apiary.Access`), so access removed after
+  # the token was signed counts at once; the version is a mockup of pages, and `<id>` the
+  # id of one of its screens. Anything else is `404` with a page of one line, "Reload the
+  # page to try again. This screen cannot be shown." With the feature `workflow_model`
+  # off for the instance, or hidden from the person, it is that `404` too.
+  #
+  # The token is a bearer of the person's read of one version for an hour, so the log
+  # keeps it out: the request log writes the path with `:token` in its place
+  # (`Apiary.SecretLogFilter.redact_path/1`), and every other log line has it replaced
+  # the same way. A response sends no referrer.
   #
   # Every answer has:
   #
@@ -23,21 +33,23 @@ defmodule ApiaryWeb.ArtifactMockupController do
   #     no load from any address but a `data:` image or font, no form, an opaque origin,
   #     and only a page of the console may frame it;
   #   * `content-type: text/html; charset=utf-8`, not as an attachment;
-  #   * `x-content-type-options: nosniff` and `cache-control: private, no-store`.
-  #
-  # With the feature `workflow_model` off for the instance, the route is not found, as
-  # every route of the feature (`ApiaryWeb.Features.Routes`).
+  #   * `x-content-type-options: nosniff`, `cache-control: private, no-store` and
+  #     `referrer-policy: no-referrer`.
   #
   # The module reference leaves out this module of the `workflow_model` feature.
   @moduledoc false
 
   use ApiaryWeb, :controller
 
-  alias Apiary.{Features, Organisations}
+  alias Apiary.Accounts.{Scope, User}
+  alias Apiary.{Features, Organisations, Repo}
   alias ApiaryWeb.ArtifactLive.Load
 
   @policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; " <>
             "base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox"
+
+  @salt "mockup frame"
+  @max_age 3600
 
   # Before the feature's gate, whose `404` is the console's error page: a person not shown
   # the feature gets this route's `404`.
@@ -49,31 +61,70 @@ defmodule ApiaryWeb.ArtifactMockupController do
   @spec policy() :: String.t()
   def policy, do: @policy
 
-  def show(conn, %{"number" => number, "version_id" => version_id, "screen" => screen}) do
-    scope = conn.assigns.current_scope
+  # token/3 is the token of the frame's address for the version `version` (`av_…`) of
+  # the work item `work_item_id`, for the person `user_id`, signed with the endpoint's
+  # secret: `context` is a `Plug.Conn`, a socket or the endpoint.
+  @doc false
+  @spec token(
+          term,
+          %{version: String.t(), work_item: Ecto.UUID.t(), user: Ecto.UUID.t()},
+          keyword
+        ) ::
+          String.t()
+  def token(context, %{version: version, work_item: work_item, user: user}, opts \\ []),
+    do: Phoenix.Token.sign(context, @salt, %{v: version, w: work_item, u: user}, opts)
 
-    with %{} = work_item <- Load.work_item(scope, number),
+  # verify/2 is the token's data when it verifies within `@max_age` seconds, else
+  # `:error`.
+  @doc false
+  @spec verify(term, String.t()) :: {:ok, map} | :error
+  def verify(context, token) do
+    case Phoenix.Token.verify(context, @salt, token, max_age: @max_age) do
+      {:ok, %{v: _version, w: _work_item, u: _user} = data} -> {:ok, data}
+      _invalid -> :error
+    end
+  end
+
+  def show(conn, %{"number" => number, "version_id" => version_id, "page" => page}) do
+    %{scope: scope, token: token} = conn.assigns.mockup_frame
+
+    with true <- token.v == version_id,
+         %{} = work_item <- Load.work_item(scope, number),
+         true <- work_item.id == token.w,
          %{} = version <- Load.version(work_item, version_id),
          type = Load.type(work_item, version.artifact.type),
          {:ok, index} <- Load.mockup(type, version),
-         {:ok, bytes} <-
-           Load.mockup_page(version, index, String.replace_suffix(screen, ".html", "")) do
+         {:ok, screen} <- screen(page),
+         {:ok, bytes} <- Load.mockup_page(version, index, screen) do
       conn |> headers() |> send_resp(200, bytes)
     else
       _not_found -> not_found(conn)
     end
   end
 
-  # The path's organisation and workspace, for a person signed in who reaches them, and
-  # the feature shown to that person; else this route's `404`.
-  defp place(conn, _opts) do
-    %{"org" => organisation, "workspace" => workspace} = conn.path_params
+  # `<id>.html`: the screen's id.
+  defp screen(page) do
+    case String.split(page, ".html") do
+      [id, ""] when id != "" -> {:ok, id}
+      _other -> :error
+    end
+  end
 
-    with {:ok, scope} <-
-           Organisations.resolve_scope(conn.assigns.current_scope, organisation, workspace),
+  # The token verified, the person in it reaching the path's organisation and workspace,
+  # and the feature shown to that person; else this route's `404`.
+  defp place(conn, _opts) do
+    %{"org" => organisation, "workspace" => workspace, "token" => token} = conn.path_params
+
+    with {:ok, data} <- verify(conn, token),
+         %User{} = user <- Repo.get(User, data.u),
+         {:ok, scope} <-
+           Organisations.resolve_scope(Scope.for_user(user), organisation, workspace),
          true <- Features.visible?(scope, :workflow_model) do
       ApiaryWeb.Lingo.put_locale(scope)
-      assign(conn, :current_scope, scope)
+
+      conn
+      |> assign(:current_scope, scope)
+      |> assign(:mockup_frame, %{scope: scope, token: data})
     else
       _unreached -> conn |> not_found() |> halt()
     end
@@ -96,5 +147,6 @@ defmodule ApiaryWeb.ArtifactMockupController do
     |> put_resp_header("content-security-policy", @policy)
     |> put_resp_header("x-content-type-options", "nosniff")
     |> put_resp_header("cache-control", "private, no-store")
+    |> put_resp_header("referrer-policy", "no-referrer")
   end
 end

@@ -63,6 +63,12 @@ defmodule Apiary.SecretLogFilter do
   writes it whole: the event that carries the metadata `setup_link: true` keeps its
   message as it came, its metadata scrubbed.
 
+  The frame of a mockup of pages has a token in its path too
+  (`/<org>/<workspace>/work/<number>/artifacts/av_…/mockup/<token>/<id>.html`,
+  `ApiaryWeb.ArtifactMockupController`): a reader's read of one version for an hour. In
+  every string the filter reads, and in a path's segments, its token is replaced by
+  `:token`, and the rest of the path kept; `redact_path/1` does the same.
+
   An invitation's token travels in a query too: its page sends a person to sign up at
   `/users/register?invitation=<token>`. So in every string the filter reads, the value of
   an `invitation` parameter that is a token (43 base64url characters, the 32 bytes every
@@ -260,6 +266,14 @@ defmodule Apiary.SecretLogFilter do
   @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}" <>
                   "(?![A-Za-z0-9_-])(?!(?<=(?i:qec|qec[a-z]))%5[Ff])"
 
+  # The frame route of a mockup of pages (`ApiaryWeb.ArtifactMockupController`): its
+  # token, a `Phoenix.Token` (base64url and full stops), follows `mockup/` after a
+  # version's id (`av_…`), and a page's file follows it. Its segments before the token
+  # vary, so it is matched apart from `@token_routes`: by its segments, and in text by
+  # `@frame_source`, which keeps the path up to the token and what follows it.
+  @frame_marks ["/mockup/"]
+  @frame_source "(/artifacts/+av_[A-Za-z0-9]+/+mockup/+)[A-Za-z0-9_.-]+(?=/)"
+
   @doc """
   token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
   in the path: each its segments, the token's named `:token` (`:code`).
@@ -275,9 +289,17 @@ defmodule Apiary.SecretLogFilter do
   """
   @spec redact_path(term) :: term
   def redact_path(path) when is_binary(path) do
-    case path |> String.split("/", trim: true) |> token_route() do
-      nil -> path
-      route -> "/" <> Enum.join(route, "/")
+    segments = String.split(path, "/", trim: true)
+
+    case token_route(segments) do
+      nil ->
+        case frame_route(segments) do
+          nil -> path
+          redacted -> "/" <> Enum.join(redacted, "/")
+        end
+
+      route ->
+        "/" <> Enum.join(route, "/")
     end
   end
 
@@ -299,6 +321,23 @@ defmodule Apiary.SecretLogFilter do
   # The route of `token_routes/0` the segments are, or nil: a proper list of binaries
   # alone matches one.
   defp token_route(segments), do: Enum.find(@token_routes, &route?(&1, segments))
+
+  # The segments of the mockup frame's route with its token replaced by `:token`, or nil.
+  defp frame_route([
+         org,
+         workspace,
+         "work",
+         number,
+         "artifacts",
+         "av_" <> _ = version,
+         "mockup",
+         token,
+         page
+       ])
+       when is_binary(token) and is_binary(page),
+       do: [org, workspace, "work", number, "artifacts", version, "mockup", ":token", page]
+
+  defp frame_route(_segments), do: nil
 
   defp route?([":" <> _name | route], [segment | segments]) when is_binary(segment),
     do: route?(route, segments)
@@ -746,9 +785,10 @@ defmodule Apiary.SecretLogFilter do
 
       :none ->
         # A path's segments, a `Plug.Conn`'s `path_info`, the token's named.
-        case token_route(list) do
-          nil -> replace_in_list(list)
-          route -> route
+        case {token_route(list), frame_route(list)} do
+          {nil, nil} -> replace_in_list(list)
+          {nil, frame} -> Enum.map(frame, &replace_in/1)
+          {route, _frame} -> route
         end
     end
   end
@@ -774,7 +814,7 @@ defmodule Apiary.SecretLogFilter do
   defp holds?(list) when is_list(list) do
     case printable(list) do
       {:ok, text} -> secret?(text)
-      :none -> token_route(list) != nil or list_holds?(list)
+      :none -> token_route(list) != nil or frame_route(list) != nil or list_holds?(list)
     end
   end
 
@@ -799,7 +839,7 @@ defmodule Apiary.SecretLogFilter do
   defp secret?(binary) do
     (:binary.match(binary, @prefix_marks) != :nomatch and
        Regex.match?(regex(:prefix, @prefix_source), binary)) or
-      :binary.match(binary, @path_marks ++ @query_marks) != :nomatch
+      :binary.match(binary, @path_marks ++ @query_marks ++ @frame_marks) != :nomatch
   end
 
   # Tokens first: a random token contains `qak_` or a code's prefix now and then, and with
@@ -818,7 +858,8 @@ defmodule Apiary.SecretLogFilter do
     end
   end
 
-  # A token's path, then an invitation's token in a query. `:token`, `:code` and
+  # A token's path, an invitation's token in a query, then a mockup frame's token in its
+  # path. `:token`, `:code` and
   # `[FILTERED]` start with a character outside a token's, so a second run keeps them.
   defp replace_tokens(binary) do
     binary =
@@ -826,9 +867,14 @@ defmodule Apiary.SecretLogFilter do
         do: binary,
         else: Regex.replace(regex(:path, @path_source), binary, &redact_token/4)
 
-    if :binary.match(binary, @query_marks) == :nomatch,
+    binary =
+      if :binary.match(binary, @query_marks) == :nomatch,
+        do: binary,
+        else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
+
+    if :binary.match(binary, @frame_marks) == :nomatch,
       do: binary,
-      else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
+      else: Regex.replace(regex(:frame, @frame_source), binary, "\\1:token")
   end
 
   # A regex compiled once and kept in `:persistent_term`: a compiled regex cannot be a

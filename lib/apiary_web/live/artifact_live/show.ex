@@ -6,7 +6,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # (`ApiaryWeb.ArtifactComponents.view/1`), and the artifact's history, every version
   # newest first, each a link to its page. A version of `mockup` that a run pushed with a
   # `screens.json` is shown as a mockup of pages, "Mockup", in place of its type's
-  # "Image" (`Load.mockup/2`); a version of pictures as its type.
+  # "Image" (`Load.mockup/2`), its frame and links with a token of the reader's for the
+  # frame's address; a version of pictures as its type.
   #
   # Every member who may read the work item reads it (`work_item.read`); a number, or a
   # version id, of no work item or version the reader may read is not found. A reader who
@@ -78,7 +79,13 @@ defmodule ApiaryWeb.ArtifactLive.Show do
               type={@view}
               mockup={@mockup}
               screen_path={
-                &ArtifactComponents.mockup_path(@current_scope, @number, @version.public_id, &1)
+                &ArtifactComponents.mockup_path(
+                  @current_scope,
+                  @number,
+                  @version.public_id,
+                  @frame_token,
+                  &1
+                )
               }
               version={@version}
               content={@content}
@@ -158,6 +165,17 @@ defmodule ApiaryWeb.ArtifactLive.Show do
     """
   end
 
+  # The token of the frame's address (`ApiaryWeb.ArtifactMockupController.token/3`), for
+  # the reader of the page, who may read the version. Signed at the minute, so the page's
+  # first render and its connected one have the same token and the frame loads once.
+  defp frame_token(socket, scope, work_item, version) do
+    ApiaryWeb.ArtifactMockupController.token(
+      socket,
+      %{version: version.public_id, work_item: work_item.id, user: scope.user.id},
+      signed_at: div(System.system_time(:second), 60) * 60
+    )
+  end
+
   @impl true
   def mount(%{"number" => number, "version_id" => version_id}, _session, socket) do
     scope = socket.assigns.current_scope
@@ -177,6 +195,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          type: type,
          view: if(mockup, do: %{type | base_view: :mockup}, else: type),
          mockup: with({:ok, index} <- mockup, do: index),
+         frame_token: mockup && frame_token(socket, scope, work_item, version),
          shown: nil,
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),

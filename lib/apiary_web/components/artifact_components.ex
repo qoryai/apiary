@@ -54,14 +54,20 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   @doc """
-  mockup_path/4 is the address of the screen `screen_id` of a mockup of pages, the
-  version `version_id` of work item `number`, which the version page's frame loads
-  (`ApiaryWeb.ArtifactMockupController`).
+  mockup_path/5 is the address of the screen `screen_id` of a mockup of pages, the
+  version `version_id` of work item `number`, which the version page's frame loads with
+  `token` (`ApiaryWeb.ArtifactMockupController`): the screen's `<id>.html`, the address
+  its pages' links resolve to.
   """
-  @spec mockup_path(Apiary.Accounts.Scope.t(), integer | String.t(), String.t(), String.t()) ::
+  @spec mockup_path(
+          Apiary.Accounts.Scope.t(),
+          integer | String.t(),
+          String.t(),
+          String.t(),
           String.t()
-  def mockup_path(scope, number, version_id, screen_id) do
-    ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/#{version_id}/mockup/#{screen_id}"
+        ) :: String.t()
+  def mockup_path(scope, number, version_id, token, screen_id) do
+    ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/#{version_id}/mockup/#{token}/#{screen_id <> ".html"}"
   end
 
   @doc """
@@ -348,7 +354,7 @@ defmodule ApiaryWeb.ArtifactComponents do
       order of `screens.json`, each title a link that opens its screen in the frame, by
       the frame's name, with no script; the start screen has "Start screen" after its
       title. `mockup` is the screens (`ApiaryWeb.ArtifactLive.Load.mockup/2`), and
-      `screen_path` a function from a screen's id to its address (`mockup_path/4`);
+      `screen_path` a function from a screen's id to its address (`mockup_path/5`);
     * structured: the JSON document as a table, nested objects and lists as nested
       rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`,
       and a `questions` document's `context` is Markdown, as on Explore's tab.

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.ArtifactMockupControllerTest do
   # A screen of a mockup of pages (`ApiaryWeb.ArtifactMockupController`): its page with
-  # the frame's headers to a member who may read the work item, by its id or its id and
-  # `.html`; for anything else, a request with no session included, a 404 page of one
-  # line under the same headers.
+  # the frame's headers for a token the version page signed, with no cookie; for
+  # anything else, a cookie with no token included, a 404 page of one line under the same
+  # headers.
   # Not async: the store's root is the application's setting.
   use ApiaryWeb.ConnCase, async: false
 
@@ -10,6 +10,7 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.Artifacts
+  alias ApiaryWeb.ArtifactMockupController
 
   @moduletag :tmp_dir
   @moduletag needs: :workflow_model
@@ -24,6 +25,43 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
   @cart ~s(<!doctype html><html><head><meta charset="utf-8"><title>Cart</title></head>) <>
           ~s(<body><a href="home.html">Home</a></body></html>)
 
+  @index Jason.encode!(%{
+           "start" => "home",
+           "screens" => [
+             %{
+               "id" => "home",
+               "title" => "Home",
+               "file" => "home.html",
+               "criteria" => [],
+               "links" => [%{"to" => "cart", "label" => "Cart"}]
+             },
+             %{
+               "id" => "cart",
+               "title" => "Cart",
+               "file" => "cart.html",
+               "criteria" => [],
+               "links" => [%{"to" => "home", "label" => "Home"}]
+             }
+           ]
+         })
+
+  defp pages(run, work_item, name \\ "main") do
+    {:ok, version} =
+      Artifacts.push(
+        {:run, run},
+        work_item,
+        "mockup",
+        [
+          %{filename: "screens.json", binary: @index},
+          %{filename: "home.html", binary: @home},
+          %{filename: "cart.html", binary: @cart}
+        ],
+        name: name
+      )
+
+    version
+  end
+
   setup %{tmp_dir: tmp_dir} = context do
     previous = Application.get_env(:apiary, :artifacts_dir)
     Application.put_env(:apiary, :artifacts_dir, Path.join(tmp_dir, "store"))
@@ -32,34 +70,7 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     %{user: user, scope: scope} = sign_up_fixture()
     work_item = work_item_fixture(scope)
     %{dispatch_run: run} = explore_run_fixture(work_item, state: :handed_over)
-
-    index =
-      Jason.encode!(%{
-        "start" => "home",
-        "screens" => [
-          %{
-            "id" => "home",
-            "title" => "Home",
-            "file" => "home.html",
-            "criteria" => [],
-            "links" => [%{"to" => "cart", "label" => "Cart"}]
-          },
-          %{
-            "id" => "cart",
-            "title" => "Cart",
-            "file" => "cart.html",
-            "criteria" => [],
-            "links" => [%{"to" => "home", "label" => "Home"}]
-          }
-        ]
-      })
-
-    {:ok, version} =
-      Artifacts.push({:run, run}, work_item, "mockup", [
-        %{filename: "screens.json", binary: index},
-        %{filename: "home.html", binary: @home},
-        %{filename: "cart.html", binary: @cart}
-      ])
+    version = pages(run, work_item)
 
     {:ok, pictures} =
       Artifacts.push({:run, run}, work_item, "mockup", [%{filename: "form.png", binary: @png}],
@@ -67,17 +78,32 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
       )
 
     Map.merge(context, %{
-      conn: log_in_user(build_conn(), user),
+      user: user,
       scope: scope,
+      run: run,
       work_item: work_item,
       version: version,
       pictures: pictures
     })
   end
 
-  defp path(scope, number, version_id, screen) do
+  defp token(ctx, opts \\ []) do
+    data = %{
+      version: Keyword.get(opts, :version, ctx.version.public_id),
+      work_item: Keyword.get(opts, :work_item, ctx.work_item.id),
+      user: Keyword.get(opts, :user, ctx.user.id)
+    }
+
+    ArtifactMockupController.token(ApiaryWeb.Endpoint, data, Keyword.take(opts, [:signed_at]))
+  end
+
+  defp frame_path(ctx, token, page, opts \\ []) do
+    scope = Keyword.get(opts, :scope, ctx.scope)
+    number = Keyword.get(opts, :number, ctx.work_item.number)
+    version_id = Keyword.get(opts, :version_id, ctx.version.public_id)
+
     "/#{scope.organisation.slug}/#{scope.workspace.slug}/work/#{number}/artifacts/" <>
-      "#{version_id}/mockup/#{screen}"
+      "#{version_id}/mockup/#{token}/#{page}"
   end
 
   defp assert_headers(conn) do
@@ -85,8 +111,10 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     assert get_resp_header(conn, "content-security-policy") == [@policy]
     assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
     assert get_resp_header(conn, "cache-control") == ["private, no-store"]
+    assert get_resp_header(conn, "referrer-policy") == ["no-referrer"]
     assert get_resp_header(conn, "content-disposition") == []
     assert get_resp_header(conn, "x-frame-options") == []
+    assert get_resp_header(conn, "set-cookie") == []
   end
 
   defp assert_not_found(conn) do
@@ -96,55 +124,147 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     refute conn.resp_body =~ "<script"
   end
 
-  test "serves a screen's page with the frame's headers, by its id or its file", ctx do
-    for {screen, body} <- [{"home", @home}, {"cart", @cart}, {"cart.html", @cart}] do
-      conn = get(ctx.conn, path(ctx.scope, ctx.work_item.number, ctx.version.public_id, screen))
+  test "serves a screen's page with no cookie for a token that verifies", ctx do
+    token = token(ctx)
+
+    for {page, body} <- [{"home.html", @home}, {"cart.html", @cart}] do
+      conn = get(build_conn(), frame_path(ctx, token, page))
       assert conn.status == 200
       assert conn.resp_body == body
       assert_headers(conn)
     end
 
-    assert ApiaryWeb.ArtifactMockupController.policy() == @policy
+    assert ArtifactMockupController.policy() == @policy
   end
 
-  test "serves a member of the workspace", ctx do
-    %{user: member} = member_fixture(ctx.scope, :member)
-    conn = log_in_user(build_conn(), member)
-    path = path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "home")
-    assert get(conn, path).status == 200
+  test "is the frame's 404 with a cookie and no token", ctx do
+    conn = log_in_user(build_conn(), ctx.user)
+
+    # A segment that is no token in the token's place, and the session's cookie.
+    assert_not_found(get(conn, frame_path(ctx, "home.html", "home.html")))
+
+    # With no token segment, the path is no route: not found, and no screen.
+    no_token = frame_path(ctx, "", "home.html")
+    conn = get(conn, no_token)
+    assert conn.status == 404
+    refute conn.resp_body =~ "Cart"
   end
 
-  test "is the frame's 404 for an unknown screen, a version of pictures or another's", ctx do
-    other = work_item_fixture(ctx.scope)
+  test "is the frame's 404 for an expired or a tampered token", ctx do
+    expired = token(ctx, signed_at: System.system_time(:second) - 3601)
+    assert_not_found(get(build_conn(), frame_path(ctx, expired, "home.html")))
 
-    for target <- [
-          path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "gone"),
-          path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "screens.json"),
-          path(ctx.scope, ctx.work_item.number, ctx.pictures.public_id, "form"),
-          path(ctx.scope, other.number, ctx.version.public_id, "home"),
-          path(ctx.scope, ctx.work_item.number, "av_nope", "home"),
-          path(ctx.scope, 999_999, ctx.version.public_id, "home")
-        ] do
-      assert_not_found(get(ctx.conn, target))
+    almost = token(ctx, signed_at: System.system_time(:second) - 3500)
+    assert get(build_conn(), frame_path(ctx, almost, "home.html")).status == 200
+
+    [protected, payload, signature] = String.split(token(ctx), ".")
+    flipped = if String.first(signature) == "A", do: "B", else: "A"
+    tampered = Enum.join([protected, payload, flipped <> String.slice(signature, 1..-1//1)], ".")
+    assert_not_found(get(build_conn(), frame_path(ctx, tampered, "home.html")))
+
+    other_salt =
+      Phoenix.Token.sign(ApiaryWeb.Endpoint, "user auth", %{
+        v: ctx.version.public_id,
+        w: ctx.work_item.id,
+        u: ctx.user.id
+      })
+
+    assert_not_found(get(build_conn(), frame_path(ctx, other_salt, "home.html")))
+  end
+
+  test "is the frame's 404 for a token of another version, work item or organisation", ctx do
+    other_item = work_item_fixture(ctx.scope)
+    %{dispatch_run: other_run} = explore_run_fixture(other_item, state: :handed_over)
+    other_version = pages(other_run, other_item)
+    second = pages(ctx.run, ctx.work_item, "second")
+
+    # A token of the version, at another version's path, the same work item's or not.
+    token = token(ctx)
+
+    assert_not_found(
+      get(build_conn(), frame_path(ctx, token, "home.html", version_id: second.public_id))
+    )
+
+    assert_not_found(
+      get(
+        build_conn(),
+        frame_path(ctx, token, "home.html",
+          number: other_item.number,
+          version_id: other_version.public_id
+        )
+      )
+    )
+
+    # A token whose work item is another, at the version's path.
+    assert_not_found(
+      get(build_conn(), frame_path(ctx, token(ctx, work_item: other_item.id), "home.html"))
+    )
+
+    # A token of another organisation's person and version, at this one's path.
+    %{user: stranger, scope: elsewhere} = sign_up_fixture()
+    foreign = work_item_fixture(elsewhere)
+    %{dispatch_run: foreign_run} = explore_run_fixture(foreign, state: :handed_over)
+    foreign_version = pages(foreign_run, foreign)
+
+    foreign_token =
+      token(ctx, version: foreign_version.public_id, work_item: foreign.id, user: stranger.id)
+
+    assert get(
+             build_conn(),
+             frame_path(ctx, foreign_token, "home.html",
+               scope: elsewhere,
+               number: foreign.number,
+               version_id: foreign_version.public_id
+             )
+           ).status == 200
+
+    assert_not_found(
+      get(
+        build_conn(),
+        frame_path(ctx, foreign_token, "home.html", version_id: foreign_version.public_id)
+      )
+    )
+
+    # This organisation's token for a person who is no member of it.
+    assert_not_found(
+      get(build_conn(), frame_path(ctx, token(ctx, user: stranger.id), "home.html"))
+    )
+  end
+
+  test "is the frame's 404 once the person signed in the token leaves the workspace", ctx do
+    %{user: member, membership: membership} = member_fixture(ctx.scope, :member)
+    token = token(ctx, user: member.id)
+    assert get(build_conn(), frame_path(ctx, token, "home.html")).status == 200
+
+    assert {:ok, _removed} = Apiary.Organisations.remove_member(ctx.scope, membership.id)
+
+    assert_not_found(get(build_conn(), frame_path(ctx, token, "home.html")))
+  end
+
+  test "is the frame's 404 for a page that is no screen, or a version of pictures", ctx do
+    token = token(ctx)
+
+    for page <- ["gone.html", "home", "screens.json", "home.html.html", ".html"] do
+      assert_not_found(get(build_conn(), frame_path(ctx, token, page)))
     end
-  end
 
-  test "is the frame's 404 for a member of another workspace and with no session", ctx do
-    %{user: stranger} = sign_up_fixture()
-    path = path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "home")
+    pictures = token(ctx, version: ctx.pictures.public_id)
 
-    assert_not_found(get(log_in_user(build_conn(), stranger), path))
-    assert_not_found(get(build_conn(), path))
+    assert_not_found(
+      get(
+        build_conn(),
+        frame_path(ctx, pictures, "form.html", version_id: ctx.pictures.public_id)
+      )
+    )
   end
 
   describe "with workflow_model off" do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
 
-    test "the route is not found", ctx do
-      path = path(ctx.scope, ctx.work_item.number, ctx.version.public_id, "home")
-      conn = get(ctx.conn, path)
+    test "the route is the frame's 404", ctx do
+      conn = get(build_conn(), frame_path(ctx, token(ctx), "home.html"))
       assert conn.status == 404
-      refute conn.resp_body =~ "<p>Hello"
+      refute conn.resp_body =~ "Home"
     end
   end
 end
