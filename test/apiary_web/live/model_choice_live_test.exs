@@ -272,6 +272,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       for f <- choice.fallbacks, do: {f.position, f.connection.public_id, f.model_id, f.effort}
     end
 
+    # Whether a model choice anywhere has a fallback of `provider`.
+    defp fallbacks_of_provider?(_scope, provider),
+      do:
+        Repo.exists?(
+          from f in Apiary.ModelChoices.Fallback, where: f.connection_id == ^provider.id
+        )
+
     test "with no other provider, names the chosen one and says what to add", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, lv, _html} = live(conn, path(scope))
@@ -438,6 +445,71 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       assert has_element?(lv, ~s{#model_choice_fallbacks_0_provider[aria-invalid="true"]})
       assert choice(scope) == nil
+    end
+
+    test "an admin made a member while the page is open saves no fallback", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+      {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
+
+      lv
+      |> form("#model-form", model_choice: %{model: option(provider)})
+      |> render_submit()
+
+      assert has_element?(lv, "#flash-error", "Only owners and admins change this.")
+      assert choice(scope) == nil
+      refute has_element?(lv, "#model-fallback-add")
+      refute fallbacks_of_provider?(scope, subscription)
+    end
+
+    test "a member's events change no row and save nothing", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      %{user: user} = member_fixture(scope, :member)
+      {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
+
+      render_hook(lv, "add_fallback", %{})
+      refute has_element?(lv, "#model-fallback-0")
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider),
+          "fallbacks" => %{"0" => %{"provider" => subscription.public_id}}
+        }
+      })
+
+      assert choice(scope) == nil
+    end
+
+    test "a sent row with another organisation's provider is refused, and nothing is saved",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {:ok, _subscription} = add_provider(scope, "claude-subscription")
+      %{scope: other} = sign_up_fixture()
+      {:ok, foreign} = add_provider(other, "claude-subscription")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "model" => option(provider),
+          "fallbacks" => %{
+            "0" => %{
+              "provider" => foreign.public_id,
+              "model" => option(foreign, "claude-sonnet-5-5")
+            }
+          }
+        }
+      })
+
+      assert has_element?(lv, "#model_choice_fallbacks_0_provider-error")
+      assert choice(scope) == nil
+      refute fallbacks_of_provider?(other, foreign)
     end
 
     test "a member sees the rows disabled, and no button to change them", ctx do
