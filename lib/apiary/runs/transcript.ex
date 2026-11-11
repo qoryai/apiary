@@ -23,13 +23,13 @@ defmodule Apiary.Runs.Transcript do
   run's last chunk, by sequence, has the session id and the path a continuation resumes.
 
   **The paused run.** A run of the queue that continues a paused run, which the end of
-  the paused run queues, reads the transcript of that run alone, and
-  only while it is the paused run this run continues (`paused_run/1`): of the same
-  organisation, workspace, work item and stage, registered, and ended with the reason
-  `model_key_limit` (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume`
-  (`resume_at_claim/1`) for a path a machine may write at (`resumable_path?/1`), as the contract has it fixed when the run starts; every run
-  configuration of the run then has it (`resume/1`), and its gateway fetches the file
-  through the run API.
+  the paused run queues, reads the transcript of that run alone, and only while it is the
+  paused run this run continues (`paused_run/1`): of the same organisation, workspace,
+  work item and stage, registered, and ended with the reason `model_key_limit`
+  (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/1`) for
+  a path a machine may write at (`resumable_path?/1`), as the contract has it fixed when
+  the run starts; every run configuration of the run then has it (`resume/1`), and its
+  gateway fetches the file through the run API.
 
   Nothing here logs or returns a transcript's bytes but `stream/3`, and a log line
   contains the run's id and the cause alone.

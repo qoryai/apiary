@@ -714,11 +714,11 @@ defmodule Apiary.Runs.Projector do
   #     stored chunks of its path before it by sequence.
   #
   # The run keeps a row per path for the bounds of that path
-  # (`Apiary.Runs.TranscriptPath`), so a pass reads no more than its new chunks and the stored chunks that came under the
-  # projected sequence since the last check, each checked once, in sequence order, under
-  # the run's lock. Each bound holds whatever order the chunks arrive in. The chunks left
-  # out are logged in one line per pass and path, with the run's id, their count and the
-  # cause alone.
+  # (`Apiary.Runs.TranscriptPath`), so a pass reads no more than its new chunks and the
+  # stored chunks that came under the projected sequence since the last check, each
+  # checked once, in sequence order, under the run's lock. Each bound holds whatever
+  # order the chunks arrive in. The chunks left out are logged in one line per pass and
+  # path, with the run's id, their count and the cause alone.
   defp insert_session_chunks(_run, []), do: :ok
 
   defp insert_session_chunks(run, chunks) do

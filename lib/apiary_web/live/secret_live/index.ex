@@ -2627,11 +2627,11 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## After a change, and its refusals
 
+  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
+
   # The write of a model provider's key with the settings its form sent
   # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
   # be saved, and their errors come back as `{:settings, errors}`.
-  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
-
   defp with_key_settings(params, fun) do
     case ModelKeyComponents.read_settings(params) do
       {:ok, settings} -> fun.(settings)

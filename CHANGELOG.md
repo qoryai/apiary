@@ -1092,23 +1092,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   failure and moves no stage. While its work item is still in Explore, at the same take
   in and stage, that stage runs, and its other runs have ended, a run that continues it
   is queued at once, at the paused run's place in the queue, as the next run of the
-  stage. The continuation
-  starts on a new machine, and its session reads the paused run's transcript with the
-  signed `GET /v1/runs/<run_id>/resume/transcript`, under the feature `observability`,
-  to resume the agent's session. **How it ended** on the run page, the work item's runs
-  and the stage show “Paused: every key of Northwind Claude is in cooldown until Fri
-  14:00. It continues in run 15.”, with the run's number a link to its page. Once that
-  time has passed, or with no time known, the line is “Paused: a key of Northwind Claude
-  reached its limit. It continues in run 15.” A paused run that no run continues shows
-  “Paused: a key of Northwind Claude reached its limit.” Where the provider was deleted
-  since, the line starts “Paused: a model key reached its limit.” A provider that the
-  instance admin set up is not named: the line is “Paused: every model key is in cooldown
-  until Fri 14:00. It continues in run 15.” while that time is to come, else it starts
-  “Paused: a model key reached its limit.”, and a waiting run shows “Waiting for a model
-  key: every model key is in cooldown until 14:00.” The runs list's Filter menu has the
-  family Paused, with the state Paused, between Cancelled and Ended badly, and
-  `state:paused`; a filter of that family alone that finds no run shows “No runs
-  paused.”
+  stage. The continuation starts on a new machine, and its session reads the paused
+  run's transcript with the signed `GET /v1/runs/<run_id>/resume/transcript`, under the
+  feature `observability`, to resume the agent's session. **How it ended** on the run
+  page, the work item's runs and the stage show “Paused: every key of Northwind Claude
+  is in cooldown until Fri 14:00. It continues in run 15.”, with the run's number a link
+  to its page. Once that time has passed, or with no time known, the line is “Paused: a
+  key of Northwind Claude reached its limit. It continues in run 15.” A paused run that
+  no run continues shows “Paused: a key of Northwind Claude reached its limit.” Where
+  the provider was deleted since, the line starts “Paused: a model key reached its
+  limit.” A provider that the instance admin set up is not named: the line is “Paused:
+  every model key is in cooldown until Fri 14:00. It continues in run 15.” while that
+  time is to come, else it starts “Paused: a model key reached its limit.”, and a
+  waiting run shows “Waiting for a model key: every model key is in cooldown until
+  14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
+  between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
+  that finds no run shows “No runs paused.”
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
   each file. It scans the transcript for keys of a known form, as it scans the run's

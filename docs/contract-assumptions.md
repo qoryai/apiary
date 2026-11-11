@@ -876,22 +876,21 @@ cooldown in tie order. Each entry has `pause_for_s`, the key's Pause for, else 6
 API key and 3600 for a subscription, written into the run once: by its claim, or, for a
 run claimed before runs kept several keys, by the upgrade (20261111100000). Where the
 claim had them, an entry also has `resets_at`, `schedule_resets_at`, `cooldown_until` and
-`chosen`. The entries are fixed for the run: a
-later state reaches the gateway in the answer to its model keys report (The model keys
-report, below). Where every key of the provider is in cooldown, the claim takes the
-first of the choice's fallbacks, in their order, with a key out of cooldown, and the
-fallback's model and effort. Where every key of the provider and of each fallback is in
-cooldown, the claim registers nothing and the run of the queue waits again, its
-`dispatch_runs.model_provider_ids` set to those providers; no claim takes a run of the
-queue while every key of each of its providers is in cooldown
-(`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
-model provider sets the providers of each waiting run it may change again, from the
-choice in effect, once the change has committed
-(`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals each key in the
-request by the key's row id, under the value id the key has at the request: a key renamed since the
-claim is revealed, and a request for a key deleted since fails. A run stored before runs
-kept several keys keeps its one key, under the provider's public id, and its run
-configuration has the key's Pause for.
+`chosen`. The entries are fixed for the run: a later state reaches the gateway in the
+answer to its model keys report (The model keys report, below). Where every key of the
+provider is in cooldown, the claim takes the first of the choice's fallbacks, in their
+order, with a key out of cooldown, and the fallback's model and effort. Where every key
+of the provider and of each fallback is in cooldown, the claim registers nothing and the
+run of the queue waits again, its `dispatch_runs.model_provider_ids` set to those
+providers; no claim takes a run of the queue while every key of each of its providers is
+in cooldown (`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its
+fallbacks, or of a model provider sets the providers of each waiting run it may change
+again, from the choice in effect, once the change has committed
+(`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals each
+key in the request by the key's row id, under the value id the key has at the request: a
+key renamed since the claim is revealed, and a request for a key deleted since fails. A
+run stored before runs kept several keys keeps its one key, under the provider's public
+id, and its run configuration has the key's Pause for.
 
 **A run that continues a paused run.** The end of a run of a workspace's queue whose exit
 paused it (How a run ends) queues, in the same transaction, the run that continues it
@@ -1231,22 +1230,21 @@ contract's template for a transcript, a directory under `~/` as `resume.prefix`,
 `/` and a file name ending in `.jsonl`, with no empty, `.` or `..` segment and no
 whitespace, is refused and not stored, as a continuation's machine writes the file at
 that path; the projection logs one line per pass with their count. A run's transcript of
-a path is its
-chunks of that path in sequence order, and it can be restored only when they start at
-offset 0, each starts where the one before it ends, they are at most 64 MiB together,
-and they are fewer than 100,000. The projection keeps
-no more chunks of a path once the stored ones pass 64 MiB, once 100,000 are stored, or
-once the chunks up to the run's projected sequence have a gap in `offset`, and logs the
-chunks it left out, one line per pass and path. It checks each stored chunk for a gap
-once, when the projected sequence passes it, against a row per run and path
-(`transcript_paths`, `Apiary.Runs.TranscriptPath`): the chunks and bytes kept, the
-sequence checked up to, the offset at which the next chunk has to start, and `gap`,
-whether a checked chunk did not start there. Qory Apiary scans each chunk for keys of a
-known form, a key cut across two chunks of the file included. The diagnostics leave the
-transcript events out. Log retention leaves `session_chunks` in place: when a phase
-deletes the run's events, the chunks stay. The daily retention job deletes the chunks of
-an ended run once its work item is closed or undone, and those of an ended run of no
-work item, at most 10,000 runs a job (`Apiary.Retention`).
+a path is its chunks of that path in sequence order, and it can be restored only when
+they start at offset 0, each starts where the one before it ends, they are at most 64 MiB
+together, and they are fewer than 100,000. The projection keeps no more chunks of a path
+once the stored ones pass 64 MiB, once 100,000 are stored, or once the chunks up to the
+run's projected sequence have a gap in `offset`, and logs the chunks it left out, one
+line per pass and path. It checks each stored chunk for a gap once, when the projected
+sequence passes it, against a row per run and path (`transcript_paths`,
+`Apiary.Runs.TranscriptPath`): the chunks and bytes kept, the sequence checked up to, the
+offset at which the next chunk has to start, and `gap`, whether a checked chunk did not
+start there. Qory Apiary scans each chunk for keys of a known form, a key cut across two
+chunks of the file included. The diagnostics leave the transcript events out. Log
+retention leaves `session_chunks` in place: when a phase deletes the run's events, the
+chunks stay. The daily retention job deletes the chunks of an ended run once its work
+item is closed or undone, and those of an ended run of no work item, at most 10,000 runs
+a job (`Apiary.Retention`).
 
 ## What opened a run
 

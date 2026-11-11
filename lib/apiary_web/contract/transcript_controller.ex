@@ -12,17 +12,18 @@ defmodule ApiaryWeb.Contract.TranscriptController do
   `resume` (`Apiary.Runs.Transcript.resume/1`) only where a run started, and a run
   starts only where the run endpoint answers.
 
-  The answer is `200`, `application/x-ndjson`, the file of the run that the request's
-  run continues (`Apiary.Runs.Transcript`), at the path its `resume` has, sent in
-  chunks: the chunks `Apiary.Runs.Transcript.check/2` checked, whose SHA-256 the answer
-  is signed over. A run the key's gateway does not hold, as the run API reads it, a run
-  that `Apiary.Access` does not let the key take, checked under `run.post_events`, the
-  action of the run endpoint's requests, as the model keys report checks it
-  (`Apiary.ModelKeys.Report`), a run that ended, a run with no `resume`, a paused run that is no longer the one it
-  continues, and a transcript that is gone, has a gap in its offsets or is over 64 MiB
-  are each `404` `not_found`. No transcript byte is logged or put in an error. An
-  exception before the answer starts is `503` `unavailable`; one while the chunks are
-  sent ends the answer there. Each is logged by its module's name alone.
+  The answer is `200`, `application/x-ndjson`, the file of the run that the request's run
+  continues (`Apiary.Runs.Transcript`), at the path its `resume` has, sent in chunks: the
+  chunks `Apiary.Runs.Transcript.check/2` checked, whose SHA-256 the answer is signed
+  over. A run the key's gateway does not hold, as the run API reads it, a run that
+  `Apiary.Access` does not let the key take, checked under `run.post_events`, the action
+  of the run endpoint's requests, as the model keys report checks it
+  (`Apiary.ModelKeys.Report`), a run that ended, a run with no `resume`, a paused run
+  that is no longer the one it continues, and a transcript that is gone, has a gap in its
+  offsets or is over 64 MiB are each `404` `not_found`. No transcript byte is logged or
+  put in an error. An exception before the answer starts is `503` `unavailable`; one
+  while the chunks are sent ends the answer there. Each is logged by its module's name
+  alone.
   """
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :observability
