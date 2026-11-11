@@ -137,6 +137,8 @@ defmodule Apiary.Runs.Fold do
   with none took its instance, which a rebuild no longer counts.
   """
 
+  require Logger
+
   alias Apiary.Runs.{About, Liveness, Transcript}
 
   @ping "dev.qory.ping"
@@ -220,8 +222,8 @@ defmodule Apiary.Runs.Fold do
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reason of an exit at the run's model keys' limit: the run paused, whatever the
-  # exit's state.
+  # The reason of an exit at the run's model keys' limit: with the state `cancelled`, the
+  # run paused.
   @paused_reason "model_key_limit"
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
@@ -487,7 +489,15 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @exited, data: data} = event) do
     ranked(acc, event, fn run ->
       reason = code(data, "reason")
-      state = exit_state(string(data, "state"), reason)
+      given = string(data, "state")
+      state = exit_state(given, reason)
+
+      if reason == @paused_reason and state != "paused",
+        do:
+          Logger.warning(
+            "a run's exit has the reason model_key_limit with a state other than cancelled; " <>
+              "the run ends #{state}, without a pause"
+          )
 
       Map.merge(run, %{
         state: state,
@@ -680,9 +690,11 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
 
-    1. `model_key_limit` is paused, whatever the state: the run's gateway ended it at its
+    1. `cancelled` with `model_key_limit` is paused: the run's gateway ended it at its
        model keys' limit, and a continuation goes on with its work. It is never a
-       person's cancel.
+       person's cancel. The contract allows `model_key_limit` with `cancelled` alone, so
+       with another state the reason changes nothing, as an unknown reason does, and the
+       fold logs one line.
     2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
     3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
     4. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
@@ -691,7 +703,7 @@ defmodule Apiary.Runs.Fold do
   A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state(_state, @paused_reason), do: "paused"
+  def exit_state("cancelled", @paused_reason), do: "paused"
   def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
   def exit_state("succeeded", _reason), do: "completed"
   def exit_state("failed", _reason), do: "failed"

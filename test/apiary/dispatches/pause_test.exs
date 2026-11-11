@@ -270,6 +270,50 @@ defmodule Apiary.Dispatches.PauseTest do
     assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
   end
 
+  # The data of each event of the contract's invalid fixture `file`, vendored.
+  defp invalid_fixture(file) do
+    path = "test/fixtures/forager-contract/invalid/" <> file
+    assert path in Apiary.ContractFixtures.vendored()
+
+    case path |> File.read!() |> Jason.decode!() do
+      events when is_list(events) ->
+        for %{"type" => type, "data" => data} <- events, do: {type, data}
+
+      %{"type" => type, "data" => data} ->
+        [{type, data}]
+    end
+  end
+
+  test "model_key_limit with a state other than cancelled is no pause, with one log line",
+       ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    [{"dev.qory.session.exited", session}] =
+      invalid_fixture("event-session-exited-model-key-limit-failed.json")
+
+    assert invalid_fixture("link-batch-session-exited-model-key-limit-failed.json") ==
+             [{"dev.qory.session.exited", session}]
+
+    [{"dev.qory.run.exited", exited}] =
+      invalid_fixture("link-batch-exited-model-key-limit-failed.json")
+
+    assert {session["state"], session["reason"]} == {"failed", "model_key_limit"}
+    assert {exited["state"], exited["reason"]} == {"failed", "model_key_limit"}
+
+    event_fixture(run, 8, "session.exited", session)
+
+    log =
+      capture_log(fn ->
+        exit!(run, exited)
+      end)
+
+    assert %Run{state: "failed", exit_reason: "model_key_limit"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+
+    assert [_line] =
+             Regex.scan(~r/the reason model_key_limit with a state other than cancelled/, log)
+  end
+
   describe "the transcript" do
     test "is kept by chunk, and the continuation's configuration resumes it", ctx do
       %{dispatch_run: dispatch_run, run: run} =

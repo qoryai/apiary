@@ -310,7 +310,10 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/event-session-transcript-no-session-id.json
                                   invalid/event-session-transcript-offset-negative.json
                                   invalid/event-session-transcript-over-32-kib.json
-                                  invalid/event-session-transcript-session-zero.json),
+                                  invalid/event-session-transcript-session-zero.json
+                                  invalid/event-session-exited-model-key-limit-failed.json
+                                  invalid/link-batch-exited-model-key-limit-failed.json
+                                  invalid/link-batch-session-exited-model-key-limit-failed.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

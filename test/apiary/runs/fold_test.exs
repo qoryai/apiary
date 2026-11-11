@@ -1876,16 +1876,35 @@ defmodule Apiary.Runs.FoldTest do
       assert Fold.exit_state("failed", "no_session") == "failed"
     end
 
-    test "model_key_limit: a run its keys' limit ended is paused, whatever the state given" do
-      for state <- ~w(cancelled failed succeeded) do
+    test "model_key_limit: a cancelled run its keys' limit ended is paused" do
+      data = %{"state" => "cancelled", "reason" => "model_key_limit", "exit_code" => -1}
+      %{run: run} = Fold.fold(@run, [started(2), exited(9, data)])
+
+      assert {run.state, run.exit_state, run.exit_reason} ==
+               {"paused", "paused", "model_key_limit"}
+
+      assert {run.exited_at, run.lost_at} == {at(9), nil}
+      assert Fold.exit_state("cancelled", "model_key_limit") == "paused"
+    end
+
+    test "model_key_limit with another state is read as that state, with one log line" do
+      for {state, expected} <- [
+            {"failed", "failed"},
+            {"succeeded", "completed"},
+            {nil, "failed"},
+            {"evaporated", "failed"}
+          ] do
         data = %{"state" => state, "reason" => "model_key_limit", "exit_code" => -1}
-        %{run: run} = Fold.fold(@run, [started(2), exited(9, data)])
+
+        {%{run: run}, log} =
+          ExUnit.CaptureLog.with_log(fn -> Fold.fold(@run, [started(2), exited(9, data)]) end)
 
         assert {run.state, run.exit_state, run.exit_reason} ==
-                 {"paused", "paused", "model_key_limit"}
+                 {expected, expected, "model_key_limit"},
+               inspect(state)
 
-        assert {run.exited_at, run.lost_at} == {at(9), nil}
-        assert Fold.exit_state(state, "model_key_limit") == "paused"
+        assert Fold.exit_state(state, "model_key_limit") == expected
+        assert [_line] = Regex.scan(~r/model_key_limit with a state other than cancelled/, log)
       end
     end
 
