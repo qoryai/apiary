@@ -7,7 +7,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # has where to get the key and the terms that allow it. Edit key, of a key by its value
   # id, takes its Name and its settings, never its value
   # (`Apiary.Connections.update_provider_key/4`). Each save goes back to the provider's
-  # page, which says it.
+  # page, which shows that the key is added or saved.
   #
   # Both are for owners and admins (`provider.write`): for anyone else the paths are not
   # there, and the context asks again. A key of a provider the organisation does not have,

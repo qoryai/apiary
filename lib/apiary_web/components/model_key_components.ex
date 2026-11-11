@@ -8,7 +8,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #     number and a unit, both optional, with their hints and their errors;
   #   * `params/3` the fields of a key's settings, `read_settings/1` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
-  #   * `state/4` the state of a key from its states, in words.
+  #   * `state/2` the state of a key from its states, in words.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -287,7 +287,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   attr :errors, :list, required: true
   attr :hint, :string, required: true
 
-  # A group's hint, or its error in the hint's place, as a field shows its own.
+  # A group's hint, or its error in the hint's place, as a field shows a field's error.
   defp group_note(assigns) do
     ~H"""
     <p
@@ -409,7 +409,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   defp window(code), do: code
 
   @doc """
-  A key's state as `state/4` has it, on one line: the state, then its source or its
+  A key's state as `state/2` has it, on one line: the state, then its source or its
   segments, each after a middle dot.
   """
   attr :id, :string, required: true

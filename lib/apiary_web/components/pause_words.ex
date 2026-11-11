@@ -7,8 +7,8 @@ defmodule ApiaryWeb.PauseWords do
   # While every key of its provider is in cooldown, at `now`, the line has the end of the
   # cooldown, in the reader's time zone, as the waiting line shows it
   # (`ApiaryWeb.PreparationComponents.cooldown_time/2`); once that time has passed, or
-  # with no such time, or with no run that continues it, the line says a key reached its
-  # limit. A provider deleted since has no name, and the line says a model key did. The
+  # with no such time, or with no run that continues it, the line shows that a key reached
+  # its limit. A provider deleted since has no name, and the line is about a model key. The
   # provider's name came from a person and is shown as a text an external system sent.
 
   use Gettext, backend: ApiaryWeb.Gettext

@@ -310,7 +310,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp main_provider(%{chosen: {%{provider: provider}, _model}}), do: provider
   defp main_provider(_assigns), do: nil
 
-  # A row's providers: those `left/2` offers it, with its own, in the order of the page.
+  # A row's providers: those `left/2` offers it, with the row's provider, in the order of
+  # the page.
   defp row_providers(assigns, row, index) do
     offered = left(assigns, index)
 
