@@ -164,6 +164,33 @@ defmodule Apiary.Dispatches.PauseTest do
     assert Pause.of_run(paused) == nil
   end
 
+  test "an outcome before the exit is refused, and the exit pauses the run", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    # A run of the queue takes no outcome (`Apiary.Runs.Outcome`): its exit decides.
+    assert give_outcome(ctx.key, run, "succeeded") == {:error, :not_found}
+    exit!(run, @paused)
+
+    assert %Run{state: "paused", outcome_state: nil} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
+  end
+
+  test "a run that pushed its result, then paused, is continued", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    Apiary.WorkItemsFixtures.push_result!(
+      dispatch_run,
+      run,
+      Apiary.WorkItemsFixtures.questions_result()
+    )
+
+    exit!(run, @paused)
+
+    assert %Run{state: "paused"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
+    assert run_of(dispatch_run.work_item_id, 2).continues_id == dispatch_run.id
+  end
+
   test "an exit with another reason is no pause", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, %{@paused | "reason" => "stopped"})

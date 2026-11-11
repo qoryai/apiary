@@ -3196,6 +3196,38 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#work-item-explore-take-ins :is(h2.q-xp-frame-t, h4.q-xp-frame-t)") == 0
     end
 
+    test "a paused run that a run continues: why it paused, with a link to that run" do
+      paused =
+        run(%{
+          id: "rn_01aa47c9b05e3f19",
+          number: 16,
+          state: :paused,
+          outcome: nil,
+          paused: %{provider: "Anthropic", until: nil, number: 17, workspace_id: nil},
+          paused_path: "/acme/main/runs/17"
+        })
+
+      take_in = %{
+        taken_in_by: @dana,
+        taken_in_at: ~U[2026-10-16 15:20:00Z],
+        ended: :closed,
+        ended_by: @dana,
+        ended_at: ago(4 * 60),
+        runs: [paused]
+      }
+
+      html =
+        tab(work_item(%{status: :queued, run: %{attempt: 1, of: 3}}), earlier_take_ins: [take_in])
+
+      line = "#work-item-explore-take-ins-1 .q-xp-run > span:nth-child(2)"
+
+      assert text(html, line) ==
+               "Paused: a key of Anthropic reached its limit. It continues in run 17."
+
+      assert for(a <- query(html, line <> " a"), do: LazyHTML.attribute(a, "href")) ==
+               [["/acme/main/runs/17"]]
+    end
+
     test "every end, in both forms, and one run" do
       for {ended, by, words} <- [
             {:closed, @dana, "Closed by you 4 minutes ago"},
