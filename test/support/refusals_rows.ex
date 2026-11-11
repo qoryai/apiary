@@ -464,7 +464,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # adapter reports, whose pages are not built. A workspace type's default process is
   # saved on a page that opens for instance admins alone
   # (`test/apiary/processes/type_templates_test.exs`,
-  # `test/apiary_web/live/instance_live/workspace_types_test.exs`). So are the instance's
+  # `test/apiary_web/live/instance_live/workspace_types_test.exs`). A machine type's key
+  # change asks `machine_type.rekey` after `instance.configure`, which refuses anyone else
+  # first, on a page that opens for instance admins alone (`test/apiary/machine_types_test.exs`,
+  # `test/apiary_web/live/instance_live/machine_types_test.exs`). So are the instance's
   # set-up review, its pool's machine limit and its diagnostics keys, whose context tests
   # refuse them to anyone but an instance admin (`test/apiary/setup_test.exs`,
   # `test/apiary/nodes/installed_test.exs`,
@@ -490,6 +493,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.read",
         :"work_item.read",
         :"instance.read",
+        :"instance.read_machine",
         :"instance.read_factory",
         :"instance.read_observability"
       ],
@@ -505,6 +509,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"run.post_events",
         :"run_configuration.fetch",
         :"run.read_diagnostics",
+        :"run.list_instance",
         :"secret.seal",
         :"run_credential.issue",
         :"adapter.declare",
@@ -558,6 +563,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"artifact.write",
         :"artifact_type.edit",
         :"workspace_type.edit",
+        :"machine_type.rekey",
         :"instance.review_connections",
         :"node.set_instance_limit",
         :"diagnostics_key.create",

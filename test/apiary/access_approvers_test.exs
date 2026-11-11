@@ -290,6 +290,16 @@ defmodule Apiary.AccessApproversTest do
       assert [%{"state" => "answered"}] = document["questions"]
     end
 
+    test "Run another round with answers alone, from a member who is not among them, runs the next round",
+         %{member: member, work_item: work_item} do
+      round = %{answers: [%{"id" => "q1", "option" => nil, "note" => "The spring sale."}]}
+      assert {:ok, _} = WorkItems.another_round(member, work_item, 1, round)
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+
+      assert {_version, %{"questions" => [%{"state" => "answered"}]}} =
+               Questions.newest(reload(work_item))
+    end
+
     test "Run another round with answers and a comment, from a member who is not among them, writes nothing",
          %{member: member, work_item: work_item} do
       {_version, before} = Questions.newest(work_item)
@@ -325,6 +335,120 @@ defmodule Apiary.AccessApproversTest do
                ])
 
       assert version.user_id == member.user.id
+    end
+  end
+
+  describe "an escalated stage that lists approvers" do
+    # Explore's run pushed a proposal and its stage needs a mockup too: the stage
+    # escalated, `check_failed`, while the proposal waits, and the run decided q1.
+    setup %{scope: scope} do
+      stages =
+        Enum.map(Processes.current(scope.workspace).document["stages"], fn
+          %{"id" => @explore} = stage ->
+            Map.merge(stage, %{
+              "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}},
+              "outputs" => [
+                %{"type" => "proposal", "required" => true},
+                %{"type" => "mockup", "required" => true}
+              ]
+            })
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} =
+        Processes.save(scope, scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => stages
+        })
+
+      work_item = proposed!(scope)
+      assert work_item.stage_state == :escalated
+      assert %{status: :confirm} = WorkItems.explore(scope, work_item)
+      decide!(scope, work_item)
+      %{work_item: work_item}
+    end
+
+    defp decide!(scope, work_item) do
+      [number] = work_item.id |> Questions.take_in_runs(work_item.take_in) |> MapSet.to_list()
+      at = "2026-11-04T10:00:00Z"
+
+      decided = %{
+        "id" => "q1",
+        "question" => "Which store keeps the baskets?",
+        "options" => [
+          %{"title" => "Redis", "explanation" => "The store the other services use."},
+          %{"title" => "Postgres", "explanation" => "The database of the storefront."}
+        ],
+        "state" => "decided",
+        "asked" => %{"run" => number, "at" => at},
+        "decision" => %{
+          "option" => "Redis",
+          "reason" => "The other services use Redis.",
+          "run" => number,
+          "at" => at
+        }
+      }
+
+      {:ok, _version} =
+        Artifacts.push({:member_action, scope}, work_item, "questions", [
+          Questions.file(%{"questions" => [decided]})
+        ])
+    end
+
+    defp escalations(work_item),
+      do:
+        Repo.all(
+          from e in Apiary.Stages.Escalation,
+            where: e.work_item_id == ^work_item.id,
+            select: {e.resolution, e.resolved_by_id}
+        )
+
+    defp settled_entries(work_item),
+      do:
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "gate.approve" and e.subject_id == ^work_item.id,
+            select: {e.actor_id, e.details}
+        )
+
+    test "Run another round with answers, from a member who is not among them, settles nothing",
+         %{member: member, work_item: work_item} do
+      runs = fn ->
+        Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
+      end
+
+      count = runs.()
+      round = %{answers: [%{"id" => "q1", "option" => "Postgres"}]}
+
+      assert WorkItems.another_round(member, reload(work_item), 1, round) ==
+               {:error, :not_approver}
+
+      assert WorkItems.answer(member, reload(work_item), 1, [
+               %{"id" => "q1", "option" => "Postgres"}
+             ]) == {:error, :not_approver}
+
+      assert runs.() == count
+      assert %WorkItem{stage_state: :escalated} = reload(work_item)
+      assert escalations(work_item) == [{nil, nil}]
+      assert settled_entries(work_item) == []
+    end
+
+    test "an approver's Run another round settles it, with who settled it", %{
+      scope: scope,
+      work_item: work_item
+    } do
+      round = %{answers: [%{"id" => "q1", "option" => "Postgres"}]}
+      assert {:ok, _} = WorkItems.another_round(scope, reload(work_item), 1, round)
+
+      assert %WorkItem{stage_state: :running} = reload(work_item)
+      user_id = scope.user.id
+      assert escalations(work_item) == [{:another_round, user_id}]
+
+      assert [{^user_id, %{"change" => "escalation_another_round", "cause" => "check_failed"}}] =
+               settled_entries(work_item)
     end
   end
 

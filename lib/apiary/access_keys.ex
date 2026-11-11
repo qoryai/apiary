@@ -592,8 +592,9 @@ defmodule Apiary.AccessKeys do
   # the list of the instance's runs (`GET /v1/runs`, `ApiaryWeb.Contract.RunListController`),
   # and nothing else: it is an access key of the instance's diagnostics node, of the kind
   # `diagnostics`, with no organisation and no workspace, which no other route's check
-  # takes. `Apiary.Access` gives it the role `diagnostics_key`, which holds
-  # `run.read_diagnostics` on a run and nothing else. Its scope is the instance
+  # takes. `Apiary.Access` gives it the role `diagnostics_key`, with
+  # `run.read_diagnostics` on a run and `run.list_instance` on the instance's runs, and
+  # nothing else. Its scope is the instance
   # (`diagnostics_scope/1`). An instance admin reads them (`instance.read_observability`)
   # and makes a code for one (`diagnostics_key.create`, after a recent sign-in), on an
   # instance with the feature `observability`: instance actions, asked in the instance's

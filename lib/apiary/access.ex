@@ -130,6 +130,14 @@ defmodule Apiary.Access do
       instance: true
     ),
     Action.new(
+      :"instance.read_machine",
+      "read the vendor's type of the machine that a run's dispatch started, on the run's page",
+      roles: @owners,
+      asked_of: :organisation,
+      audited: {:not, @read},
+      instance: true
+    ),
+    Action.new(
       :"instance.review_connections",
       "finish or skip the review of the instance's connections, in Instance settings › Set up (Apiary.Setup.review_connections/1)",
       roles: @owners,
@@ -438,6 +446,16 @@ defmodule Apiary.Access do
       roles: [:diagnostics_key],
       audited: {:not, @read}
     ),
+    # A diagnostics key's run list, asked of a run with no organisation and no workspace,
+    # `%Run{}`, which stands for every run of the instance
+    # (`ApiaryWeb.Contract.RunListController`, `key_subject/4`).
+    Action.new(
+      :"run.list_instance",
+      "list the runs of every workspace of the instance with a diagnostics key",
+      feature: :observability,
+      roles: [:diagnostics_key],
+      audited: {:not, @read}
+    ),
     # A gateway's secrets request: a run's model key, sealed to the gateway's access key
     # (`Apiary.Runs.SecretsRequest`), which asks this of the run for a request that names
     # the key. The key is held to what its gateway may serve (`key_subject/4`). The run key,
@@ -635,6 +653,15 @@ defmodule Apiary.Access do
     Action.new(
       :"workspace_type.edit",
       "save a version of a workspace type's default process, which new workspaces copy (Apiary.Processes.TypeTemplates.save/4)",
+      feature: :workflow_model,
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
+    ),
+    # › Machine types, a key change (`Apiary.MachineTypes.update/3`).
+    Action.new(
+      :"machine_type.rekey",
+      "rewrite the machine type key in every workspace type and process that uses it, when an instance admin changes the key",
       feature: :workflow_model,
       roles: @owners,
       asked_of: :organisation,
@@ -859,6 +886,10 @@ defmodule Apiary.Access do
   # which approves Explore's gate, and the comments on a stage's outputs or round.
   @approver_actions [:"gate.approve", :"work_item.confirm", :"work_item.review_comment"]
 
+  # What a diagnostics key takes, asked of a run of any organisation, or of `%Run{}` for
+  # the runs of the instance (`subject_place/3`, `key_subject/4`).
+  @diagnostics_actions [:"run.read_diagnostics", :"run.list_instance"]
+
   # What a gateway's key takes at the server contract. Asked of a run, it is held to what
   # the gateway may serve (`key_subject/4`).
   @gateway_actions [
@@ -916,7 +947,8 @@ defmodule Apiary.Access do
      tell that it exists. Two keys answer for a run in another way: a gateway's key, on
      what it takes at the server contract, for a run of a workspace it may serve
      (`may_serve?/2`), and a diagnostics key, on `run.read_diagnostics`, for a run of any
-     organisation.
+     organisation, and on `run.list_instance`, for the runs of the instance, asked of a
+     run with no organisation, `%Run{}`.
   4. **Whether the person reaches the workspace.** A membership is the organisation's; the
      levels of `c:Apiary.Edition.every_workspace_levels/0` reach every workspace of it, in
      the core's edition all three, and the edition says which workspaces another level
@@ -1822,8 +1854,10 @@ defmodule Apiary.Access do
   end
 
   # A diagnostics key reads the diagnostics of a run, wherever it is (`subject_place/3`),
-  # and takes nothing else, on nothing else.
-  defp key_subject(:diagnostics_key, _scope, :"run.read_diagnostics", %Run{}), do: :ok
+  # and lists the runs of the instance, and takes nothing else, on nothing else.
+  defp key_subject(:diagnostics_key, _scope, action, %Run{}) when action in @diagnostics_actions,
+    do: :ok
+
   defp key_subject(:diagnostics_key, _scope, _action, _subject), do: {:error, :not_found}
 
   defp key_subject(_role, _scope, _action, _subject), do: :ok
@@ -1955,9 +1989,10 @@ defmodule Apiary.Access do
              node: %Node{kind: :diagnostics, organisation_id: nil, workspace_id: nil}
            }
          },
-         :"run.read_diagnostics",
+         action,
          %Run{}
-       ),
+       )
+       when action in @diagnostics_actions,
        do: {nil, nil}
 
   defp subject_place(_scope, _action, subject), do: place(subject)

@@ -98,6 +98,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"gate.approve"), do: gettext("Work item stage decided")
   def label(:"process.edit"), do: gettext("Process changed")
   def label(:"workspace_type.edit"), do: gettext("Workspace type changed")
+  def label(:"machine_type.rekey"), do: gettext("Machine type key rewritten")
   def label(:"artifact.write"), do: gettext("Artifact version added")
   def label(:"artifact_type.edit"), do: gettext("Artifact type changed")
   def label(_action), do: nil
@@ -185,6 +186,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           :"gate.approve",
           :"process.edit",
           :"workspace_type.edit",
+          :"machine_type.rekey",
           :"artifact.write",
           :"artifact_type.edit"
         ]
@@ -714,6 +716,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
        do: said_process(change, number)
 
   defp said(:"workspace_type.edit", _details, _actor), do: label(:"workspace_type.edit")
+
+  # A machine type's key change, rewritten in the processes and workspace types
+  # (`Apiary.MachineTypes.update/3`).
+  defp said(:"machine_type.rekey", %{"from" => from, "to" => to}, _actor)
+       when is_binary(from) and is_binary(to),
+       do:
+         gettext(
+           "Changed the machine type key from %{from} to %{to} in the processes and workspace types that use it",
+           from: from,
+           to: to
+         )
 
   # A version a person added to an artifact (`Apiary.Artifacts.push/5`); the entry is the
   # work item's. An artifact's name is left out where it is the default, `main`.
