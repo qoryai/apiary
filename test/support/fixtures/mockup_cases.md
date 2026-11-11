@@ -23,7 +23,10 @@ allowed body <div><p>Text</p><span>more</span></div>
 allowed body <table><caption>Hours</caption><thead><tr><th scope="col">Day</th></tr></thead><tbody><tr><td colspan="2">Mon</td></tr></tbody></table>
 allowed body <details open><summary>More</summary><p>Text</p></details>
 allowed body <label for="q">Search</label><input id="q" type="search" placeholder="Find">
-allowed body <select name="s"><optgroup label="G"><option value="1" selected>One</option></optgroup></select>
+refused body <select name="s"><optgroup label="G"><option value="1" selected>One</option></optgroup></select>
+refused body <select><option>x</option></select>
+refused body <select multiple style="appearance:base-select"><div><a href="https://example.com/">Continue</a></div><option>x</option></select>
+allowed body <button type="button" aria-haspopup="listbox" aria-expanded="false">Size: M</button>
 allowed body <svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10" stroke="#333"/></svg>
 refused body <script>alert(1)</script>
 refused body <SCRIPT>alert(1)</SCRIPT>
@@ -178,6 +181,10 @@ refused head <style>.a{-moz-binding:url(x.xml#b)}</style>
 allowed head <style>html{scroll-behavior:smooth}</style>
 allowed head <style>.behavior-x{color:red}</style>
 refused head <style>.a{.b{color:red}behavior:none}</style>
+allowed head <style>.behavior:hover{color:red}</style>
+allowed head <style>.x-moz-binding{color:red}</style>
+allowed head <style>a{font-family:"Element("}</style>
+allowed head <style>a{x:\''Element('</style>
 refused head <style>circle{stroke-dasharray:2}</style>
 allowed head <style>.a{border:1px dashed #333}</style>
 refused head <style>.a{background:image-rect(url(data:image/png;base64,iVBORw0KGgo=),0,0,1,1)}</style>
@@ -189,6 +196,15 @@ refused head <style>@font-face{font-family:F;src:url(https://example.com/f.woff2
 allowed body <div style="background:url(data:image/gif;base64,R0lGODlh)">x</div>
 refused body <div style="background:url(https://example.com/a.png)">x</div>
 refused body <div style="background:u&#114;l(https://example.com/a.png)">x</div>
+refused head <style>a{content:"/*"}b{background:url(https://example.com/a.png)}c{content:"*/"}</style>
+refused head <style>a{content:"/*"}@import "https://example.com/a.css";c{content:"*/"}</style>
+refused head <style>a{content:"/*"}b{width:expression(alert(1))}c{content:"*/"}</style>
+refused head <style>a{content:"/*"}b{content:"expression("}c{content:"*/"}</style>
+refused head <style>a{background:url(data:image/png;base64,AA/*);background:url(https://example.com/a.png);x:y*/)}</style>
+refused head <style>a{background:url(data:image/png;base64,AA/*);x:y}@import "https://example.com/a.css";b{x:y*/)}</style>
+refused head <style>a{background:url(data:image/png;base64,AA/*);width:expression(alert(1));x:y*/)}</style>
+refused body <div style='content:"/*";background:url(https://example.com/a.png);x:"*/"'>x</div>
+refused body <div style="background:url(data:image/png;base64,AA/*);background:url(https://example.com/a.png);x:y*/)">x</div>
 ```
 
 ## Encoding and size

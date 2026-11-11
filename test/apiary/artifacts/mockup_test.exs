@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 141 lines in the cases blocks" do
-      assert length(@cases) == 141
+    test "are all read: 157 lines in the cases blocks" do
+      assert length(@cases) == 157
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
@@ -176,6 +176,35 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:ok, _linked} = check(uses.(~s(href="#a" xlink:href="#b")))
       assert {:ok, _linked} = check(uses.(~s(xlink:href="#b" href="#a")))
       assert {:ok, _linked} = check(uses.(~s(href="#b" xlink:href="#a")))
+    end
+
+    test "a <select> is refused in every place, in any case, its content too" do
+      # A browser may draw the elements inside a `<select>` that the parser leaves out of
+      # the tree, so the element itself is refused.
+      for body <- [
+            "<select><option>x</option></select>",
+            ~s|<select multiple style="appearance:base-select"><div><a href="https://x">| <>
+              "Out</a></div><option>x</option></select>",
+            "<SeLeCt><option>x</option></SeLeCt>",
+            "<table><tr><td><select><option>x</option></select></td></tr></table>",
+            "<table><select><option>x</option></select></table>",
+            "<svg><select><option>x</option></select></svg>"
+          ] do
+        assert {:error, message} = check(page("", body)), body
+        assert message =~ "`<select>`", message
+      end
+
+      # In a comment, `<select>` is text.
+      assert {:ok, _linked} = check(page("", "<!-- <select><option>x</option></select> -->"))
+
+      assert {:ok, _linked} =
+               check(
+                 page(
+                   "",
+                   ~s(<button type="button" aria-haspopup="listbox" aria-expanded="false">) <>
+                     "Size: M</button>"
+                 )
+               )
     end
 
     test "a gradient has only stops, and a clip path no url( on itself" do

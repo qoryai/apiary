@@ -95,7 +95,7 @@ defmodule Apiary.Artifacts.Mockup do
     span p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd a img picture source figure figcaption
     table caption thead tbody tfoot tr th td colgroup col strong em b i u s small mark
     code pre kbd samp sub sup br hr blockquote q abbr time address details summary label
-    input button select option optgroup textarea fieldset legend progress meter output
+    input button textarea fieldset legend progress meter output
   ))
 
   @svg_elements MapSet.new(
@@ -112,7 +112,6 @@ defmodule Apiary.Artifacts.Mockup do
 
   @global MapSet.new(~w(id class style title lang dir hidden tabindex role))
 
-  @choice ~w(name multiple size selected disabled label value)
   @cell ~w(colspan rowspan scope headers)
   @range ~w(value min max low high optimum)
 
@@ -123,9 +122,6 @@ defmodule Apiary.Artifacts.Mockup do
     "input" =>
       MapSet.new(~w(type name value placeholder checked disabled readonly min max step size)),
     "button" => MapSet.new(~w(type disabled name value)),
-    "select" => MapSet.new(@choice),
-    "option" => MapSet.new(@choice),
-    "optgroup" => MapSet.new(@choice),
     "textarea" => MapSet.new(~w(name rows cols placeholder disabled readonly)),
     "label" => MapSet.new(~w(for)),
     "td" => MapSet.new(@cell),
