@@ -226,12 +226,13 @@ defmodule ApiaryWeb.RunLive.Show do
               </p>
               <p :if={@ending} id="run-why" class="q-run-why">
                 <span class="q-run-why-k">{gettext("How it ended")}</span>
-                <%!-- A step's ending has no item to jump to, and wraps whole. --%>
+                <%!-- A step's ending has no item to jump to, and wraps whole. A paused
+                      run's line is rich text, with the link to the run that continues it. --%>
                 <span
                   :if={@ending.text}
                   class={["q-run-why-t", is_nil(@ending.seq) && "q-run-why-whole"]}
                   title={@ending.seq && @ending.text}
-                >{@ending.text}</span>
+                ><.rich text={@ending[:rich] || @ending.text} /></span>
                 <.link
                   :if={@ending.seq}
                   id="run-why-jump"
