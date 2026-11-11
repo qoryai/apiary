@@ -2229,7 +2229,9 @@ defmodule Apiary.StagesTest do
                  scope,
                  work_item,
                  "Leave out the invoice",
-                 proposal.public_id, expect_stage: reload(work_item).stage_id)
+                 proposal.public_id,
+                 expect_stage: reload(work_item).stage_id
+               )
 
       # One run of the entry before, not two: this run and one more are left.
       assert %DispatchRun{attempt: 3, of: 4, round: 1} = newest_run(work_item)
