@@ -64,10 +64,10 @@ defmodule Apiary.SecretLogFilter do
   message as it came, its metadata scrubbed.
 
   The frame of a mockup of pages has a token in its path too
-  (`/<org>/<workspace>/work/<number>/artifacts/av_…/mockup/<token>/<id>.html`,
-  `ApiaryWeb.ArtifactMockupController`): a reader's read of one version for an hour. In
-  every string the filter reads, and in a path's segments, its token is replaced by
-  `:token`, and the rest of the path kept; `redact_path/1` does the same.
+  (`/<org>/<workspace>/work/<number>/artifacts/av_…/mockup/<token>/<id>.html`): a
+  reader's read of one version for an hour. In every string the filter reads, and in a
+  path's segments, its token is replaced by `:token`, and the rest of the path kept;
+  `redact_path/1` does the same.
 
   An invitation's token travels in a query too: its page sends a person to sign up at
   `/users/register?invitation=<token>`. So in every string the filter reads, the value of
