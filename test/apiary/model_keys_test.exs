@@ -416,6 +416,40 @@ defmodule Apiary.ModelKeysTest do
       refute ModelKeys.in_cooldown?(value.id, ~U[2026-11-14 09:00:00Z])
     end
 
+    test "count the keys in cooldown of each provider, as in_cooldown?/2 has them", ctx do
+      %{scope: scope, provider: provider, values: values} = ctx
+      {other, other_values} = provider!(scope, ["first", "second"])
+      at = ~U[2026-11-10 13:00:00Z]
+
+      assert ModelKeys.cooldown_counts([provider, other], at) == %{
+               provider.id => 0,
+               other.id => 0
+             }
+
+      rejected = fn value, window, until ->
+        :ok =
+          ModelKeys.record(
+            [key(value)],
+            [item(window: window, status: "rejected", cooldown_until: until)],
+            DateTime.utc_now()
+          )
+      end
+
+      rejected.(values["main"], "five_hour", ~U[2026-11-10 14:00:00Z])
+      rejected.(values["main"], "seven_day", ~U[2026-11-14 09:00:00Z])
+      rejected.(values["spare"], "five_hour", ~U[2026-11-10 12:00:00Z])
+      rejected.(other_values["second"], "requests", ~U[2026-11-10 13:00:01Z])
+
+      counts = ModelKeys.cooldown_counts([provider, other], at)
+      assert counts == %{provider.id => 1, other.id => 1}
+
+      for {p, vs} <- [{provider, values}, {other, other_values}] do
+        assert counts[p.id] == Enum.count(vs, fn {_id, v} -> ModelKeys.in_cooldown?(v.id, at) end)
+      end
+
+      assert ModelKeys.cooldown_counts([], at) == %{}
+    end
+
     test "and the settings go with their key", ctx do
       value = ctx.values["main"]
       {:ok, _} = ModelKeys.put_setting(value, %{pause_seconds: 90})

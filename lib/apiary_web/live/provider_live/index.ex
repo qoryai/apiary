@@ -55,7 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
      |> assign(
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
-       cooling: cooling(providers, DateTime.utc_now()),
+       cooling: ModelKeys.cooldown_counts(providers, DateTime.utc_now()),
        writes: writes,
        needs_workspace: needs_workspace?(scope),
        attempt: 0,
@@ -201,25 +201,6 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
-
-  # How many keys of each provider are in cooldown at `now`, by the provider's row id: a
-  # key whose latest `cooldown_until` across its windows is after `now`
-  # (`Apiary.ModelKeys.in_cooldown?/2`).
-  defp cooling(providers, now) do
-    Map.new(providers, fn provider ->
-      count =
-        provider
-        |> ModelKeys.provider_states(now)
-        |> Enum.count(fn {_key, states} ->
-          Enum.any?(
-            states,
-            &(&1.cooldown_until && DateTime.compare(&1.cooldown_until, now) == :gt)
-          )
-        end)
-
-      {provider.id, count}
-    end)
-  end
 
   # "3 keys, 1 in cooldown"; without ", 1 in cooldown" when none is.
   defp keys_words(count, 0),

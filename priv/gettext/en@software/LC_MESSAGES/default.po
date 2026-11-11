@@ -3077,6 +3077,11 @@ msgstr ""
 msgid "%{product} menu"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add another."
+msgstr ""
+
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "%{ran} of %{count} round ran."
@@ -3926,6 +3931,16 @@ msgstr ""
 msgid "7-day"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "7-day Opus"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "7-day Sonnet"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -4346,7 +4361,6 @@ msgstr ""
 msgid "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version."
 msgstr "A run uses the commit its process version came from. Keep the process at the latest moves that commit at each new commit on the branch. A fixed version uses that tag or commit."
 
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A secret holds at most %{number} values."
@@ -9769,6 +9783,11 @@ msgstr ""
 msgid "Exported from the workspace %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Extra usage"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
@@ -11146,6 +11165,11 @@ msgstr ""
 msgid "In this browser"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Input tokens per minute"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Inputs"
@@ -12146,6 +12170,11 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Light"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Limit"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -15384,6 +15413,11 @@ msgstr "Other repositories do not change."
 msgid "Outcome"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Output tokens per minute"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -17172,6 +17206,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Request changes?"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Requests per minute"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -19100,6 +19139,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Spec"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Spend limit"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
@@ -22172,6 +22216,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #, elixir-autogen, elixir-format
 msgid "Together with %{target}, at most 256 characters."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Tokens per minute"
 msgstr ""
 
 #: lib/apiary_web/attempt_limits.ex
