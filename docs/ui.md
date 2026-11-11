@@ -722,27 +722,27 @@ Document tab (a target's Document view), the version in force under the card. On
 version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
-  access's decisions, each counted under every other filter; All is current when no
-  other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
+  access's decisions, each counted under every other filter; All is current when no other
+  is. Ended badly counts the runs that failed or were lost. The Filter menu's State
   section lists the seven states and Queued under their five families, each heading a
-  checkbox for the whole family: Alive (Queued, Pending, Running), Ended well (Completed),
-  Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed, Lost). Queued is a pending run that waits
-  in the queue for a machine (`Apiary.Runs.Run.queued?/1`): it has its run record and its
-  number from the moment it is queued (`Apiary.Dispatches.Queued`), with no node and no
-  registration; Pending is any other pending run. Newest first, the queued runs come
-  first, newest queued first, then the rest. A queued run's row has the badge Queued with
-  a hollow dot, its work item, its workflow and who started it, Started its queue time and
-  Duration n/a. Alive and the sidebar's count of runs alive count the queued runs, and
-  the list follows a run queued, claimed or ended while it waits, without a reload. A
-  cancelled or paused run counts neither as ended well nor as ended badly. A filter of
-  whole families shows their words ("ended badly"), and an empty list of one family
-  shows that ("No runs cancelled.", "No runs paused."). A run stored under a state's older name
-  counts and lists as its new state. A view's filter is not repeated as a token. The
-  number that matches is a line over the list, only when the list is narrowed ("87 runs
-  match"), in the list's status region (`role="status"`,
-  `.q-status`), which is always rendered, empty and taking no place otherwise, so a
-  screen reader hears what a view, a filter or a search left; an empty list says its
-  empty state's title there too.
+  checkbox for the whole family: Alive (Queued, Pending, Running), Ended well
+  (Completed), Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed, Lost).
+  Queued is a pending run that waits in the queue for a machine
+  (`Apiary.Runs.Run.queued?/1`): it has its run record and its number from the moment it
+  is queued (`Apiary.Dispatches.Queued`), with no node and no registration; Pending is
+  any other pending run. Newest first, the queued runs come first, newest queued first,
+  then the rest. A queued run's row has the badge Queued with a hollow dot, its work
+  item, its workflow and who started it, Started its queue time and Duration n/a. Alive
+  and the sidebar's count of runs alive count the queued runs, and the list follows a run
+  queued, claimed or ended while it waits, without a reload. A cancelled or paused run
+  counts neither as ended well nor as ended badly. A filter of whole families shows their
+  words ("ended badly"), and an empty list of one family shows that ("No runs
+  cancelled.", "No runs paused."). A run stored under a state's older name counts and
+  lists as its new state. A view's filter is not repeated as a token. The number that
+  matches is a line over the list, only when the list is narrowed ("87 runs match"), in
+  the list's status region (`role="status"`, `.q-status`), which is always rendered,
+  empty and taking no place otherwise, so a screen reader hears what a view, a filter or
+  a search left; an empty list says its empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
   (`repo:`, `state:`, `runtime:`, `host:`, `machine:` (or `node:`), `machine-type:large`
   (the runs queued on that machine type), `item:3` (a work item's number, `item:#3` too), `started:>2026-09-01`, `denied:yes`;
@@ -2049,8 +2049,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
 
   The heading is "Run on" and the pool's name, then the run's state in the word of the
   run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled,
-  Paused or Lost. A run no pool claimed is headed "Run", with its state: "Run · Completed", or
-  "Run · Queued" for a queued run.
+  Paused or Lost. A run no pool claimed is headed "Run", with its state: "Run ·
+  Completed", or "Run · Queued" for a queued run.
 
   A queued run's list is Queue the run, running with its time counting from when the run
   was queued, then Request a machine, Start the machine, Prepare the machine, Agent
@@ -2422,13 +2422,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
 - **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";
   "Run completed after 12 m 04 s.", or "Run completed."; "Run failed with exit 1.", "Run
   failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
-  start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
-  "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
-  No heartbeat for 90 s." for one the lost-run check marked; a paused run in the words
-  of its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri
-  14:00. It continues in run 15."; and "Heartbeats
-  resumed." when a quiet run is heard again. A state stored under an older name is said as its new
-  state.
+  start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason; "Run
+  lost: stopped responding." for a run whose exit said it was lost, and "Run lost. No
+  heartbeat for 90 s." for one the lost-run check marked; a paused run in the words of
+  its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
+  It continues in run 15."; and "Heartbeats resumed." when a quiet run is heard again. A
+  state stored under an older name is said as its new state.
 - **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,
   and its Host the machine the runtime ran on.
 

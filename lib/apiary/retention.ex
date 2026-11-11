@@ -52,15 +52,15 @@ defmodule Apiary.Retention do
 
   **A session's transcript.** A run's `session_chunks` (`Apiary.Runs.Transcript`) are in
   neither phase. A phase that deletes the run's events deletes the
-  `dev.qory.session.transcript` events with them, but not the chunks. Under the same
-  lock, but in a workspace or an organisation marked for deletion, as for the phases, the
-  job deletes the chunks of a run that is due by the cut-off of its log output and the
+  `dev.qory.session.transcript` events with them, but not the chunks. Under the same lock,
+  the job deletes the chunks of a run that is due by the cut-off of its log output and the
   age test of the `:log` phase: the log cut-off, else the events cut-off, whose phase
-  deletes the log output too. A workspace with neither setting keeps them. A paused run
-  keeps its chunks, past the cut-off too, while the run that continues it has not ended:
-  that run reads them whenever it starts, and a cooldown can last up to 31 days. The job
-  deletes at most `:max_runs` runs a job (10,000), each a batch at a time under the run's
-  projection lock, and the run's `transcript_paths` with them
+  deletes the log output too. As the phases do, the job skips a workspace or an
+  organisation marked for deletion. A workspace with neither setting keeps them. A paused
+  run keeps its chunks, past the cut-off too, while the run that continues it has not
+  ended: that run reads them whenever it starts, and a cooldown can last up to 31 days.
+  The job deletes at most `:max_runs` runs a job (10,000), each a batch at a time under
+  the run's projection lock, and the run's `transcript_paths` with them
   (`Apiary.Runs.TranscriptPath`), with one log line, `retention pruned transcripts=…`,
   when it deleted any.
 

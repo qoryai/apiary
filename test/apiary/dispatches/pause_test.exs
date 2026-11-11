@@ -1,8 +1,8 @@
 defmodule Apiary.Dispatches.PauseTest do
-  # A run of a work item whose exit says every model key of the run was at its limit
-  # (`paused`, `model_key_limit`): the run is Paused, its run of the queue ends, and the
-  # run that continues it is queued at its place, with one more attempt and the paused
-  # run's place in the queue (`Apiary.Dispatches.RunEnd`,
+  # A run of a work item whose exit is `paused` with the reason `model_key_limit`, because
+  # every model key of the run was at its limit: the run is Paused, its run of the queue
+  # ends, and the run that continues it is queued at its place, with one more attempt and
+  # the paused run's place in the queue (`Apiary.Dispatches.RunEnd`,
   # `Apiary.Dispatches.requeue_for_pause/2`). The paused run's transcript is kept, and the
   # continuation's run configuration resumes it (`Apiary.Runs.Transcript`).
   use Apiary.DataCase, async: true
@@ -111,7 +111,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert next.queued_at == dispatch_run.queued_at
     assert Repo.get!(DispatchRun, dispatch_run.id).paused_until == nil
 
-    # One key is not in cooldown: the line says a key reached its limit.
+    # One key is not in cooldown, so the pause has no end time (`until: nil`).
     continuation = registered(next)
 
     # The run's organisation's provider is named, and is no operator's.

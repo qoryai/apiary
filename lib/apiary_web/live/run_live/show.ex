@@ -3668,7 +3668,8 @@ defmodule ApiaryWeb.RunLive.Show do
       else: socket
   end
 
-  # A paused run is said as its paused line on the page says it.
+  # When a run becomes paused, the screen-reader announcer (`#run-announcer`) is set to the
+  # plain text of the paused line on the page, or the state sentence if no line is shown.
   defp announce_change(socket, _old, %Run{state: "paused"} = run, _was_quiet?) do
     case paused_line(socket.assigns.current_scope, run) do
       nil -> announce(socket, state_sentence(run), :now)
