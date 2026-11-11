@@ -77,12 +77,12 @@ export APIARY_IMAGE=apiary APIARY_VERSION=dev
 `/health` answers once the migrations have run, a few seconds after the start:
 
 ```text
-{"status":"ok","database":"ok","version":"0.1.0","revision":null}
+{"status":"ok","database":"ok","version":"0.1.0","revision":null,"set_up":false}
 ```
 
 `revision` is the commit the image was built from: `null` here, since a local `docker build`
-names none. From the set-up link on, go on as the
-[quickstart](guides/quickstart.md) does from its step 4, with the `export` set.
+names none. `set_up` is `false` until the instance is set up. From the set-up link on, go
+on as the [quickstart](guides/quickstart.md) does from its step 4, with the `export` set.
 
 ## Development
 
