@@ -77,12 +77,14 @@
 # registry returned 401, 403 or 429, or could not be reached; and a gateway's report of the
 # states of a run's model keys, a signed POST to `<run.url>/<run_id>/model-keys`, one entry
 # per key and limit window, and its answer, the newest state of each key and window from
-# every gateway, under the run's credential names.
+# every gateway, under the run's credential names; and `chosen` and `cooldown_until` on an
+# API credential, the key the model choice names and the end of a key's cooldown at the
+# claim, which the start key never has in the future.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-94989fd5e89f069c64e3c784d55eaf8d8c330897
+4be06fda1993623381ba5b6c17c7bfd7f63ef5e7
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -131,3 +133,9 @@ test/fixtures/forager-contract/invalid/model-keys-report-unknown-source.json
 test/fixtures/forager-contract/invalid/model-keys-report-unknown-status.json
 test/fixtures/forager-contract/invalid/model-keys-report-utilization-over-100.json
 test/fixtures/forager-contract/invalid/model-keys-report-window-upper-case.json
+test/fixtures/forager-contract/run-configuration/model-keys-cooling.json
+test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-start-cooling.json
+test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-chosen-false.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-host-chosen.json

@@ -20,7 +20,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   of an outcome, 4 KiB, and
   `max_bytes(:enrolment)` of an enrolment, 8 KiB, the last three many times the longest
   the schema allows: what an unauthenticated sender can make the
-  server hold is small. Of a report of a run's model keys, `max_bytes(:model_keys)`, 16 KiB,
+  server hold is small. Of a report of a run's model keys, `max_bytes(:model_keys)`, 32 KiB,
   the contract's limit, are read. A longer body is answered `413` here, before the signature or the
   code is looked at, as the contract's reference receiver does.
 
@@ -41,9 +41,9 @@ defmodule ApiaryWeb.Contract.RawBody do
   @registration_max_bytes 64 * 1024
   @outcome_max_bytes 4 * 1024
   # A report of a run's model keys, `POST /v1/runs/<run_id>/model-keys`, of the `factory`
-  # and `secrets` features both: at most 16 KiB, the Forager contract's limit, read as a
+  # and `secrets` features both: at most 32 KiB, the Forager contract's limit, read as a
   # secrets request is, where both are on or where the request has a signature.
-  @model_keys_max_bytes 16 * 1024
+  @model_keys_max_bytes 32 * 1024
   @enrolment_max_bytes 8 * 1024
   # The integration contract's limit, 1 MiB, for its signed paths, which this
   # documentation does not name.

@@ -288,10 +288,14 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert conn.status == 200
     end
 
-    test "413 for a body over 16 KiB, before the signature", ctx do
-      conn = post_report(ctx, String.duplicate(" ", RawBody.max_bytes(:model_keys) + 1))
+    test "413 for a body over 32 KiB, before the signature; 32 KiB is read", ctx do
+      assert RawBody.max_bytes(:model_keys) == 32 * 1024
+
+      conn = post_report(ctx, String.duplicate(" ", 32 * 1024 + 1))
       assert conn.status == 413
-      assert RawBody.max_bytes(:model_keys) == 16 * 1024
+
+      conn = post_report(ctx, String.duplicate(" ", 32 * 1024))
+      assert conn.status == 400
     end
 
     test "401, unsigned, for a time outside the window", ctx do
