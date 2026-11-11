@@ -1687,6 +1687,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # chunk after it is not taken.
       assert conn.status == 200
       assert conn.halted
+      assert conn.resp_body == ~s({"a":1}\n)
       assert_received {:transcript_pulled, ~s({"a":1}\n)}
       refute_received {:transcript_pulled, _bytes}
       assert log =~ "a transcript stopped while it was sent: RuntimeError"

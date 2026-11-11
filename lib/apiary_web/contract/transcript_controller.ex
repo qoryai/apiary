@@ -73,22 +73,38 @@ defmodule ApiaryWeb.Contract.TranscriptController do
   end
 
   # Once the answer has started, a failure can no longer change its status: one line in
-  # the log, with the exception's module alone, and the answer ends where it is.
+  # the log, with the exception's module alone, and the answer ends where it is. The
+  # chunks are taken one at a time, so only the read of the next chunk is rescued, and the
+  # answer returned is the one with every chunk sent before the failure.
   defp send_chunks(conn, stream) do
     conn = send_chunked(conn, 200)
+    send_next(conn, &Enumerable.reduce(stream, &1, fn data, _acc -> {:suspend, data} end))
+  end
 
-    try do
-      Enum.reduce_while(stream, conn, fn data, conn ->
+  defp send_next(conn, continuation) do
+    case next(continuation) do
+      {:suspended, data, continuation} ->
         case chunk(conn, data) do
-          {:ok, conn} -> {:cont, conn}
-          {:error, :closed} -> {:halt, conn}
-        end
-      end)
-    rescue
-      exception ->
-        Logger.error("a transcript stopped while it was sent: #{inspect(exception.__struct__)}")
+          {:ok, conn} ->
+            send_next(conn, continuation)
 
+          {:error, :closed} ->
+            continuation.({:halt, nil})
+            conn
+        end
+
+      {:failed, exception} ->
+        Logger.error("a transcript stopped while it was sent: #{inspect(exception.__struct__)}")
         halt(conn)
+
+      {_done_or_halted, _acc} ->
+        conn
     end
+  end
+
+  defp next(continuation) do
+    continuation.({:cont, nil})
+  rescue
+    exception -> {:failed, exception}
   end
 end
