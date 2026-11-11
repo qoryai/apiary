@@ -429,30 +429,37 @@ defmodule Apiary.Runs.LeakedSecrets do
   defp transcript_end(_event), do: nil
 
   # The chunk after each transcript chunk of `events` in its file, from the run's stored
-  # chunks, by the chunk's place, its offset: its sequence and the start of its bytes.
+  # chunks, by the chunk's place, its offset: its sequence and the start of its bytes. A
+  # path's stored chunks follow each other in sequence order with no gap
+  # (`Apiary.Runs.Projector`), so the chunk after in the file is the stored chunk of the
+  # same path with the next sequence, kept where it starts where the chunk ends. It is
+  # read through the index on `(run_id, path, sequence)`, one row at most for each chunk
+  # of the pass, however many the run has.
   defp transcript_after(run, events) do
-    keys = for event <- events, {key, _bytes} <- [transcript_end(event)], do: key
+    places =
+      for %Event{sequence: sequence} = event <- events,
+          {key, _bytes} <- [transcript_end(event)],
+          do: {key, sequence}
 
-    if keys == [] do
-      %{}
-    else
-      starts = keys |> Enum.map(&elem(&1, 3)) |> Enum.uniq()
-      wanted = MapSet.new(keys)
+    next =
+      from c in SessionChunk,
+        where:
+          c.run_id == ^run.id and c.path == parent_as(:place).path and
+            c.sequence > parent_as(:place).sequence,
+        order_by: [asc: c.sequence],
+        limit: 1,
+        select: %{
+          session: c.session,
+          session_id: c.session_id,
+          path: c.path,
+          offset: c.offset,
+          sequence: c.sequence,
+          head: fragment("substring(? from 1 for ?)", c.bytes, ^@transcript_tail)
+        }
 
-      Repo.all(
-        from(c in SessionChunk,
-          where: c.run_id == ^run.id and c.offset in ^starts,
-          select: %{
-            key: {c.session, c.session_id, c.path, c.offset},
-            sequence: c.sequence,
-            head: fragment("substring(? from 1 for ?)", c.bytes, ^@transcript_tail)
-          }
-        ),
-        log: false
-      )
-      |> Enum.filter(&MapSet.member?(wanted, &1.key))
-      |> Map.new(&{&1.key, &1})
-    end
+    for {key, chunk} <- neighbours(places, next, :offset),
+        into: %{},
+        do: {key, %{key: key, sequence: chunk.sequence, head: chunk.head}}
   end
 
   defp decoded(%{"bytes" => encoded}) when is_binary(encoded), do: Base.decode64(encoded)
@@ -461,43 +468,73 @@ defmodule Apiary.Runs.LeakedSecrets do
   # The chunk before each transcript chunk of `events` in its file, from the run's stored
   # chunks (`Apiary.Runs.SessionChunk`, which the pass stored before it scans), by the
   # chunk's place: its sequence, its size, the end of its bytes and when its event was.
+  # It is the stored chunk of the same path with the sequence before, kept where it ends
+  # where the chunk starts, read as `transcript_after/2` reads the next.
   defp transcript_before(run, events) do
-    keys = for event <- events, {key, _bytes} <- [transcript_key(event)], do: key
+    places =
+      for %Event{sequence: sequence} = event <- events,
+          {key, _bytes} <- [transcript_key(event)],
+          do: {key, sequence}
 
-    if keys == [] do
-      %{}
-    else
-      ends = keys |> Enum.map(&elem(&1, 3)) |> Enum.uniq()
-      wanted = MapSet.new(keys)
+    previous =
+      from c in SessionChunk,
+        left_join: e in Event,
+        on: e.run_id == c.run_id and e.sequence == c.sequence,
+        where:
+          c.run_id == ^run.id and c.path == parent_as(:place).path and
+            c.sequence < parent_as(:place).sequence,
+        order_by: [desc: c.sequence],
+        limit: 1,
+        select: %{
+          session: c.session,
+          session_id: c.session_id,
+          path: c.path,
+          end: fragment("? + octet_length(?)", c.offset, c.bytes),
+          sequence: c.sequence,
+          size: fragment("octet_length(?)", c.bytes),
+          tail:
+            fragment(
+              "substring(? from greatest(octet_length(?) - ? + 1, 1))",
+              c.bytes,
+              c.bytes,
+              ^@transcript_tail
+            ),
+          at: e.time
+        }
 
-      chunks =
-        Repo.all(
-          from(c in SessionChunk,
-            left_join: e in Event,
-            on: e.run_id == c.run_id and e.sequence == c.sequence,
-            where: c.run_id == ^run.id,
-            where: fragment("? + octet_length(?)", c.offset, c.bytes) in ^ends,
-            select: %{
-              key:
-                {c.session, c.session_id, c.path,
-                 fragment("? + octet_length(?)", c.offset, c.bytes)},
-              sequence: c.sequence,
-              size: fragment("octet_length(?)", c.bytes),
-              tail:
-                fragment(
-                  "substring(? from greatest(octet_length(?) - ? + 1, 1))",
-                  c.bytes,
-                  c.bytes,
-                  ^@transcript_tail
-                ),
-              at: e.time
-            }
-          ),
-          log: false
-        )
+    for {key, chunk} <- neighbours(places, previous, :end),
+        into: %{},
+        do: {key, chunk |> Map.take([:sequence, :size, :tail, :at]) |> Map.put(:key, key)}
+  end
 
-      for chunk <- chunks, MapSet.member?(wanted, chunk.key), into: %{}, do: {chunk.key, chunk}
-    end
+  # The chunks `neighbour` reads, a query of one stored chunk for the place bound
+  # `:place`, for each of `places`, `{key, sequence}`: a transcript chunk's place in its
+  # file and its event's sequence. Each chunk read is kept with its place in the file,
+  # its session, session id, path and its member `at`, `:offset` or `:end`, where that
+  # place is one of the keys.
+  defp neighbours([], _neighbour, _at), do: []
+
+  defp neighbours(places, neighbour, at) do
+    paths = Enum.map(places, fn {{_session, _id, path, _offset}, _sequence} -> path end)
+    sequences = Enum.map(places, &elem(&1, 1))
+    wanted = MapSet.new(places, &elem(&1, 0))
+
+    Repo.all(
+      from(
+        p in fragment(
+          "SELECT * FROM unnest(?::text[], ?::bigint[]) AS p(path, sequence)",
+          type(^paths, {:array, :string}),
+          type(^sequences, {:array, :integer})
+        ),
+        as: :place,
+        inner_lateral_join: c in subquery(neighbour),
+        on: true,
+        select: c
+      ),
+      log: false
+    )
+    |> Enum.map(&{{&1.session, &1.session_id, &1.path, Map.fetch!(&1, at)}, &1})
+    |> Enum.filter(fn {key, _chunk} -> MapSet.member?(wanted, key) end)
   end
 
   @doc """

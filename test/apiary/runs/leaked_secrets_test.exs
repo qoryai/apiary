@@ -416,6 +416,50 @@ defmodule Apiary.Runs.LeakedSecretsTest do
     assert length == byte_size(secret)
   end
 
+  test "a pass reads the chunks next to its new chunks alone, however many the run has",
+       ctx do
+    # 400 chunks of one byte, stored; a pass with one more, where a secret starts, which
+    # checks the 400 for a gap (`Apiary.Runs.Projector`, each stored chunk once); then the
+    # pass measured, with the chunk where the secret ends.
+    {head, rest} = String.split_at(@github, 10)
+    stored = 400
+
+    events_fixture(
+      ctx.run,
+      for(n <- 1..stored, do: {n, "session.transcript", transcript(n - 1, "x")})
+    )
+
+    project!(ctx.run)
+
+    event_fixture(ctx.run, stored + 1, "session.transcript", transcript(stored, "key " <> head))
+    project!(ctx.run)
+
+    event_fixture(ctx.run, stored + 2, "session.transcript", transcript(stored + 4 + 10, rest))
+
+    # Index scans only, so the count does not depend on the planner's choice of a scan.
+    Repo.query!("SET LOCAL enable_seqscan = off")
+    before = rows_read("session_chunks")
+    project!(ctx.run)
+    read = rows_read("session_chunks") - before
+
+    assert read <= 10, "one pass read #{read} rows of session_chunks"
+
+    assert [%LeakedSecret{source_sequence: sequence, length: 40}] = rows(ctx.run)
+    assert sequence == stored + 1
+  end
+
+  # The rows of `table` this transaction has read so far, by a sequential or an index scan.
+  defp rows_read(table) do
+    %{rows: [[read]]} =
+      Repo.query!(
+        "SELECT (coalesce(sum(seq_tup_read), 0) + coalesce(sum(idx_tup_fetch), 0))::bigint " <>
+          "FROM pg_stat_xact_user_tables WHERE relname = $1",
+        [table]
+      )
+
+    read
+  end
+
   test "reads no split secret across chunks of two files", ctx do
     {head, rest} = String.split_at(@github, 10)
     first = "key " <> head
