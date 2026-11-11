@@ -846,7 +846,11 @@ for each other and never on each other at once:
    items on the entry's row in `run_credentials`, and last the Activity entry
    `run_credential.issue`. A run's deletion locks the run's row, then its rows in
    `model_key_copies` and `run_credentials`, so both take the run's row first and cannot
-   deadlock. A request for the work entry alone takes no lock on the run's row.
+   deadlock. A request for the work entry alone takes no lock on the run's row. A
+   deletion of a secret, as when a provider is deleted with its keys, locks the rows of
+   its values `FOR UPDATE` by id before it deletes the secret, as the delete's cascade
+   would take them in an order the statement does not fix. So the deletion and a secrets
+   request take the keys' rows in the same order, and cannot deadlock.
    A model keys report reads the run's copies without a lock, then takes the rows of its
    keys in `secret_values` `FOR SHARE`, by id, then the locks of their state rows in one
    order, so two reports of the same keys at once cannot deadlock, a key deleted before

@@ -110,4 +110,45 @@ defmodule Apiary.ModelKeysRacesTest do
     assert states([spare.id]) == []
     assert [{_id, "five_hour", ^at}] = states([main.id])
   end
+
+  # The rows of the provider's keys, in the order a scan of the table reads them.
+  defp stored_order(secret_id) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT id FROM secret_values WHERE secret_id = $1 ORDER BY ctid",
+        [Ecto.UUID.dump!(secret_id)]
+      )
+
+    for [id] <- rows, do: Ecto.UUID.load!(id)
+  end
+
+  test "a provider's deletion while a secrets request locks its keys does not deadlock", ctx do
+    # The key read first, by the scan and by its value id, gets the higher row id: a
+    # cascade that deletes in that order would hold it while it waits for the lower one.
+    [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
+
+    for {value_id, id} <- [{"main", high}, {"spare", low}] do
+      {1, _} =
+        Repo.update_all(from(v in Value, where: v.id == ^ctx.values[value_id].id), set: [id: id])
+    end
+
+    assert stored_order(ctx.provider.secret_id) == [high, low]
+
+    # A secrets request takes the keys' rows `FOR KEY SHARE` by id
+    # (`Apiary.ModelKeys.keep_copies/2`): the lower first.
+    lock = fn id ->
+      Repo.all(from v in Value, where: v.id == ^id, lock: "FOR KEY SHARE", select: v.id)
+    end
+
+    {held, holder} = hold(fn -> lock.(low) end)
+    deletion = start(fn -> Connections.delete_provider(ctx.scope, ctx.provider) end)
+    await_blocked(deletion.backend, holder)
+
+    # The deletion holds no key's row yet, so the request takes the higher one.
+    assert continue(held, fn -> lock.(high) end) == [high]
+    commit(held)
+
+    assert {:ok, _deleted} = Task.await(deletion.task)
+    assert Repo.all(from v in Value, where: v.id in ^[low, high]) == []
+  end
 end

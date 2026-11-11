@@ -833,9 +833,14 @@ defmodule Apiary.Secrets do
     |> reload_deleted()
   end
 
-  # A secret deleted with its values, once nothing uses it, and its entry.
+  # A secret deleted with its values, once nothing uses it, and its entry. The values'
+  # rows are locked `FOR UPDATE` in the order of their ids before the delete, whose
+  # cascade would lock them in an order the statement does not fix: a secrets request
+  # takes the rows of a run's keys `FOR KEY SHARE` in that order too
+  # (`Apiary.ModelKeys.keep_copies/2`), so the two cannot deadlock.
   defp deleted(scope, current, opts \\ []) do
     with :ok <- not_in_use(Usage.uses(Repo, current)),
+         _ids = lock_values(current),
          {:ok, deleted} <- Repo.delete(current),
          {:ok, _entry} <-
            entry(opts, scope, deleted, %{
@@ -849,6 +854,12 @@ defmodule Apiary.Secrets do
            }) do
       {:ok, %{deleted | values: current.values}}
     end
+  end
+
+  defp lock_values(%Secret{id: id}) do
+    Repo.all(
+      from v in Value, where: v.secret_id == ^id, order_by: v.id, lock: "FOR UPDATE", select: v.id
+    )
   end
 
   defp reload_deleted({:error, %Ecto.Changeset{} = changeset}), do: {:error, scrub(changeset)}
