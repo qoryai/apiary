@@ -65,7 +65,10 @@ defmodule ApiaryWeb.RequestLogTest do
       assert RequestLog.redact_path(path) == "#{@frame}/:token/home.html"
     end
 
-    assert RequestLog.redact_path("#{@frame}/home.html") == "#{@frame}/home.html"
+    # A path that ends at the token: its last segment is read as a token.
+    assert RequestLog.redact_path("#{@frame}/#{@frame_token}") == "#{@frame}/:token"
+    assert RequestLog.redact_path("#{@frame}/home.html") == "#{@frame}/:token"
+    assert RequestLog.redact_path("#{@frame}") == "#{@frame}"
   end
 
   test "the logged request line of a mockup frame has no token" do

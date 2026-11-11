@@ -263,7 +263,11 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert [_all, token] =
                Regex.run(~r/\A#{Regex.escape(prefix)}([^\/]+)\/home\.html\z/, attributes["src"])
 
-      assert {:ok, %{v: version.public_id, w: ctx.work_item.id, u: ctx.scope.user.id}} ==
+      # Its session is the reader's: the record of the session the page was opened in.
+      session = Apiary.Accounts.session_token_id(get_session(ctx.conn, :user_token))
+      assert is_binary(session)
+
+      assert {:ok, %{v: version.public_id, w: ctx.work_item.id, u: ctx.scope.user.id, s: session}} ==
                ApiaryWeb.ArtifactMockupController.verify(ApiaryWeb.Endpoint, token)
 
       screen =

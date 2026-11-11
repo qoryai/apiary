@@ -166,18 +166,29 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   # The token of the frame's address (`ApiaryWeb.ArtifactMockupController.token/3`), for
-  # the reader of the page, who may read the version. Signed at the minute, so the page's
-  # first render and its connected one have the same token and the frame loads once.
-  defp frame_token(socket, scope, work_item, version) do
+  # the reader of the page, who may read the version, in the session the page was opened
+  # in (its record's id, so that signing out ends the token). Signed at the minute, so
+  # the page's first render and its connected one have the same token and the frame
+  # loads once.
+  defp frame_token(socket, session, scope, work_item, version) do
+    session_id =
+      with token when is_binary(token) <- session["user_token"],
+           do: Apiary.Accounts.session_token_id(token)
+
     ApiaryWeb.ArtifactMockupController.token(
       socket,
-      %{version: version.public_id, work_item: work_item.id, user: scope.user.id},
+      %{
+        version: version.public_id,
+        work_item: work_item.id,
+        user: scope.user.id,
+        session: session_id
+      },
       signed_at: div(System.system_time(:second), 60) * 60
     )
   end
 
   @impl true
-  def mount(%{"number" => number, "version_id" => version_id}, _session, socket) do
+  def mount(%{"number" => number, "version_id" => version_id}, session, socket) do
     scope = socket.assigns.current_scope
 
     with %{} = work_item <- Load.work_item(scope, number),
@@ -195,7 +206,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          type: type,
          view: if(mockup, do: %{type | base_view: :mockup}, else: type),
          mockup: with({:ok, index} <- mockup, do: index),
-         frame_token: mockup && frame_token(socket, scope, work_item, version),
+         frame_token: mockup && frame_token(socket, session, scope, work_item, version),
          shown: nil,
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),

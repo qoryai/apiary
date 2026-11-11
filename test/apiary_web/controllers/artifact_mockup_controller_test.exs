@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.Artifacts
+  alias Apiary.{Accounts, Artifacts}
   alias ApiaryWeb.ArtifactMockupController
 
   @moduletag :tmp_dir
@@ -87,11 +87,20 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     })
   end
 
+  # A session of `user`, as signing in makes one: its token and its record's id.
+  defp session(user) do
+    token = Accounts.generate_user_session_token(user)
+    {token, Accounts.session_token_id(token)}
+  end
+
   defp token(ctx, opts \\ []) do
+    user = Keyword.get(opts, :user, ctx.user)
+
     data = %{
       version: Keyword.get(opts, :version, ctx.version.public_id),
       work_item: Keyword.get(opts, :work_item, ctx.work_item.id),
-      user: Keyword.get(opts, :user, ctx.user.id)
+      user: user.id,
+      session: Keyword.get_lazy(opts, :session, fn -> user |> session() |> elem(1) end)
     }
 
     ArtifactMockupController.token(ApiaryWeb.Endpoint, data, Keyword.take(opts, [:signed_at]))
@@ -207,7 +216,7 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     foreign_version = pages(foreign_run, foreign)
 
     foreign_token =
-      token(ctx, version: foreign_version.public_id, work_item: foreign.id, user: stranger.id)
+      token(ctx, version: foreign_version.public_id, work_item: foreign.id, user: stranger)
 
     assert get(
              build_conn(),
@@ -226,14 +235,12 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     )
 
     # This organisation's token for a person who is no member of it.
-    assert_not_found(
-      get(build_conn(), frame_path(ctx, token(ctx, user: stranger.id), "home.html"))
-    )
+    assert_not_found(get(build_conn(), frame_path(ctx, token(ctx, user: stranger), "home.html")))
   end
 
   test "is the frame's 404 once the person signed in the token leaves the workspace", ctx do
     %{user: member, membership: membership} = member_fixture(ctx.scope, :member)
-    token = token(ctx, user: member.id)
+    token = token(ctx, user: member)
     assert get(build_conn(), frame_path(ctx, token, "home.html")).status == 200
 
     assert {:ok, _removed} = Apiary.Organisations.remove_member(ctx.scope, membership.id)
@@ -258,13 +265,56 @@ defmodule ApiaryWeb.ArtifactMockupControllerTest do
     )
   end
 
+  test "is the frame's 404 once the person signs out, or changes the password", ctx do
+    {session_token, session_id} = session(ctx.user)
+    token = token(ctx, session: session_id)
+    assert get(build_conn(), frame_path(ctx, token, "home.html")).status == 200
+
+    :ok = Accounts.delete_user_session_token(session_token)
+    assert_not_found(get(build_conn(), frame_path(ctx, token, "home.html")))
+
+    {_session_token, session_id} = session(ctx.user)
+    token = token(ctx, session: session_id)
+    assert get(build_conn(), frame_path(ctx, token, "home.html")).status == 200
+
+    {:ok, _changed} =
+      Accounts.update_user_password(ctx.user, %{password: "another valid password 42"})
+
+    assert_not_found(get(build_conn(), frame_path(ctx, token, "home.html")))
+  end
+
+  test "is the frame's 404 for a token of no session, or another person's session", ctx do
+    assert_not_found(get(build_conn(), frame_path(ctx, token(ctx, session: nil), "home.html")))
+
+    %{user: member} = member_fixture(ctx.scope, :member)
+    {_token, other} = session(member)
+    assert_not_found(get(build_conn(), frame_path(ctx, token(ctx, session: other), "home.html")))
+  end
+
+  # The edition narrows the rights of a member: the role does not read work items.
+  defmodule NoWorkItemRead do
+    def check(_scope, :"work_item.read", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  test "is the frame's 404 for a person who may not read the work item", ctx do
+    token = token(ctx)
+    assert get(build_conn(), frame_path(ctx, token, "home.html")).status == 200
+
+    :ok = Apiary.Edition.put_test_stub(NoWorkItemRead)
+    assert_not_found(get(build_conn(), frame_path(ctx, token, "home.html")))
+  end
+
   describe "with workflow_model off" do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
 
-    test "the route is the frame's 404", ctx do
+    test "the route is the router's not found, under the console's policy", ctx do
       conn = get(build_conn(), frame_path(ctx, token(ctx), "home.html"))
       assert conn.status == 404
       refute conn.resp_body =~ "Home"
+      assert [policy] = get_resp_header(conn, "content-security-policy")
+      assert policy =~ "frame-ancestors 'none'"
+      refute policy =~ "sandbox"
     end
   end
 end

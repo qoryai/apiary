@@ -268,11 +268,13 @@ defmodule Apiary.SecretLogFilter do
 
   # The frame route of a mockup of pages (`ApiaryWeb.ArtifactMockupController`): its
   # token, a `Phoenix.Token` (base64url and full stops), follows `mockup/` after a
-  # version's id (`av_…`), and a page's file follows it. Its segments before the token
-  # vary, so it is matched apart from `@token_routes`: by its segments, and in text by
-  # `@frame_source`, which keeps the path up to the token and what follows it.
+  # version's id (`av_…`), and a page's file may follow it. Its segments before the
+  # token vary, so it is matched apart from `@token_routes`: by its segments, and in text
+  # by `@frame_source`, which keeps the path up to the token and what follows it. The
+  # token is every token character after `mockup/`, so it ends at `/`, `?`, `#`, white
+  # space, a quote, any other character or the end of the text.
   @frame_marks ["/mockup/"]
-  @frame_source "(/artifacts/+av_[A-Za-z0-9]+/+mockup/+)[A-Za-z0-9_.-]+(?=/)"
+  @frame_source "(/artifacts/+av_[A-Za-z0-9]+/+mockup/+)[A-Za-z0-9_.-]+"
 
   @doc """
   token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
@@ -336,6 +338,19 @@ defmodule Apiary.SecretLogFilter do
        ])
        when is_binary(token) and is_binary(page),
        do: [org, workspace, "work", number, "artifacts", version, "mockup", ":token", page]
+
+  defp frame_route([
+         org,
+         workspace,
+         "work",
+         number,
+         "artifacts",
+         "av_" <> _ = version,
+         "mockup",
+         token
+       ])
+       when is_binary(token),
+       do: [org, workspace, "work", number, "artifacts", version, "mockup", ":token"]
 
   defp frame_route(_segments), do: nil
 

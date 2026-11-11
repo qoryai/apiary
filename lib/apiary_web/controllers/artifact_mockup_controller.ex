@@ -7,18 +7,22 @@ defmodule ApiaryWeb.ArtifactMockupController do
   #
   # The frame is sandboxed with no token, so its page has an opaque origin, and a browser
   # sends no session cookie with a request from a link inside it (`SameSite=Lax`). So the
-  # route reads no session and no cookie: `:token` (`token/3`), which the version page
-  # signs when it shows the viewer, carries the version, the work item and the person,
-  # and `:page` is a screen's `<id>.html`, the address a page's relative link resolves to.
+  # route reads no session and no cookie. `:token` (`token/3`) is signed by the version
+  # page when it shows the viewer; its data are the version, the work item, the person
+  # and the id of the person's session. `:page` is a screen's `<id>.html`, the address a
+  # page's relative link resolves to.
   #
   # Every request is checked again: the token verifies, at most `@max_age` seconds old;
   # its version and work item are the path's, the work item the one at the path's
-  # organisation, workspace and number; the person in it still reaches that workspace and
+  # organisation, workspace and number; the session in it still lasts, so signing out
+  # and a password change end the token; the person still reaches that workspace and
   # may read the work item (`work_item.read`, `Apiary.Access`), so access removed after
   # the token was signed counts at once; the version is a mockup of pages, and `<id>` the
   # id of one of its screens. Anything else is `404` with a page of one line, "Reload the
   # page to try again. This screen cannot be shown." With the feature `workflow_model`
-  # off for the instance, or hidden from the person, it is that `404` too.
+  # hidden from the person, it is that `404` too. With the feature off for the instance,
+  # the route does not exist: a request gets the router's not found page, under the
+  # console's policy (`ApiaryWeb.Features.Routes`).
   #
   # The token is a bearer of the person's read of one version for an hour, so the log
   # keeps it out: the request log writes the path with `:token` in its place
@@ -41,8 +45,9 @@ defmodule ApiaryWeb.ArtifactMockupController do
 
   use ApiaryWeb, :controller
 
+  alias Apiary.Accounts
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.{Features, Organisations, Repo}
+  alias Apiary.{Features, Organisations}
   alias ApiaryWeb.ArtifactLive.Load
 
   @policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; " <>
@@ -62,17 +67,22 @@ defmodule ApiaryWeb.ArtifactMockupController do
   def policy, do: @policy
 
   # token/3 is the token of the frame's address for the version `version` (`av_…`) of
-  # the work item `work_item_id`, for the person `user_id`, signed with the endpoint's
+  # the work item `work_item`, for the person `user` in the session `session` (the id
+  # of its record, `Apiary.Accounts.session_token_id/1`), signed with the endpoint's
   # secret: `context` is a `Plug.Conn`, a socket or the endpoint.
   @doc false
   @spec token(
           term,
-          %{version: String.t(), work_item: Ecto.UUID.t(), user: Ecto.UUID.t()},
+          %{
+            version: String.t(),
+            work_item: Ecto.UUID.t(),
+            user: Ecto.UUID.t(),
+            session: Ecto.UUID.t() | nil
+          },
           keyword
-        ) ::
-          String.t()
-  def token(context, %{version: version, work_item: work_item, user: user}, opts \\ []),
-    do: Phoenix.Token.sign(context, @salt, %{v: version, w: work_item, u: user}, opts)
+        ) :: String.t()
+  def token(context, %{version: v, work_item: w, user: u, session: s}, opts \\ []),
+    do: Phoenix.Token.sign(context, @salt, %{v: v, w: w, u: u, s: s}, opts)
 
   # verify/2 is the token's data when it verifies within `@max_age` seconds, else
   # `:error`.
@@ -80,7 +90,7 @@ defmodule ApiaryWeb.ArtifactMockupController do
   @spec verify(term, String.t()) :: {:ok, map} | :error
   def verify(context, token) do
     case Phoenix.Token.verify(context, @salt, token, max_age: @max_age) do
-      {:ok, %{v: _version, w: _work_item, u: _user} = data} -> {:ok, data}
+      {:ok, %{v: _version, w: _work_item, u: _user, s: _session} = data} -> {:ok, data}
       _invalid -> :error
     end
   end
@@ -116,7 +126,8 @@ defmodule ApiaryWeb.ArtifactMockupController do
     %{"org" => organisation, "workspace" => workspace, "token" => token} = conn.path_params
 
     with {:ok, data} <- verify(conn, token),
-         %User{} = user <- Repo.get(User, data.u),
+         {%User{id: user_id} = user, _since} <- Accounts.get_user_by_session_token_id(data.s),
+         true <- user_id == data.u,
          {:ok, scope} <-
            Organisations.resolve_scope(Scope.for_user(user), organisation, workspace),
          true <- Features.visible?(scope, :workflow_model) do
