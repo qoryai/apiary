@@ -622,7 +622,9 @@ defmodule Apiary.WorkItems.ExploreView do
       by_number: for(%{run: %{number: n}} = step <- steps, into: %{}, do: {n, step}),
       current: current,
       current_runs: for(%{run: %{number: n}} <- current, into: MapSet.new(), do: n),
-      waiting: waiting || nil
+      waiting: waiting || nil,
+      # Why each paused run paused, in one read for every run of the work item.
+      pauses: Pause.of(for(%{run: %{id: id, state: "paused"}} <- steps, do: id))
     }
   end
 
@@ -720,7 +722,7 @@ defmodule Apiary.WorkItems.ExploreView do
       attempt: step.attempt,
       of: step.of,
       state: Explore.run_state(step),
-      paused: Pause.of_run(step.run),
+      paused: step.run && Map.get(ctx.pauses, step.run.id),
       place: step.place,
       started_at: Explore.started_at(step),
       ended_at: ended_at,
