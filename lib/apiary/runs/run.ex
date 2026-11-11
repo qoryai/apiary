@@ -169,6 +169,13 @@ defmodule Apiary.Runs.Run do
     # one; nil for every other run, which starts a new session. Not folded.
     field :resume, :map
 
+    # Whether the run of the queue that registered the run pushed its questions or a
+    # proposal during this run, not during an earlier attempt: an artifact version of
+    # either type whose `run_id` is the run's `dispatch_run_id`. Not stored: the
+    # projector reads it for a pass that folds the run's exit, so `Apiary.Runs.Fold.settle/1`
+    # ends such a run that paused completed, with its result and no continuation.
+    field :result_pushed, :boolean, virtual: true, default: false
+
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
     # the model provider the run uses: its row, its keys' secret's row, its keys, its

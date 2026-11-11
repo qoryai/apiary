@@ -1112,6 +1112,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
   between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
   that finds no run shows “No runs paused.”
+- A run of Explore that pushed its questions or a proposal, and then reached its keys'
+  limit, ends **Completed** with its result: no run continues it, its stage goes on as
+  after any completed run, and it shows no Paused line. A result that an earlier run
+  of the take in pushed does not count.
 - On the run page, **Run the agent** of a session that paused at its keys' limit, and
   its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as

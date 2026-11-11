@@ -311,11 +311,13 @@ defmodule Apiary.Runs.Fold do
   # before a run of the queue was refused one, decides over that as over all the rest
   # (`outcome/1`). No outcome is recorded for a release. A run whose machine never
   # started it (`start_failure`, `Apiary.Dispatches.Handover.fail_start/3`) is failed,
-  # its reason that cause, and not lost, before both. Every other run is `outcome/1`
-  # alone.
+  # its reason that cause, and not lost, before both. A run that paused after it pushed
+  # its questions or a proposal in this run (`result_pushed`, which the projector reads)
+  # is completed, with no reason, between the release and the outcome: it finished, and
+  # no run continues it. Every other run is `outcome/1` alone.
   @doc false
   @spec settle(map()) :: map()
-  def settle(run), do: run |> start_failed() |> released() |> outcome()
+  def settle(run), do: run |> start_failed() |> released() |> finished() |> outcome()
 
   defp start_failed(%{start_failure: failure} = run) when is_binary(failure),
     do: Map.merge(run, %{state: "failed", reason: failure, lost_at: nil})
@@ -329,6 +331,11 @@ defmodule Apiary.Runs.Fold do
   end
 
   defp released(run), do: run
+
+  defp finished(%{state: "paused", result_pushed: true} = run),
+    do: Map.merge(run, %{state: "completed", reason: nil})
+
+  defp finished(run), do: run
 
   @doc """
   `run` with its starter's outcome applied: given an outcome (`outcome_state`, from

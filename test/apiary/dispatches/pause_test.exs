@@ -251,7 +251,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
   end
 
-  test "a run that pushed its result, then paused, is continued", ctx do
+  test "a run that pushed its questions, then reached the limit, finished", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 
     Apiary.WorkItemsFixtures.push_result!(
@@ -262,9 +262,81 @@ defmodule Apiary.Dispatches.PauseTest do
 
     exit!(run, @paused)
 
-    assert %Run{state: "paused"} = Repo.get!(Run, run.id)
-    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
-    assert run_of(dispatch_run.work_item_id, 2).continues_id == dispatch_run.id
+    assert %Run{state: "completed", reason: nil} = finished = Repo.get!(Run, run.id)
+    assert {finished.exit_state, finished.exit_reason} == {"paused", "model_key_limit"}
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+    assert %DispatchRun{result_outcome: :questions} = Repo.get!(DispatchRun, dispatch_run.id)
+    # No Paused line.
+    assert Pause.of_run(finished) == nil
+
+    # A rebuild of the projection gives the same run.
+    assert {:ok, %Run{state: "completed", reason: nil}} = Projector.rebuild(finished)
+  end
+
+  test "a run that pushed a proposal, then reached the limit, finished, in both shapes",
+       ctx do
+    for exit <- [@paused, @cancelled_paused] do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      Apiary.WorkItemsFixtures.push_output!(
+        dispatch_run,
+        run,
+        Apiary.WorkItemsFixtures.understood_result()
+      )
+
+      exit!(run, exit)
+
+      assert %Run{state: "completed"} = Repo.get!(Run, run.id)
+      assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+    end
+  end
+
+  @tag needs: [:factory, :secrets, :workflow_model]
+  test "the stage of a run that pushed its questions, then reached the limit, waits", ctx do
+    work_item = Apiary.StagesFixtures.taken_in_fixture(ctx.scope)
+    queued = Apiary.StagesFixtures.newest_run(work_item)
+    %{run: run} = handed_over(ctx.scope, ctx.key, queued, ctx.given)
+    dispatch_run = Repo.get!(DispatchRun, queued.id)
+
+    Apiary.WorkItemsFixtures.push_result!(
+      dispatch_run,
+      run,
+      Apiary.WorkItemsFixtures.questions_result()
+    )
+
+    exit!(run, @paused)
+
+    assert %Run{state: "completed"} = Repo.get!(Run, run.id)
+    assert runs_of(work_item.id) == [{1, :ended, :run_ended}]
+    assert %WorkItem{stage_state: :waiting_answers} = Repo.get!(WorkItem, work_item.id)
+  end
+
+  test "a proposal of an earlier run alone leaves the run paused", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @paused)
+
+    next = run_of(dispatch_run.work_item_id, 2)
+    %{run: again} = handed_over(ctx.scope, ctx.key, next, ctx.given)
+
+    version =
+      Apiary.WorkItemsFixtures.push_output!(
+        Repo.get!(DispatchRun, next.id),
+        again,
+        Apiary.WorkItemsFixtures.understood_result()
+      )
+
+    # The proposal is the first run's, pushed before it paused.
+    {1, _rows} =
+      Repo.update_all(from(v in Apiary.Artifacts.Version, where: v.id == ^version.id),
+        set: [run_id: dispatch_run.id]
+      )
+
+    exit!(again, @paused)
+
+    assert %Run{state: "paused"} = Repo.get!(Run, again.id)
+    assert %DispatchRun{continues_id: continues_id} = run_of(dispatch_run.work_item_id, 3)
+    assert continues_id == next.id
   end
 
   test "a paused run whose questions cannot be read has no warning of its outcome", ctx do
@@ -282,6 +354,13 @@ defmodule Apiary.Dispatches.PauseTest do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     {version, _document} = Apiary.Explore.Questions.newest(work_item)
     [file] = version.files
+
+    # The questions are an earlier run's, gone since: this run pushed nothing, and pauses.
+    {1, _rows} =
+      Repo.update_all(from(v in Apiary.Artifacts.Version, where: v.id == ^version.id),
+        set: [run_id: nil]
+      )
+
     {:ok, path} = Apiary.Artifacts.open_file(file)
     File.rename!(path, path <> ".away")
     on_exit(fn -> File.rename(path <> ".away", path) end)

@@ -346,7 +346,7 @@ defmodule Apiary.Runs.Projector do
 
       fold =
         fold_module().fold(
-          %{run | workspace: workspace},
+          %{run | workspace: workspace, result_pushed: result_pushed?(run, events)},
           events,
           latest(run, events),
           projected
@@ -399,6 +399,22 @@ defmodule Apiary.Runs.Projector do
       {:events, run, []} -> {:ok, {run, nil}}
     end
   end
+
+  # Whether the run of the queue of `run` pushed its questions or a proposal in this run,
+  # for a pass that folds the run's exit (`Apiary.Runs.Run`, `result_pushed`); false for
+  # any other pass, which folds no exit, and for a run of no queue. A run pushes nothing
+  # after its exit (`@settling`).
+  defp result_pushed?(%Run{dispatch_run_id: id}, events) when is_binary(id) do
+    Enum.any?(events, &(&1.type in @settling)) and
+      Repo.exists?(
+        from v in Apiary.Artifacts.Version,
+          join: a in Apiary.Artifacts.Artifact,
+          on: a.id == v.artifact_id,
+          where: v.run_id == ^id and a.type in ["questions", "proposal"]
+      )
+  end
+
+  defp result_pushed?(_run, _events), do: false
 
   # The fold is replaceable so that a test can make a pass raise; nothing else sets it.
   defp fold_module, do: Application.get_env(:apiary, __MODULE__, [])[:fold] || Fold

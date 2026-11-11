@@ -1370,6 +1370,10 @@ The fold maps an exit to a state by the first rule that applies
    `state`, or none, the reason changes nothing, as an unknown reason does, and `paused`
    with another reason, or none, is read as an unknown `state`; the rules below apply,
    and the fold logs one line.
+
+   A run of a workspace's queue that pushed its questions or a proposal during the run,
+   not during an earlier attempt, and then paused, is Completed instead, with no reason:
+   it finished with its result, and no run continues it (`Apiary.Runs.Fold.settle/1`).
 2. `failed` with `session_lost` or `gateway_lost` is Lost: nobody knows how the run ended.
    An exit came, so the state is final, and `lost_at` is the exit's time: no start or
    heartbeat folded after it revives the run.
