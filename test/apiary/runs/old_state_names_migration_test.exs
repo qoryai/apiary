@@ -57,14 +57,15 @@ defmodule Apiary.Runs.OldStateNamesMigrationTest do
     end
   end
 
-  test "the check takes the six states and refuses the old names" do
+  test "the check takes the seven states and refuses the old names" do
     %{scope: scope} = sign_up_fixture()
 
-    assert Run.states() == ~w(pending running completed failed cancelled lost)
+    # Paused, added since (`runs_state_check`), is taken too.
+    assert Run.states() == ~w(pending running completed failed cancelled lost paused)
 
     for state <- Run.states(), do: assert(state(insert!(scope, state)) == state)
 
-    for state <- ~w(succeeded timed_out ended closed paused Completed),
+    for state <- ~w(succeeded timed_out ended closed Completed),
         do: refused?(scope, state)
   end
 
