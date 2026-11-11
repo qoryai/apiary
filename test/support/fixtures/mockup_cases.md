@@ -129,6 +129,7 @@ refused body <svg><defs><linearGradient id="g"><stop offset="0"><rect width="1" 
 refused body <svg><defs><path id="p" d="M0 0"/></defs><rect fill="url(#p)" width="1" height="1"/></svg>
 refused body <svg><defs><path id="p" d="M0 0"/><path id="p" d="M1 1"/></defs><use href="#p"/></svg>
 refused body <svg><rect fill="url(https://example.com/a.svg#g)" width="1" height="1"/></svg>
+refused body <svg><circle r="10" stroke="#000" stroke-dasharray="2"/></svg>
 ```
 
 ## Inputs and buttons
@@ -177,6 +178,8 @@ refused head <style>.a{-moz-binding:url(x.xml#b)}</style>
 allowed head <style>html{scroll-behavior:smooth}</style>
 allowed head <style>.behavior-x{color:red}</style>
 refused head <style>.a{.b{color:red}behavior:none}</style>
+refused head <style>circle{stroke-dasharray:2}</style>
+allowed head <style>.a{border:1px dashed #333}</style>
 refused head <style>.a{background:image-rect(url(data:image/png;base64,iVBORw0KGgo=),0,0,1,1)}</style>
 refused head <style>.a{BEHAVIOR:url(x.htc)}</style>
 refused head <style>.a::after{content:attr(data-x)}</style>

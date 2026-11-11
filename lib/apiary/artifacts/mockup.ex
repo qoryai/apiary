@@ -41,13 +41,16 @@ defmodule Apiary.Artifacts.Mockup do
   # `input` and `button` types listed; SVG `fill`, `stroke` and `clip-path` with
   # `url(#…)` alone, to a `linearGradient`, `radialGradient` or `clipPath`; on a
   # `clipPath` and inside it, no `use` and no attribute with `url(`; in a
-  # `linearGradient` or `radialGradient`, only `stop` elements, and none inside a `stop`; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
+  # `linearGradient` or `radialGradient`, only `stop` elements, and none inside a
+  # `stop`; no attribute value with `javascript:`, `vbscript:` or `data:text`, every
   # ASCII white space and control character removed; and the CSS of `<style>` and
   # `style` checked after its comments are removed and its escapes decoded: `url(…)` and
   # `src(…)` only to a `data:` image, or a `data:` font inside `@font-face`, and no
   # `url(#…)`; no `image()`, `image-set()`, `image-rect()`, `cross-fade()`, `element()`,
-  # `paint()`, `expression()` or `attr()`, also with a prefix such as `-webkit-`; no
-  # `@import`, `@namespace` or `@document`; no `behavior` or `-moz-binding` property.
+  # `paint()`, `expression()` or `attr()`, also with a prefix such as `-webkit-` and
+  # inside a CSS string; no `@import`, `@namespace` or `@document`; no `behavior`,
+  # `stroke-dasharray` or `-moz-binding` property, and no SVG `stroke-dasharray`
+  # attribute.
   # Core checks the contract alone, not the further refusals of the harness's pack step.
   #
   # The parser's tree has qualified names and no namespaces. An element's namespace is
@@ -142,7 +145,7 @@ defmodule Apiary.Artifacts.Mockup do
                          cy r rx ry fx fy dx dy width height points transform rotate
                          textLength lengthAdjust offset fill fill-opacity fill-rule stroke
                          stroke-width stroke-opacity stroke-linecap stroke-linejoin
-                         stroke-dasharray stroke-dashoffset stroke-miterlimit opacity
+                         stroke-dashoffset stroke-miterlimit opacity
                          clip-path clip-rule font-family font-size font-weight font-style
                          text-anchor dominant-baseline letter-spacing stop-color
                          stop-opacity gradientUnits gradientTransform spreadMethod
@@ -1033,6 +1036,12 @@ defmodule Apiary.Artifacts.Mockup do
     cond do
       Regex.match?(~r/(?<![a-z0-9_-])behavior\s*:/, lower) ->
         refuse("Remove the `behavior` property from #{spot}: a mockup page runs no script.")
+
+      Regex.match?(~r/(?<![a-z0-9_-])stroke-dasharray\s*:/, lower) ->
+        refuse(
+          "Remove the `stroke-dasharray` property from #{spot}: a mockup page draws no " <>
+            "dashed SVG stroke, which takes a browser long to paint."
+        )
 
       String.contains?(squeezed, "-moz-binding") ->
         refuse("Remove the `-moz-binding` property from #{spot}: a mockup page runs no script.")

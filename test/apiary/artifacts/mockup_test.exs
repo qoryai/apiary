@@ -34,8 +34,8 @@ defmodule Apiary.Artifacts.MockupTest do
   defp assert_verdict(verdict, result), do: flunk("expected #{verdict}, got #{inspect(result)}")
 
   describe "the shared cases" do
-    test "are all read: 138 lines in the cases blocks" do
-      assert length(@cases) == 138
+    test "are all read: 141 lines in the cases blocks" do
+      assert length(@cases) == 141
 
       assert Enum.all?(@cases, fn {verdict, place, _snippet} ->
                verdict in [:allowed, :refused] and place in [:head, :body]
@@ -454,6 +454,28 @@ defmodule Apiary.Artifacts.MockupTest do
       assert {:error,
               "Remove `attr()` from a `<style>` element in `start.html` (screen `start`): the mockup format lists no `attr()`."} =
                check(page(~s|<style>.a::after{content:attr(x)}</style>|, ""))
+
+      # Inside a CSS string too, after escapes are decoded.
+      for css <- [
+            ~s|.a::after{content:"expression(1)"}|,
+            ~s|.a::after{content:"\\61ttr(x)"}|,
+            ~s|.a::after{content:"javascript:x"}|,
+            ~s|.a::after{content:"java\\73 cript:x"}|,
+            ~s|.a{STROKE-DASHARRAY:2}|,
+            ~s|.a{color:red;stroke-dasharray :2}|,
+            ~s|.a{.b{color:red}stroke-dasharray:2}|
+          ] do
+        assert {:error, _message} = check(page("<style>#{css}</style>", "")), css
+      end
+
+      assert {:error,
+              "Remove the `stroke-dasharray` property from the `style` attribute of the " <>
+                "SVG `<circle>` element in `start.html` (screen `start`): a mockup page " <>
+                "draws no dashed SVG stroke, which takes a browser long to paint."} =
+               check(page("", ~s|<svg><circle r="1" style="stroke-dasharray:2"/></svg>|))
+
+      assert {:ok, _linked} =
+               check(page(~s|<style>.a{stroke-dashoffset:2;border:1px dashed #333}</style>|, ""))
     end
   end
 
