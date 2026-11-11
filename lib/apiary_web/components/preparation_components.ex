@@ -375,32 +375,11 @@ defmodule ApiaryWeb.PreparationComponents do
       label={step_label(@step)}
       times={false}
     >
-      <:before>
-        <.pulling
-          :if={@step.kind == "image" and @step.state == "running" and pulled_type(@preparation)}
-          id={"#{@id}-pull"}
-          type={pulled_type(@preparation)}
-        />
-      </:before>
-      <%!-- The cause and who fixes it, one item of the open step, so no gap parts them. --%>
-      <div
+      <.cause
         :if={@preparation.stopped && @preparation.stopped.step == @step.number}
-        id={"#{@id}-stopped"}
-        role="status"
-      >
-        <.cause
-          id={"#{@id}-cause"}
-          text={Map.get(@preparation.stopped, :rich) || cause_what(@preparation.stopped)}
-          status={false}
-        />
-        <p
-          :if={Map.get(@preparation.stopped, :fix_shown)}
-          id={"#{@id}-fix"}
-          class="q-prep-cause-fix"
-        >
-          {@preparation.stopped.fix}
-        </p>
-      </div>
+        id={"#{@id}-cause"}
+        text={cause_what(@preparation.stopped)}
+      />
     </.step_row>
     """
   end
@@ -417,32 +396,6 @@ defmodule ApiaryWeb.PreparationComponents do
       {if @node.kind == :agent and @node.session != nil,
         do: render_slot(@session, @node.session.sequence)}
     </.flow>
-    """
-  end
-
-  # The machine type whose image the run was given (`Apiary.Runs.Preparation`), nil for
-  # none.
-  defp pulled_type(preparation), do: Map.get(preparation, :image_type)
-
-  attr :id, :string, required: true
-  attr :type, :map, required: true, doc: "`%{key: key, name: name}`"
-
-  # Under Pull the images while it runs, for a run given its machine type's image: which
-  # image the machine pulls, and that it is no fault.
-  defp pulling(assigns) do
-    ~H"""
-    <div id={@id} class="q-prep-note">
-      <p>
-        <.rich text={
-          rich_gettext(
-            "The machine pulls the image of the machine type %{name} (%{key}). Each run pulls its image before the agent starts.",
-            name: @type.name,
-            key: {:m, @type.key, "font-mono"}
-          )
-        } />
-      </p>
-      <p class="q-prep-fix">{gettext("No action needed.")}</p>
-    </div>
     """
   end
 
@@ -1971,7 +1924,6 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :open, :boolean, default: nil, doc: "whether the row is open when it appears"
   attr :label, :string, default: nil, doc: "the row's name in place of the step's"
   attr :times, :boolean, default: true, doc: "whether the row shows its start and duration"
-  slot :before, doc: "what comes before the step's output"
   slot :inner_block, doc: "what follows the step's output"
 
   # A step's row: its name came from the run, unless it has a label, and its output is
@@ -1990,7 +1942,6 @@ defmodule ApiaryWeb.PreparationComponents do
       open={@open}
       times={@times}
     >
-      {render_slot(@before)}
       <.output
         :if={@step.output}
         id={"#{@id}-output"}
@@ -2231,13 +2182,9 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :id, :string, required: true
   attr :text, :any, required: true, doc: "rich text (`ApiaryWeb.RichText`)"
 
-  attr :status, :boolean,
-    default: true,
-    doc: "false where an element around the cause has `role=\"status\"`"
-
   defp cause(assigns) do
     ~H"""
-    <p id={@id} class="q-prep-cause" role={@status && "status"}><.rich text={@text} /></p>
+    <p id={@id} class="q-prep-cause" role="status"><.rich text={@text} /></p>
     """
   end
 

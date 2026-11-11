@@ -298,17 +298,12 @@ defmodule Apiary.Runs.Run do
     # (`Apiary.Policy.ComposedConfiguration`). Nil for a run given none, and for every
     # other run. Not folded: a rebuild keeps it.
     field :configured_image, :string
-    # Whether `configured_image` is the image of a machine type, and that type, by id: set
-    # at the claim for a run whose type has an image, at the attach for a run given the
-    # default type's image (`Apiary.Runs.Attach`). False and nil for a target's image and
-    # for no image; the id is nil too once the type is deleted. Not folded.
-    field :configured_image_from_type, :boolean, default: false
-    belongs_to :configured_image_machine_type, Apiary.MachineTypes.MachineType
     # Set at its attach, for every run that attaches: what the run started in, which its
     # reloads carry as the gateway checks it (`Apiary.Policy.ComposedConfiguration`).
     # `started_image_from` is `top_level`, the image beside the `security_policy`, the one
-    # in `configured_image`; `policy`, the image the `security_policy` named; or `none`,
-    # the gateway's default. `started_image` is the image, nil for `none`. Both nil for a
+    # in `configured_image`; or `none`, the machine's default image. `policy`, the image
+    # the `security_policy` set, is only on runs that attached while a run could start
+    # in its policy's image. `started_image` is the image, nil for `none`. Both nil for a
     # run that did not attach, whose reloads are answered as they were. Not folded.
     field :started_image_from, :string
     field :started_image, :string

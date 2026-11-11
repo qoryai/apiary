@@ -45,14 +45,14 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
     })
   end
 
-  defp serve(scope, configuration, image, prebuild? \\ false),
+  defp serve(scope, configuration, image),
     do:
       ComposedConfiguration.serve(
         scope.organisation.id,
         scope.workspace.id,
         configuration,
         image,
-        prebuild?
+        false
       )
 
   describe "the bytes" do
@@ -73,13 +73,9 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Schema.validate(ComposedConfiguration.compose(nil, @image)) == :ok
     end
 
-    test "of a prebuild leave out the policy's image and nothing else" do
+    test "without the policy's image leave out that image and nothing else" do
       assert ComposedConfiguration.without_image(@naming) ==
                ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["api.example"]}}})
-
-      assert ComposedConfiguration.names_image?(@naming)
-      refute ComposedConfiguration.names_image?(@document)
-      refute ComposedConfiguration.names_image?(ComposedConfiguration.compose(@document, @image))
     end
 
     test "are the same for the same document and image, so is their digest" do
@@ -108,74 +104,30 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
                {:composed, ComposedConfiguration.compose(nil, @image), @image}
     end
 
-    test "under a policy that names an image is no top-level image, and for a prebuild the policy without it" do
-      # The image a prebuilt recorded is never asked for: the policy's wins.
-      never = fn -> flunk("the image was read") end
-      assert ComposedConfiguration.shape(@naming, never, false) == :as_is
-      assert ComposedConfiguration.shape(@naming, nil, false) == :as_is
-
-      assert ComposedConfiguration.shape(@naming, nil, true) ==
-               {:composed, ComposedConfiguration.without_image(@naming), nil}
-
-      # A prebuild of a policy that names none is asked nothing, and given it as it is.
-      assert ComposedConfiguration.shape(@document, nil, fn -> flunk("asked") end) == :as_is
-
-      for {document, image, prebuild?, fixed?} <- [
-            {@naming, @image, false, false},
-            {@naming, nil, true, false},
-            {@naming, @image, false, true}
-          ],
-          {:composed, bytes, _image} <- [
-            ComposedConfiguration.shape(document, image, prebuild?, fixed?)
-          ] do
-        decoded = Jason.decode!(bytes)
-
-        refute Map.has_key?(decoded, "image") and
-                 Map.has_key?(decoded["security_policy"], "image")
-      end
-    end
-
-    test "whose image is fixed, under a policy that names one since, keeps it beside the policy without the policy's" do
+    test "under a policy that sets an image is the policy without it, beside the run's image" do
       without = ComposedConfiguration.without_image(@naming)
 
-      assert ComposedConfiguration.shape(@naming, @image, false, true) ==
-               {:composed, ComposedConfiguration.compose(without, @image), @image}
+      # Before the attach and after it, for a prebuild and any other run: no run starts in
+      # the image a policy sets.
+      for prebuild? <- [false, true], fixed? <- [false, true] do
+        assert ComposedConfiguration.shape(@naming, nil, prebuild?, fixed?) ==
+                 {:composed, without, nil}
+
+        assert ComposedConfiguration.shape(@naming, @image, prebuild?, fixed?) ==
+                 {:composed, ComposedConfiguration.compose(without, @image), @image}
+      end
 
       assert ComposedConfiguration.digest(@naming, @image, false, true) ==
                Render.digest(ComposedConfiguration.compose(without, @image))
 
-      # A run that was given no image is given the policy as it is; a prebuild the
-      # policy without its image, as before.
-      assert ComposedConfiguration.shape(@naming, nil, false, true) == :as_is
-
-      assert ComposedConfiguration.shape(@naming, nil, true, true) ==
-               {:composed, without, nil}
+      for image <- [nil, @image, :none],
+          {:composed, bytes, _image} <- [ComposedConfiguration.shape(@naming, image, false)] do
+        refute Map.has_key?(Jason.decode!(bytes)["security_policy"], "image")
+      end
 
       # A policy that names no image is composed as at the attach.
       assert ComposedConfiguration.shape(@document, @image, false, true) ==
                ComposedConfiguration.shape(@document, @image, false)
-    end
-
-    test "that started in its policy's image keeps it in the policy, the document as it is when the same" do
-      renaming = String.replace(@naming, ~s("with-docker"), ~s("with-gpu"))
-
-      assert ComposedConfiguration.shape(renaming, {:policy, "with-docker"}, false, true) ==
-               {:composed, @naming, nil}
-
-      assert ComposedConfiguration.shape(@naming, {:policy, "with-docker"}, false, true) ==
-               :as_is
-
-      # A policy that names none is given the start's image after its other members.
-      assert ComposedConfiguration.shape(@document, {:policy, "with-docker"}, false, true) ==
-               {:composed,
-                ~s({"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]},"image":"with-docker"}}),
-                nil}
-
-      # Never composed from no policy, nor before the attach, nor for a prebuild.
-      assert ComposedConfiguration.shape(nil, {:policy, "with-docker"}, false, true) == :as_is
-
-      assert ComposedConfiguration.shape(renaming, {:policy, "with-docker"}, true, true) ==
-               {:composed, ComposedConfiguration.without_image(renaming), nil}
     end
 
     test "that started in no image is given the policy without the image it comes to name" do
@@ -199,17 +151,15 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
                  configured_image: @image
              }) == @image
 
+      # A run that started in its policy's image, as a run could before, is read as one
+      # whose start was not kept: it was given no image at the top level.
       assert ComposedConfiguration.started(%{
                run
                | started_image_from: "policy",
                  started_image: "with-docker"
-             }) == {:policy, "with-docker"}
+             }) == nil
 
       assert ComposedConfiguration.started(%{run | started_image_from: "none"}) == :none
-
-      assert ComposedConfiguration.policy_image(@naming) == "with-docker"
-      assert ComposedConfiguration.policy_image(@document) == nil
-      assert ComposedConfiguration.policy_image(nil) == nil
     end
   end
 
@@ -243,10 +193,10 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert ComposedConfiguration.fetch(ctx.scope.workspace.id, first.digest).id == first.id
     end
 
-    test "of a prebuild under a policy that names an image keep no image", ctx do
+    test "of a run under a policy that sets an image keep no image", ctx do
       naming = stored!(ctx.scope, @naming)
 
-      assert {:ok, row} = serve(ctx.scope, naming, nil, true)
+      assert {:ok, row} = serve(ctx.scope, naming, nil)
       assert row.image == nil
       assert row.run_configuration_id == naming.id
       assert row.document == ComposedConfiguration.without_image(@naming)
@@ -268,7 +218,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
     test "go with their run configuration", ctx do
       naming = stored!(ctx.scope, @naming)
-      {:ok, row} = serve(ctx.scope, naming, nil, true)
+      {:ok, row} = serve(ctx.scope, naming, nil)
 
       Repo.delete!(naming)
       assert ComposedConfiguration.fetch(ctx.scope.workspace.id, row.digest) == nil
@@ -335,37 +285,37 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert %{n: 3} = Rules.version(ctx.scope, nil, reloaded.digest)
     end
 
-    test "never takes a stored version's digest for a prebuild's document of the same bytes",
+    test "never takes a stored version's digest for a run's document of the same bytes",
          ctx do
       p1 = ctx.configuration
       p2 = image_only!(ctx.scope, p1)
 
-      # A prebuild under P2 is given P2 without its image: P1's bytes, kept as composed
-      # from P2.
-      {:ok, prebuild} = serve(ctx.scope, p2, nil, true)
-      assert prebuild.digest == p1.digest
-      assert prebuild.run_configuration_id == p2.id
+      # A run under P2 is given P2 without its image: P1's bytes, kept as composed from
+      # P2.
+      {:ok, given} = serve(ctx.scope, p2, nil)
+      assert given.digest == p1.digest
+      assert given.run_configuration_id == p2.id
 
-      # A run a node registered itself, still on P1, is behind P2.
+      # A run a node registered itself that reports P1's bytes is behind nothing: P2
+      # without its image is those bytes.
       run =
         run_fixture(ctx.scope, %{
           reported_run_configuration_digest: p1.digest,
           run_configuration_digest: p1.digest
         })
 
-      assert %{in_force: in_force, reported: reported, applied: applied, drift: true} =
-               Policy.digests(ctx.scope, run)
-
+      assert %{in_force: in_force, drift: false} = Policy.digests(ctx.scope, run)
       assert in_force == p2.digest
-      assert reported == p1.digest
-      assert applied == p1.digest
+
+      # P1's digest still reads as P1's version, never as P2's.
       assert Policy.policy_digest(ctx.scope, p1.digest) == p1.digest
       assert %{n: 2} = Rules.version(ctx.scope, nil, p1.digest)
 
-      # A run the events endpoint does not know, reporting P1, is not told P1 is in force.
+      # A run the events endpoint does not know, reporting P1's bytes, is told the digest
+      # it would be answered: P2 without its image, under P1's digest.
       %{access_key: key} = contract_key_fixture(ctx.scope)
       batch = %Batch{subject: Ecto.UUID.generate(), events: []}
-      assert Serving.digest_for(key, nil, batch, p1.digest) == p2.digest
+      assert Serving.digest_for(key, nil, batch, p1.digest) == p1.digest
     end
   end
 
@@ -416,44 +366,6 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
       assert in_force == newer.digest
       assert reported == ctx.configuration.digest
-    end
-
-    test "of a run that started in its policy's image is no drift while its policy is in force",
-         ctx do
-      renaming = stored!(ctx.scope, String.replace(@naming, ~s("with-docker"), ~s("with-gpu")))
-
-      {:ok, composed} =
-        ComposedConfiguration.serve(
-          ctx.scope.organisation.id,
-          ctx.scope.workspace.id,
-          renaming,
-          {:policy, "with-docker"},
-          false,
-          true
-        )
-
-      assert composed.document == @naming
-      assert composed.run_configuration_id == renaming.id
-
-      run =
-        run_fixture(ctx.scope, %{
-          started_image_from: "policy",
-          started_image: "with-docker",
-          reported_run_configuration_digest: composed.digest,
-          run_configuration_digest: composed.digest
-        })
-
-      assert ComposedConfiguration.run_digest(renaming, run) == composed.digest
-
-      assert Policy.digests(ctx.scope, run) == %{
-               in_force: renaming.digest,
-               reported: renaming.digest,
-               applied: renaming.digest,
-               drift: false
-             }
-
-      assert %{digest: digest} = Rules.version(ctx.scope, nil, composed.digest)
-      assert digest == renaming.digest
     end
 
     test "is in force for the events endpoint only for a run it would be answered to", ctx do

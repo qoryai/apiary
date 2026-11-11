@@ -61,7 +61,7 @@ defmodule Apiary.Runs.ReadNeedsTest do
       other = work_item_fixture(ctx.scope)
 
       assert stored(other, "read_needs_no_nested_docker", pool) ==
-               "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+               "Choose an image without nested Docker in the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
     end
 
     test "a pool since deleted reads as the instance's", ctx do

@@ -5725,35 +5725,9 @@ msgstr ""
 msgid "An instance admin adds integrations in Instance settings › Adapters. %{organisation} can install them here once they are added."
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin checks that the registry's host name resolves, that the registry is running and that its certificate is valid, then runs the work item again. The connection to the registry for %{image} failed or took longer than 30 seconds."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "An instance admin gives the run's registry credential read access to the image, or sets another image in Instance settings › Machine types. If the workspace's policy blocks the registry, a workspace admin allows it on the workspace's Policy page. The registry returned 401 or 403 for %{image}, or the run's proxy returned 403 because of the policy. On Docker Hub, 401 also means that the repository does not exist."
-msgstr ""
-
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "An instance admin makes the type fit an offer in Instance settings › Machine types, or the admin of %{pool} adds an offer that fits."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin runs the work item again once the registry's rate limit resets, or raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin runs the work item again once the registry's rate limit resets, or the admin of %{pool} raises the gateway's run limits. The registry or the run's proxy returned 429 Too Many Requests for %{image}."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "An instance admin sets an image that exists in Instance settings › Machine types, then runs the work item again."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6926,6 +6900,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed the machine type key from %{from} to %{to} in the processes and workspace types that use it"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed the name in the header"
 msgstr ""
 
@@ -7266,7 +7245,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+msgid "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -10187,6 +10166,11 @@ msgstr ""
 msgid "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Fix these files yourself:"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Fixed when it was made."
@@ -11074,15 +11058,9 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/live/artifact_live/load.ex
 #: lib/apiary_web/live/artifact_live/markdown.ex
-#: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Image"
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "Image (optional)"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/markdown.ex
@@ -12662,6 +12640,11 @@ msgstr ""
 msgid "Machine type"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Machine type key rewritten"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Machine type: %{machine}"
@@ -13519,11 +13502,6 @@ msgstr ""
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "No %{type} was stored in this stage."
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "No action needed."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapters.ex
@@ -14524,7 +14502,6 @@ msgstr ""
 msgid "Not seen for %{days}"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
@@ -16185,26 +16162,6 @@ msgstr ""
 msgid "Pull the images"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Pull the images failed: a rate limit stopped the requests for the image of the machine type %{name} (%{key})."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Pull the images failed: access to the image of the machine type %{name} (%{key}) was denied."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Pull the images failed: no connection to the image's registry, for the machine type %{name} (%{key})."
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Pull the images failed: the image of the machine type %{name} (%{key}) is not in its registry: %{image}."
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
@@ -16455,6 +16412,16 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary tells the adapter nothing."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary updates %{waiting}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/machine_types.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary updates %{waiting}. Fix these files yourself:"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -17868,11 +17835,6 @@ msgstr ""
 msgid "Run the test?"
 msgstr ""
 
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
-msgid "Run the work item again later. If it fails again, contact support with run %{run}."
-msgstr ""
-
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Run this on the Linux machine with Docker that runs the runs in %{workspace}. It joins that machine to the pool %{pool}. Install qory there first:"
@@ -18058,11 +18020,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs that reached %{destination}"
-msgstr ""
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Runs use the image set in this workspace's policy."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -20643,11 +20600,6 @@ msgstr ""
 msgid "The hosts this workspace's runs may reach, and those they may not."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "The image a run on this type starts in, pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256:… Leave it empty to start runs in the target's prebuilt image, else in the default type's image, else in the run machine's image."
-msgstr ""
-
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The image registry"
@@ -20887,11 +20839,6 @@ msgstr ""
 msgid "The machine log is cut: this is its last part."
 msgstr ""
 
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "The machine pulls the image of the machine type %{name} (%{key}). Each run pulls its image before the agent starts."
-msgstr ""
-
 #: lib/apiary/runs/preparation.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -20910,7 +20857,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "The machines that runs start on, and the image a run starts in. A workflow runs on the type it picks, else on the workspace's default, else on the instance default."
+msgid "The machines that runs start on. A workflow runs on the type it picks, else on the workspace's default, else on the instance default."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex
@@ -23910,11 +23857,6 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
-msgid "Write a reference pinned by digest, such as ghcr.io/qoryai/qory-agent-prerelease@sha256: and 64 hexadecimal digits."
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
 msgid "Write a whole number from 1 to 1024."
 msgstr ""
 
@@ -25908,11 +25850,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/machine_types.ex
-#, elixir-autogen, elixir-format
-msgid "registry/name@sha256:…"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

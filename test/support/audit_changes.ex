@@ -159,7 +159,8 @@ defmodule Apiary.AuditChanges do
       :"artifact.write",
       :"artifact_type.edit",
       :"gate.approve",
-      :"workspace_type.edit"
+      :"workspace_type.edit",
+      :"machine_type.rekey"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -1063,6 +1064,23 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
 
+  # An instance admin's change of a machine type's key, in the trail of the instance's
+  # organisation, about the organisation, beside the change's `instance.configure` entry.
+  def make(:"machine_type.rekey", %{scope: scope}) do
+    admin = password_link_admin() |> mail_signed_in(0)
+    type = Apiary.MachineTypesFixtures.machine_type_fixture(%{key: "large"})
+    uses_key!(scope.workspace, "large")
+    before = entries()
+    {:ok, _type} = Apiary.MachineTypes.update(admin, type, %{"key" => "large-builds"})
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before ++ Enum.reject(entries() -- before, &(&1.action == "machine_type.rekey"))
+    }
+  end
+
   # An instance admin's save of a workspace type's default process, in the trail of the
   # instance's organisation, about the organisation.
   def make(:"workspace_type.edit", _ctx) do
@@ -1214,6 +1232,16 @@ defmodule Apiary.AuditChanges do
   def refuse(:"workspace_type.edit", %{scope: scope}) do
     before = entries()
     {before, attempt(:"workspace_type.edit", scope, nil)}
+  end
+
+  # An instance admin whose sign-in is no longer recent changes no key: the change asks
+  # `instance.configure` first.
+  def refuse(:"machine_type.rekey", _ctx) do
+    admin = password_link_admin() |> mail_signed_in(-21)
+    type = Apiary.MachineTypesFixtures.machine_type_fixture(%{key: "large"})
+    before = entries()
+
+    {before, Apiary.MachineTypes.update(admin, type, %{"key" => "large-builds"})}
   end
 
   # An instance admin whose sign-in is no longer recent signs in again first, for the
@@ -1947,6 +1975,18 @@ defmodule Apiary.AuditChanges do
   defp in_instance(scope), do: Scope.in_organisation(scope, instance_organisation())
 
   # A fresh instance admin, by a release command: their scope.
+  # The workspace's current process with `key` as its machine, a key change rewrites.
+  defp uses_key!(workspace, key) do
+    version = Apiary.Processes.current(workspace)
+
+    {1, _rows} =
+      Repo.update_all(from(v in Apiary.Processes.Version, where: v.id == ^version.id),
+        set: [document: Map.put(version.document, "machine", key)]
+      )
+
+    :ok
+  end
+
   defp password_link_admin do
     %{user: admin} = sign_up_fixture()
     {:ok, _} = Organisations.grant_instance_admin(admin)

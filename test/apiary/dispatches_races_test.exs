@@ -28,7 +28,7 @@ defmodule Apiary.DispatchesRacesTest do
   import Apiary.AccessKeysFixtures
 
   import Apiary.DispatchedRunsFixtures,
-    only: [dispatched!: 1, redeemed_run_key!: 1, registry_image: 2, workspace_gateway!: 1]
+    only: [registry_image: 2, workspace_gateway!: 1]
 
   import Apiary.NodesFixtures
   import Apiary.Races
@@ -45,9 +45,6 @@ defmodule Apiary.DispatchesRacesTest do
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
-
-  @races_default_image "ghcr.io/acme/races-default@sha256:" <> String.duplicate("5d0c", 16)
-  @races_default_image_after "ghcr.io/acme/races-default@sha256:" <> String.duplicate("7e1f", 16)
 
   setup_all :clean_up_leftovers
   setup_all :clean_up_types
@@ -81,41 +78,10 @@ defmodule Apiary.DispatchesRacesTest do
   end
 
   # The machine types a stopped run left behind (`races-ui-<n>`), committed by the tests
-  # of a claim or a take in during a key change and of an attach during a change of the
-  # default type, and the images the attach's tests give the default type
-  # (`@races_default_image`, `@races_default_image_after`).
+  # of a claim or a take in during a key change.
   defp clean_up_types(_context) do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-
-    # A stopped run of the attach's test during a change of the default type can leave a
-    # `races-ui-<n>` type the default: `standard`, the instance's first type, is the
-    # default again before that type goes.
-    if Repo.exists?(
-         from t in Apiary.MachineTypes.MachineType,
-           where: t.is_default and like(t.key, "races-ui-%")
-       ) do
-      Repo.transact(fn ->
-        Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.is_default),
-          set: [is_default: false]
-        )
-
-        Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.key == "standard"),
-          set: [is_default: true]
-        )
-
-        {:ok, :ok}
-      end)
-    end
-
     Repo.delete_all(from t in Apiary.MachineTypes.MachineType, where: like(t.key, "races-ui-%"))
-
-    Repo.update_all(
-      from(t in Apiary.MachineTypes.MachineType,
-        where: t.image in [@races_default_image, @races_default_image_after]
-      ),
-      set: [image: nil]
-    )
-
     Ecto.Adapters.SQL.Sandbox.checkin(Repo)
     :ok
   end
@@ -445,199 +411,6 @@ defmodule Apiary.DispatchesRacesTest do
     assert Slots.held(pool.id) == 2
   end
 
-  # An attach reads the default type's row again by id `FOR KEY SHARE`
-  # (`Apiary.MachineTypes.key_shared_default/0`) before it writes the type's id on the
-  # run. While a change of the default type holds its row, the attach waits for it, then
-  # gives the run the type's image as the change left it. A read without the lock could
-  # write the id of a type a change then deletes.
-  test "an attach while a change holds the default type waits for it, and gives the run the type's image after",
-       ctx do
-    pool = pool_fixture(ctx.scope)
-    key = key!(ctx, pool)
-    [_run] = queued!(ctx, 1)
-    %{registered: registered, run_code: code} = dispatched!(key)
-
-    {:ok, attach} =
-      Apiary.Runs.Attach.parse(Apiary.ContractFixtures.attach_body(redeemed_run_key!(code)))
-
-    gateway_key =
-      Repo.one!(
-        from k in AccessKey,
-          join: n in Node,
-          on: n.id == k.node_id,
-          where: n.id == ^registered.gateway_id
-      )
-
-    # The default type has an image, committed for this test alone and taken off again.
-    default = Apiary.MachineTypes.default_type()
-
-    {1, _rows} =
-      Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^default.id),
-        set: [image: @races_default_image]
-      )
-
-    on_exit(fn ->
-      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-
-      Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^default.id),
-        set: [image: default.image]
-      )
-
-      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
-    end)
-
-    # A change of the default type holds its row, as `Apiary.MachineTypes.update/3` holds
-    # it, and sets another image.
-    {held, held_backend} =
-      hold(fn ->
-        Repo.query!("LOCK TABLE machine_types IN SHARE ROW EXCLUSIVE MODE")
-
-        Repo.one!(
-          from t in Apiary.MachineTypes.MachineType,
-            where: t.id == ^default.id,
-            lock: "FOR UPDATE"
-        )
-      end)
-
-    attached =
-      start(fn ->
-        Apiary.Runs.Attach.attach(gateway_key, registered.node_run_id, attach, %{
-          instance_id: Apiary.ContractFixtures.instance_id()
-        })
-      end)
-
-    await_blocked(attached.backend, held_backend)
-
-    continue(held, fn ->
-      Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^default.id),
-        set: [image: @races_default_image_after]
-      )
-    end)
-
-    commit(held)
-    assert {:ok, _answer} = Task.await(attached.task, 10_000)
-
-    run = Repo.get!(Apiary.Runs.Run, registered.id)
-
-    assert {run.configured_image, run.configured_image_from_type,
-            run.configured_image_machine_type_id} ==
-             {@races_default_image_after, true, default.id}
-  end
-
-  # An attach reads the default type without a lock, then its row by id `FOR KEY SHARE`
-  # (`Apiary.MachineTypes.key_shared_default/0`). Between the two reads an admin may make
-  # another type the default and delete the type the attach read first. The locked read
-  # then finds no row, and the attach reads the default again, so the run starts in the
-  # new default type's image, not in the pool's default image.
-  test "an attach during a change of the default type and a delete of the old one gives the run the new default's image",
-       ctx do
-    pool = pool_fixture(ctx.scope)
-    key = key!(ctx, pool)
-    [_run] = queued!(ctx, 1)
-    %{registered: registered, run_code: code} = dispatched!(key)
-
-    {:ok, attach} =
-      Apiary.Runs.Attach.parse(Apiary.ContractFixtures.attach_body(redeemed_run_key!(code)))
-
-    gateway_key =
-      Repo.one!(
-        from k in AccessKey,
-          join: n in Node,
-          on: n.id == k.node_id,
-          where: n.id == ^registered.gateway_id
-      )
-
-    # The instance's default type, `later`, gets an image and stops being the default;
-    # `first`, a type committed for this test alone, is the default with another image.
-    # Where a stopped run left them so, `clean_up_types/1` makes `standard` the default
-    # again and deletes `first`.
-    later = Apiary.MachineTypes.default_type()
-    unique = System.unique_integer([:positive])
-
-    first =
-      Repo.insert!(%Apiary.MachineTypes.MachineType{
-        key: "races-ui-#{unique}",
-        name: "Races UI #{unique}",
-        vcpus: 2,
-        memory_mib: 4096,
-        disk_gib: 30,
-        arch: "amd64",
-        image: @races_default_image
-      })
-
-    Repo.transact(fn ->
-      Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^later.id),
-        set: [is_default: false, image: @races_default_image_after]
-      )
-
-      Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^first.id),
-        set: [is_default: true]
-      )
-
-      {:ok, :ok}
-    end)
-
-    on_exit(fn ->
-      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-
-      Repo.transact(fn ->
-        Repo.delete_all(from t in Apiary.MachineTypes.MachineType, where: t.id == ^first.id)
-
-        Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^later.id),
-          set: [is_default: true, image: later.image]
-        )
-
-        {:ok, :ok}
-      end)
-
-      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
-    end)
-
-    # The admin's two changes, in one transaction for the test: `later` becomes the
-    # default, as `Apiary.MachineTypes.make_default/2` writes it, and `first` is held
-    # `FOR UPDATE`, as `Apiary.MachineTypes.delete/2` holds it before it deletes it.
-    {held, held_backend} =
-      hold(fn ->
-        Repo.query!("LOCK TABLE machine_types IN SHARE ROW EXCLUSIVE MODE")
-
-        Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.is_default),
-          set: [is_default: false]
-        )
-
-        Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^later.id),
-          set: [is_default: true]
-        )
-
-        Repo.one!(
-          from t in Apiary.MachineTypes.MachineType, where: t.id == ^first.id, lock: "FOR UPDATE"
-        )
-      end)
-
-    attached =
-      start(fn ->
-        Apiary.Runs.Attach.attach(gateway_key, registered.node_run_id, attach, %{
-          instance_id: Apiary.ContractFixtures.instance_id()
-        })
-      end)
-
-    # The attach read `first` as the default, and its locked read waits for the delete.
-    await_blocked(attached.backend, held_backend)
-
-    continue(held, fn ->
-      {1, _rows} =
-        Repo.delete_all(from t in Apiary.MachineTypes.MachineType, where: t.id == ^first.id)
-    end)
-
-    commit(held)
-    assert {:ok, _answer} = Task.await(attached.task, 10_000)
-
-    run = Repo.get!(Apiary.Runs.Run, registered.id)
-
-    assert {run.configured_image, run.configured_image_from_type,
-            run.configured_image_machine_type_id} ==
-             {@races_default_image_after, true, later.id}
-  end
-
   # A take in holds the table of machine types before it locks a row, and a key change
   # takes the table first (`Apiary.MachineTypes.hold/0`): a take in that starts during a
   # key change waits for it, then reads the version after it, so its work item and run
@@ -686,7 +459,7 @@ defmodule Apiary.DispatchesRacesTest do
     await_blocked(take.backend, held_backend)
 
     # The rest of the key change, as `Apiary.MachineTypes.update/3` writes it.
-    :ok =
+    {:ok, _count} =
       continue(held, fn ->
         {1, _rows} =
           Repo.update_all(from(t in Apiary.MachineTypes.MachineType, where: t.id == ^type.id),
@@ -707,20 +480,17 @@ defmodule Apiary.DispatchesRacesTest do
              Repo.all(from r in DispatchRun, where: r.work_item_id == ^id)
   end
 
-  # A claim locks the waiting run, then reads its machine type; a key change holds the
-  # type's row and then waits on the runs that wait on the key, the one the claim holds
-  # among them. The claim reads the type `FOR KEY SHARE SKIP LOCKED`
-  # (`Apiary.MachineTypes.shared/1`): while a change holds the row, the claim passes the
-  # run and does not wait on the row. Neither side waits on the other while the other
-  # waits, so the two cannot deadlock.
-  test "a claim while a key change holds the run's machine type passes the run, and the next claim takes it with the type's image",
+  # A claim locks the waiting run; a key change holds the type's row and then waits on the
+  # runs that wait on the key, the one the claim holds among them. The claim reads no row
+  # of the type, so it takes the run while the change holds the row, in no image of the
+  # type, and the change then moves no run: the claimed run no longer waits.
+  test "a claim while a key change holds the run's machine type takes the run, with no image",
        ctx do
     pool = pool_fixture(ctx.scope)
     key = key!(ctx, pool)
     unique = System.unique_integer([:positive])
-    image = "ghcr.io/acme/races-ui@sha256:" <> String.duplicate("7a1e", 16)
 
-    # A type committed for this test alone, with an image; deleted again at the end.
+    # A type committed for this test alone; deleted again at the end.
     type =
       Repo.insert!(%Apiary.MachineTypes.MachineType{
         key: "races-ui-#{unique}",
@@ -728,8 +498,7 @@ defmodule Apiary.DispatchesRacesTest do
         vcpus: 2,
         memory_mib: 4096,
         disk_gib: 30,
-        arch: "amd64",
-        image: image
+        arch: "amd64"
       })
 
     on_exit(fn ->
@@ -758,14 +527,16 @@ defmodule Apiary.DispatchesRacesTest do
         )
       end)
 
-    # The claim returns `{:ok, :none}` while the change still holds the type, and the run
-    # still waits.
     claim = start(fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end)
-    assert Task.await(claim.task, 10_000) == {:ok, :none}
-    assert Repo.get!(DispatchRun, run.id).state == :waiting
+
+    assert {:ok, %{run: %DispatchRun{id: id}, registered: registered}} =
+             Task.await(claim.task, 10_000)
+
+    assert id == run.id
+    assert registered.configured_image == nil
 
     # The rest of the key change, as `Apiary.MachineTypes.update/3` writes it: the type's
-    # key, then the runs that wait on it, which no claim holds now.
+    # key, then the runs that wait on it, none now.
     to = "races-ui-#{unique}-2"
 
     moved =
@@ -782,15 +553,7 @@ defmodule Apiary.DispatchesRacesTest do
       end)
 
     commit(held)
-    assert {1, _rows} = moved
-
-    assert {:ok, %{run: %DispatchRun{id: id}, registered: registered}} =
-             Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
-
-    assert id == run.id
-
-    assert {registered.configured_image, registered.configured_image_from_type,
-            registered.configured_image_machine_type_id} == {image, true, type.id}
+    assert {0, _rows} = moved
   end
 
   # A dispatch claimed by `key`, handed over at its claim and ended, its slot held for its

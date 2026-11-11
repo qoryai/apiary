@@ -2,25 +2,24 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
   @moduledoc """
   The Image row of a run page's rail (`ApiaryWeb.RunLive.Show`), after the Wall, for a
   run of the workspace's queue: the image Qory gave the run, raw, with "Prebuilt for this
-  repository" under it; for a run of the queue given none, the image it reported, with
+  repository" under it where the image is at the place a build for the run's target
+  pushes its image, and with no line under it elsewhere; for a run of the queue given none, the image it reported, with
   "The pool's default image." under it; for a run that started in its policy's image, and
   any other run, the image it reported, with no line under it. A run with no wall has no
   Image row.
   """
   use ApiaryWeb.ConnCase, async: true
 
-  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
 
-  alias Apiary.Repo
-
   @moduletag needs: :factory
 
-  @prebuilt "registry.example.com:5000/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
+  @digest String.duplicate("3b9d", 16)
+  @elsewhere "ghcr.io/northwind/storefront-agent@sha256:" <> @digest
   @reported "registry.example/agent:1"
 
   setup :register_and_log_in_user
@@ -49,73 +48,60 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
   defp given_image(image),
     do: %{configured_image: image, started_image_from: "top_level", started_image: image}
 
-  test "a run on a machine type renamed since the run shows the type's name and key now, the image cut",
-       %{conn: conn, scope: scope, key: key} do
-    image = "ghcr.io/acme/agent-shown@sha256:" <> String.duplicate("5e2b", 16)
+  # A run of the queue given the image a build for its target pushed, at the target's
+  # place in the registry (`Apiary.Registry.RunAccess.destinations/1`).
+  defp prebuilt(scope, key, attrs \\ %{}) do
+    run = dispatched(scope, key, %{})
 
-    # A type with the key shown-ui, which no other test uses, inserted so that no other
-    # test waits on a row this one changes.
-    type =
-      Repo.insert!(%Apiary.MachineTypes.MachineType{
-        key: "shown-ui",
-        name: "Shown UI",
-        vcpus: 2,
-        memory_mib: 4096,
-        disk_gib: 30,
-        arch: "amd64",
-        image: image
-      })
+    target =
+      if run.target_id,
+        do: Apiary.Repo.get!(Apiary.Runs.Target, run.target_id),
+        else:
+          Apiary.Repo.insert!(%Apiary.Runs.Target{
+            organisation_id: scope.organisation.id,
+            workspace_id: scope.workspace.id,
+            system: "code.example.com",
+            path: "northwind/storefront",
+            first_seen_at: DateTime.utc_now()
+          })
+
+    place =
+      Apiary.Registry.Names.target_name(
+        Apiary.InstanceConfig.registry_instance(),
+        scope.organisation.id,
+        target.public_id
+      )
+
+    image = "#{Apiary.Registry.service()}/#{place}@sha256:#{@digest}"
 
     run =
-      dispatched(
-        scope,
-        key,
-        Map.merge(given_image(image), %{
-          image: image,
-          configured_image_from_type: true,
-          configured_image_machine_type_id: type.id
-        })
-      )
+      run
+      |> Ecto.Changeset.change(Map.merge(given_image(image), Map.new(attrs)))
+      |> Ecto.Changeset.change(target_id: target.id)
+      |> Apiary.Repo.update!()
 
-    event_fixture(run, 9, "run.step_started", %{"step" => 1, "name" => image, "kind" => "image"})
-
-    event_fixture(run, 10, "run.step_exited", %{
-      "step" => 1,
-      "state" => "failed",
-      "exit_code" => -1,
-      "duration_ms" => 900
-    })
-
-    event_fixture(run, 11, "run.exited", %{
-      "state" => "failed",
-      "reason" => "image_missing",
-      "exit_code" => -1
-    })
-
-    {:ok, _run} = Apiary.Runs.Projector.project(run)
-
-    {1, _rows} =
-      Repo.update_all(
-        from(t in Apiary.MachineTypes.MachineType, where: t.id == ^type.id),
-        set: [key: "shown-ui-2", name: "Shown UI 2"]
-      )
-
-    lv = open(conn, scope, run)
-
-    assert render(element(lv, "#run-why")) =~ "the machine type Shown UI 2 ("
-    assert has_element?(lv, "#run-why", "shown-ui-2")
-    assert has_element?(lv, ~s(#run-image[title="#{image}"]), "@sha256:5e2b5e2b5e2b…")
-    refute has_element?(lv, "#run-image-source")
+    {run, image}
   end
 
   test "an image Qory gave the run: in mono, raw, its whole reference the title, prebuilt",
        %{conn: conn, scope: scope, key: key} do
-    run = dispatched(scope, key, Map.merge(given_image(@prebuilt), %{image: @prebuilt}))
+    {run, prebuilt} = prebuilt(scope, key)
+    run = run |> Ecto.Changeset.change(image: prebuilt) |> Apiary.Repo.update!()
     lv = open(conn, scope, run)
 
-    assert has_element?(lv, ~s(#run-image.font-mono[title="#{@prebuilt}"]), @prebuilt)
+    assert has_element?(lv, ~s(#run-image.font-mono[title="#{prebuilt}"]), prebuilt)
     refute has_element?(lv, "#run-image bdi")
     assert has_element?(lv, "#run-image-source", "Prebuilt for this repository")
+  end
+
+  test "an image Qory gave the run elsewhere than its target's place: the image, no line",
+       %{conn: conn, scope: scope, key: key} do
+    # A run given a machine type's image, before a type set only the size.
+    run = dispatched(scope, key, given_image(@elsewhere))
+    lv = open(conn, scope, run)
+
+    assert has_element?(lv, ~s(#run-image.font-mono[title="#{@elsewhere}"]), @elsewhere)
+    refute has_element?(lv, "#run-image-source")
   end
 
   test "the image has a separate row after the Wall, the Key and the Machine type, and the Wall has the wall alone",
@@ -147,10 +133,10 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
 
   test "an image Qory gave the run is shown even where the run reported another",
        %{conn: conn, scope: scope, key: key} do
-    run = dispatched(scope, key, given_image(@prebuilt))
+    {run, prebuilt} = prebuilt(scope, key)
     lv = open(conn, scope, run)
 
-    assert has_element?(lv, "#run-image", @prebuilt)
+    assert has_element?(lv, "#run-image", prebuilt)
     refute has_element?(lv, "#run-image", @reported)
     assert has_element?(lv, "#run-image-source", "Prebuilt for this repository")
   end
@@ -185,7 +171,7 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
 
   test "the line under an image Qory gave says repository in the software domain, target in the engine's words",
        %{conn: conn, scope: scope, key: key} do
-    run = dispatched(scope, key, given_image(@prebuilt))
+    {run, _prebuilt} = prebuilt(scope, key)
     html = conn |> open(scope, run) |> element("#run-image-source") |> render()
 
     assert html =~ "Prebuilt for this repository"

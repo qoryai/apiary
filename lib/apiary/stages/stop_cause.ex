@@ -207,7 +207,7 @@ defmodule Apiary.Stages.StopCause do
     word = if Domain.name(workspace) == "software", do: "repository", else: "target"
 
     {:fix_first,
-     "Choose an image without nested Docker in the workspace's policy or the #{word}'s environment, then start the run again.",
+     "Choose an image without nested Docker in the #{word}'s environment, then start the run again.",
      "A read-only run cannot use an image with nested Docker."}
   end
 

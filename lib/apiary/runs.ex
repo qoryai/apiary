@@ -187,7 +187,7 @@ defmodule Apiary.Runs do
 
   @doc """
   A page of the runs of every workspace of the instance, for `GET /v1/runs` signed with a
-  diagnostics key (`Apiary.AccessKeys.diagnostics_scope/1`): `query` is the request's raw
+  diagnostics key (`run.list_instance`, `Apiary.Access`): `query` is the request's raw
   query string. `{:ok, document}`, the contract's run list, `%{"runs" => rows, "next" =>
   id or nil}`, or `{:error, parameter}` with the name of the parameter the request breaks
   the rule of (`Apiary.Runs.RunList`). One query reads the page's runs, after a query for

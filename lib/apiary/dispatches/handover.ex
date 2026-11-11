@@ -1233,10 +1233,7 @@ defmodule Apiary.Dispatches.Handover do
   defp gave(%DispatchRun{}, _cause), do: []
 
   # The registered run, pending, with its run code, and, for an explore run, the image the
-  # claim read for it: its machine type's, with the type's id
-  # (`configured_image_from_type`, `configured_image_machine_type_id`,
-  # `Apiary.MachineTypes.imaged/1`), else its target's
-  # (`Apiary.Environments.claim_image/2`), nil for the pool's default.
+  # claim read for it (`Apiary.Environments.claim_image/2`), nil for the pool's default.
   # The run's record written when it was queued (`Apiary.Dispatches.Queued`) is updated,
   # locked `FOR UPDATE`, and keeps its id, its number and when it was queued. A run of
   # the queue with no record, queued by the previous release, gets one, with the next
@@ -1295,8 +1292,6 @@ defmodule Apiary.Dispatches.Handover do
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,
       configured_image: Map.get(locked, :image),
-      configured_image_from_type: is_binary(Map.get(locked, :image_type)),
-      configured_image_machine_type_id: Map.get(locked, :image_type),
       inserted_at: now,
       updated_at: now
     }

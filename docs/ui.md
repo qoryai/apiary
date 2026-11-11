@@ -376,8 +376,7 @@ replaces the navigation it is in.
   `ApiaryWeb.InstanceLive.MachineTypes`, with the feature `factory`, after Nodes) lists
   the instance's machine types (`Apiary.MachineTypes`) for its admins: Name, with the key
   and the badge Default on the default under it; Spec, "2 vCPUs, 4 GiB" over "30 GiB
-  disk, amd64" (", virtualization" after a type that has it); Image, the image's name over
-  its digest cut to 12 digits, the whole reference on hover, "Not set" for none; Used by
+  disk, amd64" (", virtualization" after a type that has it); Used by
   ("3 workflows", the workflow entries that run on it, in each workspace's current and
   trial process and in each workspace type's newest one, as a deletion counts them; an
   entry set to `default` runs on the default), and Pools, the pools that serve it, "None"
@@ -387,7 +386,7 @@ replaces the navigation it is in.
   default (not on the default) and Delete…, confirmed in the row: "Delete Large?" and
   "Workflows can no longer pick this type. You cannot undo this." **Add machine type**
   (`…/new`) and Edit (`…/:key/edit`, "Edit Browser tests" in the breadcrumb) open the
-  form: Name, Key, Image (optional), vCPUs and Memory (GiB), Disk (GiB) and Architecture,
+  form: Name, Key, vCPUs and Memory (GiB), Disk (GiB) and Architecture,
   Needs virtualization and Default, each with its hint, then the line on how a pool picks
   a machine, and Add or Save beside Cancel. A field's refusal is under it, such as
   "Choose another key: default means the default type.", "Write a name of 1 to 100
@@ -1955,16 +1954,14 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   type, then Image. Machine type is the type the claim answer had, by the name of the
   type that has its key, then the key in mono, the key alone where no type has it,
   absent for an answer without one; for a queued run, the type it is queued on. Image is
-  shown for a run behind a wall: the image of the run's machine type, with its digest
-  cut to 12 digits and an ellipsis, whole on hover; else the image prebuilt for the
-  run's target, with "Prebuilt for this target" under it; else the image the run
-  reported, with "The pool's default image." under it when the run started in its pool's
-  default image. A queued run on a type that is not the default shows the image of its
-  type the same way, read when the page loads; a queued run on the default type, or on a
-  key no type has, and one on a type with no image, show no Image row. Where the reader
-  is not shown the factory feature, Image is the image the run reported, with no line
-  under it. Run's Policy row and the Policy in force section show only for a run whose
-  policy event arrived.
+  shown for a run behind a wall: the image Qory Apiary gave the run, with "Prebuilt for
+  this target" under it where the image is at the place a build for the run's target
+  pushes its image, and with no line under it elsewhere, as a machine type's image was;
+  else the image the run reported, with "The pool's default image." under it when the
+  run started in its pool's default image. A queued run shows no Image row. Where the
+  reader is not shown the factory feature, Image is the image the run reported, with no
+  line under it. Run's Policy row and the Policy in force section show only for a run
+  whose policy event arrived.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
@@ -2072,10 +2069,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      plain text, "Contact support with run rn_…, or ask the admin of build-pool to add
      an offer that fits." where the first such pool is a pool of the workspace or of
      another organisation, and "Contact support with run rn_…." where it is the
-     instance's pool, whose admins are the instance admins. The second line is also what
-     they read under Pull the images when the image of the run's type is not in its
-     registry. The header has the cause too, after "Why it waits". "Waiting: no pool can
-     start machine type large", under the fold, where the run has no spec.
+     instance's pool, whose admins are the instance admins. The header has the cause
+     too, after "Why it waits". "Waiting: no pool can start machine type large", under
+     the fold, where the run has no spec.
   4. "Waiting for a model key: every key of Northwind Claude is in cooldown until
      14:00." while every key of each of the run's model providers, its model choice's
      provider and its fallbacks, is in cooldown: the run's queueing stores those
@@ -2089,8 +2085,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      Nothing runs when the cooldown ends: the first claim after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
-     no build live, while it is held for its target's build. A run whose machine type
-     has an image waits for no build.
+     no build live, while it is held for its target's build.
   6. "Waiting for a machine: build-pool runs 3 of its 3 machines." while every pool runs
      as many machines as its limit allows; "Waiting for a machine: Qory Pool runs all of
      its machines." on the Qory Pool, whose count covers other organisations' runs.
@@ -2328,21 +2323,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   as qory's `prepare`, have no parentheses: "Set up the dev container failed with exit
   code 1." For an image step named by its image reference alone, the parentheses contain
   that reference: "Pull the images failed (registry.example.com/acme/storefront-dev:1)."
-  For a run that ended `image_missing` on the image of its machine type, the line is
-  "Pull the images failed: the image of the machine type Browser tests (`browser`) is
-  not in its registry: `ghcr.io/acme/agent@sha256:0123456789ab…`.", with "An instance
-  admin sets an image that exists in Instance settings › Machine types, then runs the
-  work item again." under it for an instance admin, and "Contact support with run rn_…."
-  in plain text for anyone else, and "How it ended" has the same first line. A run on
-  the image of its machine type that ended `image_access_denied`, `image_rate_limited` or
-  `image_registry_unreachable` has the same shape: a first line such as "Pull the images
-  failed: a rate limit stopped the requests for the image of the machine type Browser
-  tests (`browser`).", then, for an instance admin, the fix, the cause and the image,
-  and for anyone else "Contact support with run rn_….", or after a rate limit "Run the
-  work item again later. If it fails again, contact support with run rn_…." While Pull
-  the images pulls the image of the run's machine type, the step shows "The machine
-  pulls the image of the machine type Browser tests (`browser`). Each run pulls its
-  image before the agent starts." and "No action needed." above its output. Under Start
+  A run whose pull ended with one of Forager's image codes (`image_missing`,
+  `image_access_denied`, `image_rate_limited`, `image_registry_unreachable`) has that
+  line too. Under Start
   the machine, for a machine that did not start, the line states the machine's cause,
   such as "Qory Pool did not start a machine within 10 minutes." A run that stopped
   before its first agent session started has no note above the Timeline: the failed row
@@ -2409,9 +2392,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   machine's forager.yaml, then start the run again. A read-only run needs a wall, and
   this machine has none."; "Set wall.setup to outside in the machine's forager.yaml, or
   remove it, then start the run again. A read-only run cannot run its setup inside the
-  agent's container."; "Choose an image without nested Docker in the workspace's policy
-  or the target's environment, then start the run again. A read-only run cannot use an
-  image with nested Docker." ("repository's" in a software workspace); and "Start the
+  agent's container."; "Choose an image without nested Docker in the target's
+  environment, then start the run again. A read-only run cannot use an image with nested
+  Docker." ("repository's" in a software workspace); and "Start the
   run again. The setup container was not removed, so a process in it could still write
   the files.". On the Qory Pool, whose forager.yaml a person in an organisation cannot
   edit, "Contact support." replaces the fix of the first two. Any other code is the

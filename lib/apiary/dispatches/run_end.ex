@@ -72,13 +72,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # that build (`Apiary.Dispatches.requeue_for_image/1`); a run that came from such a
   # requeue ends with no requeue. An end that finds such an exit with that image not held
   # (`hold/1` read the run before the exit was folded) ends nothing; the projection's end
-  # or the next check ends it with the image held. A run given the image of a machine
-  # type (`runs.configured_image_from_type`) ends as any exit ends it: no build is cleared
-  # or queued, and nothing is queued again, whatever the type's image is now, and also
-  # once the type is deleted. An exit with one of Forager's other image codes,
-  # `image_access_denied`, `image_rate_limited` or `image_registry_unreachable`, ends as
-  # any exit ends it: a build or a new run pulls from the same registry, so nothing is
-  # cleared or queued again.
+  # or the next check ends it with the image held. An exit with one of Forager's other
+  # image codes, `image_access_denied`, `image_rate_limited` or
+  # `image_registry_unreachable`, ends as any exit ends it: a build or a new run pulls
+  # from the same registry, so nothing is cleared or queued again.
   #
   # **A pause.** A run that is not a prebuild, whose folded exit paused it at its model
   # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
@@ -391,16 +388,12 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp missing_unheld?(_dispatch_run, %Run{} = run, _held), do: missing_exit?(run)
 
-  # A run given a machine type's image (`runs.configured_image_from_type`) is not one: its
-  # target's image is not what is missing.
   defp missing_exit?(%Run{
          exit_state: "failed",
          exit_reason: @image_missing,
-         configured_image: image,
-         configured_image_from_type: false
-       })
-       when is_binary(image),
-       do: true
+         configured_image: image
+       }),
+       do: is_binary(image)
 
   defp missing_exit?(%Run{}), do: false
 
@@ -461,19 +454,17 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
   # run's folded exit is `failed` with the reason `image_missing` and it started in the
-  # image its pool's record gave it, a target's image (`runs.configured_image_from_type`
-  # false):
-  # the pool that
-  # claimed it, from its dispatch handed over, the run's target, read from its
-  # registration labels by its workspace's domain (`Apiary.Lingo.Domain.target/2`), and
-  # that image; `:unknown` when the pool or the target is not found. nil otherwise.
+  # image its pool's record gave it: the pool that claimed it, from its dispatch handed
+  # over, the run's target, read from its registration labels by its workspace's domain
+  # (`Apiary.Lingo.Domain.target/2`), and that image; `:unknown` when the pool or the
+  # target is not found. nil otherwise.
   defp missing(dispatch_run_id) do
     from(r in Run,
       left_join: d in Dispatch,
       on: d.dispatch_run_id == r.dispatch_run_id and not is_nil(d.handed_over_at),
       where: r.dispatch_run_id == ^dispatch_run_id,
       where: r.exit_state == "failed" and r.exit_reason == ^@image_missing,
-      where: not is_nil(r.configured_image) and not r.configured_image_from_type,
+      where: not is_nil(r.configured_image),
       order_by: [desc_nulls_last: d.handed_over_at],
       limit: 1,
       select: {d.pool_id, r.workspace_id, r.registration_labels, r.configured_image}
@@ -483,17 +474,14 @@ defmodule Apiary.Dispatches.RunEnd do
       nil ->
         nil
 
-      {pool_id, workspace_id, labels, image} ->
-        cond do
-          is_binary(pool_id) ->
-            case Domain.target(Repo.get(Workspace, workspace_id), labels) do
-              {:ok, target} -> %{pool_id: pool_id, target: target, image: image}
-              :none -> :unknown
-            end
-
-          true ->
-            :unknown
+      {pool_id, workspace_id, labels, image} when is_binary(pool_id) ->
+        case Domain.target(Repo.get(Workspace, workspace_id), labels) do
+          {:ok, target} -> %{pool_id: pool_id, target: target, image: image}
+          :none -> :unknown
         end
+
+      _no_pool ->
+        :unknown
     end
   end
 

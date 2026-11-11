@@ -221,7 +221,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       refute has_element?(view, "#run-duration-line")
       assert text(view, "#rail-workflow") == "explore-a-ticket"
       assert text(view, "#rail-machine-type") == "Standard standard"
-      # Standard has no image here: no Image row.
+      # A queued run has no image yet: no Image row.
       refute has_element?(view, "#run-image-row")
       assert text(view, "#run-node-run-id") == "n/a"
       assert render(view) =~ "Waiting for the run to start"
@@ -229,48 +229,18 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       refute render(view) =~ "Forager has pinged"
     end
 
-    test "shows the image of a queued run's machine type, its digest cut, whole on hover",
+    test "shows no image for a queued run on a type that is not the default, or on a key no type has",
          %{conn: conn, scope: scope} do
-      image = "ghcr.io/acme/agent-ui@sha256:" <> String.duplicate("4f1a", 16)
-
-      # A type with the key queued-ui, which no other test uses, inserted so that no other
-      # test waits on a row this one changes.
-      Repo.insert!(%Apiary.MachineTypes.MachineType{
-        key: "queued-ui",
-        name: "Queued UI",
-        vcpus: 2,
-        memory_mib: 4096,
-        disk_gib: 30,
-        arch: "amd64",
-        image: image
-      })
-
       {_work_item, queued} = queue!(scope)
       walked!(queued)
 
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
-          set: [machine_type: "queued-ui"]
+          set: [machine_type: "browser"]
         )
 
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
-
-      assert text(view, "#run-image") == "ghcr.io/acme/agent-ui@sha256:4f1a4f1a4f1a…"
-      assert has_element?(view, ~s(#run-image[title="#{image}"]))
-    end
-
-    test "shows no image for a queued run on the default type, or on a key no type has, whose target's image comes first",
-         %{conn: conn, scope: scope} do
-      {1, _rows} =
-        Repo.update_all(
-          from(t in Apiary.MachineTypes.MachineType, where: t.is_default),
-          set: [image: "ghcr.io/acme/agent@sha256:" <> String.duplicate("6c0d", 16)]
-        )
-
-      {_work_item, queued} = queue!(scope)
-      walked!(queued)
-      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
-      assert text(view, "#rail-machine-type") =~ "standard"
+      assert text(view, "#rail-machine-type") =~ "browser"
       refute has_element?(view, "#run-image-row")
 
       {_work_item, unknown} = queue!(scope)

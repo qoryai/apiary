@@ -1658,7 +1658,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
           global: false
         )
 
-      assert Apiary.Policy.ComposedConfiguration.policy_image(naming) == "with-docker"
+      assert Jason.decode!(naming)["security_policy"]["image"] == "with-docker"
 
       newer =
         Repo.insert!(%Apiary.Policy.RunConfiguration{

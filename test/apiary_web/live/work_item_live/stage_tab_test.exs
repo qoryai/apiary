@@ -862,6 +862,57 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert run.workflow == "shape-a-ticket"
     end
 
+    test "at Shape's gate: a member who is not among Shape's approvers runs no round", %{
+      scope: scope
+    } do
+      process!(scope, %{
+        "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+      })
+
+      work_item = decided_at_gate!(scope)
+      member = Apiary.OrganisationsFixtures.member_fixture(scope)
+      before = attempt(work_item)
+      round = %{answers: [%{"id" => "q2", "option" => "Postgres"}]}
+
+      assert WorkItems.another_round(member.scope, work_item, before, round) ==
+               {:error, :not_approver}
+
+      assert attempt(work_item) == before
+      assert %WorkItem{stage_state: :at_gate} = reload(work_item)
+
+      # On Shape's tab the send shows the line of a member who is not an approver.
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), member.user), stage(scope, work_item.number))
+
+      gate = "#work-item-tab-gate"
+      drafted = %{"number" => "#{work_item.number}", "answers" => %{"q2" => %{"option" => "2"}}}
+      view |> element(gate) |> render_change(drafted)
+      view |> element(gate) |> render_submit(drafted)
+      confirm_spend(view)
+
+      assert render(view) =~ "Ask an approver of Shape to act on it."
+      assert attempt(work_item) == before
+
+      # The other moves that run Shape's next round from its gate are the approvers' too.
+      assert WorkItems.answer(member.scope, work_item, before, round.answers) ==
+               {:error, :not_approver}
+
+      comment_on!(scope, work_item, "spec", 1, "On the spec.")
+
+      assert WorkItems.send_review_comments(member.scope, work_item, before) ==
+               {:error, :not_approver}
+
+      assert attempt(work_item) == before
+
+      # An approver's run again from the gate leaves its gate.approve entry.
+      assert {:ok, _work_item} = WorkItems.send_review_comments(scope, work_item, before)
+      assert attempt(work_item) == before + 1
+      user_id = scope.user.id
+
+      assert [{^user_id, %{"change" => "another_round", "stage_id" => @shape}}] =
+               gate_entries(work_item)
+    end
+
     test "at Shape's gate: Explore's decision and Explore's open comment stay Explore's", %{
       scope: scope
     } do
@@ -961,6 +1012,111 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert {:ok, _work_item} = WorkItems.another_round(scope, work_item, before, %{})
       assert [explore_comment] = round_comments(work_item)
       refute explore_comment == spec_comment
+    end
+
+    # Shape's gate lists the scope's person alone.
+    defp shape_approver_only!(scope) do
+      process!(scope, %{
+        "gate" => %{"kind" => "person", "approvers" => %{"members" => [scope.user.id]}}
+      })
+    end
+
+    # Shape's run asked q1 and pushed the verdict `escalate`: Shape waits for answers, with
+    # the escalation open.
+    defp escalated_questions!(scope) do
+      work_item = at_shape!(scope)
+
+      work_item
+      |> end_run!(fn run, registered ->
+        push!(run, work_item, "spec", "## The spec text")
+        push_result!(run, registered, questions_result(["Which basket?"]))
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            reload(work_item),
+            "verdict",
+            %{
+              "verdict" => "escalate",
+              "points" => [%{"text" => "The ticket has no basket.", "action" => "run_again"}]
+            },
+            stage_id: run.stage_id
+          )
+      end)
+      |> reload()
+    end
+
+    defp escalations(work_item),
+      do:
+        Repo.all(
+          from e in Apiary.Stages.Escalation,
+            where: e.work_item_id == ^work_item.id,
+            select: {e.resolution, e.resolved_by_id}
+        )
+
+    defp gate_entries(work_item),
+      do:
+        Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.action == "gate.approve" and e.subject_id == ^work_item.id,
+            order_by: e.inserted_at,
+            select: {e.actor_id, e.details}
+        )
+
+    test "Shape waiting for answers with its escalation open: a member who is not an approver answers nothing",
+         %{scope: scope} do
+      shape_approver_only!(scope)
+      work_item = escalated_questions!(scope)
+      assert work_item.stage_state == :waiting_answers
+      member = Apiary.OrganisationsFixtures.member_fixture(scope)
+      before = attempt(work_item)
+      answers = [%{"id" => "q1", "option" => nil, "note" => "The cart."}]
+
+      assert WorkItems.another_round(member.scope, work_item, before, %{answers: answers}) ==
+               {:error, :not_approver}
+
+      assert WorkItems.answer(member.scope, work_item, before, answers) ==
+               {:error, :not_approver}
+
+      assert attempt(work_item) == before
+      assert escalations(work_item) == [{nil, nil}]
+      assert gate_entries(work_item) == []
+
+      # On Shape's tab the send shows the line of a member who is not an approver.
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), member.user), stage(scope, work_item.number))
+
+      q = "#work-item-tab-questions"
+
+      view
+      |> element("#{q}-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"note" => "The cart."}}
+      })
+
+      confirm_spend(view)
+      assert render(view) =~ "Ask an approver of Shape to act on it."
+      assert attempt(work_item) == before
+    end
+
+    test "Shape waiting for answers with its escalation open: an approver's answer settles it",
+         %{scope: scope} do
+      shape_approver_only!(scope)
+      work_item = escalated_questions!(scope)
+      before = attempt(work_item)
+
+      assert {:ok, _work_item} =
+               WorkItems.answer(scope, work_item, before, [
+                 %{"id" => "q1", "option" => nil, "note" => "The cart."}
+               ])
+
+      assert attempt(work_item) == before + 1
+      user_id = scope.user.id
+      assert escalations(work_item) == [{:another_round, user_id}]
+
+      assert [{^user_id, %{"change" => "escalation_another_round", "cause" => "escalate"}}] =
+               gate_entries(work_item)
     end
 
     test "Shape waiting for an answer: the needs block links the question on Shape's tab",
@@ -1559,6 +1715,35 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       work_item = proposed!(scope) |> reload()
       assert work_item.stage_id == @shape
       work_item
+    end
+
+    test "Run another round from the proposal starts no round of Shape while Shape waits for its inputs",
+         %{conn: conn, scope: scope} do
+      work_item =
+        passed_on!(scope, %{"inputs" => [%{"type" => "mockup", "required" => true}]})
+
+      assert work_item.stage_state == :waiting_inputs
+      assert %{status: :confirm} = WorkItems.explore(scope, work_item)
+      before = attempt(work_item)
+
+      assert WorkItems.another_round(scope, work_item, before, %{comment: "Shorter."}) ==
+               {:error, :not_waiting}
+
+      assert attempt(work_item) == before
+      assert reload(work_item).stage_state == :waiting_inputs
+
+      # Explore's tab offers Run another round on the proposal; the send starts nothing
+      # and shows that the work item changed, as Approve there is refused.
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
+      gate = "#work-item-explore-gate"
+
+      view
+      |> element(gate)
+      |> render_submit(%{"number" => "#{work_item.number}", "comment" => "Shorter."})
+
+      confirm_spend(view)
+      assert render(view) =~ "The work item changed after the page showed it"
+      assert attempt(work_item) == before
     end
 
     test "a reply to a comment on the proposal is kept", %{scope: scope} do
