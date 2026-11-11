@@ -430,6 +430,33 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert [%State{window: "five_hour", status: "rejected"}] = rows()
     end
 
+    test "410 that stores a report up to 60 s after the server ended the run, before its exit",
+         ctx do
+      lost = fn seconds_ago ->
+        Repo.delete_all(State)
+
+        {1, _} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+            set: [
+              state: "lost",
+              lost_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
+            ]
+          )
+      end
+
+      # No `dev.qory.run.exited` has come: the lost-run check ended the run.
+      lost.(61)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert rows() == []
+
+      lost.(59)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert signed_answer?(conn)
+      assert [%State{window: "five_hour"}] = rows()
+    end
+
     test "a report before the run's exit is stored and answered, and one after is 410", ctx do
       conn = post_report(ctx, report(ctx, [state(ctx)]))
       assert conn.status == 200

@@ -31,8 +31,10 @@ defmodule Apiary.ModelKeys.Report do
        `run.post_events` on the run;
     3. `{:error, :gone}` for a run that has ended: not pending or running, or its sending
        ended (`Apiary.Runs.Sender.sending_ended?/1`); the states are recorded first, as in
-       step 4, when this server took the run's `dev.qory.run.exited` at most 60 seconds
-       before, as the gateway sends its last report within 10 seconds of the run's end;
+       step 4, when the run ended at most 60 seconds before: this server took its
+       `dev.qory.run.exited` then, or ended it then by another path, such as the lost-run
+       check, before that event came. The gateway sends its last report within 10 seconds
+       of the run's end;
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
@@ -59,7 +61,7 @@ defmodule Apiary.ModelKeys.Report do
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
   @max_skew_seconds 300
   # The gateway sends its last report within 10 s of the run's end, sometimes before its
-  # `dev.qory.run.exited`: a report this long after that exit is still stored.
+  # `dev.qory.run.exited`: a report this long after the run's end is still stored.
   @after_exit_seconds 60
   # The contract's bound on `resets_at`: at most 31 days after the answer arrived.
   @max_reset_days 31
@@ -219,7 +221,7 @@ defmodule Apiary.ModelKeys.Report do
           :ok = ModelKeys.record(keys, report.keys, now)
           {:ok, body(ModelKeys.run_states(keys, now))}
 
-        just_exited?(run, now) ->
+        just_ended?(run, now) ->
           :ok = ModelKeys.record(ModelKeys.run_keys(run), report.keys, now)
           {:error, :gone}
 
@@ -262,16 +264,32 @@ defmodule Apiary.ModelKeys.Report do
   defp live?(%Run{} = run),
     do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
 
-  # Whether this server took the run's `dev.qory.run.exited` at most `@after_exit_seconds`
-  # before `now`.
-  defp just_exited?(%Run{id: id}, now) do
+  # Whether the run ended at most `@after_exit_seconds` before `now`: this server took its
+  # `dev.qory.run.exited` then, or ended it by another path then, before that event came
+  # (`ended_at/1`).
+  defp just_ended?(%Run{id: id} = run, now) do
     since = DateTime.add(now, -@after_exit_seconds, :second)
 
+    at = ended_at(run)
+    (not is_nil(at) and DateTime.compare(at, since) != :lt) or exited_since?(id, since)
+  end
+
+  defp exited_since?(id, since) do
     Repo.exists?(
       from e in Event,
         where: e.run_id == ^id and e.type == "dev.qory.run.exited",
         where: e.received_at >= ^since
     )
+  end
+
+  # When this server ended the run by a path other than its exit, the latest of: the
+  # lost-run check (`lost_at`), a start that failed (`start_failed_at`), a refusal
+  # (`refused_at`), a release (`released_at`) and the starter's outcome
+  # (`outcome_received_at`); nil for none.
+  defp ended_at(%Run{} = run) do
+    [run.lost_at, run.start_failed_at, run.refused_at, run.released_at, run.outcome_received_at]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(DateTime, fn -> nil end)
   end
 
   @doc """
