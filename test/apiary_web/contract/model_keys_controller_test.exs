@@ -219,6 +219,37 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert Enum.sort(Enum.map(rows(), & &1.window)) == Enum.sort(State.windows())
     end
 
+    test "stores 66 entries for a run of 6 keys, 11 windows each" do
+      %{scope: scope} = sign_up_fixture()
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
+
+      six =
+        sealed_run_fixture(scope,
+          keys: for(n <- 1..6, do: %{value_id: "key-#{n}", value: "sk-ant-six-#{n}-0123456789"})
+        )
+
+      assert length(Repo.get!(Run, six.run.id).model_keys) == 6
+
+      entries =
+        for n <- 1..6, window <- State.windows() do
+          state(six,
+            credential: "#{six.provider.public_id}-#{n}",
+            window: window,
+            status: "allowed",
+            cooldown_until: nil,
+            resets_at: nil,
+            utilization: nil
+          )
+        end
+
+      conn = post_report(six, report(six, entries))
+      assert conn.status == 200
+
+      stored = Repo.all(from s in State, where: s.organisation_id == ^scope.organisation.id)
+      assert length(stored) == 66
+      assert stored |> Enum.map(& &1.secret_value_id) |> Enum.uniq() |> length() == 6
+    end
+
     test "leaves out a window outside the contract's list, and takes the rest", ctx do
       body =
         report(ctx, [
