@@ -126,6 +126,30 @@ defmodule Apiary.RetentionJobTest do
       refute log =~ "{}"
     end
 
+    test "stays in a workspace or an organisation marked for deletion", %{scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      %{scope: third} = sign_up_fixture()
+      marked = run_fixture(scope, %{state: "completed"})
+      in_marked_organisation = run_fixture(other, %{state: "completed"})
+      kept_out = run_fixture(third, %{state: "completed"})
+      Enum.each([marked, in_marked_organisation, kept_out], &chunk!/1)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Organisations.Workspace, where: h.id == ^scope.workspace.id),
+          set: [deletion_marked_at: @now, purge_after: @now, purge_trigger: "grace_period"]
+        )
+
+      {1, _rows} =
+        Repo.update_all(
+          from(o in Apiary.Organisations.Organisation, where: o.id == ^other.organisation.id),
+          set: [deletion_marked_at: @now, purge_after: @now, purge_trigger: "grace_period"]
+        )
+
+      assert {:ok, _results} = Retention.prune_all(now: @now)
+      assert Enum.map([marked, in_marked_organisation, kept_out], &chunks/1) == [1, 1, 0]
+    end
+
     test "stays while its work item explores, when a phase deletes the run's events", %{
       scope: scope
     } do

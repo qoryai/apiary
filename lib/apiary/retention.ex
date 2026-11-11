@@ -54,7 +54,8 @@ defmodule Apiary.Retention do
   neither phase: a run that continues a paused run reads them, whenever it starts, and a
   cooldown can last 7 days. A phase that deletes the run's events deletes the
   `dev.qory.session.transcript` events with them, and the chunks stay. Under the same
-  lock, on every workspace whatever its settings, the job deletes the chunks of a run
+  lock, on every workspace whatever its settings, but a workspace or an organisation
+  marked for deletion, as for the phases, the job deletes the chunks of a run
   whose work item is closed or undone, and of an ended run of no work item, which no run
   continues, at most `:max_runs` runs a job (10,000), each a batch at a time under the
   run's projection lock, with one log line, `retention pruned transcripts=…`, when it
@@ -744,12 +745,18 @@ defmodule Apiary.Retention do
   end
 
   # The runs with chunks of a transcript whose work item is closed or undone, or that
-  # ended with no work item, at most `limit`.
+  # ended with no work item, at most `limit`, of the workspaces the job walks whatever
+  # their settings: a workspace marked for deletion, or of an organisation marked, is
+  # left alone, as its purge deletes it whole (`workspaces/1`).
   defp transcripts_done(limit) do
     ended = Apiary.WorkItems.State.ended_states()
 
     Repo.all(
       from r in Run,
+        join: h in Workspace,
+        on: h.id == r.workspace_id and h.organisation_id == r.organisation_id,
+        join: o in assoc(h, :organisation),
+        where: is_nil(h.deletion_marked_at) and is_nil(o.deletion_marked_at),
         left_join: d in DispatchRun,
         on: d.id == r.dispatch_run_id,
         left_join: w in WorkItem,
