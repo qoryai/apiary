@@ -5,8 +5,7 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
   in (`Apiary.Environments.image_for/2`), in mono, its digest shortened and the whole
   reference its title, when it was built and its commit, or that runs use the pool's
   default image and why, or that runs wait until the target's environment image is
-  built, or that they use the image set in the workspace's policy;
-  whether a build runs or waits; the last build's failure by its cause, never a starter's
+  built, whatever image the workspace's policy sets; whether a build runs or waits; the last build's failure by its cause, never a starter's
   reason; one line where no pool serves the workspace or the target names no environment.
   Rebuild, for whoever may ask for a build, where the target names an environment and a
   pool serves the workspace, with its toasts and its Activity line; no card where the
@@ -526,79 +525,23 @@ defmodule ApiaryWeb.TargetLive.EnvironmentTest do
     end
 
     @tag needs: [:factory, :registry]
-    test "the workspace's policy sets an image: each pool says runs use it, in place of the prebuilt image",
-         %{conn: conn, scope: scope, shop: shop, path: path} do
+    test "the workspace's policy sets an image: each pool still shows the prebuilt image",
+         %{conn: conn, scope: scope, path: path} do
       mac = pool_fixture(scope, name: "mac-pool")
       linux = pool_fixture(scope, name: "linux-pool")
       shop_collection = collection(scope)
       record!(scope, mac, shop_collection, built(DateTime.utc_now()))
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
-
-      view = open(conn, path)
-      assert has_element?(view, "#{pool_id(mac)}-image")
-      refute has_element?(view, "#{pool_id(mac)}-policy")
-
       set_policy_image!(scope)
       view = open(conn, path)
 
-      for pool <- [mac, linux] do
-        assert has_element?(
-                 view,
-                 "#{pool_id(pool)}-policy",
-                 "Runs use the image set in this workspace's policy."
-               )
-
-        refute has_element?(view, "#{pool_id(pool)}-image")
-        refute has_element?(view, "#{pool_id(pool)}-commit")
-        refute has_element?(view, "#{pool_id(pool)}-default")
-      end
-
-      # A version for the target, which names no image, is the one in force for it.
-      {:ok, _rule} = Policy.allow(scope, shop, %{host: "cdn.example"})
-      view = open(conn, path)
+      # No run starts in the image a policy sets.
       assert has_element?(view, "#{pool_id(mac)}-image")
-      refute has_element?(view, "#{pool_id(mac)}-policy")
-    end
+      assert has_element?(view, "#{pool_id(linux)}-held")
+      refute render(view) =~ "Runs use the image set in this workspace's policy."
 
-    @tag needs: [:factory, :registry]
-    test "the workspace's policy sets an image: a pool's failure, waiting and running lines stay",
-         %{conn: conn, scope: scope, path: path} do
-      mac = pool_fixture(scope, name: "mac-pool")
-      linux = pool_fixture(scope, name: "linux-pool")
-      arm = pool_fixture(scope, name: "arm-pool")
-      shop = collection(scope)
-      record!(scope, mac, shop, %{failure_cause: :timed_out, failed_at: DateTime.utc_now()})
-
-      for pool <- [linux, arm] do
-        {:ok, {:ok, _run}} =
-          Repo.transact(fn -> {:ok, Dispatches.queue_prebuild(shop, pool, "env-1")} end)
-      end
-
-      _gateway = gateway_for!(scope, arm)
-      %{access_key: key} = enrolled_key_fixture(scope, arm)
-      {:ok, _claimed} = Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now())
-      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
-      set_policy_image!(scope)
-      view = open(conn, path)
-
-      for pool <- [mac, linux, arm] do
-        assert has_element?(
-                 view,
-                 "#{pool_id(pool)}-policy",
-                 "Runs use the image set in this workspace's policy."
-               )
-      end
-
-      assert has_element?(
-               view,
-               "#{pool_id(mac)}-failure",
-               "The last build failed: it ran past 1 hour and 15 minutes."
-             )
-
-      assert has_element?(view, "#{pool_id(linux)}-waiting", "A build is waiting.")
-      refute has_element?(view, "#{pool_id(linux)}-running")
-      assert has_element?(view, "#{pool_id(arm)}-running", "A build is running.")
-      refute has_element?(view, "#{pool_id(arm)}-waiting")
+      for pool <- [mac, linux],
+          do: refute(has_element?(view, "#{pool_id(pool)}-policy"))
     end
 
     test "no card where the reader is not shown the feature", %{

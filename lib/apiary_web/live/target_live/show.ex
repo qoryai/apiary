@@ -43,12 +43,11 @@ defmodule ApiaryWeb.TargetLive.Show do
   # Apiary.Environments.image_for/2 gives it, in mono, its digest cut to twelve characters
   # and the whole reference its title, when it was built and from which commit, or that
   # runs wait until the target's environment image is built, or that runs use the pool's
-  # default image and why, or, where the policy in force for the target sets an image,
-  # that runs use the image set in the policy; whether a build runs
-  # or waits; and the last build's failure, never the reason a starter gave. Where no pool
-  # serves the workspace, or the target names no environment, one line says so instead;
-  # so does one line, with no Rebuild, on an instance without a registry, where no build
-  # runs. Its Rebuild queues a build for each pool (Apiary.Environments.rebuild/2), for
+  # default image and why; whether a build runs or waits; and the last build's failure,
+  # never the reason a starter gave. Where no pool serves the workspace, or the target
+  # names no environment, one line says so instead; so does one line, with no Rebuild, on
+  # an instance without a registry, where no build runs. Its Rebuild queues a build for
+  # each pool (Apiary.Environments.rebuild/2), for
   # whoever may ask for one (`target.rebuild_environment`), where the target names an
   # environment and a pool serves the workspace; a reader who may not sees no button. After it, under
   # the same condition, where the workspace's domain has a label for a run's paths
@@ -920,12 +919,6 @@ defmodule ApiaryWeb.TargetLive.Show do
     <span id={"#{@id}-held"}>
       {gettext("Runs wait until this target's environment image is built.")}
     </span>
-    """
-  end
-
-  defp environment_image(%{pool: %{serves: :policy}} = assigns) do
-    ~H"""
-    <span id={"#{@id}-policy"}>{gettext("Runs use the image set in this workspace's policy.")}</span>
     """
   end
 

@@ -298,7 +298,7 @@ defmodule Apiary.Stages.StopCauseTest do
       docker = "read_needs_no_nested_docker"
 
       assert words(scope, docker, nil) ==
-               "Choose an image without nested Docker in the workspace's policy or the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+               "Choose an image without nested Docker in the repository's environment, then start the run again. A read-only run cannot use an image with nested Docker."
 
       {1, _rows} =
         Repo.update_all(
@@ -307,7 +307,7 @@ defmodule Apiary.Stages.StopCauseTest do
         )
 
       assert words(scope, docker, nil) ==
-               "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+               "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
     end
   end
 

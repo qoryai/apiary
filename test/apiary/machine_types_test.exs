@@ -40,8 +40,6 @@ defmodule Apiary.MachineTypesTest do
     arch: "amd64"
   }
 
-  @image "ghcr.io/qoryai/qory-agent-prerelease@sha256:" <> String.duplicate("c", 64)
-
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     %{scope: scope} = sign_up_fixture()
@@ -67,10 +65,8 @@ defmodule Apiary.MachineTypesTest do
   describe "the seeded default" do
     test "is standard: 2 vCPUs, 4 GiB, 30 GiB of disk, amd64, no virtualization" do
       assert [
-               %MachineType{key: "standard", name: "Standard", image: nil, is_default: true} =
-                 standard,
-               %MachineType{key: "browser", name: "Browser tests", image: nil, is_default: false} =
-                 browser
+               %MachineType{key: "standard", name: "Standard", is_default: true} = standard,
+               %MachineType{key: "browser", name: "Browser tests", is_default: false} = browser
              ] = MachineTypes.list()
 
       assert MachineTypes.spec(standard) == @standard
@@ -102,19 +98,18 @@ defmodule Apiary.MachineTypesTest do
         end)
       end
 
-      for {name, image, check} <- [
-            {"Two\nlines", nil, "machine_types_name_check"},
-            {"Tab\there", nil, "machine_types_name_check"},
-            {"Line\u2028separator", nil, "machine_types_name_check"},
-            {String.duplicate("a", 101), nil, "machine_types_name_check"},
-            {String.duplicate("é", 101), nil, "machine_types_name_check"},
-            {"Tagged", "ghcr.io/qoryai/agent:latest", "machine_types_image_check"}
+      for name <- [
+            "Two\nlines",
+            "Tab\there",
+            "Line\u2028separator",
+            String.duplicate("a", 101),
+            String.duplicate("é", 101)
           ] do
-        assert_raise Postgrex.Error, ~r/#{check}/, fn ->
+        assert_raise Postgrex.Error, ~r/machine_types_name_check/, fn ->
           Repo.transaction(fn ->
             Repo.query!(
-              "INSERT INTO machine_types (id, key, name, image, vcpus, memory_mib, disk_gib, arch, virtualization, is_default, inserted_at, updated_at) VALUES (gen_random_uuid(), 'other', $1, $2, 1, 512, 1, 'amd64', false, false, now(), now())",
-              [name, image]
+              "INSERT INTO machine_types (id, key, name, vcpus, memory_mib, disk_gib, arch, virtualization, is_default, inserted_at, updated_at) VALUES (gen_random_uuid(), 'other', $1, 1, 512, 1, 'amd64', false, false, now(), now())",
+              [name]
             )
           end)
         end
@@ -382,26 +377,20 @@ defmodule Apiary.MachineTypesTest do
                  Map.merge(spec(), %{
                    "key" => "large",
                    "name" => "Large",
-                   "image" => nil,
                    "default" => false
                  })
              }
     end
 
-    test "made the default, with or without an image, makes the default before it no longer the default",
+    test "made the default, makes the default before it no longer the default",
          %{scope: scope} do
-      assert {:ok, %MachineType{is_default: true, image: nil}} =
+      assert {:ok, %MachineType{is_default: true}} =
                MachineTypes.create(scope, Map.put(@large, :is_default, true))
 
-      assert {:ok, %MachineType{is_default: true, image: @image}} =
+      assert {:ok, %MachineType{is_default: true}} =
                MachineTypes.create(
                  scope,
-                 Map.merge(@large, %{
-                   key: "larger",
-                   name: "Larger",
-                   is_default: true,
-                   image: @image
-                 })
+                 Map.merge(@large, %{key: "larger", name: "Larger", is_default: true})
                )
 
       assert names() == [
@@ -412,7 +401,7 @@ defmodule Apiary.MachineTypesTest do
              ]
     end
 
-    test "a reserved, invalid or taken key, a bad name or image, or a number out of bounds is an error",
+    test "a reserved, invalid or taken key, a bad name, or a number out of bounds is an error",
          %{scope: scope} do
       for {key, validation} <- [
             {"default", :reserved},
@@ -448,17 +437,6 @@ defmodule Apiary.MachineTypesTest do
       # 100 code points of two bytes each are a name, as the diagnostics contract counts.
       assert MachineType.changeset(%MachineType{}, %{@large | name: String.duplicate("é", 100)}).valid?
 
-      for image <- [
-            "ghcr.io/qoryai/qory-agent:latest",
-            "ghcr.io/qoryai/Qory@sha256:" <> String.duplicate("c", 64),
-            "ghcr.io/qoryai/qory@sha256:" <> String.duplicate("c", 63),
-            String.duplicate("a", 256) <> "@sha256:" <> String.duplicate("c", 64)
-          ] do
-        assert {:error, changeset} = MachineTypes.create(scope, Map.put(@large, :image, image))
-        assert {_, opts} = changeset.errors[:image], image
-        assert opts[:validation] == :format, image
-      end
-
       for {field, value} <- [
             vcpus: 0,
             vcpus: 1025,
@@ -480,9 +458,6 @@ defmodule Apiary.MachineTypesTest do
                  | key: String.duplicate("a", 64),
                    name: String.duplicate("A", 100)
                })
-
-      assert {:ok, %MachineType{image: @image}} =
-               MachineTypes.create(scope, Map.merge(@large, %{key: "with-image", image: @image}))
     end
 
     test "refuses a type no pool fits while a pool has offers", %{scope: scope} do
@@ -509,7 +484,7 @@ defmodule Apiary.MachineTypesTest do
   end
 
   describe "update/3 and make_default/2" do
-    test "change the key, the name, the image and the spec, each with an entry", %{
+    test "change the key, the name and the spec, each with an entry", %{
       scope: scope
     } do
       large = machine_type_fixture(@large)
@@ -526,7 +501,7 @@ defmodule Apiary.MachineTypesTest do
 
       {:ok, updated} = MachineTypes.update(scope, updated, %{"key" => "large"})
 
-      {:ok, updated} = MachineTypes.update(scope, updated, %{"image" => @image})
+      {:ok, updated} = MachineTypes.update(scope, updated, %{"disk_gib" => 80})
       assert {:ok, %MachineType{is_default: true}} = MachineTypes.make_default(scope, updated)
       assert names() == [{"standard", false}, {"browser", false}, {"large", true}]
 
@@ -536,7 +511,7 @@ defmodule Apiary.MachineTypesTest do
       assert first.after["machine_type"]["name"] == "Large builds"
       assert first.after["machine_type"]["key"] == "large-builds"
       assert second.after["machine_type"]["key"] == "large"
-      assert third.after["machine_type"]["image"] == @image
+      assert third.after["machine_type"]["disk_gib"] == 80
       assert fourth.after["machine_type"]["default"] == true
     end
 

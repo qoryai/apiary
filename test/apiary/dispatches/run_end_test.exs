@@ -780,7 +780,7 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
 
     @tag needs: [:factory, :security, :registry]
-    test "its failed exit ends no run whose target's run configuration names an image",
+    test "its failed exit ends a held run whatever image its target's run configuration sets",
          ctx do
       held = [held!(ctx)]
       document = ~s({"version":1,"security_policy":{"version":1,"image":"with-docker"}})
@@ -798,7 +798,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       exited!(ctx, %{"state" => "failed", "exit_code" => 1})
 
       assert %Record{failure_cause: :failed} = record!(ctx.record)
-      assert_held_waiting(held)
+      assert_held_ended(held)
     end
 
     test "a first loss queues the build once more and the held runs wait; a second loss ends them",

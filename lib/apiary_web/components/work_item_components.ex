@@ -5486,7 +5486,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp read_needs_words(%{code: "read_needs_no_nested_docker"}),
     do:
       gettext(
-        "Choose an image without nested Docker in the workspace's policy or the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+        "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
       )
 
   defp read_needs_words(%{code: "read_needs_setup_removed"}),

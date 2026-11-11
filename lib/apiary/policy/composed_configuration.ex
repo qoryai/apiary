@@ -5,30 +5,19 @@ defmodule Apiary.Policy.ComposedConfiguration do
   another. Immutable, like the configuration it is composed from.
 
   `shape/5` decides, for the run configuration in force (its bytes, or nil where the
-  workspace serves none), the image a run is given, whether the run is a prebuild, which
-  builds an environment image, and whether the image is already fixed, as it is for every answer after a run's attach
-  (`fixed?`). Before the attach, the image is the one the run is given at the top level
-  (`image`, nil for none). Once it is fixed, it is what the run started in
-  (`started/1`): the image it was given at the top level, `{:policy, image}` for the
-  image its policy named, `:none` for none, or nil for a run whose start was not kept.
+  workspace serves none), the document a run is given beside its image: before the attach,
+  the one the run is given at the top level (`image`, nil for none); once the image is
+  fixed, as it is for every answer after a run's attach, what the run started in
+  (`started/1`): the image it was given at the top level, `:none` for none, or nil for a
+  run whose start was not kept. A run starts in its target's prebuilt image, else in the
+  machine's default image, so no run starts in an image a policy sets:
 
-    * a document whose `security_policy` names an `image`, for a prebuild, is composed
-      with that member left out, beside the image the prebuild is given at the top
-      level where it is given one, and nothing else changed, so a prebuild builds on the
-      image of the default machine type, else on the pool's default image;
+    * a document whose `security_policy` sets an `image` is composed with that member
+      left out, beside the image the run is given at the top level where it is given
+      one, and nothing else changed (`without_image/1`);
     * for a run whose image is fixed (its reloads), the gateway takes a reload only when
-      it names the image the start named at the top level, or none as the start did, and
-      selects the image the run started in. So a run given an image at the top level is
-      given it there again, beside the `security_policy` in force without its `image`; a
-      run that started in the image its policy named is given the `security_policy` in
-      force with that image as its `image`, and nothing at the top level; and a run that
-      started in no image is given the `security_policy` in force without its `image`.
-      A document that already selects what the run started in is served as it is: the
-      run takes the rest of the policy in force at once, and a policy's new image applies
-      from the next attach;
-    * a document whose `security_policy` names an `image`, for any other run, is served
-      as it is, with no top-level `image`: the run starts in the image the policy names,
-      and the run configuration never names a second one beside it;
+      it sets the image the start set at the top level, or none as the start did. So
+      a run given an image at the top level is given it there again;
     * with an `image`, the document is `{"version":1,"image":…}`, or, beside a document,
       `{"version":1,"image":…,"security_policy":…}`, the document's `security_policy`
       unchanged: the `image` beside it, never inside it;
@@ -134,7 +123,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
           | {:stack_hosts_too_many, pos_integer}
 
   @typedoc "The image a run is given, or, once fixed, what it started in (`started/1`)."
-  @type image :: String.t() | {:policy, String.t()} | :none | nil
+  @type image :: String.t() | :none | nil
 
   # The unique index: one row per workspace, digest and run configuration, none counted
   # as one (`20261019000210_key_a_composed_run_configuration_by_its_policy_row`).
@@ -165,14 +154,13 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   @doc """
   What a run is given for the run configuration `document` in force (its bytes, or nil
-  for none), the `image` it is given, or what it started in once fixed (`t:image/0`, or a
-  function that reads it, asked only when the image is used) and whether the run is a
-  prebuild (a boolean, or a function that reads it, asked only
-  when it matters), and whether the image is fixed for the run, as after its
-  attach (`fixed?`, false unless given): `:as_is`, the document as stored, or
+  for none) and the `image` it is given, or what it started in once fixed (`t:image/0`,
+  or a function that reads it): `:as_is`, the document as stored, or
   `{:composed, bytes, image}`, with the image the bytes name at the top level, nil for
-  none. See the moduledoc. `members`, nil unless given, is what else the run's document
-  is composed with: its run variables, nil for none.
+  none. See the moduledoc. Whether the run is a prebuild (a boolean, or a function that
+  reads it) and whether its image is fixed (`fixed?`, false unless given) change nothing
+  in the document. `members`, nil unless given, is what else the run's document is
+  composed with: its run variables, nil for none.
   `{:error, {:allow_first_too_long, count}}` when the members would give
   `egress.allow_first` more than 64 entries, `{:error, {:credentials_too_many, count}}`
   when they would give `credentials` more than 8, and `{:error, {:stack_hosts_too_many,
@@ -184,8 +172,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
           | {:error, compose_error}
         when image: image | (-> image),
              prebuild: boolean | (-> boolean)
-  def shape(document, image, prebuild?, fixed? \\ false, members \\ nil) do
-    case {imaged(document, image, prebuild?, fixed?), members?(members)} do
+  def shape(document, image, _prebuild?, _fixed? \\ false, members \\ nil) do
+    case {imaged(document, value(image)), members?(members)} do
       {shaped, false} ->
         shaped
 
@@ -200,52 +188,18 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp composed({:ok, bytes}, image), do: {:composed, bytes, image}
   defp composed({:error, _reason} = error, _image), do: error
 
-  # What `shape/5` returns for the image alone.
-  defp imaged(document, image, prebuild?, fixed?) do
-    if is_binary(document) and names_image?(document) do
-      cond do
-        value(prebuild?) -> prebuild_image(document, value(image))
-        fixed? -> kept_image(document, value(image))
-        true -> :as_is
-      end
-    else
-      case value(image) do
-        image when is_binary(image) ->
-          {:composed, compose(document, image), image}
+  # What `shape/5` returns for the image alone: the document without the image its
+  # policy sets, where it sets one, and the image the run is given at the top level.
+  defp imaged(document, image) do
+    named? = is_binary(document) and names_image?(document)
+    document = if named?, do: without_image(document), else: document
 
-        {:policy, image} when fixed? and is_binary(document) ->
-          {:composed, with_policy_image(document, image), nil}
-
-        _none ->
-          :as_is
-      end
+    cond do
+      is_binary(image) -> {:composed, compose(document, image), image}
+      named? -> {:composed, document, nil}
+      true -> :as_is
     end
   end
-
-  # A prebuild under a policy that names an image: the policy without it, beside the image
-  # it is given at the top level (the default type's, `Apiary.Runs.Attach`), where it is
-  # given one.
-  defp prebuild_image(document, image) when is_binary(image),
-    do: {:composed, compose(without_image(document), image), image}
-
-  defp prebuild_image(document, _image), do: {:composed, without_image(document), nil}
-
-  # A run whose image is fixed, under a policy that names one: an image given at the top
-  # level stays there, beside the policy without the policy's; an image the start's policy
-  # named takes the place of the policy's, the document as it is when they are the same;
-  # no image leaves the policy's out. A run whose start was not kept is given the document
-  # as it is.
-  defp kept_image(document, image) when is_binary(image),
-    do: {:composed, compose(without_image(document), image), image}
-
-  defp kept_image(document, {:policy, image}) when is_binary(image) do
-    if policy_image(document) == image,
-      do: :as_is,
-      else: {:composed, with_policy_image(document, image), nil}
-  end
-
-  defp kept_image(document, :none), do: {:composed, without_image(document), nil}
-  defp kept_image(_document, nil), do: :as_is
 
   defp value(fun) when is_function(fun, 0), do: fun.()
   defp value(value), do: value
@@ -266,39 +220,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   @doc """
   What a run started in, as `shape/5` reads it once its image is fixed: the image it was
-  given at the top level (`configured_image`), `{:policy, image}` for the image its
-  policy named, `:none` for none; nil for a run whose start was not kept, nor given an
-  image, and for nil.
+  given at the top level (`configured_image`), `:none` for none; nil for a run whose start
+  was not kept, nor given an image, and for nil.
   """
-  @spec started(Run.t() | nil) :: String.t() | {:policy, String.t()} | :none | nil
-  def started(%Run{started_image_from: "policy", started_image: image}) when is_binary(image),
-    do: {:policy, image}
-
+  @spec started(Run.t() | nil) :: String.t() | :none | nil
   def started(%Run{started_image_from: "none"}), do: :none
   def started(%Run{configured_image: image}), do: image
   def started(nil), do: nil
 
-  @doc """
-  The image the `security_policy` of the run configuration `document` names, nil for none
-  and for no document.
-  """
-  @spec policy_image(binary | nil) :: String.t() | nil
-  def policy_image(document) when is_binary(document) do
-    if names_image?(document) do
-      case Jason.decode!(document) do
-        %{@security_policy => %{@image => image}} when is_binary(image) -> image
-        _other -> nil
-      end
-    end
-  end
-
-  def policy_image(nil), do: nil
-
-  @doc """
-  Whether the run configuration `document` names an image in its `security_policy`.
-  """
-  @spec names_image?(binary) :: boolean
-  def names_image?(document) when is_binary(document) do
+  # Whether the run configuration `document` sets an image in its `security_policy`.
+  defp names_image?(document) do
     String.contains?(document, ~s("#{@image}")) and
       match?(%{@security_policy => %{@image => _}}, Jason.decode!(document))
   end
@@ -329,27 +260,6 @@ defmodule Apiary.Policy.ComposedConfiguration do
     |> Enum.map(fn
       {@security_policy, %Jason.OrderedObject{values: values}} ->
         {@security_policy, Jason.OrderedObject.new(List.keydelete(values, @image, 0))}
-
-      member ->
-        member
-    end)
-    |> encode()
-  end
-
-  # The run configuration `document` with its `security_policy`'s `image` set to `image`:
-  # in its place when the policy names one, else after the policy's other members; every
-  # other member as it is; canonical bytes.
-  defp with_policy_image(document, image) do
-    document
-    |> decode()
-    |> Enum.map(fn
-      {@security_policy, %Jason.OrderedObject{values: values}} ->
-        values =
-          if List.keymember?(values, @image, 0),
-            do: List.keyreplace(values, @image, 0, {@image, image}),
-            else: values ++ [{@image, image}]
-
-        {@security_policy, Jason.OrderedObject.new(values)}
 
       member ->
         member
