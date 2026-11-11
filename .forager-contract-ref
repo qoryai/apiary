@@ -83,12 +83,14 @@
 # model keys' limit, `model_key_limit` on `dev.qory.session.exited` and `dev.qory.run.exited`
 # with the state `cancelled`, the chunks of a runtime session's transcript,
 # `dev.qory.session.transcript`, and a continuation's `resume` in its run configuration,
-# the paused run whose transcript it reads.
+# the paused run whose transcript it reads; and a key of a key group without
+# `pause_for_s`, which the gateway gives a cooldown of 60 seconds for an API key and 3600
+# seconds for a subscription.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-47704566026245819796653eda719396bd08fed0
+f35d0cc68d77107ae9c62244f9557fbf158a2bd4
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
