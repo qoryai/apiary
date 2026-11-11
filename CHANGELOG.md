@@ -1067,7 +1067,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of the same id. **Save** saves the fallbacks with the model choice. With no such
   provider left, the part shows “Add another model provider that serves Claude Code in
   Organisation settings › Model providers, then add it here as a fallback.”
-- A run of Explore, the run that gets a model key, gets up to 6 keys of its model
+- Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run: `con_…-1`, `con_…-2`
   and on, after the provider's public id. The run starts with the key chosen in the
   model choice while that key is out of cooldown, else a key with no known reset, the
@@ -1089,9 +1089,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A run whose gateway ended it at its keys' limit, with the reason `model_key_limit`,
   ends **Paused**. A paused run counts as no failure and moves no stage. While its work
   item is still in Explore, at the same take in and stage, that stage runs, and its
-  other runs have ended, a run that continues it is queued at once, at the paused run's
-  place in the
-  queue, as the next run of the stage. The continuation
+  other runs have ended, a run that continues it is queued at once,
+  at the paused run's place in the queue, as the next run of the stage. The continuation
   starts on a new machine, and its session reads the paused run's transcript with the
   signed `GET /v1/runs/<run_id>/resume/transcript`, under the feature `observability`,
   to resume the agent's session. **How it ended** on the run page, the work item's runs
@@ -1108,9 +1107,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dev.qory.session.transcript` events, up to 64 MiB and fewer than 100,000 chunks for
   each file. It scans the transcript for keys of a known form, as it scans the run's
   events, and the diagnostics leave the transcript out. Log retention leaves a
-  transcript in place; the
-  daily retention job deletes it once its work item is closed or undone, or once the run
-  has ended when it has no work item.
+  transcript in place; the daily retention job deletes it once its work item is closed
+  or undone, or once the run has ended when it has no work item.
 <!-- /feature -->
 
 ### Changed
@@ -1790,9 +1788,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then upgrade Qory Apiary. Each model key in a run configuration now has `pause_for_s`,
   a member that the run configuration schema of an earlier gateway does not define. A
   run registered before the upgrade keeps its one key and goes on across the deploy; its
-  run configuration gains `pause_for_s` (Migrations, below). Each key starts with no
-  settings and no
-  state, so it shows “Available” until a gateway reports it.
+  run configuration gains `pause_for_s` (Migrations, below).
+  Each key starts with no settings and no state, so it shows “Available” until a
+  gateway reports it.
 <!-- /feature -->
 
 ### Migrations
@@ -1827,8 +1825,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider's public id, with its Pause for (`pause_for_s`), written once: the key's
   setting, else 60 seconds for an API key and 1 hour for a subscription. A run that is
   live during the deploy keeps its key and goes on, and its run configuration gains
-  `pause_for_s`. A run whose key was deleted after its claim gets a key id
-  that no key has, so a secrets request for that key fails, as before. The migration
+  `pause_for_s`. A run whose key was deleted after its claim gets
+  a key id that no key has, so a secrets request for that key fails, as before. The migration
   rewrites each run with a key, and its two checks on `runs` scan `runs` under a lock that
   blocks reads and writes. Rolling back sets `provider_value_id` to the first key of the
   list where that key still exists, and clears the provider columns of a run whose first
