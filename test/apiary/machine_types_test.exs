@@ -251,12 +251,12 @@ defmodule Apiary.MachineTypesTest do
         end)
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
-      name = scope.workspace.name
+      place = %{place: scope.workspace.name, organisation_id: scope.organisation.id}
 
       uses = MachineTypes.uses("large")
-      assert %{place: name, workflow: "review"} in uses
-      refute %{place: name, workflow: "write-specs"} in uses
-      assert %{place: name, workflow: "write-specs"} in MachineTypes.uses("standard")
+      assert Map.put(place, :workflow, "review") in uses
+      refute Map.put(place, :workflow, "write-specs") in uses
+      assert Map.put(place, :workflow, "write-specs") in MachineTypes.uses("standard")
 
       counts = MachineTypes.used_by()
       assert counts["large"] >= 1
@@ -276,11 +276,11 @@ defmodule Apiary.MachineTypesTest do
         end)
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
-      name = scope.workspace.name
+      place = %{place: scope.workspace.name, organisation_id: scope.organisation.id}
 
-      assert %{place: name, workflow: "write-specs"} in MachineTypes.uses("standard")
-      refute %{place: name, workflow: "write-specs"} in MachineTypes.uses("large")
-      assert %{place: name, workflow: "review"} in MachineTypes.uses("large")
+      assert Map.put(place, :workflow, "write-specs") in MachineTypes.uses("standard")
+      refute Map.put(place, :workflow, "write-specs") in MachineTypes.uses("large")
+      assert Map.put(place, :workflow, "review") in MachineTypes.uses("large")
 
       counts = MachineTypes.used_by()
 
@@ -292,7 +292,7 @@ defmodule Apiary.MachineTypesTest do
     test "used_by/0 counts the documents uses/1 reads: trial versions and workspace types",
          %{scope: scope} do
       machine_type_fixture(@large)
-      name = scope.workspace.name
+      place = %{place: scope.workspace.name, organisation_id: scope.organisation.id}
 
       document =
         update_in(
@@ -302,7 +302,7 @@ defmodule Apiary.MachineTypesTest do
         )
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document, trial: true)
-      assert MachineTypes.uses("large") == [%{place: name, workflow: "write-specs"}]
+      assert MachineTypes.uses("large") == [Map.put(place, :workflow, "write-specs")]
       assert MachineTypes.used_by()["large"] == 1
 
       newest = TypeTemplates.newest("qory.software")
@@ -316,6 +316,14 @@ defmodule Apiary.MachineTypesTest do
 
       {:ok, _version} = TypeTemplates.save(scope, "qory.software", typed)
       assert length(MachineTypes.uses("large")) == 2
+
+      # A workspace type's use has no organisation.
+      assert [%{organisation_id: nil}] =
+               Enum.reject(
+                 MachineTypes.uses("large"),
+                 &(&1 == Map.put(place, :workflow, "write-specs"))
+               )
+
       assert MachineTypes.used_by()["large"] == 2
     end
 
@@ -582,16 +590,16 @@ defmodule Apiary.MachineTypesTest do
       document
     end
 
-    test "key_change/1 counts the processes and the waiting runs, and lists the files", %{
-      scope: scope
-    } do
+    test "key_change/1 counts the processes, the waiting runs and each organisation's files",
+         %{scope: scope} do
       browser = browser_type()
 
       assert MachineTypes.key_change(browser) == %{
                workspaces: 0,
                templates: 0,
                waiting: 0,
-               files: []
+               files: [],
+               organisations: []
              }
 
       made_from_harness(scope.workspace, "browser")
@@ -605,18 +613,55 @@ defmodule Apiary.MachineTypesTest do
         set: [machine_type: "browser", machine_spec: spec(), machine_type_was_default: false]
       )
 
-      assert %{workspaces: 2, templates: 0, waiting: 1, files: [file]} =
+      # The file of a harness repository counts once for each organisation whose
+      # workspaces' processes come from it, with no address, workspace or workflow.
+      assert %{workspaces: 2, templates: 0, waiting: 1, files: [], organisations: organisations} =
                MachineTypes.key_change(browser)
 
-      # A harness repository's file shows its module: only a read of the repository
-      # resolves the path.
-      assert file == %{
-               repository: "git.example.com/acme/factory-harness",
-               module: "web",
-               path: nil,
-               commit: "3c9e1a7" <> String.duplicate("0", 33),
-               workspaces: Enum.sort([scope.workspace.name, other.workspace.name])
-             }
+      assert organisations ==
+               Enum.sort_by(
+                 [
+                   %{name: scope.organisation.name, files: 1},
+                   %{name: other.organisation.name, files: 1}
+                 ],
+                 &{&1.name, &1.files}
+               )
+    end
+
+    test "lists a file saved from the Qory harness at an address the instance had before", %{
+      scope: scope
+    } do
+      %Processes.Version{number: 1} = version = Processes.current(scope.workspace)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [
+            document:
+              put_in(
+                version.document,
+                ["stages", Access.at(0), "sequence", Access.at(0), "machine"],
+                "browser"
+              ),
+            template: %{
+              "source" => "qory",
+              "git" => "https://git.example.com/mirror/harness.git",
+              "commit" => "5b2f8d4" <> String.duplicate("0", 33),
+              "module" => "software-factory"
+            }
+          ]
+        )
+
+      # The Qory harness's file is the instance admin's, not the organisation's.
+      assert %{
+               files: [
+                 %{
+                   repository: "git.example.com/mirror/harness",
+                   module: "software-factory",
+                   commit: "5b2f8d4" <> _zeros
+                 }
+               ],
+               organisations: []
+             } = MachineTypes.key_change(browser_type())
     end
 
     @tag needs: :workflow_model
@@ -647,7 +692,8 @@ defmodule Apiary.MachineTypesTest do
 
       {:ok, %Processes.Version{number: 2}} = Processes.save(scope, scope.workspace, edited)
 
-      assert %{workspaces: 1, files: []} = MachineTypes.key_change(browser_type())
+      assert %{workspaces: 1, files: [], organisations: []} =
+               MachineTypes.key_change(browser_type())
     end
 
     test "keeps a workspace type's copy of the Qory harness, and lists the harness's file", %{
@@ -683,10 +729,10 @@ defmodule Apiary.MachineTypesTest do
                      |> String.replace_suffix(".git", ""),
                    module: "software-factory",
                    path: "modules/software-factory/process.yaml",
-                   commit: Apiary.Harnesses.Qory.current(),
-                   workspaces: []
+                   commit: Apiary.Harnesses.Qory.current()
                  }
-               ]
+               ],
+               organisations: []
              }
 
       assert {:ok, %MachineType{key: "ui-tests"}} =
@@ -1019,7 +1065,15 @@ defmodule Apiary.MachineTypesTest do
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
 
       assert MachineTypes.delete(scope, large) ==
-               {:error, {:in_use, [%{place: scope.workspace.name, workflow: "write-specs"}]}}
+               {:error,
+                {:in_use,
+                 [
+                   %{
+                     place: scope.workspace.name,
+                     organisation_id: scope.organisation.id,
+                     workflow: "write-specs"
+                   }
+                 ]}}
 
       assert MachineTypes.get("large")
     end

@@ -928,14 +928,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   may have an image, a reference pinned by digest, such as
   `ghcr.io/acme/agent@sha256:…`, or none, the default type too. The default type, and a
   type that a workspace's process or a workspace type uses, cannot be deleted; the page
-  lists the workflows that use it.
+  shows how many workflows in how many organisations use it, such as “4 workflows in 2
+  organisations use it”, how many workspaces in how many organisations have it as their
+  default machine type, and the names of the workspace types that use it.
 - An instance admin can change a type's key. **Save** first shows a warning: the change
-  breaks every file that uses the key, the counts of the workspaces, workspace types and
-  waiting runs that it updates, and the `process.yaml` files to fix. The files are those
-  that the workspaces' current and trial processes that use the key were read from,
-  where the version read from the file uses the key too, and the Qory harness's file
-  where a workspace type's copy of it uses the key, each with its repository, its path
-  (its module for a file of a harness repository) and its commit. **Change key** saves
+  breaks every file that uses the key, the counts of what it updates, such as “3
+  workspaces, 2 workspace types, 1 waiting run”, and the `process.yaml` files to fix.
+  The files are those that the workspaces' current and trial processes that use the key
+  were read from, where the version read from the file uses the key too, and the Qory
+  harness's file where a workspace type's copy of it uses the key. The admin fixes the
+  Qory harness's files, each shown with its repository, its path and its commit. Each
+  organisation fixes the files in its harness, shown as one line per organisation, such
+  as “2 files in Acme's harness”. The warning shows no workspace name, workflow name or
+  repository address of an organisation. **Change key** saves
   the key, and saves a version of each workspace's current and trial process and of each
   workspace type's process that an instance admin saved, where it uses the key, with the
   key replaced, authored by the admin. A workspace type whose process is a copy of the
@@ -1690,6 +1695,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   show a pool's reason for releasing a machine through the same filter.
 - A prebuild's image is accepted only at the place Qory Apiary sent the prebuild, so one
   organisation's build cannot make another organisation's runs start in its image.
+
+### Upgrading
+
+- Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
+  qoryai/forager#52 or later. A gateway built before it returns an error for each batch
+  that contains one of the three image codes `image_access_denied`, `image_rate_limited`
+  and `image_registry_unreachable`.
 
 ### Migrations
 
