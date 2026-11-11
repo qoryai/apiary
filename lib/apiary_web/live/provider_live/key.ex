@@ -218,9 +218,21 @@ defmodule ApiaryWeb.ProviderLive.Key do
     {:noreply, assign_form(socket, params, [key: {limit, []}], %{})}
   end
 
-  defp refused(socket, _params, :not_found), do: {:noreply, UserAuth.reload_scope(socket)}
+  # A key or a provider deleted meanwhile, or a membership changed: the scope is read
+  # again, and a page the person still reaches has the refusal of the provider pages,
+  # with the form as sent.
+  defp refused(socket, params, :not_found) do
+    socket = UserAuth.reload_scope(socket)
 
-  defp refused(socket, params, reason) do
+    if socket.redirected,
+      do: {:noreply, socket},
+      else: shown(socket, params, :not_found)
+  end
+
+  defp refused(socket, params, reason), do: shown(socket, params, reason)
+
+  # The refusal's sentence above the form (`ApiaryWeb.IntegrationLive.Common.refusal/4`).
+  defp shown(socket, params, reason) do
     scope = socket.assigns.current_scope
 
     {:noreply,

@@ -1036,6 +1036,21 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute ModelKeys.setting(values(provider)["spare"].id)
     end
 
+    test "a key deleted while the page is open: Save says it is no longer there", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+      {:ok, _provider} = Connections.delete_provider_key(scope, provider, "spare")
+
+      lv
+      |> form("#key-form", key: %{value_id: "renamed", pause_number: "5"})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") == "It is no longer there."
+      assert has_element?(lv, ~s{#key_value_id[value="renamed"]})
+      assert Map.keys(values(provider)) == ["main"]
+    end
+
     test "a person who can no longer write keys changes nothing", ctx do
       %{scope: scope} = ctx
       provider = keys!(scope, "anthropic", ~w(main spare))
