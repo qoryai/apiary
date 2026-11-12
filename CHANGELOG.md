@@ -1105,7 +1105,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The workspace overview's runs per day count paused runs: the table under the chart
   has **Paused** after **Cancelled**, and each day reads “Today: 6 runs (1 ended well, 1
   cancelled, 1 paused, 3 alive or ended badly), 0 denied attempts, open that day's
-  runs”.
+  runs”. Each day's column shows its paused runs as a part at its base, in the colour of
+  a paused run's ring, with the key “paused” beside “Runs per day”, and the day's tooltip
+  reads “6 runs, 1 paused”.
 - On the run page, **Run the agent** of a session that paused at its keys' limit, and
   its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as

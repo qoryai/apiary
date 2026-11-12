@@ -10918,6 +10918,15 @@
   .q-chart .q-col-runs.q-col-today {
     fill: var(--q-series-runs-today);
   }
+  /* The hue of a paused run's ring (.q-st-paused). */
+  .q-chart .q-col-paused,
+  .q-chart .q-key-paused {
+    fill: var(--color-info);
+  }
+  .q-chart .q-key {
+    fill: var(--q-muted);
+    font: 11px/16px var(--font-sans);
+  }
   .q-chart .q-col-den {
     fill: var(--color-error);
   }

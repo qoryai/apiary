@@ -935,9 +935,14 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away: Day, Runs, Ended
   well, Cancelled, Paused and Denied attempts. A day's column counts every run of the
-  day, paused runs included. Each day is said as its runs, of them how many ended well,
-  were cancelled, paused and ended badly (today: alive or ended badly), and its denied
-  attempts.
+  day, paused runs included. Its Paused part (`q-col-paused`), at the column's base in
+  the hue of a paused run's ring, is the day's share of paused runs of the column's
+  height, at least 2 px; with every run of the day paused, it is the whole column, its
+  rounded top included. While a day of the 14 has a paused run, a square in that hue and
+  "paused" follow the title "Runs per day". A day's tooltip reads "6 runs, 1 paused" for
+  a day with a paused run, else "6 runs". Each day is said as its runs, of them how many
+  ended well, were cancelled, paused and ended badly (today: alive or ended badly), and
+  its denied attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
