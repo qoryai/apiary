@@ -704,7 +704,8 @@ defmodule Apiary.Connections.ProvidersTest do
       assert settings_only.details["value_id"] == "spare"
       refute Map.has_key?(settings_only.details, "value_set")
 
-      # A value that fails its checks leaves the name, the settings, the value and the cooldown.
+      # A value that fails its checks leaves the name, the settings, the value and the
+      # cooldown.
       entries = length(trail(provider.id))
 
       assert {:error, changeset} =
@@ -791,6 +792,11 @@ defmodule Apiary.Connections.ProvidersTest do
           Connections.update_provider_key(reader, target, "spare", %{
             "value_id" => "spare",
             "settings" => @settings
+          }),
+          Connections.update_provider_key(reader, target, "spare", %{
+            "value_id" => "spare",
+            "value" => " sk-taken \n",
+            "settings" => @settings
           })
         ]
 
@@ -798,18 +804,30 @@ defmodule Apiary.Connections.ProvidersTest do
       end
 
       # Another organisation's key is not one of this organisation's provider's keys.
-      assert Connections.update_provider_key(scope, other_provider, "spare", %{
-               "value_id" => "spare",
-               "settings" => @settings
-             }) == {:error, :not_found}
+      for attrs <- [%{}, %{"value" => " sk-taken \n"}] do
+        assert Connections.update_provider_key(
+                 scope,
+                 other_provider,
+                 "spare",
+                 Map.merge(%{"value_id" => "spare", "settings" => @settings}, attrs)
+               ) == {:error, :not_found}
+      end
+
+      # Each key keeps its value.
+      for p <- [provider, other_provider] do
+        assert Secrets.reveal_key_for_sealing(
+                 Repo.get!(Connection, p.id),
+                 value!(p, "spare").id
+               ) == {:ok, "sk-spare"}
+      end
 
       refute Repo.exists?(from(s in Setting))
     end
   end
 
   describe "a key's value" do
-    # Spaces, a tab, a newline, a no-break space and an ideographic space around a key, as a
-    # copy can bring them.
+    # Spaces, a tab, a newline, a no-break space and an ideographic space around a key,
+    # as a copy can bring them.
     @around {" \t\n\u00A0", " \r\n\u3000"}
 
     defp wrapped(value), do: elem(@around, 0) <> value <> elem(@around, 1)
@@ -1032,7 +1050,8 @@ defmodule Apiary.Connections.ProvidersTest do
   end
 
   describe "a refused write" do
-    # Whether `needle` is anywhere in `term`: a string, a map or struct, a list or a tuple.
+    # Whether `needle` is anywhere in `term`: a string, a map or struct, a list or a
+    # tuple.
     defp holds?(term, needle) when is_binary(term), do: String.contains?(term, needle)
     defp holds?(%_{} = term, needle), do: term |> Map.from_struct() |> holds?(needle)
 

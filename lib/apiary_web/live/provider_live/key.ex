@@ -333,7 +333,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
             value={nil}
             label={key_label(@live_action)}
             hint={key_hint(@live_action)}
-            autocomplete="off"
+            autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"
             required={@live_action == :new}

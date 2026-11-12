@@ -1051,11 +1051,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   subscription's token, and ends the key's cooldown, as **Change value** does. A new
   value has the checks of **Key** on **Add key**, and the page never shows it.
 - Qory Apiary removes the spaces, tabs and newlines around a model provider's key before
-  it stores the key, on **Add key**, **Edit key**, **New model provider**, and **Add
-  value** and **Change value** of the key on **Workspace settings › Secrets and
-  variables**. The spaces inside the key stay. A key of only spaces, tabs or newlines is
-  empty: **Key** shows “can't be blank”, and an empty **New value** keeps the key's
-  value. The value of any other secret stays as you typed it, its last newline included.
+  it stores the key, on **Add key**, **Edit key**, **New model provider**, the set-up's
+  **Model** step, and **Add value** and **Change value** of the key on **Workspace
+  settings › Secrets and variables**. The spaces inside the key stay. A key of only
+  spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
+  value** keeps the key's value. The value of any other secret stays as you typed it,
+  its last newline included.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with
@@ -1794,6 +1795,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Security
 
+- Each field for a model provider's key has `autocomplete="new-password"`: **Key** on
+  **Add key** and **New model provider**, **New value** on **Edit key**, and the key on
+  the set-up's **Model** step. A browser then does not fill it with a saved sign-in
+  password, which a save would have stored as the key.
 <!-- feature: workflow_model -->
 - Where a stage lists approvers, only an approver settles the stage's escalation, or runs
   a stage after Explore again from its gate, with **Run another round**. The escalation
