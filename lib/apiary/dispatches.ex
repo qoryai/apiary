@@ -174,8 +174,8 @@ defmodule Apiary.Dispatches do
   #      run left waiting, with its dispatch removed, because every key of its providers
   #      is in cooldown or the check of its provider's settings ran out of time or
   #      crashed. A run that cannot be registered for any other reason is
-  #      `{:error, :unavailable}`, and the whole transaction rolls back. An exception rolls it back too, is logged by its module
-  #      alone, and is `{:error, :unavailable}`.
+  #      `{:error, :unavailable}`, and the whole transaction rolls back. An exception
+  #      rolls it back too, is logged by its module alone, and is `{:error, :unavailable}`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
   # prebuild), the prebuild's collection (nil for any other step), the pool, the
@@ -1265,7 +1265,8 @@ defmodule Apiary.Dispatches do
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
     case Repo.one(
-           from r in waiting_query(key, fit(pool, default), now), where: r.id not in ^skipped
+           from r in without_stopped(waiting_query(key, fit(pool, default), now)),
+             where: r.id not in ^skipped
          ) do
       nil ->
         {:none, ended}
@@ -1275,6 +1276,27 @@ defmodule Apiary.Dispatches do
           nil -> pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
           run -> pick_run(key, pool, through, now, {run, default, max, ended, skipped})
         end
+    end
+  end
+
+  # `query` without the runs whose choice's provider, the first of their
+  # `model_provider_ids`, had its settings check stop earlier in this claim
+  # (`Apiary.Connections.stopped_in_claim/0`): the claim would leave each of them waiting,
+  # so they take none of its tries. A run with that provider only as a fallback stays in
+  # the query, as it forms on its choice's provider. No condition while no check stopped.
+  defp without_stopped(query) do
+    case Apiary.Connections.stopped_in_claim() do
+      [] ->
+        query
+
+      ids ->
+        from [run: r] in query,
+          where:
+            fragment(
+              "coalesce((?)[1] <> ALL(?), true)",
+              r.model_provider_ids,
+              type(^ids, {:array, Ecto.UUID})
+            )
     end
   end
 

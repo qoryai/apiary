@@ -832,25 +832,28 @@ from, the one in force when the same bytes came from several; a digest a configu
 stored under always names that configuration. The events endpoint takes a reported digest
 as in force only when it is what the run would be answered now.
 
-**A model provider and the catalogue.** A model provider is read with the catalogue
-entry of its kind in the running release (`Apiary.Connections.provider/1`): its APIs,
-its hosts, its models and its limit windows. The digest of the entry it was added from
-(`description_sha256`) stays on its row, under its integrity code, and is not compared,
-so a release that changes an entry changes every provider of that kind at the upgrade.
-For a provider whose saved settings no longer pass the entry's settings schema and the
-endpoint rule, as an add or an edit checks them, `provider/1` returns
-`provider_changed`: its runs have no run configuration, and it is to be added again. A
-check that runs out of time or crashes depends on the instance, not on the settings:
-`provider/1` returns `provider_unchecked`. A claim then leaves the run waiting, logs a
-warning with the run, the provider and the reason, and takes the next waiting run; a
-later claim tries the run again, and the next read checks the settings again. Within one
-claim, a provider whose check stopped is not checked again: each later run that needs
-it, as its choice or as a fallback, is passed over in the same way
-(`Apiary.Connections.within_claim/1`). The check returns the same
-result for the same settings and entry, so a table on each node keeps the results fit
-and no longer fit by the SHA-256 of the settings and of the entry
-(`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and
-entry on each node, until the node restarts or the table, at 4,096 results, empties.
+**A model provider and the catalogue.** A model provider is read with the catalogue entry
+of its kind in the running release (`Apiary.Connections.provider/1`): its APIs, its hosts,
+its models and its limit windows. The digest of the entry it was added from
+(`description_sha256`) stays on its row, under its integrity code, and is not compared, so
+a release that changes an entry changes every provider of that kind at the upgrade. For a
+provider whose saved settings no longer pass the entry's settings schema and the endpoint
+rule, as an add or an edit checks them, `provider/1` returns `provider_changed`: its runs
+have no run configuration, and it is to be added again. A check that runs out of time or
+crashes depends on the instance, not on the settings: `provider/1` returns
+`provider_unchecked`. For a run whose choice's provider it is, a claim then leaves the run
+waiting, logs a warning with the run, the provider's public id, its kind and the reason,
+and takes the next waiting run; a later claim tries the run again, and the next read
+checks the settings again. A run that has the provider only as a fallback is not skipped
+and has no log line: that fallback alone is passed over, and the run forms on its choice's
+provider. Within one claim, a provider whose check stopped is not checked again
+(`Apiary.Connections.within_claim/1`): a fallback of a later run is passed over without a
+check, and the claim's query leaves out every waiting run whose choice's provider it is,
+the first of its `model_provider_ids`, so those runs take none of the claim's 100 tries.
+The check returns the same result for the same settings and entry, so a table on each node
+keeps the results fit and no longer fit by the SHA-256 of the settings and of the entry
+(`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and entry
+on each node, until the node restarts or the table, at 4,096 results, empties.
 
 **A run's model keys.** An explore run of a workspace's queue whose model choice resolves
 to a model provider gets the provider's keys at its claim

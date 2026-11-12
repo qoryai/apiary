@@ -1239,8 +1239,8 @@ defmodule Apiary.Connections do
   or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The check
   returns the same result for the same settings and entry, so a table on each node keeps
   the results fit and no longer fit by the SHA-256 of the settings and of the entry, at
-  most 4,096 of them, until a restart. Inside `within_claim/1`, a connection whose check
-  stopped returns `{:error, :provider_unchecked}` again, without a check, until the
+  most 4,096 of them, until a restart. Inside one claim of the queue, a connection whose
+  check stopped returns `{:error, :provider_unchecked}` again, without a check, until the
   claim ends. The connection's `description_sha256`, the digest of the entry it was
   added from, is kept as it was recorded and not compared.
   """
@@ -1284,6 +1284,17 @@ defmodule Apiary.Connections do
       after
         Process.delete(@claim_stopped)
       end
+    end
+  end
+
+  @doc false
+  # stopped_in_claim/0 is the connection ids whose settings check stopped in the claim
+  # that runs in this process (`within_claim/1`), `[]` outside a claim.
+  @spec stopped_in_claim() :: [Ecto.UUID.t()]
+  def stopped_in_claim do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> MapSet.to_list(stopped)
+      nil -> []
     end
   end
 
