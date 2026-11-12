@@ -1532,11 +1532,11 @@ for deletion. Suspending and activating an account are asked of the account, whi
 belongs to no organisation.
 
 Instance settings › Organisations and › Accounts mount on the core's
-`on_mount {ApiaryWeb.Access, :instance}`. It puts the scope of
+`on_mount {ApiaryWeb.Access, :instance}`. The hook puts the scope of
 `Apiary.Access.instance_scope/1`, which calls `Apiary.Access.can?/3` with `instance.read`,
 into `@scope`, and shows not found to anyone else. When the reader's memberships change,
-it computes `@scope` again, and a person who is no longer an instance admin moves to `/`.
-A write from a page that has not yet received that change fails, because
+the hook computes `@scope` again, and a person who is no longer an instance admin moves
+to `/`. A write from a page that has not yet received that change fails, because
 `Apiary.Access.authorize/3` reads the membership again.
 
 **The arbiter** is for recovery only. An instance admin, under Instance settings › Organisations, offers the
