@@ -1844,6 +1844,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   counted the run API's requests (the host `run-api.qory.invalid`) as a destination
   enforce would deny.
 <!-- /feature -->
+<!-- feature: managed_organisations -->
+- An operated client no longer sees the operator's model keys of a run whose model
+  provider the operator deleted, and, where the run has its key names, still sees the
+  run's other credentials, such as a registry credential. Before, the client saw some of
+  those keys, or saw none of the run's credentials.
+<!-- /feature -->
 
 ### Security
 

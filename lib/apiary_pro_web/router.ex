@@ -35,9 +35,9 @@ defmodule ApiaryProWeb.Router do
   # the arbiter's transfer of an organisation's ownership and an organisation's features as
   # pages, and a change of kind, a purge and a suspension confirmed on the organisation's
   # row, by its id; its Accounts, with an account's suspension confirmed on its row. Each
-  # page lets in the instance admins alone (`ApiaryProWeb.InstanceLive.Components`); their
-  # paths are `ApiaryProWeb.InstanceLive.Paths`'. Before the organisations' routes, whose
-  # `/:org` would take `/instance`.
+  # page lets in the instance admins alone (`ApiaryWeb.Access.on_mount/4`, `:instance`);
+  # their paths are `ApiaryProWeb.InstanceLive.Paths`'. Before the organisations' routes,
+  # whose `/:org` would take `/instance`.
   instance_routes do
     live "/instance/organisations", ApiaryProWeb.InstanceLive.Organisations, :index
     live "/instance/organisations/new", ApiaryProWeb.InstanceLive.Organisations, :new

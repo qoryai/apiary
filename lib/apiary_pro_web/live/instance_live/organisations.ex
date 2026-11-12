@@ -37,7 +37,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   which leads to its people.
   """
   use ApiaryProWeb, :live_view
-  on_mount {ApiaryProWeb.InstanceLive.Components, :instance}
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.Access
   alias ApiaryPro.{Flags, Grants, Operators, Suspensions, Tenants, Transfers}

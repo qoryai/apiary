@@ -4262,6 +4262,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
   @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
   @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+  @model_later "You can change the default model later in Workspace settings › Model."
+
+  # The line for a key of the organisation: it adds the organisation's secrets only where
+  # the instance has `organisation_variables`.
+  defp organisation_later do
+    if Apiary.Features.on?(:organisation_variables), do: @organisation_later, else: @model_later
+  end
 
   defp words(lv, selector) do
     lv
@@ -4416,6 +4423,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute render(lv) =~ @key
   end
 
+  @tag :feature_sets
   test "Add a key with the setting shown and on: the organisation's provider, for every workspace",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4437,7 +4445,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     # The key is a secret of the organisation, whose secrets the edition shows in its
     # settings.
-    assert words(lv, "#set-up-model-later") == @organisation_later
+    assert words(lv, "#set-up-model-later") == organisation_later()
 
     lv
     |> form("#set-up-model-form",
@@ -4474,6 +4482,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert provider.secret.workspace_id == scope.workspace.id
   end
 
+  @tag :feature_sets
   test "reuse with one provider: its default key, another default model; Add a key opens the fields",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4486,7 +4495,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute has_element?(lv, "input[name='model[key]']")
     # The provider's key is a secret of the organisation, whose secrets the edition shows
     # in its settings.
-    assert words(lv, "#set-up-model-later") == @organisation_later
+    assert words(lv, "#set-up-model-later") == organisation_later()
 
     # Add a key opens Provider and Key, and the provider to reuse closes them again.
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
@@ -4498,7 +4507,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
     refute has_element?(lv, "#set-up-model-add")
-    assert words(lv, "#set-up-model-later") == @organisation_later
+    assert words(lv, "#set-up-model-later") == organisation_later()
 
     lv
     |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
