@@ -8,6 +8,11 @@ defmodule ApiaryPro.ListChecksTest do
   """
   use Apiary.DataCase, async: true
 
+  @before_compile Apiary.TestSetup
+
+  # The rows are work items, which the factory reads.
+  @moduletag needs: :factory
+
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import ApiaryPro.OperatorsFixtures
@@ -82,7 +87,7 @@ defmodule ApiaryPro.ListChecksTest do
     end
   end
 
-  @tag needs: :managed_organisations
+  @tag needs: [:factory, :managed_organisations]
   test "a client's owner: five rows take the queries of one" do
     operator = operator_fixture()
     client = client_fixture(operator.scope)
