@@ -42,8 +42,8 @@ defmodule Apiary.Dispatches.RunSettings do
   #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or
   #     `Apiary.Connections.provider/1` returns an error for it: its kind is no longer
   #     in the catalogue, or its settings no longer fit the catalogue's entry. A check of
-  #     its settings that ran out of time or crashed ends no run: the claim fails, and
-  #     the run waits for the next one;
+  #     its settings that ran out of time or crashed ends no run: the claim leaves the
+  #     run waiting and takes the next run, and a later claim tries the run again;
   #   * `runtime_unserved`: the runtime the choice names is no longer in the catalogue
   #     (`Apiary.Kinds.Runtimes`), or no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
@@ -303,9 +303,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
   # every key of the choice's provider and of each usable fallback is in cooldown, with
   # the choice's settings without keys and those providers' row ids, the choice's first,
-  # `:unstable` where the choices changed while `hold/1` read them, `:unchecked` where the
-  # check of the chosen provider's settings ran out of time or crashed
-  # (`Apiary.Connections.provider/1`), or `:unavailable` where the run settings take more
+  # `:unstable` where the choices changed while `hold/1` read them,
+  # `{:unchecked, provider}` where the check of the settings of `provider`, the chosen
+  # one, ran out of time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run settings take more
   # than 64 KiB. Each provider's description is read once, for the resolution and the
   # settings alike.
   @doc false
@@ -314,7 +314,7 @@ defmodule Apiary.Dispatches.RunSettings do
           | {:end, cause}
           | {:cooling, built, [Ecto.UUID.t()]}
           | :unstable
-          | :unchecked
+          | {:unchecked, Connection.t()}
           | :unavailable
   def build(held, now \\ DateTime.utc_now())
   def build(nil, _now), do: {:ok, nil}
@@ -546,8 +546,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # form/5 is the settings of `resolution` for `provider`, the connection as `hold/1` read
   # it, whose description in the catalogue is `description` (`Connections.provider/1`),
   # for the runs of `runtime` in the workspace `workspace_id`. The first cause of the
-  # moduledoc that applies, else `{:ok, built}`; `:unchecked` where the check of the
-  # provider's settings ran out of time or crashed, which ends no run. A function of its
+  # moduledoc that applies, else `{:ok, built}`; `{:unchecked, provider}` where the check
+  # of the provider's settings ran out of time or crashed, which ends no run. A function of its
   # arguments, which a test calls with a description or a runtime the catalogue does not
   # have.
   @doc false
@@ -557,9 +557,9 @@ defmodule Apiary.Dispatches.RunSettings do
           {:ok, Provider.t()} | {:error, atom},
           Runtime.t(),
           Ecto.UUID.t()
-        ) :: {:ok, built} | {:end, cause} | :unchecked
+        ) :: {:ok, built} | {:end, cause} | {:unchecked, Connection.t()}
   def form(resolution, provider, description, runtime, workspace_id) do
-    with {:ok, description} <- described(description),
+    with {:ok, description} <- described(description, provider),
          :ok <- applies(provider, workspace_id),
          {:ok, api} <- api(description, runtime),
          {:ok, endpoint} <- endpoint(api, provider),
@@ -579,9 +579,9 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp with_windows(api, %Provider{}), do: api
 
-  defp described({:ok, %Provider{} = description}), do: {:ok, description}
-  defp described({:error, :provider_unchecked}), do: :unchecked
-  defp described(_changed_or_unknown), do: {:end, :provider_gone}
+  defp described({:ok, %Provider{} = description}, _provider), do: {:ok, description}
+  defp described({:error, :provider_unchecked}, provider), do: {:unchecked, provider}
+  defp described(_changed_or_unknown, _provider), do: {:end, :provider_gone}
 
   defp applies(%Connection{applies_to: "all"}, _workspace_id), do: :ok
 

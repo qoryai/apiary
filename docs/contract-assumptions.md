@@ -841,8 +841,9 @@ For a provider whose saved settings no longer pass the entry's settings schema a
 endpoint rule, as an add or an edit checks them, `provider/1` returns
 `provider_changed`: its runs have no run configuration, and it is to be added again. A
 check that runs out of time or crashes depends on the instance, not on the settings:
-`provider/1` returns `provider_unchecked`, the claim fails and the run waits for the
-next claim, and the next read checks the settings again. The check returns the same
+`provider/1` returns `provider_unchecked`. A claim then leaves the run waiting, logs a
+warning with the run, the provider and the reason, and takes the next waiting run; a
+later claim tries the run again, and the next read checks the settings again. The check returns the same
 result for the same settings and entry, so a table on each node keeps the results fit
 and no longer fit by the SHA-256 of the settings and of the entry
 (`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and

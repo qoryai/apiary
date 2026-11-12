@@ -170,9 +170,11 @@ defmodule Apiary.Dispatches do
   #      machine type and spec of the claim answer (`machine/3`);
   #   8. the run registered through that gateway, with a run code bound to it
   #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
-  #      its dispatch, and the next is taken, within the same 100; a run that cannot be
-  #      registered for any other reason is `{:error, :unavailable}`, and the whole
-  #      transaction rolls back. An exception rolls it back too, is logged by its module
+  #      its dispatch, and the next is taken, within the same 100; so is the next for a
+  #      run left waiting, with its dispatch removed, because every key of its providers
+  #      is in cooldown or the check of its provider's settings ran out of time or
+  #      crashed. A run that cannot be registered for any other reason is
+  #      `{:error, :unavailable}`, and the whole transaction rolls back. An exception rolls it back too, is logged by its module
   #      alone, and is `{:error, :unavailable}`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
@@ -1445,7 +1447,9 @@ defmodule Apiary.Dispatches do
   # dispatch the claim inserted goes, and the run of the queue waits again, as it was,
   # with its `updated_at` from before the claim, now for `provider_ids`, the providers the
   # claim found with every key in cooldown, so the claim's filter passes it
-  # (`Apiary.ModelKeys.claimable/1`) until one of their keys is free.
+  # (`Apiary.ModelKeys.claimable/1`) until one of their keys is free; or with the
+  # `model_provider_ids` it had, for a run whose provider's settings check ran out of
+  # time or crashed, which the next claim tries again.
   defp unclaim(
          %{dispatch: %Dispatch{id: dispatch_id}, run: %DispatchRun{id: run_id} = run},
          provider_ids

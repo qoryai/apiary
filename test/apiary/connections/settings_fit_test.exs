@@ -96,14 +96,14 @@ defmodule Apiary.Connections.SettingsFitTest do
   end
 
   describe "a check that ran out of time or crashed" do
-    test "fails the claim and leaves the run waiting for the next one", ctx do
+    test "leaves the run waiting for the next claim", ctx do
       pid = ctx.provider.public_id
       {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
       check_returns(:unchecked)
 
       {{queued, answer}, log} = with_log(fn -> handover!(ctx) end)
-      assert answer == {:error, :unavailable}
-      assert log =~ "the check of the settings of the run's model provider ran out of time"
+      assert answer == {:ok, :none}
+      assert log =~ "a claim skipped the run #{queued.run_id}"
       assert %DispatchRun{state: :waiting, end_cause: nil} = Repo.get!(DispatchRun, queued.id)
 
       check_returns(:fit)
