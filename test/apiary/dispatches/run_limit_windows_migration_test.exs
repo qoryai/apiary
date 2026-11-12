@@ -96,15 +96,30 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     assert api_of(run_id) == with_windows
   end
 
-  test "the windows are 1 to 11 strings", %{run_id: run_id} do
+  test "the windows are 1 to 11 names of the contract's limit windows", %{run_id: run_id} do
     assert set(run_id, @api) == :ok
 
-    for n <- [1, 11] do
-      windows = for i <- 1..n, do: "w#{i}"
-      assert set(run_id, Map.put(@api, "use_up_to_windows", windows)) == :ok, "#{n}"
+    for windows <- [
+          ["w1"],
+          for(i <- 1..11, do: "w#{i}"),
+          ["a" <> String.duplicate("_9", 31) <> "z"]
+        ] do
+      assert set(run_id, Map.put(@api, "use_up_to_windows", windows)) == :ok, inspect(windows)
     end
 
-    for windows <- [[], for(i <- 1..12, do: "w#{i}"), "five_hour", ["five_hour", 5], [nil]] do
+    for windows <- [
+          [],
+          for(i <- 1..12, do: "w#{i}"),
+          "five_hour",
+          ["five_hour", 5],
+          [nil],
+          [""],
+          ["Five_hour"],
+          ["5_hour"],
+          ["five-hour"],
+          ["five_hour\n"],
+          ["a" <> String.duplicate("b", 64)]
+        ] do
       assert set(run_id, Map.put(@api, "use_up_to_windows", windows)) ==
                "runs_provider_api_check",
              inspect(windows)
