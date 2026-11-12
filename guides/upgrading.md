@@ -77,27 +77,29 @@ possible:
 ## Rolling back
 
 The previous release runs on the new release's schema (expand, then contract, above), so
-going back one release changes nothing in the database:
+going back one release changes nothing in the database, except across the two migrations
+after these steps:
 
 1. Set `APIARY_VERSION` in `.env` back to the previous release.
 2. `docker compose up -d`. The previous release starts on the newer schema, and runs no
    migration, since none is pending for it.
 
-Further back than one release, restore the dump taken before the upgrade
-([Backup and restore](backup.md)), then set the version back and start it.
-
 Two migrations do not follow expand, then contract: `20261111090000` drops
 `machine_types.image` and `20261111100000` drops `runs.provider_value_id`. A release
 from before them, whose last migration is `20261110090000`, reads both columns and does
 not run on the newer schema. To go back to such a release, first take the schema back
-with the rollback command below and `20261110153000`, the first migration that release
-does not have, then set the version back. The rollback adds both columns again, with no
-image on any machine type.
+with the rollback command at the end of this section and `20261110153000`, the first
+migration that release does not have, then set the version back. The rollback adds both
+columns again, with no image on any machine type. It also reverts every later migration;
+the CHANGELOG entry of each describes what its rollback loses.
+
+Further back than one release, restore the dump taken before the upgrade
+([Backup and restore](backup.md)), then set the version back and start it.
 
 Every migration has a `down` all the same. To take the schema back too, run the rollback
-command above from the newer release's image, in a one-off container, while `.env` still
-names it, with the first migration version the previous release does not have, and
-then set the version back:
+command above from the newer release's image, in a one-off container, while
+`APIARY_VERSION` in `.env` is still the newer release, with the first migration version
+the previous release does not have, and then set the version back:
 
 ```sh
 docker compose stop apiary

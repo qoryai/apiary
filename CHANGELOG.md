@@ -1867,9 +1867,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run with a key, and its two checks on `runs` scan `runs` under a lock that blocks reads
   and writes. Rolling back sets `provider_value_id` to the first key of the
   list where that key still exists, and clears the provider columns of a run whose first
-  key is gone. A release from before it reads `runs.provider_value_id` and does not
-  run after it: to go back to one, first take the schema back with
-  `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading, Rolling back).
+  key is gone. A release from before this migration reads `runs.provider_value_id` and
+  does not run on the schema after it: to go back to such a release, first take the
+  schema back with `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading,
+  Rolling back).
 <!-- /feature -->
 
 - `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
@@ -1879,10 +1880,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and each type's key, name and spec stay. A run claimed with a type's image before the
   upgrade starts in that image only where the image is in the organisation's place in
   the registry, else in the pool's default image. Rolling back adds the columns again,
-  with no image on any type and no run marked. A release from before it reads
-  `machine_types.image` and does not run after it: to go back to one, first take the
-  schema back with `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading,
-  Rolling back).
+  with no image on any type and no run marked. A release from before this migration
+  reads `machine_types.image` and does not run on the schema after it: to go back to such
+  a release, first take the schema back with
+  `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading, Rolling back).
 <!-- feature: factory, secrets -->
 - `model_key_settings` and `model_key_states` (20261110161700): two new tables, keyed by
   a key's row in `secret_values`: a key's Resets and Pause for, and its state in each
