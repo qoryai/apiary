@@ -15,10 +15,10 @@ defmodule Apiary.Runs.ProviderCredential do
   # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
   # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
-  # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows
-  # (`Apiary.Kinds.Provider`), from the catalogue entry the provider was added from, which
-  # a run with that provider has at its claim too; with no limit windows the entry has
-  # neither, as the contract requires both or none. Every key has
+  # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows,
+  # which the claim wrote once for the run into `runs.provider_api` from the catalogue's
+  # entry; a run whose `provider_api` has no windows, such as one claimed before runs kept
+  # them, gives no key either member, as the contract requires both or none. Every key has
   # `pause_for_s`: from its claim, or, for a run claimed before runs kept several keys,
   # from the migration that keeps a run's model keys. The start key, `model_credential`,
   # is the key the run keeps with `start`, else its first. An entry has no key value, no
@@ -33,8 +33,8 @@ defmodule Apiary.Runs.ProviderCredential do
   #
   # Only with both features `factory` and `secrets` on; with either off, a run has none.
   # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
-  # integrity code (`Apiary.Connections.intact?/1`), or is no longer in the catalogue as
-  # it was added, and when the stored endpoint fails the endpoint rule: the run is then
+  # integrity code (`Apiary.Connections.intact?/1`), or that
+  # `Apiary.Connections.provider/1` refuses, and when the stored endpoint fails the endpoint rule: the run is then
   # given no run configuration, since one without its keys would run on another. Reads; it
   # locks and writes nothing.
 
@@ -225,7 +225,7 @@ defmodule Apiary.Runs.ProviderCredential do
           %{
             name: name,
             secret_value_id: id,
-            entry: entry(name, api, key, description.limit_windows)
+            entry: entry(name, api, key)
           }
         end
 
@@ -288,8 +288,8 @@ defmodule Apiary.Runs.ProviderCredential do
 
       {:error, reason} ->
         Logger.error(
-          "the model provider #{provider.public_id} is not in the catalogue as it was " <>
-            "added (#{reason}): the run is given no run configuration"
+          "the model provider #{provider.public_id} is refused by the catalogue " <>
+            "(#{reason}): the run is given no run configuration"
         )
 
         {:error, :unavailable}
@@ -297,16 +297,11 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   @doc false
-  # entry/4 is the API credential named `name` for `api`, the run's `provider_api`, with
-  # the members the run keeps for the key `key` (`runs.model_keys`), and with
-  # `limit_windows`, the provider's, as `use_up_to_windows` beside `use_up_to_percent`.
-  @spec entry(String.t(), map, map, [String.t()]) :: Jason.OrderedObject.t()
-  def entry(
-        name,
-        %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api,
-        key \\ %{},
-        limit_windows \\ []
-      ) do
+  # entry/3 is the API credential named `name` for `api`, the run's `provider_api`, with
+  # the members the run keeps for the key `key` (`runs.model_keys`), and with the run's
+  # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
+  @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
+  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api, key \\ %{}) do
     auth = for member <- @auth_members, Map.has_key?(auth, member), do: {member, auth[member]}
 
     prefixes =
@@ -319,9 +314,9 @@ defmodule Apiary.Runs.ProviderCredential do
 
     # `use_up_to_percent` and `use_up_to_windows` go together, or neither does.
     kept =
-      case {key["use_up_to_percent"], limit_windows} do
-        {percent, [_ | _]} when is_integer(percent) ->
-          kept ++ [{"use_up_to_windows", limit_windows}]
+      case {key["use_up_to_percent"], api["use_up_to_windows"]} do
+        {percent, [_ | _] = windows} when is_integer(percent) ->
+          kept ++ [{"use_up_to_windows", windows}]
 
         _neither ->
           List.keydelete(kept, "use_up_to_percent", 0)

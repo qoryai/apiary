@@ -3,7 +3,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
   # whose catalogue entry lists limit windows, 1 to 99; a key in cooldown while a listed
   # window's use is at or above it, until that window resets, at the claim, in the claim's
   # filter, in the first key to leave its cooldown and in the counts; the run's keys and
-  # its run configuration with the percentage and the provider's windows.
+  # its run configuration with each key's percentage and the windows the run keeps once.
   use Apiary.DataCase, async: true
 
   import Apiary.ModelKeysFixtures
@@ -21,6 +21,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
     "endpoint" => "https://api.anthropic.com",
     "auth" => %{"scheme" => "bearer", "oauth" => true}
   }
+  @windows_api Map.put(@subscription_api, "use_up_to_windows", ~w(five_hour seven_day))
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -244,13 +245,13 @@ defmodule Apiary.ModelKeys.UseUpToTest do
   end
 
   describe "a run's keys" do
-    # A run of the subscription with `keys` as it keeps them.
-    defp run(ctx, keys) do
+    # A run of the subscription with `keys` as it keeps them, and `api`.
+    defp run(ctx, keys, api \\ @windows_api) do
       %Run{
         id: Ecto.UUID.generate(),
         provider_connection_id: ctx.subscription.id,
         provider_secret_id: ctx.subscription.secret_id,
-        provider_api: @subscription_api,
+        provider_api: api,
         model_keys: keys
       }
     end
@@ -263,23 +264,22 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       })
     end
 
-    test "send the percentage with the provider's windows, or neither", ctx do
+    test "send the percentage with the run's windows, or neither", ctx do
       main = ctx.values["main"].id
       spare = ctx.values["spare"].id
 
-      run =
-        run(ctx, [
-          %{
-            "id" => main,
-            "name" => "k-1",
-            "start" => true,
-            "pause_for_s" => 3600,
-            "use_up_to_percent" => 90
-          },
-          %{"id" => spare, "name" => "k-2", "pause_for_s" => 3600}
-        ])
+      keys = [
+        %{
+          "id" => main,
+          "name" => "k-1",
+          "start" => true,
+          "pause_for_s" => 3600,
+          "use_up_to_percent" => 90
+        },
+        %{"id" => spare, "name" => "k-2", "pause_for_s" => 3600}
+      ]
 
-      assert {:ok, credential} = ProviderCredential.for_run(run)
+      assert {:ok, credential} = ProviderCredential.for_run(run(ctx, keys))
       [first, second] = Enum.map(credential.keys, &Jason.decode!(Jason.encode!(&1.entry)))
       assert first["use_up_to_percent"] == 90
       assert first["use_up_to_windows"] == ["five_hour", "seven_day"]
@@ -289,12 +289,24 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       bytes = configuration(credential)
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
 
-      # A provider without windows sends neither.
-      api = ProviderCredential.entry("k", @subscription_api, %{"use_up_to_percent" => 90}, [])
-      refute Map.has_key?(Jason.decode!(Jason.encode!(api)), "use_up_to_percent")
+      # A run that keeps no windows, such as one claimed before runs kept them, sends
+      # neither, though its key has a percentage.
+      assert {:ok, credential} = ProviderCredential.for_run(run(ctx, keys, @subscription_api))
+
+      for %{entry: entry} <- credential.keys do
+        entry = Jason.decode!(Jason.encode!(entry))
+        refute Map.has_key?(entry, "use_up_to_percent")
+        refute Map.has_key?(entry, "use_up_to_windows")
+      end
+
+      assert Apiary.ForagerSchemas.validate(
+               "run-configuration.schema.json",
+               configuration(credential)
+             ) == :ok
     end
 
-    test "fit runs.model_keys at 6 keys with every member; the windows would not", ctx do
+    test "fit runs.model_keys at 6 keys with every member, the windows once in the API",
+         ctx do
       %{scope: scope} = ctx
       pool = Apiary.NodesFixtures.pool_fixture(scope)
       %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
@@ -319,17 +331,19 @@ defmodule Apiary.ModelKeys.UseUpToTest do
           })
         end
 
+      api = Map.put(@subscription_api, "use_up_to_windows", windows)
+
       %{run: run} =
         Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{
           provider_connection_id: ctx.subscription.id,
           provider_secret_id: ctx.subscription.secret_id,
           provider_chain: "organisation",
-          provider_api: @subscription_api,
+          provider_api: api,
           model_keys: keys,
           run_settings: %{}
         })
 
-      assert %Run{model_keys: stored} = Repo.get!(Run, run.id)
+      assert %Run{model_keys: stored, provider_api: ^api} = Repo.get!(Run, run.id)
       assert stored == keys
 
       size =
@@ -341,18 +355,15 @@ defmodule Apiary.ModelKeys.UseUpToTest do
 
       assert size <= 4096
 
-      # The run configuration with 11 windows of 64 characters on each key passes the
-      # contract's schema.
-      entries =
-        for k <- keys,
-            do: ProviderCredential.entry(k["name"], @subscription_api, k, windows)
-
+      # The run configuration, with the 11 windows of 64 characters on each key, passes
+      # the contract's schema.
+      entries = for k <- keys, do: ProviderCredential.entry(k["name"], api, k)
+      assert Enum.all?(entries, &(&1["use_up_to_windows"] == windows))
       document = Jason.encode!(%{"version" => 1, "credentials" => entries})
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
 
-      # Kept on each key, those windows break the column's check: the run keeps the
-      # percentage alone, and its run configuration takes the windows from the
-      # provider's catalogue entry.
+      # Kept on each key, those windows break the column's check: each key keeps the
+      # percentage alone, and the run keeps the windows once, in `provider_api`.
       with_windows = Enum.map(keys, &Map.put(&1, "use_up_to_windows", windows))
 
       assert_raise Postgrex.Error, ~r/runs_model_keys_check/, fn ->

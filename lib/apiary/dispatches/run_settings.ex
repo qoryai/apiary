@@ -39,8 +39,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # held, and ends the run with the first cause that applies, in this order:
   #
   #   * `provider_gone`: the provider is not there, fails its integrity code
-  #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or is
-  #     no longer in the catalogue as it was added;
+  #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or
+  #     `Apiary.Connections.provider/1` refuses it: its kind is no longer in the
+  #     catalogue, or its settings no longer fit the catalogue's entry;
   #   * `runtime_unserved`: the runtime the choice names is no longer in the catalogue
   #     (`Apiary.Kinds.Runtimes`), or no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
@@ -88,7 +89,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # `<provider's public id>-<place from 1>`, `start` on the start key, and what its run
   # configuration entry has of it), the provider's chain and the API the run uses
   # (`provider_api`: its `format`, its `endpoint` with a setting resolved to its address,
-  # its `auth` and, when the description lists them, its `key_prefixes`), for the reads
+  # its `auth`, and, when the description lists them, its `key_prefixes` and its limit
+  # windows as `use_up_to_windows`), for the reads
   # that follow the claim. The run settings take at most 64 KiB encoded; more refuses
   # the claim.
   #
@@ -401,9 +403,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # `start` on the start key, its Pause for, and, where it has them, its known reset from
   # the providers' responses, the next reset of its schedule, whether the choice is set to
   # it, the end of its cooldown while it is in cooldown at `now`, a window at its Use up
-  # to percentage included, and that percentage. The run keeps no limit windows: its run
-  # configuration takes them from the provider's catalogue entry
-  # (`Apiary.Runs.ProviderCredential`). Times are in whole seconds, rounded up.
+  # to percentage included, and that percentage. The limit windows are not on the key:
+  # the run keeps them once, in `provider_api` (`with_windows/2`). Times are in whole
+  # seconds, rounded up.
   defp stored_key(key, name, start?, now) do
     [
       {"id", key.id},
@@ -556,9 +558,18 @@ defmodule Apiary.Dispatches.RunSettings do
          :ok <- key(provider, resolution.value_id),
          models = Connections.provider_models(description),
          :ok <- model(models, resolution, runtime) do
-      {:ok, built(resolution, provider, models, runtime, %{api | "endpoint" => endpoint})}
+      api = with_windows(%{api | "endpoint" => endpoint}, description)
+      {:ok, built(resolution, provider, models, runtime, api)}
     end
   end
+
+  # The API with the description's limit windows as `use_up_to_windows`, which the run
+  # keeps in `provider_api` for each key's Use up to percentage
+  # (`Apiary.Runs.ProviderCredential`); none for a provider without them.
+  defp with_windows(api, %Provider{limit_windows: [_ | _] = windows}),
+    do: Map.put(api, "use_up_to_windows", windows)
+
+  defp with_windows(api, %Provider{}), do: api
 
   defp described({:ok, %Provider{} = description}), do: {:ok, description}
   defp described(_changed_or_unknown), do: {:end, :provider_gone}
@@ -629,7 +640,7 @@ defmodule Apiary.Dispatches.RunSettings do
         provider_connection_id: provider.id,
         provider_secret_id: provider.secret_id,
         provider_chain: provider.chain,
-        provider_api: Map.take(api, ~w(format endpoint auth key_prefixes))
+        provider_api: Map.take(api, ~w(format endpoint auth key_prefixes use_up_to_windows))
       }
     }
   end

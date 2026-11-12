@@ -2,7 +2,8 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   # A claim of an explore run whose model provider has limit windows
   # (`Apiary.Dispatches.RunSettings`): each key keeps its Use up to percentage, and a key
   # whose window is at that percentage goes after the free keys, with the window's reset
-  # as its `cooldown_until`.
+  # as its `cooldown_until`; the run keeps the provider's limit windows once, in
+  # `provider_api`, from the catalogue entry at the claim.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -110,6 +111,8 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
 
     assert {spare_id, main_id} == {spare.id, main.id}
     refute Map.has_key?(first, "cooldown_until")
+    refute Enum.any?(run.model_keys, &Map.has_key?(&1, "use_up_to_windows"))
+    assert run.provider_api["use_up_to_windows"] == ~w(five_hour seven_day)
 
     assert {:ok, %{keys: keys}} = ProviderCredential.for_run(run)
     entries = Enum.map(keys, &Jason.decode!(Jason.encode!(&1.entry)))
