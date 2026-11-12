@@ -548,9 +548,22 @@ defmodule Apiary.AccessTest do
       %{owner: owner, second: workspace_fixture(organisation, "Platform"), admin: admin}
     end
 
-    # A member the edition does not let reach a workspace finds nothing of it:
-    # "a member reaches the workspaces they were added to" in
-    # test/apiary_pro/access_test.exs.
+    test "a member finds nothing of a workspace until they are added to it", ctx do
+      %{user: member, scope: main, membership: membership} = member_fixture(ctx.owner, :member)
+      # The member's scope moved to a workspace they were not added to.
+      there = %{main | workspace: ctx.second}
+      admin = workspace_scope(ctx.admin, ctx.second)
+
+      assert workspace_scope(member, ctx.second) == nil
+      assert Access.authorize(there, :"node.read", ctx.second) == {:error, :not_found}
+      assert Access.authorize(admin, :"node.read", ctx.second) == :ok
+
+      {:ok, _} = ApiaryPro.WorkspaceAccess.add(ctx.owner, membership.id, ctx.second.id)
+      assert Access.authorize(there, :"node.read", ctx.second) == :ok
+
+      assert Access.authorize(workspace_scope(member, ctx.second), :"node.read", ctx.second) ==
+               :ok
+    end
 
     test "an owner and an admin reach every workspace", ctx do
       for user <- [ctx.owner.user, ctx.admin] do
