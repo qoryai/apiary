@@ -1544,11 +1544,12 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A runs column with paused runs: the same outline in two parts, the Paused part from the
-  # baseline, `paused / value` of the height, at least 2 px but at most 1 px less than the
-  # column, and the rest above it. The Paused part is the whole column only when every run paused.
-  # The Paused part stops 1 px short of the rest, so a 1 px gap in the page's background parts
-  # the two hues. A 2 px column has no room for 1 px of each part and the gap: its parts meet.
+  # A runs column with paused runs: the same outline in two parts, the Paused part from
+  # the baseline, `paused / value` of the height, at least 2 px but at most 1 px less
+  # than the column, and the rest above it. The Paused part is the whole column only when
+  # every run paused. The Paused part stops 1 px short of the rest, so a 1 px gap in the
+  # page's background separates the two hues. A 2 px column has no room for 1 px of each
+  # part and the gap: its parts meet.
   defp column(%{value: value, max: max, paused: paused} = assigns)
        when value > 0 and max > 0 and paused > 0 do
     h = col_height(value, max, assigns.plot)

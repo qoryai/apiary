@@ -64,7 +64,8 @@ defmodule Apiary.ModelKeys.Report do
   # The gateway sends its last report within 10 s of the run's end, sometimes before its
   # `dev.qory.run.exited`: a report this long after the run's end is still stored.
   @after_exit_seconds 60
-  # The contract's bound on `resets_at`: at most 31 days after the provider's response arrived.
+  # The contract's bound on `resets_at`: at most 31 days after the provider's response
+  # arrived.
   @max_reset_days 31
   # 6 keys of a run, 11 windows each (`Apiary.ModelKeys.State.windows/0`).
   @max_keys 66
