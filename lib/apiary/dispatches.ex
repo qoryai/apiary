@@ -1265,10 +1265,11 @@ defmodule Apiary.Dispatches do
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
-    case Repo.one(
-           from r in without_stopped(waiting_query(key, fit(pool, default), now), now),
-             where: r.id not in ^skipped
-         ) do
+    stopped = Apiary.Connections.stopped_in_claim()
+    waiting = waiting_query(key, fit(pool, default), now, stopped)
+    query = without_stopped(waiting, stopped)
+
+    case Repo.one(from r in query, where: r.id not in ^skipped) do
       nil ->
         {:none, ended}
 
@@ -1280,28 +1281,23 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  # `query` without the runs that the claim at `now` would leave waiting for the
-  # providers whose settings check stopped earlier in it
-  # (`Apiary.Connections.stopped_in_claim/0`), so they take none of its tries: a run whose
-  # choice's provider, the first of its `model_provider_ids`, is one of them, and a run
-  # whose other providers are all cooling (`keys_free/2`). A run with such a provider only
-  # as a fallback and another provider not cooling stays in the query. No condition while
-  # no check stopped.
-  defp without_stopped(query, now) do
-    case Apiary.Connections.stopped_in_claim() do
-      [] ->
-        query
+  # The claim leaves a run waiting for a provider whose settings check stopped earlier in
+  # it (`Apiary.Connections.stopped_in_claim/0`), the `stopped` providers, so the query of
+  # the next run leaves out each run it would leave waiting, and those runs take none of
+  # its tries: a run whose other providers are all cooling, the stopped ones counted as
+  # cooling (`waiting_query/4`), and, here, a run whose choice's provider, the first of
+  # its `model_provider_ids`, is a stopped one. A run with a stopped provider only as a
+  # fallback and another provider not cooling stays in the query.
+  defp without_stopped(query, []), do: query
 
-      ids ->
-        from [run: r] in query,
-          where:
-            fragment(
-              "coalesce((?)[1] <> ALL(?), true)",
-              r.model_provider_ids,
-              type(^ids, {:array, Ecto.UUID})
-            ),
-          where: ^keys_free(now, ids)
-    end
+  defp without_stopped(query, stopped) do
+    from [run: r] in query,
+      where:
+        fragment(
+          "coalesce((?)[1] <> ALL(?), true)",
+          r.model_provider_ids,
+          type(^stopped, {:array, Ecto.UUID})
+        )
   end
 
   defp pick_run(key, pool, through, now, {run, default, max, ended, skipped}) do
@@ -1577,17 +1573,22 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # waiting_query/3 is the query of the oldest waiting run the pool of `key` may take at
+  # waiting_query/4 is the query of the oldest waiting run the pool of `key` may take at
   # `now`, the queue's clock when not given, locked `FOR UPDATE SKIP LOCKED`, of the runs
   # that pass `fit`, a condition on a run bound `:run`, by its machine type (`fit/2`), any
   # run when not given. A prebuild goes only to the pool it is held for, only on an
   # instance with a registry (`prebuild_taken/0`); a run held for the pool's build of its
   # target (`Apiary.Environments.held/1`) is left waiting, and so is a run while every key
-  # of each of its model providers is in cooldown at `now` (`keys_free/1`).
+  # of each of its model providers is in cooldown at `now`, the providers `except` counted
+  # as cooling (`keys_free/2`).
   @doc false
-  @spec waiting_query(AccessKey.t(), Ecto.Query.dynamic_expr() | true, DateTime.t() | nil) ::
-          Ecto.Query.t()
-  def waiting_query(key, fit \\ true, now \\ nil)
+  @spec waiting_query(
+          AccessKey.t(),
+          Ecto.Query.dynamic_expr() | true,
+          DateTime.t() | nil,
+          [Ecto.UUID.t()]
+        ) :: Ecto.Query.t()
+  def waiting_query(key, fit \\ true, now \\ nil, except \\ [])
 
   def waiting_query(
         %AccessKey{
@@ -1596,7 +1597,8 @@ defmodule Apiary.Dispatches do
           node_id: pool_id
         },
         fit,
-        now
+        now,
+        except
       )
       when is_binary(workspace_id) do
     query =
@@ -1607,7 +1609,7 @@ defmodule Apiary.Dispatches do
         where: ^fitting(fit),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
         where: ^prebuild_taken(),
-        where: ^keys_free(now),
+        where: ^keys_free(now, except),
         where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
@@ -1625,7 +1627,7 @@ defmodule Apiary.Dispatches do
   # across organisations, and the prebuilds held for it, each in a place in use
   # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
   # wait for that pool.
-  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit, now) do
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit, now, except) do
     takes =
       dynamic(
         [run: r],
@@ -1640,7 +1642,7 @@ defmodule Apiary.Dispatches do
       where: ^takes,
       where: ^fitting(fit),
       where: ^prebuild_taken(),
-      where: ^keys_free(now),
+      where: ^keys_free(now, except),
       where: ^in_use_place(),
       where: not exists(walk_unresolved()),
       order_by: [asc: r.queued_at, asc: r.id],
@@ -1655,7 +1657,7 @@ defmodule Apiary.Dispatches do
   # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/2`), the
   # providers `except` counted as cooling, while runs are given model keys
   # (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
-  defp keys_free(now, except \\ []) do
+  defp keys_free(now, except) do
     if ProviderCredential.applies?(),
       do: ModelKeys.claimable(now || now(), except: except),
       else: dynamic([run: _r], true)

@@ -463,8 +463,8 @@ defmodule Apiary.ModelKeys do
   run and ends it as it would without a cooldown. The condition reads every key of every
   provider of the run.
 
-  With `except:`, a list of provider row ids, those providers count as cooling: a claim
-  passes the providers whose settings check stopped earlier in it.
+  With `except:`, a list of provider row ids, those providers count as cooling. A claim
+  sets it to the providers whose settings check stopped earlier in that claim.
   """
   @spec claimable(DateTime.t(), [{:except, [Ecto.UUID.t()]}]) :: Ecto.Query.dynamic_expr()
   def claimable(%DateTime{} = now, opts \\ []) do

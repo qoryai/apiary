@@ -341,15 +341,15 @@ defmodule Apiary.ModelKeysTest do
     end
 
     # Whether a claim at `now` may take a run of the queue with the providers `ids`, as
-    # the claim's filter reads it.
-    defp claimable?(ids, now) do
+    # the claim's filter reads it, with the providers `except` counted as cooling.
+    defp claimable?(ids, now, except \\ []) do
       Repo.one(
         from r in fragment(
                "SELECT ?::uuid[] AS model_provider_ids",
                type(^ids, {:array, Ecto.UUID})
              ),
              as: :run,
-             where: ^ModelKeys.claimable(now),
+             where: ^ModelKeys.claimable(now, except: except),
              select: true
       ) == true
     end
@@ -424,6 +424,13 @@ defmodule Apiary.ModelKeysTest do
 
       refute claimable?([ctx.provider.id], now)
       assert claimable?([ctx.provider.id, fallback.id], now)
+
+      # A provider in `except` counts as cooling; an id the run does not list changes
+      # nothing.
+      refute claimable?([ctx.provider.id, fallback.id], now, [fallback.id])
+      assert claimable?([ctx.provider.id, fallback.id], now, [ctx.provider.id])
+      assert claimable?([ctx.provider.id, fallback.id], now, [Ecto.UUID.generate()])
+      refute claimable?([ctx.provider.id], now, [Ecto.UUID.generate()])
 
       assert ModelKeys.cooling_until([ctx.provider.id], now) ==
                DateTime.truncate(DateTime.add(now, 600), :microsecond)
