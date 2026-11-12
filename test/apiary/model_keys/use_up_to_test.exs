@@ -208,6 +208,47 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       assert ModelKeys.use_up_to_percents(ctx.subscription) == %{main.id => 90}
     end
 
+    test "is the same in the claim's filter as in cooldown/4 at the edges", ctx do
+      now = DateTime.utc_now()
+      reset = at(3600)
+      {solo, %{"solo" => value}} = provider!(ctx.scope, "claude-subscription", ["solo"])
+      api_value = ctx.api_values["main"]
+
+      # {provider, key, window, percent, utilization, resets_at, in cooldown}
+      cases = [
+        {solo, value, "five_hour", 90, 90, reset, true},
+        {solo, value, "five_hour", 90, 89, reset, false},
+        {solo, value, "five_hour", 90, nil, reset, false},
+        {solo, value, "five_hour", 90, 95, nil, false},
+        {ctx.api, api_value, "five_hour", 10, 95, reset, false}
+      ]
+
+      for {provider, key, window, percent, used, resets_at, cooling} <- cases do
+        Repo.delete_all(from s in State, where: s.secret_value_id == ^key.id)
+        Repo.delete_all(from s in Setting, where: s.secret_value_id == ^key.id)
+
+        # Written past the changeset, which has no percentage for an API key.
+        Repo.insert!(%Setting{
+          secret_value_id: key.id,
+          organisation_id: key.organisation_id,
+          use_up_to_percent: percent
+        })
+
+        state!(key, window, utilization: used, resets_at: resets_at)
+        states = Repo.all(from s in State, where: s.secret_value_id == ^key.id)
+        windows = ModelKeys.limit_windows(provider)
+        label = inspect({provider.provider_kind, used, resets_at})
+
+        assert ModelKeys.cooldown(states, percent, windows, now) != nil == cooling, label
+        assert claimable?([provider.id], now) == not cooling, label
+
+        assert ModelKeys.cooldown_counts([provider], now) == %{
+                 provider.id => if(cooling, do: 1, else: 0)
+               },
+               label
+      end
+    end
+
     test "leaves a run of the queue waiting while every key is at its percentage", ctx do
       now = DateTime.utc_now()
       soon = at(600)

@@ -9,6 +9,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
   import Apiary.ModelKeysFixtures
 
   alias Apiary.{Connections, ModelKeys, Repo}
+  alias Apiary.ModelKeys.Setting
   alias Apiary.Secrets.{Secret, Value}
 
   @moduletag needs: [:factory, :secrets]
@@ -36,6 +37,16 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
     Repo.one!(
       from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
     )
+  end
+
+  # A Use up to percentage stored for `value`, written past the changeset, which has none
+  # for a key of a provider without limit windows: as a key kept from before.
+  defp stored!(value, percent) do
+    Repo.insert!(%Setting{
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      use_up_to_percent: percent
+    })
   end
 
   defp secrets_path(scope, rest),
@@ -85,6 +96,21 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       end
 
       assert ModelKeys.setting(value!(provider, "key-1").id) == nil
+    end
+
+    test "keep a stored percentage of a provider without limit windows", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope, "anthropic")
+      value = value!(provider, "key-1")
+      stored!(value, 40)
+
+      {:ok, lv, _html} = live(conn, "#{page(scope, provider)}/keys/key-1/edit")
+
+      lv
+      |> form("#key-form", key: %{pause_number: "5", pause_unit: "minutes"})
+      |> render_submit()
+
+      assert %Setting{use_up_to_percent: 40, pause_seconds: 300} = ModelKeys.setting(value.id)
     end
 
     test "have no Use up to for a provider without limit windows", ctx do
@@ -179,6 +205,25 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       assert has_element?(lv, ~s{#secret_value_use_up_to[value="85"]})
       lv |> form("#secret-form", secret_value: %{value: "", use_up_to: "70"}) |> render_submit()
       assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == 70
+    end
+
+    test "Change value keeps a stored percentage of a provider without limit windows", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope, "anthropic", :workspace)
+      secret = Repo.get!(Secret, provider.secret_id)
+      value = value!(provider, "key-1")
+      stored!(value, 40)
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/key-1/change"))
+
+      lv
+      |> form("#secret-form",
+        secret_value: %{value: "", pause_number: "2", pause_unit: "hours"}
+      )
+      |> render_submit()
+
+      assert %Setting{use_up_to_percent: 40, pause_seconds: 7200} = ModelKeys.setting(value.id)
     end
 
     test "a provider without limit windows has no Use up to", ctx do

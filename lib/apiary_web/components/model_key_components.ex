@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #     percentage, each optional, with their hints and their errors;
   #   * `params/3` the fields of a key's settings, `read_settings/1` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
-  #   * `state/2` the state of a key from its states, in words.
+  #   * `state/4` the state of a key from its states, in words.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -159,11 +159,13 @@ defmodule ApiaryWeb.ModelKeyComponents do
   The settings that the fields `params` stand for, checked as they are saved
   (`attrs/1`, `Apiary.ModelKeys.Setting.changeset/3`) for a key of a provider with
   `limit_windows` (`Apiary.ModelKeys.limit_windows/1`): `{:ok, attrs}`, or
-  `{:error, errors}` by field group, as `errors/1` has them.
+  `{:error, errors}` by field group, as `errors/1` has them. For a provider without
+  limit windows, whose form has no Use up to, `attrs` have no `use_up_to_percent`, so a
+  save keeps a percentage the key has stored.
   """
   @spec read_settings(map, [String.t()]) :: {:ok, map} | {:error, map}
   def read_settings(%{} = params, limit_windows \\ []) do
-    {attrs, read_errors} = attrs(params)
+    {attrs, read_errors} = params |> attrs() |> with_use_up_to(limit_windows)
     changeset = Setting.changeset(%Setting{}, attrs, limit_windows)
 
     errors =
@@ -171,6 +173,11 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
     if errors == %{}, do: {:ok, attrs}, else: {:error, errors}
   end
+
+  defp with_use_up_to({attrs, errors}, []),
+    do: {Map.delete(attrs, "use_up_to_percent"), Map.delete(errors, :use_up_to)}
+
+  defp with_use_up_to(read, _limit_windows), do: read
 
   defp put_if(errors, true, group, message), do: Map.put(errors, group, [message])
   defp put_if(errors, false, _group, _message), do: errors
@@ -193,7 +200,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
   attr :limit_windows, :list,
     default: [],
-    doc: "the provider's limit windows (`Apiary.ModelKeys.limit_windows/1`); none: no Use up to"
+    doc: "the provider's limit windows (`ModelKeys.limit_windows/1`); none: no Use up to"
 
   def settings_fields(assigns) do
     assigns =
@@ -501,7 +508,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   defp window(code), do: code
 
   @doc """
-  A key's state as `state/2` has it, on one line: the state, then its source or its
+  A key's state as `state/4` has it, on one line: the state, then its source or its
   segments, each after a middle dot.
   """
   attr :id, :string, required: true

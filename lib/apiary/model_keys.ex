@@ -80,7 +80,7 @@ defmodule Apiary.ModelKeys do
   @doc """
   The changeset of the settings of the key `value`, from the settings it has or none, for
   a form. `limit_windows` is the key's provider's (`limit_windows/1`): without them, the
-  changeset refuses a Use up to percentage.
+  changeset has an error for a Use up to percentage.
   """
   @spec change_setting(Value.t(), map, [String.t()]) :: Ecto.Changeset.t()
   def change_setting(%Value{} = value, attrs \\ %{}, limit_windows \\ []),
@@ -148,8 +148,9 @@ defmodule Apiary.ModelKeys do
   a provider's limit error, a schedule or a Pause for; `{until, {:use_up_to, state}}`
   while a window of `limit_windows` (`limit_windows/1`) has a utilization at or above
   `percent`, the key's Use up to percentage, and a `resets_at` after `now`, until that
-  reset. Of several, the latest end, a stored cooldown first at the same end. Nil for a key
-  out of cooldown. A nil `percent`, or no `limit_windows`, leaves out the second kind.
+  reset. Of several, the latest end, a stored cooldown first at the same end. Nil for a
+  key out of cooldown. A nil `percent`, or no `limit_windows`, leaves out the second
+  kind.
   """
   @spec cooldown([State.t() | map], pos_integer | nil, [String.t()], DateTime.t()) ::
           {DateTime.t(), {:stored | :use_up_to, State.t() | map}} | nil

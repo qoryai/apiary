@@ -15,8 +15,8 @@ defmodule Apiary.ModelKeys.Setting do
       use is at or above it, until that window resets (`Apiary.ModelKeys.cooldown/4`).
       Without it, runs use the key up to the provider's limit.
 
-  The row is of the key's organisation, which `Apiary.ModelKeys.change_setting/2` takes from
-  the value, never from the attributes.
+  The row is of the key's organisation, which `Apiary.ModelKeys.change_setting/3` takes
+  from the value, never from the attributes.
   """
 
   use Ecto.Schema
