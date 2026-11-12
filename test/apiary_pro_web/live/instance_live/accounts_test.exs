@@ -228,6 +228,24 @@ defmodule ApiaryProWeb.InstanceLive.AccountsTest do
       assert_redirect(lv, "/")
     end
 
+    test "an instance admin removed while their scope is in the instance organisation moves to /",
+         ctx do
+      # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
+      # the page to `/`, before and after the page mounts on the core's Access check.
+      workspace = workspace_fixture(ctx.here)
+      conn = put_session(ctx.conn, :last_workspace_id, workspace.id)
+
+      {:ok, lv, _html} = live(conn, ~p"/instance/accounts")
+      render_async(lv)
+
+      assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id == ctx.here.id
+
+      {:ok, _removed} =
+        Organisations.remove_member(ctx.other, ctx.admin.instance_scope.membership.id)
+
+      assert_redirect(lv, "/")
+    end
+
     test "an instance admin who joins Web shop keeps the page and the password link shown", ctx do
       %{user: user} = sign_up_fixture()
       shop = sign_up_fixture(%{organisation_name: "Web shop"})

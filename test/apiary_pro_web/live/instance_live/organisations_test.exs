@@ -553,6 +553,26 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     assert_redirect(lv, "/")
   end
 
+  test "an instance admin removed while their scope is in the instance organisation moves to /",
+       ctx do
+    # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
+    # the page to `/`, before and after the page mounts on the core's Access check.
+    workspace = workspace_fixture(ctx.here)
+    conn = put_session(ctx.conn, :last_workspace_id, workspace.id)
+
+    {:ok, lv, _html} = live(conn, ~p"/instance/organisations")
+    render_async(lv)
+
+    assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id == ctx.here.id
+
+    %{instance_scope: other} = instance_admin_fixture()
+
+    {:ok, _removed} =
+      Apiary.Organisations.remove_member(other, ctx.admin.instance_scope.membership.id)
+
+    assert_redirect(lv, "/")
+  end
+
   describe "suspending an organisation" do
     test "an instance admin suspends an operator after confirming, and activates it", ctx do
       operator = operator_fixture(%{organisation_name: "Hive Ops"})
