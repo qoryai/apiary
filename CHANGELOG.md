@@ -1024,7 +1024,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   name and its state, in the reader's time zone: “Available”, then the use and the reset
   of each limit window, such as “Available · 5-hour 89%, resets 14:00 · 7-day 40%,
   resets Mon 09:00”; or “In cooldown until Fri 14:00”, then where that time comes from:
-  “from the provider's answer”, “from this key's schedule” or “no reset time given;
+  “from the provider's response”, “from this key's schedule” or “no reset time given;
   paused for 1 hour”. The windows read “5-hour”, “7-day”, “7-day Opus”, “7-day Sonnet”,
   “Extra usage”, “Requests per minute”, “Tokens per minute”, “Input tokens per minute”,
   “Output tokens per minute”, “Spend limit” and “Limit”. The default key comes first,
@@ -1070,7 +1070,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A gateway reports the state of a run's keys with a signed
   `POST /v1/runs/<run_id>/model-keys`: one entry per key and limit window, with its
   status, its reset, its use and its cooldown. Qory Apiary keeps the newest state of
-  each key and window, by the time the provider's answer arrived, whichever gateway
+  each key and window, by the time the provider's response arrived, whichever gateway
   sent it, and the `200` has that state for each key of the run. So a run on another
   machine skips a key that is in cooldown. The route returns `404` without the features
   `factory` and `secrets`, and `410` for a run that ended.

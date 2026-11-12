@@ -431,9 +431,9 @@ replaces the navigation it is in.
   limit window with a use or a reset still to come, "Available · 5-hour 89%, resets
   14:00 · 7-day 40%, resets Mon 09:00"; or, while a window of the key has a cooldown
   that ends later, "In cooldown until Fri 14:00", the latest such end, and after a middle
-  dot where that time comes from: "from the provider's answer", "from this key's
+  dot where that time comes from: "from the provider's response", "from this key's
   schedule", or "no reset time given; paused for 1 hour", the cooldown that applied, from
-  the answer that started it to its end, whatever the key's Pause for is now. A time is
+  the response that started it to its end, whatever the key's Pause for is now. A time is
   the time of day alone on the reader's day, the weekday and the time on one of the six
   days after it, else the date and the time (`ApiaryWeb.Format.week_time/2`). The windows
   read 5-hour, 7-day, 7-day Opus, 7-day Sonnet, Extra usage, Requests per minute, Tokens

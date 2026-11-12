@@ -25168,7 +25168,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "from the provider's answer"
+msgid "from the provider's response"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex

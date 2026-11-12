@@ -300,7 +300,7 @@ defmodule Apiary.ModelKeys do
   The keys of `provider`, the values of its secret, at `now`, for a claim: each with its
   row id and value id; whether it is the key `named_value_id`, which a model choice
   names (nil for none), and whether it is the provider's default key; `resets_at`, the
-  earliest reset after `now` across its windows, from the providers' answers;
+  earliest reset after `now` across its windows, from the providers' responses;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
   `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
   the end of its cooldown, the latest `cooldown_until` across its windows, which only a
