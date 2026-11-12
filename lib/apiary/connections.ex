@@ -411,8 +411,9 @@ defmodule Apiary.Connections do
   that applies to every workspace or lists `workspace`, the reach the model choice
   checks. An endpoint that is a setting is the provider's value of that setting. Each
   host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
-  and so is a provider that fails its integrity code or is no longer in the catalogue as
-  it was added. `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
+  and so is a provider that fails its integrity code, whose kind the catalogue no longer
+  has, or whose settings no longer fit the catalogue's entry (`provider/1`).
+  `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
   in no workspace's policy, only in the document composed for a run
   (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
   `secrets` are both on. It asks nothing of `Apiary.Access`.
@@ -493,8 +494,8 @@ defmodule Apiary.Connections do
 
   # The exact hosts of the provider's API endpoints, each once, as the document composed
   # for a run checks them (`Apiary.Runs.ProviderCredential`). A provider that fails its
-  # integrity code, or is no longer in the catalogue as it was added, has none here: a
-  # run of it is given no run configuration.
+  # integrity code, or that `provider/1` refuses, has none here: a run of it is given no
+  # run configuration.
   defp api_hosts(%Connection{} = provider) do
     with true <- intact?(provider),
          {:ok, %Provider{apis: apis}} <- provider(provider) do
@@ -1228,27 +1229,46 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  provider/1 is the description of the catalogue a provider connection was added from
-  (`Apiary.Kinds.Providers`): `{:ok, provider}` while the catalogue has it with the digest
-  the connection recorded; `{:error, :provider_changed}` once a later pin changed it, or
-  `{:error, :provider_unknown}` once the catalogue no longer has it.
+  provider/1 is the description of a provider connection's kind in the catalogue of the
+  running release (`Apiary.Kinds.Providers`), whatever entry the connection was added
+  from: `{:ok, provider}` while the connection's settings fit that entry, checked as
+  `create_provider/3` checks them; `{:error, :provider_changed}` once they no longer
+  fit, or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The
+  connection's `description_sha256`, the digest of the entry it was added from, is kept
+  as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
           {:ok, Provider.t()} | {:error, :provider_changed | :provider_unknown}
-  def provider(%Connection{provider_kind: kind, description_sha256: sha256}) do
+  def provider(%Connection{provider_kind: kind} = connection) do
     case Providers.fetch(kind) do
-      {:ok, %Provider{sha256: ^sha256} = provider} -> {:ok, provider}
-      {:ok, %Provider{}} -> {:error, :provider_changed}
-      :error -> {:error, :provider_unknown}
+      {:ok, %Provider{} = provider} ->
+        if settings_fit?(provider, connection),
+          do: {:ok, provider},
+          else: {:error, :provider_changed}
+
+      :error ->
+        {:error, :provider_unknown}
     end
+  end
+
+  # Whether the provider's saved settings pass the checks of an add or an edit against
+  # `provider`, the entry of the running release (`provider_settings/3`): the entry's
+  # settings schema, then the endpoint rule on each address setting, or the entry's
+  # default address where the provider has none.
+  defp settings_fit?(%Provider{} = provider, %Connection{} = connection) do
+    settings = Connection.settings_map(connection)
+
+    match?({:ok, _encoded}, settings(provider.description, settings)) and
+      address_refused(provider, settings) == nil
   end
 
   @doc """
   provider_models/1 is the models of a model provider: those of its description, in the
   description's order, each a map of `id`, `title` and, when the description lists them,
-  `effort`, the effort values the model accepts. Given a provider connection, the
-  description it was added from (`provider/1`), and `[]` once the catalogue changed or no
-  longer has it. A model choice may name any other model id too.
+  `effort`, the effort values the model accepts. Given a provider connection, those of
+  the catalogue's entry of its kind (`provider/1`), and `[]` once its settings no longer
+  fit that entry or the catalogue no longer has the kind. A model choice may name any
+  other model id too.
   """
   @spec provider_models(Connection.t() | Provider.t()) :: [map]
   def provider_models(%Provider{models: models}), do: models
@@ -1516,9 +1536,10 @@ defmodule Apiary.Connections do
   update_provider/3 changes a model provider (`provider.write`): its `name` and
   `settings`, checked as `create_provider/3` checks them. A change of its settings alone
   that changes an address setting is entered as `provider_address_changed`, with the host
-  before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` or
-  `:provider_unknown` for a provider whose description the catalogue no longer has as it
-  was added (`provider/1`); for any change of `applies_to`, which is set at the add, a
+  before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` for a
+  provider whose saved settings no longer fit the catalogue's entry, or
+  `:provider_unknown` for a provider whose kind the catalogue no longer has
+  (`provider/1`); for any change of `applies_to`, which is set at the add, a
   changeset whose error is on `applies_to` for a provider whose keys are a workspace's
   secret (`create_provider/3` with `:workspace`), which reaches that workspace alone, and
   `:reach_fixed` for any other. A change that changes nothing leaves no entry.

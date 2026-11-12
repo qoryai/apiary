@@ -1108,8 +1108,9 @@ defmodule Apiary.ModelChoices do
           ), provider: provider.name}}
   end
 
-  # The description the provider was added from; one a later pin changed or removed
-  # serves nothing, and is refused as a provider that serves no format.
+  # The catalogue's entry of the provider's kind (`Connections.provider/1`); a provider
+  # whose settings no longer fit it, or whose kind the catalogue no longer has, serves
+  # nothing, and is refused as a provider that serves no format.
   defp description(%Connection{} = provider, runtime) do
     case Connections.provider(provider) do
       {:ok, description} -> {:ok, description}

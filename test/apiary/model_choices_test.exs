@@ -1016,10 +1016,13 @@ defmodule Apiary.ModelChoicesTest do
       %{scope: scope, provider: provider, deepseek: deepseek} = ctx
       {:ok, runtime} = Runtimes.fetch(@runtime)
 
-      # A later catalogue changed the description it was added from: it serves nothing.
-      Repo.update_all(from(c in Apiary.Connections.Connection, where: c.id == ^deepseek.id),
-        set: [description_sha256: String.duplicate("0", 64)]
-      )
+      # Its settings no longer fit the catalogue's entry: it serves nothing. The row is
+      # coded again, as a save codes it.
+      Apiary.Connections.Connection
+      |> Repo.get!(deepseek.id)
+      |> Ecto.Changeset.change(settings: ~s({"region":"eu"}))
+      |> Apiary.Kinds.Coded.seal()
+      |> Repo.update!()
 
       assert fallback_errors(
                ModelChoices.put_choice(
