@@ -11,6 +11,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.SetUpSteps, only: [steps: 1]
 
   # The page of an invitation of `email` into a fresh organisation's workspace, opened
   # with the instance's mail from `mail`: the sign-up and the invitation before it are made
@@ -134,9 +135,28 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       end
     end
 
-    # An invited sign-up without mail: test/apiary_pro_web/live/user_live/sign_up_mail_test.exs,
-    # "an invited sign-up keeps the invitation's address, joins at once and signs the person
-    # in".
+    # An invited sign-up without mail, beside what
+    # test/apiary_pro_web/live/user_live/sign_up_mail_test.exs covers in "an invited sign-up
+    # keeps the invitation's address, joins at once and signs the person in".
+    test "an invited sign-up shows no steps, and its password fields are masked and empty",
+         %{conn: conn} do
+      %{lv: lv} = invited(conn, unique_user_email(), :none)
+
+      # An invitation into a workspace of an organisation that is no client: the account is
+      # the one step, and no indicator shows.
+      assert steps(lv) == []
+      refute has_element?(lv, "#set-up-steps")
+
+      assert has_element?(lv, "#registration_form input[name='user[password]'][type=password]")
+
+      assert has_element?(
+               lv,
+               "#registration_form input[name='user[password_confirmation]'][type=password]"
+             )
+
+      # The page never writes a password back.
+      refute has_element?(lv, "#registration_form input[type=password][value]")
+    end
 
     test "an invited sign-up makes the account, joins the workspace and signs the person in",
          %{conn: conn} do
