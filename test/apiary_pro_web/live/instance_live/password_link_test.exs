@@ -244,8 +244,8 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
     # before the membership change, which would move the page to `/`.
     membership_id = ctx.admin.instance_scope.membership.id
 
-    {1, _} =
-      Repo.update_all(from(m in Membership, where: m.id == ^membership_id), set: [level: :member])
+    query = from(m in Membership, where: m.id == ^membership_id)
+    {1, _} = Repo.update_all(query, set: [level: :member])
 
     render_click(lv, "password_link", %{"id" => user.id})
 

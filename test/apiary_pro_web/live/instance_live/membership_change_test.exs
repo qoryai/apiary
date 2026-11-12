@@ -1,18 +1,20 @@
 defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
   @moduledoc """
   An instance admin whose role in the instance organisation changes while Instance
-  settings › Accounts (`ApiaryProWeb.InstanceLive.Accounts`) is open: made a member, made
-  an admin, or removed, moves to `/`; a change elsewhere keeps the page as it is.
+  settings › Accounts (`ApiaryProWeb.InstanceLive.Accounts`) is open: made a member,
+  made an admin, or removed, moves to `/`; a change elsewhere keeps the page as it is.
   """
   # Not async: granting an instance admin, a change of level and a removal lock the
   # instance organisation's owner memberships until the test ends.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Features, Organisations}
+  alias Apiary.{Features, Organisations, Repo}
+  alias Apiary.Organisations.Membership
 
   @moduletag with_features: Features.all()
 
@@ -29,23 +31,23 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     }
   end
 
-  test "an instance admin made a member moves to / from the open page, without a click", ctx do
+  test "an instance admin made a member moves to / without a click", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/instance/accounts")
     render_async(lv)
     assert has_element?(lv, "#account-#{ctx.admin.user.id}", "you")
 
-    {:ok, _member} =
-      Organisations.set_member_level(ctx.other, ctx.admin.instance_scope.membership.id, :member)
+    id = ctx.admin.instance_scope.membership.id
+    {:ok, _member} = Organisations.set_member_level(ctx.other, id, :member)
 
     assert_redirect(lv, "/")
   end
 
-  test "an owner made an admin moves to / from the open page, without a click", ctx do
+  test "an instance admin made an admin moves to / without a click", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/instance/accounts")
     render_async(lv)
 
-    {:ok, _admin} =
-      Organisations.set_member_level(ctx.other, ctx.admin.instance_scope.membership.id, :admin)
+    id = ctx.admin.instance_scope.membership.id
+    {:ok, _admin} = Organisations.set_member_level(ctx.other, id, :admin)
 
     assert_redirect(lv, "/")
   end
@@ -67,8 +69,7 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     assert_redirect(lv, "/")
   end
 
-  test "an instance admin removed while their scope is in the instance organisation moves to /",
-       ctx do
+  test "an instance admin removed while in the instance organisation moves to /", ctx do
     # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
     # the page to `/`, before and after the page mounts on Core's Access check.
     workspace = workspace_fixture(ctx.here)
@@ -77,7 +78,8 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     {:ok, lv, _html} = live(conn, ~p"/instance/accounts")
     render_async(lv)
 
-    assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id == ctx.here.id
+    scope = :sys.get_state(lv.pid).socket.assigns.current_scope
+    assert scope.organisation.id == ctx.here.id
 
     {:ok, _removed} =
       Organisations.remove_member(ctx.other, ctx.admin.instance_scope.membership.id)
@@ -85,7 +87,7 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     assert_redirect(lv, "/")
   end
 
-  test "an instance admin who joins Web shop keeps the page and the password link shown", ctx do
+  test "an instance admin who joins Web shop keeps the page and the password link", ctx do
     %{user: user} = sign_up_fixture()
     shop = sign_up_fixture(%{organisation_name: "Web shop"})
     Apiary.Mail.put_test_source(:none)
@@ -94,6 +96,16 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     render_async(lv)
     lv |> element("#account-#{user.id}-password-link") |> render_click()
     panel = lv |> element("#password-link") |> render()
+
+    # The instance membership's `updated_at` changes with no message: only an instance
+    # scope computed again after the next message has the new value.
+    stamp = ~U[2026-01-01 00:00:00.000000Z]
+    instance_membership_id = ctx.admin.instance_scope.membership.id
+
+    {1, _} =
+      Repo.update_all(from(m in Membership, where: m.id == ^instance_membership_id),
+        set: [updated_at: stamp]
+      )
 
     # Accepting an invitation sends no membership message, so the level change sends
     # it. The hook then runs Core's step for the Instance pages, and a redirect there
@@ -104,7 +116,8 @@ defmodule ApiaryProWeb.InstanceLive.MembershipChangeTest do
     # The page lists Web shop only after the hook handled the message.
     assigns = :sys.get_state(lv.pid).socket.assigns
     assert shop.organisation.id in Enum.map(assigns.memberships, & &1.organisation_id)
-    # Core's step computed the instance scope again, and the level there is unchanged.
+    # Core's step computed the instance scope again, with the level there unchanged.
+    assert assigns.scope.membership.updated_at == stamp
     assert assigns.scope.membership.level == Apiary.Access.instance_admin_level()
     assert lv |> element("#password-link") |> render() == panel
     refute_redirected(lv)

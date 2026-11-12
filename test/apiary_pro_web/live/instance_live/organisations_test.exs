@@ -536,7 +536,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
            )
   end
 
-  test "an instance admin made a member moves to / from the open page, without a click", ctx do
+  test "an instance admin made a member moves to / without a click", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations")
     render_async(lv)
     assert has_element?(lv, "#organisation-#{ctx.here.id}-kind")
@@ -553,8 +553,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     assert_redirect(lv, "/")
   end
 
-  test "an instance admin removed while their scope is in the instance organisation moves to /",
-       ctx do
+  test "an instance admin removed while in the instance organisation moves to /", ctx do
     # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
     # the page to `/`, before and after the page mounts on Core's Access check.
     workspace = workspace_fixture(ctx.here)
@@ -563,7 +562,8 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     {:ok, lv, _html} = live(conn, ~p"/instance/organisations")
     render_async(lv)
 
-    assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id == ctx.here.id
+    scope = :sys.get_state(lv.pid).socket.assigns.current_scope
+    assert scope.organisation.id == ctx.here.id
 
     %{instance_scope: other} = instance_admin_fixture()
 
