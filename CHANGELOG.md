@@ -1822,8 +1822,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - `model_key_copies` (20261111220000): a row for each pending or running run and each of
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
-  keeps its keys' reports. It takes no lock that blocks reads or writes. Rolling back
-  changes nothing.
+  keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row
+  it copies until it commits, so deleting such a run or key, directly or through a
+  cascade, waits until then; reads do not wait. Rolling back changes nothing.
 - `secret_values` and `model_key_copies` (20261111190000): a column
   `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
   as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
