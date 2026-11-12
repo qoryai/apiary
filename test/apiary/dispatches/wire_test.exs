@@ -113,7 +113,7 @@ defmodule Apiary.Dispatches.WireTest do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
           {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
-          {"integration/v1", "58537e341aa7afa784743af0e7fb0bf74163cbc4"},
+          {"integration/v1", "60db48f49556183e8c760ddb9ed15feb84f34dd6"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
         ] do
