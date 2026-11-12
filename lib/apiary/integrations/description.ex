@@ -458,9 +458,9 @@ defmodule Apiary.Integrations.Description do
 
   @doc """
   recheck_settings/2 checks `settings` that a connection saved as `check_settings/2`
-  does, and returns what it returns, but for a check stopped for a cause the settings do
-  not decide: when the check runs out of time or crashes, it returns
-  `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
+  does, and returns what it returns, but for a check stopped for a cause that depends on
+  the node and not on the settings: when the check runs out of time or crashes, it
+  returns `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
   depends on the settings, and returns the error of `check_settings/2`.
   """
   @spec recheck_settings(t, term) :: :ok | {:error, {atom, term} | :unchecked}
@@ -550,11 +550,28 @@ defmodule Apiary.Integrations.Description do
   end
 
   defp within_budget(description, check, recheck?) do
-    case Budget.run(check, @settings_budget) do
+    case budget_run().(check, @settings_budget) do
       {:ok, {:stopped, reason}} -> stopped(description, reason, recheck?)
       {:ok, result} -> result
       {:error, reason} -> stopped(description, reason, recheck?)
     end
+  end
+
+  # The test build (`test_seam: true` in `config/test.exs`) has `put_test_budget_run/1`,
+  # which sets a function that runs the settings check in place of `Budget.run/2`, so a
+  # test can stop a check at its time or with a crash without a slow schema. No other
+  # build reads the application environment here.
+  if Application.compile_env(:apiary, [__MODULE__, :test_seam], false) do
+    @doc false
+    @spec put_test_budget_run((function, Budget.budget() -> term) | nil) :: :ok
+    def put_test_budget_run(nil), do: Application.delete_env(:apiary, :settings_budget_run)
+
+    def put_test_budget_run(run) when is_function(run, 2),
+      do: Application.put_env(:apiary, :settings_budget_run, run)
+
+    defp budget_run, do: Application.get_env(:apiary, :settings_budget_run, &Budget.run/2)
+  else
+    defp budget_run, do: &Budget.run/2
   end
 
   defp stopped(description, reason, recheck?) do

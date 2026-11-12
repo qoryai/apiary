@@ -1,16 +1,17 @@
 defmodule Apiary.Connections.SettingsFit do
   # Whether a model provider's saved settings fit the catalogue entry of its kind
   # (`Apiary.Connections.provider/1`), kept by `{SHA-256 of the settings' bytes, the
-  # entry's SHA-256}`: the same settings and the same entry give the same answer, so an
-  # entry has no expiry. Only an answer the settings decide is kept, `:fit` or `:unfit`;
-  # `:unchecked`, a check that ran out of time or crashed, is checked again at the next
-  # read. At most 4,096 entries; the one after them empties the table first. Reads and
-  # writes go to the table, which this process owns, so it outlives the processes that
-  # fill it.
+  # entry's SHA-256}`. The check returns the same result for the same settings and entry,
+  # so a kept result has no expiry. Only the results `:fit` and `:unfit` are kept;
+  # `:unchecked`, a check that ran out of time or crashed, runs again at the next read.
+  # The table has at most 4,096 results on each node; the insert after them empties it
+  # first, and a restart empties it too. Reads and writes go to the table, which this
+  # process owns, so it outlives the processes that fill it.
   #
-  # A test sets the application environment's `{:apiary, __MODULE__}` `:check` to a
-  # function of the entry and the settings that returns the answer in place of the check
-  # (`fit/3`), and empties the table with `clear/0`.
+  # The test build (`test_seam: true` in `config/test.exs`) has `put_test_check/1`, which
+  # sets a function of the entry and the settings that returns the result in place of the
+  # check (`fit/3`); `clear/0` empties the table. No other build reads the application
+  # environment here.
   @moduledoc false
   use GenServer
 
@@ -18,6 +19,7 @@ defmodule Apiary.Connections.SettingsFit do
 
   @table __MODULE__
   @max_entries 4_096
+  @test_seam Application.compile_env(:apiary, [__MODULE__, :test_seam], false)
 
   @type answer :: :fit | :unfit | :unchecked
 
@@ -26,7 +28,7 @@ defmodule Apiary.Connections.SettingsFit do
 
   @doc false
   # fit/3 is whether `settings`, a provider's saved settings as their stored bytes, fit
-  # `entry`: the kept answer, else what `check`, a function of the entry and the decoded
+  # `entry`: the kept result, else what `check`, a function of the entry and the decoded
   # settings, returns. With no table, as before the process starts, `check` runs each
   # time.
   @spec fit(Provider.t(), String.t(), (Provider.t(), map -> answer)) :: answer
@@ -54,11 +56,19 @@ defmodule Apiary.Connections.SettingsFit do
     ArgumentError -> :ok
   end
 
-  defp checker(check) do
-    case Application.get_env(:apiary, __MODULE__, [])[:check] do
-      nil -> check
-      test_check when is_function(test_check, 2) -> test_check
-    end
+  if @test_seam do
+    @doc false
+    # put_test_check/1 sets the function that returns the result in place of the check,
+    # for every process, or removes it with nil.
+    @spec put_test_check((Provider.t(), map -> answer) | nil) :: :ok
+    def put_test_check(nil), do: Application.delete_env(:apiary, :settings_fit_test_check)
+
+    def put_test_check(check) when is_function(check, 2),
+      do: Application.put_env(:apiary, :settings_fit_test_check, check)
+
+    defp checker(check), do: Application.get_env(:apiary, :settings_fit_test_check) || check
+  else
+    defp checker(check), do: check
   end
 
   defp lookup(key) do

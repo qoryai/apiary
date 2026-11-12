@@ -1,10 +1,10 @@
 defmodule Apiary.Connections.SettingsFitTest do
   # Whether a model provider's saved settings fit the catalogue entry of its kind
-  # (`Apiary.Connections.SettingsFit`, `Apiary.Connections.provider/1`): an answer the
-  # settings decide is kept by the settings and the entry; a check that ran out of time
-  # or crashed is kept by no one, ends no run and leaves a claim to the next one. The test
-  # sets the check in the application environment, which every process reads, so it is
-  # not async.
+  # (`Apiary.Connections.SettingsFit`, `Apiary.Connections.provider/1`): the result
+  # `:fit` or `:unfit` is kept by the settings and the entry; a check that ran out of time
+  # or crashed is not kept, ends no run and leaves the run to the next claim. The test
+  # sets the check for every process (`SettingsFit.put_test_check/1`), so it is not
+  # async.
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
@@ -33,7 +33,7 @@ defmodule Apiary.Connections.SettingsFitTest do
     SettingsFit.clear()
 
     on_exit(fn ->
-      Application.delete_env(:apiary, SettingsFit)
+      SettingsFit.put_test_check(nil)
       SettingsFit.clear()
     end)
 
@@ -46,12 +46,10 @@ defmodule Apiary.Connections.SettingsFitTest do
   defp check_returns(answer) do
     test = self()
 
-    Application.put_env(:apiary, SettingsFit,
-      check: fn _entry, settings ->
-        send(test, {:checked, settings})
-        answer
-      end
-    )
+    SettingsFit.put_test_check(fn _entry, settings ->
+      send(test, {:checked, settings})
+      answer
+    end)
 
     SettingsFit.clear()
   end
@@ -62,7 +60,7 @@ defmodule Apiary.Connections.SettingsFitTest do
     {queued, walked_claim(ctx.key, Dispatches.now(), @body)}
   end
 
-  describe "the kept answer" do
+  describe "the kept result" do
     test "is read again for the same settings and entry", ctx do
       check_returns(:fit)
       assert {:ok, _entry} = Connections.provider(ctx.provider)

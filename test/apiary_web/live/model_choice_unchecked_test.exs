@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.ModelChoiceUncheckedTest do
   # Workspace settings › Model with a provider whose settings check ran out of time or
   # crashed (`Apiary.Connections.provider/1`): the provider serves nothing on that read,
-  # and the page shows no "Add … again" line for it. The test sets the check in the
-  # application environment, which the page's process reads, so it is not async.
+  # and the page shows no "Add … again" line for it. The test sets the check for every
+  # process (`SettingsFit.put_test_check/1`), so it is not async.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -21,11 +21,11 @@ defmodule ApiaryWeb.ModelChoiceUncheckedTest do
         keys: [%{value_id: "key-1", value: "sk-ant-model-unchecked-0123456789"}]
       })
 
-    Application.put_env(:apiary, SettingsFit, check: fn _entry, _settings -> :unchecked end)
+    SettingsFit.put_test_check(fn _entry, _settings -> :unchecked end)
     SettingsFit.clear()
 
     on_exit(fn ->
-      Application.delete_env(:apiary, SettingsFit)
+      SettingsFit.put_test_check(nil)
       SettingsFit.clear()
     end)
 
