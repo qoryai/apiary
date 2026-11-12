@@ -167,6 +167,9 @@ defmodule Apiary.Edition.Core do
   def reach(_scope), do: :error
 
   @impl true
+  def put_organisation(organisation), do: organisation
+
+  @impl true
   def role(_scope), do: nil
 
   @impl true

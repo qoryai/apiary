@@ -453,6 +453,15 @@ defmodule Apiary.Edition do
   @callback reach(Scope.t()) :: {:ok, Scope.t()} | :error
 
   @doc """
+  The organisation of the person's membership, as `Apiary.Organisations.load_scope/2` and
+  `Apiary.Organisations.load_home_scope/2` put it into the scope without `c:reach/1`: an
+  edition puts on the organisation's `edition` what its checks read of the organisation
+  (`c:check/3`), read once for the scope, so that a check per row of a list reads no row.
+  `c:reload/2` reads it again. The core's answer is the organisation as it is given.
+  """
+  @callback put_organisation(%Organisation{}) :: %Organisation{}
+
+  @doc """
   The role the edition gives the scope's person through the reach the scope carries, or
   nil: the role of one without a membership there, and whether a reach the scope carries
   still stands (`Apiary.Access.reach/1`).
@@ -832,6 +841,7 @@ defmodule Apiary.Edition do
     roles: 0,
     check: 3,
     reach: 1,
+    put_organisation: 1,
     role: 1,
     reload: 2,
     places_to_lock: 1,

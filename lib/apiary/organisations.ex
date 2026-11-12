@@ -559,14 +559,17 @@ defmodule Apiary.Organisations do
     end
   end
 
-  # A membership's own place: its organisation, no reach beyond it, and nothing the
-  # edition said of another place.
+  # A membership's place: its organisation, with what the edition's checks read of it put
+  # on it here, once for the scope (`c:Apiary.Edition.put_organisation/1`); no reach
+  # beyond it; and nothing the edition said of another place.
   defp put_place(scope, %Membership{} = membership, place) do
+    organisation = Edition.put_organisation(membership.organisation)
+
     put_place(
       %{
         scope
-        | organisation: membership.organisation,
-          membership: membership,
+        | organisation: organisation,
+          membership: %{membership | organisation: organisation},
           reach: nil,
           edition: %{},
           instance_organisation_id: nil

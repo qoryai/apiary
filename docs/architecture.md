@@ -345,11 +345,12 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Access** ([access.md](access.md), An edition's part): add actions and roles
   (`actions/0`, `roles/0`); answer first, refuse or narrow (`check/3`); let a person into
   an organisation without a membership, with a role there, and read what it gave again
-  (`reach/1`, `role/1`, `reload/2`, which `Apiary.Access.reader/1` names); narrow the
-  levels that reach every workspace and say what another level reaches
-  (`every_workspace_levels/0`, `reaches_workspace?/3`, `reached_workspaces/2`); hold more
-  organisation rows with a write that must stay allowed, after the organisation's row
-  (`places_to_lock/1`).
+  (`reach/1`, `role/1`, `reload/2`, which `Apiary.Access.reader/1` names); put what its
+  checks read of an organisation on a membership's organisation, once for the scope
+  (`put_organisation/1`); narrow the levels that reach every workspace and say what
+  another level reaches (`every_workspace_levels/0`, `reaches_workspace?/3`,
+  `reached_workspaces/2`); hold more organisation rows with a write that must stay
+  allowed, after the organisation's row (`places_to_lock/1`).
 - **In use**: refine the core's queries so an account or an organisation it holds out of
   use is left out (`active_accounts/2`, `active_organisations/2`), and say why an account
   may not sign in (`account_refusal/1`).

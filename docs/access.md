@@ -169,6 +169,11 @@ may:
   instance's admins, below);
 - let a person into an organisation without a membership, with a role there, and read
   what it gave again under the write's locks (Reach, above);
+- put on the organisation what its checks read of it, where
+  `Apiary.Organisations.load_scope/2` and `Apiary.Organisations.load_home_scope/2` put a
+  membership's organisation into the scope without `c:Apiary.Edition.reach/1`
+  (`c:Apiary.Edition.put_organisation/1`): read once for the scope, so a check for each
+  row of a list reads no row;
 - narrow the levels that reach every workspace, and say which workspaces another level
   reaches (Levels, above);
 - hold more organisation rows beside the organisation's row with a write that must stay

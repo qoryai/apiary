@@ -22,6 +22,9 @@ defmodule ApiaryPro.Edition do
   def reach(scope), do: ApiaryPro.Reach.reach(scope)
 
   @impl true
+  def put_organisation(organisation), do: ApiaryPro.Tenants.put(organisation)
+
+  @impl true
   def role(scope), do: ApiaryPro.Access.role(scope)
 
   @impl true

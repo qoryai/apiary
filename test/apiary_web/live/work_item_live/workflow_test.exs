@@ -2996,7 +2996,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-explore-gate-go")
     end
 
-    test "the Work items list: the approver reads You approve next, the owner the approver's name, with one query per row",
+    test "the Work items list: the approver reads You approve next, the owner the approver's name, with no query per row",
          %{conn: conn, scope: scope} do
       listed = explore_gate_listing(scope)
       name = shown_name(scope, listed.user.id)
@@ -3019,9 +3019,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert has_element?(view, "#{row} .q-wi-mk-wait")
       end
 
-      # The rows are read for the list at once. The access check of each row
-      # (`ApiaryPro.Access`) reads the organisation's tenant row, so a second row takes
-      # one query more.
+      # The rows are read for the list at once: one row or two take the same queries.
       list_rows = fn ids ->
         Enum.map(ids, &%{id: &1.public_id, state: :exploring, status: :confirm})
       end
@@ -3031,7 +3029,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                  scope,
                  list_rows.(Enum.take(work_items, 1))
                )
-             end) + 1 ==
+             end) ==
                queries(fn ->
                  ApiaryWeb.WorkItemLive.Workflow.row_confirmers(scope, list_rows.(work_items))
                end)
