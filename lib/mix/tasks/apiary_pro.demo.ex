@@ -18,9 +18,9 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
 
   - **At home**, the instance organisation's first workspace: three people who join it,
     none an owner, since its owners are the instance admins.
-  - **Four organisations.** Lumen Analytics and Copperleaf Studio, which the owner creates
+  - **Four organisations.** Vellorin Analytics and Quistral Studio, which the owner creates
     on Instance settings › Organisations (`ApiaryPro.Operators.create_organisation/2`);
-    Northwind Robotics and Bramble & Finch, which other people create from the switcher
+    Ostrevane Robotics and Marrowick & Pend, which other people create from the switcher
     (`ApiaryPro.Organisations.create_organisation/2`) and invite the owner to, as an admin
     in the first and a member of two of its four workspaces in the second. Each has two to
     four workspaces.
@@ -28,7 +28,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
     in more than one organisation: a member's workspace is the one they were invited from
     and those they are added to (`ApiaryPro.WorkspaceAccess.add/3`); one membership is
     suspended, and a few invitations stay pending.
-  - **An operator**, Harness Works, which the owner creates and owns, with an admin and a
+  - **An operator**, Zentrevo Works, which the owner creates and owns, with an admin and a
     member, and `--clients` (50) clients the owner creates
     (`ApiaryPro.Operators.create_client/3`), each inviting its first owner. Every sixth
     stays without an owner, its invitation pending, and without a workspace; the others'
@@ -40,12 +40,12 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
     organisations, and 30 to 200 in each of a client's. `--scale` (1.0) multiplies the
     runs, ten at the least; `--skip-runs` leaves them out; `--concurrency` is handed on. A
     workspace with runs already is left as it is.
-  - **Then**, in this order: Bramble & Finch narrowed to observability by the instance
+  - **Then**, in this order: Marrowick & Pend narrowed to observability by the instance
     (`ApiaryPro.Grants.set_organisation/3`), and three clients by the operator
     (`ApiaryPro.Grants.set_client/3`); three policy requests from the operator to clients
     with the security policy (`ApiaryPro.PolicyRequests`), the first answered by some,
     accepted or declined, the second withdrawn after a few accepted it, the third
-    unanswered; the account of Bramble & Finch's only owner suspended
+    unanswered; the account of Marrowick & Pend's only owner suspended
     (`ApiaryPro.Suspensions`) and its ownership offered by the owner, as the arbiter, to
     its admin; and one client suspended.
 
@@ -108,7 +108,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   # their workspaces and added to the rest; and the addresses invited who have not joined.
   @organisations [
     %{
-      name: "Lumen Analytics",
+      name: "Vellorin Analytics",
       by: :owner,
       workspaces: [
         {"Main", 1_500, 60, 120},
@@ -127,7 +127,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
       invited: ["noor.aziz@example.com", "contractor@partner.example"]
     },
     %{
-      name: "Copperleaf Studio",
+      name: "Quistral Studio",
       by: :owner,
       workspaces: [{"Main", 700, 25, 100}, {"Client Sites", 450, 20, 60}],
       people: [
@@ -137,7 +137,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
       invited: ["studio.intern@example.com"]
     },
     %{
-      name: "Northwind Robotics",
+      name: "Ostrevane Robotics",
       by: "hana.sato",
       workspaces: [
         {"Main", 1_200, 50, 110},
@@ -153,7 +153,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
       invited: []
     },
     %{
-      name: "Bramble & Finch",
+      name: "Marrowick & Pend",
       by: "ines.moreau",
       workspaces: [
         {"Main", 900, 30, 90},
@@ -172,62 +172,62 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   ]
 
   @operator %{
-    name: "Harness Works",
+    name: "Zentrevo Works",
     workspaces: [{"Main", 500, 20, 60}],
     people: [{"bruno.costa", :admin, ["Main"]}, {"lucia.romano", :member, ["Main"]}]
   }
 
   @clients [
-    "Alder Freight",
-    "Ashgrove Insurance",
-    "Bellwether Books",
-    "Bluestone Logistics",
-    "Brightwater Clinics",
-    "Calder Engineering",
-    "Cinderhouse Games",
-    "Clearpath Mobility",
-    "Cobalt Ledger",
-    "Corvid Security",
-    "Driftwood Travel",
-    "Elmstead Energy",
-    "Emberline Foods",
-    "Fairhaven Bank",
-    "Fernhill Farms",
-    "Fieldstone Realty",
-    "Foxglove Pharma",
-    "Glasshouse Media",
-    "Greywing Aerospace",
-    "Harbourlight Shipping",
-    "Hazelwood Retail",
-    "Heronsgate Schools",
-    "Ironbridge Construction",
-    "Jadewell Telecom",
-    "Kestrel Payments",
-    "Kittiwake Water",
-    "Lanternfish Labs",
-    "Larkspur Fashion",
-    "Marram Hotels",
-    "Meadowlark Music",
-    "Millbrook Dairy",
-    "Moorland Outdoor",
-    "Nettlefield Research",
-    "Northholm Pensions",
-    "Oakridge Mining",
-    "Orchard Lane Grocers",
-    "Pebblestone Surf",
-    "Quillon Publishing",
-    "Ravenwood Studios",
-    "Redfern Automotive",
-    "Saltmarsh Brewing",
-    "Silverbirch Care",
-    "Skylark Drones",
-    "Stonechat Analytics",
-    "Thistle & Rye Bakery",
-    "Tidewater Ports",
-    "Umberfield Textiles",
-    "Wrenfield Robotics",
-    "Willowmere Wines",
-    "Yarrow Biotech"
+    "Abrevan Freight",
+    "Allomere Insurance",
+    "Belquist Books",
+    "Blusquerin Logistics",
+    "Brisolde Clinics",
+    "Calvoran Engineering",
+    "Cindravel Games",
+    "Corrumbe Mobility",
+    "Corvalith Ledger",
+    "Cuspinel Security",
+    "Dravelin Travel",
+    "Elsquorn Energy",
+    "Emberquist Foods",
+    "Fallowrin Bank",
+    "Fennorek Farms",
+    "Fiddlequarn Realty",
+    "Fosquelle Pharma",
+    "Glimmarin Media",
+    "Grevaunt Aerospace",
+    "Harrowquel Shipping",
+    "Hazquorin Retail",
+    "Hesperolt Schools",
+    "Irvantel Construction",
+    "Jadquerel Telecom",
+    "Kestovan Payments",
+    "Kittrelune Water",
+    "Lanquoril Labs",
+    "Larvesse Fashion",
+    "Marquelon Hotels",
+    "Meddravel Music",
+    "Millquarn Dairy",
+    "Morvassel Outdoor",
+    "Nettravik Research",
+    "Northvalm Pensions",
+    "Oakquirrel Mining",
+    "Orchavel Grocers",
+    "Pebrolin Surf",
+    "Quillavant Publishing",
+    "Ravquenel Studios",
+    "Redquorin Automotive",
+    "Salmeroth Brewing",
+    "Silvarunde Care",
+    "Skelloran Drones",
+    "Stonquavel Analytics",
+    "Thistrevan Bakery",
+    "Tidquarrel Ports",
+    "Umbravelt Textiles",
+    "Wrenquiss Robotics",
+    "Willamorve Wines",
+    "Yarquelin Biotech"
   ]
   @client_workspaces ["Staging", "Internal Tools", "Data", "Mobile", "Platform", "Web"] ++
                        ["Tooling", "Research"]
@@ -238,17 +238,17 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   # names yet.
   @requests [
     %{
-      host: "api.harness-works.example",
+      host: "api.zentrevo-works.example",
       note:
         "The harness now loads its skills and workflows from our API. Allow the host so its agents can reach it."
     },
     %{
-      host: "telemetry.harness-works.example",
+      host: "telemetry.zentrevo-works.example",
       note:
         "We would like the harness to report its agents' tool timings to us, so we can see where runs slow down."
     },
     %{
-      host: "models.harness-works.example",
+      host: "models.zentrevo-works.example",
       note:
         "The harness's code review agent moves to a model we host ourselves. Allow its host before the switch next month."
     }
@@ -260,8 +260,8 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   ]
 
   # The after-steps' subjects.
-  @narrowed_organisation "Bramble & Finch"
-  @offered_to_operator "Copperleaf Studio"
+  @narrowed_organisation "Marrowick & Pend"
+  @offered_to_operator "Quistral Studio"
   @suspended_account "ines.moreau"
   @arbitrated_to "kofi.mensah"
 
@@ -965,7 +965,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
     end
   end
 
-  # Copperleaf Studio offered to the operator, and not accepted, only where the instance
+  # Quistral Studio offered to the operator, and not accepted, only where the instance
   # shows offers (`ApiaryPro.Flags.transfers?/0`).
   defp offer(world) do
     if ApiaryPro.Flags.transfers?(), do: make_offer(world), else: :ok

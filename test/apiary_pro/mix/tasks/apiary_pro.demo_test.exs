@@ -64,28 +64,28 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
       )
 
     assert %{
-             "Lumen Analytics" => :owner,
-             "Copperleaf Studio" => :owner,
-             "Northwind Robotics" => :admin,
-             "Bramble & Finch" => :member,
-             "Harness Works" => :owner
+             "Vellorin Analytics" => :owner,
+             "Quistral Studio" => :owner,
+             "Ostrevane Robotics" => :admin,
+             "Marrowick & Pend" => :member,
+             "Zentrevo Works" => :owner
            } = levels
 
     # A member reaches the workspaces they were invited from and added to, and no other.
-    bramble = organisation("Bramble & Finch")
+    marrowick = organisation("Marrowick & Pend")
 
     reached =
       Repo.all(
         from a in Row,
           join: w in assoc(a, :workspace),
-          where: a.user_id == ^owner.id and a.organisation_id == ^bramble.id,
+          where: a.user_id == ^owner.id and a.organisation_id == ^marrowick.id,
           select: w.name
       )
 
     assert Enum.sort(reached) == ["Main", "Storefront"]
-    assert length(workspaces(bramble)) == 4
+    assert length(workspaces(marrowick)) == 4
 
-    # Twelve people of their own, confirmed, one of them suspended in Lumen Analytics.
+    # Twelve people of their own, confirmed, one of them suspended in Vellorin Analytics.
     people =
       for name <- ~w(aisha.rahman bruno.costa chloe.martin dmitri.volkov farah.haddad
                      gustav.lind hana.sato ines.moreau jakub.novak kofi.mensah lucia.romano
@@ -94,17 +94,17 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
 
     assert Enum.all?(people, &(&1 && &1.confirmed_at))
 
-    lumen = organisation("Lumen Analytics")
+    vellorin = organisation("Vellorin Analytics")
 
     assert Repo.exists?(
              from m in Membership,
-               where: m.organisation_id == ^lumen.id and not is_nil(m.suspended_at)
+               where: m.organisation_id == ^vellorin.id and not is_nil(m.suspended_at)
            )
   end
 
   test "the operator's clients, most with an owner and runs, one invited only", %{admin: admin} do
     build(admin)
-    operator = organisation("Harness Works")
+    operator = organisation("Zentrevo Works")
     assert Repo.get!(Tenant, operator.id).kind == :operator
 
     clients =
@@ -132,7 +132,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     # Every workspace with an owner has a history.
     for client <- owned, workspace <- workspaces(client), do: assert(runs?(workspace))
 
-    for name <- ["Lumen Analytics", "Northwind Robotics", "Harness Works"],
+    for name <- ["Vellorin Analytics", "Ostrevane Robotics", "Zentrevo Works"],
         workspace <- workspaces(organisation(name)),
         do: assert(runs?(workspace))
   end
@@ -148,21 +148,21 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
   test "features narrowed, requests answered, an offer, an arbitration and suspensions",
        %{admin: admin} do
     build(admin, ["--skip-runs"])
-    operator = organisation("Harness Works")
-    bramble = organisation("Bramble & Finch")
+    operator = organisation("Zentrevo Works")
+    marrowick = organisation("Marrowick & Pend")
 
-    assert :observability in ApiaryPro.Features.of(bramble)
-    refute :security in ApiaryPro.Features.of(bramble)
+    assert :observability in ApiaryPro.Features.of(marrowick)
+    refute :security in ApiaryPro.Features.of(marrowick)
 
     # A workspace has its organisation's features: nothing narrows one.
-    lumen = organisation("Lumen Analytics")
-    sandbox = Repo.get_by!(Workspace, organisation_id: lumen.id, name: "Sandbox")
+    vellorin = organisation("Vellorin Analytics")
+    sandbox = Repo.get_by!(Workspace, organisation_id: vellorin.id, name: "Sandbox")
 
     assert ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{
-             organisation: lumen,
+             organisation: vellorin,
              workspace: sandbox
            }) ==
-             ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{organisation: lumen})
+             ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{organisation: vellorin})
 
     requests = Repo.all(from r in Request, where: r.organisation_id == ^operator.id)
     assert length(requests) == 3
@@ -179,7 +179,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert Enum.sort(states) == Enum.sort([:accepted, :declined, :pending, :withdrawn])
 
     assert %Transfer{kind: :to_operator, operator_id: operator_id} =
-             Repo.get_by!(Transfer, organisation_id: organisation("Copperleaf Studio").id)
+             Repo.get_by!(Transfer, organisation_id: organisation("Quistral Studio").id)
 
     assert operator_id == operator.id
 
@@ -188,7 +188,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert Repo.get_by(AccountSuspension, user_id: ines.id)
 
     assert %Transfer{kind: :to_admin, arbitrated: true, recipient_id: recipient} =
-             Repo.get_by!(Transfer, organisation_id: bramble.id)
+             Repo.get_by!(Transfer, organisation_id: marrowick.id)
 
     assert recipient == kofi.id
 
@@ -203,7 +203,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
        %{admin: admin} do
     ApiaryPro.Flags.put_operator_infrastructure(true)
     build(admin)
-    operator = organisation("Harness Works")
+    operator = organisation("Zentrevo Works")
 
     clients =
       Repo.all(
