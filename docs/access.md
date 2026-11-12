@@ -569,14 +569,15 @@ stay known to such a gateway, and are accepted:
 A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
 need the features `factory` and `secrets`. Every member reads a provider's page with its
 keys and their states (`connection.read`). Adding a key, changing its name, its value,
-its Resets and its Pause for, and deleting it, are `provider.write`, owners' and admins',
-checked at the organisation: **Add key** and **Edit key** on the provider's page
-(`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**, **Rename value** and
-**Delete value** of the provider's key on Workspace settings › Secrets and variables. For
-anyone else Add key and Edit are not on the page, their paths are not found, and
-`Apiary.Connections.add_provider_key/4` and `Apiary.Connections.update_provider_key/4`
-check it again inside their transaction. Each change leaves the provider's
-`provider_keys_changed` entry; a save of Edit key that changes nothing leaves none.
+its Resets, its Pause for and its Use up to, and deleting it, are `provider.write`,
+owners' and admins', checked at the organisation: **Add key** and **Edit key** on the
+provider's page (`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**,
+**Rename value** and **Delete value** of the provider's key on Workspace settings ›
+Secrets and variables. For anyone else Add key and Edit are not on the page, their paths
+are not found, and `Apiary.Connections.add_provider_key/4` and
+`Apiary.Connections.update_provider_key/4` check it again inside their transaction. Each
+change leaves the provider's `provider_keys_changed` entry; a save of Edit key that
+changes nothing leaves none.
 
 A model choice's fallbacks, on Workspace settings › Model, are saved with the choice,
 under the choice's action: `model_choice.write` of the workspace or the target, owners'

@@ -92,7 +92,11 @@ defmodule Apiary.Dispatches.Handover do
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
   #      choices changed while the claim read them, or anything else fails:
-  #      `{:error, :unavailable}`, and the claim's transaction rolls back.
+  #      `{:error, :unavailable}`, and the claim's transaction rolls back. Where the check
+  #      of its model provider's settings ran out of time or crashed
+  #      (`Apiary.Connections.provider/1`), the claim leaves the run waiting, as for keys
+  #      in cooldown, with its `model_provider_ids` as they were, logs it, and takes the
+  #      next run.
   #
   # Else the run is registered, as a registration through the gateway by the pool, on the
   # run record written when it was queued, which keeps its id, its number and its queue
@@ -125,15 +129,19 @@ defmodule Apiary.Dispatches.Handover do
   # provider's chain and the API of the provider the run uses; later reads take those,
   # never the choices. Where every key of the choice's provider and of each fallback that
   # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
-  # `register/2` answers `{:wait, provider_ids}`, and the run waits again for those
-  # providers (`Apiary.Dispatches`). Its input is formed with the name of the workspace's
-  # domain (`Apiary.Lingo.Domain.name/1`) and the run's target, or none for an explore run
-  # whose work item has none, and takes what the rest of the run's documents leave of
-  # their limit: it leaves out its oldest comments first (`comments_omitted`). The
-  # documents' limit is what the 201 to the code's redemption leaves them within 1 MiB,
-  # the rest of that 201 measured with a run key of the run's grant, less 1,024 bytes. The
-  # claim encodes the documents once and keeps the bytes on the registered run
-  # (`runs.run_documents`), which every redemption answers as they are.
+  # `register/2` returns `{:wait, provider_ids}`, and the run waits again for those
+  # providers and each fallback whose settings check ran out of time or crashed
+  # (`Apiary.Dispatches`). Where the check of the settings of the choice's provider ran
+  # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
+  # `model_provider_ids` as they were, and the run waits again too. Its input is
+  # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
+  # run's target, or none for an explore run whose work item has none, and takes what the
+  # rest of the run's documents leave of their limit: it leaves out its oldest comments
+  # first (`comments_omitted`). The documents' limit is what the 201 to the code's
+  # redemption leaves them within 1 MiB, the rest of that 201 measured with a run key of
+  # the run's grant, less 1,024 bytes. The claim encodes the documents once and keeps the
+  # bytes on the registered run (`runs.run_documents`); the answer to every redemption
+  # contains those bytes as they are.
   #
   # An explore run of the Qory harness (`Apiary.Harnesses.Qory`), or of the built-in one,
   # has in its documents the harness at the commit its `ref` is at when the claim reads it,
@@ -304,15 +312,16 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # register/2 registers the run of the queue `claimed.run`, which the claim took, with
-  # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
+  # register/2 registers the run of the queue `claimed.run`, which the claim took, with a
+  # run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
   # ended, `{:wait, provider_ids}` when every key of its model choice's provider and of
   # each fallback that forms is in cooldown (`Apiary.Dispatches.RunSettings`), with those
-  # providers and no run registered, or
-  # `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the dispatch, the
-  # run of the queue, the gateway and its workspace, the gateway's active keys, at most
-  # two, the clock and the claim's body.
+  # providers and each fallback whose settings check ran out of time or crashed, and no
+  # run registered, or with the run's `model_provider_ids` when the check of its
+  # provider's settings ran out of time or crashed, or `{:error, :unavailable}` (the
+  # moduledoc). `claimed` has the key, the dispatch, the run of the queue, the gateway and
+  # its workspace, the gateway's active keys, at most two, the clock and the claim's body.
   @doc false
   @spec register(map, DateTime.t()) ::
           {:ok, registered}
@@ -378,6 +387,16 @@ defmodule Apiary.Dispatches.Handover do
         )
 
         {:error, :unavailable}
+
+      {:unchecked, provider} ->
+        Logger.warning(
+          "a claim skipped the run #{locked.run.run_id}, which waits for a later claim: " <>
+            "the check of the settings of its model provider #{provider.public_id} " <>
+            "(#{provider.provider_kind}) ran out of time or crashed " <>
+            "reason=provider_unchecked"
+        )
+
+        {:wait, locked.run.model_provider_ids}
 
       {:ok, %{cooling: [_ | _] = provider_ids}} ->
         {:wait, provider_ids}
@@ -808,6 +827,7 @@ defmodule Apiary.Dispatches.Handover do
       {:end, _cause} = ended -> ended
       :unavailable -> :unavailable
       :unstable -> :unstable
+      {:unchecked, _provider} = unchecked -> unchecked
     end
   end
 

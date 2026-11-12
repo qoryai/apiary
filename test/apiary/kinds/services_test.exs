@@ -313,7 +313,17 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/event-session-transcript-session-zero.json
                                   invalid/event-session-exited-model-key-limit-failed.json
                                   invalid/link-batch-exited-model-key-limit-failed.json
-                                  invalid/link-batch-session-exited-model-key-limit-failed.json),
+                                  invalid/link-batch-session-exited-model-key-limit-failed.json
+                                  run-configuration/model-keys-use-up-to.json
+                                  invalid/run-configuration-credentials-api-use-up-to-hundred.json
+                                  invalid/run-configuration-credentials-api-use-up-to-no-windows.json
+                                  invalid/run-configuration-credentials-api-use-up-to-twelve-windows.json
+                                  invalid/run-configuration-credentials-api-use-up-to-window-twice.json
+                                  invalid/run-configuration-credentials-api-use-up-to-window-upper-case.json
+                                  invalid/run-configuration-credentials-api-use-up-to-windows-alone.json
+                                  invalid/run-configuration-credentials-api-use-up-to-windows-empty.json
+                                  invalid/run-configuration-credentials-api-use-up-to-zero.json
+                                  invalid/run-configuration-credentials-host-use-up-to.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

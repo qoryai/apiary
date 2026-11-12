@@ -139,7 +139,8 @@ defmodule Apiary.Connections do
     Connection,
     ConnectionWorkspace,
     Overlap,
-    ServiceDefinition
+    ServiceDefinition,
+    SettingsFit
   }
 
   alias Apiary.Integrations.{Description, Release}
@@ -411,11 +412,12 @@ defmodule Apiary.Connections do
   that applies to every workspace or lists `workspace`, the reach the model choice
   checks. An endpoint that is a setting is the provider's value of that setting. Each
   host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
-  and so is a provider that fails its integrity code or is no longer in the catalogue as
-  it was added. `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
-  in no workspace's policy, only in the document composed for a run
+  and so is a provider that fails its integrity code, whose kind the catalogue no longer
+  has, or whose settings no longer fit the catalogue's entry (`provider/1`).
+  A save of a policy returns an error for a deny rule of such a host (`Apiary.Policy`);
+  the hosts are in no workspace's policy, only in the document composed for a run
   (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
-  `secrets` are both on. It asks nothing of `Apiary.Access`.
+  `secrets` are both on. It makes no call to `Apiary.Access`.
   """
   @spec provider_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
   def provider_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
@@ -493,8 +495,8 @@ defmodule Apiary.Connections do
 
   # The exact hosts of the provider's API endpoints, each once, as the document composed
   # for a run checks them (`Apiary.Runs.ProviderCredential`). A provider that fails its
-  # integrity code, or is no longer in the catalogue as it was added, has none here: a
-  # run of it is given no run configuration.
+  # integrity code, or for which `provider/1` returns an error, has none here: a run of
+  # it has no run configuration.
   defp api_hosts(%Connection{} = provider) do
     with true <- intact?(provider),
          {:ok, %Provider{apis: apis}} <- provider(provider) do
@@ -1228,27 +1230,110 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  provider/1 is the description of the catalogue a provider connection was added from
-  (`Apiary.Kinds.Providers`): `{:ok, provider}` while the catalogue has it with the digest
-  the connection recorded; `{:error, :provider_changed}` once a later pin changed it, or
-  `{:error, :provider_unknown}` once the catalogue no longer has it.
+  provider/1 is the description of a provider connection's kind in the catalogue of the
+  running release (`Apiary.Kinds.Providers`), whatever entry the connection was added
+  from: `{:ok, provider}` while the connection's settings fit that entry, checked as
+  `create_provider/3` checks them; `{:error, :provider_changed}` once they no longer
+  fit; `{:error, :provider_unchecked}` when the check ran out of time or crashed, a stop
+  that depends on the node and not on the settings, so a later read checks them again;
+  or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The check
+  returns the same result for the same settings and entry, so a table on each node keeps
+  the results fit and no longer fit by the SHA-256 of the settings and of the entry, at
+  most 4,096 of them, until a restart. Inside one claim of the queue, `provider/1`
+  returns `{:error, :provider_unchecked}` again, without a check, for a connection whose
+  check stopped, until the claim ends. The connection's `description_sha256`, the digest
+  of the entry it was added from, is kept as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
-          {:ok, Provider.t()} | {:error, :provider_changed | :provider_unknown}
-  def provider(%Connection{provider_kind: kind, description_sha256: sha256}) do
-    case Providers.fetch(kind) do
-      {:ok, %Provider{sha256: ^sha256} = provider} -> {:ok, provider}
-      {:ok, %Provider{}} -> {:error, :provider_changed}
+          {:ok, Provider.t()}
+          | {:error, :provider_changed | :provider_unchecked | :provider_unknown}
+  def provider(%Connection{id: id, provider_kind: kind, settings: settings}) do
+    with false <- stopped_in_claim?(id),
+         {:ok, %Provider{} = provider} <- Providers.fetch(kind) do
+      case SettingsFit.fit(provider, settings, &settings_fit/2) do
+        :fit -> {:ok, provider}
+        :unfit -> {:error, :provider_changed}
+        :unchecked -> stopped_in_claim(id)
+      end
+    else
+      true -> {:error, :provider_unchecked}
       :error -> {:error, :provider_unknown}
+    end
+  end
+
+  # The connection ids whose settings check stopped during the claim that runs in this
+  # process (`within_claim/1`); not set outside a claim.
+  @claim_stopped {__MODULE__, :claim_stopped}
+
+  @doc false
+  # within_claim/1 runs `fun`, one claim of the queue (`Apiary.Dispatches.claim/4`),
+  # with a memory of the providers whose settings check ran out of time or crashed in
+  # it: `provider/1` returns `{:error, :provider_unchecked}` for each of them again
+  # without a check, so a claim checks a stopping provider once, however many of its
+  # runs need it. The memory is in this process and goes when `fun` returns or raises;
+  # no claim reads the memory of another.
+  @spec within_claim((-> result)) :: result when result: term
+  def within_claim(fun) when is_function(fun, 0) do
+    if Process.get(@claim_stopped) do
+      fun.()
+    else
+      Process.put(@claim_stopped, MapSet.new())
+
+      try do
+        fun.()
+      after
+        Process.delete(@claim_stopped)
+      end
+    end
+  end
+
+  @doc false
+  # stopped_in_claim/0 is the connection ids whose settings check stopped in the claim
+  # that runs in this process (`within_claim/1`), `[]` outside a claim.
+  @spec stopped_in_claim() :: [Ecto.UUID.t()]
+  def stopped_in_claim do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> MapSet.to_list(stopped)
+      nil -> []
+    end
+  end
+
+  defp stopped_in_claim?(id) do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> MapSet.member?(stopped, id)
+      nil -> false
+    end
+  end
+
+  defp stopped_in_claim(id) do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> Process.put(@claim_stopped, MapSet.put(stopped, id))
+      nil -> nil
+    end
+
+    {:error, :provider_unchecked}
+  end
+
+  # Whether a provider's saved settings pass the checks of an add or an edit against
+  # `provider`, the entry of the running release (`provider_settings/3`): the entry's
+  # settings schema, then the endpoint rule on each address setting, or the entry's
+  # default address where the provider has none. `:unchecked` when the schema's check ran
+  # out of time or crashed (`Apiary.Integrations.Description.recheck_settings/2`).
+  defp settings_fit(%Provider{} = provider, settings) do
+    case Description.recheck_settings(provider.description, settings) do
+      :ok -> if address_refused(provider, settings) == nil, do: :fit, else: :unfit
+      {:error, :unchecked} -> :unchecked
+      {:error, _refusal} -> :unfit
     end
   end
 
   @doc """
   provider_models/1 is the models of a model provider: those of its description, in the
   description's order, each a map of `id`, `title` and, when the description lists them,
-  `effort`, the effort values the model accepts. Given a provider connection, the
-  description it was added from (`provider/1`), and `[]` once the catalogue changed or no
-  longer has it. A model choice may name any other model id too.
+  `effort`, the effort values the model accepts. Given a provider connection, those of
+  the catalogue's entry of its kind (`provider/1`), and `[]` once its settings no longer
+  fit that entry or the catalogue no longer has the kind. A model choice may name any
+  other model id too.
   """
   @spec provider_models(Connection.t() | Provider.t()) :: [map]
   def provider_models(%Provider{models: models}), do: models
@@ -1516,10 +1601,12 @@ defmodule Apiary.Connections do
   update_provider/3 changes a model provider (`provider.write`): its `name` and
   `settings`, checked as `create_provider/3` checks them. A change of its settings alone
   that changes an address setting is entered as `provider_address_changed`, with the host
-  before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` or
-  `:provider_unknown` for a provider whose description the catalogue no longer has as it
-  was added (`provider/1`); for any change of `applies_to`, which is set at the add, a
-  changeset whose error is on `applies_to` for a provider whose keys are a workspace's
+  before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` for a
+  provider whose saved settings no longer fit the catalogue's entry, or
+  `:provider_unknown` for a provider whose kind the catalogue no longer has, or
+  `:provider_unchecked` for one whose settings check ran out of time or crashed, which
+  changes nothing (`provider/1`); for any change of `applies_to`, which is set at the add,
+  a changeset whose error is on `applies_to` for a provider whose keys are a workspace's
   secret (`create_provider/3` with `:workspace`), which reaches that workspace alone, and
   `:reach_fixed` for any other. A change that changes nothing leaves no entry.
   """
@@ -1767,10 +1854,10 @@ defmodule Apiary.Connections do
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
   has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, the `value`
   without the whitespace at its ends (`String.trim/1`), and `settings` the key's
-  settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
-  its settings are written in one transaction. `{:ok, provider}`, or `{:error, refusal}`
-  as `Apiary.Secrets.add_value/4` returns, or a changeset of the settings, which leaves
-  no key added.
+  settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
+  nil for none. The key and its settings are written in one transaction.
+  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
+  changeset of the settings, which leaves no key added.
   """
   @spec add_provider_key(Scope.t(), Connection.t(), map, map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1818,12 +1905,12 @@ defmodule Apiary.Connections do
   @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
   (`provider.write`): `attrs` has its new `value_id`, which renames it as
-  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/2`)
-  and, optionally, its new `value`. A rename keeps the settings and the states, which are
-  the value's row's. The `value` loses the whitespace at its ends (`String.trim/1`). A
-  `value` that is nil or then empty keeps the value and its states; any other replaces
-  the value and deletes the states, as `set_provider_key/5` does, and the details of the
-  entry then have `value_set: true`.
+  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/3`,
+  with the provider's limit windows) and, optionally, its new `value`. A rename keeps the
+  settings and the states, which are the value's row's. The `value` loses the whitespace
+  at its ends (`String.trim/1`). A `value` that is nil or then empty keeps the value and
+  its states; any other replaces the value and deletes the states, as
+  `set_provider_key/5` does, and the details of the entry then have `value_set: true`.
   The value, the name and the settings are written in one transaction, and a save that
   changes none of them leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
@@ -1840,7 +1927,12 @@ defmodule Apiary.Connections do
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
-           changeset = ModelKeys.change_setting(value, attrs["settings"] || %{}),
+           changeset =
+             ModelKeys.change_setting(
+               value,
+               attrs["settings"] || %{},
+               ModelKeys.limit_windows(current)
+             ),
            :ok <- valid(changeset),
            :ok <-
              if(new_value, do: set_key(scope, secret, current, value_id, new_value), else: :ok),
@@ -1915,10 +2007,11 @@ defmodule Apiary.Connections do
   defp write_setting(changeset), do: Repo.insert_or_update(changeset)
 
   # The settings of the provider's key `value_id`, its row read in the keys' secret after
-  # the write of its value; nothing to write for nil.
+  # the write of its value, checked against the provider's limit windows; nothing to
+  # write for nil.
   defp put_key_setting(_current, _value_id, nil), do: {:ok, nil}
 
-  defp put_key_setting(%Connection{secret_id: secret_id}, value_id, settings) do
+  defp put_key_setting(%Connection{secret_id: secret_id} = current, value_id, settings) do
     value =
       Repo.one!(
         from v in Value,
@@ -1926,7 +2019,9 @@ defmodule Apiary.Connections do
           select: struct(v, [:id, :organisation_id])
       )
 
-    value |> ModelKeys.change_setting(settings) |> write_setting()
+    value
+    |> ModelKeys.change_setting(settings, ModelKeys.limit_windows(current))
+    |> write_setting()
   end
 
   @doc """

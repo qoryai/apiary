@@ -9,7 +9,9 @@ defmodule Apiary.Kinds.Provider do
   its `format`, its `endpoint` (a URL, or `%{"setting" => name}` for the address a
   setting has), its `auth`, as the Forager contract's `auth.schema.json` has it, and,
   when the description lists them, its `key_prefixes`; and `models`, each with `id`,
-  `title` and, when the description lists them, `effort`. `egress_hosts` is the
+  `title` and, when the description lists them, `effort`; and `limit_windows`, the
+  windows of the provider's limits that a key's Use up to percentage applies to, such as
+  `five_hour` and `seven_day`, `[]` when the role has none. `egress_hosts` is the
   description's top-level list, `[]` when it has none. `description` is the description
   as `parse/1` returns it, and `sha256` the SHA-256 of the file's bytes, in lower-case
   hex, which a provider connection records.
@@ -33,6 +35,7 @@ defmodule Apiary.Kinds.Provider do
             sha256: nil,
             apis: [],
             models: [],
+            limit_windows: [],
             egress_hosts: []
 
   @typedoc """
@@ -49,6 +52,7 @@ defmodule Apiary.Kinds.Provider do
           sha256: String.t() | nil,
           apis: [api],
           models: [map],
+          limit_windows: [String.t()],
           egress_hosts: [String.t() | %{String.t() => String.t()}]
         }
 
@@ -163,6 +167,7 @@ defmodule Apiary.Kinds.Provider do
       description: description,
       apis: Map.fetch!(role, "apis"),
       models: Map.fetch!(role, "models"),
+      limit_windows: Map.get(role, "limit_windows", []),
       egress_hosts: Map.get(document, "egress_hosts", [])
     }
   end

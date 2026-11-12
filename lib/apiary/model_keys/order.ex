@@ -10,8 +10,9 @@ defmodule Apiary.ModelKeys.Order do
     * `default`: true for the provider's default key, at most one;
     * `inserted_at`: when the key was added;
     * `known_reset`: its known reset, nil for none;
-    * `cooldown_until`: the end of its cooldown, the latest across its windows, nil for
-      none.
+    * `cooldown_until`: the end of its cooldown, as `Apiary.ModelKeys.cooldown/4` has it
+      at the claim: the latest across its windows, a window at the key's Use up to
+      percentage included; nil for none.
 
   A claim reads them with `Apiary.ModelKeys.claim_keys/3`.
 

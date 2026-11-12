@@ -680,20 +680,22 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   # With no provider that serves the runtime, each line names the cause it is true for,
   # and none asks for a runtime that cannot be chosen.
   describe "with no provider that serves the runtime" do
-    test "a provider whose description changed is to be added again", ctx do
+    test "a provider whose settings no longer fit its entry is to be added again", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
 
-      Repo.update_all(
-        from(c in Connections.Connection, where: c.id == ^provider.id),
-        set: [description_sha256: String.duplicate("0", 64)]
-      )
+      # Coded again, as a save codes it, so the row passes its integrity code.
+      Connections.Connection
+      |> Repo.get!(provider.id)
+      |> Ecto.Changeset.change(settings: ~s({"region":"eu"}))
+      |> Apiary.Kinds.Coded.seal()
+      |> Repo.update!()
 
       {:ok, lv, _html} = live(conn, path(scope))
 
       assert has_element?(
                lv,
                "#model-changed-#{provider.public_id}",
-               "Add #{provider.name} again in Organisation settings › Model providers: its description changed after it was added."
+               "Add #{provider.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
              )
 
       refute has_element?(lv, "#model-other_runtime")

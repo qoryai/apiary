@@ -4,20 +4,26 @@ defmodule Apiary.ModelKeys do
   provider's secret, found by the value's row id (`secret_values.id`), which a rename of
   the value id leaves as it is. Both are kept at the key's organisation.
 
-  **Settings** (`Apiary.ModelKeys.Setting`): an optional weekly reset and an optional
-  Pause for. `pause_seconds/2` is a key's Pause for: its setting, else the default of the
-  provider's catalogue entry, 60 seconds for an API key and 3600 seconds for a
-  subscription, whose API's `auth` has `oauth: true`. `next_reset/2` is the next reset of
-  a key's weekly schedule after a time. No function here checks access: the caller does.
+  **Settings** (`Apiary.ModelKeys.Setting`): an optional weekly reset, an optional
+  Pause for and an optional Use up to percentage. `pause_seconds/2` is a key's Pause
+  for: its setting, else the default of the provider's catalogue entry, 60 seconds for an
+  API key and 3600 seconds for a subscription, whose API's `auth` has `oauth: true`.
+  `next_reset/2` is the next reset of a key's weekly schedule after a time. Use up to is
+  only for a key of a provider whose catalogue entry lists limit windows
+  (`limit_windows/1`). No function here checks access: the caller does.
 
   **States** (`Apiary.ModelKeys.State`): one row per key and limit window, as the
   gateways of runs report them (`Apiary.ModelKeys.Report`). `record/3` keeps the newest
   row by `observed_at`: an older report never overwrites a newer row, whichever gateway
   sent it. A read leaves out the utilization of a window whose `resets_at` has passed
   (`current/2`). `provider_states/2` is the states of a provider's keys, and
-  `cooldown_counts/2` how many keys of each provider are in cooldown. A key is in
-  cooldown while one of its windows has a `cooldown_until` in the future. A new value of
-  a key deletes its states (`clear_states/2`); a rename keeps them.
+  `cooldown_counts/2` how many keys of each provider are in cooldown. `cooldown/4` is
+  whether a key is in cooldown, and until when: while one of its windows has a
+  `cooldown_until` in the future, or while one of its provider's limit windows has a
+  utilization at or above the key's Use up to percentage and a reset in the future. Every
+  reader of a key's cooldown here goes through it, and the claim's filter
+  (`claimable/1`) is its SQL. A new value of a key deletes its states
+  (`clear_states/2`); a rename keeps them.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration and the time the run's value of it was set.
@@ -73,11 +79,12 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   The changeset of the settings of the key `value`, from the settings it has or none, for
-  a form.
+  a form. `limit_windows` is the key's provider's (`limit_windows/1`): without them, the
+  changeset has an error for a Use up to percentage.
   """
-  @spec change_setting(Value.t(), map) :: Ecto.Changeset.t()
-  def change_setting(%Value{} = value, attrs \\ %{}),
-    do: value |> setting_of() |> Setting.changeset(attrs)
+  @spec change_setting(Value.t(), map, [String.t()]) :: Ecto.Changeset.t()
+  def change_setting(%Value{} = value, attrs \\ %{}, limit_windows \\ []),
+    do: value |> setting_of() |> Setting.changeset(attrs, limit_windows)
 
   defp setting_of(%Value{id: id, organisation_id: organisation_id}) do
     Repo.get(Setting, id) || %Setting{secret_value_id: id, organisation_id: organisation_id}
@@ -92,6 +99,87 @@ defmodule Apiary.ModelKeys do
     do: seconds
 
   def pause_seconds(%Connection{} = provider, _setting), do: default_pause_seconds(provider)
+
+  @doc """
+  The limit windows of `provider`'s catalogue entry, the windows a key's Use up to
+  percentage applies to, such as `five_hour` and `seven_day`: `[]` for a provider whose
+  entry has none, and for one the catalogue no longer has. A key of a provider without
+  them has no Use up to percentage.
+  """
+  @spec limit_windows(Connection.t() | String.t() | nil) :: [String.t()]
+  def limit_windows(%Connection{provider_kind: kind}), do: limit_windows(kind)
+
+  def limit_windows(kind) when is_binary(kind) do
+    case Providers.fetch(kind) do
+      {:ok, %Provider{limit_windows: windows}} -> windows
+      :error -> []
+    end
+  end
+
+  def limit_windows(nil), do: []
+
+  @doc """
+  The Use up to percentage of each key of `provider` that has one, by the key's row id
+  (`secret_values.id`): none for a provider without limit windows (`limit_windows/1`),
+  whose keys' stored percentages are ignored.
+  """
+  @spec use_up_to_percents(Connection.t()) :: %{Ecto.UUID.t() => pos_integer}
+  def use_up_to_percents(%Connection{secret_id: secret_id} = provider)
+      when is_binary(secret_id) do
+    if limit_windows(provider) == [] do
+      %{}
+    else
+      Repo.all(
+        from st in Setting,
+          join: v in Value,
+          on: v.id == st.secret_value_id,
+          where: v.secret_id == ^secret_id and not is_nil(st.use_up_to_percent),
+          select: {st.secret_value_id, st.use_up_to_percent}
+      )
+      |> Map.new()
+    end
+  end
+
+  def use_up_to_percents(%Connection{}), do: %{}
+
+  @doc """
+  Whether a key is in cooldown at `now`, from `states`, its states by window, and until
+  when: `{until, {:stored, state}}` while a window's `cooldown_until` is after `now`, from
+  a provider's limit error, a schedule or a Pause for; `{until, {:use_up_to, state}}`
+  while a window of `limit_windows` (`limit_windows/1`) has a utilization at or above
+  `percent`, the key's Use up to percentage, and a `resets_at` after `now`, until that
+  reset. Of several, the latest end, a stored cooldown first at the same end. Nil for a
+  key out of cooldown. A nil `percent`, or no `limit_windows`, leaves out the second
+  kind.
+  """
+  @spec cooldown([State.t() | map], pos_integer | nil, [String.t()], DateTime.t()) ::
+          {DateTime.t(), {:stored | :use_up_to, State.t() | map}} | nil
+  def cooldown(states, percent, limit_windows, %DateTime{} = now) do
+    stored =
+      for %{cooldown_until: %DateTime{} = until} = state <- states,
+          after?(until, now),
+          do: {until, {:stored, state}}
+
+    use_up_to =
+      for %{window: window, utilization: used, resets_at: %DateTime{} = reset} = state <- states,
+          is_integer(percent) and is_integer(used) and used >= percent,
+          window in limit_windows,
+          after?(reset, now),
+          do: {reset, {:use_up_to, state}}
+
+    case stored ++ use_up_to do
+      [] -> nil
+      cooldowns -> Enum.max_by(cooldowns, &elem(&1, 0), DateTime)
+    end
+  end
+
+  # The limit windows of every provider of the catalogue that has them, by its kind, for
+  # the claim's filter (`claimable/1`).
+  defp limit_windows_by_kind do
+    for %Provider{name: name, limit_windows: [_ | _] = windows} <- Providers.list(),
+        into: %{},
+        do: {name, windows}
+  end
 
   @doc """
   The default Pause for of the keys of `provider`, in seconds, from its catalogue entry:
@@ -296,7 +384,8 @@ defmodule Apiary.ModelKeys do
           schedule_resets_at: DateTime.t() | nil,
           known_reset: DateTime.t() | nil,
           cooldown_until: DateTime.t() | nil,
-          pause_seconds: pos_integer
+          pause_seconds: pos_integer,
+          use_up_to_percent: pos_integer | nil
         }
 
   @doc """
@@ -306,10 +395,13 @@ defmodule Apiary.ModelKeys do
   earliest reset after `now` across its windows, from the providers' responses;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
   `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
-  the end of its cooldown, the latest `cooldown_until` across its windows, which only a
-  rejected window has, so a key whose 5-hour and 7-day windows are both rejected stays
-  in cooldown until the later of the two; and its Pause for (`pause_seconds/2`). In no
-  order: the order is
+  the end of its cooldown at `now` (`cooldown/4`), nil for a key out of cooldown: the
+  latest `cooldown_until` across its windows, which only a rejected window has, so a key
+  whose 5-hour and 7-day windows are both rejected stays in cooldown until the later of
+  the two, or the reset of a limit window whose use is at or above its Use up to
+  percentage, whichever ends later; its Pause for (`pause_seconds/2`); and
+  `use_up_to_percent`, its Use up to percentage, nil for none and for every key of a
+  provider without limit windows (`limit_windows/1`). In no order: the order is
   `Apiary.ModelKeys.Order.order/2`. Three reads, none locked.
   """
   @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t()) :: [claim_key]
@@ -325,28 +417,23 @@ defmodule Apiary.ModelKeys do
     ids = Enum.map(values, & &1.id)
 
     states =
-      from(s in State,
-        where: s.secret_value_id in ^ids,
-        group_by: s.secret_value_id,
-        select:
-          {s.secret_value_id,
-           type(
-             fragment("min(?) FILTER (WHERE ? > ?)", s.resets_at, s.resets_at, ^usec(now)),
-             :utc_datetime_usec
-           ), max(s.cooldown_until)}
-      )
+      from(s in State, where: s.secret_value_id in ^ids)
       |> Repo.all()
-      |> Map.new(fn {id, resets_at, until} -> {id, {resets_at, until}} end)
+      |> Enum.group_by(& &1.secret_value_id)
 
     settings =
       from(st in Setting, where: st.secret_value_id in ^ids)
       |> Repo.all()
       |> Map.new(&{&1.secret_value_id, &1})
 
+    windows = limit_windows(provider)
+
     for value <- values do
-      {resets_at, until} = Map.get(states, value.id, {nil, nil})
+      key_states = Map.get(states, value.id, [])
       setting = Map.get(settings, value.id)
       schedule = next_reset(setting, now)
+      percent = if windows != [] and setting, do: setting.use_up_to_percent
+      resets_at = earliest_reset(key_states, now)
 
       Map.merge(value, %{
         named: is_binary(named_value_id) and value.value_id == named_value_id,
@@ -354,8 +441,9 @@ defmodule Apiary.ModelKeys do
         resets_at: resets_at,
         schedule_resets_at: schedule,
         known_reset: resets_at || schedule,
-        cooldown_until: until,
-        pause_seconds: pause_seconds(provider, setting)
+        cooldown_until: cooldown_end(key_states, percent, windows, now),
+        pause_seconds: pause_seconds(provider, setting),
+        use_up_to_percent: percent
       })
     end
   end
@@ -368,12 +456,20 @@ defmodule Apiary.ModelKeys do
   The condition, on a run of the queue bound `:run`, that a claim at `now` may take it by
   its model providers (`dispatch_runs.model_provider_ids`): it has none, or one of them is
   not cooling. A provider is cooling at `now` while it has keys and every one of them is
-  in cooldown: a state of the key has a `cooldown_until` after `now`. A provider that is
-  gone, or has no keys, is not cooling, so the claim takes the run and ends it as it
-  would without a cooldown. The condition reads every key of every provider of the run.
+  in cooldown, as `cooldown/4` has it, in SQL: a state of the key has a `cooldown_until`
+  after `now`, or a state of one of the provider's limit windows (`limit_windows/1`) has
+  a utilization at or above the key's Use up to percentage and a `resets_at` after
+  `now`. A provider that is gone, or has no keys, is not cooling, so the claim takes the
+  run and ends it as it would without a cooldown. The condition reads every key of every
+  provider of the run.
+
+  With `except:`, a list of provider row ids, those providers count as cooling. A claim
+  sets it to the providers whose settings check stopped earlier in that claim.
   """
-  @spec claimable(DateTime.t()) :: Ecto.Query.dynamic_expr()
-  def claimable(%DateTime{} = now) do
+  @spec claimable(DateTime.t(), [{:except, [Ecto.UUID.t()]}]) :: Ecto.Query.dynamic_expr()
+  def claimable(%DateTime{} = now, opts \\ []) do
+    except = Keyword.get(opts, :except, [])
+
     # `= '{}'`, not `cardinality(…) = 0`: Postgres reads the column's statistics for the
     # first and none for the second, and with a low guess of the runs it passes it plans
     # the claim's other joins as nested loops over the whole queue.
@@ -382,17 +478,25 @@ defmodule Apiary.ModelKeys do
       fragment("? = '{}'::uuid[]", r.model_provider_ids) or
         fragment(
           """
-          EXISTS (SELECT 1 FROM unnest(?) AS p(id) WHERE NOT EXISTS (
+          EXISTS (SELECT 1 FROM unnest(?) AS p(id) WHERE p.id <> ALL(?) AND NOT EXISTS (
             SELECT 1 FROM organisation_connections c
             WHERE c.id = p.id AND c.provider_kind IS NOT NULL
               AND EXISTS (SELECT 1 FROM secret_values v WHERE v.secret_id = c.secret_id)
               AND NOT EXISTS (
                 SELECT 1 FROM secret_values v WHERE v.secret_id = c.secret_id
                   AND NOT EXISTS (SELECT 1 FROM model_key_states s
-                    WHERE s.secret_value_id = v.id AND s.cooldown_until > ?))))
+                    WHERE s.secret_value_id = v.id AND (s.cooldown_until > ?
+                      OR (s.resets_at > ? AND s.utilization >= (
+                            SELECT st.use_up_to_percent FROM model_key_settings st
+                            WHERE st.secret_value_id = v.id)
+                          AND s."window" IN (
+                            SELECT jsonb_array_elements_text(?::jsonb -> c.provider_kind))))))))
           """,
           r.model_provider_ids,
-          type(^usec(now), :utc_datetime_usec)
+          type(^except, {:array, Ecto.UUID}),
+          type(^usec(now), :utc_datetime_usec),
+          type(^usec(now), :utc_datetime_usec),
+          type(^limit_windows_by_kind(), :map)
         )
     )
   end
@@ -400,8 +504,8 @@ defmodule Apiary.ModelKeys do
   @doc """
   When the first key of the providers `provider_ids` leaves its cooldown, while every one
   of them is cooling at `now`, as `claimable/1` reads it: the earliest end of a key's
-  cooldown, the latest `cooldown_until` across its windows, across their keys. Nil when
-  one of them is not cooling, and for no providers.
+  cooldown (`cooldown/4`) across their keys. Nil when one of them is not cooling, and for
+  no providers.
   """
   @spec cooling_until([Ecto.UUID.t()], DateTime.t()) :: DateTime.t() | nil
   def cooling_until(provider_ids, %DateTime{} = now) do
@@ -423,17 +527,24 @@ defmodule Apiary.ModelKeys do
   def first_to_leave(provider_ids, %DateTime{} = now) when is_list(provider_ids) do
     ids = Enum.uniq(provider_ids)
 
+    # The end of each key's cooldown, nil for a key out of cooldown, by provider.
     ends =
       from(c in Connection,
         join: v in Value,
         on: v.secret_id == c.secret_id,
         left_join: s in State,
         on: s.secret_value_id == v.id,
+        left_join: st in Setting,
+        on: st.secret_value_id == v.id,
         where: c.id in ^ids and not is_nil(c.provider_kind),
-        group_by: [c.id, v.id],
-        select: {c.id, max(s.cooldown_until)}
+        select: {c.id, c.provider_kind, v.id, s, st.use_up_to_percent}
       )
       |> Repo.all()
+      |> Enum.group_by(fn {id, kind, key_id, _state, percent} -> {id, kind, key_id, percent} end)
+      |> Enum.map(fn {{id, kind, _key_id, percent}, rows} ->
+        states = for {_id, _kind, _key_id, %State{} = state, _percent} <- rows, do: state
+        {id, cooldown_end(states, percent, limit_windows(kind), now)}
+      end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     cooling? =
@@ -451,8 +562,24 @@ defmodule Apiary.ModelKeys do
     end
   end
 
+  # The end of a key's cooldown at `now` (`cooldown/4`), nil for none.
+  defp cooldown_end(states, percent, limit_windows, now) do
+    case cooldown(states, percent, limit_windows, now) do
+      {until, _source} -> until
+      nil -> nil
+    end
+  end
+
   defp after?(%DateTime{} = time, now), do: DateTime.compare(time, now) == :gt
   defp after?(nil, _now), do: false
+
+  # The earliest reset after `now` across `states`, nil for none.
+  defp earliest_reset(states, now) do
+    states
+    |> Enum.map(& &1.resets_at)
+    |> Enum.filter(&after?(&1, now))
+    |> Enum.min(DateTime, fn -> nil end)
+  end
 
   ## States
 
@@ -641,26 +768,37 @@ defmodule Apiary.ModelKeys do
   def provider_states(%Connection{}, _now), do: %{}
 
   @doc """
-  How many keys of each of `providers` are in cooldown at `now`, a window of the key
-  with a `cooldown_until` after `now`, in one query: a map from each provider's row id
-  to its count, 0 for a provider with none.
+  How many keys of each of `providers` are in cooldown at `now` (`cooldown/4`), in one
+  query: a map from each provider's row id to its count, 0 for a provider with none.
   """
   @spec cooldown_counts([Connection.t()], DateTime.t()) :: %{Ecto.UUID.t() => non_neg_integer}
   def cooldown_counts(providers, %DateTime{} = now) when is_list(providers) do
     secret_ids = for %Connection{secret_id: id} <- providers, is_binary(id), do: id
 
-    counts =
+    # Each key's states and Use up to percentage, by its secret and its row id.
+    keys =
       Repo.all(
         from s in State,
           join: v in Value,
           on: v.id == s.secret_value_id,
-          where: v.secret_id in ^secret_ids and s.cooldown_until > ^now,
-          group_by: v.secret_id,
-          select: {v.secret_id, count(s.secret_value_id, :distinct)}
+          left_join: st in Setting,
+          on: st.secret_value_id == v.id,
+          where: v.secret_id in ^secret_ids,
+          select: {v.secret_id, v.id, s, st.use_up_to_percent}
       )
-      |> Map.new()
+      |> Enum.group_by(fn {secret_id, id, _state, percent} -> {secret_id, id, percent} end)
+      |> Enum.map(fn {key, rows} -> {key, Enum.map(rows, &elem(&1, 2))} end)
 
-    Map.new(providers, &{&1.id, Map.get(counts, &1.secret_id, 0)})
+    windows = Map.new(providers, &{&1.secret_id, limit_windows(&1)})
+
+    cooling =
+      for {{secret_id, _id, percent}, states} <- keys,
+          cooldown(states, percent, Map.get(windows, secret_id, []), now) != nil,
+          reduce: %{} do
+        acc -> Map.update(acc, secret_id, 1, &(&1 + 1))
+      end
+
+    Map.new(providers, &{&1.id, Map.get(cooling, &1.secret_id, 0)})
   end
 
   @doc """

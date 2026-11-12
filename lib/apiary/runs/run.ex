@@ -180,13 +180,15 @@ defmodule Apiary.Runs.Run do
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
     # the model provider the run uses: its row, its keys' secret's row, its keys, its
     # chain, and the API of the provider the run uses (`provider_api`: `format`,
-    # `endpoint`, `auth` and, when the description lists them, `key_prefixes`). The keys
-    # (`model_keys`) are in the order of the run configuration's `credentials`, at most 6,
-    # each a map of `"id"`, the key's row id (`secret_values.id`), `"name"`, its
-    # credential's name, `"start"`, true on the start key, which a run that kept one key
-    # before has not, and what the claim wrote for the run configuration:
-    # `"pause_for_s"`, and where the claim had them, `"resets_at"`,
-    # `"schedule_resets_at"`, `"chosen"` and `"cooldown_until"`; never a key value.
+    # `endpoint`, `auth` and, when the description lists them, `key_prefixes` and the
+    # limit windows as `use_up_to_windows`). The keys (`model_keys`) are in the order of
+    # the run configuration's `credentials`, at most 6, each a map of `"id"`, the key's
+    # row id (`secret_values.id`), `"name"`, its credential's name, `"start"`, true on the
+    # start key, which a run that kept one key before has not, and what the claim wrote
+    # for the run configuration: `"pause_for_s"`, and where the claim had them,
+    # `"resets_at"`, `"schedule_resets_at"`, `"chosen"`, `"cooldown_until"` and
+    # `"use_up_to_percent"`; never a key value, and no limit windows, which `provider_api`
+    # has once for the run.
     # Written once with the registration and never changed; nil for every other run, and
     # for an explore run with `factory` or `secrets` off. The provider fields are nil
     # where no provider was chosen, and the two rows become nil should they be deleted.

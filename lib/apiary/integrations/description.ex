@@ -453,7 +453,21 @@ defmodule Apiary.Integrations.Description do
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
   @spec check_settings(t, term) :: :ok | {:error, {atom, term}}
-  def check_settings(%__MODULE__{} = description, settings) when is_map(settings) do
+  def check_settings(%__MODULE__{} = description, settings),
+    do: check_settings(description, settings, false)
+
+  @doc """
+  recheck_settings/2 checks `settings` that a connection saved as `check_settings/2` does,
+  and returns what it returns, but for a check stopped for a cause that depends on the
+  node and not on the settings: when the check runs out of time or crashes, it returns
+  `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
+  depends on the settings, and returns the error of `check_settings/2`.
+  """
+  @spec recheck_settings(t, term) :: :ok | {:error, {atom, term} | :unchecked}
+  def recheck_settings(%__MODULE__{} = description, settings),
+    do: check_settings(description, settings, true)
+
+  defp check_settings(%__MODULE__{} = description, settings, recheck?) when is_map(settings) do
     refused = for {name, _value} <- settings, name not in description.settings, do: name
 
     cond do
@@ -472,11 +486,11 @@ defmodule Apiary.Integrations.Description do
         # the settings, at most 65536 bytes as canonical JSON.
         schema = copy(plain_schema(description, settings))
         settings = copy(settings)
-        within_budget(description, fn -> check(schema, settings) end)
+        within_budget(description, fn -> check(schema, settings) end, recheck?)
     end
   end
 
-  def check_settings(%__MODULE__{}, _settings),
+  defp check_settings(%__MODULE__{}, _settings, _recheck?),
     do: {:error, {:integration_settings_invalid, :not_an_object}}
 
   # A connection holds a part of the settings document, its plain settings, so each is
@@ -535,21 +549,40 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
-  defp within_budget(description, check) do
-    case Budget.run(check, @settings_budget) do
-      {:ok, {:stopped, reason}} -> stopped(description, reason)
+  defp within_budget(description, check, recheck?) do
+    case budget_run().(check, @settings_budget) do
+      {:ok, {:stopped, reason}} -> stopped(description, reason, recheck?)
       {:ok, result} -> result
-      {:error, reason} -> stopped(description, reason)
+      {:error, reason} -> stopped(description, reason, recheck?)
     end
   end
 
-  defp stopped(description, reason) do
+  # The test build (`test_seam: true` in `config/test.exs`) has `put_test_budget_run/1`,
+  # which sets a function that runs the settings check in place of `Budget.run/2`, so a
+  # test can stop a check at its time or with a crash without a slow schema. No other
+  # build reads the application environment here.
+  if Application.compile_env(:apiary, [__MODULE__, :test_seam], false) do
+    @doc false
+    @spec put_test_budget_run((function, Budget.budget() -> term) | nil) :: :ok
+    def put_test_budget_run(nil), do: Application.delete_env(:apiary, :settings_budget_run)
+
+    def put_test_budget_run(run) when is_function(run, 2),
+      do: Application.put_env(:apiary, :settings_budget_run, run)
+
+    defp budget_run, do: Application.get_env(:apiary, :settings_budget_run, &Budget.run/2)
+  else
+    defp budget_run, do: &Budget.run/2
+  end
+
+  defp stopped(description, reason, recheck?) do
     Logger.warning(
       "an integration's settings check was stopped name=#{description.name} " <>
         "program_version=#{description.program_version} reason=#{reason}"
     )
 
-    {:error, {:integration_settings_invalid, budget_refusal(reason)}}
+    if recheck? and reason in [:time, :crashed],
+      do: {:error, :unchecked},
+      else: {:error, {:integration_settings_invalid, budget_refusal(reason)}}
   end
 
   defp within_pattern_bytes(schema) do

@@ -14,12 +14,16 @@ defmodule Apiary.Runs.ProviderCredential do
   # keeps it; `format`, `endpoint` and `auth` of the API the run uses
   # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
-  # `cooldown_until` and `chosen`, each where the run keeps it. Every key has
-  # `pause_for_s`: from its claim, or, for a run claimed before runs kept several keys,
-  # from the migration that keeps a run's model keys. The start key, `model_credential`,
-  # is the key the run keeps with `start`, else its first. An entry has no key value, no
-  # secret id and no value id: the gateway fetches the values with the secrets request
-  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
+  # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
+  # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows,
+  # which the claim wrote once for the run into `runs.provider_api` from the catalogue's
+  # entry. In a run whose `provider_api` has no windows, such as one claimed before runs
+  # kept them, no key has either member, as the contract requires both or none. Every key
+  # has `pause_for_s`: from its claim, or, for a run claimed before runs kept several
+  # keys, from the migration that keeps a run's model keys. The start key,
+  # `model_credential`, is the key the run keeps with `start`, else its first. An entry
+  # has no key value, no secret id and no value id: the gateway fetches the values with
+  # the secrets request (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are the description's `egress_hosts`, in its order, each once. An entry
   # `{"setting": name}` is the host of that setting's address: the address in
@@ -29,10 +33,12 @@ defmodule Apiary.Runs.ProviderCredential do
   #
   # Only with both features `factory` and `secrets` on; with either off, a run has none.
   # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
-  # integrity code (`Apiary.Connections.intact?/1`), or is no longer in the catalogue as
-  # it was added, and when the stored endpoint fails the endpoint rule: the run is then
-  # given no run configuration, since one without its keys would run on another. Reads; it
-  # locks and writes nothing.
+  # integrity code (`Apiary.Connections.intact?/1`), or for which
+  # `Apiary.Connections.provider/1` returns an error, and when the stored endpoint fails
+  # the endpoint rule: the run then has no run configuration, since one without its keys
+  # would run on another. A check of the provider's settings that ran out of time or
+  # crashed returns `{:error, :unavailable}` too, and the next request checks them again.
+  # Reads; it locks and writes nothing.
 
   import Ecto.Query, only: [from: 2]
 
@@ -61,7 +67,8 @@ defmodule Apiary.Runs.ProviderCredential do
   # The order the contract's `auth.schema.json` lists its members in.
   @auth_members ~w(scheme header username oauth)
   # The members a run keeps for each key, in the order of the contract's `api_credential`.
-  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen)
+  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen
+                  use_up_to_percent)
 
   @doc false
   # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none, as for a run
@@ -277,10 +284,18 @@ defmodule Apiary.Runs.ProviderCredential do
       {:ok, %Provider{} = description} ->
         {:ok, description}
 
+      {:error, :provider_unchecked} ->
+        Logger.error(
+          "the check of the settings of the model provider #{provider.public_id} ran out " <>
+            "of time or crashed: the run has no run configuration for this request"
+        )
+
+        {:error, :unavailable}
+
       {:error, reason} ->
         Logger.error(
-          "the model provider #{provider.public_id} is not in the catalogue as it was " <>
-            "added (#{reason}): the run is given no run configuration"
+          "the model provider #{provider.public_id} does not fit the catalogue entry of " <>
+            "its kind (#{reason}): the run has no run configuration"
         )
 
         {:error, :unavailable}
@@ -289,9 +304,14 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @doc false
   # entry/3 is the API credential named `name` for `api`, the run's `provider_api`, with
-  # the members the run keeps for the key `key` (`runs.model_keys`).
+  # the members the run keeps for the key `key` (`runs.model_keys`), and with the run's
+  # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
   @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
-  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api, key \\ %{}) do
+  def entry(
+        name,
+        %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api,
+        key \\ %{}
+      ) do
     auth = for member <- @auth_members, Map.has_key?(auth, member), do: {member, auth[member]}
 
     prefixes =
@@ -301,6 +321,16 @@ defmodule Apiary.Runs.ProviderCredential do
       end
 
     kept = for member <- @key_members, Map.has_key?(key, member), do: {member, key[member]}
+
+    # `use_up_to_percent` and `use_up_to_windows` go together, or neither does.
+    kept =
+      case {key["use_up_to_percent"], api["use_up_to_windows"]} do
+        {percent, [_ | _] = windows} when is_integer(percent) ->
+          kept ++ [{"use_up_to_windows", windows}]
+
+        _neither ->
+          List.keydelete(kept, "use_up_to_percent", 0)
+      end
 
     Jason.OrderedObject.new(
       [

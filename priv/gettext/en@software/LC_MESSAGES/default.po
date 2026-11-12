@@ -3807,6 +3807,16 @@ msgstr ""
 msgid "%{who} unlocked %{host}"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{windows} or %{last}"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{window} at %{percent}%, this key's Use up to"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{words} (%{run})"
@@ -4822,7 +4832,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Add %{provider} again in %{place}: its description changed after it was added."
+msgid "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9337,6 +9347,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Enter a host, such as %{example}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enter a percentage from 1 to 99."
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -15755,22 +15770,22 @@ msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
-msgid "Paused: a key of %{provider} reached its limit."
+msgid "Paused: a key of %{provider} reached its limit or its Use up to percentage."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
-msgid "Paused: a key of %{provider} reached its limit. It continues in run %{number}."
+msgid "Paused: a key of %{provider} reached its limit or its Use up to percentage. It continues in run %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
-msgid "Paused: a model key reached its limit."
+msgid "Paused: a model key reached its limit or its Use up to percentage."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
-msgid "Paused: a model key reached its limit. It continues in run %{number}."
+msgid "Paused: a model key reached its limit or its Use up to percentage. It continues in run %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
@@ -18033,6 +18048,11 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs per day in the last 14 days"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs skip this key once its %{windows} use reaches this percentage of the allowance, until that window resets, so the rest stays for your sessions outside Qory Apiary. Empty: runs use the key up to its limit."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -22807,6 +22827,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Use lowercase letters, digits and hyphens, starting with a letter, at most 64."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Use up to"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex

@@ -86,12 +86,15 @@
 # runtime session's transcript, `dev.qory.session.transcript`, and a continuation's `resume` in its run configuration,
 # the paused run whose transcript it reads; and a key of a key group without
 # `pause_for_s`, which the gateway gives a cooldown of 60 seconds for an API key and 3600
-# seconds for a subscription.
+# seconds for a subscription; and `use_up_to_percent` and `use_up_to_windows` on an API
+# credential, each present only with the other: the key's Use up to percentage, 1 to 99,
+# and the 1 to 11 limit windows it applies to, which put the key in cooldown until a
+# listed window's reset while that window's utilization is at or above the percentage.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-14b898dcd5849bcbbbf9786040a936bee30bf459
+0310942b52c0ed6febdb84114d26cd187ac7e751
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -161,3 +164,13 @@ test/fixtures/forager-contract/invalid/event-session-transcript-session-zero.jso
 test/fixtures/forager-contract/invalid/event-session-exited-model-key-limit-failed.json
 test/fixtures/forager-contract/invalid/link-batch-exited-model-key-limit-failed.json
 test/fixtures/forager-contract/invalid/link-batch-session-exited-model-key-limit-failed.json
+test/fixtures/forager-contract/run-configuration/model-keys-use-up-to.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-hundred.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-no-windows.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-twelve-windows.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-window-twice.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-window-upper-case.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-windows-alone.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-windows-empty.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-api-use-up-to-zero.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-host-use-up-to.json

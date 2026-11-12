@@ -2,8 +2,9 @@ defmodule ApiaryWeb.ProviderLive.Show do
   # A model provider's page, Organisation settings › Model providers › its name, with the
   # features `factory` and `secrets`: its keys, the default key first, then in the order
   # they were added, each with its name and its state (`Apiary.ModelKeys`, in words of
-  # `ApiaryWeb.ModelKeyComponents.state/2`): Available, with the use and the reset of each
-  # window, or In cooldown until a time, and where that time comes from. Times are in the
+  # `ApiaryWeb.ModelKeyComponents.state/4`): Available, with the use and the reset of each
+  # window, or In cooldown until a time, and where that time comes from, a window at the
+  # key's Use up to percentage included. Times are in the
   # reader's time zone. A key is write-only: the page shows neither the key nor a part of
   # it. Every member reads it (`connection.read`); a provider the organisation does not
   # have is not found.
@@ -32,13 +33,21 @@ defmodule ApiaryWeb.ProviderLive.Show do
       {:ok, provider} ->
         now = DateTime.utc_now()
         states = ModelKeys.provider_states(provider, now)
+        percents = ModelKeys.use_up_to_percents(provider)
+        windows = ModelKeys.limit_windows(provider)
 
         {:ok,
          assign(socket,
            provider: provider,
            keys:
              for key <- in_order(provider) do
-               state = ModelKeyComponents.state(Map.get(states, key.id, []), now)
+               state =
+                 ModelKeyComponents.state(
+                   Map.get(states, key.id, []),
+                   now,
+                   Map.get(percents, key.id),
+                   windows
+                 )
 
                %{value_id: key.value_id, state: state}
              end,

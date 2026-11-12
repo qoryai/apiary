@@ -181,6 +181,14 @@
                   }
                 }
               }
+            },
+            "limit_windows": {
+              "description": "The windows of the provider's limits that a key's use_up_to_percent applies to, such as five_hour and seven_day. use_up_to_percent and use_up_to_windows are members of api_credential in Forager's run-configuration.schema.json. A window is a period whose use the provider limits and reports as a percentage. 1 to 11 names, none twice, each 1 to 64 characters of lower-case letters, digits and underscores, starting with a letter, as in use_up_to_windows. The control plane sends the list as use_up_to_windows in the run configuration, with a key's use_up_to_percent. Absent, the provider's keys take no use_up_to_percent.",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 11,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}
             }
           }
         }

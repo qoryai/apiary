@@ -135,6 +135,9 @@ defmodule Apiary.Application do
       # What was decoded of the stored files of the Qory harness, by commit
       # (`Apiary.Harnesses.Qory.Memo`).
       Apiary.Harnesses.Qory.Memo,
+      # Whether a model provider's saved settings fit the catalogue entry of its kind, by
+      # the settings and the entry (`Apiary.Connections.SettingsFit`).
+      Apiary.Connections.SettingsFit,
       # The holds of adapters' reads of their change feeds, a few per key
       # (`ApiaryWeb.Contract.ChangesController`).
       {Registry, keys: :unique, name: ApiaryWeb.Contract.ChangesController.Holds},

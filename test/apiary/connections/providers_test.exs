@@ -271,10 +271,16 @@ defmodule Apiary.Connections.ProvidersTest do
       assert entry.after["host"] == "models.example.org"
     end
 
-    test "refuses a provider whose description changed since it was added", %{scope: scope} do
+    test "refuses a provider whose settings no longer fit the catalogue's entry", %{
+      scope: scope
+    } do
       provider = openrouter!(scope)
-      changed = %{provider | description_sha256: String.duplicate("0", 64)}
 
+      # Added from another entry: the entry of the running release is read.
+      assert {:ok, _description} =
+               Connections.provider(%{provider | description_sha256: String.duplicate("0", 64)})
+
+      changed = %{provider | settings: ~s({"region":"eu"})}
       assert Connections.provider(changed) == {:error, :provider_changed}
 
       assert Connections.provider(%{provider | provider_kind: "gone"}) ==
@@ -329,11 +335,13 @@ defmodule Apiary.Connections.ProvidersTest do
       refute Map.has_key?(Map.from_struct(provider), :models)
     end
 
-    test "are none once the catalogue no longer has the description", %{scope: scope} do
+    test "are none once the provider's settings no longer fit, or its kind is gone", %{
+      scope: scope
+    } do
       provider = openrouter!(scope)
 
       for changed <- [
-            %{provider | description_sha256: String.duplicate("0", 64)},
+            %{provider | settings: ~s({"region":"eu"})},
             %{provider | provider_kind: "gone"}
           ] do
         assert Connections.provider_models(changed) == []

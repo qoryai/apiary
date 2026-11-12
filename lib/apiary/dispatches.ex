@@ -170,10 +170,13 @@ defmodule Apiary.Dispatches do
   #      machine type and spec of the claim answer (`machine/3`);
   #   8. the run registered through that gateway, with a run code bound to it
   #      (`Apiary.Dispatches.Handover.register/2`). A run the claim cannot form ends, with
-  #      its dispatch, and the next is taken, within the same 100; a run that cannot be
-  #      registered for any other reason is `{:error, :unavailable}`, and the whole
-  #      transaction rolls back. An exception rolls it back too, is logged by its module
-  #      alone, and is `{:error, :unavailable}`.
+  #      its dispatch, and the next is taken, within the same 100; so is the next for a
+  #      run left waiting, with its dispatch removed, because every key of its providers
+  #      is in cooldown or the check of its provider's settings ran out of time or
+  #      crashed. A run that cannot be registered for any other reason is
+  #      `{:error, :unavailable}`, and the whole transaction rolls back. An exception
+  #      rolls it back too, is logged by its module alone, and is
+  #      `{:error, :unavailable}`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
   # prebuild), the prebuild's collection (nil for any other step), the pool, the
@@ -1111,23 +1114,27 @@ defmodule Apiary.Dispatches do
         _no_read -> %{}
       end
 
+    # A provider whose settings check stops is checked once in the claim, however many
+    # waiting runs need it (`Apiary.Connections.within_claim/1`).
     result =
-      Repo.transact(fn ->
-        with {:ok, key} <- current_key(key_id),
-             :ok <- may_claim(key),
-             builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
-             {:ok, pool} <- lock_pool(key),
-             pool = keep_offers(pool, offers),
-             {:ok, gateway, keys} <- Handover.gateway(pool) do
-          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
-          queued = Environments.queue_builds(builds, pool)
-          through = %{gateway: gateway, keys: keys, body: body, reads: reads}
+      Apiary.Connections.within_claim(fn ->
+        Repo.transact(fn ->
+          with {:ok, key} <- current_key(key_id),
+               :ok <- may_claim(key),
+               builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
+               {:ok, pool} <- lock_pool(key),
+               pool = keep_offers(pool, offers),
+               {:ok, gateway, keys} <- Handover.gateway(pool) do
+            freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
+            queued = Environments.queue_builds(builds, pool)
+            through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 
-          case take(key, pool, through, now) do
-            {:error, :unavailable} = error -> error
-            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
+            case take(key, pool, through, now) do
+              {:error, :unavailable} = error -> error
+              {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
+            end
           end
-        end
+        end)
       end)
 
     case result do
@@ -1258,9 +1265,11 @@ defmodule Apiary.Dispatches do
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
-    case Repo.one(
-           from r in waiting_query(key, fit(pool, default), now), where: r.id not in ^skipped
-         ) do
+    stopped = Apiary.Connections.stopped_in_claim()
+    waiting = waiting_query(key, fit(pool, default), now, stopped)
+    query = without_stopped(waiting, stopped)
+
+    case Repo.one(from r in query, where: r.id not in ^skipped) do
       nil ->
         {:none, ended}
 
@@ -1270,6 +1279,22 @@ defmodule Apiary.Dispatches do
           run -> pick_run(key, pool, through, now, {run, default, max, ended, skipped})
         end
     end
+  end
+
+  # Leaves out each run whose choice's provider, the first of its `model_provider_ids`,
+  # is in `stopped`: the providers whose settings check stopped earlier in this claim
+  # (`Apiary.Connections.stopped_in_claim/0`). Those runs take none of the claim's 100
+  # tries. `waiting_query/4` leaves out runs whose other providers all count as cooling.
+  defp without_stopped(query, []), do: query
+
+  defp without_stopped(query, stopped) do
+    from [run: r] in query,
+      where:
+        fragment(
+          "coalesce((?)[1] <> ALL(?), true)",
+          r.model_provider_ids,
+          type(^stopped, {:array, Ecto.UUID})
+        )
   end
 
   defp pick_run(key, pool, through, now, {run, default, max, ended, skipped}) do
@@ -1445,7 +1470,9 @@ defmodule Apiary.Dispatches do
   # dispatch the claim inserted goes, and the run of the queue waits again, as it was,
   # with its `updated_at` from before the claim, now for `provider_ids`, the providers the
   # claim found with every key in cooldown, so the claim's filter passes it
-  # (`Apiary.ModelKeys.claimable/1`) until one of their keys is free.
+  # (`Apiary.ModelKeys.claimable/1`) until one of their keys is free; or with the
+  # `model_provider_ids` it had, for a run whose provider's settings check ran out of
+  # time or crashed, which the next claim tries again.
   defp unclaim(
          %{dispatch: %Dispatch{id: dispatch_id}, run: %DispatchRun{id: run_id} = run},
          provider_ids
@@ -1543,17 +1570,22 @@ defmodule Apiary.Dispatches do
     if Nodes.instances_in_use(pool, now) < limit, do: :ok, else: :at_limit
   end
 
-  # waiting_query/3 is the query of the oldest waiting run the pool of `key` may take at
+  # waiting_query/4 is the query of the oldest waiting run the pool of `key` may take at
   # `now`, the queue's clock when not given, locked `FOR UPDATE SKIP LOCKED`, of the runs
   # that pass `fit`, a condition on a run bound `:run`, by its machine type (`fit/2`), any
   # run when not given. A prebuild goes only to the pool it is held for, only on an
   # instance with a registry (`prebuild_taken/0`); a run held for the pool's build of its
   # target (`Apiary.Environments.held/1`) is left waiting, and so is a run while every key
-  # of each of its model providers is in cooldown at `now` (`keys_free/1`).
+  # of each of its model providers is in cooldown at `now`, the providers `except` counted
+  # as cooling (`keys_free/2`).
   @doc false
-  @spec waiting_query(AccessKey.t(), Ecto.Query.dynamic_expr() | true, DateTime.t() | nil) ::
-          Ecto.Query.t()
-  def waiting_query(key, fit \\ true, now \\ nil)
+  @spec waiting_query(
+          AccessKey.t(),
+          Ecto.Query.dynamic_expr() | true,
+          DateTime.t() | nil,
+          [Ecto.UUID.t()]
+        ) :: Ecto.Query.t()
+  def waiting_query(key, fit \\ true, now \\ nil, except \\ [])
 
   def waiting_query(
         %AccessKey{
@@ -1562,7 +1594,8 @@ defmodule Apiary.Dispatches do
           node_id: pool_id
         },
         fit,
-        now
+        now,
+        except
       )
       when is_binary(workspace_id) do
     query =
@@ -1573,7 +1606,7 @@ defmodule Apiary.Dispatches do
         where: ^fitting(fit),
         where: r.step != ^@prebuild or r.pool_id == ^pool_id,
         where: ^prebuild_taken(),
-        where: ^keys_free(now),
+        where: ^keys_free(now, except),
         where: not exists(walk_unresolved()),
         order_by: [asc: r.queued_at, asc: r.id],
         limit: 1,
@@ -1591,7 +1624,7 @@ defmodule Apiary.Dispatches do
   # across organisations, and the prebuilds held for it, each in a place in use
   # (`in_use_place/0`). A workspace whose pool never enrolled has a pool in use: its runs
   # wait for that pool.
-  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit, now) do
+  def waiting_query(%AccessKey{workspace_id: nil, node_id: pool_id}, fit, now, except) do
     takes =
       dynamic(
         [run: r],
@@ -1606,7 +1639,7 @@ defmodule Apiary.Dispatches do
       where: ^takes,
       where: ^fitting(fit),
       where: ^prebuild_taken(),
-      where: ^keys_free(now),
+      where: ^keys_free(now, except),
       where: ^in_use_place(),
       where: not exists(walk_unresolved()),
       order_by: [asc: r.queued_at, asc: r.id],
@@ -1618,11 +1651,12 @@ defmodule Apiary.Dispatches do
   defp fitting(fit), do: fit
 
   # The condition, on a run of the queue bound `:run`, that not every key of each of its
-  # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/1`), while runs
-  # are given model keys (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
-  defp keys_free(now) do
+  # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/2`), the
+  # providers `except` counted as cooling, while runs are given model keys
+  # (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
+  defp keys_free(now, except) do
     if ProviderCredential.applies?(),
-      do: ModelKeys.claimable(now || now()),
+      do: ModelKeys.claimable(now || now(), except: except),
       else: dynamic([run: _r], true)
   end
 

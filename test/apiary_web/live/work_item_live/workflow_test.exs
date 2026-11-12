@@ -5770,7 +5770,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                row,
-               "Paused: a key of #{provider.name} reached its limit. It continues in run #{next.number}."
+               "Paused: a key of #{provider.name} reached its limit or its Use up to percentage. It continues in run #{next.number}."
              )
 
       href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{next.number}"

@@ -480,6 +480,11 @@ msgstr ""
 msgid "is not your email"
 msgstr ""
 
+#: lib/apiary/model_keys/setting.ex
+#, elixir-autogen, elixir-format
+msgid "is only for a key of a provider with limit windows"
+msgstr ""
+
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
 msgid "is read from the description at an address"

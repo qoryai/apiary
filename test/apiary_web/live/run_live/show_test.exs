@@ -2219,8 +2219,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       _html = flush(lv)
 
-      assert has_element?(lv, "#run-announcer", "Paused: a model key reached its limit.")
-      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+      assert has_element?(
+               lv,
+               "#run-announcer",
+               "Paused: a model key reached its limit or its Use up to percentage."
+             )
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: a model key reached its limit or its Use up to percentage."
+             )
     end
   end
 
@@ -4962,7 +4971,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(
                lv,
                "#run-why",
-               "Paused: a key of #{provider.name} reached its limit. It continues in run #{number}."
+               "Paused: a key of #{provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
              )
 
       next_path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{number}"
@@ -5004,7 +5013,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{alone.number}")
 
       assert has_element?(lv, "#run-state", "Paused")
-      assert has_element?(lv, "#run-why", "Paused: a model key reached its limit.")
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: a model key reached its limit or its Use up to percentage."
+             )
+
       refute has_element?(lv, "#run-why", "It continues")
     end
 

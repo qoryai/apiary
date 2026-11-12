@@ -44,6 +44,11 @@ config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.D
 # (`Apiary.Kinds.Runtimes.put_test_list/1`). No other build compiles it.
 config :apiary, Apiary.Kinds.Runtimes, test_seam: true
 
+# The tests' seams for a settings check that stops (`Apiary.Connections.SettingsFit`,
+# `Apiary.Integrations.Description`). No other build compiles them.
+config :apiary, Apiary.Connections.SettingsFit, test_seam: true
+config :apiary, Apiary.Integrations.Description, test_seam: true
+
 # In test we don't send emails
 config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 
