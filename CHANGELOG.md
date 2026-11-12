@@ -1881,11 +1881,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   - suspensions of accounts and organisations: a suspended account signs in again, and
     a suspended organisation is no longer read-only;
   - workspace access: each member reaches every workspace of their organisation again;
+  <!-- feature: organisation_policy -->
   - each organisation's policy;
+  <!-- /feature -->
+  <!-- feature: organisation_variables -->
   - each organisation's secrets and variables;
+  <!-- /feature -->
+  <!-- feature: managed_organisations -->
+  - the relationships between operators and their clients;
+  <!-- /feature -->
   - the features an instance admin took away from an organisation or granted to it:
-    every organisation has every feature the instance has;
-  - the relationships between operators and their clients.
+    every organisation has every feature the instance has.
 
   A member added to an adopted organisation while the previous image runs gets no
   workspace access at the next upgrade, because the adoption covers only organisations
