@@ -1237,9 +1237,9 @@ defmodule Apiary.Connections do
   fit; `{:error, :provider_unchecked}` when the check ran out of time or crashed, which
   the settings do not decide, so a later read checks them again; or
   `{:error, :provider_unknown}` once the catalogue no longer has the kind. An answer the
-  settings decide is kept for those settings and that entry
-  (`Apiary.Connections.SettingsFit`). The connection's `description_sha256`, the digest
-  of the entry it was added from, is kept as it was recorded and not compared.
+  settings decide is kept in a table by the SHA-256 of the settings and of the entry, at
+  most 4,096 answers. The connection's `description_sha256`, the digest of the entry it
+  was added from, is kept as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
           {:ok, Provider.t()}
