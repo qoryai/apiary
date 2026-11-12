@@ -38,14 +38,14 @@ msgstr ""
 msgid "%{email} is invited to be the owner."
 msgstr ""
 
-#: lib/apiary_pro_web/live/instance_live/accounts.ex
-#, elixir-autogen, elixir-format
-msgid "%{email} is logged out everywhere at once, and can no longer log in or act in any organisation. Nothing is removed: their memberships stay, and the access keys they added keep working. You can activate the account again at any time."
-msgstr ""
-
 #: lib/apiary_pro_web/live/member_live/workspaces.ex
 #, elixir-autogen, elixir-format
 msgid "%{email} is removed from %{workspace}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is signed out everywhere at once, and can no longer sign in or act in any organisation. Nothing is removed: their memberships stay, and the access keys they added keep working. You can activate the account again at any time."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
@@ -85,7 +85,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} becomes read-only: its people can log in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports."
+msgid "%{name} becomes read-only: its people can sign in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
@@ -657,7 +657,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
-msgid "A suspended account cannot log in, and acts in no organisation."
+msgid "A suspended account cannot sign in, and acts in no organisation."
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -1366,7 +1366,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Confirm your email address before you invite anyone: log in again with the link we email you."
+msgid "Confirm your email address before you invite anyone: sign in again with the link we email you."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -2353,11 +2353,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "Lock…"
-msgstr ""
-
-#: lib/apiary_pro_web/live/user_live/registration.ex
-#, elixir-autogen, elixir-format
-msgid "Log in"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -3426,7 +3421,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
+msgid "Qory Apiary sends email now: they get a sign-in link from the sign-in page instead."
 msgstr ""
 
 #: lib/apiary_pro_web/live/member_live/workspaces.ex
@@ -3748,6 +3743,11 @@ msgstr ""
 msgid "Shown features changed"
 msgstr ""
 
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in"
+msgstr ""
+
 #: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
 #, elixir-autogen, elixir-format
 msgid "Sign-up"
@@ -3884,7 +3884,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
-msgid "That account cannot log in at the moment, so it gets no password link."
+msgid "That account cannot sign in at the moment, so it gets no password link."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -4945,7 +4945,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
-msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the log-in page in a few minutes."
+msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the sign-in page in a few minutes."
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_request_live/index.ex

@@ -38,7 +38,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
       assert html =~ "Create your account"
-      assert html =~ "Log in"
+      assert html =~ "Sign in"
     end
 
     test "without an invitation, says sign-up is by invitation where none is open", %{
@@ -55,7 +55,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       %{lv: lv, html: html, email: email, scope: scope} = invited(conn)
 
       assert html =~ "Create your account"
-      assert html =~ "Log in"
+      assert html =~ "Sign in"
       assert has_element?(lv, "#registration_form input[name='user[email]'][value='#{email}']")
       refute has_element?(lv, "#registration_form input[name='user[organisation_name]']")
       assert html =~ scope.organisation.name
@@ -386,12 +386,12 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   end
 
   describe "registration navigation" do
-    test "redirects to login page when the Log in button is clicked", %{conn: conn} do
+    test "redirects to login page when the Sign in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       {:ok, _login_live, login_html} =
         lv
-        |> element("main a", "Log in")
+        |> element("main a", "Sign in")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/log-in")
 
@@ -479,7 +479,7 @@ defmodule ApiaryWeb.UserLive.RegistrationMailFailsTest do
 
     # The toast shows the first sentence as its title, and the second under it.
     assert html =~ "Your account is made, but the email with its link could not be sent."
-    assert html =~ "Ask for a new link on the log-in page in a few minutes."
+    assert html =~ "Ask for a new link on the sign-in page in a few minutes."
 
     assert Apiary.Accounts.get_user_by_email(email)
   end

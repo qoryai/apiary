@@ -151,10 +151,10 @@ defmodule ApiaryProWeb.UserLive.SignUpSettingsTest do
     assert context(lv) =~
              "You become the owner of the organisation. Owners rename it later in Organisation settings."
 
-    # The core's page before sign-in: the set-up frame, and the way to log in.
+    # The core's page before sign-in: the set-up frame, and the way to sign in.
     assert has_element?(lv, "#set-up-context h2", "About accounts")
     assert has_element?(lv, "#main h1", "Create your account")
-    assert has_element?(lv, "#main a[href='/users/log-in']", "Log in")
+    assert has_element?(lv, "#main a[href='/users/log-in']", "Sign in")
 
     email = submit(lv, %{})
 

@@ -429,7 +429,7 @@ defmodule ApiaryProWeb.UserLive.SignUpMailFailsTest do
       |> follow_redirect(conn, ~p"/users/log-in")
 
     assert html =~ "Your account is made, but the email with its link could not be sent."
-    assert html =~ "Ask for a new link on the log-in page in a few minutes."
+    assert html =~ "Ask for a new link on the sign-in page in a few minutes."
     assert Apiary.Accounts.get_user_by_email(email)
   end
 end

@@ -75,7 +75,7 @@ defmodule ApiaryProWeb.UserLive.Registration do
           </SetUpComponents.heading>
 
           <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
-            {gettext("Log in")}
+            {gettext("Sign in")}
           </.button>
         </div>
 
@@ -140,7 +140,7 @@ defmodule ApiaryProWeb.UserLive.Registration do
 
           <p class="mt-1 text-center text-[13px]/[18px] text-muted">
             {gettext("Already have an account?")}
-            <.button variant="link" navigate={~p"/users/log-in"}>{gettext("Log in")}</.button>
+            <.button variant="link" navigate={~p"/users/log-in"}>{gettext("Sign in")}</.button>
           </p>
         </div>
 
@@ -359,7 +359,7 @@ defmodule ApiaryProWeb.UserLive.Registration do
         |> put_flash(
           :error,
           gettext(
-            "Your account is made, but the email with its link could not be sent. Ask for a new link on the log-in page in a few minutes."
+            "Your account is made, but the email with its link could not be sent. Ask for a new link on the sign-in page in a few minutes."
           )
         )
         |> push_navigate(to: ~p"/users/log-in")

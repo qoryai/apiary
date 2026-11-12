@@ -1275,7 +1275,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
          |> put_flash(
            :error,
            gettext(
-             "Confirm your email address before you invite anyone: log in again with the link we email you."
+             "Confirm your email address before you invite anyone: sign in again with the link we email you."
            )
          )
          |> load()
@@ -1312,7 +1312,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
            socket,
            :error,
            gettext(
-             "Confirm your email address before you invite anyone: log in again with the link we email you."
+             "Confirm your email address before you invite anyone: sign in again with the link we email you."
            )
          )}
 
@@ -1535,7 +1535,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
            socket,
            :error,
            gettext(
-             "Confirm your email address before you invite anyone: log in again with the link we email you."
+             "Confirm your email address before you invite anyone: sign in again with the link we email you."
            )
          )}
 
@@ -1669,7 +1669,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
          |> put_flash(
            :error,
            gettext(
-             "Confirm your email address before you invite anyone: log in again with the link we email you."
+             "Confirm your email address before you invite anyone: sign in again with the link we email you."
            )
          )
          |> load()}

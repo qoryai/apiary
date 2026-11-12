@@ -176,7 +176,7 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
     render_click(lv, "password_link", %{"id" => user.id})
 
     assert render(lv) =~
-             "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
+             "Qory Apiary sends email now: they get a sign-in link from the sign-in page instead."
 
     refute has_element?(lv, "#password-link")
     assert tokens(user) == []
@@ -206,7 +206,7 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
 
     render_click(lv, "password_link", %{"id" => user.id})
 
-    assert render(lv) =~ "That account cannot log in at the moment, so it gets no password link."
+    assert render(lv) =~ "That account cannot sign in at the moment, so it gets no password link."
     refute has_element?(lv, "#password-link")
     assert tokens(user) == []
     assert entries() == []

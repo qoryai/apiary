@@ -404,7 +404,7 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "Confirm your email address before you invite anyone: log in again with the link we email you."
+               "Confirm your email address before you invite anyone: sign in again with the link we email you."
              )
 
       refute render(lv) =~ "Only owners and admins of an operator create its clients."
@@ -428,7 +428,7 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "Confirm your email address before you invite anyone: log in again with the link we email you."
+               "Confirm your email address before you invite anyone: sign in again with the link we email you."
              )
 
       refute has_element?(lv, "#owner-link")
@@ -472,7 +472,7 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "Confirm your email address before you invite anyone: log in again with the link we email you."
+               "Confirm your email address before you invite anyone: sign in again with the link we email you."
              )
 
       refute has_element?(lv, "#owner-link")
@@ -499,7 +499,7 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "Confirm your email address before you invite anyone: log in again with the link we email you."
+               "Confirm your email address before you invite anyone: sign in again with the link we email you."
              )
 
       refute has_element?(lv, "#owner-link")
@@ -531,7 +531,7 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
       assert has_element?(
                lv,
                "#flash-error",
-               "Confirm your email address before you invite anyone: log in again with the link we email you."
+               "Confirm your email address before you invite anyone: sign in again with the link we email you."
              )
 
       refute has_element?(lv, "#owner-invitation-#{invitation.id}-link")

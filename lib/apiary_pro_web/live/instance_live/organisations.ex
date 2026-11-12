@@ -863,7 +863,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       cancel={@back}
     >
       {gettext(
-        "%{name} becomes read-only: its people can log in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports.",
+        "%{name} becomes read-only: its people can sign in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports.",
         name: @row.organisation.name
       )}
       <span :if={Tenants.operator?(@row.organisation)} id="suspend-operator-clients">

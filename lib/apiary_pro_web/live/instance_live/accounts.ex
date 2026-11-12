@@ -52,7 +52,7 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
       <.settings_page section={:accounts} measure="list" title={gettext("Accounts")}>
         <:subtitle>
           {gettext("Every account on this Qory Apiary, with how many memberships it holds.")}
-          {gettext("A suspended account cannot log in, and acts in no organisation.")}
+          {gettext("A suspended account cannot sign in, and acts in no organisation.")}
         </:subtitle>
 
         <.async_result :let={accounts} assign={@accounts}>
@@ -182,7 +182,7 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
                   cancel={list_path(@list, [])}
                 >
                   {gettext(
-                    "%{email} is logged out everywhere at once, and can no longer log in or act in any organisation. Nothing is removed: their memberships stay, and the access keys they added keep working. You can activate the account again at any time.",
+                    "%{email} is signed out everywhere at once, and can no longer sign in or act in any organisation. Nothing is removed: their memberships stay, and the access keys they added keep working. You can activate the account again at any time.",
                     email: a.user.email
                   )}
                   <span :if={@sole_owned != []} id="suspend-account-sole-owner" class="q-hot">
@@ -384,7 +384,7 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
              |> put_flash(
                :error,
                gettext(
-                 "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
+                 "Qory Apiary sends email now: they get a sign-in link from the sign-in page instead."
                )
              )
              |> load()}
@@ -424,7 +424,7 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
              |> assign(:password_link, nil)
              |> put_flash(
                :error,
-               gettext("That account cannot log in at the moment, so it gets no password link.")
+               gettext("That account cannot sign in at the moment, so it gets no password link.")
              )}
         end
     end
