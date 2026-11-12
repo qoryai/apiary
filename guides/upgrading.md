@@ -105,17 +105,22 @@ included, and loses:
 
 To go back to such a release:
 
-1. Take a database dump ([Backup and restore](backup.md)).
-2. While `APIARY_VERSION` in `.env` is still the newer release, stop Qory Apiary and run
-   the rollback from the newer release's image, in a one-off container:
+1. Stop Qory Apiary, so that no write lands between the dump and the rollback:
 
    ```sh
    docker compose stop apiary
+   ```
+
+2. Take a database dump ([Backup and restore](backup.md)).
+3. While `APIARY_VERSION` in `.env` is still the newer release, run the rollback from the
+   newer release's image, in a one-off container:
+
+   ```sh
    docker compose run --rm apiary bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, 20261110153000)"
    ```
 
-3. Set `APIARY_VERSION` in `.env` back to the previous release.
-4. `docker compose up -d`.
+4. Set `APIARY_VERSION` in `.env` back to the previous release.
+5. `docker compose up -d`.
 
 Further back than one release, restore the dump taken before the upgrade
 ([Backup and restore](backup.md)), then set the version back and start it.

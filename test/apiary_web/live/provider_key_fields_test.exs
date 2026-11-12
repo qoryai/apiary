@@ -2,9 +2,9 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
   # The field of a model provider's key on each page that takes one: Add key and Edit key
   # (`ApiaryWeb.ProviderLive.Key`), New model provider (`ApiaryWeb.ProviderLive.Index`)
   # and the set-up's Model step (`ApiaryWeb.WorkspaceSetupLive`). Each is a password
-  # field that a password manager does not fill with a sign-in password
-  # (`autocomplete="new-password"`), and each page stores the key without the whitespace
-  # at its ends (`Apiary.Connections.trim_key/1`).
+  # field with `autocomplete="new-password"`, so a browser does not fill it with a saved
+  # sign-in password, and each page stores the key without the whitespace at its ends
+  # (`Apiary.Connections.trim_key/1`).
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
