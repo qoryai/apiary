@@ -599,7 +599,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp unserved_text({:changed, provider}, scope, _runtime),
     do:
       rich_gettext(
-        "Add %{provider} again in %{place}: its description changed after it was added.",
+        "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary.",
         provider: {:b, provider.name},
         place: providers_link(scope)
       )

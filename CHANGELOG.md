@@ -1129,20 +1129,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deletes a run's transcript with the run's log output, by **Keep a run's log output
   for**, or by **Keep a run's events for** when the log setting is empty; a paused
   run's transcript stays until the run that continues it ends.
-- **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's
-  key, and on **Add value** and **Change value** of such a key on **Workspace settings ›
-  Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage
-  from 1 to 99.” Once the key's 5-hour or 7-day use reaches it, runs skip the key until
-  that window resets, so the rest of the allowance stays for your sessions outside Qory
-  Apiary. The key's row then shows “In cooldown until Fri 14:00 · 5-hour at 90%, this
-  key's Use up to”. Empty, runs use the key up to its limit. Only a provider whose
-  catalogue entry lists limit windows has the field; an API key has none. A run keeps
-  each key's percentage and the provider's windows from its claim, and the gateway
-  checks them on each response of the provider, so a run may go past the percentage by
-  the requests it already sent. A run claimed before the upgrade has no windows, and
-  uses its keys up to their limit. The line of a
-  paused run reads “Paused: a key of Northwind Claude reached its limit or its Use up to
-  percentage.” in place of “… reached its limit.”
+- **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's key,
+  and on **Add value** and **Change value** of such a key on **Workspace settings ›
+  Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage from
+  1 to 99.” Once the key's 5-hour or 7-day use reaches it, runs skip the key until that
+  window resets, so the rest of the allowance stays for your sessions outside Qory Apiary.
+  The key's row then shows “In cooldown until Fri 14:00 · 5-hour at 90%, this key's Use up
+  to”. Empty, runs use the key up to its limit. Only a provider whose catalogue entry
+  lists limit windows has the field; an API key has none. A run keeps each key's
+  percentage and the provider's windows from its claim, and the gateway checks them on
+  each response of the provider, so a run may go past the percentage by the requests it
+  already sent. A run claimed before the upgrade has no windows, and uses its keys up to
+  their limit. The line of a paused run reads “Paused: a key of Northwind Claude reached
+  its limit or its Use up to percentage.” in place of “… reached its limit.”
 <!-- /feature -->
 - `GET /health` returns `set_up` in its `200`: `false` until the instance's first set-up
   and `true` after it, for a deploy script or an instance admin. The `503` has no
@@ -1151,15 +1150,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: factory, secrets -->
-- A model provider follows the catalogue entry of its kind in the Qory Apiary release
-  it runs on: its APIs, hosts, models and limit windows. Up to this change, a release
-  that changed the entry a provider was added from stopped every provider of that kind:
-  runs got no run configuration, **Edit** failed, and **Workspace settings › Model**
-  asked to add the provider again, with its keys. After the upgrade, each provider takes
-  the new entry, such as the 5-hour and 7-day windows of a Claude subscription, and a
-  new model in its list. Only a provider whose saved settings no longer fit the new
-  entry stops, and the page shows “Add Northwind Claude again in Organisation settings ›
-  Model providers: its description changed after it was added.”
+- A model provider follows the catalogue entry of its kind in the Qory Apiary release it
+  runs on: its APIs, hosts, models and limit windows. Up to this change, a release that
+  changed the entry a provider was added from stopped every provider of that kind: runs
+  got no run configuration, **Edit** failed, and **Workspace settings › Model** asked to
+  add the provider again, with its keys. After the upgrade, each provider takes the new
+  entry, such as the 5-hour and 7-day windows of a Claude subscription, and a new model in
+  its list. Only a provider whose saved settings no longer fit the new entry stops, and
+  the page shows “Add Northwind Claude again in Organisation settings › Model providers:
+  its settings no longer fit this version of Qory Apiary.”
 <!-- /feature -->
 
 - `QORY_FEATURES` unset, empty, `all` or `all-…` turns on every feature: `secrets`,
@@ -1862,8 +1861,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and no state, so it shows “Available” until a gateway reports it.
 - Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#57 or later,
   then upgrade Qory Apiary. A model key with a Use up to percentage has
-  `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the
-  run configuration schema of an earlier gateway does not define.
+  `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the run
+  configuration schema of an earlier gateway does not define.
 <!-- /feature -->
 
 ### Migrations
@@ -1876,8 +1875,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Rolling back drops `model_key_settings.use_up_to_percent`, with every key's Use up to
   percentage.
 - `runs` (20261112110000 and 20261112110100): the check on `provider_api` also allows
-  `use_up_to_windows`, 1 to 11 strings, the limit windows of the run's model provider at
-  its claim. The bound of 8 KiB stays. The first migration adds the check without a
+  `use_up_to_windows`, the limit windows of the run's model provider at its claim: 1 to
+  11 names, each a lower-case letter followed by up to 63 lower-case letters, digits
+  and underscores. The bound of 8 KiB stays. The first migration adds the check without a
   scan, and the second validates it with a scan that does not block writes. It changes
   no row. A rollback removes `use_up_to_windows` from each run that has it, and its
   check scans `runs` under a lock that blocks reads and writes.

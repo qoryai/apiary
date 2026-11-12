@@ -437,8 +437,8 @@ replaces the navigation it is in.
   key's Pause for is when the page shows it, or "5-hour at 90%, this key's Use up to",
   while a limit window's use is at or above the key's Use up to (Add key, below), until
   that window resets, with the percentage the key has when the page shows it, which the
-  window's use may be past. A time is the time of day alone on the reader's day, the weekday and the time
-  on one of the six days after it, else the date and the time
+  window's use may be past. A time is the time of day alone on the reader's day, the
+  weekday and the time on one of the six days after it, else the date and the time
   (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
   Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
   Output tokens per minute, Spend limit and Limit; a window of another code shows its
@@ -483,9 +483,9 @@ replaces the navigation it is in.
   About model providers beside the form. Workspace settings › Secrets and variables has
   the same Resets, Pause for and Use up to on Add value and Change value of a model
   provider's key, and both remove the spaces, tabs and newlines around the key's value,
-  as Add key does. Change value with New value empty, or of only spaces, tabs or
-  newlines, saves the settings and keeps the key's value. Another secret's value is saved as typed, its
-  last newline included.
+  as Add key does. Change value with New value empty, or of only spaces, tabs or newlines,
+  saves the settings and keeps the key's value. Another secret's value is saved as typed,
+  its last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
   part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
@@ -505,7 +505,9 @@ replaces the navigation it is in.
   provider to the provider of a row drops that row. A provider whose saved settings no
   longer fit the catalogue entry of its kind in the running release serves nothing, and
   the page shows "Add Northwind Claude again in Organisation settings › Model providers:
-  its description changed after it was added."
+  its settings no longer fit this version of Qory Apiary." A provider whose settings check
+  ran out of time or crashed serves nothing on that read, with no line, and the next read
+  checks it again.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one

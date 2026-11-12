@@ -695,7 +695,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-changed-#{provider.public_id}",
-               "Add #{provider.name} again in Organisation settings › Model providers: its description changed after it was added."
+               "Add #{provider.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
              )
 
       refute has_element?(lv, "#model-other_runtime")

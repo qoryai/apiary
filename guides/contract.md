@@ -515,8 +515,8 @@ a credential of its run configuration. A key with a Use up to percentage has
 provider's catalogue entry at the run's claim, such as `["five_hour", "seven_day"]`, in
 its credential: while one of those windows' `utilization` is at or above the percentage,
 the gateway counts the key in cooldown until the window's `resets_at`, and its report
-has the window as the provider's response had it, with no `cooldown_until`. At the claim, such a key
-gets that `resets_at` as its `cooldown_until`. The body:
+has the window as the provider's response had it, with no `cooldown_until`. At the claim,
+such a key gets that `resets_at` as its `cooldown_until`. The body:
 
 ```json
 {"version": 1, "run_id": "<run_id>", "time": "2026-10-11T12:30:00Z",

@@ -70,12 +70,13 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `prebuilt`, a prebuild handed over that a report of the image it built ended, which
   # no request makes any more, its registered run left to its outcome; `provider_gone`,
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
-  # choice its claim could not form: its model provider is gone, fails its integrity
-  # code, does not apply to the workspace, has settings that no longer fit the
-  # catalogue's entry of its kind or a kind the catalogue no longer has, or has an
-  # endpoint address the endpoint rule refuses (`provider_gone`); no longer serves the runtime (`runtime_unserved`); no longer has
-  # the chosen key (`key_gone`); or has no model for the run, or no longer offers the
-  # chosen effort value (`model_gone`) (`Apiary.Dispatches.RunSettings`), 410 gone;
+  # choice its claim could not form: its model provider is gone, fails its integrity code,
+  # does not apply to the workspace, has settings that no longer fit the catalogue's entry
+  # of its kind or a kind the catalogue no longer has, or has an endpoint address the
+  # endpoint rule refuses (`provider_gone`); no longer serves the runtime
+  # (`runtime_unserved`); no longer has the chosen key (`key_gone`); or has no model for
+  # the run, or no longer offers the chosen effort value (`model_gone`)
+  # (`Apiary.Dispatches.RunSettings`), 410 gone;
   # `secrets_not_allowed`, a claimed explore run whose model choice has a provider, whose
   # gateway has an active key made without the stored-secrets flag (`allow_secrets`), so
   # the gateway may not get the run's model key (`Apiary.Dispatches.Handover`), 410 gone;
