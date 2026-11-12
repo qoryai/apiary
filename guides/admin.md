@@ -303,6 +303,9 @@ until the next upgrade:
 <!-- /feature -->
 - the features an instance admin took away from an organisation or granted to it: every
   organisation has every feature the instance has.
+- sign-up beyond the first and more than one workspace per organisation: nobody signs up,
+  an organisation with a workspace creates no other, and the console offers gateways only
+  at a workspace. Organisations and workspaces that exist stay.
 
 A member added to an adopted organisation while the previous image runs gets no
 workspace access at the next upgrade, because the adoption covers only organisations it
