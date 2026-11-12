@@ -1783,6 +1783,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Security
 
+- Each field for a model provider's key has `autocomplete="new-password"`: **Key** on
+  **Add key** and **New model provider**, **New value** on **Edit key**, and the key on
+  the set-up's **Model** step. A browser then does not fill it with a saved sign-in
+  password, which a save would have stored as the key.
 <!-- feature: workflow_model -->
 - Where a stage lists approvers, only an approver settles the stage's escalation, or runs
   a stage after Explore again from its gate, with **Run another round**. The escalation
