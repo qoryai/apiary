@@ -125,12 +125,13 @@ defmodule ApiaryWeb.OverviewComponentsTest do
     test "a day with paused runs has a part as high as its share of the column; one without has none" do
       doc = chart(days([{6, 1}, {3, 3}, {2, 0}]))
 
-      # 6 runs, the most, fill the 104 px plot; 1 of them paused is 17 px from the base.
+      # 6 runs, the most, fill the 104 px plot; 1 of them paused is 17 px from the base, of
+      # which the top pixel is the gap between the two parts.
       assert d(doc, -2, "q-col-paused") == [
-               "M#{left(-2)} #{@base}V#{@base - 17}H#{left(-2, 26)}V#{@base}z"
+               "M#{left(-2)} #{@base}V#{@base - 16}H#{left(-2, 26)}V#{@base}z"
              ]
 
-      # The rest of the column sits on the part, from 17 px to the rounded top: no runs
+      # The rest of the column starts above the gap, from 17 px to the rounded top: no runs
       # part under the Paused part.
       assert d(doc, -2, "q-col-runs") == [
                "M#{left(-2)} #{@base - 17}V#{@base - 100}A4 4 0 0 1 #{left(-2, 4)} #{@base - 104}" <>
@@ -154,28 +155,65 @@ defmodule ApiaryWeb.OverviewComponentsTest do
       # At a maximum of 200, 2 runs are a 2 px column and 20 runs a 10 px one.
       doc = chart(days([{200, 0}, {2, 1}, {20, 19}]))
 
-      # 1 of 2 is 1 px, not the 2 px least, so the column keeps 1 px of its runs part.
-      assert [paused] = d(doc, -1, "q-col-paused")
-      assert paused =~ " #{@base - 1}H"
-      assert [rest] = d(doc, -1, "q-col-runs")
-      assert rest =~ ~r/\AM[0-9.]+ #{@base - 1}A/
+      # 1 of 2 is 1 px, not the 2 px least, so the column keeps 1 px of its runs part. A
+      # 2 px column has no room for a gap: the two parts meet at 1 px.
+      i1 = 2 - :math.sqrt(3)
 
-      # 19 of 20 rounds up to the whole 10 px; the part stops at 9 px.
-      assert [paused] = d(doc, 0, "q-col-paused")
-      assert paused =~ " #{@base - 9}H"
-      assert [rest] = d(doc, 0, "q-col-runs")
-      assert rest =~ ~r/\AM[0-9.]+ #{@base - 9}A/
+      assert d(doc, -1, "q-col-paused") == [
+               "M#{left(-1)} #{@base}A2 2 0 0 1 #{left(-1, i1)} #{@base - 1}" <>
+                 "H#{left(-1, 26 - i1)}A2 2 0 0 1 #{left(-1, 26)} #{@base}z"
+             ]
+
+      assert d(doc, -1, "q-col-runs") == [
+               "M#{left(-1, i1)} #{@base - 1}A2 2 0 0 1 #{left(-1, 2)} #{@base - 2}" <>
+                 "H#{left(-1, 24)}A2 2 0 0 1 #{left(-1, 26 - i1)} #{@base - 1}z"
+             ]
+
+      # 19 of 20 rounds up to the whole 10 px; the rest starts at 9 px, and the part stops
+      # at 8 px, under the 1 px gap.
+      i8 = 4 - :math.sqrt(12)
+      i9 = 4 - :math.sqrt(7)
+
+      assert d(doc, 0, "q-col-paused") == [
+               "M#{left(0)} #{@base}V#{@base - 6}A4 4 0 0 1 #{left(0, i8)} #{@base - 8}" <>
+                 "H#{left(0, 26 - i8)}A4 4 0 0 1 #{left(0, 26)} #{@base - 6}V#{@base}z"
+             ]
+
+      assert d(doc, 0, "q-col-runs") == [
+               "M#{left(0, i9)} #{@base - 9}A4 4 0 0 1 #{left(0, 4)} #{@base - 10}" <>
+                 "H#{left(0, 22)}A4 4 0 0 1 #{left(0, 26 - i9)} #{@base - 9}z"
+             ]
+    end
+
+    test "a 3 px column has 1 px of each part and the 1 px gap between them" do
+      # At a maximum of 104, 3 runs are a 3 px column; 1 of them paused is 1 px, raised to
+      # the 2 px least, whose top pixel is the gap.
+      doc = chart(days([{104, 0}, {3, 1}]))
+      i1 = 3 - :math.sqrt(8)
+      i2 = 3 - :math.sqrt(5)
+
+      assert d(doc, 0, "q-col-paused") == [
+               "M#{left(0)} #{@base}A3 3 0 0 1 #{left(0, i1)} #{@base - 1}" <>
+                 "H#{left(0, 26 - i1)}A3 3 0 0 1 #{left(0, 26)} #{@base}z"
+             ]
+
+      assert d(doc, 0, "q-col-runs") == [
+               "M#{left(0, i2)} #{@base - 2}A3 3 0 0 1 #{left(0, 3)} #{@base - 3}" <>
+                 "H#{left(0, 23)}A3 3 0 0 1 #{left(0, 26 - i2)} #{@base - 2}z"
+             ]
     end
 
     test "a part that reaches into the rounded top follows the column's outline" do
       doc = chart(days([{50, 49}]))
 
-      # 49 of 50 is 102 px of 104: 2 px into the 4 px corners, each side 0.54 px in there.
+      # 49 of 50 is 102 px of 104: the rest starts 2 px into the 4 px corners, each side
+      # 0.54 px in there, and the part stops 1 px below it, each side 0.13 px in.
       inset = 4 - :math.sqrt(12)
+      i101 = 4 - :math.sqrt(15)
 
       assert d(doc, 0, "q-col-paused") == [
-               "M#{left(0)} #{@base}V#{@base - 100}A4 4 0 0 1 #{left(0, inset)} #{@base - 102}" <>
-                 "H#{left(0, 26 - inset)}A4 4 0 0 1 #{left(0, 26)} #{@base - 100}V#{@base}z"
+               "M#{left(0)} #{@base}V#{@base - 100}A4 4 0 0 1 #{left(0, i101)} #{@base - 101}" <>
+                 "H#{left(0, 26 - i101)}A4 4 0 0 1 #{left(0, 26)} #{@base - 100}V#{@base}z"
              ]
 
       assert d(doc, 0, "q-col-runs") == [

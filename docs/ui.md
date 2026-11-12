@@ -943,7 +943,9 @@ what needs the reader, then what their agents did, and never grows with the data
   the hue of a paused run's ring, is the day's share of paused runs of the column's
   height, at least 2 px, but at most 1 px less than the column; only with every run of
   the day paused is it the whole column, its rounded top included. The rest of the
-  column sits on it, so the two parts meet and keep the column's outline. While a day of
+  column sits on it, so the two parts keep the column's outline, and the top pixel of the
+  Paused part is a 1 px gap in the page's background between them, except in a 2 px
+  column. While a day of
   the 14 has a paused run, a legend follows the title "Runs per day" in the same line: a
   square in that hue and "paused". A day's tooltip reads "6 runs, 1 paused" for
   a day with a paused run, else "6 runs". Each day is said as its runs, of them how many
