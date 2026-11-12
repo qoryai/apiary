@@ -155,7 +155,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # The Name and the Key as `Apiary.Connections` checks them: the Key without the
   # whitespace at its ends.
   defp input_errors(:new, params) do
-    key = if is_binary(params["key"]), do: String.trim(params["key"]), else: params["key"]
+    key = Connections.trim_key(params["key"])
 
     %Value{}
     |> Value.changeset(%{"value_id" => params["value_id"], "value" => key}, value_id: :required)

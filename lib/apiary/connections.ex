@@ -1878,11 +1878,16 @@ defmodule Apiary.Connections do
          do: ModelKeys.clear_states(current.secret_id, value_id)
   end
 
-  # A key's value without the Unicode whitespace at its ends (`String.trim/1`): spaces,
-  # tabs, newlines and the no-break space that a copy of a key can bring. Only a provider's
-  # keys are trimmed: another secret's value, a private key for one, keeps its last newline.
-  defp trim_key(value) when is_binary(value), do: String.trim(value)
-  defp trim_key(value), do: value
+  @doc """
+  trim_key/1 is a model provider's key as the functions here store it: without the
+  Unicode whitespace at its ends (`String.trim/1`), the spaces, tabs, newlines and
+  no-break spaces that a copy of a key can bring. Any other term is returned as it is.
+  Only a provider's keys are trimmed: another secret's value, such as a private key,
+  keeps its last newline.
+  """
+  @spec trim_key(term) :: term
+  def trim_key(value) when is_binary(value), do: String.trim(value)
+  def trim_key(value), do: value
 
   defp trim_value(%{"value" => value} = attrs), do: %{attrs | "value" => trim_key(value)}
   defp trim_value(attrs), do: attrs

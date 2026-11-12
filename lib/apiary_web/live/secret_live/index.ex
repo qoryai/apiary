@@ -2268,11 +2268,8 @@ defmodule ApiaryWeb.SecretLive.Index do
          )}
 
       {:settings, errors} ->
-        {:noreply,
-         assign(socket,
-           form: value_form(Value.changeset(%Value{}, params, value_id: :required)),
-           key_errors: errors
-         )}
+        value = Value.changeset(%Value{}, trimmed(params), value_id: :required)
+        {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
 
       {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
         {:noreply, assign(socket, :key_errors, ModelKeyComponents.errors(changeset))}
@@ -2337,11 +2334,8 @@ defmodule ApiaryWeb.SecretLive.Index do
          )}
 
       {:settings, errors} ->
-        {:noreply,
-         assign(socket,
-           form: value_form(Value.changeset(%Value{}, Map.take(params, ["value"]))),
-           key_errors: errors
-         )}
+        value = Value.changeset(%Value{}, trimmed(Map.take(params, ["value"])))
+        {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
 
       {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
         {:noreply, assign(socket, :key_errors, ModelKeyComponents.errors(changeset))}
@@ -2632,6 +2626,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   # The write of a model provider's key with the settings its form sent
   # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
   # be saved, and their errors come back as `{:settings, errors}`.
+  # A provider's key as `Apiary.Connections` checks it, without the whitespace at its
+  # ends, so the errors shown with the settings' are those of the save.
+  defp trimmed(%{"value" => value} = params),
+    do: %{params | "value" => Connections.trim_key(value)}
+
+  defp trimmed(params), do: params
+
   defp with_key_settings(params, fun) do
     case ModelKeyComponents.read_settings(params) do
       {:ok, settings} -> fun.(settings)

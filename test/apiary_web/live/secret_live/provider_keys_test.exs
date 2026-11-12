@@ -342,6 +342,84 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert Secrets.reveal_for_sealing(scope.workspace, plain.public_id, nil) == {:ok, pem}
   end
 
+  test "settings that fail show the key's errors as the save checks it, trimmed", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    longest = String.duplicate("k", Value.value_max())
+    bad_settings = %{reset_day: "1", reset_time: "", pause_number: "0"}
+
+    # Add value: the longest key with a newline after it fits; only whitespace is empty.
+    {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+    html =
+      lv
+      |> form("#secret-form",
+        secret_value: Map.merge(bad_settings, %{value_id: "spare", value: "#{longest}\n"})
+      )
+      |> render_submit()
+
+    assert has_element?(lv, "#secret_value_reset_day-resets-error")
+    refute html =~ "must be at most"
+    refute html =~ "can&#39;t be blank"
+    refute html =~ longest
+
+    html =
+      lv
+      |> form("#secret-form",
+        secret_value: Map.merge(bad_settings, %{value_id: "spare", value: " \n\t"})
+      )
+      |> render_submit()
+
+    assert html =~ "can&#39;t be blank"
+    assert reveal(provider, "spare") == {:error, :not_found}
+
+    # Change value: the same longest key fits.
+    {:ok, lv, _html} =
+      live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+    html =
+      lv
+      |> form("#secret-form",
+        secret_value: Map.merge(bad_settings, %{value: "#{longest}\n"})
+      )
+      |> render_submit()
+
+    assert has_element?(lv, "#secret_value_reset_day-resets-error")
+    refute html =~ "must be at most"
+    refute html =~ longest
+    assert reveal(provider, "main") == {:ok, @key}
+
+    # And it is saved, trimmed, once the settings are right.
+    lv
+    |> form("#secret-form",
+      secret_value: %{value: "#{longest}\n", reset_day: "", reset_time: "", pause_number: ""}
+    )
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, longest}
+  end
+
+  test "Add value of another secret keeps the value as typed, last newline too", ctx do
+    %{conn: conn, scope: scope} = ctx
+    pem = "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"
+
+    {:ok, plain} =
+      Secrets.create_secret(scope, %{
+        name: "DEPLOY_KEYS",
+        values: [%{value_id: "first", value: "plain-value"}]
+      })
+
+    {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/add-value"))
+
+    lv
+    |> form("#secret-form", secret_value: %{value_id: "second", value: pem})
+    |> render_submit()
+
+    assert render(lv) =~ "second is added to DEPLOY_KEYS."
+    second = Secrets.reveal_for_sealing(scope.workspace, plain.public_id, "second")
+    assert second == {:ok, pem}
+  end
+
   test "another secret's value has no settings", ctx do
     %{conn: conn, scope: scope} = ctx
     {:ok, plain} = Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "plain-value"})

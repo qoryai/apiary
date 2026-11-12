@@ -831,7 +831,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert reveal!(provider, "main") == {:ok, @key}
       assert reveal!(provider, "spare") == {:ok, "sk spare\tkey"}
 
-      # Only whitespace is an empty key, refused as one.
+      # A key of only whitespace fails as an empty key does.
       for blank <- ["", " \n\t\u00A0"] do
         assert {:error, changeset} =
                  Connections.create_provider(ctx.scope, %{
@@ -843,7 +843,7 @@ defmodule Apiary.Connections.ProvidersTest do
       end
     end
 
-    test "is trimmed by Add key, and only whitespace is refused as an empty key", ctx do
+    test "is trimmed by Add key; only whitespace fails as an empty key does", ctx do
       provider = openrouter!(ctx.scope)
 
       assert {:ok, _provider} =
@@ -886,7 +886,7 @@ defmodule Apiary.Connections.ProvidersTest do
       refute ModelKeys.provider_states(provider, DateTime.utc_now())[spare.id]
       assert List.last(trail(provider.id)).details["value_set"] == true
 
-      # Only whitespace is an empty value, refused as one, and the value stays.
+      # A value of only whitespace fails as an empty value does, and the value stays.
       set_at = value!(provider, "spare").value_set_at
       assert {:error, empty} = Connections.set_provider_key(ctx.scope, provider, "spare", "")
 
@@ -952,11 +952,82 @@ defmodule Apiary.Connections.ProvidersTest do
       assert reveal!(provider, "spare") == {:ok, "#{zwsp}sk-spare#{zwsp}"}
     end
 
+    test "keeps the longest key once trimmed; a NUL or bytes not UTF-8 still fail",
+         ctx do
+      provider = openrouter!(ctx.scope)
+      longest = String.duplicate("k", Value.value_max())
+
+      assert {:ok, _provider} =
+               Connections.add_provider_key(ctx.scope, provider, %{
+                 value_id: "third",
+                 value: wrapped(longest)
+               })
+
+      assert reveal!(provider, "third") == {:ok, longest}
+
+      assert {:ok, _provider} =
+               Connections.set_provider_key(ctx.scope, provider, "spare", longest <> "\n")
+
+      assert reveal!(provider, "spare") == {:ok, longest}
+
+      # Trimming leaves what is inside: a NUL, and bytes that are not UTF-8, still fail.
+      for {bad, error} <- [
+            {wrapped("sk-" <> <<0>> <> "-key"), "must not contain a NUL byte"},
+            {wrapped("sk-" <> <<0xFF>> <> "-key"), "must be UTF-8 text"}
+          ] do
+        assert {:error, added} =
+                 Connections.add_provider_key(ctx.scope, provider, %{
+                   value_id: "fourth",
+                   value: bad
+                 })
+
+        assert errors_on(added).value == [error]
+
+        assert {:error, set} =
+                 Connections.set_provider_key(ctx.scope, provider, "spare", bad)
+
+        assert errors_on(set).value == [error]
+
+        assert {:error, updated} =
+                 Connections.update_provider_key(ctx.scope, provider, "spare", %{
+                   "value_id" => "spare",
+                   "value" => bad
+                 })
+
+        assert errors_on(updated).value == [error]
+      end
+
+      assert reveal!(provider, "spare") == {:ok, longest}
+      refute Repo.get_by(Value, secret_id: provider.secret_id, value_id: "fourth")
+    end
+
     test "is trimmed only for a provider: another secret keeps its last newline", ctx do
       pem = "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"
-      {:ok, secret} = Secrets.create_secret(ctx.scope, %{name: "DEPLOY_KEY", value: "x"})
-      assert {:ok, secret} = Secrets.set_value(ctx.scope, secret, nil, pem)
-      assert Secrets.reveal_for_sealing(ctx.scope.workspace, secret.public_id, nil) == {:ok, pem}
+      workspace = ctx.scope.workspace
+
+      # Created with one value, a value added and a value set: each kept as written.
+      {:ok, one} = Secrets.create_secret(ctx.scope, %{name: "DEPLOY_KEY", value: pem})
+      assert Secrets.reveal_for_sealing(workspace, one.public_id, nil) == {:ok, pem}
+
+      {:ok, several} =
+        Secrets.create_secret(ctx.scope, %{
+          name: "DEPLOY_KEYS",
+          values: [%{value_id: "first", value: " #{pem}"}]
+        })
+
+      assert Secrets.reveal_for_sealing(workspace, several.public_id, "first") ==
+               {:ok, " #{pem}"}
+
+      assert {:ok, several} =
+               Secrets.add_value(ctx.scope, several, %{value_id: "second", value: pem})
+
+      second = Secrets.reveal_for_sealing(workspace, several.public_id, "second")
+      assert second == {:ok, pem}
+
+      assert {:ok, _several} = Secrets.set_value(ctx.scope, several, "first", "\n#{pem}")
+
+      assert Secrets.reveal_for_sealing(workspace, several.public_id, "first") ==
+               {:ok, "\n#{pem}"}
     end
   end
 
@@ -1021,6 +1092,19 @@ defmodule Apiary.Connections.ProvidersTest do
       )
 
       refused!(Connections.set_provider_key(scope, provider, "main", ""))
+
+      # A key with whitespace around it and a NUL in it: neither the key nor its trimmed
+      # form is in the changeset.
+      wrapped_bad = " \n" <> @key <> <<0>> <> "\n"
+
+      refused!(
+        Connections.add_provider_key(scope, provider, %{
+          "value_id" => "third",
+          "value" => wrapped_bad
+        })
+      )
+
+      refused!(Connections.set_provider_key(scope, provider, "main", wrapped_bad))
 
       refused!(
         Connections.update_provider_key(scope, provider, "main", %{
