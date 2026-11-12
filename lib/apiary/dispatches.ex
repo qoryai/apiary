@@ -1266,7 +1266,7 @@ defmodule Apiary.Dispatches do
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
     case Repo.one(
-           from r in without_stopped(waiting_query(key, fit(pool, default), now)),
+           from r in without_stopped(waiting_query(key, fit(pool, default), now), now),
              where: r.id not in ^skipped
          ) do
       nil ->
@@ -1280,12 +1280,14 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  # `query` without the runs whose choice's provider, the first of their
-  # `model_provider_ids`, had its settings check stop earlier in this claim
-  # (`Apiary.Connections.stopped_in_claim/0`): the claim would leave each of them waiting,
-  # so they take none of its tries. A run with that provider only as a fallback stays in
-  # the query, as it forms on its choice's provider. No condition while no check stopped.
-  defp without_stopped(query) do
+  # `query` without the runs that the claim at `now` would leave waiting for the
+  # providers whose settings check stopped earlier in it
+  # (`Apiary.Connections.stopped_in_claim/0`), so they take none of its tries: a run whose
+  # choice's provider, the first of its `model_provider_ids`, is one of them, and a run
+  # whose other providers are all cooling (`keys_free/2`). A run with such a provider only
+  # as a fallback and another provider not cooling stays in the query. No condition while
+  # no check stopped.
+  defp without_stopped(query, now) do
     case Apiary.Connections.stopped_in_claim() do
       [] ->
         query
@@ -1297,7 +1299,8 @@ defmodule Apiary.Dispatches do
               "coalesce((?)[1] <> ALL(?), true)",
               r.model_provider_ids,
               type(^ids, {:array, Ecto.UUID})
-            )
+            ),
+          where: ^keys_free(now, ids)
     end
   end
 
@@ -1649,11 +1652,12 @@ defmodule Apiary.Dispatches do
   defp fitting(fit), do: fit
 
   # The condition, on a run of the queue bound `:run`, that not every key of each of its
-  # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/1`), while runs
-  # are given model keys (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
-  defp keys_free(now) do
+  # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/2`), the
+  # providers `except` counted as cooling, while runs are given model keys
+  # (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
+  defp keys_free(now, except \\ []) do
     if ProviderCredential.applies?(),
-      do: ModelKeys.claimable(now || now()),
+      do: ModelKeys.claimable(now || now(), except: except),
       else: dynamic([run: _r], true)
   end
 

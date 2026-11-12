@@ -462,9 +462,15 @@ defmodule Apiary.ModelKeys do
   `now`. A provider that is gone, or has no keys, is not cooling, so the claim takes the
   run and ends it as it would without a cooldown. The condition reads every key of every
   provider of the run.
+
+  With `except:`, a list of provider row ids, those providers count as cooling: a claim
+  passes the providers whose settings check stopped earlier in it
+  (`Apiary.Connections.stopped_in_claim/0`).
   """
-  @spec claimable(DateTime.t()) :: Ecto.Query.dynamic_expr()
-  def claimable(%DateTime{} = now) do
+  @spec claimable(DateTime.t(), [{:except, [Ecto.UUID.t()]}]) :: Ecto.Query.dynamic_expr()
+  def claimable(%DateTime{} = now, opts \\ []) do
+    except = Keyword.get(opts, :except, [])
+
     # `= '{}'`, not `cardinality(…) = 0`: Postgres reads the column's statistics for the
     # first and none for the second, and with a low guess of the runs it passes it plans
     # the claim's other joins as nested loops over the whole queue.
@@ -473,7 +479,7 @@ defmodule Apiary.ModelKeys do
       fragment("? = '{}'::uuid[]", r.model_provider_ids) or
         fragment(
           """
-          EXISTS (SELECT 1 FROM unnest(?) AS p(id) WHERE NOT EXISTS (
+          EXISTS (SELECT 1 FROM unnest(?) AS p(id) WHERE p.id <> ALL(?) AND NOT EXISTS (
             SELECT 1 FROM organisation_connections c
             WHERE c.id = p.id AND c.provider_kind IS NOT NULL
               AND EXISTS (SELECT 1 FROM secret_values v WHERE v.secret_id = c.secret_id)
@@ -488,6 +494,7 @@ defmodule Apiary.ModelKeys do
                             SELECT jsonb_array_elements_text(?::jsonb -> c.provider_kind))))))))
           """,
           r.model_provider_ids,
+          type(^except, {:array, Ecto.UUID}),
           type(^usec(now), :utc_datetime_usec),
           type(^usec(now), :utc_datetime_usec),
           type(^limit_windows_by_kind(), :map)

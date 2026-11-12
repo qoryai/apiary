@@ -848,16 +848,18 @@ checks the settings again. A run that has the provider only as a fallback is not
 and has no log line: that fallback alone is passed over. The run forms on its choice's
 provider when one of that provider's keys is not in cooldown, else on the first other
 fallback with such a key. Else the run waits for its keys, and the fallback whose check
-stopped stays among the providers it waits for (`model_provider_ids`), so a later claim
-checks it again. Within one claim, a provider whose check stopped is not checked again
-(`Apiary.Connections.within_claim/1`): a fallback of a later run is passed over without a
-check, and the claim's query leaves out every waiting run whose choice's provider it is,
-the first of its `model_provider_ids`, so those runs take none of the claim's 100 tries.
-Before its transaction, the claim reads the harness of at most 100 waiting runs, the
-first of the query without that exclusion (`Apiary.Dispatches.HarnessReads.prefetch/3`).
-Where 100 runs whose choice's provider stops come first, a later run whose harness
-address and ref are not among those reads stays queued for a later claim, as a run the
-claim did not read.
+stopped stays among the providers the run waits for (`model_provider_ids`), so a later
+claim checks that fallback again. Within one claim, a provider whose check stopped is not
+checked again (`Apiary.Connections.within_claim/1`): a fallback of a later run is passed
+over without a check. The claim's query also leaves out every waiting run that the claim
+would leave waiting for such a provider, so those runs take none of the claim's 100
+tries: a run whose choice's provider it is, the first of its `model_provider_ids`, and a
+run whose other providers are all cooling, as `Apiary.ModelKeys.claimable/2` reads them
+with such a provider counted as cooling. Before its transaction, the claim reads the
+harness of at most 100 waiting runs that need a read, the first of the query without
+that exclusion (`Apiary.Dispatches.HarnessReads.prefetch/3`). Where 100 such runs left
+out for a stopped provider come first, a later run whose harness address and ref are not
+among those reads stays queued for a later claim, as a run the claim did not read.
 The check returns the same result for the same settings and entry, so a table on each node
 keeps the results fit and no longer fit by the SHA-256 of the settings and of the entry
 (`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and entry
