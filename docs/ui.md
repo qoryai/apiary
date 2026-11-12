@@ -433,21 +433,23 @@ replaces the navigation it is in.
   that ends later, "In cooldown until Fri 14:00", the latest such end, and after a middle
   dot where that time comes from: "from the provider's response", "from this key's
   schedule", or "no reset time given; paused for 1 hour", the cooldown that applied, from
-  the response that started it to its end, whatever the key's Pause for is now. A time is
-  the time of day alone on the reader's day, the weekday and the time on one of the six
-  days after it, else the date and the time (`ApiaryWeb.Format.week_time/2`). The windows
-  read 5-hour, 7-day, 7-day Opus, 7-day Sonnet, Extra usage, Requests per minute, Tokens
-  per minute, Input tokens per minute, Output tokens per minute, Spend limit and Limit;
-  a window of another code shows its code. The page shows no key and no part of one.
-  Every member reads it (`connection.read`); owners and admins (`provider.write`) have
-  **Add key** in the section's actions and **Edit** at the right of each row, its label
-  "Edit key main", and anyone else neither.
+  the response that started it to its end, whatever the key's Pause for is when the page
+  shows it. A time is the time of day alone on the reader's day, the weekday and the time
+  on one of the six days after it, else the date and the time
+  (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
+  Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
+  Output tokens per minute, Spend limit and Limit; a window of another code shows its
+  code. The page shows no key and no part of one. Every member reads it
+  (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
+  section's actions and **Edit** at the right of each row, its label "Edit key main", and
+  anyone else neither.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
   (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
   below), the breadcrumb ending with the provider's name and the act. The form has Name
-  ("Lowercase letters, digits, ., _ and -."); Key, on Add key alone, a password field
-  that is empty after every save, with "Qory Apiary stores the key encrypted, and nobody
-  can view it again."; then Resets and Pause for
+  ("Lowercase letters, digits, ., _ and -."); on Add key, Key, a password field that is
+  empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
+  view it again."; on Edit key, New value, an optional password field that is empty
+  after every save, with "Leave it empty to keep the value."; then Resets and Pause for
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
   Time zone, whose zone is the reader's for a key with no reset, with the hint "The
   weekly time when this key's allowance resets. Set it if the provider sends no reset
@@ -460,10 +462,20 @@ replaces the navigation it is in.
   with "main is added." or "main is saved."; a name another key of the provider has
   shows "Another key of Northwind Claude has this name." under Name, and a key past the
   32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
-  another." under Key. Add key of a subscription has About model providers beside the
-  form. Workspace settings › Secrets and variables has the same Resets and Pause for on
-  Add value and Change value of a model provider's key. Change value with New value
-  empty saves Resets and Pause for and keeps the key's value.
+  another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
+  value before the save and keep the spaces inside; a Key of only spaces, tabs or
+  newlines shows "can't be blank", as an empty Key does. New model provider and the
+  set-up's Model step trim Key the same way. On Edit key, a New value that is
+  empty after that keeps the key's value and its cooldown; any other replaces the value,
+  even one that differs from it only in those spaces, and ends the key's cooldown. A New
+  value that fails the checks of Key saves nothing and shows the error
+  under New value, such as "must not contain a NUL byte". Add key of a subscription has
+  About model providers beside the form. Workspace settings › Secrets and variables has
+  the same Resets and Pause for on Add value and Change value of a model provider's key,
+  and both remove the spaces, tabs and newlines around the key's value, as Add key does.
+  Change value with New value empty, or of only spaces, tabs or newlines, saves Resets
+  and Pause for and keeps the key's value. Another secret's value is saved as typed, its
+  last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
   part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
@@ -939,12 +951,13 @@ what needs the reader, then what their agents did, and never grows with the data
   the hue of a paused run's ring, is the day's share of paused runs of the column's
   height, at least 2 px, but at most 1 px less than the column; only with every run of
   the day paused is it the whole column, its rounded top included. The rest of the
-  column sits on it, so the two parts meet and keep the column's outline. While a day of
-  the 14 has a paused run, a legend follows the title "Runs per day" in the same line: a
-  square in that hue and "paused". A day's tooltip reads "6 runs, 1 paused" for
-  a day with a paused run, else "6 runs". Each day is said as its runs, of them how many
-  ended well, were cancelled, paused and ended badly (today: alive or ended badly), and
-  its denied attempts.
+  column sits on it, so the two parts keep the column's outline, and the top pixel of the
+  Paused part is a 1 px gap between them that shows the background behind the column,
+  except in a 2 px column. While a day of the 14 has a paused run, a legend follows the
+  title "Runs per day" in the same line: a square in that hue and "paused". A day's
+  tooltip reads "6 runs, 1 paused" for a day with a paused run, else "6 runs". Each day
+  is said as its runs, of them how many ended well, were cancelled, paused and ended
+  badly (today: alive or ended badly), and its denied attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that

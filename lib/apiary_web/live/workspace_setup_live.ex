@@ -2185,7 +2185,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
                 "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
               )
             }
-            autocomplete="off"
+            autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"
             required

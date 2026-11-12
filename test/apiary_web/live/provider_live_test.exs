@@ -129,6 +129,14 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
   defp title(name), do: (Providers.fetch(name) |> elem(1)).title
 
+  # The key `value_id` of `provider`, as a run's sealing reads it.
+  defp key_value(provider, value_id),
+    do:
+      Apiary.Secrets.reveal_key_for_sealing(
+        Repo.get!(Connection, provider.id),
+        values(provider)[value_id].id
+      )
+
   # The text of the element `selector` selects, its whitespace collapsed.
   defp text(lv, selector) do
     lv
@@ -919,6 +927,35 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert Map.keys(values(provider)) == ["key-1"]
     end
 
+    test "trims the spaces and newlines around the Key; only those are an empty Key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      # A Key of only whitespace has the error of an empty Key, and adds nothing.
+      lv |> form("#key-form", key: %{value_id: "spare", key: ""}) |> render_submit()
+      empty = text(lv, "#key-value-1-error")
+      assert empty =~ "can't be blank"
+
+      lv
+      |> form("#key-form", key: %{value_id: "spare", key: " \n\t\u00A0\r\n"})
+      |> render_submit()
+
+      assert text(lv, "#key-value-2-error") == empty
+      assert Map.keys(values(provider)) == ["key-1"]
+
+      # The spaces inside the key stay.
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: " \n#{@key} two\r\n\u00A0"})
+        |> render_submit()
+
+      {:ok, _show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is added."
+      refute html =~ @key
+      assert key_value(provider, "spare") == {:ok, @key <> " two"}
+    end
+
     test "at the most keys a provider has, says so under Key", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = keys!(scope, "anthropic", for(n <- 1..32, do: "key-#{n}"))
@@ -986,7 +1023,10 @@ defmodule ApiaryWeb.ProviderLiveTest do
       {:ok, lv, html} = live(conn, key_path(scope, provider, "spare/edit"))
       assert has_element?(lv, "h1", "Edit key")
       assert has_element?(lv, ~s{#key_value_id[value="spare"]})
-      refute has_element?(lv, ~s{#key-form input[type=password]})
+      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
+      assert has_element?(lv, ~s{#key-form input#key-value-0[type=password]:not([value])})
+      refute has_element?(lv, ~s{#key-value-0[required]})
+      assert has_element?(lv, "#key-value-0-hint", "Leave it empty to keep the value.")
       assert has_element?(lv, ~s{#key_reset_day option[value="5"][selected]})
       assert has_element?(lv, ~s{#key_reset_time[value="14:00"]})
       assert has_element?(lv, ~s{#key_reset_zone option[value="Europe/Berlin"][selected]})
@@ -1014,6 +1054,151 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert values(provider)["backup"].id == value.id
       setting = ModelKeys.setting(value.id)
       assert {setting.reset_weekday, setting.pause_seconds} == {nil, 1800}
+    end
+
+    test "a New value replaces the key's value and ends its cooldown, never rendering it",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      value = values(provider)["spare"]
+      new_value = "sk-ant-rotated-0123456789abcdef"
+      key_state!(provider, "spare", until: in_seconds(3_600))
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      # A New value of spaces keeps the value and the cooldown; the settings still save.
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: "   ", pause_number: "5"})
+        |> render_submit()
+
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is saved."
+      assert text(show, "#provider-key-spare-state") =~ "In cooldown until"
+      assert ModelKeys.setting(value.id).pause_seconds == 300
+      assert values(provider)["spare"].value_set_at == value.value_set_at
+
+      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+               {:ok, @key}
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: new_value, pause_number: "5"})
+        |> render_submit()
+
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is saved."
+      refute html =~ new_value
+      refute html =~ String.slice(new_value, -4, 4)
+      assert text(show, "#provider-key-spare-state") == "Available"
+
+      saved = values(provider)["spare"]
+      assert DateTime.compare(saved.value_set_at, value.value_set_at) == :gt
+
+      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+               {:ok, new_value}
+
+      assert Apiary.Secrets.reveal_key_for_sealing(
+               Repo.get!(Connection, provider.id),
+               values(provider)["main"].id
+             ) == {:ok, @key}
+    end
+
+    test "trims the spaces and newlines around a New value, and keeps the spaces inside",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      value = values(provider)["spare"]
+      key_state!(provider, "spare", until: in_seconds(3_600))
+
+      # Only whitespace, a newline and a no-break space among it, keeps the value.
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: "\n\t\u00A0\r\n"})
+        |> render_submit()
+
+      {:ok, show, _html} = follow_redirect(result, conn)
+      assert text(show, "#provider-key-spare-state") =~ "In cooldown until"
+      assert values(provider)["spare"].value_set_at == value.value_set_at
+      assert key_value(provider, "spare") == {:ok, @key}
+
+      # The value it has, with spaces around it, is a new value: set, its cooldown ended.
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: " #{@key}\n"})
+        |> render_submit()
+
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is saved."
+      refute html =~ @key
+      assert text(show, "#provider-key-spare-state") == "Available"
+      assert DateTime.compare(values(provider)["spare"].value_set_at, value.value_set_at) == :gt
+      assert key_value(provider, "spare") == {:ok, @key}
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: "\r\n sk-ant rotated key \n"})
+        |> render_submit()
+
+      {:ok, _show, html} = follow_redirect(result, conn)
+      refute html =~ "rotated"
+      assert key_value(provider, "spare") == {:ok, "sk-ant rotated key"}
+    end
+
+    test "a New value that fails its checks shows its error under it, and changes nothing",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      value = values(provider)["spare"]
+      bad = "sk-ant-rotated-0123456789abcdef" <> <<0>>
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      html =
+        lv
+        |> form("#key-form", key: %{value_id: "renamed", key: bad, pause_number: "5"})
+        |> render_submit()
+
+      assert has_element?(lv, "#key-value-1-error", "must not contain a NUL byte")
+      assert has_element?(lv, ~s{#key-form input#key-value-1[type=password]:not([value])})
+      refute html =~ "sk-ant-rotated"
+      state = inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity)
+      refute state =~ "sk-ant-rotated"
+
+      # A Name that fails its checks too: both errors show at once.
+      html =
+        lv
+        |> form("#key-form", key: %{value_id: "Bad Name", key: bad, pause_number: "5"})
+        |> render_submit()
+
+      assert has_element?(lv, "#key-value-2-error", "must not contain a NUL byte")
+      assert has_element?(lv, "#key_value_id-error")
+      refute html =~ "sk-ant-rotated"
+
+      # With settings that cannot be saved, the errors of every field show at once.
+      html =
+        lv
+        |> form("#key-form", key: %{value_id: "Bad Name", key: bad, reset_time: "09:00"})
+        |> render_submit()
+
+      assert has_element?(lv, "#key-value-3-error", "must not contain a NUL byte")
+      assert has_element?(lv, "#key_value_id-error")
+      assert has_element?(lv, "#key_reset_day-resets-error")
+      refute html =~ "sk-ant-rotated"
+
+      assert Map.keys(values(provider)) |> Enum.sort() == ["main", "spare"]
+      assert values(provider)["spare"].value_set_at == value.value_set_at
+      refute ModelKeys.setting(value.id)
+
+      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+               {:ok, @key}
     end
 
     test "says what is wrong under each field, and changes nothing", ctx do
@@ -1068,12 +1253,17 @@ defmodule ApiaryWeb.ProviderLiveTest do
       {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
 
       lv
-      |> form("#key-form", key: %{value_id: "renamed", pause_number: "5"})
+      |> form("#key-form", key: %{value_id: "renamed", key: "sk-ant-other", pause_number: "5"})
       |> render_submit()
 
       assert has_element?(lv, "#key-refusal")
       assert Map.keys(values(provider)) |> Enum.sort() == ["main", "spare"]
       refute ModelKeys.setting(values(provider)["spare"].id)
+
+      assert Apiary.Secrets.reveal_key_for_sealing(
+               Repo.get!(Connection, provider.id),
+               values(provider)["spare"].id
+             ) == {:ok, @key}
     end
   end
 end

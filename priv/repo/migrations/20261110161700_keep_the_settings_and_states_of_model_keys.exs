@@ -13,8 +13,8 @@ defmodule Apiary.Repo.Migrations.KeepTheSettingsAndStatesOfModelKeys do
   #
   # `model_key_states`, one row per key and limit window, as a run's gateway reports it:
   # `status`, `resets_at`, `utilization` in whole percent, `cooldown_until`, `source` and
-  # `observed_at`, the gateway's clock when the provider's answer arrived. A report keeps
-  # a row only when it is newer by `observed_at`. The index on (`secret_value_id`,
+  # `observed_at`, the gateway's clock when the provider's response arrived. A report
+  # keeps a row only when it is newer by `observed_at`. The index on (`secret_value_id`,
   # `cooldown_until`) serves the question whether every key of a provider is in cooldown.
   #
   # Each row is of one organisation, the key's: the composite key to `secret_values`

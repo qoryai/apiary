@@ -12166,6 +12166,11 @@ msgstr ""
 msgid "Leave it empty to allow every path. Separate paths with spaces; end one with %{star} for everything below it, such as %{example}."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Leave it empty to keep the value."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Leave…"
@@ -13427,6 +13432,7 @@ msgstr ""
 msgid "New to %{name}?"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New value"
