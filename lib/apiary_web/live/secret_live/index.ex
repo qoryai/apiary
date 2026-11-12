@@ -2335,6 +2335,8 @@ defmodule ApiaryWeb.SecretLive.Index do
 
       {:settings, errors} ->
         value = Value.changeset(%Value{}, trimmed(Map.take(params, ["value"])))
+        # An empty New value keeps the key's value: only the settings' errors show.
+        value = if blank?(params["value"]), do: fresh(value), else: value
         {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
 
       {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->

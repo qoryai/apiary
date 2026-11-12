@@ -269,6 +269,28 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
              ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
   end
 
+  test "Change value with New value empty and settings that fail shows only theirs", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    path = secrets_path(scope, "/#{secret.public_id}/values/main/change")
+
+    for empty <- ["", " \n\t"] do
+      {:ok, lv, _html} = live(conn, path)
+
+      html =
+        lv
+        |> form("#secret-form",
+          secret_value: %{value: empty, reset_day: "1", reset_time: "", pause_number: "0"}
+        )
+        |> render_submit()
+
+      assert has_element?(lv, "#secret_value_reset_day-resets-error")
+      assert has_element?(lv, "#secret_value_pause_number-pause-error")
+      refute html =~ "can&#39;t be blank"
+    end
+
+    assert reveal(provider, "main") == {:ok, @key}
+  end
+
   test "Change value with a new value clears the key's cooldown", ctx do
     %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
     value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
