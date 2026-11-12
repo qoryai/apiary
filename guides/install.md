@@ -528,9 +528,9 @@ A feature that is off is absent, not disabled: its pages answer not found, the c
 the discovery document leave it out, and the documentation at `/docs` does not describe
 it.
 
-An organisation has the features the instance has, but those an instance admin takes away
-from it with **Features** under Instance settings › Organisations
-([Features](admin.md#features)), and its workspaces have the organisation's. A feature
+An organisation has the features the instance has, except those that an instance admin
+takes away from it with [**Features**](admin.md#features) under **Instance settings ›
+Organisations**. Its workspaces have the organisation's features. A feature
 taken away is hidden from the organisation's people; its machines and runs keep every
 feature the instance has. The instance owner, the organisation created with the set-up link
 ([Sign-up and invitations](#sign-up-and-invitations)), has every feature the instance has.

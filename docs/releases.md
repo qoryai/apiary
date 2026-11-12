@@ -52,8 +52,3 @@ seven characters, and as `next` when the ref is `next`. That package stays priva
 sets visibility per package, so pre-release tags never sit beside a release's. Its old
 `sha-` tags are deleted by hand. To build a commit this way, push it to that branch:
 `git push origin <commit>:refs/heads/prerelease`.
-
-To run a pre-release image, log in to `ghcr.io` with a GitHub account that can read the
-package, then set `APIARY_IMAGE` to `ghcr.io/qoryai/apiary-prerelease` and
-`APIARY_VERSION` to `sha-<7>`, the commit's first seven characters, in the `.env` of the
-install.

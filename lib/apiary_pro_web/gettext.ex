@@ -3,7 +3,7 @@ defmodule ApiaryProWeb.Gettext do
   The edition's Gettext backend: the sentences of the edition's modules, in the edition's
   catalogues under `priv/gettext_pro`, beside the core's backend and the core's
   catalogues, which hold the core's alone. Every edition module translates with it, through
-  `use ApiaryProWeb` or `use Gettext, backend: ApiaryProWeb.Gettext`; a core component a
+  `use ApiaryProWeb` or `use Gettext, backend: ApiaryProWeb.Gettext`; a core component an
   edition page renders translates its sentences with the core's.
 
   It is built as the core's is, so the words on a page of the edition follow the domain as

@@ -13,7 +13,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 - Qory Apiary is one product, under the Apache License 2.0: every instance has what
-  the separately licensed edition had.
+  was available only under a separate licence before.
   - An instance has any number of organisations, and an organisation any number of
     workspaces: a second workspace no longer stops at “This instance allows one
     workspace per organisation”.
@@ -138,10 +138,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   an old address after a rename, shows inside the app's layout, with status 404: “You
   have no workspace at this address in Acme. Its address changes when the workspace is
   renamed.”, then the workspaces of Acme the person can open, as links. New workspace for
-  a person who may not create one shows, the same way and with no kind cards, the
-  Community limit's line where the organisation has its one workspace, else who creates
-  workspaces. An organisation the person does not reach still shows the plain “Not
-  Found”.
+  a person who may not create one shows, the same way and with no kind cards, the line
+  on the workspace limit where the organisation has as many workspaces as the instance
+  allows, else who creates workspaces. An organisation the person does not reach still
+  shows the plain “Not Found”.
 - Organisation settings › Workspaces shows each workspace's address, `/acme/payments`,
   beside its name; with no workspace, it shows “Acme has no workspace yet.” and a link
   to the overview, in place of the empty list.
@@ -296,8 +296,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace, what you connect, and **Choose**. This release has one type, **Software
   factory**: “Agents change code in your repositories. You connect: where work comes
   from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
-  adds a workspace where the edition allows another. Where the organisation has as many
-  workspaces as the edition allows, that page is headed “New workspace” and shows, in an
+  adds a workspace where the instance allows another. Where the organisation has as many
+  workspaces as the instance allows, that page is headed “New workspace” and shows, in an
   information notice in place of the cards, “This instance allows one workspace per
   organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates
   the first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
