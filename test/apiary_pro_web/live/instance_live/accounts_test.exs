@@ -62,7 +62,7 @@ defmodule ApiaryProWeb.InstanceLive.AccountsTest do
     assert has_element?(
              lv,
              "#account-#{user.id}.q-confirming #suspend-account",
-             "logged out everywhere"
+             "signed out everywhere"
            )
 
     # Nothing it holds is removed: a key belongs to its node, and the keys it added work on.
