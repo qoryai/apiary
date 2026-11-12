@@ -9,6 +9,11 @@ defmodule Apiary.ModelKeys.Setting do
     * **Pause for:** `pause_seconds`, the cooldown when no reset is known, from 1 to
       604800 seconds (7 days). Without it, the provider's default applies
       (`Apiary.ModelKeys.pause_seconds/2`).
+    * **Use up to:** `use_up_to_percent`, a whole percent from 1 to 99, only for a key of
+      a provider whose catalogue entry lists limit windows
+      (`Apiary.ModelKeys.limit_windows/1`). Runs skip the key while one of those windows'
+      use is at or above it, until that window resets (`Apiary.ModelKeys.cooldown/4`).
+      Without it, runs use the key up to the provider's limit.
 
   The row is of the key's organisation, which `Apiary.ModelKeys.change_setting/2` takes from
   the value, never from the attributes.
@@ -35,6 +40,7 @@ defmodule Apiary.ModelKeys.Setting do
     field :reset_time, :time
     field :reset_time_zone, :string
     field :pause_seconds, :integer
+    field :use_up_to_percent, :integer
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -45,13 +51,15 @@ defmodule Apiary.ModelKeys.Setting do
 
   @doc """
   The changeset of the settings: the weekly reset, all three fields or none, a weekday
-  from 1 to 7 and a time zone the zone database knows; and `pause_seconds` from 1 to
-  604800. An empty field clears the setting.
+  from 1 to 7 and a time zone the zone database knows; `pause_seconds` from 1 to 604800;
+  and `use_up_to_percent` from 1 to 99, which a key gets only when `limit_windows`, its
+  provider's limit windows (`Apiary.ModelKeys.limit_windows/1`), are not empty. An empty
+  field clears the setting.
   """
-  @spec changeset(t, map) :: Ecto.Changeset.t()
-  def changeset(%__MODULE__{} = setting, attrs) do
+  @spec changeset(t, map, [String.t()]) :: Ecto.Changeset.t()
+  def changeset(%__MODULE__{} = setting, attrs, limit_windows \\ []) do
     setting
-    |> cast(attrs, @reset_fields ++ [:pause_seconds])
+    |> cast(attrs, @reset_fields ++ [:pause_seconds, :use_up_to_percent])
     |> validate_number(:reset_weekday, greater_than_or_equal_to: 1, less_than_or_equal_to: 7)
     |> validate_time_zone()
     |> validate_reset_whole()
@@ -59,6 +67,21 @@ defmodule Apiary.ModelKeys.Setting do
       greater_than_or_equal_to: 1,
       less_than_or_equal_to: @max_pause_seconds
     )
+    |> validate_number(:use_up_to_percent, greater_than_or_equal_to: 1, less_than_or_equal_to: 99)
+    |> validate_use_up_to(limit_windows)
+  end
+
+  # A provider without limit windows reports no use a percentage could stop at.
+  defp validate_use_up_to(changeset, [_ | _]), do: changeset
+
+  defp validate_use_up_to(changeset, _none) do
+    # Ecto calls the function only for a change that is not nil.
+    validate_change(changeset, :use_up_to_percent, fn :use_up_to_percent, _percent ->
+      [
+        use_up_to_percent:
+          dgettext_noop("errors", "is only for a key of a provider with limit windows")
+      ]
+    end)
   end
 
   defp validate_time_zone(changeset) do

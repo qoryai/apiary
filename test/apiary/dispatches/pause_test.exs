@@ -175,7 +175,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert provider == ctx.provider.name
 
     assert pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text() ==
-             "Paused: a key of #{ctx.provider.name} reached its limit."
+             "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage."
   end
 
   test "a cooldown that has ended leaves the line without its time", ctx do
@@ -194,7 +194,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert pause
            |> ApiaryWeb.PauseWords.line("/runs/#{number}")
            |> ApiaryWeb.RichText.plain_text() ==
-             "Paused: a key of #{ctx.provider.name} reached its limit. It continues in run #{number}."
+             "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
   end
 
   test "an instance admin's provider has no name in the line", ctx do
@@ -234,9 +234,11 @@ defmodule Apiary.Dispatches.PauseTest do
     past = DateTime.add(DateTime.utc_now(), -60, :second)
 
     assert line.(%{pause | until: past}) ==
-             "Paused: a model key reached its limit. It continues in run #{number}."
+             "Paused: a model key reached its limit or its Use up to percentage. It continues in run #{number}."
 
-    assert line.(%{pause | number: nil}) == "Paused: a model key reached its limit."
+    assert line.(%{pause | number: nil}) ==
+             "Paused: a model key reached its limit or its Use up to percentage."
+
     refute line.(pause) =~ theirs.name
   end
 

@@ -1767,10 +1767,10 @@ defmodule Apiary.Connections do
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
   has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, the `value`
   without the whitespace at its ends (`String.trim/1`), and `settings` the key's
-  settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
-  its settings are written in one transaction. `{:ok, provider}`, or `{:error, refusal}`
-  as `Apiary.Secrets.add_value/4` returns, or a changeset of the settings, which leaves
-  no key added.
+  settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
+  nil for none. The key and its settings are written in one transaction.
+  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
+  changeset of the settings, which leaves no key added.
   """
   @spec add_provider_key(Scope.t(), Connection.t(), map, map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1818,12 +1818,12 @@ defmodule Apiary.Connections do
   @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
   (`provider.write`): `attrs` has its new `value_id`, which renames it as
-  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/2`)
-  and, optionally, its new `value`. A rename keeps the settings and the states, which are
-  the value's row's. The `value` loses the whitespace at its ends (`String.trim/1`). A
-  `value` that is nil or then empty keeps the value and its states; any other replaces
-  the value and deletes the states, as `set_provider_key/5` does, and the details of the
-  entry then have `value_set: true`.
+  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/3`,
+  with the provider's limit windows) and, optionally, its new `value`. A rename keeps the
+  settings and the states, which are the value's row's. The `value` loses the whitespace
+  at its ends (`String.trim/1`). A `value` that is nil or then empty keeps the value and
+  its states; any other replaces the value and deletes the states, as
+  `set_provider_key/5` does, and the details of the entry then have `value_set: true`.
   The value, the name and the settings are written in one transaction, and a save that
   changes none of them leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
@@ -1840,7 +1840,12 @@ defmodule Apiary.Connections do
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
-           changeset = ModelKeys.change_setting(value, attrs["settings"] || %{}),
+           changeset =
+             ModelKeys.change_setting(
+               value,
+               attrs["settings"] || %{},
+               ModelKeys.limit_windows(current)
+             ),
            :ok <- valid(changeset),
            :ok <-
              if(new_value, do: set_key(scope, secret, current, value_id, new_value), else: :ok),
@@ -1915,10 +1920,11 @@ defmodule Apiary.Connections do
   defp write_setting(changeset), do: Repo.insert_or_update(changeset)
 
   # The settings of the provider's key `value_id`, its row read in the keys' secret after
-  # the write of its value; nothing to write for nil.
+  # the write of its value, checked against the provider's limit windows; nothing to
+  # write for nil.
   defp put_key_setting(_current, _value_id, nil), do: {:ok, nil}
 
-  defp put_key_setting(%Connection{secret_id: secret_id}, value_id, settings) do
+  defp put_key_setting(%Connection{secret_id: secret_id} = current, value_id, settings) do
     value =
       Repo.one!(
         from v in Value,
@@ -1926,7 +1932,9 @@ defmodule Apiary.Connections do
           select: struct(v, [:id, :organisation_id])
       )
 
-    value |> ModelKeys.change_setting(settings) |> write_setting()
+    value
+    |> ModelKeys.change_setting(settings, ModelKeys.limit_windows(current))
+    |> write_setting()
   end
 
   @doc """

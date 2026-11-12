@@ -4,8 +4,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
   # (`ApiaryWeb.ProviderLive.Show`, `ApiaryWeb.ProviderLive.Key`) and the workspace's
   # Secrets page (`ApiaryWeb.SecretLive.Index`) show them:
   #
-  #   * `settings_fields/1`: Resets, a weekly day, time and time zone, and Pause for, a
-  #     number and a unit, both optional, with their hints and their errors;
+  #   * `settings_fields/1`: Resets, a weekly day, time and time zone, Pause for, a
+  #     number and a unit, and, for a provider with limit windows, Use up to, a
+  #     percentage, each optional, with their hints and their errors;
   #   * `params/3` the fields of a key's settings, `read_settings/1` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
   #   * `state/2` the state of a key from its states, in words.
@@ -18,10 +19,11 @@ defmodule ApiaryWeb.ModelKeyComponents do
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
+  alias Apiary.ModelKeys
   alias Apiary.ModelKeys.{Setting, State}
   alias ApiaryWeb.UserLive.Settings, as: UserSettings
 
-  @fields ~w(reset_day reset_time reset_zone pause_number pause_unit)
+  @fields ~w(reset_day reset_time reset_zone pause_number pause_unit use_up_to)
   @units %{"minutes" => 60, "hours" => 3600, "days" => 86_400}
   @reset_fields [:reset_weekday, :reset_time, :reset_time_zone]
 
@@ -43,9 +45,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
   @doc """
   The fields of the settings `setting` (nil for none), as a form shows them: the time
-  zone the scope's reader's where the key has no reset, and the unit of Pause for the
+  zone the scope's reader's where the key has no reset, the unit of Pause for the
   largest that the setting's seconds are a whole number of, else hours for a
-  subscription and minutes for an API key.
+  subscription and minutes for an API key, and Use up to empty where the key has none.
   """
   @spec params(Setting.t() | nil, Scope.t(), boolean) :: map
   def params(setting, %Scope{} = scope, subscription) do
@@ -58,8 +60,15 @@ defmodule ApiaryWeb.ModelKeyComponents do
         },
         else: %{"reset_day" => "", "reset_time" => "", "reset_zone" => Scope.time_zone(scope)}
 
-    Map.merge(reset, pause_params(setting, subscription))
+    reset
+    |> Map.merge(pause_params(setting, subscription))
+    |> Map.put("use_up_to", use_up_to_param(setting))
   end
+
+  defp use_up_to_param(%Setting{use_up_to_percent: percent}) when is_integer(percent),
+    do: Integer.to_string(percent)
+
+  defp use_up_to_param(_setting), do: ""
 
   defp pause_params(%Setting{pause_seconds: seconds}, _subscription) when is_integer(seconds) do
     case Enum.find([{"days", 86_400}, {"hours", 3600}], fn {_u, n} -> rem(seconds, n) == 0 end) do
@@ -76,7 +85,8 @@ defmodule ApiaryWeb.ModelKeyComponents do
   errors of what cannot be read: `{attrs, errors}`, `errors` as `errors/1` has them. A
   reset with neither a day nor a time is none, whatever the time zone, which is chosen
   from the start. A Pause for with no number is none; one with a number that is not a
-  whole one, or with a unit not offered, is an error.
+  whole one, or with a unit not offered, is an error. A Use up to with no number is none;
+  one that is not a whole number is an error.
   """
   @spec attrs(map) :: {map, map}
   def attrs(%{} = params) do
@@ -92,10 +102,26 @@ defmodule ApiaryWeb.ModelKeyComponents do
           "reset_time_zone" => field(params, "reset_zone")
         }
 
-    case pause(field(params, "pause_number"), field(params, "pause_unit")) do
-      {:ok, seconds} -> {Map.put(reset, "pause_seconds", seconds), %{}}
-      :error -> {Map.put(reset, "pause_seconds", nil), %{pause: [pause_error()]}}
-    end
+    {pause_seconds, pause_errors} =
+      case pause(field(params, "pause_number"), field(params, "pause_unit")) do
+        {:ok, seconds} -> {seconds, %{}}
+        :error -> {nil, %{pause: [pause_error()]}}
+      end
+
+    {percent, use_up_to_errors} =
+      case use_up_to(field(params, "use_up_to")) do
+        {:ok, percent} -> {percent, %{}}
+        :error -> {nil, %{use_up_to: [use_up_to_error()]}}
+      end
+
+    {reset |> Map.put("pause_seconds", pause_seconds) |> Map.put("use_up_to_percent", percent),
+     Map.merge(pause_errors, use_up_to_errors)}
+  end
+
+  defp use_up_to(""), do: {:ok, nil}
+
+  defp use_up_to(number) do
+    if number =~ ~r/\A\d{1,7}\z/, do: {:ok, String.to_integer(number)}, else: :error
   end
 
   defp field(params, name) do
@@ -116,7 +142,8 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
   @doc """
   The errors of a settings changeset by field group, each group's one message: `:resets`
-  for an error of the day, the time or the time zone, `:pause` for one of Pause for.
+  for an error of the day, the time or the time zone, `:pause` for one of Pause for, and
+  `:use_up_to` for one of Use up to.
   """
   @spec errors(Ecto.Changeset.t()) :: map
   def errors(%Ecto.Changeset{errors: errors}) do
@@ -125,21 +152,22 @@ defmodule ApiaryWeb.ModelKeyComponents do
     %{}
     |> put_if(Enum.any?(fields, &(&1 in @reset_fields)), :resets, resets_error())
     |> put_if(:pause_seconds in fields, :pause, pause_error())
+    |> put_if(:use_up_to_percent in fields, :use_up_to, use_up_to_error())
   end
 
   @doc """
   The settings that the fields `params` stand for, checked as they are saved
-  (`attrs/1`, `Apiary.ModelKeys.Setting.changeset/2`): `{:ok, attrs}`, or
+  (`attrs/1`, `Apiary.ModelKeys.Setting.changeset/3`) for a key of a provider with
+  `limit_windows` (`Apiary.ModelKeys.limit_windows/1`): `{:ok, attrs}`, or
   `{:error, errors}` by field group, as `errors/1` has them.
   """
-  @spec read_settings(map) :: {:ok, map} | {:error, map}
-  def read_settings(%{} = params) do
+  @spec read_settings(map, [String.t()]) :: {:ok, map} | {:error, map}
+  def read_settings(%{} = params, limit_windows \\ []) do
     {attrs, read_errors} = attrs(params)
+    changeset = Setting.changeset(%Setting{}, attrs, limit_windows)
 
     errors =
-      Map.merge(read_errors, errors(Setting.changeset(%Setting{}, attrs)), fn _group, a, b ->
-        Enum.uniq(a ++ b)
-      end)
+      Map.merge(read_errors, errors(changeset), fn _group, a, b -> Enum.uniq(a ++ b) end)
 
     if errors == %{}, do: {:ok, attrs}, else: {:error, errors}
   end
@@ -152,19 +180,27 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
   defp pause_error, do: gettext("Enter a time from 1 minute to 7 days.")
 
+  defp use_up_to_error, do: gettext("Enter a percentage from 1 to 99.")
+
   @doc """
-  Resets and Pause for, each a group of its fields with its hint under it, or its error
-  in the hint's place. The fields are the form's (`fields/0`), named as its other fields.
+  Resets, Pause for and, for a provider with limit windows, Use up to, each a group of
+  its fields with its hint under it, or its error in the hint's place. The fields are the
+  form's (`fields/0`), named as its other fields.
   """
   attr :form, Phoenix.HTML.Form, required: true
   attr :errors, :map, default: %{}, doc: "the groups' errors, as `errors/1` has them"
   attr :subscription, :boolean, required: true, doc: "whether the key is a subscription's"
+
+  attr :limit_windows, :list,
+    default: [],
+    doc: "the provider's limit windows (`Apiary.ModelKeys.limit_windows/1`); none: no Use up to"
 
   def settings_fields(assigns) do
     assigns =
       assign(assigns,
         resets_errors: Map.get(assigns.errors, :resets, []),
         pause_errors: Map.get(assigns.errors, :pause, []),
+        use_up_to_errors: Map.get(assigns.errors, :use_up_to, []),
         zone: assigns.form[:reset_zone].value
       )
 
@@ -257,7 +293,59 @@ defmodule ApiaryWeb.ModelKeyComponents do
         hint={pause_hint(@subscription)}
       />
     </fieldset>
+
+    <fieldset
+      :if={@limit_windows != []}
+      id={"#{@form[:use_up_to].id}-use-up-to"}
+      class="grid gap-1.5"
+      aria-describedby={group_note(@form[:use_up_to].id, "use-up-to", @use_up_to_errors)}
+    >
+      <legend id={"#{@form[:use_up_to].id}-legend"} class="mb-1 text-[13px]/[18px] font-medium">
+        {gettext("Use up to")}
+        <span class="font-normal text-faint">{gettext("(optional)")}</span>
+      </legend>
+      <div class="grid grid-cols-[minmax(0,7rem)_auto] items-center gap-2">
+        <.input
+          type="number"
+          id={@form[:use_up_to].id}
+          name={@form[:use_up_to].name}
+          value={@form[:use_up_to].value}
+          min="1"
+          max="99"
+          step="1"
+          inputmode="numeric"
+          aria-labelledby={"#{@form[:use_up_to].id}-legend"}
+          class={@use_up_to_errors != [] && "input-error"}
+        />
+        <span class="text-[13px]/5">%</span>
+      </div>
+      <.group_note
+        id={@form[:use_up_to].id}
+        group="use-up-to"
+        errors={@use_up_to_errors}
+        hint={use_up_to_hint(@limit_windows)}
+      />
+    </fieldset>
     """
+  end
+
+  defp use_up_to_hint(limit_windows),
+    do:
+      gettext(
+        "Runs skip this key once its %{windows} use reaches this percentage of the allowance, until that window resets, so the rest stays for your sessions outside Qory Apiary. Empty: runs use the key up to its limit.",
+        windows: windows_words(limit_windows)
+      )
+
+  # The windows in words, the last after "or": "5-hour or 7-day".
+  defp windows_words(windows) do
+    case Enum.map(windows, &window/1) do
+      [one] ->
+        one
+
+      words ->
+        {first, [last]} = Enum.split(words, -1)
+        gettext("%{windows} or %{last}", windows: Enum.join(first, ", "), last: last)
+    end
   end
 
   defp unit_options,
@@ -312,36 +400,40 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
   @doc """
   The state of a key at `now`, from `states`, its states by window
-  (`Apiary.ModelKeys.provider_states/2`), in the reader's time zone:
+  (`Apiary.ModelKeys.provider_states/2`), its Use up to percentage `percent` (nil for
+  none) and its provider's `limit_windows` (`Apiary.ModelKeys.limit_windows/1`), in the
+  reader's time zone:
 
-    * `{:cooldown, until, source}` while the latest `cooldown_until` across its windows is
-      after `now`: "In cooldown until Fri 14:00", and where that time comes from; for a
-      Pause for, the cooldown that applied, from the response that started it to its end
-      (`cooldown_until` less `observed_at`), whatever the key's Pause for is now;
+    * `{:cooldown, until, source}` while the key is in cooldown
+      (`Apiary.ModelKeys.cooldown/4`): "In cooldown until Fri 14:00", and where that time
+      comes from; for a Pause for, the cooldown that applied, from the response that
+      started it to its end (`cooldown_until` less `observed_at`), whatever the key's
+      Pause for is now; for a window at the key's Use up to percentage, the window and
+      the percentage the key has now, which the window's use may be past;
     * `{:available, segments}` otherwise, one segment per window with a utilization or a
       reset still to come: "5-hour 89%, resets 14:00".
   """
-  @spec state([State.t()], DateTime.t()) ::
+  @spec state([State.t()], DateTime.t(), pos_integer | nil, [String.t()]) ::
           {:cooldown, String.t(), String.t()} | {:available, [String.t()]}
-  def state(states, %DateTime{} = now) do
-    case latest_cooldown(states) do
-      %State{cooldown_until: until} = state when not is_nil(until) ->
-        if DateTime.compare(until, now) == :gt,
-          do:
-            {:cooldown, gettext("In cooldown until %{time}", time: Format.week_time(until, now)),
-             source(state)},
-          else: {:available, segments(states, now)}
+  def state(states, %DateTime{} = now, percent \\ nil, limit_windows \\ []) do
+    case ModelKeys.cooldown(states, percent, limit_windows, now) do
+      {until, source} ->
+        {:cooldown, gettext("In cooldown until %{time}", time: Format.week_time(until, now)),
+         source(source, percent)}
 
-      _none ->
+      nil ->
         {:available, segments(states, now)}
     end
   end
 
-  defp latest_cooldown(states) do
-    states
-    |> Enum.filter(& &1.cooldown_until)
-    |> Enum.max_by(& &1.cooldown_until, DateTime, fn -> nil end)
-  end
+  defp source({:use_up_to, %State{window: window}}, percent),
+    do:
+      gettext("%{window} at %{percent}%, this key's Use up to",
+        window: window(window),
+        percent: Format.number(percent)
+      )
+
+  defp source({:stored, state}, _percent), do: source(state)
 
   defp source(%State{source: "provider"}), do: gettext("from the provider's response")
   defp source(%State{source: "schedule"}), do: gettext("from this key's schedule")

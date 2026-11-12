@@ -3222,7 +3222,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       line = "#work-item-explore-take-ins-1 .q-xp-run > span:nth-child(2)"
 
       assert text(html, line) ==
-               "Paused: a key of Anthropic reached its limit. It continues in run 17."
+               "Paused: a key of Anthropic reached its limit or its Use up to percentage. It continues in run 17."
 
       assert for(a <- query(html, line <> " a"), do: LazyHTML.attribute(a, "href")) ==
                [["/acme/main/runs/17"]]

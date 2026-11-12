@@ -8,7 +8,7 @@ defmodule ApiaryWeb.PauseWords do
   # cooldown, in the reader's time zone, as the waiting line shows it
   # (`ApiaryWeb.PreparationComponents.cooldown_time/2`); once that time has passed, or
   # with no such time, or with no run that continues it, the line shows that a key reached
-  # its limit. A provider deleted since, or an operator's, has no name, and the line is
+  # its limit or its Use up to percentage. A provider deleted since, or an operator's, has no name, and the line is
   # about a model key. The provider's name came from a person and is shown as a text an
   # external system sent.
 
@@ -37,16 +37,17 @@ defmodule ApiaryWeb.PauseWords do
   end
 
   def line(%{provider: nil, number: nil}, _path, _now),
-    do: rich_gettext("Paused: a model key reached its limit.", [])
+    do: rich_gettext("Paused: a model key reached its limit or its Use up to percentage.", [])
 
   def line(%{provider: nil, number: number}, path, _now) do
-    rich_gettext("Paused: a model key reached its limit. It continues in run %{number}.",
+    rich_gettext(
+      "Paused: a model key reached its limit or its Use up to percentage. It continues in run %{number}.",
       number: number(number, path)
     )
   end
 
   def line(%{provider: provider, number: nil}, _path, _now) do
-    rich_gettext("Paused: a key of %{provider} reached its limit.",
+    rich_gettext("Paused: a key of %{provider} reached its limit or its Use up to percentage.",
       provider: {:bdi, ExternalText.line(provider)}
     )
   end
@@ -65,7 +66,8 @@ defmodule ApiaryWeb.PauseWords do
   end
 
   def line(%{provider: provider, number: number}, path, _now) do
-    rich_gettext("Paused: a key of %{provider} reached its limit. It continues in run %{number}.",
+    rich_gettext(
+      "Paused: a key of %{provider} reached its limit or its Use up to percentage. It continues in run %{number}.",
       provider: {:bdi, ExternalText.line(provider)},
       number: number(number, path)
     )

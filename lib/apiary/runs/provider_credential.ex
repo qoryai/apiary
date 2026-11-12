@@ -14,7 +14,11 @@ defmodule Apiary.Runs.ProviderCredential do
   # keeps it; `format`, `endpoint` and `auth` of the API the run uses
   # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
-  # `cooldown_until` and `chosen`, each where the run keeps it. Every key has
+  # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
+  # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows
+  # (`Apiary.Kinds.Provider`), from the catalogue entry the provider was added from, which
+  # a run with that provider has at its claim too; with no limit windows the entry has
+  # neither, as the contract requires both or none. Every key has
   # `pause_for_s`: from its claim, or, for a run claimed before runs kept several keys,
   # from the migration that keeps a run's model keys. The start key, `model_credential`,
   # is the key the run keeps with `start`, else its first. An entry has no key value, no
@@ -61,7 +65,8 @@ defmodule Apiary.Runs.ProviderCredential do
   # The order the contract's `auth.schema.json` lists its members in.
   @auth_members ~w(scheme header username oauth)
   # The members a run keeps for each key, in the order of the contract's `api_credential`.
-  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen)
+  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen
+                  use_up_to_percent)
 
   @doc false
   # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none, as for a run
@@ -217,7 +222,11 @@ defmodule Apiary.Runs.ProviderCredential do
 
       keys =
         for %{"id" => id, "name" => name} = key <- keys do
-          %{name: name, secret_value_id: id, entry: entry(name, api, key)}
+          %{
+            name: name,
+            secret_value_id: id,
+            entry: entry(name, api, key, description.limit_windows)
+          }
         end
 
       {:ok,
@@ -288,10 +297,16 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   @doc false
-  # entry/3 is the API credential named `name` for `api`, the run's `provider_api`, with
-  # the members the run keeps for the key `key` (`runs.model_keys`).
-  @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
-  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api, key \\ %{}) do
+  # entry/4 is the API credential named `name` for `api`, the run's `provider_api`, with
+  # the members the run keeps for the key `key` (`runs.model_keys`), and with
+  # `limit_windows`, the provider's, as `use_up_to_windows` beside `use_up_to_percent`.
+  @spec entry(String.t(), map, map, [String.t()]) :: Jason.OrderedObject.t()
+  def entry(
+        name,
+        %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api,
+        key \\ %{},
+        limit_windows \\ []
+      ) do
     auth = for member <- @auth_members, Map.has_key?(auth, member), do: {member, auth[member]}
 
     prefixes =
@@ -301,6 +316,16 @@ defmodule Apiary.Runs.ProviderCredential do
       end
 
     kept = for member <- @key_members, Map.has_key?(key, member), do: {member, key[member]}
+
+    # `use_up_to_percent` and `use_up_to_windows` go together, or neither does.
+    kept =
+      case {key["use_up_to_percent"], limit_windows} do
+        {percent, [_ | _]} when is_integer(percent) ->
+          kept ++ [{"use_up_to_windows", limit_windows}]
+
+        _neither ->
+          List.keydelete(kept, "use_up_to_percent", 0)
+      end
 
     Jason.OrderedObject.new(
       [

@@ -400,8 +400,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # A key as the run keeps it and its run configuration writes it: its row id, its name,
   # `start` on the start key, its Pause for, and, where it has them, its known reset from
   # the providers' responses, the next reset of its schedule, whether the choice is set to
-  # it, and the end of its cooldown while it is in cooldown at `now`. Times are in whole
-  # seconds, rounded up.
+  # it, the end of its cooldown while it is in cooldown at `now`, a window at its Use up
+  # to percentage included, and that percentage. The run keeps no limit windows: its run
+  # configuration takes them from the provider's catalogue entry
+  # (`Apiary.Runs.ProviderCredential`). Times are in whole seconds, rounded up.
   defp stored_key(key, name, start?, now) do
     [
       {"id", key.id},
@@ -411,7 +413,8 @@ defmodule Apiary.Dispatches.RunSettings do
       {"resets_at", time(key.resets_at)},
       {"schedule_resets_at", time(key.schedule_resets_at)},
       {"chosen", if(key.named, do: true)},
-      {"cooldown_until", if(Order.cooling?(key, now), do: time(key.cooldown_until))}
+      {"cooldown_until", if(Order.cooling?(key, now), do: time(key.cooldown_until))},
+      {"use_up_to_percent", key.use_up_to_percent}
     ]
     |> Enum.reject(fn {_name, value} -> is_nil(value) end)
     |> Map.new()

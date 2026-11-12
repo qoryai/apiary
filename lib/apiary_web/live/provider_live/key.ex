@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.ProviderLive.Key do
   # A model provider's Add key (`:new`) and Edit key (`:edit`), separate pages of
   # Organisation settings › Model providers › the provider, with the features `factory`
-  # and `secrets`. Add key takes the key's Name, the Key and its settings, Resets and
-  # Pause for (`ApiaryWeb.ModelKeyComponents`), and writes them in one transaction
+  # and `secrets`. Add key takes the key's Name, the Key and its settings, Resets, Pause
+  # for and, for a provider with limit windows, Use up to
+  # (`ApiaryWeb.ModelKeyComponents`), and writes them in one transaction
   # (`Apiary.Connections.add_provider_key/4`); for a subscription, About model providers
   # has where to get the key and the terms that allow it. Edit key, of a key by its value
   # id, takes its Name, a New value, which keeps the key's value when it is left empty,
@@ -54,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
          provider: provider,
          key: key,
          subscription: subscription,
+         limit_windows: ModelKeys.limit_windows(provider),
          chosen: chosen(provider, subscription),
          sections: SettingsComponents.sections(scope, :organisation),
          attempt: 0,
@@ -98,7 +100,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp chosen(_provider, false), do: nil
 
   # The form, from what was sent but the key, with `errors` on its Name and Key and
-  # `settings_errors` on Resets and Pause for; the key's field is always empty.
+  # `settings_errors` on Resets, Pause for and Use up to; the key's field is always empty.
   defp assign_form(socket, params, errors, settings_errors) do
     params =
       params
@@ -143,7 +145,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
     # Settings that cannot be saved write nothing; the Name and the Key are checked with
     # them, so every error shows at once.
-    case ModelKeyComponents.read_settings(params) do
+    case ModelKeyComponents.read_settings(params, socket.assigns.limit_windows) do
       {:ok, settings} ->
         write(socket, action, params, settings)
 
@@ -340,6 +342,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
             form={@form}
             errors={@settings_errors}
             subscription={@subscription}
+            limit_windows={@limit_windows}
           />
           <.page_form_foot id="key-save" cancel={provider_path(@current_scope, @provider)}>
             <.button id="key-submit" variant="primary" type="submit" loading_text={gettext("Saving")}>

@@ -1042,6 +1042,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         form={@key_form}
         errors={@key_errors}
         subscription={@subscription}
+        limit_windows={@limit_windows}
       />
       <.page_form_foot
         id="secret-save"
@@ -1065,6 +1066,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         form={@key_form}
         errors={@key_errors}
         subscription={@subscription}
+        limit_windows={@limit_windows}
       />
       <.page_form_foot
         id="secret-save"
@@ -1771,6 +1773,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         key_form: nil,
         key_errors: %{},
         subscription: false,
+        limit_windows: [],
         warning: nil,
         refusal: nil,
         target_q: ""
@@ -1867,6 +1870,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         form: nil,
         key_form: nil,
         key_errors: %{},
+        limit_windows: [],
         warning: nil,
         refusal: nil
       )
@@ -2028,14 +2032,20 @@ defmodule ApiaryWeb.SecretLive.Index do
     end)
   end
 
-  # A model provider's key has its settings too, Resets and Pause for
-  # (`ApiaryWeb.ModelKeyComponents`), in the same form: those `value` has, none for a
-  # new key. Another secret's value has none.
+  # A model provider's key has its settings too, Resets, Pause for and, for a provider
+  # with limit windows, Use up to (`ApiaryWeb.ModelKeyComponents`), in the same form:
+  # those `value` has, none for a new key. Another secret's value has none.
   defp key_settings(%{assigns: %{provider: %Connection{} = provider}} = socket, value) do
     subscription = ModelKeyComponents.subscription?(provider)
     setting = value && ModelKeys.setting(value.id)
     params = ModelKeyComponents.params(setting, socket.assigns.current_scope, subscription)
-    assign(socket, key_form: key_form(params), key_errors: %{}, subscription: subscription)
+
+    assign(socket,
+      key_form: key_form(params),
+      key_errors: %{},
+      subscription: subscription,
+      limit_windows: ModelKeys.limit_windows(provider)
+    )
   end
 
   defp key_settings(socket, _value), do: socket
@@ -2244,7 +2254,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     added =
       if provider,
         do:
-          with_key_settings(sent, fn settings ->
+          with_key_settings(sent, socket.assigns.limit_windows, fn settings ->
             Connections.add_provider_key(
               scope,
               provider,
@@ -2294,7 +2304,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       cond do
         # A provider's key with New value left empty: its settings alone, the value kept.
         provider && blank?(params["value"]) ->
-          with_key_settings(params, fn settings ->
+          with_key_settings(params, socket.assigns.limit_windows, fn settings ->
             Connections.update_provider_key(scope, provider, value.value_id, %{
               "value_id" => value.value_id,
               "settings" => settings
@@ -2302,7 +2312,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           end)
 
         provider ->
-          with_key_settings(params, fn settings ->
+          with_key_settings(params, socket.assigns.limit_windows, fn settings ->
             Connections.set_provider_key(
               scope,
               provider,
@@ -2632,11 +2642,12 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp trimmed(params), do: params
 
-  # The write of a model provider's key with the settings its form sent
-  # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
-  # be saved, and their errors come back as `{:settings, errors}`.
-  defp with_key_settings(params, fun) do
-    case ModelKeyComponents.read_settings(params) do
+  # The write of a model provider's key with the settings its form sent, for a provider
+  # with `limit_windows` (`ApiaryWeb.ModelKeyComponents.read_settings/2`); none is
+  # written while they cannot be saved, and their errors come back as
+  # `{:settings, errors}`.
+  defp with_key_settings(params, limit_windows, fun) do
+    case ModelKeyComponents.read_settings(params, limit_windows) do
       {:ok, settings} -> fun.(settings)
       {:error, errors} -> {:settings, errors}
     end

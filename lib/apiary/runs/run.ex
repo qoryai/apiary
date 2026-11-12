@@ -186,7 +186,9 @@ defmodule Apiary.Runs.Run do
     # credential's name, `"start"`, true on the start key, which a run that kept one key
     # before has not, and what the claim wrote for the run configuration:
     # `"pause_for_s"`, and where the claim had them, `"resets_at"`,
-    # `"schedule_resets_at"`, `"chosen"` and `"cooldown_until"`; never a key value.
+    # `"schedule_resets_at"`, `"chosen"`, `"cooldown_until"` and `"use_up_to_percent"`;
+    # never a key value, and no limit windows, which the run configuration takes from the
+    # provider's catalogue entry.
     # Written once with the registration and never changed; nil for every other run, and
     # for an explore run with `factory` or `secrets` off. The provider fields are nil
     # where no provider was chosen, and the two rows become nil should they be deleted.
