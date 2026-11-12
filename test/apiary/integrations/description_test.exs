@@ -28,8 +28,8 @@ defmodule Apiary.Integrations.DescriptionTest do
       names = fixture_names("*.json")
 
       assert names ==
-               ~w(acme-chat.json acme-cloud.json acme-models.json acme-tracker.json
-                  example-gateway.json example-projects.json example-source-apply-basic.json
+               ~w(acme-chat.json acme-cloud.json acme-models.json acme-subscription.json
+                  acme-tracker.json example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
                   example-source-comments.json example-source-guide.json
                   example-source-targets.json example-tracker.json github.json
@@ -40,7 +40,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 114
+      assert length(names) == 121
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -301,16 +301,16 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "e33240a984c5dd1a94270f3269b16c5b354dd768"
+  @integrations_ref "58537e341aa7afa784743af0e7fb0bf74163cbc4"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "a1bdeaa7f9638216ecf0f967937296dfd55a6a282e03557670666eb40a9d122f",
+      "a47eddde1bb22aaa58e4fa061a1741808068ed0cd5ec929fe9af8c04bfee093d",
     "priv/contract/integration/definitions.schema.json" =>
       "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
-      "4bd492082526fe8184edb26fdb3bc9f4f812569c7d890c715e13f9208b4fc95d",
+      "7e927ff0484cd4d20e87404e6f05e8a04678abce2d6f4d19f69ed04dacd8b96c",
     "priv/contract/integration/descriptions/deepseek.json" =>
       "6cdf2ab9c102dfb01ba618b2b44fa7235e253cf29d3b349474eae5108cc6dd64",
     "priv/contract/integration/descriptions/litellm.json" =>
@@ -318,9 +318,9 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/openrouter.json" =>
       "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "5eb6e1b3a917e5a17c806521155f75216004ac572e67d6dce6d9a7e7ff594f8b",
+      "8ca580eaf26da82ddc439c40658b6b4ba0198706535a3abff194b25077c610eb",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "fd322a6c16fc28bb94dda3e50b0715c49a68b457933260470a2b11437bf9cddc",
+      "cebabbef485d074f5eabf38c2ea92f529545f0f982d658d9c1ed1977f3892f24",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
       "1cec0e11d03f689ac5857ba5508c9552b3283964e91bdfc8d02a2605fa8c468f",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
