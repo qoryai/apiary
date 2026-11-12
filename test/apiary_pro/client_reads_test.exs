@@ -749,6 +749,24 @@ defmodule ApiaryPro.ClientReadsTest do
       assert run_hosts(ctx.operator_person, run) == ["api.anthropic.com", "docs.example.com"]
     end
 
+    # No entry is recorded, so only the name of the run's key finds the connection: its
+    # host is not the endpoint host.
+    test "with its row gone, key names and no events, hides a connection of a key", ctx do
+      run = nilified(ctx, run!(ctx))
+      connection!(run, "files.example.com", key_name(ctx.provider, 1))
+      connection!(run, "docs.example.com", nil)
+
+      assert run_hosts(ctx.person, run) == ["docs.example.com"]
+
+      assert rows_by_run(ctx.person, :workspace_connections, Connection, :host)[run.id] ==
+               ["docs.example.com"]
+
+      assert run_hosts(ctx.operator_person, run) == ["docs.example.com", "files.example.com"]
+
+      assert rows_by_run(ctx.operator_person, :workspace_connections, Connection, :host)[run.id] ==
+               ["docs.example.com", "files.example.com"]
+    end
+
     test "with its row and no events, hides a connection to the endpoint host", ctx do
       run = run!(ctx)
       connection!(run, "api.anthropic.com", "other-key")
