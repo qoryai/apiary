@@ -121,18 +121,22 @@ other way round; removing that rule gives the workspace's back.
 Rules meet on the same host string, and the one that wins decides the host whole, its
 action and its paths.
 
-0. A rule of the level above the workspace, where the edition keeps one (the core keeps
-   none): its denies hold everywhere, so no rule of the workspace or of a repository
-   allows the host; its allows reach every workspace and can be narrowed by a deny below
-   them, never widened. Against a lower allow on the same host, its allow holds, paths
-   included.
+<!-- feature: organisation_policy -->
+0. A rule of the organisation's policy, where the organisation has one: its denies hold
+   everywhere, so no rule of the workspace or of a repository allows the host; its allows
+   reach every workspace and can be narrowed by a deny below them, never widened. Against
+   a lower allow on the same host, its allow holds, paths included.
+<!-- /feature -->
 1. A **locked** rule of the workspace wins over everything else.
 2. Then the repository's rule.
 3. Then an unlocked rule of the workspace.
 
 So where the two meet on a host, the repository wins, unless the workspace's rule is
-locked. Where the level above the workspace allows only the hosts on its list, an allow of the
+locked.
+<!-- feature: organisation_policy -->
+Where the organisation's policy allows only the hosts on its list, an allow of the
 workspace or of a repository is listed, struck, and not in force; denies still apply.
+<!-- /feature -->
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
@@ -193,10 +197,12 @@ it saves it.
 
 A workspace starts in observe. Only an owner or an admin changes the mode, in either
 direction, and each change is confirmed. The wall's built-in refusals, such as the machine's
-address, hold in either mode. Where the level above the workspace requires enforce, the mode
-is enforce in the workspace and in every repository, the workspace's and the
-repositories' choices are fixed and say who requires it, and a repository's observe override is kept but not
-in force.
+address, hold in either mode.
+<!-- feature: organisation_policy -->
+Where the organisation's policy requires enforce, the mode is enforce in the workspace and
+in every repository, the workspace's and the repositories' choices are fixed and show who
+requires it, and a repository's observe override is kept but not in force.
+<!-- /feature -->
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
 overrides it on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,

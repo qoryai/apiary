@@ -1473,8 +1473,8 @@ mark and the theme menu.
   minute ends. A shared harness that runs hide shows no address: it is "the shared
   harness". Where the organisation has as many workspaces as the edition allows, New
   workspace is headed "New workspace", with no question, and shows the edition's line in
-  an information notice in place of the cards, and nothing is read: "Qory Apiary
-  Community allows one workspace per organisation, and Acme has it."
+  an information notice in place of the cards, and nothing is read: "This instance
+  allows one workspace per organisation, and Acme has it."
 - **The template's page** (`WorkspaceTypeLive`, `/<org>/workspaces/new/<key>`), for the
   people New workspace is for; its breadcrumb is the organisation, New workspace, then the
   template's name. The Qory template's key is `qory.software`. With `workflow_model`, the

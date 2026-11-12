@@ -345,11 +345,12 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Access** ([access.md](access.md), An edition's part): add actions and roles
   (`actions/0`, `roles/0`); answer first, refuse or narrow (`check/3`); let a person into
   an organisation without a membership, with a role there, and read what it gave again
-  (`reach/1`, `role/1`, `reload/2`, which `Apiary.Access.reader/1` names); narrow the
-  levels that reach every workspace and say what another level reaches
-  (`every_workspace_levels/0`, `reaches_workspace?/3`, `reached_workspaces/2`); hold more
-  organisation rows with a write that must stay allowed, after the organisation's row
-  (`places_to_lock/1`).
+  (`reach/1`, `role/1`, `reload/2`, which `Apiary.Access.reader/1` names); put what its
+  checks read of an organisation on a membership's organisation, once for the scope
+  (`put_organisation/1`); narrow the levels that reach every workspace and say what
+  another level reaches (`every_workspace_levels/0`, `reaches_workspace?/3`,
+  `reached_workspaces/2`); hold more organisation rows with a write that must stay
+  allowed, after the organisation's row (`places_to_lock/1`).
 - **In use**: refine the core's queries so an account or an organisation it holds out of
   use is left out (`active_accounts/2`, `active_organisations/2`), and say why an account
   may not sign in (`account_refusal/1`).
@@ -637,3 +638,766 @@ but a person's account, which leaves a tombstone.
   members to tell once it commits.
 - **What stays outside**: backups taken before a purge hold its rows until they expire,
   which the instance's backup period bounds; the log holds ids only.
+
+## Tenants, operators and the organisation's level
+
+The code under `lib/apiary_pro` and `lib/apiary_pro_web` is the edition that the
+configuration names (`Apiary.Edition`, `ApiaryWeb.Edition`): it answers the core's
+callbacks, adds tables beside the core's and alters none of them. In this section, the
+core means the rest of the code.
+
+This section covers the edition's layout, its tables and their keys, the tenants and the
+instance organisation, the adoption of an instance whose organisations have no tenant,
+operators and their clients, policy requests, the organisation's policy, its variables
+and its secrets, the suspension of accounts and organisations, transfers, features below
+the instance, and the edition's part of the audit trail and of deletion. Who may do what
+is in [access.md](access.md), Who may do what: operators, clients and the instance; the
+edition's conventions are in [conventions.md](conventions.md), Conventions of the
+edition.
+
+### Layout
+
+The edition's application is under `lib/apiary_pro/`, one context per concern, each with its
+schemas beside it:
+
+- `ApiaryPro.Edition`: the edition (`Apiary.Edition`), each callback answered by the
+  context of the edition that owns it.
+- `ApiaryPro.Access`: the edition's actions, its instance actions among them, marked
+  `instance: true`, its roles `reader` and `person`, and its part of the answer
+  (`check/3`), which `Apiary.Access` calls ([access.md](access.md)).
+- `ApiaryPro.Reach`: how a person reaches an organisation beyond their membership there,
+  through its operator or as an instance admin, and which workspaces a member reaches:
+  the edition's `reach/1`, `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`,
+  `reaches_workspace?/3` and `reached_workspaces/2`. `ApiaryPro.Places` is every
+  organisation a person reaches from the switcher, their memberships and the clients of
+  each operator they belong to, each an `ApiaryPro.ClientReach`.
+- `ApiaryPro.WorkspaceAccess`: which workspaces a member reaches, one row per person and
+  workspace, adding a member to a workspace and removing them from one (Workspace
+  access, below).
+- `ApiaryPro.Invitations`: what the edition adds to an invitation's acceptance: the
+  workspace it was sent from, none for an invitation sent to the organisation alone, and
+  an operator's invitation of its client's first owner, which makes that person the owner.
+- `ApiaryPro.Tenants`: what the edition says of an organisation beyond the core's, its
+  kind, its operator and its suspension, one row of `tenants` each (Tenants and the
+  instance organisation, below).
+- `ApiaryPro.Organisations`: a person's new organisation, from the organisation switcher,
+  and the instance organisation.
+- `ApiaryPro.SignUp`: who may sign up, saved on Instance settings › Configuration
+  (`ApiaryProWeb.InstanceLive.SignUpPart`) and applied at once on every node through each
+  node's copy (`ApiaryPro.SignUp.Cache`), overridden by `SIGNUP_ORGANISATIONS` and
+  `SIGNUP_OPERATORS`, which the edition's `boot!/0` checks; and the kinds a sign-up
+  offers.
+- `ApiaryPro.Operators`: operators and their clients, and the instance actions of the
+  instance organisation's owners: creating a client and inviting its first owner, listing
+  an operator's clients, listing the organisations of the instance, creating an
+  organisation or an operator there, and changing a kind (Operators and clients, below).
+- `ApiaryPro.PolicyRequests`: an operator's requests for changes to its clients' policy,
+  and the clients' answers (Policy requests, below).
+- `ApiaryPro.OrganisationPolicy`: the organisation's policy, the level above its
+  workspaces' security policy: its host rules, the mode floor and the switch, and the
+  render of every workspace a change makes (The organisation's policy, below).
+- `ApiaryPro.OrganisationVariables`: the organisation's variables, the level above its
+  workspaces' variables: its names and values, the names it locks, and the checks a
+  change makes across every workspace (The organisation's variables, below).
+- `ApiaryPro.OrganisationSecrets`: who reads, changes and links the organisation's
+  secrets, which the core keeps beside its workspaces' secrets, and whether they are
+  sealed (The organisation's secrets, below).
+- `ApiaryPro.Suspensions`: suspending and activating a person's account, and an
+  organisation or an operator, instance actions of the instance admins, and the accounts
+  Instance settings › Accounts lists (Suspension of accounts and organisations, below).
+- `ApiaryPro.Transfers`: a client's drop by its operator, and an organisation's ownership
+  when its owners cannot act: the arbiter's offers pending in `transfers`, their lapse
+  and their acceptance (Transfers, below).
+- `ApiaryPro.Features` and `ApiaryPro.Grants`: the edition's feature,
+  `managed_organisations`, what an organisation or a workspace has of the instance's, and
+  the grants that say so (Features below the instance, below).
+- `ApiaryPro.Deletion` and `ApiaryPro.Deletion.Tables`: the edition's part in deleting and
+  purging (Deletion, below).
+- `ApiaryPro.Adoption`: the edition's step after the migrations, which adopts the
+  organisations without a tenant (Adopting an instance whose organisations have no
+  tenant, below).
+- `ApiaryPro.Release`: the edition's release commands
+  (`bin/apiary eval "ApiaryPro.Release.…"`), run as the core's are.
+
+The edition's web side is under `lib/apiary_pro_web/`, `ApiaryProWeb.*`: its router
+(`ApiaryProWeb.Router`), which calls the core's route macros (`ApiaryWeb.Routes`) with
+the edition's pages in the core's `live_session`s and serves the edition's sign-up page at
+the core's path, since it offers kinds; its web edition (`ApiaryProWeb.Edition`); the
+edition's pages under `live/` (an operator's clients and its policy requests, Instance
+settings' Organisations and Accounts, a client's policy requests, the organisation's
+policy, the organisation's Ownership section, a member's workspaces, a new organisation
+and the sign-up page with kinds); and what it renders in the core's pages: its notices
+(`ApiaryProWeb.Notices`), its slots (`ApiaryProWeb.Slots`), its words for a reader
+(`ApiaryProWeb.Readers`) and for its actions in the audit log
+(`ApiaryProWeb.ActivityDescriber`). A core page never names a module of it: it links to
+the edition's pages only through the places the core gives the edition, slots, sections of
+the settings and navigation entries.
+
+The edition's migrations are in `priv/repo/migrations/`, with the core's, and run with
+them as one sequence by version. The edition's tests are under `test/apiary_pro/` for the
+contexts and `test/apiary_pro_web/` for the pages, with their support under
+`test/support/`: the fixtures for operators, clients and instance admins
+(`ApiaryPro.OperatorsFixtures`), created the way the product creates them, the edition's rows of
+the core's case templates, its test kit (`ApiaryPro.EditionKit`) and its race helpers
+(`ApiaryPro.Races`).
+
+### Organisation keys
+
+The edition's tables follow the core's rules: every one that holds an organisation's rows
+carries `organisation_id`, with `workspace_id` beside it and the composite key against
+`workspaces` for a workspace's data, and is listed in `ApiaryPro.Deletion.Tables`, the
+edition's `deletion_tables/0`, in delete order. A unique constraint is scoped by the
+organisation: `(organisation_id, workspace_id, user_id)` on workspace access, and
+`(organisation_id)` on transfers, one pending offer per organisation. The account
+suspensions (`account_suspensions`) and the instance's branding belong to no organisation,
+and are not listed.
+
+### Workspace access
+
+Which workspaces a member reaches is `workspace_access`, one row per person and
+workspace, with the organisation keys of workspace data (`organisation_id`, and
+`workspace_id` under the composite key against `workspaces`), so its rows go with their
+workspace. The person is named by `(organisation_id, user_id)` under a composite key
+against `memberships`, so a row never names someone who is not a member of that
+organisation, and removing the member removes their rows.
+
+- An owner and an admin reach every workspace and need no row; a row they have changes
+  nothing while they hold the level. A member reaches the workspaces they have a row for.
+  `Apiary.Access.reaches_every_workspace?/1` says which levels reach every workspace,
+  from the edition's answer (`ApiaryPro.Reach.every_workspace_levels/0`), and nothing else
+  compares a level for it.
+- An invitation is an email address and the workspace it was sent from, and nothing
+  else. Accepting it makes a membership at member and adds the row for that workspace
+  (`ApiaryPro.Invitations`, the edition's `accepted/4`); an owner changes the level
+  afterwards.
+- An owner or an admin adds a member to a workspace and removes them from one on the
+  member's Workspaces page, `/:org/settings/people/:id/workspaces`, which People leads
+  to; each is an audit entry in that workspace.
+- A person made a member from a level that reached every workspace keeps the rows they
+  have; one with none gets a row for the workspace the change was made from, the one the
+  owner's page carries, so the change does not lock them out, with a separate entry
+  (`ApiaryPro.WorkspaceAccess`, told by the edition's `membership_changed/5`). The
+  invitations a person sent stay when their level changes and when they leave or are
+  removed, as the organisation's: none grants more than member, but an operator's
+  invitation of its client's first owner.
+- The scope carries the workspace the path names and the person's row for it, in its
+  `edition` map (`ApiaryPro.WorkspaceAccess.of/1`). `Apiary.Access` checks the reach from
+  that scope in `can?/3`, and reads both the membership and the row again in
+  `authorize/3`; a workspace the person does not reach is not found.
+
+### Tenants and the instance organisation
+
+Every organisation is one row of the core's `organisations`, whatever it is, with the
+same memberships, levels, workspaces, slugs, invitations, audit trail and deletion. What
+the edition knows of it beyond that is its row of `tenants` (`ApiaryPro.Tenants.Tenant`),
+keyed by `organisation_id`, written in the transaction that creates the organisation (the
+edition's `organisation_created/2`) and gone with it: its kind, whether it is the instance
+organisation, its operator and its suspension. The core's tables hold none of it, and a
+page of the edition carries it on the organisation's `edition`, under `:tenant`
+(`ApiaryPro.Tenants`). A tenant is written only under its organisation's row locked for
+update (`ApiaryPro.Tenants`, Locks; [access.md](access.md), The lock order). Beside each
+tenant, written with it, or by the migration for a tenant written before it, or as it is
+first locked for one written without it, and gone with it, is its row of `people_locks`
+(`ApiaryPro.Tenants.PeopleLock`), which holds nothing but its key and when it was written,
+for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`;
+[access.md](access.md), The lock order).
+
+- **A kind.** `tenants.kind` is `organisation`, an ordinary one, or `operator`, which
+  provides a harness its clients run (Operators and clients, below). Any kind has
+  workspaces and runs work in them. A sign-up sets the kind, and nothing casts it from a
+  form (`ApiaryPro.Tenants.organisation_created/2`).
+- **The instance organisation.** `tenants.instance_organisation` flags one organisation as
+  the core's instance organisation
+  (`c:Apiary.Edition.instance_organisation_id/0`), of either kind: the first sign-up gives
+  it one (below), and the instance admins change it as any other organisation's (Operators
+  and clients, below). A partial unique index lets one row carry the flag, checks keep it
+  unsuspended and no client, and nothing in the product unsets it. Its owners are the
+  instance admins. The core's instance step checks the instance actions
+  ([access.md](access.md), The instance organisation and the instance actions), and
+  `Apiary.Access.instance_admin?/1` returns whether a scope's person is one, for the checks
+  with no action. `organisation.delete` is refused on it at every
+  level, so an instance never loses it: without one, the instance would not be set up,
+  and its next set-up would make another; nor is it purged, suspended or transferred.
+  Its people see an organisation like any other; the words "operator" and "instance" are
+  on no page of theirs but its settings, which say why it cannot be deleted, and, for its
+  owners, Instance settings' pages; made an operator, it has a Clients page, which its
+  sidebar lists once it has clients; until then its owners reach it from its
+  row under Instance settings › Organisations.
+- **The first sign-up** is the instance's set-up, by the set-up link the instance logs
+  until it is used, or a release command (`Apiary.Setup`, through
+  `Apiary.Organisations.sign_up_user/3`). It creates the instance's first organisation,
+  with the person as its owner and no workspace yet, as in the core; nobody signs
+  up before it, and the edition's sign-up page says to use the set-up link
+  (`:not_set_up`). The edition makes it the instance organisation when it is told (the
+  edition's `organisation_created/2`, `:first_sign_up`,
+  `ApiaryPro.Tenants.organisation_created/2`), of the kind
+  `ApiaryPro.Tenants.first_sign_up_kind/0` gives: `operator` where the instance has
+  `managed_organisations` (`QORY_FEATURES`, `Apiary.Features`), so its owners may take
+  clients at once, and `organisation` otherwise, an organisation like any other, with no
+  Clients page. The set-up page's line says which it makes (the edition's
+  `first_sign_up_line/0`, `ApiaryPro.SignUp.first_sign_up_line/0`). The unique index
+  answers for anything the core's first-sign-up lock misses.
+- **A later sign-up** without an invitation is the core's where the edition opens one
+  (`sign_up_open?/0`, true while `ApiaryPro.SignUp.kinds/0` is not empty), and it hands
+  the edition what the form sent beyond the core's fields (`{:sign_up, extra}`). The
+  edition creates the kind the instance's settings open, from `extra["kind"]`: none by
+  default, when the sign-up page says sign-up is by invitation; the one, with no choice;
+  or the one chosen, when both are open. The instance organisation is never a kind to
+  choose. `Apiary.Organisations.sign_up_offer/1`, and the edition's
+  `ApiaryPro.SignUp.offer/0` with its kinds, are what the page offers, and the sign-up
+  asks again before it creates anything. Both settings are closed when unset. A new
+  organisation made by a sign-up starts with no workspace: after the sign-up the person
+  lands on its overview, `/:org`, where its first owner chooses the kind of the first
+  workspace from the cards (`Apiary.Organisations.create_workspace_of_kind/3`). The
+  sign-up page, and both New organisation pages below, are the account's step of the
+  set-up, in the core's frame (`ApiaryWeb.SetUpComponents.frame/1`); the frame lists the
+  account's steps alone (`ApiaryPro.SetUp`): a sign-up and a New organisation have one
+  step, which shows no indicator. An invitation to a client's organisation, while the
+  client has no workspace, lists Invitation alone; one to any other organisation lists
+  Invitation and Your account; one to a workspace lists Your account alone. The
+  workspace's steps are set up inside the workspace. The kind is the core's choice field
+  (`ApiaryProWeb.OrganisationComponents`), and what the page knows is under About this
+  step.
+- **A person who has an account** creates an organisation from the
+  organisation switcher's New organisation entry, `/users/organisations/new`
+  (`ApiaryPro.Organisations.create_organisation/2`, `organisation.create`), of a kind the
+  same settings open, and is its first owner. Every organisation is made by the core's
+  one way, `Apiary.Organisations.build_organisation/2`, with the account as it is instead
+  of a new one: the slug, no workspace, the owner membership, the edition's steps
+  and the entry. `Apiary.Access` answers the kind, before and inside the transaction; with
+  both settings closed the entry is not there. The person is taken to the new
+  organisation's overview, `/:org`, as after a sign-up. The organisation's address is
+  made from its name, and a name whose address another organisation has is refused, with
+  the core's words, not numbered (`taken: :refuse` of
+  `Apiary.Organisations.build_organisation/2`); the same holds for a client and for an
+  instance admin's New organisation.
+- **An owner adds a workspace** from Workspaces in the organisation's settings, or from
+  New on its pages, which lead to the core's type cards, `/:org/workspaces/new`
+  (`ApiaryWeb.WorkspaceSetupLive`), through the core's one way,
+  `Apiary.Organisations.create_workspace/2` (`workspace.create`): the edition's limit of
+  workspaces is unlimited, nothing of the edition's is written for a new workspace
+  (`ApiaryPro.Edition.workspace_created/3`), and the owners and admins reach it as they
+  reach every one, a member once added (`ApiaryPro.WorkspaceAccess`).
+- **Where a thing reaches** is the core's: each Add form of a model provider, a runtime, an
+  integration or a service shows the setting "Available to every workspace in
+  <organisation>", off by default, because the edition answers true to
+  `c:Apiary.Edition.scope_setting?/1` (`ApiaryPro.Edition`). With it on, the thing reaches
+  every workspace of the organisation; with it off, only the workspace the form is in. The
+  core stores the reach and fixes it at the add; the edition stores none. A connection to
+  an adapter reaches every workspace and has no setting.
+- **Invitations, bounded.** Each organisation has a separate allowance of invitations, a
+  client as any other; the one exception is the invitation of a client's first owner
+  (`client.invite_owner`), which is in the client's trail and counts against its
+  operator's allowance (`Apiary.Organisations.insert_invitation/3` with `allowance:`), so
+  creating clients does not multiply what an operator may send. Its entry names the
+  allowance it was counted against, `details.allowance_id`, as `member.invite`'s does,
+  and the row locked while it is counted is the operator's.
+- **Release commands.** The core's `Apiary.Release.grant_instance_admin/2` and
+  `revoke_instance_admin/1` make an account an owner of the instance organisation, and one
+  a member of it. `ApiaryPro.Release.purge_now/2` takes the address of the instance admin
+  who asked for the erasure, and refuses anyone else's; nothing marks or purges the
+  instance organisation.
+
+### Adopting an instance whose organisations have no tenant
+
+The organisations of an instance set up with a release without tenants, such as Qory
+Apiary 0.1.0 or a build of `main` from before them, have no tenant. The first release with
+tenants adopts them: `ApiaryPro.Adoption.run/0`, the edition's `after_migrate/0`,
+which the release runs at boot and from the migrate command. Upgrading is swapping the
+image and restarting. An instance goes back by deploying the previous image; the tables
+the upgrade added stay in place.
+
+- **A tenant for every organisation.** Every organisation without a tenant gets one of
+  the kind `organisation`, with no operator and not suspended: what it was in the core.
+- **The instance organisation.** While no tenant is the instance organisation, the
+  organisation that the earlier release held as its instance organisation, the oldest in
+  use, becomes it, and keeps the kind `organisation`, as every organisation adopted does:
+  its owners ran the instance before, and stay its instance admins. Adopting never makes
+  it an operator; an instance admin may, where the instance has `managed_organisations`.
+  An instance with an instance organisation keeps it.
+- **What a member reached.** In the earlier release every membership reached every
+  workspace of its organisation; here a member reaches the workspaces they were added
+  to. So each membership at member of an organisation adopted by this run is added to
+  each workspace of it, and nobody loses what they reached. An organisation adopted
+  before keeps its workspace access as it is.
+- **The trail.** Each organisation adopted gets one entry, `instance.adopt`, by the
+  instance, in the organisation's trail: its kind, whether it is the instance
+  organisation, and how many rows of workspace access it gave; so does the instance
+  organisation made so when it had its tenant already.
+
+The adoption is idempotent: a second run finds a tenant for every organisation and an
+instance organisation, and changes nothing. It runs in one transaction under an advisory
+lock, so two nodes that boot at once adopt once, and takes its rows in the lock order
+([access.md](access.md), The lock order).
+
+### Operators and clients
+
+An operator provides a harness, its agents, skills, workflows and integrations, that its
+clients run on Qory Apiary; it keeps the harness working and debugs it, and does not
+manage the client's people. The relationship is `tenants.operator_id`, one level deep.
+
+- **Kept by the database.** `operator_kind`, a generated column, is `operator` where
+  `operator_id` is set, and `(operator_id, operator_kind)` is a foreign key to
+  `tenants (organisation_id, kind)`, which a unique index makes a key: a client's operator
+  is an organisation of the kind `operator`, and an operator with clients neither becomes
+  an organisation nor is deleted while one references it. A check keeps `operator_id` on
+  an organisation of the kind `organisation`: an operator is never a client, and a client
+  never becomes an operator. The relationship is set when the client is created, with
+  `operator_since`, the time it was set, which the operator's Clients page shows; it ends
+  when the operator drops it (Transfers, below); nothing else changes it, and a
+  suspension leaves it as it is. The instance organisation, made an operator, may be the
+  operator of clients, and is never a client itself, which a check keeps.
+- **A client owns its people.** It has its owners, admins and members, its
+  invitations, its settings and its security policy, as any organisation. The last-owner
+  rule holds in it as anywhere, and `Apiary.Organisations.sole_owned_organisations/2`
+  counts clients too.
+- **Reach.** The operator's people, at any level there, read everything in each client,
+  in every workspace: runs, terminals, the policy, the trail and the members; they change
+  nothing there, the policy included (the role `reader`). A person of the operator who
+  holds a membership in the client too changes what that membership allows, in the
+  workspaces it reaches. Their level in the operator counts only inside the operator,
+  and a suspended operator's people read its clients no more; an instance admin reads
+  every organisation they reach neither way, as a `reader` too ([access.md](access.md),
+  Reach). The scope carries how (`Apiary.Accounts.Scope`'s `reach`);
+  `Apiary.Organisations.resolve_scope/4` finds it through the edition's `reach/1`, and
+  `Apiary.Access.reload/2` reads it again.
+- **Creating a client.** An owner or an admin of the operator creates it on the
+  operator's Clients page (`ApiaryPro.Operators.create_client/3`), with a name and the
+  email address of its first owner: an organisation with a slug, no workspace, the
+  operator as its operator, no membership, and the invitation of its first owner
+  (`client.invite_owner`), sent to the organisation alone and counted against the
+  operator's allowance. The person who accepts lands on the client's overview, `/:org`,
+  where the kind cards create its first workspace
+  (`Apiary.Organisations.create_workspace_of_kind/3`). While operators run their
+  clients, that person is the client's admin. A client's admins create workspaces as its
+  owners do, with `operator_infrastructure` on or off (`workspace.create`,
+  `ApiaryPro.Access`); an owner of the operator may too while the flag is on, from Set up
+  in the client's row on the Clients page while the client has no workspace, which opens
+  the client's overview. No line says that the operator makes the first workspace. A
+  client's invitation read signed out, on its page and on the sign-up with
+  `?invitation=`, lists Invitation alone while the client has no workspace
+  (`ApiaryPro.SetUp`), with Invitation current and no Your account.
+  That invitation is marked as the operator's by a row of `operator_invitations` beside
+  it, written in the same transaction (`ApiaryPro.Operators.OperatorInvitation`), and its
+  person joins as the owner, while the client has none and is still the operator's; every
+  other invitation makes a member. While a client has no owner, an owner or an admin of
+  the operator invites one again, makes a new link for a pending invitation of one, or
+  revokes one, from the Clients page (`ApiaryPro.Operators.invite_owner/4`,
+  `renew_owner_invitation/4`, `revoke_owner_invitation/3`), and an
+  owner of the operator deletes it (`ApiaryPro.Deletion.delete_client/3`) rather than
+  drops it; the first owner's joining deletes the other pending invitations of an owner.
+  From then on the client's owners and admins invite and manage its people.
+- **The instance actions.** The instance organisation's owners list every organisation on
+  Instance settings' Organisations, `/instance/organisations`, create an organisation or an
+  operator there, whose first owner is the one who creates it, make an organisation that
+  is no client an operator, or an operator without clients an organisation
+  (`ApiaryPro.Operators.change_kind/3`), purge an organisation at once on an erasure
+  request (`ApiaryPro.Deletion.purge_on_request/3`), suspend and activate an account, an
+  organisation or an operator (Suspension of accounts and organisations, below), grant
+  features (Features below the instance, below), and offer the ownership of an
+  organisation whose owners are all suspended to one of its admins as the arbiter
+  (Transfers, below). Of these, the instance organisation is offered a change of kind
+  alone, as any organisation that is no client: made an operator, it takes clients, and
+  made an organisation again once it has none. The rest it is not offered, and refuses:
+  it is never purged, suspended or transferred, and has what the instance has.
+- **Deleting an operator** waits until it has no clients: `Apiary.Deletion` refuses to
+  mark or purge one that still has a client, deleted or not (the edition's refusal,
+  `:has_clients`), which the foreign key would refuse at the purge's end. A client is
+  deleted by one of the client's owners, who cancels its deletion from their organisations
+  page during the grace period.
+
+### Policy requests
+
+The policy is the client's, and the operator asks for what its harness needs
+(`ApiaryPro.PolicyRequests`, with `security`; [access.md](access.md), Policy requests).
+
+- **A request** (`policy_requests`, the operator's rows) holds the changes, rules of a
+  workspace's baseline to add, change or remove and the mode, in the form
+  `Apiary.Policy.requested_changes/1` gives them once it has checked them as a change of
+  the policy is checked, and a note.
+- **The answers.** Each client it goes to answers separately (`policy_request_answers`,
+  the client's rows, one per request and client), `pending` until it is `accepted`,
+  `declined` or `withdrawn`. The answers' `request_id` is the operator's row, so an
+  operator's purge takes the answers of a former client with it; its trail keeps what was
+  answered.
+- **An acceptance** makes the changes through the same writes as any change of the
+  policy, as the person who accepts, in the workspaces they choose, inside one transaction
+  (`Apiary.Policy.lock_workspaces/2`, `Apiary.Policy.apply_requested/3`): every check,
+  lock, render and audit entry of a change of the policy is the same, and one that no
+  longer fits rolls the whole back.
+- **A client that parts.** A client that is dropped or deleted has its pending
+  answers withdrawn in that change (`ApiaryPro.PolicyRequests.withdraw_for_client/4`).
+
+### The organisation's policy
+
+The organisation's policy is the level above its workspaces' security policy
+(`ApiaryPro.OrganisationPolicy`, with `organisation_policy`, which needs `security`;
+[access.md](access.md), The organisation's policy). The core keeps the seam
+(`Apiary.Policy.Above`, `c:Apiary.Edition.above_workspace/1`), resolves and renders the
+level and draws it, saying its name and nothing else of it; the edition keeps the rows and
+makes the writes.
+
+- **The row** (`organisation_policies`, one per organisation, written on the first
+  change) holds the two settings: `enforce_everywhere`, the floor, and `own_allows`, the
+  switch. **The rules** (`organisation_policy_rules`, one per host) are host rules only,
+  allow or deny, an allow held to paths or on every path. Neither has a `workspace_id`: the
+  rows are the organisation's, in the edition's deletion tables before the tenants.
+  `ApiaryPro.OrganisationPolicy.Rule.to_core_rule/1` is a rule as the core resolves it, an
+  unpersisted `Apiary.Policy.Rule` of kind `host`.
+- **The level** (`above_workspace/1`) is answered where the instance has the feature and
+  the organisation has a row: its rules, its floor and its switch as an
+  `Apiary.Policy.Above`. The organisation's grant of the feature only shows or hides its
+  pages: the level holds above every workspace either way.
+  The edition's answer carries the organisation's variables on it (The organisation's
+  variables, below).
+- **A write** (`allow/2`, `deny/2`, `remove_rule/2`, `set_floor/2`, `set_switch/2`) is
+  one transaction in the lock order: the organisation and its operator `FOR SHARE`, then
+  every workspace in use in the order of their ids `FOR NO KEY UPDATE`
+  (`Apiary.Policy.lock_workspaces/2`), the membership and the account, the action asked
+  again, then the row of the organisation's policy. The rules are checked as the core
+  checks a host rule and resolved among themselves; then every workspace is rendered again
+  (`Apiary.Policy.rerender_in/3` with `action: "above_changed"` and `all: true`, so a
+  workspace with no version yet gets its version 1), each holder whose bytes change
+  getting a separate change in the workspace's history naming this change as its `cause`;
+  a render the resolution refuses rolls everything back, said with the workspace's name.
+  One entry on the organisation (`organisation_policy.edit`, `set_floor` or `set_switch`)
+  holds the rules and settings before and after, the kind of change, its subject and
+  `rendered`, the version each workspace was left at, nil where its bytes stayed the same.
+  After the commit, each workspace's pages are told (`Apiary.Policy.announce/1`) and the
+  organisation's (`topic/1`).
+- **A new workspace** is rendered under the level in the transaction that creates it
+  (`c:Apiary.Edition.workspace_created/3`), so a deny of the organisation's holds in it
+  from its first run.
+- **The page** (`ApiaryProWeb.PolicyLive.Organisation`, `/:org/policy`) is the
+  workspace's policy page's language: the core's `ApiaryWeb.PolicyLive.Common` mounted
+  with the edition's writer and base path, the core's rule form and rows' menu, the list
+  pattern of `ApiaryWeb.PolicyLive.RuleList`, and the core's components. Its Workspaces
+  tab and the counts of its settings come from one resolution per workspace
+  (`workspaces_summary/1`); its use column from each workspace's record
+  (`rule_activity/2`, never partial). `ApiaryProWeb.Edition.above_policy_link/1` leads the
+  workspace's policy pages and Network access to it.
+
+### The organisation's variables
+
+The organisation's variables are the level above its workspaces' variables
+(`ApiaryPro.OrganisationVariables`, with `organisation_variables`, which needs `security`
+and `secrets`; [access.md](access.md), The organisation's variables). The core keeps the
+seam (`Apiary.Policy.Above`, its `variables`, which `c:Apiary.Edition.above_workspace/1`
+answers), resolves the level first in every chain (`Apiary.Variables.Resolution`) and
+refuses below it what the level refuses; the edition keeps the rows and makes the writes.
+A run receives only its security policy: the core keeps and resolves variables at every
+level, and the run configuration does not carry them.
+
+- **The rows** (`organisation_variables`) are a name, a value and a lock each, with the
+  core's checks of `variables` copied: a name's rule, a value of one line of at most 4096
+  bytes, and one name per organisation whatever its case (a unique index on
+  `lower(name)`). No `workspace_id`: the rows are the organisation's, in the edition's
+  deletion tables after the organisation's policy.
+  `ApiaryPro.OrganisationVariables.Variable` checks a change as the core's
+  `Apiary.Variables.Variable` does, with its sentences, and `to_core_variable/1` is a row
+  as the core resolves it, an unpersisted `Apiary.Variables.Variable` with the row's id.
+- **The level** (`ApiaryPro.OrganisationVariables.for_above/1`) is the organisation's
+  variables as the core's structs, where the instance has the feature; the organisation's
+  grant of it only shows or hides its pages. The edition's answer
+  (`c:Apiary.Edition.above_workspace/1` in `ApiaryPro.Edition`) is the organisation's
+  policy, where one is in force, with `variables: for_above(workspace)`; where the
+  organisation has variables and no policy in force (none kept, or `organisation_policy`
+  off), a fresh level of variables alone (`ApiaryPro.OrganisationVariables.above_without_policy/1`),
+  `%Apiary.Policy.Above{policy: false}` with the organisation's id, name and slug and its
+  variables, never built from the stored policy's settings: no rules, no floor, and the
+  switch on, which the core requires of such a level, and which its security policy
+  takes as nil; and nil where it has neither.
+  `ApiaryPro.OrganisationPolicy.above_workspace/1` stays the policy alone, for its
+  callers: the link to its page, a new workspace's page and its first render.
+- **A write** (`create/2`, `update/3`, `lock/2`, `unlock/2`, `delete/2`) is one
+  transaction in the lock order, as the organisation's policy's: the organisation and its
+  operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then every workspace of the
+  organisation in use or marked for deletion and still restorable, in the order of their
+  ids `FOR NO KEY UPDATE`, as `Apiary.Policy.lock_workspaces/2` takes those in use, the
+  membership and the account, the action asked again, then an advisory lock of the
+  organisation's variables, then the row changed. A workspace marked for deletion is
+  checked as one in use, since `Apiary.Deletion.restore_workspace/2` checks nothing of its
+  variables; it takes the workspace's row as the write does, so the two take turns. A
+  name beginning `QORY_` is refused (`Apiary.Variables.Denied`). After the write, in its
+  transaction, the variables as they are now are checked alone, at most 128 names
+  and 64 KiB, which the core's check does not see where there is no workspace, and
+  against every workspace locked with the core's `Apiary.Variables.check_above/2`: a
+  workspace or a repository that spells a name otherwise refuses the write, and so does
+  any holder, a workspace or a repository, the level would take over the limits, each
+  said with the workspace's name. A deletion adds no name and is checked only for a
+  locked variable, whose deletion puts back the values its lock set aside below, as an
+  unlock does. A refusal for another spelling says what the write was: saved, locked,
+  unlocked or deleted. One entry on the variable (`organisation_variable.edit`) says the change,
+  the name and `level: "organisation"`, and for a change whether the value changed, never
+  the value; after the commit the organisation's pages are told (`topic/1`).
+- **What is not checked**: the limits and the one spelling are checked on every write at
+  either level, and on nothing else. Where the instance does not have the feature,
+  `for_above/1` is empty, so a workspace's writes are checked against none of the
+  organisation's variables; the instance having the feature again, as when
+  `QORY_FEATURES` changes at a restart, checks nothing, and may leave a workspace with
+  another spelling or over a limit. The organisation's next checked write is refused,
+  naming the workspace, until the workspace changes or deletes its variable.
+- **The counts** (`overrides/1`) are, per name of the organisation's, how many workspaces
+  in use and repositories set it themselves: the values a lock sets aside, or the holders
+  that override the organisation's value; and how many of the repositories' values their
+  workspace's lock of the name sets aside, which an unlock
+  of the organisation's leaves aside, so the page says how many come back. One grouped
+  query.
+
+### The organisation's secrets
+
+The organisation's secrets sit beside its workspaces' secrets, not above them
+(`ApiaryPro.OrganisationSecrets`, with `organisation_variables`, the feature of the
+organisation's variables too, which needs `security` and `secrets`;
+[access.md](access.md), The organisation's secrets). The core keeps them: their rows,
+their values, encrypted, their checks, their audit entries and the sealing of a value to
+a run (`Apiary.Secrets`, the organisation's level). For who may, it calls the edition's
+`c:Apiary.Edition.organisation_secrets/2`, which `ApiaryPro.Edition` implements with
+`ApiaryPro.OrganisationSecrets.may/2`. The edition keeps no row of them. The callback
+stays beside `Apiary.Access`, with the 3 others that [access.md](access.md) lists (The 4
+callbacks beside `Apiary.Access`), because sealing has no person to check.
+
+- **Two levels, side by side.** A workspace gets no secret of the organisation's by its
+  name: nothing is inherited, and nothing is locked. A workspace's secret with the same
+  name is a different secret; names are compared without case among the organisation's
+  secrets, as among a workspace's, and never across the two levels.
+- **Read, write and use** are checked with the person's scope: `Apiary.Access.check/3`
+  checks the action on the organisation, so the core's reload, its locks and a suspension
+  hold as for any action of the organisation's. `ApiaryPro.Access.check/3` returns not
+  found where the organisation does not have the feature (`ApiaryPro.Features.of/2`).
+- **Sealing** is asked with no scope, and the instance alone answers
+  (`Apiary.Features.on?/1`), as it does for the organisation's variables: an
+  organisation that does not have the feature still has its secrets sealed where a link
+  asks for one; where the instance does not have it, none is.
+- **The page** (`ApiaryProWeb.SettingsLive.Secrets`, `/:org/settings/secrets`) is the
+  first tab of the organisation's settings' Secrets and variables section
+  (`ApiaryProWeb.Edition`, `settings_tabs/1`), laid out as the core's workspace Secrets
+  tab (`ApiaryWeb.SecretLive.Index`), with its components and its query
+  (`ApiaryWeb.SecretLive.Query`). It never renders a value, nor keeps one in an assign.
+- **The keys of the organisation's model providers** are rows of the same page, listed by
+  the core (`Apiary.Secrets.list_provider_keys/2`, `:organisation`) with their provider's
+  name, "Model provider key" and a mask on each value: they need `factory` and `secrets`,
+  not `organisation_variables`, and a person who changes them (`provider.write`) or reads
+  the organisation's secrets sees them; a member does not. Change, add a value, rename and
+  delete go through the core's `Apiary.Connections.add_provider_key/3` to
+  `delete_provider_key/3`, under `provider.write`. Without `organisation_variables` the
+  page has these rows alone, no Variables tab and no way to a secret or a variable of the
+  organisation (`ApiaryProWeb.SettingsLive.SecretsAndVariables.shown?/1`).
+
+### Suspension of accounts and organisations
+
+A membership, a person's account and an organisation, an operator among them, are
+suspended and activated again ([access.md](access.md), Suspension): a membership by the
+organisation's owners and admins, as in the core
+(`Apiary.Organisations.suspend_member/2`), an account and an organisation by the
+instance admins (`ApiaryPro.Suspensions`).
+
+- **Where they are kept.** A membership's suspension is `suspended_at` and
+  `suspended_by_id` on `memberships`, the core's; an organisation's is the same two on its
+  row of `tenants`; an account's is a row of `account_suspensions`
+  (`ApiaryPro.Suspensions.AccountSuspension`), which suspending inserts and activating
+  deletes. Activating ends the suspension and nothing else changes: no membership,
+  workspace access, access key, history or managing relationship is removed. The rows
+  they are about stay the ones to lock: a suspension of an account locks its `users` row
+  and inserts or deletes its row of `account_suspensions` under the lock, since the
+  absence of a row cannot be locked, and an organisation's locks its `organisations` row
+  and writes its tenant under it. `Apiary.Access` reads a membership, its organisation and
+  its person's account on every change it allows, and locks them where the change must
+  stay allowed while it is written, then reads the suspensions in a statement after its
+  locks, so one written while it waited is seen. The history is the trail's. A check
+  keeps the suspender with the suspension, and one keeps the instance organisation
+  unsuspended, since it holds the instance admins, who activate everything else.
+- **Enforced in `Apiary.Access`.** The edition narrows the core's queries to the accounts
+  and organisations in use (`ApiaryPro.Suspensions.active_accounts/2`,
+  `active_organisations/2`, the edition's). `reload/2` reads the suspension of the
+  membership, of the account, of the organisation and of a client's operator, and fails
+  closed: a suspended membership or account is no membership, a suspended operator gives
+  no reach into its clients, and a suspended organisation answers `forbidden` to every
+  action but the reads, for every role but the instance's. Under `lock: :share` it holds
+  the organisation, its operator and the account `FOR SHARE`; a suspension locks the row
+  it suspends `FOR NO KEY UPDATE`, in the lock order of [access.md](access.md) (The lock
+  order), so a write that holds the row is written before it, and one after it sees it.
+  `Apiary.Organisations.resolve_scope/4`, the switcher and the organisations page read the
+  same suspensions, so a page never opens what `Apiary.Access` would refuse.
+- **An account** signs in nowhere: the password and a log-in link are checked first, and
+  a suspended account then gets a sentence that names no reason
+  (`ApiaryPro.Suspensions.account_refusal/1`, the edition's `account_refusal/1`); its
+  session tokens are deleted and its open pages disconnected, and a session never finds
+  it, nor gets a password link (`Apiary.Accounts.build_password_link/3`). Its access keys
+  keep working: a key is a machine's, not a person's.
+- **An organisation** answers the server contract as a revoked key does: its keys are
+  refused at verification (`Apiary.AccessKeys.fetch_for_verification/1`). An invitation
+  into it is not found and accepts no one: the acceptance holds the organisation
+  `FOR SHARE` first, which the suspension waits for, or came first and is seen. The
+  instance's jobs, the trail's pruning and a deletion's purge, go on.
+- **No owner who may act.** The last-owner rule counts the owners whose membership and
+  account are neither suspended nor deleted
+  (`Apiary.Organisations.other_active_owner?/1`). Only an instance admin leaves an
+  organisation without one, a client as any other, by suspending its only owner's
+  account; it then runs below the owner level, which
+  `ApiaryPro.Suspensions.owner_suspended?/1` says of the organisation's owners, and
+  its pages tell its people (`ApiaryProWeb.Notices`).
+
+### Transfers
+
+An operator parts from a client by dropping it; an organisation whose owners are all
+suspended gets an owner again by the arbiter's offer and its acceptance
+(`ApiaryPro.Transfers`; [access.md](access.md), A client's drop and The instance
+actions).
+
+- **`transfers`** holds the pending offers, organisation-keyed by `organisation_id`,
+  which is unique: one pending offer per organisation, deleted when it is accepted or
+  withdrawn, so the trail keeps what happened. The arbiter's is of the kind `to_admin`,
+  always `arbitrated` and with its `reason`, and `recipient_id`, the admin, under a
+  composite key against their membership, so their removal takes the offer with it.
+  Checks keep the fields of each kind together. The table is in the edition's deletion
+  tables (`ApiaryPro.Deletion.Tables`).
+- **Dropping.** An owner of the operator drops a client (`client.drop`), at once and
+  with no offer, the client's name typed to confirm, which `ApiaryPro.Transfers` checks:
+  its tenant's `operator_id` and `operator_since` are set to nil, the operator's grants
+  to it are written out so it follows the instance, and one entry goes into the client's
+  trail and one into the operator's. Its people, workspaces and policy stay as they are.
+- **The arbiter.** An instance admin's offer of the ownership of an organisation whose
+  owners are all suspended, a client as any other, replaces the one pending, which its
+  entry names. Accepting it makes the admin an owner and changes no operator: a client
+  stays its operator's. It is never for the instance organisation, nor for a suspended
+  organisation, and it lapses once an owner may act again, and is refused at acceptance
+  then too. An owner who may act again takes back what the arbiter offered (the edition's
+  `membership_changed/5`, `ApiaryPro.Transfers.membership_activated/1`).
+- **Race safety.** Every write takes its locks in the lock order of
+  [access.md](access.md) (The lock order). A drop locks the client `FOR NO KEY UPDATE`,
+  then its operator `FOR SHARE`; the arbiter's acceptance holds the organisation
+  `FOR SHARE`, locks its owners, then the membership and account of the person who
+  accepts, then the offer; a person the offer is not for, and an organisation with no
+  offer, get not found from a read without a lock and take none of these. So a write in
+  flight, which has the organisation `FOR SHARE`, is waited for; a
+  change of the operator's kind, its suspension and a grant to it wait or are seen; and
+  an entry, which holds the organisation only `FOR KEY SHARE`, never waits on an
+  acceptance. A deadlock Postgres breaks all the same is taken again, and a page is told
+  to try again, never the database's error.
+
+### Features below the instance
+
+The instance has its features (`QORY_FEATURES`, `Apiary.Features`), and the edition adds
+three: `managed_organisations`, operators and their clients, and what an operator does for
+them, which needs `observability`; `organisation_policy`, the organisation's policy above
+its workspaces', which needs `security`; and `organisation_variables`, the organisation's
+secrets beside its workspaces' and its variables above them, which needs `security` and
+`secrets`. Below the instance the chain is instance, operator, client, and each link only
+narrows the one above: `ApiaryPro.Features.of/2` answers what an organisation is shown,
+and `ApiaryPro.Features.of_all/1` the same for each of a list; the edition's `hidden/1`
+(`ApiaryPro.Features.hidden/1`) answers what a person is not shown in it, which the core
+keeps on the person's scope; nothing else does. A workspace is shown what its organisation
+is shown.
+
+- **`feature_grants`**, one row per organisation and feature, under a unique index. A
+  row says a feature is `granted`, to an operator or a client, or taken away, from an
+  organisation with no operator. The table is in the edition's
+  deletion tables (`ApiaryPro.Deletion.Tables`). `ApiaryPro.Grants` writes it, and nothing
+  else.
+- **Opt-in below an operator.** An operator has what an instance admin granted it, of the
+  instance's; a client what its operator granted it, of the operator's, never
+  `managed_organisations`. A feature a grant can name, added to the instance later,
+  reaches neither until it is granted. The features no grant can name, the core's
+  features but `observability` and `security`, such as `secrets`, are shown to both
+  wherever the instance has them, as to any organisation: only the instance switches
+  them. **Opt-out without one.** An organisation with no operator has what the instance
+  has but what an instance admin took away, and gains what the instance gains. The
+  instance organisation has what the instance has, whatever its kind. **A workspace** has
+  what its organisation has.
+- **Clipped where it is read.** A grant above what the granter has is refused at write;
+  when a link narrows later, what is below it is clipped by `of/2`, with no rewrite. A
+  feature is kept only with the features it needs.
+- **Where an organisation sits.** Its grants are written out in the transaction that
+  moves it: made an operator, it is granted what it had, and from then only a grant
+  changes it; made an organisation again, it keeps what it had, opt-out; a new operator
+  is granted what the instance has; a new client what the operator has; a client that
+  is dropped follows the instance.
+- **Absent, as off on the instance.** Every surface a person meets asks
+  `Apiary.Features.visible?/2` with their scope, as in the core, so what an organisation
+  is not shown is absent for its people there, and in its workspaces, as a feature the
+  instance lacks is. Its machines and runs are served in full, as the instance's features
+  say.
+- **Pages.** Instance settings › Organisations grants operators and organisations with no operator their
+  features; an operator's Clients page its clients. They offer only the
+  features built (`Apiary.Features.built/0`); one not built yet keeps what its grants
+  say.
+- **Race safety.** A write locks what it narrows `FOR NO KEY UPDATE`, an operator's
+  clients and then the operator, in the lock order of
+  [access.md](access.md) (The lock order); a change that asked `Apiary.Access` holds them
+  `FOR SHARE` while it is written and reads the features after its locks, so one of the
+  two waits for the other and the second sees the first.
+
+### The audit trail
+
+The edition's changes are audited as the core's are, each in the trail of the organisation
+it changes, written with the change (the core's section The audit trail, in this file).
+What the edition adds:
+
+- **What is audited.** Creating an organisation later by a person who has an account
+  (`organisation.create`, `details.sign_up` false); adding a member to a workspace and
+  removing them from one (`workspace_access.add`, `workspace_access.remove`), and the
+  workspace a person made a member is kept in, a `workspace_access.add` with the reason
+  `demoted`; creating a client (`client.create`, the first entry of the client's trail)
+  and inviting its first owner (`client.invite_owner`, in the client's trail); the
+  instance actions that change something (`instance.create_organisation`,
+  `instance.create_operator` and `instance.change_kind`, each in the trail of the
+  organisation created or changed, and `instance.purge_organisation`, in the instance
+  organisation's, since the purged organisation's trail goes with it); who may sign up
+  (`instance.change_sign_up`, in the instance organisation's trail, with each setting that
+  changed, before and after); suspending and
+  activating an account (`instance.suspend_account`, `instance.activate_account`, in the
+  instance organisation's trail, naming the account by id) and an organisation or an
+  operator (`instance.suspend_organisation`, `instance.activate_organisation`, in the
+  trail of the organisation suspended, with no address or client); the arbiter's offer of
+  an organisation's ownership (`instance.transfer`, in the organisation offered, with its
+  reason), its lapse and its acceptance (`organisation.withdraw_transfer` and
+  `organisation.accept_transfer`, in it); a client's drop (`client.drop`, in the client
+  and in the operator);
+  an operator's policy requests (`policy_request.send` in the operator and, as each
+  client's receipt, in the client; `policy_request.accept`, `policy_request.decline` and
+  `policy_request.withdraw` in the client and in the operator, a withdrawal of a client
+  that parted with the reason); the grants of features (`instance.grant_features`,
+  `client.grant_features`); the organisation's policy
+  (`organisation_policy.edit`, `set_floor`, `set_switch`, on the organisation), its
+  variables (`organisation_variable.edit`, on the variable, by name and never by value)
+  and its secrets, which the core writes as a workspace's (`secret.write`, on the secret,
+  by name and value IDs and never by value, with `details.level` `organisation`);
+  and each organisation's adoption (`instance.adopt`). `Apiary.AuditCase` makes each audited change, the core's
+  and the edition's (`ApiaryPro.AuditChanges`), in `test/apiary_pro/audit_test.exs`.
+- **Who reads it.** Beside the owners and the admins, a client's operator's people and
+  the instance admins read an organisation's audit log (`audit.read`, Audit log in the
+  organisation's sidebar), as readers. The edition's actions are said in words by
+  `ApiaryProWeb.ActivityDescriber`, which the audit log asks before the core's.
+
+### Deletion
+
+The edition's part in deleting and purging organisations is `ApiaryPro.Deletion`, over the
+core's `Apiary.Deletion`.
+
+- **What it refuses** (`ApiaryPro.Deletion.refusal/2`, the edition's
+  `deletion_refusal/2`), asked on the locked row after the core's refusals: the
+  instance organisation (`:instance_organisation`), which holds the instance admins, and
+  an operator that still has clients (`:has_clients`): each is deleted or dropped first,
+  and the database keeps the reference until then.
+- **Whom it tells** (`ApiaryPro.Deletion.changed/4`, the edition's `deletion_changed/4`):
+  a client's operator reads it through the operator, so the operator's people hear of its
+  marking and its cancelling, and of its workspaces', as the client's members do.
+- **An operator's deleting of a client** it created and nobody else is in
+  (`ApiaryPro.Deletion.delete_client/3`, `client.delete`): marked and purged as any
+  organisation, its pending invitations deleted at once, its entry in the operator's
+  trail.
+- **A purge at once.** `ApiaryPro.Release.purge_now/2`, and an instance admin on
+  Instance settings › Organisations (`ApiaryPro.Deletion.purge_on_request/3`), purge an organisation at once,
+  for an erasure request an instance admin received, over the core's erasure steps
+  (`Apiary.Deletion.purge_now/3`, `lock_for_erasure/1`, `mark_for_erasure/2`,
+  `purge_marked/2`), and record on its row who asked and why, which the instance's line
+  keeps whichever run finishes the purge.
+- **The edition's tables in the walk** (`ApiaryPro.Deletion.Tables`), purged before the
+  core's: a policy request's answers before the request; the transfers, the feature grants
+  and the workspace access before the core's memberships and workspaces they point to; an
+  operator's invitations of its clients' first owners before the core's invitations; and
+  the people locks, then the tenants, last. The rows of other organisations that name the
+  one purged go with its row by their keys: an operator's invitations into its former
+  clients, by `operator_invitations.operator_id`.
+  `test/apiary_pro/deletion/tables_test.exs` compares the walk with the schema.

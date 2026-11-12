@@ -129,6 +129,18 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     @root |> Path.join(path) |> File.read!() |> DocsAll.split!(path) |> DocsAll.join(features)
   end
 
+  # The guides `mix docs.all` leaves out of a tree with `features`: the extras of each
+  # feature the tree lacks.
+  defp left_out(features) do
+    docs = Mix.Project.config()[:docs]
+    docs = if is_function(docs, 0), do: docs.(), else: docs
+
+    for {feature, owns} <- Keyword.fetch!(docs, :features),
+        feature != :all and feature not in features,
+        path <- extra_paths(Keyword.get(owns, :extras, [])),
+        do: path
+  end
+
   # The paths of the documentation's extras, each a path or `{path, options}`.
   defp extra_paths(extras) do
     Enum.map(extras, fn
@@ -334,8 +346,8 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       end
     end
 
-    # The documentation an instance without the feature is served, and the README and
-    # EDITIONS.md beside it, with the markers resolved as `mix docs.all` resolves them.
+    # The documentation an instance without the feature is served, and the README beside
+    # it, with the markers resolved as `mix docs.all` resolves them.
     test "say nothing that gives it away, in any guide, the release notes or the READMEs" do
       giveaways =
         ~r/stored.secret|stored value|allow_secrets|secret_values|workspace_data_keys|INTEGRATION_URL_SOURCES|Apiary\.Secrets|Apiary\.Connections|Secrets and variables/i
@@ -344,11 +356,12 @@ defmodule ApiaryWeb.SecretsFeatureTest do
         for path <- Path.wildcard(Path.join(@root, "guides/*.md")),
             do: Path.relative_to(path, @root)
 
-      files = guides ++ ["CHANGELOG.md", "README.md", "EDITIONS.md"]
+      files = guides ++ ["CHANGELOG.md", "README.md"]
 
       caught =
         for path <- files,
             features <- [@off, [:observability]],
+            path not in left_out(features),
             text = resolved(path, features),
             [word | _] <- Regex.scan(giveaways, text),
             uniq: true,

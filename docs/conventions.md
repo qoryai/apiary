@@ -77,15 +77,16 @@ result, and `mix test` exits 0. A row of `ApiaryWeb.RefusalsCase` takes
 `needs:` in the same way. The core's suite checks `Apiary.TestSetup.unhooked/0` for such modules.
 
 CI runs every test once, with every feature on, and runs only the tests tagged
-`@tag :feature_sets` again, under `QORY_FEATURES=observability,security` and
+`@tag :feature_sets` again, under `QORY_FEATURES=observability,security`,
+`QORY_FEATURES=observability,security,managed_organisations` and
 `QORY_FEATURES=observability` (`mix test --only feature_sets`). Tag a test `:feature_sets`
 (or `@describetag`, `@moduletag`) when it reads the instance's features, in its body, a
 `setup` or a helper: `Apiary.Features.on?/1`, `enabled/0`, `visible?/2` or `hidden_of/1`,
 `ApiaryWeb.Features.on?/1`, `Apiary.TestSetup.off/0`, or `Application.get_env/2`,
 `fetch_env/2` or `fetch_env!/2` of `:features`. A test tagged `with_features:` runs once,
 in the run with every feature on, under the features it lists, and takes no tag. So does a
-test whose `needs:` lists a feature of the guard's `@once`, which both other runs leave
-off. No CI run uses `all`: the suite's registry address (`config/test.exs`) makes `all`
+test whose `needs:` lists a feature of the guard's `@once`, which the three other runs
+leave off. No CI run uses `all`: the suite's registry address (`config/test.exs`) makes `all`
 every feature, the set of the first run. The guard does not count a `put_env` of the
 features or `without_registry` as setting them, because `without_registry` keeps the set's
 other features: a test that reads them after either takes the tag. The guard
@@ -95,8 +96,9 @@ file that reads nothing; for a test with both `with_features:` and the tag; and 
 helper of `test/support` that reads the features and is not on its list
 (`Apiary.FeatureSetsScan`). The guard follows calls within a file only: a reviewer checks a
 test that reaches a listed helper or a module of `lib/`. Before you report a chunk done,
-run the full suite locally under all 3 sets: `QORY_FEATURES` blank,
-`observability,security` and `observability`.
+run the full suite locally under all 4 sets: `QORY_FEATURES` blank,
+`observability,security`, `observability,security,managed_organisations` and
+`observability`.
 
 A template that makes many people and places for each of many tests may make them once
 for its module (`cast: :module` of `ApiaryWeb.RefusalsCase`, on
@@ -187,3 +189,122 @@ The product surface's sentences are in Gettext catalogues ([lingo.md](lingo.md))
 core's in `priv/gettext`, which `mix gettext.extract --merge` updates. An edition
 translates its sentences with a separate backend, into separate catalogues
 (`c:ApiaryWeb.Edition.gettext_backend/0`).
+
+## Conventions of the edition
+
+The code under `lib/apiary_pro` and `lib/apiary_pro_web` is the edition that the
+configuration names (`Apiary.Edition`, `ApiaryWeb.Edition`). In this section, the core
+means the rest of the code. The edition follows the core's conventions for migrations,
+tests, doc comments and the vocabulary, in the sections before this one; this section
+adds what the edition changes or adds to them. How the edition is laid out is in
+[architecture.md](architecture.md), and who may do what in [access.md](access.md).
+
+### Vocabulary
+
+The core's words, with the same rules: an organisation is never a team, a tenant or an
+account; a workspace is never a team, a project or a hive; an access key is never an API
+key or a token; a secret is never a password. The edition adds these:
+
+- **Tenant** is a row of `tenants` (`ApiaryPro.Tenants.Tenant`): an organisation's place
+  on the instance, its kind, its operator, whether it is the instance organisation, and
+  its suspension. It is never a synonym for organisation. "The tenant's kind" is right; "a
+  tenant signs up" is wrong: an organisation signs up and gets a tenant row, written in
+  the transaction that creates it.
+- **Kind** is what a tenant says an organisation is: an ordinary `organisation` or an
+  `operator`.
+- **Operator** is an organisation of the kind `operator`, which provides a harness its
+  clients run. **Client** is an organisation whose tenant names an operator. In the
+  edition's prose a client is always this; the program that sends a request is "the
+  request's client" or the browser.
+- **Instance organisation** is the organisation the instance's first sign-up, its set-up,
+  creates, as the core names it too: of the kind `operator` where the instance has
+  `managed_organisations`, `organisation` otherwise, and of either afterwards, as the
+  instance admins change it. Its owners are the **instance admins**.
+- **Workspace access** is a member's reach into one workspace of their organisation, a row
+  of `workspace_access`. An owner and an admin need none.
+- **Reader** is the role of a person who reads an organisation without a membership
+  there: the operator's people in its clients, and the instance admins anywhere.
+
+The organisation keys are the core's: every edition table with `organisation_id` carries
+it first, with `workspace_id` beside it and the composite key against `workspaces` for a
+workspace's data, and goes into `ApiaryPro.Deletion.Tables` in delete order.
+
+### Migrations
+
+The edition's 19 migrations are in `priv/repo/migrations`, with the core's, under the file
+names they had before the move, so a database that recorded them runs none of them again.
+Ecto runs them with the core's as one sequence by version.
+`test/apiary_pro/migration_versions_test.exs` checks that no two migrations share a
+version and that the edition's keep their names.
+
+- **A migration of the edition creates, changes and drops the edition's tables only.** It
+  never alters a core table. It may add a foreign key from a table of the edition to a key
+  of the core's: the unique keys `workspaces (organisation_id, id)` and `memberships
+  (organisation_id, user_id)`, and the ids of `organisations`, `users` and `invitations`,
+  which are never reused.
+- **The core's rules hold**: one migration per change, every migration reverses, and the
+  organisation keys come first.
+- **After the migrations**, the release runs the edition's step
+  (`ApiaryPro.Adoption.run/0`, the edition's `after_migrate/0`), which adopts the
+  organisations without a tenant, and so does `ecto.migrate` in dev.
+
+### Tests
+
+The edition's tests are under `test/apiary_pro/` for the contexts and
+`test/apiary_pro_web/` for the pages, and their support under `test/support/` and
+`test/support/pro/`. One `mix test` runs them with the core's, against one database. The
+edition's test kit (`ApiaryPro.EditionKit`, which `config/test.exs` names for the core's
+`Apiary.EditionKit`) answers what the core's test support asks of the edition: the
+edition's rows of the access test, how the instance organisation is hidden for a test of
+the set-up, and what the edition keeps that names an account a race test deletes.
+
+The suite's instance organisation is made once, by the set-up of the suite's database
+(`Apiary.Setup.set_up/3`), of the kind the features the suite runs with give it: an
+operator with `managed_organisations`, an organisation without. A test that needs it an
+operator makes it one inside its sandbox
+(`ApiaryPro.OperatorsFixtures.make_instance_organisation_an_operator/1`); a test of the
+set-up hides it and sets the instance up under the features it names
+(`@tag with_features:`), so both kinds are tested whatever the suite runs with.
+
+The core's case templates are run again with the edition's data beside the core's: the
+access rows (`ApiaryPro.AccessRows`), the audited changes (`ApiaryPro.AuditChanges`), the
+refusals of the pages (`ApiaryProWeb.RefusalsRows`), the edition's router's pages and
+their features, the reserved names and the tables a purge walks. The edition's rows cover
+every action, the core's among them. The core's audited changes and refusals are made
+again under the edition, so a change of the edition that changes a core answer by mistake
+fails a test of the edition's. The access rows are checked for a row per action only;
+[access.md](access.md), Its actions and rows, lists the files that test the edition's
+rules of the answer.
+
+A test of the edition's behaviour lives under the edition's folders. A race test of the
+edition's (`ApiaryPro.Races`) follows the core's rules for races: outside the sandbox,
+`async: false`, its order forced in the database.
+
+**The feature sets.** A test reads the instance's features when it calls the core's reads
+(`Apiary.Features.on?/1`, `enabled/0`, `visible?/2` and `hidden_of/1`,
+`Apiary.TestSetup.off/0`) or the edition's (`ApiaryPro.Features.of/1`,
+`of_organisation/1`, `of_all/1` and `hidden/1`, and `ApiaryPro.Grants.offered/1` and
+`shown/1`). Such a test takes the tag `:feature_sets`, as the core's section Tests says.
+`test/apiary/feature_sets_tag_test.exs` is the guard for both: it runs
+`Apiary.FeatureSetsScan` over `test/`, with the edition's reads among the calls it looks
+for.
+
+### Configuration, assets and documentation
+
+- **Configuration.** `config/config.exs` names the edition (`config :apiary, :edition`):
+  `ApiaryPro.Edition`, `ApiaryProWeb.Edition` and `ApiaryProWeb.Router`.
+  `config/runtime.exs` reads the sign-up settings, and `config/test.exs` sets the suite's
+  sign-up values and the edition's test kit.
+- **Assets.** The edition's style rules are the end of `assets/css/app.css`, from the
+  comment that starts "The edition's rules". `test/apiary_pro_web/css_classes_test.exs`
+  holds them to classes that the rules before them do not define.
+- **Gettext.** The edition's sentences are translated with `ApiaryProWeb.Gettext`, in the
+  catalogues of `priv/gettext_pro`, which `mix gettext.extract --merge` updates with the
+  core's.
+- **Documentation.** `mix docs` builds the edition's guides and modules with the core's.
+- **Third-party notices.** `mix apiary_pro.notices` writes `THIRD_PARTY_NOTICES` from the
+  lock and Qory Apiary's licence and notice.
+
+Two tests keep the boundary: `test/apiary/edition_boundary_test.exs` and
+`test/apiary/edition_words_test.exs`, which hold the core's files to naming no module of
+the edition.

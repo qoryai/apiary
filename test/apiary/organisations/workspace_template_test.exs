@@ -900,7 +900,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
                |> Ecto.Multi.insert(:user, user)
                |> Organisations.build_organisation(
                  name: "Acme Types",
-                 how: :test,
+                 how: {:kind, :organisation},
                  scope: scope
                )
                |> Repo.transaction()

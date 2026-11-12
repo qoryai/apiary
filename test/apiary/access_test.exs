@@ -548,19 +548,21 @@ defmodule Apiary.AccessTest do
       %{owner: owner, second: workspace_fixture(organisation, "Platform"), admin: admin}
     end
 
-    test "a member the edition does not let reach a workspace finds nothing of it", ctx do
-      %{user: member} = member_fixture(ctx.owner, :member)
-      there = workspace_scope(member, ctx.second)
+    test "a member finds nothing of a workspace until they are added to it", ctx do
+      %{user: member, scope: main, membership: membership} = member_fixture(ctx.owner, :member)
+      # The member's scope moved to a workspace they were not added to.
+      there = %{main | workspace: ctx.second}
       admin = workspace_scope(ctx.admin, ctx.second)
 
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.MembersReachNamed)
-      Apiary.EditionStubs.MembersReachNamed.put([ctx.owner.workspace.id])
-
+      assert workspace_scope(member, ctx.second) == nil
       assert Access.authorize(there, :"node.read", ctx.second) == {:error, :not_found}
       assert Access.authorize(admin, :"node.read", ctx.second) == :ok
 
-      Apiary.EditionStubs.MembersReachNamed.put([ctx.second.id])
+      {:ok, _} = ApiaryPro.WorkspaceAccess.add(ctx.owner, membership.id, ctx.second.id)
       assert Access.authorize(there, :"node.read", ctx.second) == :ok
+
+      assert Access.authorize(workspace_scope(member, ctx.second), :"node.read", ctx.second) ==
+               :ok
     end
 
     test "an owner and an admin reach every workspace", ctx do
@@ -837,12 +839,15 @@ defmodule Apiary.AccessTest do
     test "a held scope keeps the id after another organisation becomes the instance's", ctx do
       organisation = ctx.owner.organisation
 
-      # The core's instance organisation is the oldest in use (`Apiary.Edition.Core`).
-      set_inserted_at(organisation, DateTime.add(ctx.instance.inserted_at, -1, :day))
+      # The owner's organisation made the instance's, by its tenant's flag, then the
+      # suite's again.
+      Apiary.EditionKit.module().hide_instance_organisation(ctx.instance.id)
+      Apiary.EditionKit.show_instance_organisation(organisation.id)
       {:ok, held} = Access.instance_scope(ctx.owner)
       assert held.instance_organisation_id == organisation.id
 
-      set_inserted_at(organisation, organisation.inserted_at)
+      Apiary.EditionKit.module().hide_instance_organisation(organisation.id)
+      Apiary.EditionKit.show_instance_organisation(ctx.instance.id)
       assert Apiary.Edition.instance_organisation_id() == ctx.instance.id
 
       assert Access.can?(held, :"instance.read", held.organisation)
@@ -1177,13 +1182,6 @@ defmodule Apiary.AccessTest do
       assert Access.authorize(ctx.author.scope, :"work_item.comment_delete", theirs) ==
                {:error, :not_found}
     end
-  end
-
-  defp set_inserted_at(%Organisation{id: id}, inserted_at) do
-    {1, _} =
-      Apiary.Repo.update_all(from(o in Organisation, where: o.id == ^id),
-        set: [inserted_at: inserted_at]
-      )
   end
 
   # The queries this process runs during `fun`, counted on the repo's telemetry event.

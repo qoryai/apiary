@@ -69,6 +69,21 @@ config :apiary, Apiary.InstanceConfig.Cache, enabled: false
 # reads it inside the test's database sandbox.
 config :apiary, Apiary.SupportAddress.Cache, enabled: false
 
+# A later sign-up may create an organisation, as SIGNUP_ORGANISATIONS set to open allows
+# (`Apiary.Edition.sign_up_open?/0`): the suite's instance is set up already
+# (test/test_helper.exs), and most tests sign a fresh owner up. The other sign-up settings
+# keep their defaults, and a test of one sets it itself; a test that opens other kinds
+# unsets the variable and saves the row (`ApiaryPro.SignUpFixtures`).
+config :apiary, :sign_up_organisations_setting, "open"
+
+# Who may sign up is read from its row on each call, as a node without its copy reads it
+# (`ApiaryPro.SignUp.Cache`), so a test that saves it sees it at once, in its sandbox.
+config :apiary, ApiaryPro.SignUp.Cache, enabled: false
+
+# What the test support asks of the edition the suite runs with (`Apiary.EditionKit`):
+# the kit of the configured edition, `ApiaryPro.EditionKit`.
+config :apiary, Apiary.EditionKit, module: ApiaryPro.EditionKit
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

@@ -207,11 +207,13 @@ defmodule Apiary.Runs.PreparationTest do
       refute Apiary.Access.instance_admin?(ctx.scope)
       assert %{started_as: nil} = Preparation.read(ctx.scope, run).machine
 
-      # The instance's organisation hidden, the oldest one left, the reader's, is the
-      # instance's, and its owner an instance admin.
+      # The reader's organisation made the instance's in place of the suite's, and its
+      # owner an instance admin.
       Apiary.EditionKit.module().hide_instance_organisation(
         Apiary.Edition.instance_organisation_id()
       )
+
+      Apiary.EditionKit.show_instance_organisation(ctx.scope.organisation.id)
 
       assert Apiary.Edition.instance_organisation_id() == ctx.scope.organisation.id
       assert Apiary.Access.instance_admin?(ctx.scope)
@@ -1162,10 +1164,13 @@ defmodule Apiary.Runs.PreparationTest do
       preparation = Preparation.read(ctx.scope, run)
       assert cause.(preparation) == what <> " Contact support with run #{run.public_id}."
 
-      # An instance admin: the machine log, under Start the machine.
+      # An instance admin: the machine log, under Start the machine. The reader's
+      # organisation made the instance's in place of the suite's.
       Apiary.EditionKit.module().hide_instance_organisation(
         Apiary.Edition.instance_organisation_id()
       )
+
+      Apiary.EditionKit.show_instance_organisation(ctx.scope.organisation.id)
 
       assert Apiary.Access.instance_admin?(ctx.scope)
       preparation = Preparation.read(ctx.scope, run)

@@ -12,6 +12,43 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- Qory Apiary is one product, under the Apache License 2.0: every instance has what
+  was available only under a separate licence before.
+  - An instance has any number of organisations, and an organisation any number of
+    workspaces: a second workspace no longer stops at “This instance allows one
+    workspace per organisation”.
+  - Owners and admins reach every workspace of their organisation. A member reaches the
+    workspaces they were invited to or added to. An owner or an admin adds a member to
+    a workspace, or removes them from one, in **Organisation settings › People**, on
+    the member's **Workspaces** page.
+  - **Instance settings › Organisations** lists every organisation of the instance, and
+    **Instance settings › Accounts** every account, for the instance admins.
+  - **Instance settings › Configuration** has **Sign-up**: whether someone without an
+    invitation may sign up and create an organisation or an operator. Both are closed
+    by default. `SIGNUP_ORGANISATIONS` and `SIGNUP_OPERATORS`, set to `open` or
+    `closed`, override the page.
+<!-- feature: managed_organisations -->
+  - Operators and their **Clients**, with the feature `managed_organisations`: an
+    operator creates client organisations and reads them, and asks them for changes to
+    their security policy. Where the feature is on, the organisation that a new
+    instance is set up with is an operator.
+<!-- /feature -->
+<!-- feature: organisation_policy -->
+  - The organisation's **Policy**, with the feature `organisation_policy`: rules that
+    every workspace of the organisation follows, above each workspace's security
+    policy.
+<!-- /feature -->
+<!-- feature: organisation_variables -->
+  - The organisation's secrets and variables, in **Organisation settings › Secrets and
+    variables**, with the feature `organisation_variables`: values that every workspace
+    of the organisation shares.
+<!-- /feature -->
+
+  The three features are on by default, as every other feature but `registry`:
+  `QORY_FEATURES` unset, empty, `all` or `all-…` turns them on.
+  `managed_organisations` needs `observability`, `organisation_policy` needs `security`,
+  and `organisation_variables` needs `security` and `secrets`. The guides at `/docs`
+  describe each one, and the Instance admins guide describes Instance settings.
 - A run's version of the artifact type `mockup` with a `screens.json` is a mockup of
   HTML pages: the version's page shows it under “Mockup”, with the start screen in a
   frame and the list of screens beside it, each a link that opens its screen in the
@@ -101,10 +138,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   an old address after a rename, shows inside the app's layout, with status 404: “You
   have no workspace at this address in Acme. Its address changes when the workspace is
   renamed.”, then the workspaces of Acme the person can open, as links. New workspace for
-  a person who may not create one shows, the same way and with no kind cards, the
-  Community limit's line where the organisation has its one workspace, else who creates
-  workspaces. An organisation the person does not reach still shows the plain “Not
-  Found”.
+  a person who may not create one shows, the same way and with no kind cards, the line
+  on the workspace limit where the organisation has as many workspaces as the instance
+  allows, else who creates workspaces. An organisation the person does not reach still
+  shows the plain “Not Found”.
 - Organisation settings › Workspaces shows each workspace's address, `/acme/payments`,
   beside its name; with no workspace, it shows “Acme has no workspace yet.” and a link
   to the overview, in place of the empty list.
@@ -259,11 +296,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace, what you connect, and **Choose**. This release has one type, **Software
   factory**: “Agents change code in your repositories. You connect: where work comes
   from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
-  adds a workspace where the edition allows another. Where the organisation has as many
-  workspaces as the edition allows, that page is headed “New workspace” and shows, in an
-  information notice in place of the cards, “Qory Apiary Community allows one workspace
-  per organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates the
-  first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
+  adds a workspace where the instance allows another. Where the organisation has as many
+  workspaces as the instance allows, that page is headed “New workspace” and shows, in an
+  information notice in place of the cards, “This instance allows one workspace per
+  organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates
+  the first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
   workspace stores the type it was made from.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
@@ -1161,6 +1198,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its settings no longer fit this version of Qory Apiary.”
 <!-- /feature -->
 
+- The product has one name, Qory Apiary. `EDITIONS.md` and the names of the editions
+  are gone from the repository and the documentation.
 - `QORY_FEATURES` unset, empty, `all` or `all-…` turns on every feature: `secrets`,
   `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
   default, and the private image registry's feature, `registry`, is on where
@@ -1848,6 +1887,45 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Upgrading
 
+- On an instance without the 19 migrations (Migrations, below), such as one on Qory
+  Apiary 0.1.0, they run at the first boot after the upgrade, then every organisation
+  is adopted, in one transaction that is safe to run again. Each organisation is an
+  ordinary organisation, not an operator; the organisation the instance was set up with
+  is the instance organisation, so its owners stay the instance admins. Each member is
+  added to each workspace of their organisation, so nobody loses a workspace they
+  reached. Each organisation's Activity has one entry of the adoption, by the instance.
+  Sign-up stays closed until an instance admin opens it or `SIGNUP_ORGANISATIONS` or
+  `SIGNUP_OPERATORS` opens it. After the upgrade, a member reaches a new workspace only
+  when they are added to it.
+- An install that ran the separately licensed image has the 19 migrations and its
+  organisations adopted already: no migration of them runs, and the adoption changes
+  nothing. Set `APIARY_IMAGE` in `.env` to `ghcr.io/qoryai/apiary`, its default.
+- To go back, deploy the previous image. The 15 tables the 19 migrations add stay in
+  place; do not roll the 19 migrations back (Upgrading, Rolling back). On an image
+  without them, these stop taking effect until the next upgrade:
+  - suspensions of accounts and organisations: a suspended account signs in again, and
+    a suspended organisation is no longer read-only;
+  - workspace access: each member reaches every workspace of their organisation again;
+  <!-- feature: organisation_policy -->
+  - each organisation's policy;
+  <!-- /feature -->
+  <!-- feature: organisation_variables -->
+  - each organisation's secrets and variables;
+  <!-- /feature -->
+  <!-- feature: managed_organisations -->
+  - the relationships between operators and their clients;
+  <!-- /feature -->
+  - the features an instance admin took away from an organisation or granted to it:
+    every organisation has every feature the instance has;
+  - sign-up beyond the first and more than one workspace per organisation: nobody signs
+    up without an invitation, an organisation with a workspace creates no other, and the
+    console offers gateways only at a workspace. Organisations and workspaces that exist
+    stay.
+
+  A member added to an adopted organisation, and a workspace created in one, while the
+  previous image runs get no workspace access at the next upgrade, because the adoption
+  covers only organisations it has not adopted. That member reaches no workspace, and
+  the members of that workspace do not reach it, until they are added to it.
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`
@@ -1867,6 +1945,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- 19 migrations, versions 20260927100100 to 20261025170000 in
+  `priv/repo/migrations`, which run although their versions are older than migrations
+  an instance has run already. They only add 15 tables, with their foreign keys to
+  `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
+  existing table. Among them are `workspace_access`, `feature_grants`,
+  `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: factory, secrets -->
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no

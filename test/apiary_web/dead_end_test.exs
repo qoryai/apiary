@@ -89,29 +89,9 @@ defmodule ApiaryWeb.DeadEndTest do
   end
 
   describe "New workspace for a person workspace.create does not allow" do
-    test "at the limit shows everyone the limit's line, not who creates", %{conn: conn} do
-      %{organisation: organisation} = sign_up_fixture()
-      # The core's edition allows one workspace an organisation, and it has it.
-      assert Apiary.Edition.Core.limits().workspaces == 1
-
-      line =
-        "Qory Apiary Community allows one workspace per organisation, and #{organisation.name} has it."
-
-      for level <- [:admin, :member] do
-        conn = log_in_user(conn, joined(organisation, level))
-
-        {404, _headers, body} =
-          assert_error_sent(404, fn -> get(conn, ~p"/#{organisation}/workspaces/new") end)
-
-        page = document(body)
-        assert texts(page, "h1") == ["New workspace"], "#{level}"
-        assert texts(page, "[role=note] #set-up-limit") == [line], "#{level}"
-        refute body =~ "Only owners", "#{level}"
-        assert LazyHTML.query(page, "#dead-end-line") |> Enum.count() == 0
-        assert LazyHTML.query(page, "#set-up-cards") |> Enum.count() == 0
-        assert LazyHTML.query(page, "#sidebar") |> Enum.count() == 1
-      end
-    end
+    # The core's limit of one workspace showed everyone its line here. The edition sets no
+    # limit: the next test, and "Create workspace makes a second workspace, which Workspaces
+    # lists" in test/apiary_pro_web/live/new_workspace_test.exs.
 
     test "below the limit is a 404 in the layout with who creates workspaces, and no cards",
          %{conn: conn} do

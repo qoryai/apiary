@@ -272,6 +272,20 @@ if config_env() != :test do
       )
 end
 
+# SIGNUP_ORGANISATIONS and SIGNUP_OPERATORS say whether someone without an invitation may
+# sign up, and whether someone signed in may create another organisation, of each kind:
+# `open` or `closed` (guides/admin.md). An instance admin saves both on Instance
+# settings › Configuration, applied at once; a variable set and not empty overrides the
+# page, and unset or empty leaves it to the page, closed until saved (`ApiaryPro.SignUp`).
+# The boot (`Apiary.Edition.boot!/0`, `ApiaryPro.SignUp.boot!/0`) checks them and stops
+# on a value it cannot use; the instance's set-up, by its set-up link (`Apiary.Setup`),
+# makes the instance organisation whatever they say. Not read under test: the suite's
+# values are config/test.exs's, whatever the shell running it has set.
+if config_env() != :test do
+  config :apiary, :sign_up_organisations_setting, System.get_env("SIGNUP_ORGANISATIONS")
+  config :apiary, :sign_up_operators_setting, System.get_env("SIGNUP_OPERATORS")
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :apiary, ApiaryWeb.Endpoint,
@@ -285,6 +299,10 @@ if config_env() == :dev do
         # Router, Controllers, LiveViews and LiveComponents
         ~r"lib/apiary_web/router\.ex$"E,
         ~r"lib/apiary_web/(controllers|live|components)/.*\.(ex|heex)$"E,
+        # The edition's router, pages and components, and its Gettext translations
+        ~r"lib/apiary_pro_web/.*\.(ex|heex)$"E,
+        ~r"lib/apiary_pro_web\.ex$"E,
+        ~r"priv/gettext_pro/.*\.po$"E,
         # The component storybook's stories
         ~r"storybook/.*\.exs$"E
       ]

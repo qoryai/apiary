@@ -510,13 +510,36 @@ environment variable SMTP_TLS must be always, if_available or never
   keeps version 1 of its process, a copy of its type's default. Needs
   `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
+<!-- feature: managed_organisations -->
+- `managed_organisations`: operators and their clients, and what an operator does for
+  them. Needs `observability`.
+<!-- /feature -->
+<!-- feature: organisation_policy -->
+- `organisation_policy`: the organisation's policy above its workspaces' security policy:
+  its host rules, the mode floor and the switch. Needs `security`.
+<!-- /feature -->
+<!-- feature: organisation_variables -->
+- `organisation_variables`: the organisation's secrets, beside each workspace's secrets,
+  and the organisation's variables, which every workspace inherits, above each
+  workspace's variables. Needs `security` and `secrets`.
+<!-- /feature -->
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe
 it.
 
-The organisation and its workspace have the features the instance has. An instance with
-the record alone:
+An organisation has the features the instance has, except those that an instance admin
+takes away from it with [**Features**](admin.md#features) under **Instance settings ›
+Organisations**. Its workspaces have the organisation's features. A feature
+taken away is hidden from the organisation's people; its machines and runs keep every
+feature the instance has. The instance owner, the organisation created with the set-up link
+([Sign-up and invitations](#sign-up-and-invitations)), has every feature the instance has.
+<!-- feature: managed_organisations -->
+Of the features that can be granted, an operator other than the instance owner, and every
+client, have only those granted to them ([Operators and their clients](operators.md)).
+<!-- /feature -->
+
+An instance with the record alone:
 
 ```sh
 QORY_FEATURES=observability
@@ -549,9 +572,7 @@ QORY_FEATURES=all-workflow_model
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
-Every feature in this list is on by default, unless its entry has a condition. An edition
-may add an opt-in feature, which is on only when a list contains it: `all`, `all-…`, and a
-value that is not set or empty leave it off, with or without an upgrade.
+Every feature in this list is on by default, unless its entry has a condition.
 
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:
@@ -643,7 +664,7 @@ deletion's entry says how many it cleared beside. A variable set outside the bou
 the boot:
 
 ```text
-environment variable AUDIT_RETENTION_DAYS is not valid: it is a number of days from 30 to 90, got: "365"; 90 days is the most this edition keeps.
+environment variable AUDIT_RETENTION_DAYS is not valid: it is a number of days from 30 to 90, got: "365"; 90 days is the most Qory Apiary keeps.
 Leave it unset for 90 days, or set it, for example:
 AUDIT_RETENTION_DAYS=60
 ```
@@ -948,11 +969,10 @@ With the `factory` feature, both pages have more steps:
     pool for the workspace, and for a pool of the workspace you get the command that
     enrols a machine in it. On **Test run** you run a test.
 
-  Where the edition allows more than one workspace, a workspace added later goes
-  through the same 7 steps. Where the edition shows the setting “Available to every
-  workspace in Acme”, **Model** and **Harness** list first the model keys and the
-  harness that the organisation shares, under **Shared in Acme**, each marked **every
-  workspace**: choose one to reuse it.
+  A workspace added later goes through the same 7 steps. There, **Model** and
+  **Harness** list first the model keys and the harness that the organisation shares
+  with the setting “Available to every workspace in Acme”, under **Shared in Acme**,
+  each marked **every workspace**: choose one to reuse it.
 
   [Set up Main and run the test](quickstart.md#8-set-up-main-and-run-the-test) has the
   steps. Until the test run passes, Main's overview lists the steps, with **Continue**

@@ -121,6 +121,11 @@ COPY guides guides
 COPY CHANGELOG.md ./
 RUN mix docs
 
+# The notices of the third-party code the image contains, and Qory Apiary's licence and
+# notice (`mix apiary_pro.notices`).
+COPY LICENSE NOTICE ./
+RUN mix apiary_pro.notices
+
 # Changes to config/runtime.exs don't require recompiling the code
 COPY config/runtime.exs config/
 
@@ -194,8 +199,9 @@ ENV MIX_ENV="prod"
 # No erl_crash.dump: it holds every process's memory, the database password among it.
 ENV ERL_CRASH_DUMP_BYTES=0
 
-# Only copy the final release from the build stage
+# Only copy the final release from the build stage, and the notices beside it
 COPY --from=builder --chown=65532:root /app/_build/${MIX_ENV}/rel/apiary ./
+COPY --from=builder --chown=65532:root /app/THIRD_PARTY_NOTICES ./
 
 # The commit the image is built from, written into the release as the file REVISION, which
 # the release reads at boot and GET /health reports as its revision. A file, so no setting

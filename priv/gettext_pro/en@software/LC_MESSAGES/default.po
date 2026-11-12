@@ -1,0 +1,5008 @@
+## "msgid"s in this file come from POT (.pot) files.
+###
+### Do not add, change, or remove "msgid"s manually here as
+### they're tied to the ones in the corresponding POT file
+### (with the same domain).
+###
+### Use "mix gettext.extract --merge" or "mix gettext.merge"
+### to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: en@software\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} day"
+msgid_plural "%{count} days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is active again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is added to %{workspace}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is invited to be the first admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is invited to be the owner."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is removed from %{workspace}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is signed out everywhere at once, and can no longer sign in or act in any organisation. Nothing is removed: their memberships stay, and the access keys they added keep working. You can activate the account again at any time."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} reaches every workspace as an owner or an admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{feature} shown"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is allowed for every workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is denied for every workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} becomes an operator: its owners and admins can create client organisations and reach them at their level. Nothing it holds changes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} becomes an organisation again: it has no clients, and can create none. Nothing it holds changes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} becomes read-only: its people can sign in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has left %{operator}. It has no operator now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has no admin who can act, so there is nobody to offer its ownership to."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has no admin yet. The person you invite is its first admin once they accept, and invites and manages its people. The invitation counts against the invitations of %{operator}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has no owner yet, so nobody else is in it. It disappears at once, with its pending invitations, and is purged after %{days}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has no owner yet. The person you invite is its owner once they accept, and invites and manages its people. The invitation counts against the invitations of %{operator}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has one value, which goes only with the secret: delete the secret instead."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is a client of %{operator} now: it runs its harness, and its people keep their levels."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is active again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is an operator now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is an operator with clients. Each client is deleted or purged first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is an organisation now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is changed."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created, and %{email} is invited to be its first admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created, and %{email} is invited to be its owner."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created, and you are its owner."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created, but the invitation of its first admin could not be sent. Invite its first admin again here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created, but the invitation of its owner could not be sent. Invite its owner again here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is created."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is deleted, and is purged on %{date}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is locked."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is no client of %{operator} any more."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is offered to %{operator}. It is its client once an owner of %{operator} accepts."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is spelled %{other} in %{workspace}: use the same spelling"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is suspended: its ownership does not change until it is activated."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is unlocked."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is used by %{uses}: unlink it there first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} leaves %{operator} at once."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} runs the harness %{operator} provides. %{operator} owns it: its owners and admins run its workspaces, machines and keys, and its members read everything in it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} runs the harness %{operator} provides. The people of %{operator} read everything in %{name} to support its harness, and change nothing."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} was offered to the operator %{operator} on %{date}. Once an owner of %{operator} accepts, it is a client of %{operator}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} accepted"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} account matches"
+msgid_plural "%{number} accounts match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} allow"
+msgid_plural "%{number} allows"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} client"
+msgid_plural "%{number} clients"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} client matches"
+msgid_plural "%{number} clients match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} declined"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} in %{workspace}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} membership"
+msgid_plural "%{number} memberships"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} organisation matches"
+msgid_plural "%{number} organisations match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} request matches"
+msgid_plural "%{number} requests match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} rule"
+msgid_plural "%{number} rules"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} secret matches"
+msgid_plural "%{number} secrets match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides it"
+msgid_plural "%{number} targets override it"
+msgstr[0] "%{number} repository overrides it"
+msgstr[1] "%{number} repositories override it"
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} value"
+msgid_plural "%{number} values"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} value set aside by the lock"
+msgid_plural "%{number} values set aside by the lock"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} value set aside comes back in force."
+msgid_plural "%{number} values set aside come back in force."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} variable matches"
+msgid_plural "%{number} variables match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} waiting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} workspace or target override is set aside while the lock holds."
+msgid_plural "%{number} workspace or target overrides are set aside while the lock holds."
+msgstr[0] "%{number} workspace or repository override is set aside while the lock holds."
+msgstr[1] "%{number} workspace or repository overrides are set aside while the lock holds."
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} workspace overrides it"
+msgid_plural "%{number} workspaces override it"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} became its operator, accepted by an owner of %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} can end this at any time."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} can grant only what it has itself."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} can no longer accept %{name}. You can offer it again later."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} can show only what it is shown."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} dropped it as a client: it has no operator now"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} sent a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{operator} withdrew a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} accepted a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} declined a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} is suspended: everything in it can be read, nothing can be changed, and its access keys are refused. %{contact_support}."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} left as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{organisation} left: a pending policy request to it was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "%{person} of %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}, in place of the rule there"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "%{time} by %{person}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} is added to %{name}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} is deleted from %{name}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} of %{name} is now %{new}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} of %{name} is saved."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "%{what}: %{from} → %{to}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} required enforce in every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} stopped requiring enforce in every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} turned off “Workspaces may allow more hosts”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} turned on “Workspaces may allow more hosts”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} enforces from now on, and so does %{number} target of it that set observe for itself."
+msgid_plural "%{workspace} enforces from now on, and so do %{number} targets of it that set observe for themselves."
+msgstr[0] "%{workspace} enforces from now on, and so does %{number} repository of it that set observe for itself."
+msgstr[1] "%{workspace} enforces from now on, and so do %{number} repositories of it that set observe for themselves."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} enforces from now on."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} observes again, and so does %{number} target of it that set observe for itself."
+msgid_plural "%{workspace} observes again, and so do %{number} targets of it that set observe for themselves."
+msgstr[0] "%{workspace} observes again, and so does %{number} repository of it that set observe for itself."
+msgstr[1] "%{workspace} observes again, and so do %{number} repositories of it that set observe for themselves."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} observes again."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A client accepted a policy request"
+msgstr ""
+
+#: lib/apiary_pro/policy_requests.ex
+#, elixir-autogen, elixir-format
+msgid "A client chosen cannot receive the request any more: it left, or does not have the security policy now. Choose again."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A client declined a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A client is a separate organisation that runs the harness %{operator} provides. It starts with no workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A client is a separate organisation, with its workspaces, people and activity, that runs the harness %{operator} provides."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "A client is not offered to another operator: it leaves its operator first."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A client left"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "A client of an operator cannot be made an operator."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "A client's features are its operator's to grant."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "A client's operator chooses which features it is shown."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "A deny here holds in every workspace and target, in either mode; an allow reaches every workspace, and a workspace or a target may still deny it. Each workspace whose policy a change changes gets a new version of it."
+msgstr "A deny here holds in every workspace and repository, in either mode; an allow reaches every workspace, and a workspace or a repository may still deny it. Each workspace whose policy a change changes gets a new version of it."
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A former operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "A member reaches the workspaces they are added to, and no other. Removing them from one leaves them in the organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A pending policy request of its operator was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "A policy request of the organisation's operator waits for an answer: %{link}."
+msgid_plural "%{number} policy requests of the organisation's operator wait for an answer: %{link}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A purged organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "A run receives only its security policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "A secret holds at most %{number} values."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "A secret holds one value, such as a token, or several under one name, such as one per app. Once a value is saved, nobody sees it again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "A secret with several values names each one with a value ID."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "A suspended account cannot sign in, and acts in no organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "A variable of the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "A workspace's secret with the same name is a different secret: neither one replaces the other."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "About accounts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "About clients"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "About organisations"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Accept"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Accept %{name} as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Accept %{name} as a client?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Accept ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted %{organisation} as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted a policy request of %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted a policy request of its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted an organisation as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted by %{person} in %{workspaces}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted the organisation's ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted: the changes are made in %{number} workspace."
+msgid_plural "Accepted: the changes are made in %{number} workspaces."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Accepting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Account"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Account activated"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Account suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/components.ex
+#, elixir-autogen, elixir-format
+msgid "Accounts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Accounts are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Accounts are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for “%{request}”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Activate"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Activate %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Activate %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Activated an account"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Activated the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Active"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Add"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Add %{email} to %{workspace}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Add a rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Add a value to %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Add another value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Add to the request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Add value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Add value to %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Add value…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Added"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Added a member to a workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Added a rule to the organisation's policy, for every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Admins"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Adopted as the main organisation at the upgrade"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Adopted at the upgrade"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Adopted at the upgrade: its members keep every workspace they reached"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "All"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Allow"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Allow only the organisation's hosts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Allow only the organisation's hosts?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Already have an account?"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "An offer of ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "An offer of the ownership is pending already. Withdraw it first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "An offer stays pending until it is accepted or withdrawn."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "An operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "An operator became its operator, accepted by an owner of it"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "An operator creates clients. Each client is a separate organisation; its people belong to it, not to the operator."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An operator has only what you grant it, and grants its clients within that. A feature a new release adds reaches it once you grant it here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "An operator is not offered to another operator."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "An operator with clients cannot be deleted. On Clients, delete each client that has no owner and drop each one that has; a deleted client counts until it is purged."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An operator with clients cannot be made an organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An operator with clients is not purged: each client is deleted first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An organisation with no operator has what this instance has, but for what you take away here. A feature a new release adds reaches it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "An owner of it can act again, so the offer no longer stands."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "An owner of the operator accepts the offer. Then %{name} is its client: its people keep their levels, you included, and the operator's people read everything in it and change nothing. Until then you can withdraw the offer."
+msgstr ""
+
+#: lib/apiary_pro/edition.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or an admin of %{organisation} creates the first workspace."
+msgstr ""
+
+#: lib/apiary_pro/edition.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or an admin of %{organisation}, or an owner of %{operator}, creates the first workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Answer"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Answer “%{request}”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Answered"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Answers"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "At most %{count} characters, kept in the organisation's activity. Say why, and write no personal data."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Back to %{place}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Back to the clients"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Back to the organisations"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Back to the policy requests"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "By"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Change"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Change %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Change a rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Change mode"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Change or add a value instead. Model provider %{provider} uses this secret, so it cannot be deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Change the value of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Change value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Change value %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Change value of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Change value…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Change what the runs of every workspace of %{organisation} may do with %{host}. The host stays; to rule on another host, add a new rule."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Change your password in Account settings."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Changed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a rule of the organisation's policy, for every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a variable of the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the features its operator grants it"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the features its operator shows it"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the features the organisation is shown"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the organisation's features"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the organisation's kind"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the organisation's policy, for every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed the workspace's features"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed whether enforce is required in every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed whether workspaces may allow more hosts"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed who may sign up"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Changed whose model providers a client uses"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Changes"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Changes to %{name}'s policy"
+msgstr ""
+
+#: lib/apiary_pro_web/components/organisation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a kind"
+msgstr ""
+
+#: lib/apiary_pro/policy_requests.ex
+#, elixir-autogen, elixir-format
+msgid "Choose at least one client to send the request to."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Choose at least one workspace to accept it in."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the mode of %{name}'s workspaces"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Clear filters"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Clear the search"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Clear the search and the filters"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client created"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client dropped"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's admin invitation renewed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's admin invitation revoked"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's features changed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's first admin invited"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's model providers changed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's owner invitation renewed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's owner invitation revoked"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's owner invited"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Client's shown features changed"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Clients"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Clients of %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Closed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm your email address before you invite anyone: sign in again with the link we email you."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Create"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Create account"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create invitation link"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Create organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create the first client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Create your account"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Created"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Created the operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Created the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Created the organisation as a client of its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Created, newest first"
+msgstr ""
+
+#: lib/apiary_pro_web/components/organisation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Creates and runs organisations for clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Creating"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Creating…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Current"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Decline “%{request}”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Decline “%{request}”?"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "Declined"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Declined a policy request of %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Declined a policy request of its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Declined by %{person}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Declined by %{person}: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Declined: nothing changes in the policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Decline…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Declining"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{value_id} of %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Delete secret %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Delete secret…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Delete value %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Delete value…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Delete variable %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Delete variable…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted %{organisation}, which had no owner yet"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted %{organisation}, which nobody had joined yet"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted %{organisation}: a pending policy request to it was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a client nobody had joined yet"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a client that had no owner yet"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted by %{operator}: its pending policy request was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted, purged on %{date}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Deleting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Denies first"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Deny"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Details"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Done"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Drop %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Drop %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Dropped %{organisation} as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Dropped %{organisation}: a pending policy request to it was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Dropped a client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Dropped by %{operator}: its pending policy request was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Dropping"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Drop…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace chooses"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace of %{organisation} that does not override a variable set here inherits it, and so does each of its targets that does not override it. A locked variable holds in every workspace and target, and sets their overrides aside."
+msgstr "Each workspace of %{organisation} that does not override a variable set here inherits it, and so does each of its repositories that does not override it. A locked variable holds in every workspace and repository, and sets their overrides aside."
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace that does not override it inherits the new value, and so does each of its targets that does not override it."
+msgstr "Each workspace that does not override it inherits the new value, and so does each of its repositories that does not override it."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace whose policy this changes gets a new version of it. You can turn it back at any time."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace's mode holds again, and a target's override where it has one."
+msgstr "Each workspace's mode holds again, and a repository's override where it has one."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Each workspace's mode holds, and a target's override where it has one."
+msgstr "Each workspace's mode holds, and a repository's override where it has one."
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Edit name and note"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Edit name and note of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Edit name and note…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Edit rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Edit rule · Policy · %{organisation}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the name and note of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the rule for %{host}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Either side can end this at any time."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Email"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Empty"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce in every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce is no longer required."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce is required in every workspace now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce is required in every workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce not required"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce required"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce required or not"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Every account on this Qory Apiary, with how many memberships it holds."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Every change to %{name}'s policy is listed here, with the workspaces it rendered again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every client has an admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every client has an owner."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Every organisation on this Qory Apiary. %{organisation} is the instance owner: its owners are the instance admins, who read every other organisation and change one only under Instance settings."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Every other feature needs Runs: keep it, or take them all away."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Every other feature needs Runs: show it, or hide them all."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "Every owner of %{organisation} is suspended. Its admins and members keep working and its runs continue; what only an owner does, such as deleting or transferring it and changing locked rules, waits until support acts. %{contact_support}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every request is answered."
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "Every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Every workspace and target enforces already, so no mode changes now."
+msgstr "Every workspace and repository enforces already, so no mode changes now."
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Every workspace and target inherits the new value: %{name} is locked."
+msgstr "Every workspace and repository inherits the new value: %{name} is locked."
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Features"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Features changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Features of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Features…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a client by name, slug or admin"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a client by name, slug or owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a request by its note or host"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Find a request by its note, host or client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Find a secret"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Find a secret by name or value ID"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Find a variable"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Find a variable by name or value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Find an account"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Find an organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Find by email"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Find by name or slug"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Floor changed."
+msgstr ""
+
+#: lib/apiary_pro_web/components/organisation_components.ex
+#, elixir-autogen, elixir-format
+msgid "For a team that works in workspaces."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "For an erasure request received in writing. Everything %{name} holds is deleted at once, its workspaces, runs, members and activity among them, and the instance keeps one line of it, which names you as who asked. This cannot be undone: only a backup taken before still holds its data."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Former member"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "From"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "From %{operator}, on %{date}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "From a former operator, on %{date}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Has %{feature}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "History"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "History · Policy"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Host"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Host rules for every workspace, a mode they all keep, and whether workspaces may allow more hosts."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "In %{number} workspace"
+msgid_plural "In %{number} workspaces"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "In %{workspace}, %{number} target that set observe for itself enforces from now on."
+msgid_plural "In %{workspace}, %{number} targets that set observe for themselves enforce from now on."
+msgstr[0] "In %{workspace}, %{number} repository that set observe for itself enforces from now on."
+msgstr[1] "In %{workspace}, %{number} repositories that set observe for themselves enforce from now on."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "In %{workspace}, %{number} target that set observe for itself observes again."
+msgid_plural "In %{workspace}, %{number} targets that set observe for themselves observe again."
+msgstr[0] "In %{workspace}, %{number} repository that set observe for itself observes again."
+msgstr[1] "In %{workspace}, %{number} repositories that set observe for themselves observe again."
+
+#: lib/apiary_pro/organisation_policy.ex
+#, elixir-autogen, elixir-format
+msgid "In %{workspace}: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "In use"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invitation sent to %{email}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Invite an owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Invite an owner to %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Invite an owner, then leave it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite owner…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite the first admin"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite the first admin of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite the first admin…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite the owner of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Invited its first admin, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Invited its first owner, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invited: %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Inviting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "It becomes a client of %{operator} at once: its people keep their levels, the people of %{operator} read everything in it, and it has only the features %{operator} grants its clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "It has an owner who can act; the instance does not overrule them."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "It has every one chosen"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "It is suspended. %{contact_support}; once it is activated, you can accept."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "It is suspended. Activate it first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "It is withdrawn from the %{number} client that has not answered it. The answers given stay."
+msgid_plural "It is withdrawn from the %{number} clients that have not answered it. The answers given stay."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "It leaves %{number} allow out of force: %{counts}."
+msgid_plural "It leaves %{number} allows out of force: %{counts}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "It puts %{number} allow back in force: %{counts}, but where %{name} denies the host."
+msgid_plural "It puts %{number} allows back in force: %{counts}, but where %{name} denies the host."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Its clients"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Its features become what the operator grants its clients, which may be fewer than it has now: what the operator does not grant is gone from %{name} until it does."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Its features then become what the operator grants it, which may be fewer than it has now."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Its operator dropped it as a client: it has no operator now"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Its operator sent a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Its people lose their reach into its clients, which keep running: the clients' people and access keys work as before, and their admins are told that their owner is suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Its people see every feature this instance has, but those you hide here. Hidden features still work for its machines and runs. A feature a new release adds is shown to it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Its people see only the features you show here, and it shows its clients only those. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Its values stay as they are; only its name and what it is for change."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Joined"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Joined, newest first"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Kept a member in a workspace, changing their level"
+msgstr ""
+
+#: lib/apiary_pro_web/components/organisation_components.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Kind"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Kind changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Last 14 days, every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Leave %{operator}?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Leave %{operator}…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Leave the mode as it is"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Leaving"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Left %{operator}: it has no operator now"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Left %{operator}: its pending policy request was withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Left its operator: it has no operator now"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Let the runs of every workspace of %{organisation} reach a host, or stop them reaching it. A deny here holds in every workspace and target; an allow reaches every workspace, and a workspace or a target may still deny it."
+msgstr "Let the runs of every workspace of %{organisation} reach a host, or stop them reaching it. A deny here holds in every workspace and repository; an allow reaches every workspace, and a workspace or a repository may still deny it."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Let workspaces allow hosts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Let workspaces allow more hosts?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Letters, digits and _, starting with a letter or _."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Loading the accounts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Loading the clients"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Loading the organisations"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Loading the policy requests"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Loading the workspaces"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Lock"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Lock %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Lock %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Locked"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Locked a variable of the organisation against every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Locked: no workspace or target may override it"
+msgstr "Locked: no workspace or repository may override it"
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Locked: only an owner of the client accepts it"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Locking"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Lock…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Lowercase letters, digits, ., _ and -."
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Machines and access keys"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Machines and pools in %{organisation}'s workspaces can use the gateways of %{operator}, its operator, whose owners and admins also add gateways here."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Machines and pools in any workspace of %{organisation} and of its %{number} client can use it."
+msgid_plural "Machines and pools in any workspace of %{organisation} and of its %{number} clients can use it."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Machines and pools in any workspace of %{organisation} and of its %{number} client can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
+msgid_plural "Machines and pools in any workspace of %{organisation} and of its %{number} clients can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Machines and pools in any workspace of %{organisation} can use the gateways listed here and the gateways of %{operator}. Owners and admins of %{operator}, its operator, manage them."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Made a new link for an invitation of its first admin, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Made a new link for an invitation of its first owner, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Make %{name} an operator?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Make %{name} an organisation?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link for %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link for %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Make operator…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Make organisation…"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Manages members and settings"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Member added to a workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Member removed from a workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Members"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Memberships"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Mode"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Model provider key"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most members"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Names and values every workspace of %{organisation} inherits. A workspace may override one that is not locked; a locked one holds in every workspace and target."
+msgstr "Names and values every workspace of %{organisation} inherits. A workspace may override one that is not locked; a locked one holds in every workspace and repository."
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Network access"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Network access rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Network access rules of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New client"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "New organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "New policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "New request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "New rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "New rule · Policy · %{organisation}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "New secret"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "New value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "New variable"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "New workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Next"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "No account is suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "No account matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No admin yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "No change yet: add the rules the harness needs, or change the mode below."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "No changes yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "No client can receive a request now: a client needs the security policy, and not to be suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client has that name, slug, admin or feature."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client has that name, slug, owner or feature."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client here"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client is deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client is suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No client matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No clients yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "No host rules yet. Add the first with Add rule: it holds in every workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No new link for %{email} now: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "No offer is pending any more: it was accepted or withdrawn meanwhile."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation is a client"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation is an operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation is deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation is suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No owner yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "No ownership is offered to you here any more: the offer was withdrawn."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No request has that note or host."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "No request has that note, host or client."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No request here"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "No request is answered by every client yet."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No request is answered yet."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No request is withdrawn."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No request matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No requests"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "No requests yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "No rules yet."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "No secret matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "No secrets yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "No variable matches"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "No variables yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace has an allow rule now, so nothing comes back into force."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace has an allow rule now, so nothing is left out of force."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target may observe from now on: a connection no rule allows is denied everywhere, and their mode reads Enforce, required by %{name}."
+msgstr "No workspace or repository may observe from now on: a connection no rule allows is denied everywhere, and their mode reads Enforce, required by %{name}."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target may observe: a connection no rule allows is denied everywhere."
+msgstr "No workspace or repository may observe: a connection no rule allows is denied everywhere."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target may observe: a connection no rule allows is denied everywhere. Their mode reads Enforce, required by %{name}."
+msgstr "No workspace or repository may observe: a connection no rule allows is denied everywhere. Their mode reads Enforce, required by %{name}."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target set observe for itself, so each keeps enforcing; from now on one may observe."
+msgstr "No workspace or repository set observe for itself, so each keeps enforcing; from now on one may observe."
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace yet"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Nobody has joined %{name} yet. It disappears at once, with its pending invitations, and is purged after %{days}."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Nobody in %{organisation} is made an owner: %{operator}, its operator, owns it."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "None"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "None you can see"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Not added"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Not deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Not deleted: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Not locked"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Not overridden"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Not saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Not used"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing changes in the policy. The operator reads the reason you give."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing is removed. You can activate it again at any time."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was changed: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Observe"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Offer %{name} to an operator, whose harness it then runs. Once an owner of the operator accepts, %{name} is its client: its people keep their levels, you included, and the operator's people read everything in it and change nothing."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Offer it to"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Offer ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Offer the ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Offer withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Offered"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Offered the organisation to an operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Offered the organisation's ownership to an admin, as support"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Offered to %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Offered to an operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Offering"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Offers of the ownership of this organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Once accepted, an organisation has what %{operator} grants its clients, which may be fewer features than it has now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "One a line. None for every path."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "One value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only a person who writes the policy here answers a policy request."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Only an admin of this Qory Apiary makes password links, while it sends no email."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner changes the organisation's policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of %{operator} accepts an organisation offered to it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of %{operator} chooses what its clients are shown."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of %{operator} deletes a client."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of %{operator} drops a client."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of %{operator} grants its clients their features."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner of this organisation takes it away from %{operator}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner offers the organisation to an operator or withdraws the offer."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner or an admin reads the organisation's policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins manage members, and only owners change a level or manage an owner or an admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{operator} add a client and invite its first admin."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{operator} add a client and invite its first owner; only owners drop one."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{operator} send a request or withdraw one."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} change its secrets."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} change its variables."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation} create workspaces."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of %{organisation}, and owners of %{operator}, create workspaces."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator create its clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator invite the first admins of its clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator invite the owners of its clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator make new links for the invitations of its clients' first admins."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator make new links for the invitations of its clients' owners."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator revoke the invitations of its clients' first admins."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator revoke the invitations of its clients' owners."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator send its clients a policy request."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins of an operator withdraw its policy requests."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners of %{name} change its policy: these settings and its rules."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners of %{operator}, its operator, lock, unlock or change a locked rule."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners of %{operator}, the operator of %{name}, change its policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners of %{operator}, the operator of %{name}, change its policy: these settings and its rules."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only the 200 newest requests are listed."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Only the admin of %{name} it is offered to accepts its ownership."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only the hosts %{name} allows are allowed anywhere: a workspace's or a target's allows stay listed, and are not in force; their denies still hold."
+msgstr "Only the hosts %{name} allows are allowed anywhere: a workspace's or a repository's allows stay listed, and are not in force; their denies still apply."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only the hosts allowed below are allowed anywhere. Workspace and target allows stay listed, and are not in force (%{counts}); their denies still hold."
+msgstr "Only the hosts allowed below are allowed anywhere. Workspace and repository allows stay listed, and are not in force (%{counts}); their denies still hold."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only the hosts allowed below are allowed anywhere. Workspace and target allows stay listed, and are not in force; their denies still hold."
+msgstr "Only the hosts allowed below are allowed anywhere. Workspace and repository allows stay listed, and are not in force; their denies still hold."
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Only the organisation's allows"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Only the organisation's hosts are allowed."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Open"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "Operated by %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/components/organisation_components.ex
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Operator created"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Operator left"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Operators"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/components/organisation_components.ex
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation accepted as a client"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation activated"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation created"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation name"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation policy"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation purged on an erasure request"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation secrets and variables"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation variable changed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation's policy changed"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/instance_live/components.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Organisations"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Overrides"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Overview"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "Owned by %{operator}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Owner suspended"
+msgstr ""
+
+#: lib/apiary_pro/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{operator} connect it once for %{client}."
+msgstr ""
+
+#: lib/apiary_pro/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{operator} finish the set-up."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{operator}, its operator, connect work sources here. Ask one of them."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{operator}, its operator, manage the machines, pools and access keys here."
+msgstr ""
+
+#: lib/apiary_pro/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins of %{organisation} and of %{operator} finish the set-up."
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "Owners and admins reach every workspace; members, the workspaces they are added to."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Owners rename the organisation later in Organisation settings."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Ownership accepted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Ownership offered"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Paths"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pending"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "People in %{name} see only the features you show here, of those %{operator} is shown; people of %{operator} see in it what %{operator} sees. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Plain text on one line."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Policy"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "Policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Policy request accepted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Policy request declined"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Policy request sent"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Policy request withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Policy requests"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Previous"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Purge %{name} now?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Purge now…"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Purged an organisation at once, on an erasure request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Purging"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary keeps the variables and works out what each workspace and target inherits."
+msgstr "Qory Apiary keeps the variables and works out what each workspace and repository inherits."
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary sends email now: they get a sign-in link from the sign-in page instead."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Reach"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Reason"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Reason: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Recently changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{email} from %{workspace}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Remove a rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the filter %{filter}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Remove value %{number}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a member from a workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a rule from the organisation's policy, for every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Removed a variable of the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Rename %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Rename value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Rename value %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Rename value…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Rendered again"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Request %{id}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Require enforce"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Require enforce in every workspace?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke the invitation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke the invitation of %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked an invitation of its first admin, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked an invitation of its first owner, for its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Rule"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Rules"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Rules every workspace of %{name} follows. A workspace or a target may narrow them, never widen them."
+msgstr "Rules every workspace of %{name} follows. A workspace or a repository may narrow them, never widen them."
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Running organisations for clients, as an operator."
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs, their terminals, the connections and retention. Every other feature needs it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Save"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Save features"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Save secret"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Save variable"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Saving"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Say what the harness needs. Each client's people see the changes and the note, and accept them in the workspaces they choose, or decline. Nothing changes in a client until it accepts."
+msgstr ""
+
+#: lib/apiary_pro/policy_requests.ex
+#, elixir-autogen, elixir-format
+msgid "Say why the harness needs these changes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets and variables"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets and variables kept at the organisation: variables every workspace inherits, with names it may lock, and secrets whose values are never shown once saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets and variables that belong to %{organisation}, not to one workspace. A secret is never shown again once it is saved; a variable is plain text."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets, %{number}"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Security policy"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Send invitation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Send request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Sending"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sent"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Sent a policy request to %{number} client"
+msgid_plural "Sent a policy request to %{number} clients"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Sent on %{date} by %{person}."
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Set a variable of the organisation, for every workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Set by your operator, %{operator}. Ask them to change it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Set per workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Setting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Settings"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Several values"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Several values, each with a value ID"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Shown all chosen"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Shown features changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Sign-up"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Sign-up changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Sign-up is by invitation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Sign-up saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Someone changed this at the same moment, so nothing was changed. Try again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Someone has joined that client now, so it can't be deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Stop requiring enforce"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Stop requiring enforce in every workspace?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Stored encrypted. Nobody sees it again once it is saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Support made this offer, so it cannot be withdrawn here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Support offered the ownership of %{name} to %{email} on %{date}. Once they accept, they are its owner."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Support offers you the ownership of %{name}. When you accept, you are its owner."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "Support offers you the ownership of %{name}: %{link}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Suspend %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Suspend %{email}?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Suspend %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Suspend %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Suspended an account"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Suspended the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Suspending"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Suspend…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Switch changed."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Take this change out"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Terminal tab"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "That account cannot sign in at the moment, so it gets no password link."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client has an admin now, who invites its people."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client has an owner now, who invites its people."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client has an owner now: drop it instead, and its owner keeps it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client has no owner yet, so nobody would be left in it: delete it instead."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client is not there any more."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That client is suspended, so it takes on no one until it is activated."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That invitation is no longer pending: it was accepted or revoked meanwhile."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "That is no longer possible. The page shows the instance as it is now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "That member is no longer in the organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That offer is no longer pending: it was withdrawn or accepted meanwhile."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That organisation became an operator or a client meanwhile, so it cannot be accepted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "That organisation is not there any more."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That organisation is suspended, so it does not become a client until it is activated."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That request is answered already."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "That request is not there any more."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That request is not there, or is older than the 200 newest."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "That request is withdrawn already."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That request, or a workspace chosen, is not there any more. Nothing was changed."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "That secret is no longer in %{organisation}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "That value is no longer in %{name}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "That variable is not in %{organisation}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "The accounts could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The admin you choose is offered the ownership of %{name}, and becomes its owner only when they accept it. The offer replaces any pending one."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The admin's email address"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The changes the harness of %{operator} needs in its clients' security policy. The policy is each client's: its people accept a request, in the workspaces they choose, or decline it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The changes the operator of %{organisation} asks for in its security policy, for the harness it provides. The policy is yours: accept a request in the workspaces you choose, or decline it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The client has only what %{operator} grants it, of what %{operator} has. A feature a new release adds reaches it once you grant it here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The client left"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The client was deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The client was dropped"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The client's features are saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The clients could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "The default gateway for workspaces in %{organisation}, and in its clients where neither the workspace nor the client sets one."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The first admin creates the client's first workspace. Owners and admins of %{operator} run its workspaces, machines and keys."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "The hosts the runs of every workspace of %{name} may reach, and those they may not."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The instance owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "The instance's last owner who can act cannot be suspended."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The invitation could not be sent. Try again."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The invitation of %{email} is revoked."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "The link confirms that the address is yours and signs you in."
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machines, pools, access keys and gateways %{operator} runs in this client's workspaces, which its people read only."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "The mode is set per workspace now."
+msgstr ""
+
+#: lib/apiary_pro/policy_requests.ex
+#, elixir-autogen, elixir-format
+msgid "The note is at most %{max} characters."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "The offer is withdrawn."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The operator withdrew that request meanwhile."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "The operator's address"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation is purged."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's features are saved."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's policy has no such rule."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's policy is not found here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The organisations could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The organisations offered to %{operator} could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The organisations that run the harness %{operator} provides. %{operator} owns each one: its owners and admins run the workspaces, machines and keys there. Each client's admins manage its people."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The organisations that run the harness %{operator} provides. Each client's owners manage its people. The people of %{operator} read everything in each client, to keep it working, and change nothing there."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The owner's email address"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The ownership is offered to %{email}. They become its owner when they accept it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "The ownership is offered. Its admin becomes its owner when they accept it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The people of %{operator} read everything in the client and change nothing there."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The person you invite becomes its first admin when they accept. They invite and manage its people."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The person you invite becomes its owner when they accept. They set up its first workspace and invite its people."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The policy requests could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro/policy_requests.ex
+#, elixir-autogen, elixir-format
+msgid "The reason is at most %{max} characters."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The request is sent to %{number} client."
+msgid_plural "The request is sent to %{number} clients."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "The request is withdrawn from the clients that had not answered it. The answers given stay."
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#, elixir-autogen, elixir-format
+msgid "The rule for %{host}"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's log: the Terminal tab, the last lines on the Runs list, Raw log and Download log. Runs still record it while it is hidden."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The secret and its value are deleted. This cannot be undone."
+msgid_plural "The secret and its %{number} values are deleted. This cannot be undone."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The secrets of %{organisation} are no longer open to you."
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "The security policy's pages. Runs are served their policy either way."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The value is deleted, and the secret keeps its other values. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The value it holds now is not shown."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The value of %{name} is saved."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The value stays as it is; only its value ID changes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "The values of %{organisation}'s secrets cannot be read. %{contact_support}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "The variable is not saved: %{organisation}'s variables cannot be changed now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "The variables of %{organisation} are no longer open to you."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "The workspaces could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "The workspaces they reach"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Their owners offer these organisations to %{operator}. An owner of %{operator} accepts one; it is a client then: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Their owners offer these organisations to %{operator}. When you accept one, it is a client: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Their reason: %{reason}"
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy.ex
+#, elixir-autogen, elixir-format
+msgid "There are %{max} rules here already, which is the most one list holds. Remove one, or say several hosts with a *. suffix."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "There is nothing about the ownership of %{name} for you to do here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "This organisation has no operator any more."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "To %{client}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer %{name} to an operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer ownership of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer ownership…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer the ownership of %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Transfer to an operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Type the name of %{name} to confirm"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Type the organisation's slug, %{slug}, to confirm"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock %{name}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock %{name}?"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Unlocked a variable of the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Unlocking"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Used by"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Value %{number}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID of the new value"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID of the value it holds now"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "Values"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Variables"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Variables, %{number}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Version"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Views"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "Views of the accounts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Views of the organisations"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for an answer from a person who writes the policy here."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "We email them a link that works for seven days and brings them into %{workspace} as a member; %{organisation}'s admins can change their level afterwards."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "We sent a confirmation link to %{email}. It works for 15 minutes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "What it is for"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "When"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "When the harness needs a host or a mode a client's policy does not give it, ask the client here. Its people decide."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "When the harness your operator provides needs a change to your policy, its request is here for you to accept or decline."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Whether someone without an invitation may sign up and create an operator, an organisation that provides a harness its clients run, and whether someone signed in may create one from the organisation menu."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
+#, elixir-autogen, elixir-format
+msgid "Whether someone without an invitation may sign up and create an organisation, and whether someone signed in may create one from the organisation menu."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "While it is locked, no workspace or target may override it."
+msgstr "While it is locked, no workspace or repository may override it."
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Whose harness this organisation runs, and offers of its ownership."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Whose harness this organisation runs."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Why the harness needs this"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "With %{email} suspended, %{organisations} run without an owner who can act: their admins and members work, and what only an owner does waits until you activate the account again or transfer the ownership to one of their admins."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Withdraw offer…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Withdraw the offer?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Withdraw “%{request}”"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Withdraw “%{request}”?"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawing"
+msgstr ""
+
+#: lib/apiary_pro_web/components/request_components.ex
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn by the operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn: the operator dropped the organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn: the organisation left its operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrawn: the organisation was deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Withdraw…"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew a pending policy request from a client that parted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew a policy request"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew an invitation: its organisation was deleted"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew an offer of ownership"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew an offer of ownership: an owner can act again"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew an offer of ownership: the operator is no operator any more"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew an offer of ownership: the operator is suspended"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew another invitation of an admin: the first admin joined"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew another invitation of an owner: the first owner joined"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Without an admin"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Without an owner"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Work happens in workspaces. You choose what its first one does on the organisation's overview."
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace allows in force"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace allows turned on or off"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace and target allows are in force again, beside the organisation's."
+msgstr "Workspace and repository allows are in force again, beside the organisation's."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace and target allows are in force beside the hosts allowed below. Turning this off would put them out of force (%{counts}), leaving only those hosts allowed anywhere; their denies would still hold."
+msgstr "Workspace and repository allows are in force beside the hosts allowed below. Turning this off would put them out of force (%{counts}), leaving only those hosts allowed anywhere; their denies would still hold."
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace and target allows are in force beside the hosts allowed below. Turning this off would put them out of force, leaving only those hosts allowed anywhere; their denies would still hold."
+msgstr "Workspace and repository allows are in force beside the hosts allowed below. Turning this off would put them out of force, leaving only those hosts allowed anywhere; their denies would still hold."
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace and target rules narrow %{name}'s."
+msgstr "Workspace and repository rules narrow %{name}'s."
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace rules"
+msgstr ""
+
+#: lib/apiary_pro_web/activity_describer.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace's features changed"
+msgstr ""
+
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces and targets may override it again."
+msgstr "Workspaces and repositories may override it again."
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces and their policy"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces may allow more hosts"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces may allow more hosts."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces no longer inherit it; a workspace or target that overrides it keeps its value. This cannot be undone."
+msgstr "Workspaces no longer inherit it; a workspace or repository that overrides it keeps its value. This cannot be undone."
+
+#: lib/apiary_pro_web/components/slots.ex
+#: lib/apiary_pro_web/live/member_live/workspaces.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces of %{email}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces · Policy"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces…"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#, elixir-autogen, elixir-format
+msgid "Write the first request"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, accept"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, decline"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, delete"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, drop"
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, leave"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, make operator"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, make organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, purge"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, suspend"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, withdraw"
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to %{organisation}. You can open it as soon as you confirm your email address."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to %{organisation}. You can open it as soon as you create your account."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "You are no longer a member of %{organisation}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "You are the owner of %{name} now."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "You become its first owner, because an instance admin creates it. You invite its people from its Organisation settings › People."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "You become the first owner. You invite its people from Organisation settings › People."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You become the owner of the operator. Owners rename it later in Organisation settings."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You become the owner of the organisation. Owners rename it later in Organisation settings."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "You can leave the organisation once another person is an owner."
+msgstr ""
+
+#: lib/apiary_pro_web/readers.ex
+#, elixir-autogen, elixir-format
+msgid "You can read this organisation as a person of its operator, and change nothing here."
+msgstr ""
+
+#: lib/apiary_pro_web/readers.ex
+#, elixir-autogen, elixir-format
+msgid "You can read this organisation as support, and change nothing here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/new_organisation.ex
+#, elixir-autogen, elixir-format
+msgid "You cannot create a new organisation here. %{contact_support}."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; %{organisation}'s admins can change their level afterwards."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "You must re-authenticate to access this page."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "You no longer have access to this workspace."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "You read %{organisation} as a person of %{operator}, its operator: everything here can be read, and nothing changed."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "You read %{organisation} as a person of its operator: everything here can be read, and nothing changed."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "You read %{organisation} as support: everything here can be read, and nothing changed."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You read these requests as a person of the operator. The people of %{organisation} answer them."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You sign in with a link we email you and need no password."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You sign in with a password."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "You work in %{organisation} as an admin of %{operator}, its operator."
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "You work in %{organisation} as an owner of %{operator}, its operator."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "You're its only owner"
+msgstr ""
+
+#: lib/apiary_pro/sign_up.ex
+#, elixir-autogen, elixir-format
+msgid "Your account and your operator, to run organisations for clients."
+msgstr ""
+
+#: lib/apiary_pro_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the sign-in page in a few minutes."
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Your answer"
+msgstr ""
+
+#: lib/apiary_pro_web/components/organisation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Your organisation"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "a deleted workspace"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/requests.ex
+#: lib/apiary_pro_web/live/policy_request_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "and %{number} more"
+msgid_plural "and %{number} more"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "expires %{date}"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "no new version: the bytes stayed the same"
+msgstr ""
+
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "no version yet"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#: lib/apiary_pro_web/live/policy_live/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "none"
+msgstr ""
+
+#: lib/apiary_pro_web/components/notices.ex
+#, elixir-autogen, elixir-format
+msgid "see the offer"
+msgstr ""
+
+#: lib/apiary_pro_web/components/slots.ex
+#, elixir-autogen, elixir-format
+msgid "see the requests"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/accounts.ex
+#, elixir-autogen, elixir-format
+msgid "you"
+msgstr ""

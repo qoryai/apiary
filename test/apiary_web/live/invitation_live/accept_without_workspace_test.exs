@@ -58,14 +58,13 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert html =~ ~p"/users/register?invitation=#{token}"
   end
 
-  test "signed out: the set-up starts with the invitation, then the account and the workspace",
+  test "signed out: the set-up starts with the invitation, then the account",
        %{conn: conn, token: token} do
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
 
-    # Name alone of the flow, with the feature or without: the invitation makes a member,
-    # who waits for an owner to set up the first workspace.
-    assert steps(lv) ==
-             [{"Invitation", :current}, {"Your account", :to_come}, {"Name", :to_come}]
+    # Signed out, the edition lists none of the flow's steps: the invitation makes a
+    # member, who waits for an owner to set up the first workspace.
+    assert steps(lv) == [{"Invitation", :current}, {"Your account", :to_come}]
 
     # The Invitation step has the organisation's id, for the edition; the page never
     # shows it.
@@ -86,24 +85,14 @@ defmodule ApiaryWeb.InvitationLive.AcceptWithoutWorkspaceTest do
     assert has_element?(lv, "#invitation-email", "The invitation is for bee@example.com.")
     refute text(lv) =~ "Create an account with"
 
-    assert has_element?(
-             lv,
-             "aside#set-up-context > h2#set-up-context-h",
-             ~r/\AAbout invitations\z/
-           )
-
-    assert has_element?(
-             lv,
-             "#set-up-context #invitation-context",
-             "The invitation adds you to Acme Studio. Acme Studio has no workspace " <>
-               "yet: its first one is set up after your account."
-           )
+    # The context of a workspace to come shows only where the steps list the workspace's,
+    # which the edition leaves out signed out.
+    refute has_element?(lv, "#set-up-context")
 
     # The sign-up after it: the invitation done, a link back to its page.
     {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
 
-    assert [{"Invitation", :done, :link}, {"Your account", :current}, {"Name", :to_come}] =
-             steps(lv)
+    assert [{"Invitation", :done, :link}, {"Your account", :current}] = steps(lv)
 
     assert has_element?(lv, ~s{#set-up-steps-invitation[href="/invitations/#{token}"]})
   end

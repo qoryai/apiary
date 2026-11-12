@@ -219,16 +219,18 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       assert SetUpComponents.connect_steps?(admin)
     end
 
-    test "a sign-up: the account, then the flow, one progress" do
+    # Signed out, the edition's list stops at the account's steps: the flow is set up inside
+    # the workspace (`ApiaryPro.SetUp`).
+    test "a sign-up: the account alone, one progress" do
       Apiary.Mail.put_test_source(:none)
       steps = SetUpComponents.steps_for(nil, :account)
 
-      assert shape(steps) == [{:account, :current} | @flow]
+      assert shape(steps) == [{:account, :current}]
       assert Enum.all?(steps, &(&1.progress == :organisation))
       assert Enum.all?(steps, &is_nil(&1.path))
     end
 
-    test "the set-up link: the account, then the instance's connections and the workspace" do
+    test "the set-up link: the account, then the instance's connections" do
       Apiary.Mail.put_test_source(:none)
       %{adapter: adapter} = settable_adapter_fixture(%{name: named("tracker")})
       steps = SetUpComponents.steps_for(nil, :account, first: true)
@@ -236,14 +238,13 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       assert hd(ids) == :account
       assert {:adapter, adapter.public_id} in ids
-      assert Enum.take(ids, -8) == [:mail | @flow_ids]
 
       assert Enum.map(steps, &{&1.id, &1.progress}) ==
                [
                  {:account, :instance},
                  {{:adapter, adapter.public_id}, :instance},
                  {:mail, :instance}
-               ] ++ Enum.map(@flow_ids, &{&1, :organisation})
+               ]
 
       # Signed out, no step has a page to open.
       assert Enum.all?(steps, &is_nil(&1.path))
@@ -252,7 +253,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
       Apiary.Mail.put_test_source(:env)
 
       assert Enum.map(SetUpComponents.steps_for(nil, :account, first: true), & &1.id) ==
-               [:account, {:adapter, adapter.public_id} | @flow_ids]
+               [:account, {:adapter, adapter.public_id}]
     end
 
     test "an invited sign-up whose invitation has no workspace starts with the invitation" do
@@ -275,8 +276,7 @@ defmodule ApiaryWeb.SetUpComponentsTest do
 
       steps = SetUpComponents.steps_for(nil, :invitation, invitation: invitation, token: token)
 
-      assert shape(steps) ==
-               [{:invitation, :current}, {:account, :to_come}, {:name, :to_come}]
+      assert shape(steps) == [{:invitation, :current}, {:account, :to_come}]
 
       assert Enum.all?(steps, &(&1.progress == :organisation))
 

@@ -6,7 +6,7 @@ defmodule Apiary.Organisations.Organisation do
 
   `edition` is not stored: what the edition says of the organisation beyond the core's
   fields, a map it owns and fills where it loads the organisation, empty in the core's
-  (`c:Apiary.Edition.reach/1`). Nothing else of an edition's is on this schema: an edition
+  (`c:Apiary.Edition.reach/1`, `c:Apiary.Edition.put_organisation/1`). Nothing else of an edition's is on this schema: an edition
   keeps what it knows of an organisation in separate tables.
   """
   use Ecto.Schema

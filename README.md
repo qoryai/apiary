@@ -108,5 +108,4 @@ says, not as an issue.
 Apache License 2.0, see [LICENSE](https://github.com/qoryai/apiary/blob/main/LICENSE).
 Qory™ is a trademark of 8wonders GmbH;
 [TRADEMARKS.md](https://github.com/qoryai/apiary/blob/main/TRADEMARKS.md) says what you may
-do with the name, and [EDITIONS.md](https://github.com/qoryai/apiary/blob/main/EDITIONS.md)
-what each edition contains.
+do with the name.

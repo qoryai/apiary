@@ -582,11 +582,7 @@ defmodule Apiary.ConnectionsTest do
       one = %{"applies_to" => "selected", "workspace_ids" => [workspace.id]}
       every = %{"applies_to" => "all", "workspace_ids" => []}
 
-      # The core shows no setting: what the form sends changes nothing.
-      assert Connections.reach_at_add(scope, workspace, false) == one
-      assert Connections.reach_at_add(scope, workspace, true) == one
-
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      # The edition shows the setting: on, the connection reaches every workspace.
       assert Connections.reach_at_add(scope, workspace, false) == one
       assert Connections.reach_at_add(scope, workspace, true) == every
 

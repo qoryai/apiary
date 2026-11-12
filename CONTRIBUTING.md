@@ -34,9 +34,8 @@ Contributor Licence Agreement in [CLA.md](CLA.md), under which **8wonders GmbH, 
 successors and assigns**, hold a licence to it: perpetual, worldwide and irrevocable,
 including the right to license and relicense it, and a patent grant on the same terms as
 the Apache License, Version 2.0. That licence is what lets 8wonders GmbH license the
-project, including in its other editions ([EDITIONS.md](EDITIONS.md)). The Apache grant to
-everyone stands beside it: what you contribute is also licensed to every user under the
-Apache License, Version 2.0 (Licence, below).
+project. The Apache grant to everyone stands beside it: what you contribute is also
+licensed to every user under the Apache License, Version 2.0 (Licence, below).
 
 Opening a pull request against this repository is your acceptance of the agreement, for that
 contribution and every later one. The pull request is the record of your acceptance. Read
@@ -113,9 +112,11 @@ CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the che
 do not depend on the features, runs once: the formatting check, the compile with warnings
 as errors, the Gettext check, the browser scripts' tests, the documentation build, and
 `MIX_ENV=prod mix assets.deploy` to prove the assets still build. **Elixir tests** runs
-the suite with every feature, then the tests tagged `:feature_sets` under the default
-features and under the record alone. A weekly run, which you can also start by hand,
-runs only Elixir tests: the whole suite under those two sets. **The image** is built on
+the suite with every feature, then the tests tagged `:feature_sets` under the record and
+the security policy (`observability,security`), under those two and the managed
+organisations (`observability,security,managed_organisations`), and under the record
+alone (`observability`). A weekly run, which you can also start by hand, runs only Elixir
+tests: the whole suite under those three sets. **The image** is built on
 each platform, `linux/amd64` and `linux/arm64`. **Database over TLS** runs the tests tagged
 `database_tls` against a Postgres 18 that serves TLS. **Compose install and upgrade**
 runs `compose.yaml` as a person does: the install, a restart, the path from a checkout,
