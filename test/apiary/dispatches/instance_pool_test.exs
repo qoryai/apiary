@@ -322,11 +322,12 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     # one CI run, the check for an unresolved walk scanned `run_harnesses` once, 200 rows,
     # under a Materialize node that returned them for each of 100 runs: with those rows
     # counted, the plan read 10,901 rows. Postgres chose that plan where the dead rows of
-    # earlier tests had left the table's indexes large. The last two tests force each
-    # plan with SET LOCAL. With index and bitmap scans, hash and merge joins, materialize
-    # and memoize turned off, the plan scans tables once for each run, reads about 51,000
-    # rows and fails the bound. With hash and merge joins and memoize turned off, the plan
-    # has that Materialize node and passes it.
+    # earlier tests had left the table's indexes large. The next test forces, with SET
+    # LOCAL, a plan that scans tables once for each run: with index and bitmap scans, hash
+    # and merge joins, materialize and memoize turned off, it reads about 51,000 rows and
+    # fails the bound. The last test counts the rows of that Materialize node: 500, not
+    # 10,500. Which plan Postgres picks depends on the pages of the tables and indexes, so
+    # no setting forces the Materialize plan in every database.
     test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
       queued!(ctx.b)
       few = claim_queries(ctx.key)
@@ -360,17 +361,40 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       assert rows_read(nodes(plan)) > bound(counts), Enum.join(plan_lines(plan), "\n")
     end
 
-    test "counts the rows under a Materialize node once, not on each rescan", ctx do
-      queued!(ctx.b)
-      counts = queue_of_200!(ctx)
-      plan = plan!(ctx.key, ~w(enable_hashjoin enable_mergejoin enable_memoize))
+    test "counts the rows under a Materialize node once, not on each rescan" do
+      # The check for an unresolved walk in the plan of the CI run that read 10,901 rows:
+      # one scan of `run_harnesses`, and its rows returned from memory for 100 runs.
+      walks = %{
+        "Node Type" => "Seq Scan",
+        "Relation Name" => "run_harnesses",
+        "Actual Rows" => 200,
+        "Actual Loops" => 1
+      }
 
-      assert [%{"Actual Loops" => loops, "Plans" => [scan]}] =
-               Enum.filter(nodes(plan), &rescanned_walks?/1),
-             Enum.join(plan_lines(plan), "\n")
+      queue = %{
+        "Node Type" => "Seq Scan",
+        "Relation Name" => "dispatch_runs",
+        "Actual Rows" => 200,
+        "Actual Loops" => 1
+      }
 
-      assert loops > 1 and scan["Actual Loops"] == 1
-      assert rows_read(nodes(plan)) <= bound(counts), Enum.join(plan_lines(plan), "\n")
+      check = %{
+        "Node Type" => "Nested Loop",
+        "Join Type" => "Anti",
+        "Actual Rows" => 100,
+        "Actual Loops" => 1,
+        "Plans" => [
+          queue,
+          %{
+            "Node Type" => "Materialize",
+            "Actual Rows" => 100,
+            "Actual Loops" => 100,
+            "Plans" => [walks]
+          }
+        ]
+      }
+
+      assert rows_read(nodes(check)) == 100 + 200 + 200
     end
   end
 
@@ -468,12 +492,6 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   end
 
   defp from_memory?(node), do: node["Node Type"] in ["Materialize", "Memoize"]
-
-  # Whether `node` is a Materialize node over a sequential scan of `run_harnesses`.
-  defp rescanned_walks?(%{"Node Type" => "Materialize", "Plans" => [scan]}),
-    do: scan["Node Type"] == "Seq Scan" and scan["Relation Name"] == "run_harnesses"
-
-  defp rescanned_walks?(_node), do: false
 
   # The plan as lines, one for each node, indented under its parent: the node's type, its
   # table and index, its loops and the rows it read over every loop, or for a Materialize
