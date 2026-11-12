@@ -431,9 +431,9 @@ replaces the navigation it is in.
   limit window with a use or a reset still to come, "Available · 5-hour 89%, resets
   14:00 · 7-day 40%, resets Mon 09:00"; or, while a window of the key has a cooldown
   that ends later, "In cooldown until Fri 14:00", the latest such end, and after a middle
-  dot where that time comes from: "from the provider's answer", "from this key's
+  dot where that time comes from: "from the provider's response", "from this key's
   schedule", or "no reset time given; paused for 1 hour", the cooldown that applied, from
-  the answer that started it to its end, whatever the key's Pause for is now. A time is
+  the response that started it to its end, whatever the key's Pause for is now. A time is
   the time of day alone on the reader's day, the weekday and the time on one of the six
   days after it, else the date and the time (`ApiaryWeb.Format.week_time/2`). The windows
   read 5-hour, 7-day, 7-day Opus, 7-day Sonnet, Extra usage, Requests per minute, Tokens
@@ -935,9 +935,16 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away: Day, Runs, Ended
   well, Cancelled, Paused and Denied attempts. A day's column counts every run of the
-  day, paused runs included. Each day is said as its runs, of them how many ended well,
-  were cancelled, paused and ended badly (today: alive or ended badly), and its denied
-  attempts.
+  day, paused runs included. Its Paused part (`q-col-paused`), at the column's base in
+  the hue of a paused run's ring, is the day's share of paused runs of the column's
+  height, at least 2 px, but at most 1 px less than the column; only with every run of
+  the day paused is it the whole column, its rounded top included. The rest of the
+  column sits on it, so the two parts meet and keep the column's outline. While a day of
+  the 14 has a paused run, a legend follows the title "Runs per day" in the same line: a
+  square in that hue and "paused". A day's tooltip reads "6 runs, 1 paused" for
+  a day with a paused run, else "6 runs". Each day is said as its runs, of them how many
+  ended well, were cancelled, paused and ended badly (today: alive or ended badly), and
+  its denied attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that

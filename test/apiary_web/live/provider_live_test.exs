@@ -638,7 +638,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       until = "In cooldown until #{berlin(in_two_days, now)}"
 
-      assert text(lv, "#provider-key-alpha-state") == "#{until} · from the provider's answer"
+      assert text(lv, "#provider-key-alpha-state") == "#{until} · from the provider's response"
       assert text(lv, "#provider-key-zeta-state") == "Available"
 
       assert text(lv, "#provider-key-beta-state") ==

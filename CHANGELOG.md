@@ -1024,7 +1024,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   name and its state, in the reader's time zone: “Available”, then the use and the reset
   of each limit window, such as “Available · 5-hour 89%, resets 14:00 · 7-day 40%,
   resets Mon 09:00”; or “In cooldown until Fri 14:00”, then where that time comes from:
-  “from the provider's answer”, “from this key's schedule” or “no reset time given;
+  “from the provider's response”, “from this key's schedule” or “no reset time given;
   paused for 1 hour”. The windows read “5-hour”, “7-day”, “7-day Opus”, “7-day Sonnet”,
   “Extra usage”, “Requests per minute”, “Tokens per minute”, “Input tokens per minute”,
   “Output tokens per minute”, “Spend limit” and “Limit”. The default key comes first,
@@ -1053,7 +1053,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider nor a fallback already, with the chosen model where the provider has a model
   of the same id. **Save** saves the fallbacks with the model choice. With no such
   provider left, the part shows “Add another model provider that serves Claude Code in
-  Organisation settings › Model providers, then add it here as a fallback.”
+  Organisation settings › Model providers, then add it here as a fallback.” A save that
+  changes the chosen provider to a fallback's provider drops that fallback.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
@@ -1069,7 +1070,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A gateway reports the state of a run's keys with a signed
   `POST /v1/runs/<run_id>/model-keys`: one entry per key and limit window, with its
   status, its reset, its use and its cooldown. Qory Apiary keeps the newest state of
-  each key and window, by the time the provider's answer arrived, whichever gateway
+  each key and window, by the time the provider's response arrived, whichever gateway
   sent it, and the `200` has that state for each key of the run. So a run on another
   machine skips a key that is in cooldown. The route returns `404` without the features
   `factory` and `secrets`, and `410` for a run that ended.
@@ -1104,7 +1105,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The workspace overview's runs per day count paused runs: the table under the chart
   has **Paused** after **Cancelled**, and each day reads “Today: 6 runs (1 ended well, 1
   cancelled, 1 paused, 3 alive or ended badly), 0 denied attempts, open that day's
-  runs”.
+  runs”. Each day's column shows its paused runs as a part at its base, in the colour of
+  a paused run's ring, with a legend “paused” beside “Runs per day”, and the day's tooltip
+  reads “6 runs, 1 paused”.
 - On the run page, **Run the agent** of a session that paused at its keys' limit, and
   its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
@@ -1822,8 +1825,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - `model_key_copies` (20261111220000): a row for each pending or running run and each of
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
-  keeps its keys' reports. It takes no lock that blocks reads or writes. Rolling back
-  changes nothing.
+  keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row
+  its new rows refer to until the migration commits. Until then, deleting such a run or
+  key, directly or through a cascade, waits; reads do not. Rolling back changes nothing.
 - `secret_values` and `model_key_copies` (20261111190000): a column
   `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
   as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
@@ -1863,7 +1867,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run with a key, and its two checks on `runs` scan `runs` under a lock that blocks reads
   and writes. Rolling back sets `provider_value_id` to the first key of the
   list where that key still exists, and clears the provider columns of a run whose first
-  key is gone.
+  key is gone. A release from before this migration reads `runs.provider_value_id` and
+  does not run on the schema after it: to go back to such a release, first take the
+  schema back with `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading,
+  Rolling back).
 <!-- /feature -->
 
 - `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
@@ -1873,7 +1880,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and each type's key, name and spec stay. A run claimed with a type's image before the
   upgrade starts in that image only where the image is in the organisation's place in
   the registry, else in the pool's default image. Rolling back adds the columns again,
-  with no image on any type and no run marked.
+  with no image on any type and no run marked. A release from before this migration
+  reads `machine_types.image` and does not run on the schema after it: to go back to such
+  a release, first take the schema back with
+  `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading, Rolling back).
 <!-- feature: factory, secrets -->
 - `model_key_settings` and `model_key_states` (20261110161700): two new tables, keyed by
   a key's row in `secret_values`: a key's Resets and Pause for, and its state in each

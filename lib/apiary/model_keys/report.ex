@@ -11,8 +11,8 @@ defmodule Apiary.ModelKeys.Report do
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
   `rejected` and without it otherwise. A `resets_at` or a `cooldown_until` more than
   `max_reset_days/0` days after the item's `observed_at` is taken as that bound: the
-  contract's README bounds a window's reset at 31 days after the answer arrived, and a
-  cooldown ends at a reset. A member the schema does not define, a member
+  contract's README bounds a window's reset at 31 days after the provider's response
+  arrived, and a cooldown ends at a reset. A member the schema does not define, a member
   twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
@@ -64,7 +64,7 @@ defmodule Apiary.ModelKeys.Report do
   # The gateway sends its last report within 10 s of the run's end, sometimes before its
   # `dev.qory.run.exited`: a report this long after the run's end is still stored.
   @after_exit_seconds 60
-  # The contract's bound on `resets_at`: at most 31 days after the answer arrived.
+  # The contract's bound on `resets_at`: at most 31 days after the provider's response arrived.
   @max_reset_days 31
   # 6 keys of a run, 11 windows each (`Apiary.ModelKeys.State.windows/0`).
   @max_keys 66

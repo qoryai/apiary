@@ -8,15 +8,15 @@ defmodule Apiary.ModelKeys.State do
       `seven_day`. A report may have any code of the form `^[a-z][a-z0-9_]{0,63}$`; a
       window outside `windows/0` is not stored (`Apiary.ModelKeys.record/3`).
     * `status`: `allowed`, `allowed_warning` or `rejected`.
-    * `resets_at`: when the window resets, nil when the answer gave no time.
-    * `utilization`: the window's use in whole percent, 0 to 100, nil when the answer
+    * `resets_at`: when the window resets, nil when the response gave no time.
+    * `utilization`: the window's use in whole percent, 0 to 100, nil when the response
       gave none. A read leaves it out once `resets_at` has passed
       (`Apiary.ModelKeys.current/2`).
     * `cooldown_until`: until when the key is not used; the key is in cooldown while it
       is in the future.
-    * `source`: where `cooldown_until` or `resets_at` comes from: `provider`, the answer;
+    * `source`: where `cooldown_until` or `resets_at` comes from: `provider`, the response;
       `schedule`, the key's weekly reset; `pause_for`, the key's Pause for.
-    * `observed_at`: the gateway's clock when the answer arrived. A report keeps the row
+    * `observed_at`: the gateway's clock when the response arrived. A report keeps the row
       only when it is newer by this time.
     * `updated_at`: when this server last wrote the row.
 
