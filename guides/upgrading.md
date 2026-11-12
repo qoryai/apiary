@@ -14,11 +14,15 @@ goes wrong.
    `schema_migrations`, so the second waits and then finds nothing to do. A migration that
    builds an index concurrently runs without that lock; the changelog says so where it
    applies, and two instances must not boot such a migration at the same moment.
-3. Once the migrations have run, and before it serves, the release checks that its
+3. Once the migrations have run, the release adopts the organisations of an instance
+   upgraded from a release without operators, in one transaction that is safe to run
+   again ([Instance admins](admin.md#an-instance-upgraded-from-a-release-without-operators)).
+   An adoption that fails stops the boot, as a migration that fails does.
+4. Once the adoption has run, and before it serves, the release checks that its
    `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` are the ones the instance first
    started with, and stops when one is not
    ([Install and configure](install.md), The keys generated at first start).
-4. The version the release reports, at `GET /health` and with `bin/apiary version`, is the
+5. The version the release reports, at `GET /health` and with `bin/apiary version`, is the
    version in `mix.exs`, which is the tag of the release. `GET /health` also reports
    `revision`, the commit the image was built from.
 
@@ -68,7 +72,10 @@ possible:
   which Ecto runs outside a transaction), so a busy instance keeps serving.
 - **Every migration has a `down`.** `bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, <version>)"`
   reverts every migration from `<version>` on, that version included: give the first
-  migration the previous release does not have.
+  migration the previous release does not have. The 19 migrations `20260927100100` to
+  `20261025170000` are the exception: their versions are older than most other
+  migrations, so a rollback to `20260927100100` reverts 262 of the 276 migrations. Go back
+  from the release that adds them by image only, and leave their tables in place.
 - **The keys of the organisation and the workspace come first.** Every table carries
   `organisation_id`, and every table that belongs to a workspace carries `workspace_id`
   beside it with the composite foreign key, from its first migration; no migration
@@ -134,6 +141,10 @@ the previous release does not have, and then set the version back:
 docker compose stop apiary
 docker compose run --rm apiary bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, <version>)"
 ```
+
+Go back from the release that adds the 19 migrations `20260927100100` to
+`20261025170000` by image only, with their tables left in place: a rollback to
+`20260927100100` reverts 262 of the 276 migrations.
 
 A rollback does not bring back rows that [retention](retention.md) pruned in the meantime,
 and nothing but a backup does.

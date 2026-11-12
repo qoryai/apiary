@@ -1572,9 +1572,9 @@ page asks to say why). Granting and revoking an instance admin (`instance_admin.
 `instance_admin.revoke`) are the core's release commands, which no role has.
 
 One more instance action is taken by no role: `instance.adopt`, the entry of an
-organisation that Qory Apiary 0.1.0 created, adopted at the upgrade
-([architecture.md](architecture.md), Adopting an instance upgraded from Qory Apiary
-0.1.0).
+organisation created before the instance had tenants, adopted at the upgrade
+([architecture.md](architecture.md), Adopting an instance whose organisations have no
+tenant).
 
 Instance settings › Accounts also offers the core's password links while no mail is set
 (`Apiary.Accounts.build_password_link/3`, Make a password link in an account's menu): a
@@ -1965,7 +1965,7 @@ The modes keep a row that only names another out of it:
   for each other too, and the write checks the workspace marked as one in use; and two
   writes of the organisation's take turns
   (`test/apiary_pro/organisation_variables_races_test.exs`).
-- The adoption of an instance upgraded from Qory Apiary 0.1.0 (`ApiaryPro.Adoption`) locks
+- The adoption of an instance whose organisations have no tenant (`ApiaryPro.Adoption`) locks
   the rows of the organisations it adopts `FOR NO KEY UPDATE`, in the order of their ids,
   and the instance organisation's the same way, whose flag it sets and whose kind it
   leaves as it is, under an advisory lock, so their tenants are written under their rows'

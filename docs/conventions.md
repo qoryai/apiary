@@ -240,14 +240,13 @@ version and that the edition's keep their names.
 - **A migration of the edition creates, changes and drops the edition's tables only.** It
   never alters a core table. It may add a foreign key from a table of the edition to a key
   of the core's: the unique keys `workspaces (organisation_id, id)` and `memberships
-  (organisation_id, user_id)`, and the ids of `organisations` and `users`, which are never
-  reused.
+  (organisation_id, user_id)`, and the ids of `organisations`, `users` and `invitations`,
+  which are never reused.
 - **The core's rules hold**: one migration per change, every migration reverses, and the
   organisation keys come first.
 - **After the migrations**, the release runs the edition's step
   (`ApiaryPro.Adoption.run/0`, the edition's `after_migrate/0`), which adopts the
-  organisations of an instance upgraded from Qory Apiary 0.1.0, and so does `ecto.migrate`
-  in dev.
+  organisations without a tenant, and so does `ecto.migrate` in dev.
 
 ### Tests
 

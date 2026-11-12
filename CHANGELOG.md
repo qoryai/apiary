@@ -1862,16 +1862,34 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Upgrading
 
-- At the first boot after the upgrade, 19 migrations run (Migrations, below), then
-  every organisation is adopted, in one transaction that is safe to run again. Each
-  organisation is an ordinary organisation, not an operator; the organisation the
-  instance was set up with is the instance organisation, so its owners stay the
-  instance admins. Each member is added to each workspace of their organisation, so
-  nobody loses a workspace they reached. Each organisation's Activity has one entry of
-  the adoption, by the instance. Sign-up stays closed until an instance admin opens it
-  or `SIGNUP_ORGANISATIONS` or `SIGNUP_OPERATORS` opens it.
-  After the upgrade, a member reaches a new workspace only when they are added to it.
-  There is no way back to the earlier image.
+- On an instance without the 19 migrations (Migrations, below), such as one on Qory
+  Apiary 0.1.0, they run at the first boot after the upgrade, then every organisation
+  is adopted, in one transaction that is safe to run again. Each organisation is an
+  ordinary organisation, not an operator; the organisation the instance was set up with
+  is the instance organisation, so its owners stay the instance admins. Each member is
+  added to each workspace of their organisation, so nobody loses a workspace they
+  reached. Each organisation's Activity has one entry of the adoption, by the instance.
+  Sign-up stays closed until an instance admin opens it or `SIGNUP_ORGANISATIONS` or
+  `SIGNUP_OPERATORS` opens it. After the upgrade, a member reaches a new workspace only
+  when they are added to it.
+- An install that ran the separately licensed image has the 19 migrations and its
+  organisations adopted already: no migration of them runs, and the adoption changes
+  nothing. Set `APIARY_IMAGE` in `.env` to `ghcr.io/qoryai/apiary`, its default.
+- To go back, deploy the previous image. The 15 tables the 19 migrations add stay in
+  place; do not roll the 19 migrations back (Upgrading, Rolling back). On an image
+  without them, these stop taking effect until the next upgrade:
+  - suspensions of accounts and organisations: a suspended account signs in again, and
+    a suspended organisation is no longer read-only;
+  - workspace access: each member reaches every workspace of their organisation again;
+  - each organisation's policy;
+  - each organisation's secrets and variables;
+  - the features an instance admin took away from an organisation or granted to it:
+    every organisation has every feature the instance has;
+  - the relationships between operators and their clients.
+
+  A member added to an adopted organisation while the previous image runs gets no
+  workspace access at the next upgrade, because the adoption covers only organisations
+  it has not adopted. They reach no workspace until they are added to one.
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`

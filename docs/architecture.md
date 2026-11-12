@@ -647,7 +647,7 @@ callbacks, adds tables beside the core's and alters none of them. In this sectio
 core means the rest of the code.
 
 This section covers the edition's layout, its tables and their keys, the tenants and the
-instance organisation, the adoption of an instance upgraded from Qory Apiary 0.1.0,
+instance organisation, the adoption of an instance whose organisations have no tenant,
 operators and their clients, policy requests, the organisation's policy, its variables
 and its secrets, the suspension of accounts and organisations, transfers, features below
 the instance, and the edition's part of the audit trail and of deletion. Who may do what
@@ -714,8 +714,8 @@ schemas beside it:
 - `ApiaryPro.Deletion` and `ApiaryPro.Deletion.Tables`: the edition's part in deleting and
   purging (Deletion, below).
 - `ApiaryPro.Adoption`: the edition's step after the migrations, which adopts the
-  organisations of an instance upgraded from Qory Apiary 0.1.0 (Adopting an instance
-  upgraded from Qory Apiary 0.1.0, below).
+  organisations without a tenant (Adopting an instance whose organisations have no
+  tenant, below).
 - `ApiaryPro.Release`: the edition's release commands
   (`bin/apiary eval "ApiaryPro.Release.…"`), run as the core's are.
 
@@ -898,26 +898,28 @@ for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`
   who asked for the erasure, and refuses anyone else's; nothing marks or purges the
   instance organisation.
 
-### Adopting an instance upgraded from Qory Apiary 0.1.0
+### Adopting an instance whose organisations have no tenant
 
-The organisations of an instance set up with Qory Apiary 0.1.0 have no tenant. The first
-release after it adopts them: `ApiaryPro.Adoption.run/0`, the edition's `after_migrate/0`,
+The organisations of an instance set up with a release without tenants, such as Qory
+Apiary 0.1.0 or a build of `main` from before them, have no tenant. The first release with
+tenants adopts them: `ApiaryPro.Adoption.run/0`, the edition's `after_migrate/0`,
 which the release runs at boot and from the migrate command. Upgrading is swapping the
-image and restarting.
+image and restarting. An instance goes back by deploying the previous image; the tables
+the upgrade added stay in place.
 
 - **A tenant for every organisation.** Every organisation without a tenant gets one of
   the kind `organisation`, with no operator and not suspended: what it was in the core.
 - **The instance organisation.** While no tenant is the instance organisation, the
-  organisation that 0.1.0 held as its instance organisation, the oldest in use, becomes
-  it, and keeps the kind `organisation`, as every organisation adopted does: its owners
-  ran the instance before, and stay its instance admins. Adopting never makes it an
-  operator; an instance admin may, where the instance has `managed_organisations`. An
-  instance with an instance organisation keeps it.
-- **What a member reached.** In 0.1.0 every membership reached every workspace of its
-  organisation; here a member reaches the workspaces they were added to. So each
-  membership at member of an organisation adopted by this run is added to each workspace
-  of it, and nobody loses what they reached. An organisation adopted before keeps its
-  workspace access as it is.
+  organisation that the earlier release held as its instance organisation, the oldest in
+  use, becomes it, and keeps the kind `organisation`, as every organisation adopted does:
+  its owners ran the instance before, and stay its instance admins. Adopting never makes
+  it an operator; an instance admin may, where the instance has `managed_organisations`.
+  An instance with an instance organisation keeps it.
+- **What a member reached.** In the earlier release every membership reached every
+  workspace of its organisation; here a member reaches the workspaces they were added
+  to. So each membership at member of an organisation adopted by this run is added to
+  each workspace of it, and nobody loses what they reached. An organisation adopted
+  before keeps its workspace access as it is.
 - **The trail.** Each organisation adopted gets one entry, `instance.adopt`, by the
   instance, in the organisation's trail: its kind, whether it is the instance
   organisation, and how many rows of workspace access it gave; so does the instance

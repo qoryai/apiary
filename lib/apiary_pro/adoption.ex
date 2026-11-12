@@ -4,7 +4,8 @@ defmodule ApiaryPro.Adoption do
   tenants, such as Qory Apiary 0.1.0, its tenant and its workspace access: `run/0`, the
   edition's step after the migrations (`c:Apiary.Edition.after_migrate/0`), which
   `Apiary.Release.migrate/1` runs at boot and from `bin/migrate`. Upgrading is swapping
-  the image and restarting; there is no way back to the release before.
+  the image and restarting. An instance goes back by deploying the previous image; the
+  tables the upgrade added stay in place.
 
   - **A tenant for every organisation.** The edition reads what it knows of an
     organisation from its tenant (`ApiaryPro.Tenants.Tenant`), which it writes when it

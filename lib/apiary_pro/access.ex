@@ -219,7 +219,7 @@ defmodule ApiaryPro.Access do
     ),
     Action.new(
       :"instance.adopt",
-      "adopt an organisation created by a release without operators and clients, such as Qory Apiary 0.1.0: taken by the instance after the migrations; no role takes it",
+      "adopt an organisation created before the instance had tenants: taken after the migrations (`ApiaryPro.Adoption`), which no role takes",
       asked_of: :organisation,
       instance: true
     ),

@@ -7,8 +7,8 @@ are, how the release commands `Apiary.Release.grant_instance_admin/2` and
 organisation. This guide covers sign-up beyond invitations, **Instance settings** and what
 the instance admins do there, a client's first invitation without mail, rendering the
 organisations' policies again, the grace period of a deletion, purging an organisation at
-once on an erasure request, and what becomes of an instance upgraded from Qory Apiary
-0.1.0.
+once on an erasure request, and what becomes of an instance upgraded from a release
+without operators.
 
 <!-- feature: organisation_variables -->
 It covers organisation secrets and variables without their feature too.
@@ -272,14 +272,32 @@ and an operator that still has clients, each of which is deleted first,
 <!-- /feature -->
 and says what it did. Should it stop half way, running it again goes on where it stopped.
 
-## An instance upgraded from Qory Apiary 0.1.0
+## An instance upgraded from a release without operators
 
-An instance set up with Qory Apiary 0.1.0 is adopted the first time a later release
-migrates its database, at boot or with `bin/migrate`, in one transaction that is safe to
-run again. Every organisation becomes one with no operator, not suspended, and the
-instance organisation of 0.1.0 becomes the instance owner, so its owners stay the
+An instance set up with a release without operators, such as Qory Apiary 0.1.0 or a
+build of `main` from before them, is adopted the first time a later release migrates its
+database, at boot or with `bin/migrate`, in one transaction that is safe to run again.
+Every organisation becomes one with no operator, not suspended, and the instance
+organisation of the earlier release becomes the instance owner, so its owners stay the
 instance admins; it stays an organisation, and becomes an operator only if an instance
-admin makes it one. In 0.1.0 every member reaches every workspace, so each member of an
-adopted organisation is added to each of its workspaces, and nobody loses what they
-reached. Each adopted organisation has one entry of it in its activity, by the instance.
-There is no way back to the image of 0.1.0.
+admin makes it one. In the earlier release every member reaches every workspace, so each
+member of an adopted organisation is added to each of its workspaces, and nobody loses
+what they reached. Each adopted organisation has one entry of it in its activity, by the
+instance.
+
+To go back, deploy the previous image ([Upgrading](upgrading.md#rolling-back)). The
+tables the upgrade added stay in place. On the previous image, these stop taking effect
+until the next upgrade:
+
+- suspensions of accounts and organisations: a suspended account signs in again, and a
+  suspended organisation is no longer read-only;
+- workspace access: each member reaches every workspace of their organisation again;
+- each organisation's policy;
+- each organisation's secrets and variables;
+- the features an instance admin took away from an organisation or granted to it: every
+  organisation has every feature the instance has;
+- the relationships between operators and their clients.
+
+A member added to an adopted organisation while the previous image runs gets no
+workspace access at the next upgrade, because the adoption covers only organisations it
+has not adopted. They reach no workspace until they are added to one.
