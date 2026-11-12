@@ -286,6 +286,62 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     refute ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
   end
 
+  test "Change value trims the spaces and newlines around a key's value", ctx do
+    %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+    value = Repo.get_by!(Value, secret_id: secret.id, value_id: "main")
+    key_state!(provider, "main", until: in_seconds(3_600))
+    path = secrets_path(scope, "/#{secret.public_id}/values/main/change")
+
+    # Only whitespace, a newline and a no-break space among it, is a New value left empty:
+    # the value and its cooldown stay.
+    {:ok, lv, _html} = live(conn, path)
+
+    lv
+    |> form("#secret-form", secret_value: %{value: " \n\t\u00A0\r\n"})
+    |> render_submit()
+
+    assert render(lv) =~ "main of #{secret.name} is saved."
+    assert reveal(provider, "main") == {:ok, @key}
+    assert Repo.reload!(value).value_set_at == value.value_set_at
+
+    assert [%{status: "rejected"}] =
+             ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
+
+    # The value it has, with spaces around it, is a new value: set, its cooldown ended.
+    {:ok, lv, _html} = live(conn, path)
+
+    lv
+    |> form("#secret-form", secret_value: %{value: "\u00A0#{@key} \r\n"})
+    |> render_submit()
+
+    assert reveal(provider, "main") == {:ok, @key}
+    assert DateTime.compare(Repo.reload!(value).value_set_at, value.value_set_at) == :gt
+    refute ModelKeys.provider_states(provider, DateTime.utc_now())[value.id]
+
+    # The spaces inside stay.
+    {:ok, lv, _html} = live(conn, path)
+
+    html =
+      lv
+      |> form("#secret-form", secret_value: %{value: "\n second-key with spaces \n"})
+      |> render_submit()
+
+    refute_key(html)
+    assert reveal(provider, "main") == {:ok, "second-key with spaces"}
+  end
+
+  test "Change value of another secret keeps the value as typed, its last newline too", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, plain} = Secrets.create_secret(scope, %{name: "DEPLOY_KEY", value: "plain-value"})
+    pem = "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"
+
+    {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/change-value"))
+    lv |> form("#secret-form", secret_value: %{value: pem}) |> render_submit()
+
+    assert render(lv) =~ "The value of DEPLOY_KEY is saved."
+    assert Secrets.reveal_for_sealing(scope.workspace, plain.public_id, nil) == {:ok, pem}
+  end
+
   test "another secret's value has no settings", ctx do
     %{conn: conn, scope: scope} = ctx
     {:ok, plain} = Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "plain-value"})

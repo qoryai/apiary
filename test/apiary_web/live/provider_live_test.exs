@@ -129,6 +129,14 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
   defp title(name), do: (Providers.fetch(name) |> elem(1)).title
 
+  # The key `value_id` of `provider`, as a run's sealing reads it.
+  defp key_value(provider, value_id),
+    do:
+      Apiary.Secrets.reveal_key_for_sealing(
+        Repo.get!(Connection, provider.id),
+        values(provider)[value_id].id
+      )
+
   # The text of the element `selector` selects, its whitespace collapsed.
   defp text(lv, selector) do
     lv
@@ -919,6 +927,35 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert Map.keys(values(provider)) == ["key-1"]
     end
 
+    test "trims the spaces and newlines around the Key; only those are an empty Key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      # A Key of only whitespace has the error of an empty Key, and adds nothing.
+      lv |> form("#key-form", key: %{value_id: "spare", key: ""}) |> render_submit()
+      empty = text(lv, "#key-value-1-error")
+      assert empty =~ "can't be blank"
+
+      lv
+      |> form("#key-form", key: %{value_id: "spare", key: " \n\t\u00A0\r\n"})
+      |> render_submit()
+
+      assert text(lv, "#key-value-2-error") == empty
+      assert Map.keys(values(provider)) == ["key-1"]
+
+      # The spaces inside the key stay.
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: " \n#{@key} two\r\n\u00A0"})
+        |> render_submit()
+
+      {:ok, _show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is added."
+      refute html =~ @key
+      assert key_value(provider, "spare") == {:ok, @key <> " two"}
+    end
+
     test "at the most keys a provider has, says so under Key", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = keys!(scope, "anthropic", for(n <- 1..32, do: "key-#{n}"))
@@ -1067,6 +1104,53 @@ defmodule ApiaryWeb.ProviderLiveTest do
                Repo.get!(Connection, provider.id),
                values(provider)["main"].id
              ) == {:ok, @key}
+    end
+
+    test "trims the spaces and newlines around a New value, and keeps the spaces inside",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      value = values(provider)["spare"]
+      key_state!(provider, "spare", until: in_seconds(3_600))
+
+      # Only whitespace, a newline and a no-break space among it, keeps the value.
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: "\n\t\u00A0\r\n"})
+        |> render_submit()
+
+      {:ok, show, _html} = follow_redirect(result, conn)
+      assert text(show, "#provider-key-spare-state") =~ "In cooldown until"
+      assert values(provider)["spare"].value_set_at == value.value_set_at
+      assert key_value(provider, "spare") == {:ok, @key}
+
+      # The value it has, with spaces around it, is a new value: set, its cooldown ended.
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: " #{@key}\n"})
+        |> render_submit()
+
+      {:ok, show, html} = follow_redirect(result, conn)
+      assert html =~ "spare is saved."
+      refute html =~ @key
+      assert text(show, "#provider-key-spare-state") == "Available"
+      assert DateTime.compare(values(provider)["spare"].value_set_at, value.value_set_at) == :gt
+      assert key_value(provider, "spare") == {:ok, @key}
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
+
+      result =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: "\r\n sk-ant rotated key \n"})
+        |> render_submit()
+
+      {:ok, _show, html} = follow_redirect(result, conn)
+      refute html =~ "rotated"
+      assert key_value(provider, "spare") == {:ok, "sk-ant rotated key"}
     end
 
     test "a New value that fails its checks shows its error under it, and changes nothing",

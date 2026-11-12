@@ -1293,7 +1293,8 @@ defmodule Apiary.Connections do
     * `settings`, its plain settings (`%{}` by default), checked against the description,
       each address setting by `Apiary.Kinds.Endpoint.check/1`;
     * `keys`, its keys: a list of maps of `value_id` and `value`, or a map of them by
-      index, as `Apiary.Secrets.create_provider_keys/2` takes them;
+      index, as `Apiary.Secrets.create_provider_keys/2` takes them, each `value` without
+      the whitespace at its ends (`String.trim/1`);
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default, or `"operator"` for a provider of the operator's
       chain, which is refused with `:forbidden` unless the edition says that the scope
@@ -1328,7 +1329,7 @@ defmodule Apiary.Connections do
            {:ok, secret} <-
              Secrets.create_provider_keys(
                scope,
-               %{name: keys_name(new), values: in_order(attrs["keys"])},
+               %{name: keys_name(new), values: attrs["keys"] |> in_order() |> trim_keys()},
                place
              ),
            {:ok, changeset} <-
@@ -1764,8 +1765,9 @@ defmodule Apiary.Connections do
 
   @doc """
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
-  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, and `settings`
-  the key's settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
+  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, the `value`
+  without the whitespace at its ends (`String.trim/1`), and `settings` the key's
+  settings (`Apiary.ModelKeys.Setting.changeset/2`), nil for none. The key and
   its settings are written in one transaction. `{:ok, provider}`, or `{:error, refusal}`
   as `Apiary.Secrets.add_value/4` returns, or a changeset of the settings, which leaves
   no key added.
@@ -1775,7 +1777,8 @@ defmodule Apiary.Connections do
   def add_provider_key(%Scope{} = scope, %Connection{} = provider, attrs, settings \\ nil),
     do:
       write_keys(scope, provider, fn scope, secret, current ->
-        value_id = Value.normalise_value_id(stringify(attrs)["value_id"])
+        attrs = trim_value(stringify(attrs))
+        value_id = Value.normalise_value_id(attrs["value_id"])
 
         with {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
              {:ok, _setting} <- put_key_setting(current, value_id, settings),
@@ -1784,8 +1787,9 @@ defmodule Apiary.Connections do
 
   @doc """
   set_provider_key/5 replaces the value of a model provider's key with the value id
-  `value_id` (`provider.write`), and, with `settings`, its settings, in one transaction,
-  which also deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
+  `value_id` (`provider.write`) by `value` without the whitespace at its ends
+  (`String.trim/1`), and, with `settings`, its settings, in one transaction, which also
+  deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
   is out of cooldown. The details of its `provider_keys_changed` entry have
   `value_set: true`. `{:ok, provider}`, or `{:error, refusal}` as
   `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
@@ -1805,7 +1809,7 @@ defmodule Apiary.Connections do
           scope,
           provider,
           fn scope, secret, current ->
-            with :ok <- set_key(scope, secret, current, value_id, value),
+            with :ok <- set_key(scope, secret, current, value_id, trim_key(value)),
                  {:ok, _setting} <- put_key_setting(current, value_id, settings),
                  do: {:ok, %{details: %{value_id: value_id, value_set: true}}}
           end
@@ -1816,9 +1820,10 @@ defmodule Apiary.Connections do
   (`provider.write`): `attrs` has its new `value_id`, which renames it as
   `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/2`)
   and, optionally, its new `value`. A rename keeps the settings and the states, which are
-  the value's row's. A `value` that is nil, empty or only whitespace keeps the value and
-  its states; any other replaces the value and deletes the states, as
-  `set_provider_key/5` does, and the details of the entry then have `value_set: true`.
+  the value's row's. The `value` loses the whitespace at its ends (`String.trim/1`). A
+  `value` that is nil or then empty keeps the value and its states; any other replaces
+  the value and deletes the states, as `set_provider_key/5` does, and the details of the
+  entry then have `value_set: true`.
   The value, the name and the settings are written in one transaction, and a save that
   changes none of them leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
@@ -1831,7 +1836,7 @@ defmodule Apiary.Connections do
   def update_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, attrs) do
     attrs = stringify(attrs)
     new_value_id = Value.normalise_value_id(attrs["value_id"])
-    new_value = blank_to_nil(attrs["value"])
+    new_value = blank_to_nil(trim_key(attrs["value"]))
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
@@ -1871,6 +1876,22 @@ defmodule Apiary.Connections do
   defp set_key(scope, secret, current, value_id, value) do
     with {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
          do: ModelKeys.clear_states(current.secret_id, value_id)
+  end
+
+  # A key's value without the Unicode whitespace at its ends (`String.trim/1`): spaces,
+  # tabs, newlines and the no-break space that a copy of a key can bring. Only a provider's
+  # keys are trimmed: another secret's value, a private key for one, keeps its last newline.
+  defp trim_key(value) when is_binary(value), do: String.trim(value)
+  defp trim_key(value), do: value
+
+  defp trim_value(%{"value" => value} = attrs), do: %{attrs | "value" => trim_key(value)}
+  defp trim_value(attrs), do: attrs
+
+  defp trim_keys(keys) do
+    Enum.map(keys, fn
+      %{} = key -> key |> stringify() |> trim_value()
+      other -> other
+    end)
   end
 
   # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,

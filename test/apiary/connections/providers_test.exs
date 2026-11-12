@@ -807,6 +807,159 @@ defmodule Apiary.Connections.ProvidersTest do
     end
   end
 
+  describe "a key's value" do
+    # Spaces, a tab, a newline, a no-break space and an ideographic space around a key, as a
+    # copy can bring them.
+    @around {" \t\n\u00A0", " \r\n\u3000"}
+
+    defp wrapped(value), do: elem(@around, 0) <> value <> elem(@around, 1)
+
+    defp reveal!(provider, value_id) do
+      provider = Repo.get!(Connection, provider.id)
+      Secrets.reveal_key_for_sealing(provider, value!(provider, value_id).id)
+    end
+
+    test "is trimmed at both ends when a provider is added, its inner spaces kept", ctx do
+      provider =
+        openrouter!(ctx.scope, %{
+          keys: [
+            %{value_id: "main", value: wrapped(@key)},
+            %{"value_id" => "spare", "value" => wrapped("sk spare\tkey")}
+          ]
+        })
+
+      assert reveal!(provider, "main") == {:ok, @key}
+      assert reveal!(provider, "spare") == {:ok, "sk spare\tkey"}
+
+      # Only whitespace is an empty key, refused as one.
+      for blank <- ["", " \n\t\u00A0"] do
+        assert {:error, changeset} =
+                 Connections.create_provider(ctx.scope, %{
+                   provider: "openrouter",
+                   keys: [%{value_id: "main", value: blank}]
+                 })
+
+        assert [%{value: ["can't be blank" | _]}] = errors_on(changeset).values
+      end
+    end
+
+    test "is trimmed by Add key, and only whitespace is refused as an empty key", ctx do
+      provider = openrouter!(ctx.scope)
+
+      assert {:ok, _provider} =
+               Connections.add_provider_key(ctx.scope, provider, %{
+                 value_id: "third",
+                 value: wrapped("sk third key")
+               })
+
+      assert reveal!(provider, "third") == {:ok, "sk third key"}
+
+      assert {:error, empty} =
+               Connections.add_provider_key(ctx.scope, provider, %{value_id: "fourth", value: ""})
+
+      assert {:error, blank} =
+               Connections.add_provider_key(ctx.scope, provider, %{
+                 "value_id" => "fourth",
+                 "value" => " \n\t\u00A0"
+               })
+
+      assert errors_on(blank) == errors_on(empty)
+      assert "can't be blank" in errors_on(blank).value
+      refute Repo.get_by(Value, secret_id: provider.secret_id, value_id: "fourth")
+    end
+
+    test "is trimmed by a change of the value, which is new though only its spaces differ",
+         ctx do
+      provider = openrouter!(ctx.scope)
+      spare = value!(provider, "spare")
+
+      Apiary.ModelKeysFixtures.key_state!(provider, "spare",
+        until: Apiary.ModelKeysFixtures.in_seconds(3_600)
+      )
+
+      # The stored value with spaces around it: set, its time moved, its cooldown ended.
+      assert {:ok, _provider} =
+               Connections.set_provider_key(ctx.scope, provider, "spare", wrapped("sk-spare"))
+
+      assert reveal!(provider, "spare") == {:ok, "sk-spare"}
+      assert DateTime.compare(value!(provider, "spare").value_set_at, spare.value_set_at) == :gt
+      refute ModelKeys.provider_states(provider, DateTime.utc_now())[spare.id]
+      assert List.last(trail(provider.id)).details["value_set"] == true
+
+      # Only whitespace is an empty value, refused as one, and the value stays.
+      set_at = value!(provider, "spare").value_set_at
+      assert {:error, empty} = Connections.set_provider_key(ctx.scope, provider, "spare", "")
+
+      assert {:error, blank} =
+               Connections.set_provider_key(ctx.scope, provider, "spare", " \n\t\u00A0")
+
+      assert errors_on(blank) == errors_on(empty)
+      assert "can't be blank" in errors_on(blank).value
+      assert reveal!(provider, "spare") == {:ok, "sk-spare"}
+      assert value!(provider, "spare").value_set_at == set_at
+    end
+
+    test "is trimmed by Edit key's New value; only whitespace keeps the value", ctx do
+      provider = openrouter!(ctx.scope)
+      spare = value!(provider, "spare")
+      until = Apiary.ModelKeysFixtures.in_seconds(3_600)
+      Apiary.ModelKeysFixtures.key_state!(provider, "spare", until: until)
+
+      assert {:ok, _provider} =
+               Connections.update_provider_key(ctx.scope, provider, "spare", %{
+                 "value_id" => "spare",
+                 "value" => " \n\t\u00A0\r\n"
+               })
+
+      assert reveal!(provider, "spare") == {:ok, "sk-spare"}
+      assert value!(provider, "spare").value_set_at == spare.value_set_at
+
+      assert [%{status: "rejected"}] =
+               ModelKeys.provider_states(provider, DateTime.utc_now())[spare.id]
+
+      # The stored value with spaces around it is a new value: set, and its cooldown ends.
+      assert {:ok, _provider} =
+               Connections.update_provider_key(ctx.scope, provider, "spare", %{
+                 "value_id" => "spare",
+                 "value" => wrapped("sk-spare")
+               })
+
+      assert reveal!(provider, "spare") == {:ok, "sk-spare"}
+      assert DateTime.compare(value!(provider, "spare").value_set_at, spare.value_set_at) == :gt
+      refute ModelKeys.provider_states(provider, DateTime.utc_now())[spare.id]
+
+      assert {:ok, _provider} =
+               Connections.update_provider_key(ctx.scope, provider, "spare", %{
+                 "value_id" => "backup",
+                 "value" => wrapped("sk rotated key")
+               })
+
+      assert reveal!(provider, "backup") == {:ok, "sk rotated key"}
+    end
+
+    test "is trimmed of Unicode whitespace only: a zero-width space stays", ctx do
+      provider = openrouter!(ctx.scope)
+      zwsp = "\u200B"
+
+      assert {:ok, _provider} =
+               Connections.set_provider_key(
+                 ctx.scope,
+                 provider,
+                 "spare",
+                 " #{zwsp}sk-spare#{zwsp}\n"
+               )
+
+      assert reveal!(provider, "spare") == {:ok, "#{zwsp}sk-spare#{zwsp}"}
+    end
+
+    test "is trimmed only for a provider: another secret keeps its last newline", ctx do
+      pem = "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n"
+      {:ok, secret} = Secrets.create_secret(ctx.scope, %{name: "DEPLOY_KEY", value: "x"})
+      assert {:ok, secret} = Secrets.set_value(ctx.scope, secret, nil, pem)
+      assert Secrets.reveal_for_sealing(ctx.scope.workspace, secret.public_id, nil) == {:ok, pem}
+    end
+  end
+
   describe "a refused write" do
     # Whether `needle` is anywhere in `term`: a string, a map or struct, a list or a tuple.
     defp holds?(term, needle) when is_binary(term), do: String.contains?(term, needle)
