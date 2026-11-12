@@ -13,11 +13,11 @@ defmodule ApiaryPro.Adoption do
     with no operator and not suspended: what it was in the core; and its people lock
     beside it (`ApiaryPro.Tenants.PeopleLock`), as every tenant has.
   - **The instance organisation.** While no tenant is the instance organisation, the
-    organisation the release before held as the instance owner, the oldest in use, as
-    the core answers `c:Apiary.Edition.instance_organisation_id/0`, becomes it, and keeps
-    the kind `organisation`, as every organisation adopted does: its owners ran the
-    instance before, and stay its instance admins. Adopting never
-    makes it an operator; an instance admin may, where the instance has
+    organisation the release before held as the instance owner, the oldest in use, which
+    `c:Apiary.Edition.instance_organisation_id/0` returns in the core, becomes it, and
+    keeps the kind `organisation`, as every organisation adopted does: its owners ran the
+    instance before, and stay its instance admins. Adopting never makes it an operator;
+    an instance admin may, where the instance has
     `managed_organisations` (`ApiaryPro.Operators.change_kind/3`). An instance with an
     instance organisation keeps it.
   - **What a member reached.** Before, every membership reached every workspace of its
