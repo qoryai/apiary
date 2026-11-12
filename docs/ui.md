@@ -429,12 +429,15 @@ replaces the navigation it is in.
   mono and its state on one line (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the
   reader's time zone: "Available", then, each after a middle dot, one segment for each
   limit window with a use or a reset still to come, "Available · 5-hour 89%, resets
-  14:00 · 7-day 40%, resets Mon 09:00"; or, while a window of the key has a cooldown
-  that ends later, "In cooldown until Fri 14:00", the latest such end, and after a middle
-  dot where that time comes from: "from the provider's response", "from this key's
-  schedule", or "no reset time given; paused for 1 hour", the cooldown that applied, from
-  the response that started it to its end, whatever the key's Pause for is when the page
-  shows it. A time is the time of day alone on the reader's day, the weekday and the time
+  14:00 · 7-day 40%, resets Mon 09:00"; or, while the key is in cooldown
+  (`Apiary.ModelKeys.cooldown/4`), "In cooldown until Fri 14:00", the latest end of its
+  cooldown, and after a middle dot where that time comes from: "from the provider's
+  response", "from this key's schedule", "no reset time given; paused for 1 hour", the
+  cooldown that applied, from the response that started it to its end, whatever the
+  key's Pause for is when the page shows it, or "5-hour at 90%, this key's Use up to",
+  while a limit window's use is at or above the key's Use up to (Add key, below), until
+  that window resets, with the percentage the key has when the page shows it, which the
+  window's use may be past. A time is the time of day alone on the reader's day, the weekday and the time
   on one of the six days after it, else the date and the time
   (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
   Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
@@ -449,15 +452,22 @@ replaces the navigation it is in.
   ("Lowercase letters, digits, ., _ and -."); on Add key, Key, a password field that is
   empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
   view it again."; on Edit key, New value, an optional password field that is empty
-  after every save, with "Leave it empty to keep the value."; then Resets and Pause for
+  after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
+  for a provider whose catalogue entry lists limit windows, Use up to
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
   Time zone, whose zone is the reader's for a key with no reset, with the hint "The
   weekly time when this key's allowance resets. Set it if the provider sends no reset
   time." Pause for is a number and a unit, minutes, hours or days, with the hint
   "How long runs skip this key after the provider returns a limit error, when no reset
   time is known. Empty: 1 hour." for a subscription's key, and "Empty: 1 minute." at its
-  end for an API key. A group's error takes its hint's place: "Set the day, the time and
-  the time zone, or leave all three empty." and "Enter a time from 1 minute to 7 days."
+  end for an API key. Use up to is a number with "%" after it, empty by default, with the
+  hint "Runs skip this key once its 5-hour or 7-day use reaches this percentage of the
+  allowance, until that window resets, so the rest stays for your sessions outside Qory
+  Apiary. Empty: runs use the key up to its limit.", the windows those of the provider's
+  catalogue entry (`Apiary.ModelKeys.limit_windows/1`): a Claude subscription's key has
+  it, an API key does not. A group's error takes its hint's place: "Set the day, the
+  time and the time zone, or leave all three empty.", "Enter a time from 1 minute to 7
+  days." and "Enter a percentage from 1 to 99."
   The foot has Add key or Save beside Cancel. A save goes back to the provider's page
   with "main is added." or "main is saved."; a name another key of the provider has
   shows "Another key of Northwind Claude has this name." under Name, and a key past the
@@ -470,10 +480,10 @@ replaces the navigation it is in.
   value that fails the checks of Key saves nothing and shows the error
   under New value, such as "must not contain a NUL byte". Add key of a subscription has
   About model providers beside the form. Workspace settings › Secrets and variables has
-  the same Resets and Pause for on Add value and Change value of a model provider's key,
-  and both remove the spaces, tabs and newlines around the key's value, as Add key does.
-  Change value with New value empty, or of only spaces, tabs or newlines, saves Resets
-  and Pause for and keeps the key's value. Another secret's value is saved as typed, its
+  the same Resets, Pause for and Use up to on Add value and Change value of a model
+  provider's key, and both remove the spaces, tabs and newlines around the key's value,
+  as Add key does. Change value with New value empty, or of only spaces, tabs or
+  newlines, saves the settings and keeps the key's value. Another secret's value is saved as typed, its
   last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
   part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
@@ -1921,10 +1931,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   cooldown until Fri 14:00. It continues in run 15.", the run's number a link to its
   page, while every key of its provider was in cooldown as it ended and that time is
   still to come, the time as a key's row on Model providers shows it; else "Paused: a
-  key of Northwind Claude reached its limit. It continues in run 15."; "Paused: a key of
-  Northwind Claude reached its limit." where no run continues it; and, once the provider
-  is deleted, "Paused: a model key reached its limit. It continues in run 15.", or
-  "Paused: a model key reached its limit." where no run continues it. A provider that the
+  key of Northwind Claude reached its limit or its Use up to percentage. It continues in
+  run 15."; "Paused: a key of Northwind Claude reached its limit or its Use up to
+  percentage." where no run continues it; and, once the provider is deleted, "Paused: a
+  model key reached its limit or its Use up to percentage. It continues in run 15.", or
+  "Paused: a model key reached its limit or its Use up to percentage." where no run
+  continues it. A provider that the
   instance admin set up, outside the run's organisation, is not named: "Paused: every
   model key is in cooldown until Fri 14:00. It continues in run 15." while that time is
   still to come, else the lines of a deleted provider. On the work item's page, the

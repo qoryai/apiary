@@ -1128,6 +1128,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deletes a run's transcript with the run's log output, by **Keep a run's log output
   for**, or by **Keep a run's events for** when the log setting is empty; a paused
   run's transcript stays until the run that continues it ends.
+- **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's
+  key, and on **Add value** and **Change value** of such a key on **Workspace settings ›
+  Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage
+  from 1 to 99.” Once the key's 5-hour or 7-day use reaches it, runs skip the key until
+  that window resets, so the rest of the allowance stays for your sessions outside Qory
+  Apiary. The key's row then shows “In cooldown until Fri 14:00 · 5-hour at 90%, this
+  key's Use up to”. Empty, runs use the key up to its limit. Only a provider whose
+  catalogue entry lists limit windows has the field; an API key has none. A run keeps
+  each key's percentage from its claim, and the gateway checks it on each response of
+  the provider, so a run may go past it by the requests it already sent. The line of a
+  paused run reads “Paused: a key of Northwind Claude reached its limit or its Use up to
+  percentage.” in place of “… reached its limit.”
 <!-- /feature -->
 - `GET /health` returns `set_up` in its `200`: `false` until the instance's first set-up
   and `true` after it, for a deploy script or an instance admin. The `503` has no
@@ -1829,11 +1841,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   registered before the upgrade keeps its one key and goes on across the deploy; its run
   configuration gains `pause_for_s` (Migrations, below). Each key starts with no settings
   and no state, so it shows “Available” until a gateway reports it.
+- Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#57 or later,
+  then upgrade Qory Apiary. A model key with a Use up to percentage has
+  `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the
+  run configuration schema of an earlier gateway does not define.
 <!-- /feature -->
 
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
+  key's Use up to percentage, with a check that it is from 1 to 99. The column has no
+  default, so adding it rewrites no row; the check scans `model_key_settings` under a
+  lock that blocks reads and writes, one row per key with settings. It changes no row.
+  Rolling back drops `model_key_settings.use_up_to_percent`, with every key's Use up to
+  percentage.
 - `model_key_copies` (20261111220000): a row for each pending or running run and each of
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
   keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row
