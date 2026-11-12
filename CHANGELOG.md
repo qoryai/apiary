@@ -1048,8 +1048,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Edit key** of a model provider's key, on **Organisation settings › Model providers ›
   a provider**, has the optional field **New value**: “Leave it empty to keep the
   value.” A new value replaces the key's value, for example after you rotate a
-  subscription's token, and ends the key's cooldown, as **Change value** does. It has
-  the checks of **Key** on **Add key**, and the page never shows it.
+  subscription's token, and ends the key's cooldown, as **Change value** does. A new
+  value has the checks of **Key** on **Add key**, and the page never shows it.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with

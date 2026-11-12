@@ -114,6 +114,14 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp crumb(:new), do: gettext("Add key")
   defp crumb(:edit), do: gettext("Edit key")
 
+  defp key_label(:new), do: gettext("Key")
+  defp key_label(:edit), do: gettext("New value")
+
+  defp key_hint(:new),
+    do: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
+
+  defp key_hint(:edit), do: gettext("Leave it empty to keep the value.")
+
   defp provider_path(scope, provider),
     do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"
 
@@ -163,8 +171,9 @@ defmodule ApiaryWeb.ProviderLive.Key do
     end
   end
 
-  # A New value that is empty or only whitespace keeps the key's value.
-  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
+  # A New value that is empty or only whitespace keeps the key's value; an event without
+  # the field has none.
+  defp blank?(value), do: String.trim(value || "") == ""
 
   defp write(socket, :new, params, settings) do
     %{current_scope: scope, provider: provider} = socket.assigns
@@ -182,7 +191,16 @@ defmodule ApiaryWeb.ProviderLive.Key do
     end
   end
 
+  # The Name and the New value are checked before the write, so the errors of both show
+  # at once: the write sets the value before it renames the key.
   defp write(socket, :edit, params, settings) do
+    case input_errors(:edit, params) do
+      [] -> update_key(socket, params, settings)
+      errors -> {:noreply, assign_form(socket, params, errors, %{})}
+    end
+  end
+
+  defp update_key(socket, params, settings) do
     %{current_scope: scope, provider: provider, key: key} = socket.assigns
     attrs = %{"value_id" => params["value_id"], "value" => params["key"], "settings" => settings}
 
@@ -305,29 +323,16 @@ defmodule ApiaryWeb.ProviderLive.Key do
             required
           />
           <.input
-            :if={@live_action == :new}
             field={@form[:key]}
             id={"key-value-#{@attempt}"}
             type="password"
             value={nil}
-            label={gettext("Key")}
-            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
+            label={key_label(@live_action)}
+            hint={key_hint(@live_action)}
             autocomplete="off"
             spellcheck="false"
             phx-update="ignore"
-            required
-          />
-          <.input
-            :if={@live_action == :edit}
-            field={@form[:key]}
-            id={"key-value-#{@attempt}"}
-            type="password"
-            value={nil}
-            label={gettext("New value")}
-            hint={gettext("Leave it empty to keep the value.")}
-            autocomplete="off"
-            spellcheck="false"
-            phx-update="ignore"
+            required={@live_action == :new}
           />
           <ModelKeyComponents.settings_fields
             form={@form}

@@ -1069,7 +1069,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
              ) == {:ok, @key}
     end
 
-    test "a New value that fails its checks says so under it, and changes nothing", ctx do
+    test "a New value that fails its checks shows its error under it, and changes nothing",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       provider = keys!(scope, "anthropic", ~w(main spare))
       value = values(provider)["spare"]
@@ -1087,13 +1088,23 @@ defmodule ApiaryWeb.ProviderLiveTest do
       state = inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity)
       refute state =~ "sk-ant-rotated"
 
+      # A Name that fails its checks too: both errors show at once.
+      html =
+        lv
+        |> form("#key-form", key: %{value_id: "Bad Name", key: bad, pause_number: "5"})
+        |> render_submit()
+
+      assert has_element?(lv, "#key-value-2-error", "must not contain a NUL byte")
+      assert has_element?(lv, "#key_value_id-error")
+      refute html =~ "sk-ant-rotated"
+
       # With settings that cannot be saved, the errors of every field show at once.
       html =
         lv
         |> form("#key-form", key: %{value_id: "Bad Name", key: bad, reset_time: "09:00"})
         |> render_submit()
 
-      assert has_element?(lv, "#key-value-2-error", "must not contain a NUL byte")
+      assert has_element?(lv, "#key-value-3-error", "must not contain a NUL byte")
       assert has_element?(lv, "#key_value_id-error")
       assert has_element?(lv, "#key_reset_day-resets-error")
       refute html =~ "sk-ant-rotated"

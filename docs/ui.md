@@ -465,9 +465,9 @@ replaces the navigation it is in.
   key's value and its cooldown; any other replaces the value and ends the key's
   cooldown. A New value that fails the checks of Key saves nothing and shows the error
   under New value, such as "must not contain a NUL byte". Add key of a subscription has
-  About model providers beside the form. Workspace settings › Secrets and variables has the same Resets and Pause for on
-  Add value and Change value of a model provider's key. Change value with New value
-  empty saves Resets and Pause for and keeps the key's value.
+  About model providers beside the form. Workspace settings › Secrets and variables has
+  the same Resets and Pause for on Add value and Change value of a model provider's key.
+  Change value with New value empty saves Resets and Pause for and keeps the key's value.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
   part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next

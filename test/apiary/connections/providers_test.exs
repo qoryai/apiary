@@ -567,6 +567,7 @@ defmodule Apiary.Connections.ProvidersTest do
                Connections.set_provider_key(scope, provider, "spare", "sk-new", @settings)
 
       assert ModelKeys.setting(id).pause_seconds == 7200
+      assert List.last(trail(provider.id)).details["value_set"] == true
 
       # The new value is out of cooldown; the other key keeps its state.
       states = ModelKeys.provider_states(provider, DateTime.utc_now())
@@ -698,7 +699,12 @@ defmodule Apiary.Connections.ProvidersTest do
       states = ModelKeys.provider_states(provider, DateTime.utc_now())
       assert [%{status: "rejected"}] = states[spare.id]
 
-      # A refused value leaves the name, the settings, the value and the cooldown.
+      # The settings alone leave an entry without `value_set`.
+      settings_only = List.last(trail(provider.id))
+      assert settings_only.details["value_id"] == "spare"
+      refute Map.has_key?(settings_only.details, "value_set")
+
+      # A value that fails its checks leaves the name, the settings, the value and the cooldown.
       entries = length(trail(provider.id))
 
       assert {:error, changeset} =
@@ -711,7 +717,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert errors_on(changeset).value == ["must not contain a NUL byte"]
       refute inspect(changeset, limit: :infinity, printable_limit: :infinity) =~ @key
 
-      # A refused rename leaves the new value unset, though it is set first.
+      # A rename that fails leaves the new value unset, though it is set first.
       assert {:error, changeset} =
                Connections.update_provider_key(scope, provider, "spare", %{
                  "value_id" => "main",
@@ -761,11 +767,11 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert Enum.map(
                Enum.take(trail(provider.id), -2),
-               &{&1.before, &1.after, &1.details["value_id"]}
+               &{&1.before, &1.after, &1.details["value_id"], &1.details["value_set"]}
              ) ==
                [
-                 {%{"value_id" => "spare"}, %{"value_id" => "backup"}, "backup"},
-                 {nil, nil, "backup"}
+                 {%{"value_id" => "spare"}, %{"value_id" => "backup"}, "backup", true},
+                 {nil, nil, "backup", true}
                ]
 
       refute inspect(trail(provider.id), limit: :infinity, printable_limit: :infinity) =~
