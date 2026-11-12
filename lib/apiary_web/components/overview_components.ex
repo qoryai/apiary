@@ -1329,7 +1329,7 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
   columns each, today last and in ink, each runs column with a Paused part at its base on
-  a day with paused runs. `days` holds fourteen maps `%{day:, runs:, alive:,
+  a day with paused runs. `days` is a list of fourteen maps `%{day:, runs:, alive:,
   ended_well:, cancelled:, paused:, ended_badly:, denied:}`, oldest first, zeros filled in by the
   caller.
   `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
@@ -1364,7 +1364,6 @@ defmodule ApiaryWeb.OverviewComponents do
         total: total,
         title: title,
         paused?: Enum.any?(days, &(&1.paused > 0)),
-        key_x: key_x(title),
         max_runs: max_runs,
         max_den: max_den,
         height: @top + @h_runs + @gap + @h_den + @axis,
@@ -1431,19 +1430,9 @@ defmodule ApiaryWeb.OverviewComponents do
           aria-label={@label}
           xmlns="http://www.w3.org/2000/svg"
         >
-          <text class="q-ttl" x="0" y="12">{@title}</text>
-          <%!-- The key of the Paused part; each day's label already says its paused runs. --%>
-          <rect
-            :if={@paused?}
-            class="q-key-paused"
-            x={@key_x}
-            y="4"
-            width="8"
-            height="8"
-            rx="2"
-            aria-hidden="true"
-          />
-          <text :if={@paused?} class="q-key" x={@key_x + 12} y="12">{gettext("paused")}</text>
+          <%!-- The legend of the Paused part follows the title as the browser lays it out;
+            each day's label already reads its paused runs, so the square is hidden. --%>
+          <text class="q-ttl" x="0" y="12" phx-no-format>{@title}<tspan :if={@paused?} dx="8" class="q-legend-paused" aria-hidden="true">■</tspan><tspan :if={@paused?} dx="4" class="q-legend">{gettext("paused")}</tspan></text>
           <text :if={@max_runs > 0} class="q-max" x={@w} y="12" text-anchor="end">
             {gettext("max %{max}", max: Format.number(@max_runs))}
           </text>
@@ -1483,17 +1472,8 @@ defmodule ApiaryWeb.OverviewComponents do
                 value={day.runs}
                 max={@max_runs}
                 plot={@h_runs}
-                class={["q-col-runs", Date.compare(day.day, @today) == :eq && "q-col-today"]}
-              />
-              <.paused_part
-                :if={day.paused > 0}
-                cx={(i + 0.5) * @slot_w}
-                col={@col}
-                base={@top + @h_runs}
-                value={day.runs}
                 paused={day.paused}
-                max={@max_runs}
-                plot={@h_runs}
+                class={["q-col-runs", Date.compare(day.day, @today) == :eq && "q-col-today"]}
               />
               <.column
                 cx={(i + 0.5) * @slot_w}
@@ -1545,13 +1525,14 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :col, :any, default: 22
   attr :base, :integer, required: true
   attr :value, :integer, required: true
+  attr :paused, :integer, default: 0
   attr :max, :integer, required: true
   attr :plot, :integer, required: true
   attr :class, :any, default: nil
 
   # A column at most 26 px wide, rounded at the top, square at the baseline; a 2 px stub
   # for a day with nothing, so the day is visibly there and visibly empty.
-  defp column(%{value: value, max: max} = assigns) when value > 0 and max > 0 do
+  defp column(%{value: value, max: max, paused: 0} = assigns) when value > 0 and max > 0 do
     h = col_height(value, max, assigns.plot)
 
     assigns =
@@ -1559,6 +1540,29 @@ defmodule ApiaryWeb.OverviewComponents do
 
     ~H"""
     <path class={@class} d={@d} />
+    """
+  end
+
+  # A runs column with paused runs: the same outline in two parts that meet, the Paused
+  # part from the baseline, `paused / value` of the height, at least 2 px, and the rest
+  # above it. The Paused part is the whole column only when every run paused.
+  defp column(%{value: value, max: max, paused: paused} = assigns)
+       when value > 0 and max > 0 and paused > 0 do
+    h = col_height(value, max, assigns.plot)
+    p = if paused >= value, do: h, else: min(max(round(paused / value * h), 2), h - 1)
+    x = assigns.cx - assigns.col / 2
+    col = assigns.col
+    base = assigns.base
+
+    assigns =
+      assign(assigns,
+        rest: if(p < h, do: part_d(x, base, h, col, p, h)),
+        paused_d: if(p == h, do: column_d(x, base, h, col), else: part_d(x, base, h, col, 0, p))
+      )
+
+    ~H"""
+    <path :if={@rest} class={@class} d={@rest} />
+    <path class="q-col-paused" d={@paused_d} />
     """
   end
 
@@ -1574,51 +1578,6 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  attr :cx, :float, required: true
-  attr :col, :any, default: 22
-  attr :base, :integer, required: true
-  attr :value, :integer, required: true
-  attr :paused, :integer, required: true
-  attr :max, :integer, required: true
-  attr :plot, :integer, required: true
-
-  # The Paused part of a day's runs column, drawn over it from the baseline: `paused /
-  # value` of the column's height, at least 2 px, at most the column. A part that reaches
-  # into the column's rounded top follows its outline, so the outline stays as it is.
-  defp paused_part(%{paused: paused, value: value, max: max} = assigns)
-       when paused > 0 and value > 0 and max > 0 do
-    h = col_height(value, max, assigns.plot)
-    p = if paused >= value, do: h, else: min(max(round(paused / value * h), 2), h)
-    assigns = assign(assigns, :d, paused_d(assigns, h, p))
-
-    ~H"""
-    <path class="q-col-paused" d={@d} />
-    """
-  end
-
-  defp paused_part(assigns), do: ~H""
-
-  defp paused_d(%{cx: cx, col: col, base: base}, h, p) do
-    x = cx - col / 2
-    r = min(4, h)
-
-    cond do
-      p == h ->
-        column_d(x, base, h, col)
-
-      p <= h - r ->
-        "M#{fmt(x)} #{base}V#{base - p}h#{fmt(col)}V#{base}z"
-
-      true ->
-        # The part's top crosses the corners' arcs `dy` above their centres.
-        dy = p - (h - r)
-        dx = :math.sqrt(r * r - dy * dy)
-        inset = r - dx
-
-        "M#{fmt(x)} #{base}V#{base - h + r}a#{r} #{r} 0 0 1 #{fmt(inset)} -#{dy}h#{fmt(col - 2 * inset)}a#{r} #{r} 0 0 1 #{fmt(inset)} #{dy}V#{base}z"
-    end
-  end
-
   defp col_height(value, max, plot), do: max(round(value / max * plot), 2)
 
   # The outline of a column `h` high from `base`, its left edge at `x`.
@@ -1629,9 +1588,41 @@ defmodule ApiaryWeb.OverviewComponents do
     "M#{fmt(x)} #{base}V#{fmt(y + r)}a#{r} #{r} 0 0 1 #{r} -#{r}h#{fmt(col - 2 * r)}a#{r} #{r} 0 0 1 #{r} #{r}V#{base}z"
   end
 
-  # Where the key of the Paused part starts: after the title, by a width of 7 px a
-  # character at 12 px, so a longer title in another language moves it along.
-  defp key_x(title), do: String.length(title) * 7 + 10
+  # The part of that outline from `lo` to `hi` px above `base`. Where an edge of the part
+  # lies in the rounded corners, it runs from arc to arc, so the two parts of a column
+  # meet on one line and keep the outline.
+  defp part_d(x, base, h, col, lo, hi) do
+    r = min(4, h)
+    corner = h - r
+
+    left = fn t -> fmt(x + inset(t, corner, r)) end
+    right = fn t -> fmt(x + col - inset(t, corner, r)) end
+
+    up =
+      cond do
+        hi <= corner -> "V#{base - hi}"
+        lo < corner -> "V#{base - corner}A#{r} #{r} 0 0 1 #{left.(hi)} #{base - hi}"
+        true -> "A#{r} #{r} 0 0 1 #{left.(hi)} #{base - hi}"
+      end
+
+    down =
+      cond do
+        hi <= corner -> "V#{base - lo}"
+        lo < corner -> "A#{r} #{r} 0 0 1 #{fmt(x + col)} #{base - corner}V#{base - lo}"
+        true -> "A#{r} #{r} 0 0 1 #{right.(lo)} #{base - lo}"
+      end
+
+    "M#{left.(lo)} #{base - lo}#{up}H#{right.(hi)}#{down}z"
+  end
+
+  # How far a column's side is in from its edge `t` px above the base: none below the
+  # corners, which start `corner` px up, then along a corner's arc of radius `r`.
+  defp inset(t, corner, _r) when t <= corner, do: 0.0
+
+  defp inset(t, corner, r) do
+    dy = t - corner
+    r - :math.sqrt(r * r - dy * dy)
+  end
 
   defp fmt(x) when is_float(x), do: :erlang.float_to_binary(x, decimals: 2)
   defp fmt(x), do: Integer.to_string(x)

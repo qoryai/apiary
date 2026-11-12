@@ -937,9 +937,11 @@ what needs the reader, then what their agents did, and never grows with the data
   well, Cancelled, Paused and Denied attempts. A day's column counts every run of the
   day, paused runs included. Its Paused part (`q-col-paused`), at the column's base in
   the hue of a paused run's ring, is the day's share of paused runs of the column's
-  height, at least 2 px; with every run of the day paused, it is the whole column, its
-  rounded top included. While a day of the 14 has a paused run, a square in that hue and
-  "paused" follow the title "Runs per day". A day's tooltip reads "6 runs, 1 paused" for
+  height, at least 2 px and at most 1 px less than the column; only with every run of
+  the day paused is it the whole column, its rounded top included. The rest of the
+  column sits on it, so the two parts meet and keep the column's outline. While a day of
+  the 14 has a paused run, a legend follows the title "Runs per day" in the same line: a
+  square in that hue and "paused". A day's tooltip reads "6 runs, 1 paused" for
   a day with a paused run, else "6 runs". Each day is said as its runs, of them how many
   ended well, were cancelled, paused and ended badly (today: alive or ended badly), and
   its denied attempts.
