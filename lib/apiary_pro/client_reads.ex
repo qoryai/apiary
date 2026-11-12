@@ -64,8 +64,8 @@ defmodule ApiaryPro.ClientReads do
   """
 
   # Whether the run `pe.run_id = r.id` recorded an entry that is the provider's, whose name
-  # is the credential or whose hosts include the host, as the comment at the top of the
-  # module says. The arguments: the run's id, twice the names of the provider's entries
+  # is the credential or whose hosts include the host, as described at the top of the
+  # module. The arguments: the run's id, twice the names of the provider's entries
   # (`provider_names/2`, null for a run read by its endpoint), the host of the run's
   # endpoint, twice more the run's id and that host, then the credential and the host to
   # test.
@@ -99,7 +99,7 @@ defmodule ApiaryPro.ClientReads do
     end
   end
 
-  # The names of the provider's entries of `run`, as `@names` reads them.
+  # The names of the provider's entries of `run`, computed by `@names`.
   defmacrop provider_names(run, provider) do
     quote do
       fragment(
