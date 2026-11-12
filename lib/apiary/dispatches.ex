@@ -1284,7 +1284,7 @@ defmodule Apiary.Dispatches do
   # Leaves out each run whose choice's provider, the first of its `model_provider_ids`,
   # is in `stopped`: the providers whose settings check stopped earlier in this claim
   # (`Apiary.Connections.stopped_in_claim/0`). Those runs take none of the claim's 100
-  # tries. `waiting_query/4` leaves out the runs whose other providers all count as cooling.
+  # tries. `waiting_query/4` leaves out runs whose other providers all count as cooling.
   defp without_stopped(query, []), do: query
 
   defp without_stopped(query, stopped) do
