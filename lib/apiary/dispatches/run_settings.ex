@@ -63,8 +63,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # (`Apiary.ModelChoices.Resolution.fallback/3`), and that has a key not in cooldown; a
   # fallback that does not form is passed over and ends nothing. A run takes the keys of
   # one provider alone. With none, `build/2` returns `{:cooling, built, ids}`: the claim
-  # checks what can end the run first, then leaves it waiting with `ids`, the providers
-  # it checked, as the ones it waits for (`Apiary.Dispatches.Handover`).
+  # checks what can end the run first, then leaves it waiting with `ids` as the providers
+  # it waits for (`Apiary.Dispatches.Handover`): the choice's provider, each fallback
+  # that formed, and each fallback whose settings check ran out of time or crashed.
   #
   # The run gets at most 6 keys, picked in the order of `Apiary.ModelKeys.Order`, the key
   # the choice names first while it is not in cooldown; the first of that order is the
@@ -303,6 +304,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
   # every key of the choice's provider and of each usable fallback is in cooldown, with
   # the choice's settings without keys and those providers' row ids, the choice's first,
+  # and those of the fallbacks whose settings check ran out of time or crashed,
   # `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
   # provider}` where the check of the settings of `provider`, the chosen one, ran out of
   # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
@@ -361,8 +363,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The settings `built` of the choice's provider with its keys, else those of the first
   # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
-  # choice's settings without keys, and the providers whose keys were checked, the
-  # choice's and each fallback that forms, every one with each key in cooldown.
+  # choice's settings without keys, and the choice's provider first, then the fallbacks
+  # of `fallback/6`'s `{:cooling, ids}`.
   defp keys(built, provider, {input, resolution, providers, described, runtime}, held, now) do
     with nil <- keyed(built, provider, named_value_id(input), now) do
       case fallback(input, resolution, {providers, described}, runtime, held.workspace.id, now) do
@@ -438,9 +440,10 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The first of the choice's fallbacks, in their order, that forms and has a key not in
   # cooldown at `now`, with its model and effort: `{:ok, built}`, or `{:cooling, ids}`
-  # for none, with the fallbacks that formed, each with every key in cooldown. A
-  # fallback that does not form, for any of the causes that end a run on the choice's
-  # provider or a check of its settings that ran out of time or crashed, is passed over.
+  # for none. `ids` are the fallbacks that formed, each with every key in cooldown, and
+  # those whose settings check ran out of time or crashed, which a later claim checks
+  # again. A fallback that does not form for a cause that ends a run on the choice's
+  # provider is passed over and left out of `ids`.
   defp fallback(
          input,
          %Resolution{fallbacks: fallbacks} = resolution,
@@ -461,6 +464,7 @@ defmodule Apiary.Dispatches.RunSettings do
           nil -> {:cont, {:cooling, ids ++ [provider.id]}}
         end
       else
+        {:unchecked, _provider} -> {:cont, {:cooling, ids ++ [provider.id]}}
         _not_formed -> {:cont, {:cooling, ids}}
       end
     end)

@@ -10,6 +10,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
   import Apiary.AccessKeysFixtures
   import Apiary.ConnectionsFixtures
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [key_state!: 3, in_seconds: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -190,8 +191,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     assert skips(log) == 1
   end
 
-  test "a claim leaves out the runs of a stopped provider, so they take none of its tries",
-       _ctx do
+  test "the claim's query leaves out the runs of a stopped provider", _ctx do
     gateway = instance_gateway_fixture()
     installed_key_fixture(gateway, allow_secrets: true)
     pool = instance_pool_fixture()
@@ -270,6 +270,45 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     assert waiting?(first)
     assert :counters.get(calls, 1) == 1
     assert skips(log) == 1
+  end
+
+  test "a run waits for a stopped fallback too while every key of its choice cools down",
+       _ctx do
+    %{scope: scope} = sign_up_fixture()
+    place = handover_place_fixture(scope, allow_secrets: true)
+
+    {:ok, cooling} =
+      Connections.create_provider(scope, %{provider: "anthropic", keys: [@api_key]})
+
+    stopping = provider!(scope, 1)
+
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, :workspace, %{
+        provider: cooling.public_id,
+        fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
+      })
+
+    key_state!(cooling, "main", until: in_seconds(5 * 3600))
+    run = queued!(scope)
+    assert run.model_provider_ids == [cooling.id, stopping.id]
+    calls = subscription_stops()
+
+    {answer, log} = with_log(fn -> walked_claim(place.key, Dispatches.now(), @body) end)
+    assert answer == {:ok, :none}
+    assert :counters.get(calls, 1) == 1
+    assert skips(log) == 0
+    assert %DispatchRun{state: :waiting, model_provider_ids: ids} = Repo.get!(DispatchRun, run.id)
+    assert ids == [cooling.id, stopping.id]
+
+    # Once the fallback's check passes, a claim takes the run on the fallback.
+    SettingsFit.put_test_check(fn _entry, _settings -> :fit end)
+    SettingsFit.clear()
+
+    assert {:ok, %{run: %DispatchRun{id: taken}, registered: registered}} =
+             walked_claim(place.key, Dispatches.now(), @body)
+
+    assert taken == run.id
+    assert registered.provider_connection_id == stopping.id
   end
 
   test "the instance's pool skips the run and takes one of another workspace", _ctx do

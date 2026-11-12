@@ -130,9 +130,10 @@ defmodule Apiary.Dispatches.Handover do
   # never the choices. Where every key of the choice's provider and of each fallback that
   # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
   # `register/2` returns `{:wait, provider_ids}`, and the run waits again for those
-  # providers (`Apiary.Dispatches`). Where the check of the settings of the choice's
-  # provider ran out of time or crashed, `register/2` returns `{:wait, provider_ids}` with
-  # the run's `model_provider_ids` as they were, and the run waits again too. Its input is
+  # providers and each fallback whose settings check ran out of time or crashed
+  # (`Apiary.Dispatches`). Where the check of the settings of the choice's provider ran
+  # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
+  # `model_provider_ids` as they were, and the run waits again too. Its input is
   # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
   # run's target, or none for an explore run whose work item has none, and takes what the
   # rest of the run's documents leave of their limit: it leaves out its oldest comments
@@ -311,16 +312,16 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # register/2 registers the run of the queue `claimed.run`, which the claim took, with
-  # a run code, through the gateway `claimed.gateway`, inside the claim's transaction:
+  # register/2 registers the run of the queue `claimed.run`, which the claim took, with a
+  # run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
   # ended, `{:wait, provider_ids}` when every key of its model choice's provider and of
   # each fallback that forms is in cooldown (`Apiary.Dispatches.RunSettings`), with those
-  # providers and no run registered, or with the run's `model_provider_ids` when the check
-  # of its provider's settings ran out of time or crashed, or
-  # `{:error, :unavailable}` (the moduledoc). `claimed` has the key, the dispatch, the
-  # run of the queue, the gateway and its workspace, the gateway's active keys, at most
-  # two, the clock and the claim's body.
+  # providers and each fallback whose settings check ran out of time or crashed, and no
+  # run registered, or with the run's `model_provider_ids` when the check of its
+  # provider's settings ran out of time or crashed, or `{:error, :unavailable}` (the
+  # moduledoc). `claimed` has the key, the dispatch, the run of the queue, the gateway and
+  # its workspace, the gateway's active keys, at most two, the clock and the claim's body.
   @doc false
   @spec register(map, DateTime.t()) ::
           {:ok, registered}
