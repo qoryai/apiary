@@ -842,10 +842,11 @@ endpoint rule, as an add or an edit checks them, `provider/1` returns
 `provider_changed`: its runs have no run configuration, and it is to be added again. A
 check that runs out of time or crashes depends on the instance, not on the settings:
 `provider/1` returns `provider_unchecked`, the claim fails and the run waits for the
-next claim, and the next read checks the settings again. An answer the settings decide
-is kept by the SHA-256 of the settings and of the entry
-(`Apiary.Connections.SettingsFit`), so a read checks a provider's settings once per
-entry.
+next claim, and the next read checks the settings again. The check returns the same
+result for the same settings and entry, so a table on each node keeps the results fit
+and no longer fit by the SHA-256 of the settings and of the entry
+(`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and
+entry on each node, until the node restarts or the table, at 4,096 results, empties.
 
 **A run's model keys.** An explore run of a workspace's queue whose model choice resolves
 to a model provider gets the provider's keys at its claim

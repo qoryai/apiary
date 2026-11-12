@@ -414,10 +414,10 @@ defmodule Apiary.Connections do
   host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
   and so is a provider that fails its integrity code, whose kind the catalogue no longer
   has, or whose settings no longer fit the catalogue's entry (`provider/1`).
-  `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are in no
-  workspace's policy, only in the document composed for a run
+  A save of a policy returns an error for a deny rule of such a host (`Apiary.Policy`);
+  the hosts are in no workspace's policy, only in the document composed for a run
   (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
-  `secrets` are both on. It asks nothing of `Apiary.Access`.
+  `secrets` are both on. It makes no call to `Apiary.Access`.
   """
   @spec provider_hosts(%Workspace{}) :: [Apiary.Policy.Resolution.integration_host()]
   def provider_hosts(%Workspace{id: workspace_id, organisation_id: organisation_id}),
@@ -1234,12 +1234,13 @@ defmodule Apiary.Connections do
   running release (`Apiary.Kinds.Providers`), whatever entry the connection was added
   from: `{:ok, provider}` while the connection's settings fit that entry, checked as
   `create_provider/3` checks them; `{:error, :provider_changed}` once they no longer
-  fit; `{:error, :provider_unchecked}` when the check ran out of time or crashed, which
-  the settings do not decide, so a later read checks them again; or
-  `{:error, :provider_unknown}` once the catalogue no longer has the kind. An answer the
-  settings decide is kept in a table by the SHA-256 of the settings and of the entry, at
-  most 4,096 answers. The connection's `description_sha256`, the digest of the entry it
-  was added from, is kept as it was recorded and not compared.
+  fit; `{:error, :provider_unchecked}` when the check ran out of time or crashed, a stop
+  that depends on the node and not on the settings, so a later read checks them again;
+  or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The check
+  returns the same result for the same settings and entry, so a table on each node keeps
+  the results fit and no longer fit by the SHA-256 of the settings and of the entry, at
+  most 4,096 of them, until a restart. The connection's `description_sha256`, the digest
+  of the entry it was added from, is kept as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
           {:ok, Provider.t()}

@@ -72,8 +72,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `runtime_unserved`, `key_gone` and `model_gone`, a claimed explore run whose model
   # choice its claim could not form: its model provider is gone, fails its integrity code,
   # does not apply to the workspace, has settings that no longer fit the catalogue's entry
-  # of its kind or a kind the catalogue no longer has, or has an endpoint address the
-  # endpoint rule refuses (`provider_gone`); no longer serves the runtime
+  # of its kind or a kind the catalogue no longer has, or has an endpoint address that
+  # fails the endpoint rule (`provider_gone`); no longer serves the runtime
   # (`runtime_unserved`); no longer has the chosen key (`key_gone`); or has no model for
   # the run, or no longer offers the chosen effort value (`model_gone`)
   # (`Apiary.Dispatches.RunSettings`), 410 gone;
