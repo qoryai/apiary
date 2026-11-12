@@ -566,9 +566,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#breadcrumb", "Set up an agent")
       assert page_title(lv) =~ "Set up an agent · Workspace settings"
       assert has_element?(lv, "label[for=connection_runtime]", "Agent")
-      # Where it applies is set by the add: the workspace it is added in, with no field.
+      # Where it applies is the edition's setting, off: the workspace it is added in.
       refute has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
-      refute has_element?(lv, "#new-runtime-form input[name='connection[everywhere]']")
+      assert has_element?(lv, "#new-runtime-form input[name='connection[everywhere]']")
+      refute has_element?(lv, "#new-runtime-form input[name='connection[everywhere]'][checked]")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
       # The form offers none of the runtime's variables of a model key, and the runtime
@@ -617,7 +618,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
              )
 
       refute has_element?(lv, "#new-service-form fieldset legend", "Applies to")
-      refute has_element?(lv, "#new-service-form input[name='connection[everywhere]']")
+      assert has_element?(lv, "#new-service-form input[name='connection[everywhere]']")
+      refute has_element?(lv, "#new-service-form input[name='connection[everywhere]'][checked]")
 
       assert has_element?(lv, "label[for=connection_definition]", "API")
 
@@ -648,11 +650,13 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert to == ipath(scope, "/#{connection.public_id}")
     end
 
+    # The form's setting is "everywhere" alone: a form sent with where it applies, and the
+    # setting off, still makes a connection for this workspace.
     test "a form sent with where it applies changes nothing of it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
 
       render_hook(lv, "create", %{
-        "connection" => %{"runtime" => "claude", "applies_to" => "all", "everywhere" => "true"}
+        "connection" => %{"runtime" => "claude", "applies_to" => "all"}
       })
 
       {:ok, [connection]} = Connections.list_connections(scope)

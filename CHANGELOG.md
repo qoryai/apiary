@@ -12,6 +12,43 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- Qory Apiary is one product, under the Apache License 2.0: every instance has what
+  the separately licensed edition had.
+  - An instance has any number of organisations, and an organisation any number of
+    workspaces: a second workspace no longer stops at “This instance allows one
+    workspace per organisation”.
+  - Owners and admins reach every workspace of their organisation. A member reaches the
+    workspaces they were invited to or added to. An owner or an admin adds a member to
+    a workspace, or removes them from one, in **Organisation settings › People**, on
+    the member's **Workspaces** page.
+  - **Instance settings › Organisations** lists every organisation of the instance, and
+    **Instance settings › Accounts** every account, for the instance admins.
+  - **Instance settings › Configuration** has **Sign-up**: whether someone without an
+    invitation may sign up and create an organisation or an operator. Both are closed
+    by default. `SIGNUP_ORGANISATIONS` and `SIGNUP_OPERATORS`, set to `open` or
+    `closed`, override the page.
+<!-- feature: managed_organisations -->
+  - Operators and their **Clients**, with the feature `managed_organisations`: an
+    operator creates client organisations and reads them, and asks them for changes to
+    their security policy. Where the feature is on, the organisation that a new
+    instance is set up with is an operator.
+<!-- /feature -->
+<!-- feature: organisation_policy -->
+  - The organisation's **Policy**, with the feature `organisation_policy`: rules that
+    every workspace of the organisation follows, above each workspace's security
+    policy.
+<!-- /feature -->
+<!-- feature: organisation_variables -->
+  - The organisation's secrets and variables, in **Organisation settings › Secrets and
+    variables**, with the feature `organisation_variables`: values that every workspace
+    of the organisation shares.
+<!-- /feature -->
+
+  The three features are on by default, as every other feature but `registry`:
+  `QORY_FEATURES` unset, empty, `all` or `all-…` turns them on.
+  `managed_organisations` needs `observability`, `organisation_policy` needs `security`,
+  and `organisation_variables` needs `security` and `secrets`. The guides at `/docs`
+  describe each one, and the Instance admins guide describes Instance settings.
 - A run's version of the artifact type `mockup` with a `screens.json` is a mockup of
   HTML pages: the version's page shows it under “Mockup”, with the start screen in a
   frame and the list of screens beside it, each a link that opens its screen in the
@@ -261,9 +298,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   from, where changes go, a model.” `/<organisation>/workspaces/new` is where an owner
   adds a workspace where the edition allows another. Where the organisation has as many
   workspaces as the edition allows, that page is headed “New workspace” and shows, in an
-  information notice in place of the cards, “Qory Apiary Community allows one workspace
-  per organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates the
-  first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
+  information notice in place of the cards, “This instance allows one workspace per
+  organisation, and Acme has it.” Only owners see the cards: anyone else reads who creates
+  the first workspace, and `/<organisation>/workspaces/new` is not found for them. Each
   workspace stores the type it was made from.
 <!-- feature: factory -->
 - **Connect Qory Apiary** has a step for each adapter that **Instance settings ›
@@ -1124,6 +1161,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The product has one name, Qory Apiary. `EDITIONS.md` and the names of the editions
+  are gone from the repository and the documentation.
 - `QORY_FEATURES` unset, empty, `all` or `all-…` turns on every feature: `secrets`,
   `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
   default, and the private image registry's feature, `registry`, is on where
@@ -1807,6 +1846,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Upgrading
 
+- At the first boot after the upgrade, 19 migrations run (Migrations, below), then
+  every organisation is adopted, in one transaction that is safe to run again. Each
+  organisation is an ordinary organisation, not an operator; the organisation the
+  instance was set up with is the instance organisation, so its owners stay the
+  instance admins. Each member is added to each workspace of their organisation, so
+  nobody loses a workspace they reached. Each organisation's Activity has one entry of
+  the adoption, by the instance. Sign-up stays closed until an instance admin opens it
+  or `SIGNUP_ORGANISATIONS` or `SIGNUP_OPERATORS` opens it.
+  After the upgrade, a member reaches a new workspace only when they are added to it.
+  There is no way back to the earlier image.
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`
@@ -1822,6 +1871,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- 19 migrations, versions 20260927100100 to 20261025170000 in
+  `priv/repo/migrations`, which run although their versions are older than migrations
+  an instance has run already. They only add 15 tables, with their foreign keys to
+  `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
+  existing table. Among them are `workspace_access`, `feature_grants`,
+  `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: factory, secrets -->
 - `model_key_copies` (20261111220000): a row for each pending or running run and each of
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade

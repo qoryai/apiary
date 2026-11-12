@@ -197,7 +197,7 @@ defmodule Apiary.OrganisationsTest do
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:user, user)
       |> Organisations.build_organisation(
-        [name: name, how: :test, scope: &person_scope/1] ++ opts
+        [name: name, how: {:kind, :organisation}, scope: &person_scope/1] ++ opts
       )
       |> Repo.transaction()
     end

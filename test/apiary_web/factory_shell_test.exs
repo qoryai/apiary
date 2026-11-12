@@ -307,8 +307,9 @@ defmodule ApiaryWeb.FactoryShellTest do
       end
     end
 
-    # The link leads only a person of the connection's organisation, so it is not found
-    # to anyone else, whatever it names, and answers the same for each.
+    # The link leads only a person who reaches the connection's organisation, so it is not
+    # found to anyone else, whatever it names, and answers the same for each. An instance
+    # admin reaches every organisation as its reader, and is led to the connection.
     test "the link to a connection the person does not reach is not found, the same whatever it names",
          %{conn: conn, scope: scope, adapter: adapter} do
       %{adapter: connectable} = connectable_adapter_fixture()
@@ -316,9 +317,14 @@ defmodule ApiaryWeb.FactoryShellTest do
       {theirs, _nonce} = connection_fixture(other, connectable, :pending)
       admin_conn = log_in_user(build_conn(), instance_admin_scope().user)
 
+      assert {302, _body, location} =
+               answer(fn -> get(admin_conn, "/integrations/#{theirs.public_id}") end)
+
+      assert {"location",
+              "/#{other.organisation.slug}/settings/integrations/#{connectable.public_id}"} in location
+
       for {who, asker, id} <- [
             {"another organisation's", conn, theirs.public_id},
-            {"another organisation's, to an instance admin", admin_conn, theirs.public_id},
             {"none", conn, "ac_0000000000000000"},
             {"an adapter's id", conn, adapter.public_id},
             {"not an id", conn, scope.workspace.slug}

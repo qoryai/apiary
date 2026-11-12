@@ -212,8 +212,9 @@ defmodule ApiaryWeb.DocsControllerTest do
       {conn, scope}
     end
 
-    test "are the core's two, which an edition's list extends and never replaces" do
-      assert ApiaryWeb.DocsController.admin_guides() == ["install.md", "hosting-checklist.md"]
+    test "are the core's two and the edition's, which extends and never replaces them" do
+      assert ApiaryWeb.DocsController.admin_guides() ==
+               ["install.md", "hosting-checklist.md", "admin.md"]
 
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.AdminGuide)
 

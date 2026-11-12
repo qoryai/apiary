@@ -72,7 +72,7 @@ defmodule Apiary.Edition.Core do
   def workspace_limit_line(organisation),
     do:
       gettext(
-        "Qory Apiary Community allows one workspace per organisation, and %{organisation} has it.",
+        "This instance allows one workspace per organisation, and %{organisation} has it.",
         organisation: organisation.name
       )
 

@@ -379,12 +379,21 @@ defmodule Apiary.FeaturesTest do
 
     test "a feature that needs a hidden one is not shown, as the scope keeps it", ctx do
       for {named, hidden} <- [
-            {[:secrets], [:secrets, :factory, :workflow_model]},
+            {[:secrets], [:secrets, :factory, :workflow_model, :organisation_variables]},
             {[:path_rules], [:path_rules]},
             {[:factory], [:factory, :workflow_model]},
             {[:registry], [:registry]},
             {[:security],
-             [:security, :secrets, :path_rules, :factory, :registry, :workflow_model]},
+             [
+               :security,
+               :secrets,
+               :path_rules,
+               :factory,
+               :registry,
+               :workflow_model,
+               :organisation_policy,
+               :organisation_variables
+             ]},
             {[:observability],
              [
                :observability,
@@ -393,7 +402,10 @@ defmodule Apiary.FeaturesTest do
                :path_rules,
                :factory,
                :registry,
-               :workflow_model
+               :workflow_model,
+               :managed_organisations,
+               :organisation_policy,
+               :organisation_variables
              ]}
           ] do
         scope = %{ctx.person | hidden: Features.hidden_of(named)}
@@ -420,7 +432,16 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:secrets, :security, :secrets]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry, :workflow_model])
+                 &(&1 in [
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model,
+                     :organisation_policy,
+                     :organisation_variables
+                   ])
                )
     end
 
@@ -432,7 +453,10 @@ defmodule Apiary.FeaturesTest do
       end
 
       assert Features.hidden_of([:secrets]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory, :workflow_model]))
+               Enum.filter(
+                 Features.enabled(),
+                 &(&1 in [:secrets, :factory, :workflow_model, :organisation_variables])
+               )
 
       assert Features.hidden_of([:path_rules]) ==
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
@@ -443,7 +467,16 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([:security]) ==
                Enum.filter(
                  Features.enabled(),
-                 &(&1 in [:security, :secrets, :path_rules, :factory, :registry, :workflow_model])
+                 &(&1 in [
+                     :security,
+                     :secrets,
+                     :path_rules,
+                     :factory,
+                     :registry,
+                     :workflow_model,
+                     :organisation_policy,
+                     :organisation_variables
+                   ])
                )
 
       assert Features.hidden_of([:observability]) ==
@@ -456,7 +489,10 @@ defmodule Apiary.FeaturesTest do
                      :path_rules,
                      :factory,
                      :registry,
-                     :workflow_model
+                     :workflow_model,
+                     :managed_organisations,
+                     :organisation_policy,
+                     :organisation_variables
                    ])
                )
     end
@@ -467,7 +503,10 @@ defmodule Apiary.FeaturesTest do
       assert Features.hidden_of([part]) == [part]
 
       assert Features.hidden_of([part, :secrets, part]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:secrets, :factory, :workflow_model])) ++
+               Enum.filter(
+                 Features.enabled(),
+                 &(&1 in [:secrets, :factory, :workflow_model, :organisation_variables])
+               ) ++
                  [part]
 
       # A part is hidden with its feature without being named (`visible?/2`), so hiding
@@ -482,7 +521,10 @@ defmodule Apiary.FeaturesTest do
                      :path_rules,
                      :factory,
                      :registry,
-                     :workflow_model
+                     :workflow_model,
+                     :managed_organisations,
+                     :organisation_policy,
+                     :organisation_variables
                    ])
                ) ++
                  [part]
@@ -497,7 +539,10 @@ defmodule Apiary.FeaturesTest do
                      :path_rules,
                      :factory,
                      :registry,
-                     :workflow_model
+                     :workflow_model,
+                     :managed_organisations,
+                     :organisation_policy,
+                     :organisation_variables
                    ])
                )
     end
@@ -518,7 +563,10 @@ defmodule Apiary.FeaturesTest do
                      :path_rules,
                      :factory,
                      :registry,
-                     :workflow_model
+                     :workflow_model,
+                     :managed_organisations,
+                     :organisation_policy,
+                     :organisation_variables
                    ])
                ) ++
                  [:nodes]

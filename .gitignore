@@ -39,6 +39,9 @@ npm-debug.log
 /assets/node_modules/
 
 
+# The notices `mix apiary_pro.notices` writes, which the image build generates.
+/THIRD_PARTY_NOTICES
+
 # Local secrets and per-machine tool settings.
 .env
 mise.local.toml

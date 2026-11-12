@@ -18,9 +18,10 @@ defmodule Apiary.EditionTest do
   end
 
   describe "hidden/1" do
+    # The configured edition's answer reads the organisation's grants:
+    # test/apiary_pro/feature_visibility_test.exs.
     test "the core hides nothing from a person", %{scope: scope} do
       assert Apiary.Edition.Core.hidden(scope) == []
-      assert Apiary.Edition.hidden(scope) == []
     end
 
     test "a test's stub answers it, in the test's process and those it starts", %{scope: scope} do
@@ -32,9 +33,10 @@ defmodule Apiary.EditionTest do
   end
 
   describe "scope_setting?/1" do
-    test "the core shows no setting of where a connection applies", %{scope: scope} do
+    test "the core shows no setting of where a connection applies, the edition shows it",
+         %{scope: scope} do
       refute Apiary.Edition.Core.scope_setting?(scope)
-      refute Apiary.Edition.scope_setting?(scope)
+      assert Apiary.Edition.scope_setting?(scope)
     end
 
     test "a test's stub shows it", %{scope: scope} do
@@ -65,9 +67,10 @@ defmodule Apiary.EditionTest do
   end
 
   describe "operated?/1" do
+    # The configured edition's answer reads the organisation's tenant:
+    # test/apiary_pro/operated_test.exs.
     test "the core answers false", %{scope: scope} do
       refute Apiary.Edition.Core.operated?(scope.organisation)
-      refute Apiary.Edition.operated?(scope.organisation)
     end
 
     test "a test's stub answers true", %{scope: scope} do

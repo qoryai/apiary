@@ -1,0 +1,188 @@
+## `msgid`s in this file come from POT (.pot) files.
+##
+## Do not add, change, or remove `msgid`s manually here as
+## they're tied to the ones in the corresponding POT file
+## (with the same domain).
+##
+## Use `mix gettext.extract --merge` or `mix gettext.merge`
+## to merge POT files into PO files.
+msgid ""
+msgstr ""
+"Language: en@software\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: lib/apiary_pro/organisation_policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "%{path} is not a path: it starts with /, holds no ?, # or space, and may end in one * to match everything below it."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "A host takes at most %{max} paths."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the operator's address."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "Name the host."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "No operator has that address."
+msgstr ""
+
+#: lib/apiary_pro/organisation_policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "already has a rule here"
+msgstr ""
+
+#: lib/apiary_pro/tenants.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be an operator: it is a client of one"
+msgstr ""
+
+#: lib/apiary_pro/tenants.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be an organisation while it has clients"
+msgstr ""
+
+#: lib/apiary_pro/tenants.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be changed: it is the instance owner"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be deleted while %{workspace} spells %{ours} as %{name}: use one spelling"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be locked while %{workspace} spells %{ours} as %{name}: use one spelling"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be saved while %{workspace} spells %{ours} as %{name}: use one spelling"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be unlocked while %{workspace} spells %{ours} as %{name}: use one spelling"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "choose an admin to offer it to"
+msgstr ""
+
+#: lib/apiary_pro/sign_up.ex
+#, elixir-autogen, elixir-format
+msgid "choose what to create"
+msgstr ""
+
+#: lib/apiary_pro/operators.ex
+#, elixir-autogen, elixir-format
+msgid "could not be created just now; please try again"
+msgstr ""
+
+#: lib/apiary_pro/tenants.ex
+#, elixir-autogen, elixir-format
+msgid "could not be signed up just now; please try again"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "is %{name} in %{workspace}: use the same spelling"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "is already set here, compared without case"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "is no longer an admin who can act: choose another"
+msgstr ""
+
+#: lib/apiary_pro/tenants.ex
+#, elixir-autogen, elixir-format
+msgid "is not an operator"
+msgstr ""
+
+#: lib/apiary_pro/sign_up.ex
+#, elixir-autogen, elixir-format
+msgid "is not open for sign-up"
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
+#: lib/apiary_pro_web/live/settings_live/ownership.ex
+#, elixir-autogen, elixir-format
+msgid "is not the name"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "is not the slug"
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "is required, and at most %{max} characters"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be UTF-8 text"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be at most %{count} bytes"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be one line, with no NUL byte"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must start with a letter or _ and hold only letters, digits and _, at most 128"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "names beginning QORY_ are reserved for Forager"
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "would raise a target's variables above %{limit}"
+msgstr "would raise a repository's variables above %{limit}"
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "would raise a target's variables above 64 KiB"
+msgstr "would raise a repository's variables above 64 KiB"
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "would raise a target's variables in %{workspace} above %{limit}"
+msgstr "would raise a repository's variables in %{workspace} above %{limit}"
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "would raise a target's variables in %{workspace} above 64 KiB"
+msgstr "would raise a repository's variables in %{workspace} above 64 KiB"

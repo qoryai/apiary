@@ -916,7 +916,7 @@ defmodule Apiary.Audit do
 
     case parse_days(value, @default_retention_days, @retention_min, max) do
       {:ok, days} -> {:ok, days}
-      {:error, reason} -> {:error, reason <> "; #{max} days is the most this edition keeps"}
+      {:error, reason} -> {:error, reason <> "; #{max} days is the most Qory Apiary keeps"}
     end
   end
 

@@ -84,11 +84,17 @@ defmodule Apiary.DiagnosticsKeyRoleTest do
   test "is not found for any other action, on a run or anywhere", ctx do
     run = run_fixture(ctx.owner)
 
-    for action <- Access.actions() -- [@action, @list],
-        subject <- [run, ctx.owner.workspace, ctx.owner.organisation, %Node{kind: :diagnostics}] do
-      answer = with_every_feature(fn -> Access.check(ctx.key_scope, action, subject) end)
-      assert answer == {:error, :not_found}, "#{action} on #{inspect(subject)}"
-    end
+    # Creating an organisation is asked of no place, and refused to every scope without a
+    # person (`ApiaryPro.Access`).
+    answers =
+      for action <- Access.actions() -- [@action, @list],
+          subject <- [run, ctx.owner.workspace, ctx.owner.organisation, %Node{kind: :diagnostics}],
+          answer = with_every_feature(fn -> Access.check(ctx.key_scope, action, subject) end),
+          answer != {:error, :not_found},
+          uniq: true,
+          do: {action, answer}
+
+    assert answers == [{:"organisation.create", {:error, :forbidden}}]
   end
 
   test "a key of that kind with a place is not at the instance, and reads no other run", ctx do

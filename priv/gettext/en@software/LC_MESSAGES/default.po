@@ -16239,11 +16239,6 @@ msgstr ""
 msgid "Qory Apiary"
 msgstr ""
 
-#: lib/apiary/edition/core.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary Community allows one workspace per organisation, and %{organisation} has it."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."
@@ -21936,6 +21931,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
+msgstr ""
+
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "This instance allows one workspace per organisation, and %{organisation} has it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex

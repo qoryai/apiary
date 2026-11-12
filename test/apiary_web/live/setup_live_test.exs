@@ -106,9 +106,10 @@ defmodule ApiaryWeb.SetupLiveTest do
       Apiary.Mail.put_test_source(:env)
       {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
 
-      # Your account alone in the instance's progress; Workspace is in the organisation's.
-      assert steps(lv) == [{"Your account", :current}]
-      assert count(lv) == "Step 1 of 1"
+      # Your account alone, which the edition lists with no steps indicator; the
+      # workspace is set up inside the workspace.
+      assert steps(lv) == []
+      assert count(lv) == nil
 
       refute has_element?(lv, "#set-up-group-connect")
     end

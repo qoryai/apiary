@@ -5,10 +5,10 @@ defmodule Apiary.ProductName do
 
   - `name/0`, the name a page or an email shows: every page title, the log-in, sign-up,
     set-up and welcome pages, the docs' not-built page, and every email's from-name,
-    subject and body. Where no name is set it is "Qory Apiary", in every edition.
+    subject and body. Where no name is set it is "Qory Apiary".
   - `button_name/0`, the name on the Qory Apiary menu's button and the menu's names.
     Where no name is set it is the edition's (`edition_name/0`,
-    `c:ApiaryWeb.Edition.product_name/0`, "Qory Apiary" in Qory Apiary Community).
+    `c:ApiaryWeb.Edition.product_name/0`, "Qory Apiary").
 
   The form of Instance settings › General, its toast and the Activity page say an empty
   name as the edition's (`edition_name/0`), as the button shows it.
@@ -54,7 +54,7 @@ defmodule Apiary.ProductName do
 
   @doc """
   name/0 is the name a page or an email shows: the name an instance admin set (`get/0`),
-  else "Qory Apiary", in every edition. A name, not a sentence: it is not translated.
+  else "Qory Apiary". A name, not a sentence: it is not translated.
   """
   @spec name() :: String.t()
   def name, do: get() || @product
@@ -68,7 +68,7 @@ defmodule Apiary.ProductName do
 
   @doc """
   edition_name/0 is the edition's name for the product
-  (`c:ApiaryWeb.Edition.product_name/0`), "Qory Apiary" in Qory Apiary Community: the
+  (`c:ApiaryWeb.Edition.product_name/0`), "Qory Apiary": the
   button's where no name is set, and how the form, its toast and the Activity page say an
   empty name.
   """

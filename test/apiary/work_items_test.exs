@@ -175,7 +175,7 @@ defmodule Apiary.WorkItemsTest do
                %{w.id => %{key: nil, collection_title: "acme/shop as taken in", ticket_id: nil}}
     end
 
-    test "one query for a list, whatever its length", ctx do
+    test "one query for a list, whatever its length, beside the access check", ctx do
       work_items =
         for n <- 1..5 do
           ref = "123456##{n}"
@@ -188,10 +188,12 @@ defmodule Apiary.WorkItemsTest do
 
       {all, all_count} = queries(fn -> WorkItems.ticket_names(ctx.scope, work_items) end)
 
-      assert {one_count, all_count} == {1, 1}
+      # The list's query, and the edition's read of the organisation's tenant for the
+      # access check, which an empty list takes too.
+      assert {one_count, all_count} == {2, 2}
       assert map_size(one) == 1
       assert Enum.map(work_items, &all[&1.id].key) == ["#1", "#2", "#3", "#4", "#5"]
-      assert {%{}, 0} == queries(fn -> WorkItems.ticket_names(ctx.scope, []) end)
+      assert {%{}, 1} == queries(fn -> WorkItems.ticket_names(ctx.scope, []) end)
     end
 
     test "nothing for another workspace's work item, or for a person who may not read them",
