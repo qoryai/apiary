@@ -1891,14 +1891,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   - the relationships between operators and their clients;
   <!-- /feature -->
   - the features an instance admin took away from an organisation or granted to it:
-    every organisation has every feature the instance has.
+    every organisation has every feature the instance has;
   - sign-up beyond the first and more than one workspace per organisation: nobody signs
-    up, an organisation with a workspace creates no other, and the console offers
-    gateways only at a workspace. Organisations and workspaces that exist stay.
+    up without an invitation, an organisation with a workspace creates no other, and the
+    console offers gateways only at a workspace. Organisations and workspaces that exist
+    stay.
 
-  A member added to an adopted organisation while the previous image runs gets no
-  workspace access at the next upgrade, because the adoption covers only organisations
-  it has not adopted. They reach no workspace until they are added to one.
+  A member added to an adopted organisation, and a workspace created in one, while the
+  previous image runs get no workspace access at the next upgrade, because the adoption
+  covers only organisations it has not adopted. That member reaches no workspace, and
+  the members of that workspace do not reach it, until they are added to it.
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`
