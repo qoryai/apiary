@@ -152,6 +152,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
     %{"main" => main, "spare" => spare} = Map.new(values, &{&1.value_id, &1})
 
     running = keys_run(scope, provider, main, "running")
+    pending = keys_run(scope, provider, main, "pending")
     ended = keys_run(scope, provider, main, "completed")
     sealed = keys_run(scope, provider, spare, "pending")
     # A key that has no value row, such as a deleted key, gets no copy.
@@ -185,7 +186,11 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
       )
 
     assert Enum.sort(copies) ==
-             Enum.sort([{running.id, main.id, later}, {sealed.id, spare.id, sealed_at}])
+             Enum.sort([
+               {running.id, main.id, later},
+               {pending.id, main.id, later},
+               {sealed.id, spare.id, sealed_at}
+             ])
 
     refute Enum.any?(copies, fn {run_id, _id, _at} -> run_id == ended.id end)
     assert Repo.aggregate(from(c in Copy, where: c.run_id == ^gone.id), :count) == 0
