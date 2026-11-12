@@ -77,29 +77,32 @@ possible:
 ## Rolling back
 
 The previous release runs on the new release's schema (expand, then contract, above), so
-going back one release changes nothing in the database, except across migrations
-`20261111090000` and `20261111100000`:
+going back one release changes nothing in the database. To go back one release:
 
 1. Set `APIARY_VERSION` in `.env` back to the previous release.
 2. `docker compose up -d`. The previous release starts on the newer schema, and runs no
    migration, since none is pending for it.
 
-Two migrations do not follow expand, then contract: `20261111090000` drops
-`machine_types.image` and `20261111100000` drops `runs.provider_value_id`. A release
-from before them, whose last migration is `20261110090000`, reads both columns and does
-not run on the newer schema. To go back to such a release, first take the schema back
-with the rollback command at the end of this section and `20261110153000`, the first
-migration that release does not have, then set the version back. The rollback adds both
-columns again, with no image on any machine type. It also reverts every later migration,
-and loses:
+Across migrations `20261111090000` and `20261111100000`, these two steps are not enough,
+and the steps of this paragraph apply instead. The two migrations do not follow expand,
+then contract: `20261111090000` drops `machine_types.image` and `20261111100000` drops
+`runs.provider_value_id`. A release from before them, whose last migration is
+`20261110090000`, reads both columns and does not run on the newer schema. To go back to
+such a release, first take the schema back with the rollback command at the end of this
+section and `20261110153000`, the first migration that release does not have, then set
+the version back. The rollback adds both columns again, with no image on any machine
+type. It reverts every migration from `20261110153000` on, that version included, and
+loses:
 
 - the fallbacks of every model choice;
 - every key's Resets, Pause for and state;
-- every stored session transcript;
+- the stored chunks of every session transcript; the `dev.qory.session.transcript`
+  events stay in `events` until retention deletes them;
 - a continuation's `resume`;
 - the key copies, and when each key value was set;
-- every key of a run but the first;
-- the paused state: each paused run becomes Cancelled.
+- every key of a run but the first, and the provider of a run whose first key is gone;
+- the model providers each queued run waits for;
+- the paused state: each paused run becomes Cancelled, and no run continues it.
 
 Take a database dump before the rollback ([Backup and restore](backup.md)).
 

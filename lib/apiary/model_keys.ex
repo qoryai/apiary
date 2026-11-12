@@ -21,7 +21,8 @@ defmodule Apiary.ModelKeys do
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration and the time the run's value of it was set.
-  A report of the provider's responses reaches a key only through this function. A
+  A gateway's report, and the response Qory Apiary returns for it
+  (`Apiary.ModelKeys.Report.answer/5`), reach a key only through this function. A
   gateway's secrets request keeps which value of each key it sealed for the run
   (`keep_copies/2`, `Apiary.ModelKeys.Copy`); migration 20261111220000 wrote such a copy
   for each key of each run that was pending or running at the upgrade.

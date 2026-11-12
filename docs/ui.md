@@ -436,13 +436,13 @@ replaces the navigation it is in.
   the response that started it to its end, whatever the key's Pause for is when the page
   shows it. A time is the time of day alone on the reader's day, the weekday and the time
   on one of the six days after it, else the date and the time
-  (`ApiaryWeb.Format.week_time/2`). The windows
-  read 5-hour, 7-day, 7-day Opus, 7-day Sonnet, Extra usage, Requests per minute, Tokens
-  per minute, Input tokens per minute, Output tokens per minute, Spend limit and Limit;
-  a window of another code shows its code. The page shows no key and no part of one.
-  Every member reads it (`connection.read`); owners and admins (`provider.write`) have
-  **Add key** in the section's actions and **Edit** at the right of each row, its label
-  "Edit key main", and anyone else neither.
+  (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
+  Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
+  Output tokens per minute, Spend limit and Limit; a window of another code shows its
+  code. The page shows no key and no part of one. Every member reads it
+  (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
+  section's actions and **Edit** at the right of each row, its label "Edit key main", and
+  anyone else neither.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
   (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
   below), the breadcrumb ending with the provider's name and the act. The form has Name
