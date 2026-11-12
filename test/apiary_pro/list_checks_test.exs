@@ -8,8 +8,6 @@ defmodule ApiaryPro.ListChecksTest do
   """
   use Apiary.DataCase, async: true
 
-  @before_compile Apiary.TestSetup
-
   # The rows are work items, which the factory reads.
   @moduletag needs: :factory
 

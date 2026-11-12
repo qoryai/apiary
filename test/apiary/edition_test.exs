@@ -17,6 +17,14 @@ defmodule Apiary.EditionTest do
     }
   end
 
+  describe "put_organisation/1" do
+    # The configured edition's answer puts the tenant on the organisation:
+    # test/apiary_pro/list_checks_test.exs.
+    test "the core puts nothing on the organisation", %{scope: scope} do
+      assert Apiary.Edition.Core.put_organisation(scope.organisation) == scope.organisation
+    end
+  end
+
   describe "hidden/1" do
     # The configured edition's answer reads the organisation's grants:
     # test/apiary_pro/feature_visibility_test.exs.

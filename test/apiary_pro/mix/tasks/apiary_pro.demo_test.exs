@@ -85,7 +85,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert Enum.sort(reached) == ["Main", "Storefront"]
     assert length(workspaces(marrowick)) == 4
 
-    # Twelve people of their own, confirmed, one of them suspended in Vellorin Analytics.
+    # The twelve people the task makes, confirmed, one of them suspended in Vellorin Analytics.
     people =
       for name <- ~w(aisha.rahman bruno.costa chloe.martin dmitri.volkov farah.haddad
                      gustav.lind hana.sato ines.moreau jakub.novak kofi.mensah lucia.romano
