@@ -464,8 +464,7 @@ defmodule Apiary.ModelKeys do
   provider of the run.
 
   With `except:`, a list of provider row ids, those providers count as cooling: a claim
-  passes the providers whose settings check stopped earlier in it
-  (`Apiary.Connections.stopped_in_claim/0`).
+  passes the providers whose settings check stopped earlier in it.
   """
   @spec claimable(DateTime.t(), [{:except, [Ecto.UUID.t()]}]) :: Ecto.Query.dynamic_expr()
   def claimable(%DateTime{} = now, opts \\ []) do
