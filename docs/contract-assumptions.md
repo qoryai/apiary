@@ -832,6 +832,15 @@ from, the one in force when the same bytes came from several; a digest a configu
 stored under always names that configuration. The events endpoint takes a reported digest
 as in force only when it is what the run would be answered now.
 
+**A model provider and the catalogue.** A model provider is read with the catalogue
+entry of its kind in the running release (`Apiary.Connections.provider/1`): its APIs,
+its hosts, its models and its limit windows. The digest of the entry it was added from
+(`description_sha256`) stays on its row, under its integrity code, and is not compared,
+so a release that changes an entry changes every provider of that kind at the upgrade.
+A provider whose saved settings no longer pass the entry's settings schema and the
+endpoint rule, as an add or an edit checks them, is refused (`provider_changed`): its
+runs get no run configuration, and it is to be added again.
+
 **A run's model keys.** An explore run of a workspace's queue whose model choice resolves
 to a model provider gets the provider's keys at its claim (`Apiary.Dispatches.RunSettings`,
 `Apiary.ModelKeys.Order`), at most 6, because the 8 `credentials` of a run configuration
@@ -860,9 +869,11 @@ claim had them, an entry also has `resets_at`, `schedule_resets_at`, `cooldown_u
 `chosen`. A key's `cooldown_until` is the latest end of its cooldown: a window's
 `cooldown_until`, or the `resets_at` of a limit window at the key's Use up to
 percentage. A key with a Use up to percentage, of a provider with limit windows, also
-has `use_up_to_percent` and `use_up_to_windows`, the provider's limit windows; the run
-keeps the percentage (`runs.model_keys`) and its run configuration takes the windows
-from the catalogue entry the provider was added from, so an entry has both or neither.
+has `use_up_to_percent` and `use_up_to_windows`, the provider's limit windows. Each key
+keeps its percentage (`runs.model_keys`), and the run keeps the windows once, in
+`runs.provider_api`, from the catalogue entry at the claim, so a later release does not
+change a live run's windows. An entry has both or neither: a run claimed before runs
+kept the windows gives no key either member.
 The entries are fixed for the run: a later state reaches the gateway in the
 answer to its model keys report (The model keys report, below). Where every key of the
 provider is in cooldown, the claim takes the first of the choice's fallbacks, in their

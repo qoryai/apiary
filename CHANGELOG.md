@@ -1137,8 +1137,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Apiary. The key's row then shows “In cooldown until Fri 14:00 · 5-hour at 90%, this
   key's Use up to”. Empty, runs use the key up to its limit. Only a provider whose
   catalogue entry lists limit windows has the field; an API key has none. A run keeps
-  each key's percentage from its claim, and the gateway checks it on each response of
-  the provider, so a run may go past it by the requests it already sent. The line of a
+  each key's percentage and the provider's windows from its claim, and the gateway
+  checks them on each response of the provider, so a run may go past the percentage by
+  the requests it already sent. A run claimed before the upgrade has no windows, and
+  uses its keys up to their limit. The line of a
   paused run reads “Paused: a key of Northwind Claude reached its limit or its Use up to
   percentage.” in place of “… reached its limit.”
 <!-- /feature -->
@@ -1147,6 +1149,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `set_up`, and a `200` has no `set_up` when the lookup fails.
 
 ### Changed
+
+<!-- feature: factory, secrets -->
+- A model provider follows the catalogue entry of its kind in the Qory Apiary release
+  it runs on: its APIs, hosts, models and limit windows. Up to this change, a release
+  that changed the entry a provider was added from stopped every provider of that kind:
+  runs got no run configuration, **Edit** failed, and **Workspace settings › Model**
+  asked to add the provider again, with its keys. After the upgrade, each provider takes
+  the new entry, such as the 5-hour and 7-day windows of a Claude subscription, and a
+  new model in its list. Only a provider whose saved settings no longer fit the new
+  entry stops, and the page shows “Add Northwind Claude again in Organisation settings ›
+  Model providers: its description changed after it was added.”
+<!-- /feature -->
 
 - `QORY_FEATURES` unset, empty, `all` or `all-…` turns on every feature: `secrets`,
   `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
@@ -1861,6 +1875,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   lock that blocks reads and writes, one row per key with settings. It changes no row.
   Rolling back drops `model_key_settings.use_up_to_percent`, with every key's Use up to
   percentage.
+- `runs` (20261112110000 and 20261112110100): the check on `provider_api` also allows
+  `use_up_to_windows`, 1 to 11 strings, the limit windows of the run's model provider at
+  its claim. The bound of 8 KiB stays. The first migration adds the check without a
+  scan, and the second validates it with a scan that does not block writes. It changes
+  no row. A rollback removes `use_up_to_windows` from each run that has it, and its
+  check scans `runs` under a lock that blocks reads and writes.
 - `model_key_copies` (20261111220000): a row for each pending or running run and each of
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
   keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row

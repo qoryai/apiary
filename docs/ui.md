@@ -502,7 +502,10 @@ replaces the navigation it is in.
   error shows under its row's field, such as "Choose another provider: Northwind Claude
   is chosen already." A save that sends no rows, as the set-up's Model step saves, keeps
   the rows but one of the chosen provider, which it drops. A save that changes the chosen
-  provider to the provider of a row drops that row.
+  provider to the provider of a row drops that row. A provider whose saved settings no
+  longer fit the catalogue entry of its kind in the running release serves nothing, and
+  the page shows "Add Northwind Claude again in Organisation settings › Model providers:
+  its description changed after it was added."
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
