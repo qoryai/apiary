@@ -15,13 +15,16 @@ defmodule ApiaryPro.ClientReads do
   # with a `name` and the `hosts` it was used for, as recorded when the run was claimed. The
   # provider's entries are those named like one of the run's model keys (`runs.model_keys`:
   # `<public id>-1` to `<public id>-6`, or the provider row's public id on a run claimed
-  # when a run kept one key), or like the provider's row, the connection
-  # `provider_connection_id` names (`Apiary.Runs.ProviderCredential`), while that row is
-  # there. The hosts come from the recorded entries, never from the row as it is now, which
-  # an edit of its address changes. When the row is gone, the entries are those whose hosts
-  # include the host of the run's recorded `provider_api` endpoint; when no entry has it,
-  # every entry could be the provider's and every one is taken, so the person also loses the
-  # other credentials of that run (a registry credential, for one) and their hosts.
+  # when a run kept one key), with the provider's row there or gone, and, while that row is
+  # there, those named like the row, the connection `provider_connection_id` links to
+  # (`Apiary.Runs.ProviderCredential`). The hosts come from the recorded entries, never
+  # from the row as it is now, which an edit of its address changes. A run with no key
+  # names and no row (a run claimed before model keys, whose provider row was deleted
+  # before its keys were recorded: its `model_keys` list is empty) is read by the host of
+  # its recorded `provider_api` endpoint: the entries are those whose hosts include that
+  # host; when no entry has it, every entry could be the provider's and every one is taken,
+  # so the person also loses the other credentials of that run (a registry credential, for
+  # one) and their hosts.
   #
   # What is removed. The entries, from every `policy.applied` map read
   # (`:run_policy` narrows the map it is given, from that map's credentials); the provider's
@@ -51,23 +54,21 @@ defmodule ApiaryPro.ClientReads do
   """
 
   # The names of the provider's entries of a run, as described at the top of the module:
-  # the names of the run's model keys and the provider row's public id, null when the row
-  # is gone. The arguments: the provider row's id, the run's `model_keys` and the
-  # provider row's public id.
+  # the names of the run's model keys and the provider row's public id while the row is
+  # there; null when there is no name. The arguments: the run's `model_keys` and the
+  # provider row's public id (null when the row is gone).
   @names """
-  CASE WHEN ? IS NULL THEN NULL
-       ELSE array_append(ARRAY(SELECT k ->> 'name'
-                                 FROM jsonb_array_elements(coalesce(?, '[]'::jsonb)) k
-                                WHERE jsonb_typeof(k) = 'object'), ?)
-  END
+  nullif(array_remove(array_append(ARRAY(SELECT k ->> 'name'
+                                           FROM jsonb_array_elements(coalesce(?, '[]'::jsonb)) k
+                                          WHERE jsonb_typeof(k) = 'object'), ?), NULL), '{}')
   """
 
   # Whether the run `pe.run_id = r.id` recorded an entry that is the provider's, whose name
   # is the credential or whose hosts include the host, as the comment at the top of the
-  # module says. The arguments: the run's id, the names of the provider's entries
-  # (`provider_names/2`), the provider row's id (null when the row is gone), the host of
-  # the run's endpoint, twice more the run's id and that host, then the credential and the
-  # host to test.
+  # module says. The arguments: the run's id, twice the names of the provider's entries
+  # (`provider_names/2`, null for a run read by its endpoint), the host of the run's
+  # endpoint, twice more the run's id and that host, then the credential and the host to
+  # test.
   @hit """
   EXISTS (
     SELECT 1
@@ -103,7 +104,6 @@ defmodule ApiaryPro.ClientReads do
     quote do
       fragment(
         unquote(@names),
-        unquote(provider).id,
         unquote(run).model_keys,
         unquote(provider).public_id
       )
@@ -121,7 +121,7 @@ defmodule ApiaryPro.ClientReads do
           unquote(@hit),
           unquote(run).id,
           provider_names(unquote(run), unquote(provider)),
-          unquote(provider).id,
+          provider_names(unquote(run), unquote(provider)),
           endpoint_host(unquote(run)),
           unquote(run).id,
           endpoint_host(unquote(run)),
@@ -213,24 +213,20 @@ defmodule ApiaryPro.ClientReads do
   end
 
   # The names and the hosts of the provider's entries among `entries`, each a recorded
-  # `%{name, hosts}`: by the names of the run's model keys and of the provider's row; with
-  # the row gone, by the host of the run's endpoint, and, where no entry has it, all of
-  # them.
+  # `%{name, hosts}`: by the names of the run's model keys and of the provider's row while
+  # it is there; with no such name, by the host of the run's endpoint, and, where no entry
+  # has it, all of them.
   defp provider(run, entries) do
-    row_names =
-      case public_id(run.provider_connection_id) do
-        nil -> nil
-        public_id -> Enum.uniq([public_id | key_names(run)])
-      end
+    names = Enum.uniq(key_names(run) ++ List.wrap(public_id(run.provider_connection_id)))
 
     matched =
       cond do
-        row_names -> Enum.filter(entries, &(&1.name in row_names))
+        names != [] -> Enum.filter(entries, &(&1.name in names))
         found = by_endpoint(run, entries) -> found
         true -> entries
       end
 
-    names = Enum.uniq(List.wrap(row_names) ++ Enum.map(matched, & &1.name))
+    names = Enum.uniq(names ++ Enum.map(matched, & &1.name))
     hosts = matched |> Enum.flat_map(& &1.hosts) |> Enum.concat(List.wrap(recorded_host(run)))
     {names, Enum.uniq(hosts)}
   end
@@ -354,7 +350,7 @@ defmodule ApiaryPro.ClientReads do
   # The rows of runs of the operator's chain are kept unless their credential is the name
   # of one of the run's model keys, the provider row's or an entry's of the provider, or
   # their host is one of its hosts (a left join: a run whose provider row is gone is read by
-  # its recorded endpoint).
+  # the names of its model keys, and with none, by its recorded endpoint).
   defp narrow_workspace(:workspace_connections, query) do
     from [c, r] in query,
       left_join: p in Connection,

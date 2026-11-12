@@ -1819,6 +1819,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   counted the run API's requests (the host `run-api.qory.invalid`) as a destination
   enforce would deny.
 <!-- /feature -->
+<!-- feature: managed_organisations -->
+- After an operator deletes a model provider, an operated client's run pages hide that
+  provider's keys by the names of the run's model keys. Before, those pages looked for
+  the keys by the host of the provider's address: a key not recorded on that host
+  stayed visible, and where no key had it, the pages hid every credential of the run,
+  a registry credential too.
+<!-- /feature -->
 
 ### Security
 
