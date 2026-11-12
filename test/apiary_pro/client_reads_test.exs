@@ -549,6 +549,70 @@ defmodule ApiaryPro.ClientReadsTest do
     end
   end
 
+  # The run of two model keys once its provider row is deleted, where the entry of the
+  # first key lists the host of the run's endpoint and the entry of the second key lists
+  # another host. Read by its endpoint, only the first key's entry would be found, and the
+  # second key, with its host, would stay.
+  describe "a run with two model keys, its row deleted, one key on the endpoint host" do
+    setup ctx do
+      run = run_for!(ctx.person, ctx.provider, "operator", @api, 2)
+
+      event_fixture(run, 1, "run.policy_applied", %{
+        "mode" => "enforce",
+        "allow" => ["api.anthropic.com", "second.provider.example", "registry.example.com"],
+        "credentials" => [
+          %{"name" => key_name(ctx.provider, 1), "hosts" => ["api.anthropic.com"]},
+          %{"name" => key_name(ctx.provider, 2), "hosts" => ["second.provider.example"]},
+          %{"name" => "registry", "hosts" => ["registry.example.com"]}
+        ]
+      })
+
+      egress!(run, 2, "api.anthropic.com", nil)
+      egress!(run, 3, "second.provider.example", nil)
+      egress!(run, 4, "first.example.com", key_name(ctx.provider, 1))
+      egress!(run, 5, "second.example.com", key_name(ctx.provider, 2))
+      egress!(run, 6, "registry.example.com", "registry")
+      connection!(run, "api.anthropic.com", nil)
+      connection!(run, "second.provider.example", nil)
+      connection!(run, "first.example.com", key_name(ctx.provider, 1))
+      connection!(run, "second.example.com", key_name(ctx.provider, 2))
+      connection!(run, "registry.example.com", "registry")
+
+      run = nilified(ctx, run)
+      assert run.provider_connection_id == nil
+      %{run: run}
+    end
+
+    test "leave out both keys and their hosts and keep the registry for a person of the client",
+         ctx do
+      policy = Record.policy(ctx.person, ctx.run)
+      assert Enum.map(policy.credentials, & &1["name"]) == ["registry"]
+      assert policy.credentials_count == 1
+      assert policy.allow == ["registry.example.com"]
+
+      assert events_of(ctx.person, ctx.run) ==
+               [{nil, nil}, {"registry.example.com", "registry"}]
+
+      assert run_hosts(ctx.person, ctx.run) == ["registry.example.com"]
+
+      assert ctx.person |> workspace_rows(:workspace_connections, Connection) |> hosts_of() ==
+               ["registry.example.com"]
+
+      assert ctx.person
+             |> workspace_rows(:workspace_events, Event)
+             |> Enum.map(&{&1.data["host"], &1.data["credential"]})
+             |> Enum.sort() == [{nil, nil}, {"registry.example.com", "registry"}]
+    end
+
+    test "are all there for a person of the operator", ctx do
+      assert Record.policy(ctx.operator_person, ctx.run).credentials_count == 3
+      assert length(events_of(ctx.operator_person, ctx.run)) == 6
+      assert length(run_hosts(ctx.operator_person, ctx.run)) == 5
+      assert length(workspace_rows(ctx.operator_person, :workspace_connections, Connection)) == 5
+      assert length(workspace_rows(ctx.operator_person, :workspace_events, Event)) == 6
+    end
+  end
+
   # What the run recorded of its provider at its claim, in its `policy.applied` events.
   describe "the provider the run recorded" do
     @old_host "old.provider.example"
