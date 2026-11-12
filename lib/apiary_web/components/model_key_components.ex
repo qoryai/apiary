@@ -7,7 +7,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #   * `settings_fields/1`: Resets, a weekly day, time and time zone, Pause for, a
   #     number and a unit, and, for a provider with limit windows, Use up to, a
   #     percentage, each optional, with their hints and their errors;
-  #   * `params/3` the fields of a key's settings, `read_settings/1` the settings of what
+  #   * `params/3` the fields of a key's settings, `read_settings/2` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
   #   * `state/4` the state of a key from its states, in words.
   #

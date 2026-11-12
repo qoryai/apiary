@@ -324,21 +324,24 @@ defmodule Apiary.ModelChoices do
   # resolution_provider/2 is `provider`, a provider connection, as
   # `Apiary.ModelChoices.Resolution` reads a provider: its default key, its default model
   # and its description's models, each with the effort values its description lists, from
-  # `described`, what `Connections.provider/1` returned for it, read once by the caller;
-  # no models for a provider without a description. The resolution keeps those its
-  # runtime offers too.
-  @spec resolution_provider(Connection.t(), {:ok, Provider.t()} | {:error, atom}) ::
+  # `described`, what `Connections.provider/1` returned for it, read once by the caller,
+  # or nil to read it here; no models for a provider without a description. The
+  # resolution keeps those its runtime offers too.
+  @spec resolution_provider(Connection.t(), {:ok, Provider.t()} | {:error, atom} | nil) ::
           Resolution.provider()
   def resolution_provider(%Connection{} = provider, described \\ nil) do
-    models =
+    {models, default_model_id} =
       case described || Connections.provider(provider) do
-        {:ok, %Provider{} = description} -> Connections.provider_models(description)
-        {:error, _reason} -> []
+        {:ok, %Provider{} = description} ->
+          {Connections.provider_models(description), Connections.default_model(description)}
+
+        {:error, _reason} ->
+          {[], nil}
       end
 
     %{
       default_value_id: provider.default_value_id,
-      default_model_id: with([%{"id" => id} | _rest] <- models, do: id, else: (_none -> nil)),
+      default_model_id: default_model_id,
       models:
         Enum.map(models, fn model ->
           effort = model["effort"] || []
