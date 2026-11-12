@@ -671,6 +671,107 @@ defmodule Apiary.Connections.ProvidersTest do
       assert Connections.update_provider_key(scope, provider, "gone", %{}) == {:error, :not_found}
     end
 
+    test "a key's change with a new value replaces it and ends its cooldown", %{scope: scope} do
+      provider = openrouter!(scope)
+      spare = value!(provider, "spare")
+      main = value!(provider, "main").id
+      until = Apiary.ModelKeysFixtures.in_seconds(3_600)
+      Apiary.ModelKeysFixtures.key_state!(provider, "spare", until: until)
+      Apiary.ModelKeysFixtures.key_state!(provider, "main", until: until)
+
+      reveal = fn ->
+        Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), spare.id)
+      end
+
+      # A value that is empty or only whitespace keeps the value and its cooldown.
+      for blank <- [nil, "", "   "] do
+        assert {:ok, _provider} =
+                 Connections.update_provider_key(scope, provider, "spare", %{
+                   "value_id" => "spare",
+                   "value" => blank,
+                   "settings" => @settings
+                 })
+      end
+
+      assert reveal.() == {:ok, "sk-spare"}
+      assert value!(provider, "spare").value_set_at == spare.value_set_at
+      states = ModelKeys.provider_states(provider, DateTime.utc_now())
+      assert [%{status: "rejected"}] = states[spare.id]
+
+      # A refused value leaves the name, the settings, the value and the cooldown.
+      entries = length(trail(provider.id))
+
+      assert {:error, changeset} =
+               Connections.update_provider_key(scope, provider, "spare", %{
+                 "value_id" => "backup",
+                 "value" => @key <> <<0>>,
+                 "settings" => Map.put(@settings, "pause_seconds", 60)
+               })
+
+      assert errors_on(changeset).value == ["must not contain a NUL byte"]
+      refute inspect(changeset, limit: :infinity, printable_limit: :infinity) =~ @key
+
+      # A refused rename leaves the new value unset, though it is set first.
+      assert {:error, changeset} =
+               Connections.update_provider_key(scope, provider, "spare", %{
+                 "value_id" => "main",
+                 "value" => @key <> "-taken",
+                 "settings" => Map.put(@settings, "pause_seconds", 60)
+               })
+
+      assert errors_on(changeset).value_id == ["is already a value ID of this secret"]
+      refute inspect(changeset, limit: :infinity, printable_limit: :infinity) =~ @key
+      assert value!(provider, "spare").id == spare.id
+      assert value!(provider, "spare").value_set_at == spare.value_set_at
+      assert ModelKeys.setting(spare.id).pause_seconds == 7200
+      assert reveal.() == {:ok, "sk-spare"}
+
+      assert [%{status: "rejected"}] =
+               ModelKeys.provider_states(provider, DateTime.utc_now())[spare.id]
+
+      assert length(trail(provider.id)) == entries
+
+      # A new value with a rename: the value is set, then encrypted again under the new
+      # name, and its cooldown ends; the other key keeps its cooldown.
+      assert {:ok, _provider} =
+               Connections.update_provider_key(scope, provider, "spare", %{
+                 "value_id" => "backup",
+                 "value" => "sk-rotated",
+                 "settings" => @settings
+               })
+
+      backup = value!(provider, "backup")
+      assert backup.id == spare.id
+      assert DateTime.compare(backup.value_set_at, spare.value_set_at) == :gt
+      assert reveal.() == {:ok, "sk-rotated"}
+
+      states = ModelKeys.provider_states(provider, DateTime.utc_now())
+      refute states[spare.id]
+      assert [%{status: "rejected"}] = states[main]
+
+      # A new value alone leaves an entry, with no value in it.
+      assert {:ok, _provider} =
+               Connections.update_provider_key(scope, provider, "backup", %{
+                 "value_id" => "backup",
+                 "value" => "sk-rotated-again",
+                 "settings" => @settings
+               })
+
+      assert reveal.() == {:ok, "sk-rotated-again"}
+
+      assert Enum.map(
+               Enum.take(trail(provider.id), -2),
+               &{&1.before, &1.after, &1.details["value_id"]}
+             ) ==
+               [
+                 {%{"value_id" => "spare"}, %{"value_id" => "backup"}, "backup"},
+                 {nil, nil, "backup"}
+               ]
+
+      refute inspect(trail(provider.id), limit: :infinity, printable_limit: :infinity) =~
+               "sk-rotated"
+    end
+
     test "are for a reader with provider.write, in the provider's organisation", %{scope: scope} do
       provider = openrouter!(scope)
       %{scope: member} = member_fixture(scope)
@@ -761,6 +862,20 @@ defmodule Apiary.Connections.ProvidersTest do
       )
 
       refused!(Connections.set_provider_key(scope, provider, "main", ""))
+
+      refused!(
+        Connections.update_provider_key(scope, provider, "main", %{
+          "value_id" => "main",
+          "value" => @key <> <<0>>
+        })
+      )
+
+      refused!(
+        Connections.update_provider_key(scope, provider, "main", %{
+          "value_id" => "Bad Id",
+          "value" => @key
+        })
+      )
     end
   end
 

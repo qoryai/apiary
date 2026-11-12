@@ -5,17 +5,17 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # Pause for (`ApiaryWeb.ModelKeyComponents`), and writes them in one transaction
   # (`Apiary.Connections.add_provider_key/4`); for a subscription, About model providers
   # has where to get the key and the terms that allow it. Edit key, of a key by its value
-  # id, takes its Name and its settings, never its value
-  # (`Apiary.Connections.update_provider_key/4`). Each save goes back to the provider's
-  # page, which shows that the key is added or saved.
+  # id, takes its Name, a New value, which keeps the key's value when it is left empty,
+  # and its settings (`Apiary.Connections.update_provider_key/4`). Each save goes back to
+  # the provider's page, which shows that the key is added or saved.
   #
   # Both are for owners and admins (`provider.write`): for anyone else the paths are not
   # there, and the context asks again. A key of a provider the organisation does not have,
   # or a value id its keys do not have, is not found.
   #
-  # A key is write-only: the page never renders it nor keeps it in an assign. Its field
-  # is left out of the page's patches (`phx-update="ignore"`), and each save renders a
-  # new, empty field.
+  # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
+  # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
+  # save renders a new, empty field.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -153,11 +153,18 @@ defmodule ApiaryWeb.ProviderLive.Key do
   end
 
   defp input_errors(:edit, params) do
-    %Value{}
-    |> Ecto.Changeset.cast(%{"value_id" => params["value_id"]}, [:value_id])
-    |> Value.value_id_changeset(:required)
-    |> key_errors(nil)
+    if blank?(params["key"]) do
+      %Value{}
+      |> Ecto.Changeset.cast(%{"value_id" => params["value_id"]}, [:value_id])
+      |> Value.value_id_changeset(:required)
+      |> key_errors(nil)
+    else
+      input_errors(:new, params)
+    end
   end
+
+  # A New value that is empty or only whitespace keeps the key's value.
+  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 
   defp write(socket, :new, params, settings) do
     %{current_scope: scope, provider: provider} = socket.assigns
@@ -177,7 +184,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   defp write(socket, :edit, params, settings) do
     %{current_scope: scope, provider: provider, key: key} = socket.assigns
-    attrs = %{"value_id" => params["value_id"], "settings" => settings}
+    attrs = %{"value_id" => params["value_id"], "value" => params["key"], "settings" => settings}
 
     case Connections.update_provider_key(scope, provider, key.value_id, attrs) do
       {:ok, _provider} ->
@@ -309,6 +316,18 @@ defmodule ApiaryWeb.ProviderLive.Key do
             spellcheck="false"
             phx-update="ignore"
             required
+          />
+          <.input
+            :if={@live_action == :edit}
+            field={@form[:key]}
+            id={"key-value-#{@attempt}"}
+            type="password"
+            value={nil}
+            label={gettext("New value")}
+            hint={gettext("Leave it empty to keep the value.")}
+            autocomplete="off"
+            spellcheck="false"
+            phx-update="ignore"
           />
           <ModelKeyComponents.settings_fields
             form={@form}

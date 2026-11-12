@@ -445,9 +445,10 @@ replaces the navigation it is in.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
   (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
   below), the breadcrumb ending with the provider's name and the act. The form has Name
-  ("Lowercase letters, digits, ., _ and -."); Key, on Add key alone, a password field
-  that is empty after every save, with "Qory Apiary stores the key encrypted, and nobody
-  can view it again."; then Resets and Pause for
+  ("Lowercase letters, digits, ., _ and -."); on Add key, Key, a password field that is
+  empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
+  view it again."; on Edit key, New value, an optional password field that is empty
+  after every save, with "Leave it empty to keep the value."; then Resets and Pause for
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
   Time zone, whose zone is the reader's for a key with no reset, with the hint "The
   weekly time when this key's allowance resets. Set it if the provider sends no reset
@@ -460,8 +461,11 @@ replaces the navigation it is in.
   with "main is added." or "main is saved."; a name another key of the provider has
   shows "Another key of Northwind Claude has this name." under Name, and a key past the
   32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
-  another." under Key. Add key of a subscription has About model providers beside the
-  form. Workspace settings › Secrets and variables has the same Resets and Pause for on
+  another." under Key. On Edit key, a New value that is empty or only spaces keeps the
+  key's value and its cooldown; any other replaces the value and ends the key's
+  cooldown. A New value that fails the checks of Key saves nothing and shows the error
+  under New value, such as "must not contain a NUL byte". Add key of a subscription has
+  About model providers beside the form. Workspace settings › Secrets and variables has the same Resets and Pause for on
   Add value and Change value of a model provider's key. Change value with New value
   empty saves Resets and Pause for and keeps the key's value.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the

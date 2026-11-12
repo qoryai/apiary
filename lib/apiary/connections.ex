@@ -1814,26 +1814,30 @@ defmodule Apiary.Connections do
 
   @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
-  (`provider.write`), but its value: `attrs` has its new `value_id`, which renames it as
-  `rename_provider_key/4` does, and its `settings` (`Apiary.ModelKeys.Setting.changeset/2`).
-  A rename keeps the settings and the states, which are the value's row's: the value
-  stays as it is, and only a new value deletes the states (`set_provider_key/5`). The
-  name and the settings are written in one transaction, and a save that changes neither
-  leaves no entry.
+  (`provider.write`): `attrs` has its new `value_id`, which renames it as
+  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/2`)
+  and, optionally, its new `value`. A rename keeps the settings and the states, which are
+  the value's row's. A `value` that is nil, empty or only whitespace keeps the value and
+  its states; any other replaces the value and deletes the states, as
+  `set_provider_key/5` does. The value, the name and the settings are written in one
+  transaction, and a save that changes none of them leaves no entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
-  keys do not have, a refusal of the rename as `rename_provider_key/4` returns, or a
-  changeset of the settings, which leaves the name as it was.
+  keys do not have, a refusal of the value as `Apiary.Secrets.set_value/5` returns, a
+  refusal of the rename as `rename_provider_key/4` returns, or a changeset of the
+  settings; each leaves the key as it was.
   """
   @spec update_provider_key(Scope.t(), Connection.t(), String.t(), map) ::
           {:ok, Connection.t()} | {:error, refusal}
   def update_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, attrs) do
     attrs = stringify(attrs)
     new_value_id = Value.normalise_value_id(attrs["value_id"])
+    new_value = blank_to_nil(attrs["value"])
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
            changeset = ModelKeys.change_setting(value, attrs["settings"] || %{}),
            :ok <- valid(changeset),
+           {:ok, set} <- set_key(scope, secret, current, value_id, new_value),
            {:ok, renamed} <- rename_key(scope, secret, current, value_id, new_value_id),
            {:ok, _setting} <- write_setting(changeset) do
         cond do
@@ -1845,7 +1849,7 @@ defmodule Apiary.Connections do
                details: %{value_id: new_value_id}
              }}
 
-          changeset.changes != %{} ->
+          set or changeset.changes != %{} ->
             {:ok, %{details: %{value_id: value_id}}}
 
           true ->
@@ -1856,6 +1860,17 @@ defmodule Apiary.Connections do
         {:error, reason} -> {:error, reason}
       end
     end)
+  end
+
+  # A new value of the key `value_id`, which deletes its states: `{:ok, true}` once set,
+  # `{:ok, false}` for no new value. It is set before a rename, under the value id the
+  # key has, and the rename encrypts the new value again under its new value id.
+  defp set_key(_scope, _secret, _current, _value_id, nil), do: {:ok, false}
+
+  defp set_key(scope, secret, current, value_id, value) do
+    with {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
+         :ok <- ModelKeys.clear_states(current.secret_id, value_id),
+         do: {:ok, true}
   end
 
   # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,

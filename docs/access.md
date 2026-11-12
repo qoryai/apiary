@@ -563,8 +563,8 @@ stay known to such a gateway, and are accepted:
 
 A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
 need the features `factory` and `secrets`. Every member reads a provider's page with its
-keys and their states (`connection.read`). Adding a key, changing its name, its Resets
-and its Pause for, and changing or deleting it, are `provider.write`, owners' and admins',
+keys and their states (`connection.read`). Adding a key, changing its name, its value,
+its Resets and its Pause for, and deleting it, are `provider.write`, owners' and admins',
 checked at the organisation: **Add key** and **Edit key** on the provider's page
 (`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**, **Rename value** and
 **Delete value** of the provider's key on Workspace settings › Secrets and variables. For

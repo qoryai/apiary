@@ -1030,8 +1030,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Output tokens per minute”, “Spend limit” and “Limit”. The default key comes first,
   then the other keys in the order they were added. Owners and admins have **Add key**
   above the keys and **Edit** on each row, each a separate page. **Add key** has
-  **Name**, **Key**, **Resets** and **Pause for**; **Edit key** has the same fields
-  without **Key**, so the key's value stays as it is. A provider with 32 keys shows
+  **Name**, **Key**, **Resets** and **Pause for**; **Edit key** has the same fields,
+  with **New value** in place of **Key**. A provider with 32 keys shows
   “Northwind Claude has 32 keys, the most it can have. Delete a key to add another.”
   under **Key**, and a name that another key of the provider has shows “Another key of
   Northwind Claude has this name.” under **Name**.
@@ -1045,6 +1045,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value** and **Change value** of a model provider's key.
 - A key's cooldown ends when **Change value** saves a new value of the key. A save with
   **New value** empty and a rename keep the cooldown.
+- **Edit key** of a model provider's key, on **Organisation settings › Model providers ›
+  a provider**, has the optional field **New value**: “Leave it empty to keep the
+  value.” A new value replaces the key's value, for example after you rotate a
+  subscription's token, and ends the key's cooldown, as **Change value** does. It has
+  the checks of **Key** on **Add key**, and the page never shows it.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with
