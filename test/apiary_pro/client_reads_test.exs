@@ -485,6 +485,134 @@ defmodule ApiaryPro.ClientReadsTest do
     end
   end
 
+  # The run of two model keys once its provider row is deleted, beside a registry
+  # credential. The keys' entries list `api.anthropic.com`, and the run's endpoint is a
+  # host that no entry lists, so only the keys' names find the provider's entries: read by
+  # its endpoint, every entry would be taken, the registry credential too.
+  describe "a run with two model keys and its provider row deleted" do
+    @gateway_api %{@api | "endpoint" => "https://gateway.provider.example"}
+
+    setup ctx do
+      run = run_for!(ctx.person, ctx.provider, "operator", @gateway_api, 2)
+
+      event_fixture(run, 1, "run.policy_applied", %{
+        "mode" => "enforce",
+        "allow" => ["api.anthropic.com", "registry.example.com"],
+        "credentials" => [
+          %{"name" => key_name(ctx.provider, 1), "hosts" => ["api.anthropic.com"]},
+          %{"name" => key_name(ctx.provider, 2), "hosts" => ["api.anthropic.com"]},
+          %{"name" => "registry", "hosts" => ["registry.example.com"]}
+        ]
+      })
+
+      egress!(run, 2, "first.example.com", key_name(ctx.provider, 1))
+      egress!(run, 3, "second.example.com", key_name(ctx.provider, 2))
+      egress!(run, 4, "api.anthropic.com", nil)
+      egress!(run, 5, "registry.example.com", "registry")
+      connection!(run, "first.example.com", key_name(ctx.provider, 1))
+      connection!(run, "second.example.com", key_name(ctx.provider, 2))
+      connection!(run, "api.anthropic.com", nil)
+      connection!(run, "registry.example.com", "registry")
+
+      run = nilified(ctx, run)
+      assert run.provider_connection_id == nil
+      %{run: run}
+    end
+
+    test "leave out each key and keep the registry credential for a person of the client",
+         ctx do
+      policy = Record.policy(ctx.person, ctx.run)
+      assert Enum.map(policy.credentials, & &1["name"]) == ["registry"]
+      assert policy.credentials_count == 1
+      assert policy.allow == ["registry.example.com"]
+
+      assert events_of(ctx.person, ctx.run) ==
+               [{nil, nil}, {"registry.example.com", "registry"}]
+
+      assert run_hosts(ctx.person, ctx.run) == ["registry.example.com"]
+
+      assert ctx.person |> workspace_rows(:workspace_connections, Connection) |> hosts_of() ==
+               ["registry.example.com"]
+
+      assert ctx.person
+             |> workspace_rows(:workspace_events, Event)
+             |> Enum.map(& &1.data["credential"])
+             |> Enum.sort() == [nil, "registry"]
+    end
+
+    test "are all there for a person of the operator", ctx do
+      assert Record.policy(ctx.operator_person, ctx.run).credentials_count == 3
+      assert length(events_of(ctx.operator_person, ctx.run)) == 5
+      assert length(run_hosts(ctx.operator_person, ctx.run)) == 4
+      assert length(workspace_rows(ctx.operator_person, :workspace_connections, Connection)) == 4
+      assert length(workspace_rows(ctx.operator_person, :workspace_events, Event)) == 5
+    end
+  end
+
+  # The run of two model keys once its provider row is deleted, where the entry of the
+  # first key lists the host of the run's endpoint and the entry of the second key lists
+  # another host. Read by its endpoint, only the first key's entry would be found, and the
+  # second key, with its host, would stay.
+  describe "a run with two model keys, its row deleted, one key on the endpoint host" do
+    setup ctx do
+      run = run_for!(ctx.person, ctx.provider, "operator", @api, 2)
+
+      event_fixture(run, 1, "run.policy_applied", %{
+        "mode" => "enforce",
+        "allow" => ["api.anthropic.com", "second.provider.example", "registry.example.com"],
+        "credentials" => [
+          %{"name" => key_name(ctx.provider, 1), "hosts" => ["api.anthropic.com"]},
+          %{"name" => key_name(ctx.provider, 2), "hosts" => ["second.provider.example"]},
+          %{"name" => "registry", "hosts" => ["registry.example.com"]}
+        ]
+      })
+
+      egress!(run, 2, "api.anthropic.com", nil)
+      egress!(run, 3, "second.provider.example", nil)
+      egress!(run, 4, "first.example.com", key_name(ctx.provider, 1))
+      egress!(run, 5, "second.example.com", key_name(ctx.provider, 2))
+      egress!(run, 6, "registry.example.com", "registry")
+      connection!(run, "api.anthropic.com", nil)
+      connection!(run, "second.provider.example", nil)
+      connection!(run, "first.example.com", key_name(ctx.provider, 1))
+      connection!(run, "second.example.com", key_name(ctx.provider, 2))
+      connection!(run, "registry.example.com", "registry")
+
+      run = nilified(ctx, run)
+      assert run.provider_connection_id == nil
+      %{run: run}
+    end
+
+    test "leave out both keys and their hosts and keep the registry for a person of the client",
+         ctx do
+      policy = Record.policy(ctx.person, ctx.run)
+      assert Enum.map(policy.credentials, & &1["name"]) == ["registry"]
+      assert policy.credentials_count == 1
+      assert policy.allow == ["registry.example.com"]
+
+      assert events_of(ctx.person, ctx.run) ==
+               [{nil, nil}, {"registry.example.com", "registry"}]
+
+      assert run_hosts(ctx.person, ctx.run) == ["registry.example.com"]
+
+      assert ctx.person |> workspace_rows(:workspace_connections, Connection) |> hosts_of() ==
+               ["registry.example.com"]
+
+      assert ctx.person
+             |> workspace_rows(:workspace_events, Event)
+             |> Enum.map(&{&1.data["host"], &1.data["credential"]})
+             |> Enum.sort() == [{nil, nil}, {"registry.example.com", "registry"}]
+    end
+
+    test "are all there for a person of the operator", ctx do
+      assert Record.policy(ctx.operator_person, ctx.run).credentials_count == 3
+      assert length(events_of(ctx.operator_person, ctx.run)) == 6
+      assert length(run_hosts(ctx.operator_person, ctx.run)) == 5
+      assert length(workspace_rows(ctx.operator_person, :workspace_connections, Connection)) == 5
+      assert length(workspace_rows(ctx.operator_person, :workspace_events, Event)) == 6
+    end
+  end
+
   # What the run recorded of its provider at its claim, in its `policy.applied` events.
   describe "the provider the run recorded" do
     @old_host "old.provider.example"
@@ -502,9 +630,11 @@ defmodule ApiaryPro.ClientReadsTest do
 
     # A run whose provider the claim recorded on `@old_host`, which the provider's row no
     # longer gives (its address was edited after the claim), beside a registry credential,
-    # each with a connection and an egress event that carry no credential.
-    defp recorded_run!(ctx, api \\ @api, chain \\ "operator") do
-      run = run!(ctx, chain, api)
+    # each with a connection and an egress event, neither with a credential. With `keys`
+    # 0, the run has no model keys, as a run claimed before model keys whose provider row
+    # was deleted.
+    defp recorded_run!(ctx, api \\ @api, chain \\ "operator", keys \\ 1) do
+      run = run_for!(ctx.person, ctx.provider, chain, api, keys)
 
       policy!(
         run,
@@ -586,8 +716,8 @@ defmodule ApiaryPro.ClientReadsTest do
                narrowed.(second)
     end
 
-    test "with its row gone, is found by the host of the run's endpoint", ctx do
-      run = nilified(ctx, recorded_run!(ctx, @edited_api))
+    test "with its row gone and no model keys, is found by the run's endpoint", ctx do
+      run = nilified(ctx, recorded_run!(ctx, @edited_api, "operator", 0))
 
       assert run.provider_connection_id == nil
       assert run_hosts(ctx.person, run) == ["docs.example.com", "registry.example.com"]
@@ -599,8 +729,8 @@ defmodule ApiaryPro.ClientReadsTest do
       assert length(run_hosts(ctx.operator_person, run)) == 3
     end
 
-    test "with its row gone and no entry found, hides every credential entry", ctx do
-      run = nilified(ctx, recorded_run!(ctx, @elsewhere_api))
+    test "with its row gone, no model keys and no entry found, hides every entry", ctx do
+      run = nilified(ctx, recorded_run!(ctx, @elsewhere_api, "operator", 0))
 
       policy = Record.policy(ctx.person, run)
       assert policy.credentials == []
@@ -617,6 +747,24 @@ defmodule ApiaryPro.ClientReadsTest do
 
       assert run_hosts(ctx.person, run) == ["docs.example.com"]
       assert run_hosts(ctx.operator_person, run) == ["api.anthropic.com", "docs.example.com"]
+    end
+
+    # No entry is recorded, so only the name of the run's key finds the connection: its
+    # host is not the endpoint host.
+    test "with its row gone, key names and no events, hides a connection of a key", ctx do
+      run = nilified(ctx, run!(ctx))
+      connection!(run, "files.example.com", key_name(ctx.provider, 1))
+      connection!(run, "docs.example.com", nil)
+
+      assert run_hosts(ctx.person, run) == ["docs.example.com"]
+
+      assert rows_by_run(ctx.person, :workspace_connections, Connection, :host)[run.id] ==
+               ["docs.example.com"]
+
+      assert run_hosts(ctx.operator_person, run) == ["docs.example.com", "files.example.com"]
+
+      assert rows_by_run(ctx.operator_person, :workspace_connections, Connection, :host)[run.id] ==
+               ["docs.example.com", "files.example.com"]
     end
 
     test "with its row and no events, hides a connection to the endpoint host", ctx do
@@ -693,21 +841,31 @@ defmodule ApiaryPro.ClientReadsTest do
 
   describe "the workspace's rows by the provider the run recorded" do
     setup ctx do
-      # A run whose row is live, one whose row is gone and is found by its endpoint, one
-      # whose row is gone and is not found, and one of the organisation's chain: each with
-      # a connection and an egress event to the recorded host that carry no credential.
+      # Two runs whose row is live, on the row's endpoint and on an edited one; one whose
+      # row is gone, found by its key's name on an endpoint no entry lists; two with no
+      # model keys whose row is gone, one found by its endpoint and one not found; and one
+      # of the organisation's chain: each with a connection and an egress event to the
+      # recorded host, neither with a credential.
       live = recorded_run!(ctx)
       found = recorded_run!(ctx, @edited_api)
       organisation = recorded_run!(ctx, @api, "organisation")
 
       # The provider is the same row for the three, so the runs of a gone row are made
-      # with a row of their own, deleted after.
+      # with another row, deleted after.
       other = %{ctx | provider: other_provider!(ctx)}
-      gone = recorded_run!(other, @edited_api)
-      unfound = recorded_run!(other, @elsewhere_api)
+      keyed = recorded_run!(other, @elsewhere_api)
+      gone = recorded_run!(other, @edited_api, "operator", 0)
+      unfound = recorded_run!(other, @elsewhere_api, "operator", 0)
       {1, _} = Repo.delete_all(from c in ProviderRow, where: c.id == ^other.provider.id)
 
-      %{live: live, found: found, organisation: organisation, gone: gone, unfound: unfound}
+      %{
+        live: live,
+        found: found,
+        organisation: organisation,
+        keyed: keyed,
+        gone: gone,
+        unfound: unfound
+      }
     end
 
     defp other_provider!(ctx) do
@@ -738,6 +896,7 @@ defmodule ApiaryPro.ClientReadsTest do
 
       assert seen[ctx.live.id] == both
       assert seen[ctx.found.id] == both
+      assert seen[ctx.keyed.id] == both
       assert seen[ctx.gone.id] == both
       assert seen[ctx.unfound.id] == docs
       assert length(seen[ctx.organisation.id]) == 3
@@ -766,6 +925,7 @@ defmodule ApiaryPro.ClientReadsTest do
 
       assert seen[ctx.live.id] == both
       assert seen[ctx.found.id] == both
+      assert seen[ctx.keyed.id] == both
       assert seen[ctx.gone.id] == both
       assert seen[ctx.unfound.id] == ["docs.example.com"]
       assert length(seen[ctx.organisation.id]) == 3
