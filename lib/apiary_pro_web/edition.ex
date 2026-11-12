@@ -13,7 +13,7 @@ defmodule ApiaryProWeb.Edition do
     Instance settings' Organisations.
   - The Instance level's sections after the core's General and before its Mail and
     Configuration (`instance_sections/1`): **Organisations** and **Accounts**, for the
-    instance admins (`ApiaryProWeb.InstanceLive.Components`). The Qory Apiary menu's
+    instance admins (`ApiaryWeb.Access.on_mount/4`, `:instance`). The Qory Apiary menu's
     Instance settings leads to General, and the sections lead on to them.
   - The organisation menu's **New organisation**, where the instance opens a kind of
     organisation to the person (`ApiaryPro.Organisations.new_organisation_kinds/1`), and

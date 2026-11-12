@@ -1531,13 +1531,12 @@ not changed, and an organisation not transferred or granted features, once it is
 for deletion. Suspending and activating an account are asked of the account, which
 belongs to no organisation.
 
-Instance settings › Organisations and › Accounts mount on `on_mount/4` of
-`ApiaryProWeb.InstanceLive.Components`, not on the core's
-`on_mount {ApiaryWeb.Access, :instance}`. `instance_scope/1` of that module calls
-`Apiary.Access.instance_scope/1`, which calls `Apiary.Access.can?/3` with `instance.read`.
-`on_mount/4` puts its scope into `@scope`, and shows not found to anyone else. Neither page
-computes `@scope` again when the reader's memberships change. A person who is no longer an
-instance admin still sees the page until they reload, and a write fails, because
+Instance settings › Organisations and › Accounts mount on the core's
+`on_mount {ApiaryWeb.Access, :instance}`. It puts the scope of
+`Apiary.Access.instance_scope/1`, which calls `Apiary.Access.can?/3` with `instance.read`,
+into `@scope`, and shows not found to anyone else. When the reader's memberships change,
+it computes `@scope` again, and a person who is no longer an instance admin moves to `/`.
+A write from a page that has not yet received that change fails, because
 `Apiary.Access.authorize/3` reads the membership again.
 
 **The arbiter** is for recovery only. An instance admin, under Instance settings › Organisations, offers the
