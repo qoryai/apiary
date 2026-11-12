@@ -116,8 +116,8 @@ defmodule ApiaryWeb.OverviewComponentsTest do
   defp d(doc, offset, class),
     do: doc |> slot(offset) |> LazyHTML.query("path.#{class}") |> LazyHTML.attribute("d")
 
-  # The left edge of the column of the day `offset` from today, at 640 px, 26 px wide, plus
-  # `dx`, as the chart writes it.
+  # The left edge of the column of the day `offset` from today, at 640 px, 26 px wide,
+  # plus `dx`, as the chart writes it.
   defp left(offset, dx \\ 0),
     do: :erlang.float_to_binary((13 + offset + 0.5) * (640 / 14) - 13 + dx, decimals: 2)
 
@@ -125,14 +125,14 @@ defmodule ApiaryWeb.OverviewComponentsTest do
     test "a day with paused runs has a part as high as its share of the column; one without has none" do
       doc = chart(days([{6, 1}, {3, 3}, {2, 0}]))
 
-      # 6 runs, the most, fill the 104 px plot; 1 of them paused is 17 px from the base, of
-      # which the top pixel is the gap between the two parts.
+      # 6 runs, the most, fill the 104 px plot; 1 of them paused is 17 px from the base,
+      # of which the top pixel is the gap between the two parts.
       assert d(doc, -2, "q-col-paused") == [
                "M#{left(-2)} #{@base}V#{@base - 16}H#{left(-2, 26)}V#{@base}z"
              ]
 
-      # The rest of the column starts above the gap, from 17 px to the rounded top: no runs
-      # part under the Paused part.
+      # The rest of the column starts above the gap, from 17 px to the rounded top: no
+      # runs part under the Paused part.
       assert d(doc, -2, "q-col-runs") == [
                "M#{left(-2)} #{@base - 17}V#{@base - 100}A4 4 0 0 1 #{left(-2, 4)} #{@base - 104}" <>
                  "H#{left(-2, 22)}A4 4 0 0 1 #{left(-2, 26)} #{@base - 100}V#{@base - 17}z"
