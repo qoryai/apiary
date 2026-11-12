@@ -84,15 +84,14 @@ going back one release changes nothing in the database. To go back one release:
    migration, since none is pending for it.
 
 Across migrations `20261111090000` and `20261111100000`, these two steps are not enough,
-and the steps of this paragraph apply instead. The two migrations do not follow expand,
-then contract: `20261111090000` drops `machine_types.image` and `20261111100000` drops
+and the steps below apply instead. The two migrations do not follow expand, then
+contract: `20261111090000` drops `machine_types.image` and `20261111100000` drops
 `runs.provider_value_id`. A release from before them, whose last migration is
 `20261110090000`, reads both columns and does not run on the newer schema. To go back to
-such a release, first take the schema back with the rollback command at the end of this
-section and `20261110153000`, the first migration that release does not have, then set
-the version back. The rollback adds both columns again, with no image on any machine
-type. It reverts every migration from `20261110153000` on, that version included, and
-loses:
+such a release, take the schema back to before `20261110153000`, the first migration
+that release does not have. The rollback adds both columns again, with no image on any
+machine type. It reverts every migration from `20261110153000` on, that version
+included, and loses:
 
 - the fallbacks of every model choice;
 - every key's Resets, Pause for and state;
@@ -104,7 +103,19 @@ loses:
 - the model providers each queued run waits for;
 - the paused state: each paused run becomes Cancelled, and no run continues it.
 
-Take a database dump before the rollback ([Backup and restore](backup.md)).
+To go back to such a release:
+
+1. Take a database dump ([Backup and restore](backup.md)).
+2. While `APIARY_VERSION` in `.env` is still the newer release, stop Qory Apiary and run
+   the rollback from the newer release's image, in a one-off container:
+
+   ```sh
+   docker compose stop apiary
+   docker compose run --rm apiary bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, 20261110153000)"
+   ```
+
+3. Set `APIARY_VERSION` in `.env` back to the previous release.
+4. `docker compose up -d`.
 
 Further back than one release, restore the dump taken before the upgrade
 ([Backup and restore](backup.md)), then set the version back and start it.

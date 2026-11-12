@@ -464,7 +464,8 @@ replaces the navigation it is in.
   32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
   another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
   value before the save and keep the spaces inside; a Key of only spaces, tabs or
-  newlines shows "can't be blank", as an empty Key does. On Edit key, a New value that is
+  newlines shows "can't be blank", as an empty Key does. New model provider and the
+  set-up's Model step trim Key the same way. On Edit key, a New value that is
   empty after that keeps the key's value and its cooldown; any other replaces the value,
   even one that differs from it only in those spaces, and ends the key's cooldown. A New
   value that fails the checks of Key saves nothing and shows the error
