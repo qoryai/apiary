@@ -17,8 +17,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
   import ExUnit.CaptureLog
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
-  alias Apiary.Connections.{Connection, ConnectionWorkspace, SettingsFit}
-  alias Apiary.Kinds.Coded
+  alias Apiary.Connections.SettingsFit
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
 
   @moduletag needs: [:factory, :secrets]
@@ -141,8 +140,8 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
   end
 
   # An API provider of the scope's organisation named `name`, with the key `main` in
-  # cooldown for 5 hours, chosen for the runs of the workspace with `fallback` after it.
-  defp cooling_choice!(scope, name, fallback) do
+  # cooldown for 5 hours, chosen at `place` with `fallback` after it.
+  defp cooling_choice!(scope, name, fallback, place \\ :workspace) do
     {:ok, cooling} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
@@ -151,7 +150,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      ModelChoices.put_choice(scope, place, %{
         provider: cooling.public_id,
         fallbacks: [%{provider: fallback.public_id, model: nil, effort: nil}]
       })
@@ -375,7 +374,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     first = queued!(scope)
     second = queued!(scope)
 
-    # The third run's target chooses an API provider with a key not in cooldown.
+    # A choice for the third run's target: an API provider with a key not in cooldown.
     target = target!(scope, "acme/site")
 
     {:ok, good} =
@@ -400,38 +399,25 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     assert waiting?(second)
   end
 
-  test "a run waits for its choice alone when its fallback stops applying to it", _ctx do
+  test "a run waits for its choice alone when its fallback applies elsewhere", _ctx do
     %{scope: scope} = sign_up_fixture()
     place = handover_place_fixture(scope, allow_secrets: true)
+    site = workspace!(scope, "Site")
 
     {:ok, other} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
         name: "Site keys",
+        applies_to: "selected",
+        workspace_ids: [site.id],
         keys: [%{value_id: "main", value: "sk-ant-api03-skip-site-0123456789"}]
       })
 
-    cooling = cooling_choice!(scope, "Cooling keys", other)
+    # The organisation's choice, whose fallback applies to the other workspace alone.
+    cooling = cooling_choice!(scope, "Cooling keys", other, :organisation)
     run = queued!(scope)
+    assert run.model_provider_ids == [cooling.id, other.id]
 
-    # The fallback applies to another workspace alone from now on: written past the
-    # save, which keeps the reach of a provider that a choice names, and coded again as a
-    # save codes it.
-    site = workspace!(scope, "Site")
-
-    Connection
-    |> Repo.get!(other.id)
-    |> Ecto.Changeset.change(applies_to: "selected")
-    |> Coded.seal()
-    |> Repo.update!()
-
-    Repo.insert!(%ConnectionWorkspace{
-      organisation_id: scope.organisation.id,
-      connection_id: other.id,
-      workspace_id: site.id
-    })
-
-    assert Repo.get!(DispatchRun, run.id).model_provider_ids == [cooling.id, other.id]
     assert {:ok, :none} = walked_claim(place.key, Dispatches.now(), @body)
     waiting = Repo.get!(DispatchRun, run.id)
     assert %DispatchRun{state: :waiting, model_provider_ids: ids} = waiting
