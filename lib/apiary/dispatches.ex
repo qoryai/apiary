@@ -1113,23 +1113,27 @@ defmodule Apiary.Dispatches do
         _no_read -> %{}
       end
 
+    # A provider whose settings check stops is checked once in the claim, however many
+    # waiting runs need it (`Apiary.Connections.within_claim/1`).
     result =
-      Repo.transact(fn ->
-        with {:ok, key} <- current_key(key_id),
-             :ok <- may_claim(key),
-             builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
-             {:ok, pool} <- lock_pool(key),
-             pool = keep_offers(pool, offers),
-             {:ok, gateway, keys} <- Handover.gateway(pool) do
-          freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
-          queued = Environments.queue_builds(builds, pool)
-          through = %{gateway: gateway, keys: keys, body: body, reads: reads}
+      Apiary.Connections.within_claim(fn ->
+        Repo.transact(fn ->
+          with {:ok, key} <- current_key(key_id),
+               :ok <- may_claim(key),
+               builds = Environments.hold_builds(key.workspace_id, key.node_id, now),
+               {:ok, pool} <- lock_pool(key),
+               pool = keep_offers(pool, offers),
+               {:ok, gateway, keys} <- Handover.gateway(pool) do
+            freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
+            queued = Environments.queue_builds(builds, pool)
+            through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 
-          case take(key, pool, through, now) do
-            {:error, :unavailable} = error -> error
-            {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
+            case take(key, pool, through, now) do
+              {:error, :unavailable} = error -> error
+              {taken, ended} -> {:ok, {taken, freed ++ queued_in(queued) ++ ended, through}}
+            end
           end
-        end
+        end)
       end)
 
     case result do

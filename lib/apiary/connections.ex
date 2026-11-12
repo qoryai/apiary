@@ -1239,24 +1239,68 @@ defmodule Apiary.Connections do
   or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The check
   returns the same result for the same settings and entry, so a table on each node keeps
   the results fit and no longer fit by the SHA-256 of the settings and of the entry, at
-  most 4,096 of them, until a restart. The connection's `description_sha256`, the digest
-  of the entry it was added from, is kept as it was recorded and not compared.
+  most 4,096 of them, until a restart. Inside `within_claim/1`, a connection whose check
+  stopped returns `{:error, :provider_unchecked}` again, without a check, until the
+  claim ends. The connection's `description_sha256`, the digest of the entry it was
+  added from, is kept as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
           {:ok, Provider.t()}
           | {:error, :provider_changed | :provider_unchecked | :provider_unknown}
-  def provider(%Connection{provider_kind: kind, settings: settings}) do
-    case Providers.fetch(kind) do
-      {:ok, %Provider{} = provider} ->
-        case SettingsFit.fit(provider, settings, &settings_fit/2) do
-          :fit -> {:ok, provider}
-          :unfit -> {:error, :provider_changed}
-          :unchecked -> {:error, :provider_unchecked}
-        end
-
-      :error ->
-        {:error, :provider_unknown}
+  def provider(%Connection{id: id, provider_kind: kind, settings: settings}) do
+    with false <- stopped_in_claim?(id),
+         {:ok, %Provider{} = provider} <- Providers.fetch(kind) do
+      case SettingsFit.fit(provider, settings, &settings_fit/2) do
+        :fit -> {:ok, provider}
+        :unfit -> {:error, :provider_changed}
+        :unchecked -> stopped_in_claim(id)
+      end
+    else
+      true -> {:error, :provider_unchecked}
+      :error -> {:error, :provider_unknown}
     end
+  end
+
+  # The connection ids whose settings check stopped during the claim that runs in this
+  # process (`within_claim/1`); not set outside a claim.
+  @claim_stopped {__MODULE__, :claim_stopped}
+
+  @doc false
+  # within_claim/1 runs `fun`, one claim of the queue (`Apiary.Dispatches.claim/4`),
+  # with a memory of the providers whose settings check ran out of time or crashed in
+  # it: `provider/1` returns `{:error, :provider_unchecked}` for each of them again
+  # without a check, so a claim checks a stopping provider once, however many of its
+  # runs need it. The memory is in this process and goes when `fun` returns or raises;
+  # no claim reads the memory of another.
+  @spec within_claim((-> result)) :: result when result: term
+  def within_claim(fun) when is_function(fun, 0) do
+    if Process.get(@claim_stopped) do
+      fun.()
+    else
+      Process.put(@claim_stopped, MapSet.new())
+
+      try do
+        fun.()
+      after
+        Process.delete(@claim_stopped)
+      end
+    end
+  end
+
+  defp stopped_in_claim?(id) do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> MapSet.member?(stopped, id)
+      nil -> false
+    end
+  end
+
+  defp stopped_in_claim(id) do
+    case Process.get(@claim_stopped) do
+      %MapSet{} = stopped -> Process.put(@claim_stopped, MapSet.put(stopped, id))
+      nil -> nil
+    end
+
+    {:error, :provider_unchecked}
   end
 
   # Whether a provider's saved settings pass the checks of an add or an edit against

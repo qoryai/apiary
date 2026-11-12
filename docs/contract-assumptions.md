@@ -843,7 +843,10 @@ endpoint rule, as an add or an edit checks them, `provider/1` returns
 check that runs out of time or crashes depends on the instance, not on the settings:
 `provider/1` returns `provider_unchecked`. A claim then leaves the run waiting, logs a
 warning with the run, the provider and the reason, and takes the next waiting run; a
-later claim tries the run again, and the next read checks the settings again. The check returns the same
+later claim tries the run again, and the next read checks the settings again. Within one
+claim, a provider whose check stopped is not checked again: each later run that needs
+it, as its choice or as a fallback, is passed over in the same way
+(`Apiary.Connections.within_claim/1`). The check returns the same
 result for the same settings and entry, so a table on each node keeps the results fit
 and no longer fit by the SHA-256 of the settings and of the entry
 (`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and
