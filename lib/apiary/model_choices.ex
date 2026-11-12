@@ -321,17 +321,26 @@ defmodule Apiary.ModelChoices do
   end
 
   @doc false
-  # resolution_provider/1 is `provider`, a provider connection, as
+  # resolution_provider/2 is `provider`, a provider connection, as
   # `Apiary.ModelChoices.Resolution` reads a provider: its default key, its default model
-  # and its description's models (`Connections.provider_models/1`), each with the effort
-  # values its description lists. The resolution keeps those its runtime offers too.
-  @spec resolution_provider(Connection.t()) :: Resolution.provider()
-  def resolution_provider(%Connection{} = provider) do
+  # and its description's models, each with the effort values its description lists, from
+  # `described`, what `Connections.provider/1` returned for it, read once by the caller;
+  # no models for a provider without a description. The resolution keeps those its
+  # runtime offers too.
+  @spec resolution_provider(Connection.t(), {:ok, Provider.t()} | {:error, atom}) ::
+          Resolution.provider()
+  def resolution_provider(%Connection{} = provider, described \\ nil) do
+    models =
+      case described || Connections.provider(provider) do
+        {:ok, %Provider{} = description} -> Connections.provider_models(description)
+        {:error, _reason} -> []
+      end
+
     %{
       default_value_id: provider.default_value_id,
-      default_model_id: Connections.default_model(provider),
+      default_model_id: with([%{"id" => id} | _rest] <- models, do: id, else: (_none -> nil)),
       models:
-        Enum.map(Connections.provider_models(provider), fn model ->
+        Enum.map(models, fn model ->
           effort = model["effort"] || []
           %{model_id: model["id"], effort: if(effort == [], do: nil, else: effort)}
         end)
@@ -1109,8 +1118,9 @@ defmodule Apiary.ModelChoices do
   end
 
   # The catalogue's entry of the provider's kind (`Connections.provider/1`); a provider
-  # whose settings no longer fit it, or whose kind the catalogue no longer has, serves
-  # nothing, and is refused as a provider that serves no format.
+  # whose settings no longer fit it, whose kind the catalogue no longer has, or whose
+  # settings check ran out of time or crashed serves nothing, and a choice of it fails as
+  # one of a provider that serves no format.
   defp description(%Connection{} = provider, runtime) do
     case Connections.provider(provider) do
       {:ok, description} -> {:ok, description}

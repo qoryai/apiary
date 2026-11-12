@@ -139,7 +139,8 @@ defmodule Apiary.Connections do
     Connection,
     ConnectionWorkspace,
     Overlap,
-    ServiceDefinition
+    ServiceDefinition,
+    SettingsFit
   }
 
   alias Apiary.Integrations.{Description, Release}
@@ -413,8 +414,8 @@ defmodule Apiary.Connections do
   host is exact and passes the rule of `Apiary.Kinds.Endpoint`; any other is left out,
   and so is a provider that fails its integrity code, whose kind the catalogue no longer
   has, or whose settings no longer fit the catalogue's entry (`provider/1`).
-  `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are
-  in no workspace's policy, only in the document composed for a run
+  `Apiary.Policy` refuses a deny rule of such a host at save; the hosts are in no
+  workspace's policy, only in the document composed for a run
   (`Apiary.Policy.ComposedConfiguration`). `[]` unless the features `factory` and
   `secrets` are both on. It asks nothing of `Apiary.Access`.
   """
@@ -494,8 +495,8 @@ defmodule Apiary.Connections do
 
   # The exact hosts of the provider's API endpoints, each once, as the document composed
   # for a run checks them (`Apiary.Runs.ProviderCredential`). A provider that fails its
-  # integrity code, or that `provider/1` refuses, has none here: a run of it is given no
-  # run configuration.
+  # integrity code, or for which `provider/1` returns an error, has none here: a run of
+  # it has no run configuration.
   defp api_hosts(%Connection{} = provider) do
     with true <- intact?(provider),
          {:ok, %Provider{apis: apis}} <- provider(provider) do
@@ -1233,33 +1234,41 @@ defmodule Apiary.Connections do
   running release (`Apiary.Kinds.Providers`), whatever entry the connection was added
   from: `{:ok, provider}` while the connection's settings fit that entry, checked as
   `create_provider/3` checks them; `{:error, :provider_changed}` once they no longer
-  fit, or `{:error, :provider_unknown}` once the catalogue no longer has the kind. The
-  connection's `description_sha256`, the digest of the entry it was added from, is kept
-  as it was recorded and not compared.
+  fit; `{:error, :provider_unchecked}` when the check ran out of time or crashed, which
+  the settings do not decide, so a later read checks them again; or
+  `{:error, :provider_unknown}` once the catalogue no longer has the kind. An answer the
+  settings decide is kept for those settings and that entry
+  (`Apiary.Connections.SettingsFit`). The connection's `description_sha256`, the digest
+  of the entry it was added from, is kept as it was recorded and not compared.
   """
   @spec provider(Connection.t()) ::
-          {:ok, Provider.t()} | {:error, :provider_changed | :provider_unknown}
-  def provider(%Connection{provider_kind: kind} = connection) do
+          {:ok, Provider.t()}
+          | {:error, :provider_changed | :provider_unchecked | :provider_unknown}
+  def provider(%Connection{provider_kind: kind, settings: settings}) do
     case Providers.fetch(kind) do
       {:ok, %Provider{} = provider} ->
-        if settings_fit?(provider, connection),
-          do: {:ok, provider},
-          else: {:error, :provider_changed}
+        case SettingsFit.fit(provider, settings, &settings_fit/2) do
+          :fit -> {:ok, provider}
+          :unfit -> {:error, :provider_changed}
+          :unchecked -> {:error, :provider_unchecked}
+        end
 
       :error ->
         {:error, :provider_unknown}
     end
   end
 
-  # Whether the provider's saved settings pass the checks of an add or an edit against
+  # Whether a provider's saved settings pass the checks of an add or an edit against
   # `provider`, the entry of the running release (`provider_settings/3`): the entry's
   # settings schema, then the endpoint rule on each address setting, or the entry's
-  # default address where the provider has none.
-  defp settings_fit?(%Provider{} = provider, %Connection{} = connection) do
-    settings = Connection.settings_map(connection)
-
-    match?({:ok, _encoded}, settings(provider.description, settings)) and
-      address_refused(provider, settings) == nil
+  # default address where the provider has none. `:unchecked` when the schema's check ran
+  # out of time or crashed (`Apiary.Integrations.Description.recheck_settings/2`).
+  defp settings_fit(%Provider{} = provider, settings) do
+    case Description.recheck_settings(provider.description, settings) do
+      :ok -> if address_refused(provider, settings) == nil, do: :fit, else: :unfit
+      {:error, :unchecked} -> :unchecked
+      {:error, _refusal} -> :unfit
+    end
   end
 
   @doc """
@@ -1538,9 +1547,10 @@ defmodule Apiary.Connections do
   that changes an address setting is entered as `provider_address_changed`, with the host
   before and after. `{:ok, provider}`, or `{:error, refusal}`: `:provider_changed` for a
   provider whose saved settings no longer fit the catalogue's entry, or
-  `:provider_unknown` for a provider whose kind the catalogue no longer has
-  (`provider/1`); for any change of `applies_to`, which is set at the add, a
-  changeset whose error is on `applies_to` for a provider whose keys are a workspace's
+  `:provider_unknown` for a provider whose kind the catalogue no longer has, or
+  `:provider_unchecked` for one whose settings check ran out of time or crashed, which
+  changes nothing (`provider/1`); for any change of `applies_to`, which is set at the add,
+  a changeset whose error is on `applies_to` for a provider whose keys are a workspace's
   secret (`create_provider/3` with `:workspace`), which reaches that workspace alone, and
   `:reach_fixed` for any other. A change that changes nothing leaves no entry.
   """

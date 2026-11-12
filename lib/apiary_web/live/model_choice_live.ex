@@ -102,13 +102,17 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   # Why no provider serves the chosen runtime, as the lines the page shows: each provider
   # whose settings no longer fit the catalogue's entry, `{:changed, provider}`, or whose
-  # kind the catalogue no longer has, `{:unknown, provider}` (`Connections.provider/1`); then, while a provider with its description is left, `:other_runtime`
-  # when another runtime of the catalogue has a provider that serves it, else `:none`.
+  # kind the catalogue no longer has, `{:unknown, provider}` (`Connections.provider/1`);
+  # then, while a provider with its description is left, `:other_runtime` when another
+  # runtime of the catalogue has a provider that serves it, else `:none`. A provider whose
+  # settings check ran out of time or crashed has no line: it serves nothing on this
+  # read, and the next read checks it again.
   defp unserved(described, runtime, runtimes) do
     descriptions = for {_provider, {:ok, description}} <- described, do: description
 
     gone =
       for {provider, {:error, why}} <- described,
+          why != :provider_unchecked,
           do: {if(why == :provider_changed, do: :changed, else: :unknown), provider}
 
     served_elsewhere? =

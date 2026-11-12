@@ -40,8 +40,10 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   #   * `provider_gone`: the provider is not there, fails its integrity code
   #     (`Apiary.Connections.intact?/1`), does not apply to the workspace any more, or
-  #     `Apiary.Connections.provider/1` refuses it: its kind is no longer in the
-  #     catalogue, or its settings no longer fit the catalogue's entry;
+  #     `Apiary.Connections.provider/1` returns an error for it: its kind is no longer
+  #     in the catalogue, or its settings no longer fit the catalogue's entry. A check of
+  #     its settings that ran out of time or crashed ends no run: the claim fails, and
+  #     the run waits for the next one;
   #   * `runtime_unserved`: the runtime the choice names is no longer in the catalogue
   #     (`Apiary.Kinds.Runtimes`), or no API of the provider serves the run's runtime
   #     (`Apiary.Kinds.Providers.api/2`);
@@ -82,17 +84,16 @@ defmodule Apiary.Dispatches.RunSettings do
   # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
   # resolves or the run has no workflow; with the workflow model, the lower of those
   # minutes and the run's stage entry's time limit (`Apiary.Stages.limits/1`), which only
-  # lowers a limit that resolved and is left out with none. The
-  # workflow and the limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of a key, and neither
-  # has the stored copy. Beside it, the run keeps the provider's row id, its keys'
-  # secret's row id, its keys (`runs.model_keys`: each key's row id, its credential name
-  # `<provider's public id>-<place from 1>`, `start` on the start key, and what its run
-  # configuration entry has of it), the provider's chain and the API the run uses
-  # (`provider_api`: its `format`, its `endpoint` with a setting resolved to its address,
-  # its `auth`, and, when the description lists them, its `key_prefixes` and its limit
-  # windows as `use_up_to_windows`), for the reads
-  # that follow the claim. The run settings take at most 64 KiB encoded; more refuses
-  # the claim.
+  # lowers a limit that resolved and is left out with none. The workflow and the limits
+  # are read without a lock in `hold/1`. The documents have no key, no secret and no id of
+  # a key, and neither has the stored copy. Beside it, the run keeps the provider's row
+  # id, its keys' secret's row id, its keys (`runs.model_keys`: each key's row id, its
+  # credential name `<provider's public id>-<place from 1>`, `start` on the start key, and
+  # what its run configuration entry has of it), the provider's chain and the API the run
+  # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
+  # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
+  # limit windows as `use_up_to_windows`), for the reads that follow the claim. The run
+  # settings take at most 64 KiB encoded; a claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -302,14 +303,18 @@ defmodule Apiary.Dispatches.RunSettings do
   # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
   # every key of the choice's provider and of each usable fallback is in cooldown, with
   # the choice's settings without keys and those providers' row ids, the choice's first,
-  # `:unstable` where the choices changed while `hold/1` read them, or `:unavailable`
-  # where the run settings take more than 64 KiB.
+  # `:unstable` where the choices changed while `hold/1` read them, `:unchecked` where the
+  # check of the chosen provider's settings ran out of time or crashed
+  # (`Apiary.Connections.provider/1`), or `:unavailable` where the run settings take more
+  # than 64 KiB. Each provider's description is read once, for the resolution and the
+  # settings alike.
   @doc false
   @spec build(map | :unstable | nil, DateTime.t()) ::
           {:ok, built | nil}
           | {:end, cause}
           | {:cooling, built, [Ecto.UUID.t()]}
           | :unstable
+          | :unchecked
           | :unavailable
   def build(held, now \\ DateTime.utc_now())
   def build(nil, _now), do: {:ok, nil}
@@ -317,13 +322,14 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def build(%{} = held, %DateTime{} = now) do
     providers = providers(held)
+    described = Map.new(providers, fn {id, provider} -> {id, Connections.provider(provider)} end)
 
     input =
       Map.put(
         held.input,
         :providers,
         Map.new(providers, fn {id, provider} ->
-          {id, ModelChoices.resolution_provider(provider)}
+          {id, ModelChoices.resolution_provider(provider, described[id])}
         end)
       )
 
@@ -340,15 +346,15 @@ defmodule Apiary.Dispatches.RunSettings do
         with {:ok, runtime} <- runtime(resolution),
              :ok <- intact(provider),
              {:ok, built} <-
-               form(
-                 resolution,
-                 provider,
-                 Connections.provider(provider),
-                 runtime,
-                 held.workspace.id
-               ),
+               form(resolution, provider, described[provider.id], runtime, held.workspace.id),
              {:ok, built} <-
-               keys(built, provider, {input, resolution, providers, runtime}, held, now),
+               keys(
+                 built,
+                 provider,
+                 {input, resolution, providers, described, runtime},
+                 held,
+                 now
+               ),
              do: sealed(with_time_limit(built, held))
     end
   end
@@ -357,9 +363,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
   # choice's settings without keys, and the providers whose keys were checked, the
   # choice's and each fallback that forms, every one with each key in cooldown.
-  defp keys(built, provider, {input, resolution, providers, runtime}, held, now) do
+  defp keys(built, provider, {input, resolution, providers, described, runtime}, held, now) do
     with nil <- keyed(built, provider, named_value_id(input), now) do
-      case fallback(input, resolution, providers, runtime, held.workspace.id, now) do
+      case fallback(input, resolution, {providers, described}, runtime, held.workspace.id, now) do
         {:ok, _built} = fallen ->
           fallen
 
@@ -434,11 +440,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # cooldown at `now`, with its model and effort: `{:ok, built}`, or `{:cooling, ids}`
   # for none, with the fallbacks that formed, each with every key in cooldown. A
   # fallback that does not form, for any of the causes that end a run on the choice's
-  # provider, is passed over.
+  # provider or a check of its settings that ran out of time or crashed, is passed over.
   defp fallback(
          input,
          %Resolution{fallbacks: fallbacks} = resolution,
-         providers,
+         {providers, described},
          runtime,
          ws,
          now
@@ -449,7 +455,7 @@ defmodule Apiary.Dispatches.RunSettings do
       fallen = Resolution.fallback(input, resolution, fallback)
 
       with true <- Connections.intact?(provider),
-           {:ok, built} <- form(fallen, provider, Connections.provider(provider), runtime, ws) do
+           {:ok, built} <- form(fallen, provider, described[id], runtime, ws) do
         case keyed(built, provider, nil, now) do
           {:ok, _built} = keyed -> {:halt, keyed}
           nil -> {:cont, {:cooling, ids ++ [provider.id]}}
@@ -540,8 +546,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # form/5 is the settings of `resolution` for `provider`, the connection as `hold/1` read
   # it, whose description in the catalogue is `description` (`Connections.provider/1`),
   # for the runs of `runtime` in the workspace `workspace_id`. The first cause of the
-  # moduledoc that applies, else `{:ok, built}`. A function of its arguments, which a test
-  # calls with a description or a runtime the catalogue does not have.
+  # moduledoc that applies, else `{:ok, built}`; `:unchecked` where the check of the
+  # provider's settings ran out of time or crashed, which ends no run. A function of its
+  # arguments, which a test calls with a description or a runtime the catalogue does not
+  # have.
   @doc false
   @spec form(
           Resolution.t(),
@@ -549,7 +557,7 @@ defmodule Apiary.Dispatches.RunSettings do
           {:ok, Provider.t()} | {:error, atom},
           Runtime.t(),
           Ecto.UUID.t()
-        ) :: {:ok, built} | {:end, cause}
+        ) :: {:ok, built} | {:end, cause} | :unchecked
   def form(resolution, provider, description, runtime, workspace_id) do
     with {:ok, description} <- described(description),
          :ok <- applies(provider, workspace_id),
@@ -572,6 +580,7 @@ defmodule Apiary.Dispatches.RunSettings do
   defp with_windows(api, %Provider{}), do: api
 
   defp described({:ok, %Provider{} = description}), do: {:ok, description}
+  defp described({:error, :provider_unchecked}), do: :unchecked
   defp described(_changed_or_unknown), do: {:end, :provider_gone}
 
   defp applies(%Connection{applies_to: "all"}, _workspace_id), do: :ok

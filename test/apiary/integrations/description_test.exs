@@ -1157,6 +1157,19 @@ defmodule Apiary.Integrations.DescriptionTest do
       %{keyword => for(_ <- 1..1000, do: %{"pattern" => "^(a+)+$"})}
     end
 
+    test "a recheck that runs out of reductions or heap returns the error of a check" do
+      # Those stops depend on the settings, so a recheck (`recheck_settings/2`) returns
+      # the error of a check; only a stop at the time or a crash returns `:unchecked`.
+      for {settings, reason} <- [{%{"a" => "s"}, "reductions"}, {%{"a" => 1}, "heap"}] do
+        {result, log} = with_log(fn -> Description.recheck_settings(doubling(20), settings) end)
+
+        assert result ==
+                 {:error, {:integration_settings_invalid, %{valid: false, budget: :exceeded}}}
+
+        assert log =~ "reason=#{reason}"
+      end
+    end
+
     test "a schema that doubles its work at each of 20 or 24 levels runs out of reductions" do
       over_budget(doubling(20), %{"a" => "s"}, "reductions")
       over_budget(doubling(24), %{"a" => "s"}, "reductions")

@@ -453,7 +453,21 @@ defmodule Apiary.Integrations.Description do
   `:ok`, or `{:error, {code, names_or_errors}}`.
   """
   @spec check_settings(t, term) :: :ok | {:error, {atom, term}}
-  def check_settings(%__MODULE__{} = description, settings) when is_map(settings) do
+  def check_settings(%__MODULE__{} = description, settings),
+    do: check_settings(description, settings, false)
+
+  @doc """
+  recheck_settings/2 checks `settings` that a connection saved as `check_settings/2`
+  does, and returns what it returns, but for a check stopped for a cause the settings do
+  not decide: when the check runs out of time or crashes, it returns
+  `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
+  depends on the settings, and returns the error of `check_settings/2`.
+  """
+  @spec recheck_settings(t, term) :: :ok | {:error, {atom, term} | :unchecked}
+  def recheck_settings(%__MODULE__{} = description, settings),
+    do: check_settings(description, settings, true)
+
+  defp check_settings(%__MODULE__{} = description, settings, recheck?) when is_map(settings) do
     refused = for {name, _value} <- settings, name not in description.settings, do: name
 
     cond do
@@ -472,11 +486,11 @@ defmodule Apiary.Integrations.Description do
         # the settings, at most 65536 bytes as canonical JSON.
         schema = copy(plain_schema(description, settings))
         settings = copy(settings)
-        within_budget(description, fn -> check(schema, settings) end)
+        within_budget(description, fn -> check(schema, settings) end, recheck?)
     end
   end
 
-  def check_settings(%__MODULE__{}, _settings),
+  defp check_settings(%__MODULE__{}, _settings, _recheck?),
     do: {:error, {:integration_settings_invalid, :not_an_object}}
 
   # A connection holds a part of the settings document, its plain settings, so each is
@@ -535,21 +549,23 @@ defmodule Apiary.Integrations.Description do
     end
   end
 
-  defp within_budget(description, check) do
+  defp within_budget(description, check, recheck?) do
     case Budget.run(check, @settings_budget) do
-      {:ok, {:stopped, reason}} -> stopped(description, reason)
+      {:ok, {:stopped, reason}} -> stopped(description, reason, recheck?)
       {:ok, result} -> result
-      {:error, reason} -> stopped(description, reason)
+      {:error, reason} -> stopped(description, reason, recheck?)
     end
   end
 
-  defp stopped(description, reason) do
+  defp stopped(description, reason, recheck?) do
     Logger.warning(
       "an integration's settings check was stopped name=#{description.name} " <>
         "program_version=#{description.program_version} reason=#{reason}"
     )
 
-    {:error, {:integration_settings_invalid, budget_refusal(reason)}}
+    if recheck? and reason in [:time, :crashed],
+      do: {:error, :unchecked},
+      else: {:error, {:integration_settings_invalid, budget_refusal(reason)}}
   end
 
   defp within_pattern_bytes(schema) do

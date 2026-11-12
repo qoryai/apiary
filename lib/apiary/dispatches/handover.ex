@@ -91,8 +91,10 @@ defmodule Apiary.Dispatches.Handover do
   #   2. the run key cannot be made for the gateway's address
   #      (`Apiary.Runs.Registration.issue_grant/3`), the run settings take more than 64
   #      KiB, the input does not fit 1 MiB with every comment left out, the run's model
-  #      choices changed while the claim read them, or anything else fails:
-  #      `{:error, :unavailable}`, and the claim's transaction rolls back.
+  #      choices changed while the claim read them, the check of its model provider's
+  #      settings ran out of time or crashed (`Apiary.Connections.provider/1`), or
+  #      anything else fails: `{:error, :unavailable}`, and the claim's transaction rolls
+  #      back.
   #
   # Else the run is registered, as a registration through the gateway by the pool, on the
   # run record written when it was queued, which keeps its id, its number and its queue
@@ -375,6 +377,14 @@ defmodule Apiary.Dispatches.Handover do
       :unstable ->
         Logger.error(
           "a claim could not be made: the run's model choices changed while the claim read them"
+        )
+
+        {:error, :unavailable}
+
+      :unchecked ->
+        Logger.error(
+          "a claim could not be made: the check of the settings of the run's model " <>
+            "provider ran out of time or crashed; a later claim checks them again"
         )
 
         {:error, :unavailable}
@@ -808,6 +818,7 @@ defmodule Apiary.Dispatches.Handover do
       {:end, _cause} = ended -> ended
       :unavailable -> :unavailable
       :unstable -> :unstable
+      :unchecked -> :unchecked
     end
   end
 

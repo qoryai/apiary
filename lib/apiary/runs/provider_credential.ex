@@ -17,13 +17,13 @@ defmodule Apiary.Runs.ProviderCredential do
   # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
   # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows,
   # which the claim wrote once for the run into `runs.provider_api` from the catalogue's
-  # entry; a run whose `provider_api` has no windows, such as one claimed before runs kept
-  # them, gives no key either member, as the contract requires both or none. Every key has
-  # `pause_for_s`: from its claim, or, for a run claimed before runs kept several keys,
-  # from the migration that keeps a run's model keys. The start key, `model_credential`,
-  # is the key the run keeps with `start`, else its first. An entry has no key value, no
-  # secret id and no value id: the gateway fetches the values with the secrets request
-  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
+  # entry. In a run whose `provider_api` has no windows, such as one claimed before runs
+  # kept them, no key has either member, as the contract requires both or none. Every key
+  # has `pause_for_s`: from its claim, or, for a run claimed before runs kept several
+  # keys, from the migration that keeps a run's model keys. The start key,
+  # `model_credential`, is the key the run keeps with `start`, else its first. An entry
+  # has no key value, no secret id and no value id: the gateway fetches the values with
+  # the secrets request (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are the description's `egress_hosts`, in its order, each once. An entry
   # `{"setting": name}` is the host of that setting's address: the address in
@@ -33,10 +33,12 @@ defmodule Apiary.Runs.ProviderCredential do
   #
   # Only with both features `factory` and `secrets` on; with either off, a run has none.
   # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
-  # integrity code (`Apiary.Connections.intact?/1`), or that
-  # `Apiary.Connections.provider/1` refuses, and when the stored endpoint fails the endpoint rule: the run is then
-  # given no run configuration, since one without its keys would run on another. Reads; it
-  # locks and writes nothing.
+  # integrity code (`Apiary.Connections.intact?/1`), or for which
+  # `Apiary.Connections.provider/1` returns an error, and when the stored endpoint fails
+  # the endpoint rule: the run then has no run configuration, since one without its keys
+  # would run on another. A check of the provider's settings that ran out of time or
+  # crashed returns `{:error, :unavailable}` too, and the next request checks them again.
+  # Reads; it locks and writes nothing.
 
   import Ecto.Query, only: [from: 2]
 
@@ -222,11 +224,7 @@ defmodule Apiary.Runs.ProviderCredential do
 
       keys =
         for %{"id" => id, "name" => name} = key <- keys do
-          %{
-            name: name,
-            secret_value_id: id,
-            entry: entry(name, api, key)
-          }
+          %{name: name, secret_value_id: id, entry: entry(name, api, key)}
         end
 
       {:ok,
@@ -286,10 +284,18 @@ defmodule Apiary.Runs.ProviderCredential do
       {:ok, %Provider{} = description} ->
         {:ok, description}
 
+      {:error, :provider_unchecked} ->
+        Logger.error(
+          "the check of the settings of the model provider #{provider.public_id} ran out " <>
+            "of time or crashed: the run has no run configuration for this request"
+        )
+
+        {:error, :unavailable}
+
       {:error, reason} ->
         Logger.error(
-          "the model provider #{provider.public_id} is refused by the catalogue " <>
-            "(#{reason}): the run is given no run configuration"
+          "the model provider #{provider.public_id} does not fit the catalogue entry of " <>
+            "its kind (#{reason}): the run has no run configuration"
         )
 
         {:error, :unavailable}
@@ -301,7 +307,11 @@ defmodule Apiary.Runs.ProviderCredential do
   # the members the run keeps for the key `key` (`runs.model_keys`), and with the run's
   # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
   @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
-  def entry(name, %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api, key \\ %{}) do
+  def entry(
+        name,
+        %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api,
+        key \\ %{}
+      ) do
     auth = for member <- @auth_members, Map.has_key?(auth, member), do: {member, auth[member]}
 
     prefixes =
