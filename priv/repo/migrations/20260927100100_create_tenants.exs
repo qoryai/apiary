@@ -1,12 +1,12 @@
 defmodule Apiary.Repo.Migrations.CreateTenants do
   use Ecto.Migration
 
-  # What the pro edition knows of an organisation, one row per organisation: written in the
-  # transaction that creates it, through the edition's creation hook, and inner-joined
-  # wherever pro asks about one. Its kind, `organisation` or `operator`, which also manages
-  # client organisations; whether it is the instance organisation, whose owners are the
-  # instance admins; its operator, when it is a client, and since when; and its suspension.
-  # The row goes with its organisation.
+  # The tenant of an organisation (`ApiaryPro.Tenants.Tenant`), one row per organisation:
+  # written in the transaction that creates it, through the edition's creation hook, and
+  # inner-joined wherever the `ApiaryPro` modules read one. Its kind, `organisation` or
+  # `operator`, which also manages client organisations; whether it is the instance
+  # organisation, whose owners are the instance admins; its operator, when it is a client,
+  # and since when; and its suspension. The row goes with its organisation.
   #
   # The database keeps the rules, so no code has to:
   #

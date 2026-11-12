@@ -1,12 +1,12 @@
 defmodule Apiary.Repo.Migrations.CreateInstanceBranding do
   use Ecto.Migration
 
-  # How a white-labelled instance presents itself, in one row at most: its key is a boolean
-  # that the check holds to true, so a second row has no key left to take, as the core's
-  # `instance_settings`. `hide_attribution` hides "Powered by Qory Apiary" where the core
-  # shows it; it applies only while the licence has white label, so it is a choice kept, not
-  # a right that outlives the licence. `updated_by_id` is who changed it last. No row is the
-  # defaults. The instance's own table, with no `organisation_id`.
+  # Whether the instance hides "Powered by Qory Apiary" (`hide_attribution`), in one row at
+  # most: its key is a boolean that the check keeps true, so a second row has no key left to
+  # take, as the core's `instance_settings`. No code reads or writes the table: whether pages
+  # and emails show "Powered by Qory Apiary" is `Apiary.ProductName.powered_by?/0` alone.
+  # `updated_by_id` is who changed the row last. No row is the defaults. A table of the
+  # instance, with no `organisation_id`.
   def change do
     create table(:instance_branding, primary_key: false) do
       add :id, :boolean, primary_key: true, default: true

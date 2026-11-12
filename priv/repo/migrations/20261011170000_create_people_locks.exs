@@ -2,9 +2,10 @@ defmodule Apiary.Repo.Migrations.CreatePeopleLocks do
   use Ecto.Migration
 
   # The people lock of an organisation, one row per tenant (`ApiaryPro.Tenants.PeopleLock`):
-  # a row of pro's own for the edition to lock, to keep a change of the organisation's
-  # people and a write that relies on someone's level there one after the other without
-  # locking a membership. It holds nothing but its key and when it was written.
+  # a row that the `ApiaryPro` modules lock (`ApiaryPro.Tenants.lock_rows/1`), to keep a
+  # change of the organisation's people and a write that relies on someone's level there
+  # one after the other without locking a membership. It holds nothing but its key and when
+  # it was written.
   #
   # `organisation_id` is the key, and a foreign key to the tenant's, so the row goes with
   # its tenant. No other table references it, so no write elsewhere takes a lock on it
