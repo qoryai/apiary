@@ -462,13 +462,19 @@ replaces the navigation it is in.
   with "main is added." or "main is saved."; a name another key of the provider has
   shows "Another key of Northwind Claude has this name." under Name, and a key past the
   32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
-  another." under Key. On Edit key, a New value that is empty or only spaces keeps the
-  key's value and its cooldown; any other replaces the value and ends the key's
-  cooldown. A New value that fails the checks of Key saves nothing and shows the error
+  another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
+  value before the save and keep the spaces inside; a Key of only spaces, tabs or
+  newlines shows "can't be blank", as an empty Key does. On Edit key, a New value that is
+  empty after that keeps the key's value and its cooldown; any other replaces the value,
+  even one that differs from it only in those spaces, and ends the key's cooldown. A New
+  value that fails the checks of Key saves nothing and shows the error
   under New value, such as "must not contain a NUL byte". Add key of a subscription has
   About model providers beside the form. Workspace settings › Secrets and variables has
-  the same Resets and Pause for on Add value and Change value of a model provider's key.
-  Change value with New value empty saves Resets and Pause for and keeps the key's value.
+  the same Resets and Pause for on Add value and Change value of a model provider's key,
+  and both remove the spaces, tabs and newlines around the key's value, as Add key does.
+  Change value with New value empty, or of only spaces, tabs or newlines, saves Resets
+  and Pause for and keeps the key's value. Another secret's value is saved as typed, its
+  last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
   part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
