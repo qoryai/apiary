@@ -23,7 +23,8 @@ defmodule Apiary.ModelKeys do
   credential in the run's run configuration and the time the run's value of it was set.
   A report and its answer reach a key only through this function. A gateway's secrets
   request keeps which value of each key it sealed for the run (`keep_copies/2`,
-  `Apiary.ModelKeys.Copy`).
+  `Apiary.ModelKeys.Copy`); migration 20261111220000 wrote such a copy for each key of
+  each run that was pending or running at the upgrade.
 
   **At a claim** (`claim_keys/3`): the keys of a provider with their resets, cooldowns
   and Pause for, which `Apiary.ModelKeys.Order` orders. A claim passes a run of the queue
@@ -232,7 +233,8 @@ defmodule Apiary.ModelKeys do
   def run_keys(%Run{}), do: []
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
-  # `run` last, by the key's row id.
+  # `run` last, or that migration 20261111220000 copied for a run pending or running at
+  # the upgrade, by the key's row id.
   defp copies(%Run{id: run_id}, ids) when is_binary(run_id) do
     Repo.all(
       from c in Copy,
