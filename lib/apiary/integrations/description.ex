@@ -457,10 +457,10 @@ defmodule Apiary.Integrations.Description do
     do: check_settings(description, settings, false)
 
   @doc """
-  recheck_settings/2 checks `settings` that a connection saved as `check_settings/2`
-  does, and returns what it returns, but for a check stopped for a cause that depends on
-  the node and not on the settings: when the check runs out of time or crashes, it
-  returns `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
+  recheck_settings/2 checks `settings` that a connection saved as `check_settings/2` does,
+  and returns what it returns, but for a check stopped for a cause that depends on the
+  node and not on the settings: when the check runs out of time or crashes, it returns
+  `{:error, :unchecked}`. A check stopped at its reductions, its heap or its patterns
   depends on the settings, and returns the error of `check_settings/2`.
   """
   @spec recheck_settings(t, term) :: :ok | {:error, {atom, term} | :unchecked}

@@ -72,8 +72,8 @@ defmodule Apiary.Integrations.DescriptionRecheckTest do
     assert log =~ "reason=crashed"
   end
 
-  # 1950 patterns of about 64 KB each once compiled, past the 16 MiB the check's patterns
-  # may hold.
+  # 1950 patterns of about 64 KB each once compiled: more than the check's bound of 16 MiB
+  # for compiled patterns.
   test "a check stopped at the pattern bound keeps the error of a check" do
     heavy = fn i -> %{"pattern" => "(?:a){7900}b#{i}"} end
 

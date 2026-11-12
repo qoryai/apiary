@@ -15,6 +15,7 @@ defmodule Apiary.Connections.SettingsFitTest do
   alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Connections.{Connection, SettingsFit}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Kinds.Providers
   alias Apiary.Runs.{ProviderCredential, Run}
 
   @moduletag needs: [:factory, :secrets]
@@ -61,6 +62,30 @@ defmodule Apiary.Connections.SettingsFitTest do
   end
 
   describe "the kept result" do
+    test "is checked again for another entry with the same settings", _ctx do
+      {:ok, entry} = Providers.fetch("claude-subscription")
+      check_returns(:fit)
+
+      assert SettingsFit.fit(entry, "{}", nil) == :fit
+      assert_received {:checked, %{}}
+      assert SettingsFit.fit(entry, "{}", nil) == :fit
+      refute_received {:checked, _settings}
+
+      assert SettingsFit.fit(%{entry | sha256: String.duplicate("0", 64)}, "{}", nil) == :fit
+      assert_received {:checked, %{}}
+    end
+
+    test "is one of at most 4,096; the next empties the table first", _ctx do
+      {:ok, entry} = Providers.fetch("claude-subscription")
+      check_returns(:fit)
+
+      for n <- 1..4_096, do: :fit = SettingsFit.fit(entry, ~s({"n":#{n}}), nil)
+      assert :ets.info(SettingsFit, :size) == 4_096
+
+      assert SettingsFit.fit(entry, ~s({"n":0}), nil) == :fit
+      assert :ets.info(SettingsFit, :size) == 1
+    end
+
     test "is read again for the same settings and entry", ctx do
       check_returns(:fit)
       assert {:ok, _entry} = Connections.provider(ctx.provider)

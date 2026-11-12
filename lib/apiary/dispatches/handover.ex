@@ -139,8 +139,8 @@ defmodule Apiary.Dispatches.Handover do
   # first (`comments_omitted`). The documents' limit is what the 201 to the code's
   # redemption leaves them within 1 MiB, the rest of that 201 measured with a run key of
   # the run's grant, less 1,024 bytes. The claim encodes the documents once and keeps the
-  # bytes on the registered run (`runs.run_documents`), which every redemption answers as
-  # they are.
+  # bytes on the registered run (`runs.run_documents`); the answer to every redemption
+  # contains those bytes as they are.
   #
   # An explore run of the Qory harness (`Apiary.Harnesses.Qory`), or of the built-in one,
   # has in its documents the harness at the commit its `ref` is at when the claim reads it,

@@ -303,11 +303,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
   # every key of the choice's provider and of each usable fallback is in cooldown, with
   # the choice's settings without keys and those providers' row ids, the choice's first,
-  # `:unstable` where the choices changed while `hold/1` read them,
-  # `{:unchecked, provider}` where the check of the settings of `provider`, the chosen
-  # one, ran out of time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run settings take more
-  # than 64 KiB. Each provider's description is read once, for the resolution and the
-  # settings alike.
+  # `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
+  # provider}` where the check of the settings of `provider`, the chosen one, ran out of
+  # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
+  # settings take more than 64 KiB. Each provider's description is read once, for the
+  # resolution and the settings alike.
   @doc false
   @spec build(map | :unstable | nil, DateTime.t()) ::
           {:ok, built | nil}
@@ -547,9 +547,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # it, whose description in the catalogue is `description` (`Connections.provider/1`),
   # for the runs of `runtime` in the workspace `workspace_id`. The first cause of the
   # moduledoc that applies, else `{:ok, built}`; `{:unchecked, provider}` where the check
-  # of the provider's settings ran out of time or crashed, which ends no run. A function of its
-  # arguments, which a test calls with a description or a runtime the catalogue does not
-  # have.
+  # of the provider's settings ran out of time or crashed, which ends no run. A function
+  # of its arguments, which a test calls with a description or a runtime the catalogue
+  # does not have.
   @doc false
   @spec form(
           Resolution.t(),
