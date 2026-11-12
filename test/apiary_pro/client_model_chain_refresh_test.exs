@@ -66,7 +66,8 @@ defmodule ApiaryPro.ClientModelChainRefreshTest do
 
   defp provider_ids(run), do: row(run).model_provider_ids
 
-  # The run with `ids` as its model providers, written past the queue.
+  # The run with `ids` as its model providers, written straight to the row, not through
+  # `Apiary.Dispatches`.
   defp providers!(%DispatchRun{id: id}, ids) do
     query = from r in DispatchRun, where: r.id == ^id
     {1, _rows} = Repo.update_all(query, set: [model_provider_ids: ids])
@@ -88,7 +89,8 @@ defmodule ApiaryPro.ClientModelChainRefreshTest do
     assert {:ok, _client} = set(ctx, :operator)
     assert provider_ids(ctx.queued) == [ctx.operator_provider.id]
 
-    # Providers that the chain would set again, were the run read again.
+    # The client's provider, of the chain before the change, which a refresh would
+    # replace with the operator's.
     :ok = providers!(ctx.queued, [ctx.client_provider.id])
     before = row(ctx.queued)
 
