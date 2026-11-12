@@ -1,6 +1,6 @@
 defmodule ApiaryProWeb.InstanceLive.InstanceScopeTest do
   @moduledoc """
-  The scope that the core's `on_mount {ApiaryWeb.Access, :instance}` assigns to the two
+  The scope that Core's `on_mount {ApiaryWeb.Access, :instance}` assigns to the two
   Instance pages comes from `Apiary.Access.instance_scope/1`: `can?/3` of that scope runs no
   SELECT for an instance action on an organisation with its tenant in `edition`, however
   many rows a page lists.

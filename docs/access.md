@@ -1531,7 +1531,7 @@ not changed, and an organisation not transferred or granted features, once it is
 for deletion. Suspending and activating an account are asked of the account, which
 belongs to no organisation.
 
-Instance settings › Organisations and › Accounts mount on the core's
+Instance settings › Organisations and › Accounts mount on Core's
 `on_mount {ApiaryWeb.Access, :instance}`. The hook puts the scope of
 `Apiary.Access.instance_scope/1`, which calls `Apiary.Access.can?/3` with `instance.read`,
 into `@scope`, and shows not found to anyone else. When the reader's memberships change,

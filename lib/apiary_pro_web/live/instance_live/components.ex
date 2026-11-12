@@ -9,7 +9,7 @@ defmodule ApiaryProWeb.InstanceLive.Components do
   scope there is the one they came from (`ApiaryWeb.Routes.instance_routes/1`). The pages
   read the instance's data and check its actions in the instance organisation, whose
   owners, the instance admins, they are for: the scope of
-  `Apiary.Access.instance_scope/1`. Each page mounts on the core's
+  `Apiary.Access.instance_scope/1`. Each page mounts on Core's
   `ApiaryWeb.Access.on_mount/4` with `:instance`, which assigns that scope as `:scope`,
   and for anyone else the page is not found.
   """
