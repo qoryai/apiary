@@ -7,21 +7,39 @@ defmodule Apiary.FeatureSetsTagTest do
 
   alias Apiary.FeatureSetsScan
 
-  # The helpers of test/support that read the features. The refusal rows build fewer people
-  # and places where a feature is off; their answers depend on the person's level, so the
-  # refusals tests stay untagged. The others set the features for a test, a module or the
-  # suite, and put them back.
-  @helpers ~w(access_case.ex data_case.ex refusals_rows.ex test_setup.ex)
+  # The helpers of test/support that read the features. The refusal rows, the core's and
+  # the edition's, build fewer people and places where a feature is off; their answers depend on
+  # the person's level, so the refusals tests stay untagged. The others set the features
+  # for a test, a module or the suite, and put them back.
+  @helpers ~w(access_case.ex data_case.ex refusals_rows.ex pro/refusals_rows.ex test_setup.ex)
+
+  # The edition's reads, beside the core's: the features of an organisation, and the parts a grant
+  # offers and shows. `of/2` with a second argument is no read.
+  @reads [
+    ~r/ApiaryPro\.Features\.(of|of_organisation|of_all|hidden)\(/,
+    ~r/Grants\.(offered|shown)\(/
+  ]
 
   # A test that needs one of these runs under one feature set alone: CI's other runs,
-  # under the record and the security policy and under the record alone, leave them off.
-  @once [:secrets, :path_rules, :factory, :registry, :workflow_model]
+  # under the record and the security policy, under those two and the managed
+  # organisations, and under the record alone, leave them off. The managed organisations
+  # are on in one of those runs, so a test that needs them and reads the features takes
+  # the tag.
+  @once [
+    :secrets,
+    :path_rules,
+    :factory,
+    :registry,
+    :workflow_model,
+    :organisation_policy,
+    :organisation_variables
+  ]
 
   test "every test file that reads the features is tagged :feature_sets or sets them first" do
     dir = Path.relative_to_cwd(Path.expand("..", __DIR__))
 
     assert Enum.map(
-             FeatureSetsScan.violations([dir], helpers: @helpers, once: @once),
+             FeatureSetsScan.violations([dir], reads: @reads, helpers: @helpers, once: @once),
              &FeatureSetsScan.format/1
            ) ==
              []

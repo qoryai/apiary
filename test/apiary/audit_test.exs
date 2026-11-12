@@ -621,7 +621,7 @@ defmodule Apiary.AuditTest do
         assert {:error, reason} = Audit.parse_retention_days(value)
         assert reason =~ "30 to 90"
         # Above the ceiling says it is the edition's.
-        assert reason =~ "90 days is the most this edition keeps"
+        assert reason =~ "90 days is the most Qory Apiary keeps"
       end
     end
 
@@ -660,7 +660,7 @@ defmodule Apiary.AuditTest do
       Application.put_env(:apiary, :audit_retention_setting, "365")
       error = assert_raise ArgumentError, fn -> Audit.boot!() end
       assert error.message =~ "AUDIT_RETENTION_DAYS"
-      assert error.message =~ "90 days is the most this edition keeps"
+      assert error.message =~ "90 days is the most Qory Apiary keeps"
 
       Application.put_env(:apiary, :audit_retention_setting, "60")
       assert Audit.boot!() == 60

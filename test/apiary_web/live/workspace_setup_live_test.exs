@@ -34,6 +34,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   end
 
   # A person of `level` in `organisation`, joined with no invitation.
+  # A member is added to the organisation's workspaces, as a member reaches only those.
   defp joined(organisation, level) do
     user = user_fixture()
 
@@ -41,6 +42,7 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
     |> Membership.changeset(%{level: level})
     |> Repo.insert!()
 
+    if level == :member, do: :ok = workspace_access_fixture(organisation, user)
     user
   end
 
@@ -465,38 +467,10 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTest do
   end
 
   describe "New workspace" do
-    test "says why the organisation may have no more workspaces, where the edition allows one",
-         %{conn: conn} do
-      %{user: user, organisation: organisation} = sign_up_fixture()
-      conn = log_in_user(conn, user)
-      # The line's "one" is the limit Qory Apiary Community has.
-      assert Apiary.Edition.Core.limits().workspaces == 1
-
-      line =
-        "Qory Apiary Community allows one workspace per organisation, and #{organisation.name} has it."
-
-      {:ok, lv, html} = live(conn, ~p"/#{organisation}/workspaces/new")
-
-      # No question at the limit, and the line is information, not an error.
-      assert html =~ ~r{<title[^>]*>\s*New workspace}
-      assert has_element?(lv, "h1#set-up-cards-title", "New workspace")
-      refute has_element?(lv, "h1", "What will this workspace do?")
-      assert words(lv, "#set-up-limit") == line
-      assert has_element?(lv, "[role=note] #set-up-limit")
-      refute has_element?(lv, ".bg-error-soft #set-up-limit")
-      refute has_element?(lv, "#set-up-cards")
-
-      # The type's page shows nothing of the limit; its Create workspace creates no
-      # workspace and shows the edition's line as information.
-      {:ok, page, _html} = live(conn, ~p"/#{organisation}/workspaces/new/qory.software")
-      refute has_element?(page, "#workspace-type", "allows one workspace")
-      page |> element("#workspace-type-create") |> render_click()
-      assert has_element?(page, "#flash-info", line)
-      refute has_element?(page, "#flash-error")
-
-      assert length(Organisations.list_workspaces(Organisations.load_scope(Scope.for_user(user)))) ==
-               1
-    end
+    # The core allowed one workspace an organisation, and New workspace said why there
+    # could be no more. The edition sets no limit: the next test, and "Create workspace
+    # makes a second workspace, which Workspaces lists" in
+    # test/apiary_pro_web/live/new_workspace_test.exs.
 
     @tag :feature_sets
     test "shows an owner the cards; Create workspace makes Software factory, then Software factory 2",
@@ -694,6 +668,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     href
   end
 
+  # A member is added to the organisation's workspaces, as a member reaches only those.
   defp joined(organisation, level) do
     user = user_fixture()
 
@@ -701,6 +676,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
     |> Membership.changeset(%{level: level})
     |> Repo.insert!()
 
+    if level == :member, do: :ok = workspace_access_fixture(organisation, user)
     user
   end
 
@@ -4285,7 +4261,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   @key "sk-ant-set-up-test-0123456789abcdef"
 
   @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
-  @model_later "You can change the default model later in Workspace settings › Model."
   @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 
   defp words(lv, selector) do
@@ -4314,6 +4289,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert LazyHTML.attribute(key, "value") == []
   end
 
+  # Added to the organisation's workspaces, as a member reaches only those.
   defp member(organisation) do
     user = user_fixture()
 
@@ -4321,6 +4297,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> Membership.changeset(%{level: :member})
     |> Repo.insert!()
 
+    :ok = workspace_access_fixture(organisation, user)
     user
   end
 
@@ -4372,8 +4349,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert has_element?(lv, "#set-up-model-form", "Default model")
     assert has_element?(lv, "#set-up-model-form", "Runtime")
-    # The core shows no setting of where the provider applies.
-    refute has_element?(lv, "#set-up-model-everywhere")
+    # The edition shows the setting of where the provider applies; left off, the provider
+    # reaches this workspace alone.
+    assert has_element?(lv, "#set-up-model-everywhere")
+    refute has_element?(lv, "#set-up-model-everywhere[checked]")
 
     assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
              "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
@@ -4456,8 +4435,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     |> form("#set-up-model-form", model: %{provider: "anthropic", everywhere: "true"})
     |> render_change()
 
-    # The key is a secret of the organisation, whose secrets the core shows nowhere.
-    assert words(lv, "#set-up-model-later") == @model_later
+    # The key is a secret of the organisation, whose secrets the edition shows in its
+    # settings.
+    assert words(lv, "#set-up-model-later") == @organisation_later
 
     lv
     |> form("#set-up-model-form",
@@ -4501,12 +4481,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     [_first, second | _rest] = models(provider)
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    assert key_options(lv) == [{"#{provider.name} · every workspace", true}, {"Add a key", false}]
     refute has_element?(lv, "#set-up-model-add")
     refute has_element?(lv, "input[name='model[key]']")
-    # The provider's key is a secret of the organisation, and the core shows no
-    # organisation secrets: the line names the model alone.
-    assert words(lv, "#set-up-model-later") == @model_later
+    # The provider's key is a secret of the organisation, whose secrets the edition shows
+    # in its settings.
+    assert words(lv, "#set-up-model-later") == @organisation_later
 
     # Add a key opens Provider and Key, and the provider to reuse closes them again.
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
@@ -4518,7 +4498,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     lv |> form("#set-up-model-form", model: %{source: provider.public_id}) |> render_change()
     refute has_element?(lv, "#set-up-model-add")
-    assert words(lv, "#set-up-model-later") == @model_later
+    assert words(lv, "#set-up-model-later") == @organisation_later
 
     lv
     |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
@@ -4547,7 +4527,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     provider = provider!(scope, "anthropic", "main")
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
+    assert key_options(lv) == [{"#{provider.name} · every workspace", true}, {"Add a key", false}]
     assert words(lv, "#set-up-model-later") == @organisation_later
 
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
@@ -4561,7 +4541,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
     assert Enum.sort(key_options(lv)) ==
-             Enum.sort([{anthropic.name, true}, {deepseek.name, false}, {"Add a key", false}])
+             Enum.sort([
+               {"#{anthropic.name} · every workspace", true},
+               {"#{deepseek.name} · every workspace", false},
+               {"Add a key", false}
+             ])
 
     # The default model follows the provider chosen.
     lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
@@ -4662,16 +4646,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute render(lv) =~ "Shared in"
   end
 
-  test "the core shows no setting: a provider every workspace shares is listed by its name, with no heading",
-       %{conn: conn} do
-    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-    {own, shared} = own_and_shared!(scope)
-    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
-
-    assert key_options(lv) == [{own.name, true}, {shared.name, false}, {"Add a key", false}]
-    refute has_element?(lv, "#set-up-model-source-shared")
-    refute render(lv) =~ "Shared in"
-  end
+  # The core, which shows no setting, listed a provider every workspace shares by its name,
+  # with no heading. The edition shows the setting: "with the setting shown: the providers
+  # every workspace shares first, under Shared in, each marked; the first is chosen" in this
+  # file, and test/apiary_pro_web/live/scope_setting_test.exs.
 
   test "a provider that does not reach the workspace, or has no key, is not offered; a save of it saves nothing",
        %{conn: conn} do
@@ -4932,6 +4910,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
   defp open(ctx, user \\ nil),
     do: ctx.conn |> log_in_user(user || ctx.user) |> live(ctx.path) |> elem(1)
 
+  # Added to the organisation's workspaces, as a member reaches only those.
   defp member(organisation) do
     user = user_fixture()
 
@@ -4939,6 +4918,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
     |> Membership.changeset(%{level: :member})
     |> Repo.insert!()
 
+    :ok = workspace_access_fixture(organisation, user)
     user
   end
 
@@ -5656,6 +5636,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
         set: [level: :member]
       )
 
+    # A member reaches the workspaces they were added to: this one.
+    :ok = workspace_access_fixture(ctx.organisation, ctx.user)
+
     lv |> element("#set-up-pool-#{pool.public_id}-code") |> render_click()
     refute has_element?(lv, "#set-up-pool-#{pool.public_id}-command")
     assert Apiary.AccessKeys.list_enrolment_codes(ctx.scope, pool) == []
@@ -5791,6 +5774,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.MachinesTest do
         ),
         set: [level: :member]
       )
+
+    # A member reaches the workspaces they were added to: this one.
+    :ok = workspace_access_fixture(ctx.organisation, ctx.user)
 
     lv |> element("#set-up-pool-remove-button") |> render_click()
     refute deleted?(pool)

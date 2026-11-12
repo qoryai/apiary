@@ -128,6 +128,12 @@ defmodule Apiary.MixProject do
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
+      # The migrations, then, in dev, the edition's step after them
+      # (`Apiary.Edition.after_migrate/0`, `ApiaryPro.Adoption.run/0`), as a release runs it
+      # at boot: a database made before the move becomes one with organisations and
+      # tenants. A test database starts empty, and its set-up makes what the step would.
+      # `ecto.setup`, `ecto.reset` and `test` migrate through this alias too.
+      "ecto.migrate": &migrate/1,
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind apiary", "esbuild apiary"],
@@ -153,6 +159,15 @@ defmodule Apiary.MixProject do
       # `mix docs`, CI's and the image's among them, builds all of them.
       docs: "docs.all"
     ]
+  end
+
+  defp migrate(args) do
+    Mix.Task.run("ecto.migrate", args)
+
+    if Mix.env() == :dev do
+      {:ok, :ok, _apps} =
+        Ecto.Migrator.with_repo(Apiary.Repo, fn _repo -> Apiary.Edition.after_migrate() end)
+    end
   end
 
   # The documentation ships with the application: the guides and the module reference are
@@ -181,9 +196,16 @@ defmodule Apiary.MixProject do
         "guides/backup.md",
         "guides/retention.md",
         "guides/hosting-checklist.md",
+        "guides/admin.md",
         "guides/nodes.md",
         "guides/security-policy.md",
         "guides/forager-file.md",
+        "guides/organisations.md",
+        "guides/operators.md",
+        "guides/policy-requests.md",
+        "guides/organisation-policy.md",
+        "guides/organisation-variables.md",
+        "guides/organisation-secrets.md",
         "guides/contract.md",
         "CHANGELOG.md"
       ],
@@ -194,12 +216,19 @@ defmodule Apiary.MixProject do
           "guides/upgrading.md",
           "guides/backup.md",
           "guides/retention.md",
-          "guides/hosting-checklist.md"
+          "guides/hosting-checklist.md",
+          "guides/admin.md"
         ],
         "Using Qory Apiary": [
           "guides/nodes.md",
           "guides/security-policy.md",
-          "guides/forager-file.md"
+          "guides/forager-file.md",
+          "guides/organisations.md",
+          "guides/operators.md",
+          "guides/policy-requests.md",
+          "guides/organisation-policy.md",
+          "guides/organisation-variables.md",
+          "guides/organisation-secrets.md"
         ],
         Reference: ["guides/contract.md", "CHANGELOG.md"]
       ],
@@ -224,13 +253,36 @@ defmodule Apiary.MixProject do
           Apiary.LogMetadata
         ],
         Console: [~r/^ApiaryWeb/],
+        "The edition": [ApiaryPro.Edition, ApiaryProWeb.Edition, ApiaryPro.Release],
+        "Tenants and the instance organisation": [
+          ~r/^ApiaryPro\.Tenants/,
+          ApiaryPro.Adoption,
+          ApiaryPro.SignUp,
+          ApiaryPro.Organisations
+        ],
+        "Reach and workspace access": [
+          ApiaryPro.Access,
+          ApiaryPro.Reach,
+          ApiaryPro.Places,
+          ~r/^ApiaryPro\.WorkspaceAccess/,
+          ApiaryPro.Invitations
+        ],
+        "Operators and their clients": [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach],
+        "Policy requests": [~r/^ApiaryPro\.PolicyRequests/],
+        "The organisation's policy": [~r/^ApiaryPro\.OrganisationPolicy/],
+        "The organisation's variables": [~r/^ApiaryPro\.OrganisationVariables/],
+        "The organisation's secrets": [~r/^ApiaryPro\.OrganisationSecrets/],
+        "Suspensions and transfers": [~r/^ApiaryPro\.Suspensions/, ~r/^ApiaryPro\.Transfers/],
+        "Features below the instance": [ApiaryPro.Features, ~r/^ApiaryPro\.Grants/],
+        "The edition's deletion steps": [~r/^ApiaryPro\.Deletion/],
+        "The edition's console": [~r/^ApiaryProWeb/],
         "Mix tasks": [~r/^Mix\.Tasks/]
       ],
       # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
       # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
-      # being listed (with `any:`, one of its features); a passage of a guide is marked in the guide,
-      # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature the
-      # documentation differs by (`Apiary.Features.documented/0`).
+      # being listed (with `any:`, one of its features); a passage of a guide is marked in
+      # the guide, `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every
+      # feature the documentation differs by (`Apiary.Features.documented/0`).
       features: [
         security: [
           extras: ["guides/security-policy.md"],
@@ -241,34 +293,46 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        # The module reference needs `secrets`, which needs `security`: the prose of a shared
-        # module mentions both, so only an instance with them serves it. That prose mentions
-        # `factory` too, and an instance without it is served that prose; the modules of
-        # `factory` alone are listed under it. The tasks the guides send a self-hoster to
-        # stay in every tree; their docs mention no feature, and ExDoc warns of a `mix` span
-        # whose task a tree leaves out. The release notes are in every tree.
+        # The rerender task needs `secrets` too, and not every feature: the release notes
+        # mention `mix apiary.policy.rerender` in a passage marked `secrets`, so each tree
+        # with `secrets` has its page.
         secrets: [
           modules: [
             ~r/^Apiary\.Secrets/,
             ~r/^Apiary\.Variables/,
             ~r/^Apiary\.Connections/,
             ~r/^Apiary\.Integrations/,
-            ~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/
+            Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        factory: [
+        # Operators and their clients, and the policy requests between them, whose
+        # passages that need the security policy too are marked in the guide.
+        managed_organisations: [
+          extras: ["guides/operators.md", "guides/policy-requests.md"],
           modules: [
-            Apiary.Kinds.Providers,
-            Apiary.Harnesses.Reader,
-            Apiary.Secrets.AdapterSealing,
-            Apiary.Secrets.Instance,
-            Apiary.Secrets.InstanceSecret,
-            Apiary.Secrets.InstanceSecretValue,
-            Apiary.Runs.RunCredentialIssue
+            ~r/^ApiaryPro\.Operators/,
+            ApiaryPro.ClientReach,
+            ~r/^ApiaryPro\.PolicyRequests/
           ]
         ],
-        # A workspace's process, of `workflow_model`.
-        workflow_model: [modules: [~r/^Apiary\.Processes/]]
+        # The organisation's policy, above its workspaces' security policy.
+        organisation_policy: [
+          extras: ["guides/organisation-policy.md"],
+          modules: [~r/^ApiaryPro\.OrganisationPolicy/, ~r/^ApiaryProWeb\.PolicyLive/]
+        ],
+        # The organisation's secrets and variables, beside and above its workspaces'.
+        organisation_variables: [
+          extras: ["guides/organisation-variables.md", "guides/organisation-secrets.md"],
+          modules: [~r/^ApiaryPro\.OrganisationVariables/, ~r/^ApiaryPro\.OrganisationSecrets/]
+        ],
+        # The module reference mentions every feature, the prose of a shared module
+        # included, so only an instance with every feature serves it. The tasks the guides
+        # send a self-hoster to stay in every tree; their docs mention no feature, and ExDoc
+        # warns of a `mix` span whose task a tree leaves out. The release notes are in every
+        # tree. The rerender task: see `secrets`.
+        all: [
+          modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune|Policy\.Rerender)$)/]
+        ]
       ]
     ]
   end

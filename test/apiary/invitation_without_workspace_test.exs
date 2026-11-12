@@ -132,7 +132,7 @@ defmodule Apiary.InvitationWithoutWorkspaceTest do
     refute Repo.exists?(from e in Entry, where: e.action == "member.invite")
   end
 
-  test "pending while the organisation gets a workspace: accepted after, the person reaches it" do
+  test "pending while the organisation gets a workspace: accepted after, the person reaches no workspace" do
     scope = without_workspace()
     %{invitation: invitation, token: token} = invitation_fixture(scope)
 
@@ -147,8 +147,9 @@ defmodule Apiary.InvitationWithoutWorkspaceTest do
     user = user_fixture(%{email: invitation.email})
     assert {:ok, %Membership{level: :member}} = Organisations.accept_invitation(user, token)
 
-    # A member of the organisation, who reaches its workspace as every member does.
-    assert workspace_scope(user, main)
+    # A member of the organisation, who reaches a workspace once added to it: the
+    # invitation named none.
+    refute workspace_scope(user, main)
     assert %Entry{workspace_id: nil} = entry!(invitation, "invitation.accept")
   end
 

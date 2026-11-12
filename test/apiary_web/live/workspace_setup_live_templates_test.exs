@@ -505,27 +505,9 @@ defmodule ApiaryWeb.WorkspaceSetupLiveTemplatesTest do
   end
 
   describe "the edition's limit and the empty overview" do
-    test "an organisation at the edition's limit shows the line, and nothing is read", ctx do
-      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-      adapter = call_adapter_fixture()
-      {connection, _nonce} = connection_fixture(scope, adapter.adapter, :listed)
-      live_grant_fixture(organisation.id, adapter.adapter, connection, "G_acme")
-      harness_collection_fixture(connection, @harness, "acme/harness")
-
-      serve_calls([adapter],
-        covered: %{adapter.adapter.id => %{@harness => {"G_acme", "R_harness"}}},
-        files: harness_files()
-      )
-
-      conn = log_in_user(ctx.conn, user)
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/workspaces/new")
-      render_async(lv, 2_000)
-
-      assert has_element?(lv, "#set-up-limit")
-      refute has_element?(lv, "#set-up-cards")
-      refute has_element?(lv, "#set-up-group-qory")
-      assert harness_calls() == []
-    end
+    # The core's limit of one workspace showed its line on New workspace, and nothing was
+    # read. The edition sets no limit: "Create workspace makes a second workspace, which
+    # Workspaces lists" in test/apiary_pro_web/live/new_workspace_test.exs.
 
     test "the empty overview keeps the Qory card alone, and reads nothing", ctx do
       serve(ctx, harness_files())

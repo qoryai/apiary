@@ -11,7 +11,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
-  import ApiaryWeb.SetUpSteps
+  import ApiaryWeb.SetUpSteps, only: [steps: 1]
 
   # The page of an invitation of `email` into a fresh organisation's workspace, opened
   # with the instance's mail from `mail`: the sign-up and the invitation before it are made
@@ -38,7 +38,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
       assert html =~ "Create your account"
-      assert html =~ "Log in"
+      assert html =~ "Sign in"
     end
 
     test "without an invitation, says sign-up is by invitation where none is open", %{
@@ -55,7 +55,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       %{lv: lv, html: html, email: email, scope: scope} = invited(conn)
 
       assert html =~ "Create your account"
-      assert html =~ "Log in"
+      assert html =~ "Sign in"
       assert has_element?(lv, "#registration_form input[name='user[email]'][value='#{email}']")
       refute has_element?(lv, "#registration_form input[name='user[organisation_name]']")
       assert html =~ scope.organisation.name
@@ -135,22 +135,17 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       end
     end
 
-    test "an invited sign-up asks for a password, keeps the invited address and says the account joins at once",
+    # An invited sign-up without mail, beside what
+    # test/apiary_pro_web/live/user_live/sign_up_mail_test.exs covers in "an invited sign-up
+    # keeps the invitation's address, joins at once and signs the person in".
+    test "an invited sign-up shows no steps, and its password fields are masked and empty",
          %{conn: conn} do
-      %{lv: lv, html: html, email: email} = invited(conn, unique_user_email(), :none)
+      %{lv: lv} = invited(conn, unique_user_email(), :none)
 
-      refute html =~ "Choose a password to sign in with."
-      refute html =~ "no password needed"
-      refute has_element?(lv, "#sign-up-context")
-
-      # An invitation into a workspace: the account is the one step, and no indicator shows.
+      # An invitation into a workspace of an organisation that is no client: the account is
+      # the one step, and no indicator shows.
       assert steps(lv) == []
-      assert html =~ "Your account joins it as soon as you create it."
-
-      assert has_element?(
-               lv,
-               "#registration_form input[name='user[email]'][value='#{email}'][readonly]"
-             )
+      refute has_element?(lv, "#set-up-steps")
 
       assert has_element?(lv, "#registration_form input[name='user[password]'][type=password]")
 
@@ -161,8 +156,6 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
 
       # The page never writes a password back.
       refute has_element?(lv, "#registration_form input[type=password][value]")
-      # Once the account is made, the form is submitted to the log-in controller.
-      assert has_element?(lv, "#registration_form[action='/users/log-in'][method=post]")
     end
 
     test "an invited sign-up makes the account, joins the workspace and signs the person in",
@@ -297,14 +290,8 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       refute Apiary.Accounts.get_user_by_email_and_password(email, password)
     end
 
-    test "an invited sign-up asks for no password", %{conn: conn} do
-      %{lv: lv, html: html} = invited(conn)
-
-      assert html =~ "We will email you a link to confirm; no password needed."
-      assert html =~ "Your account joins it as soon as you confirm."
-      refute has_element?(lv, "#registration_form input[type=password]")
-      refute has_element?(lv, "#registration_form input[name='user[email]'][readonly]")
-    end
+    # An invited sign-up with mail: test/apiary_pro_web/live/user_live/sign_up_mail_test.exs,
+    # "an invited sign-up asks for no password, and its address may be changed".
   end
 
   describe "a sign-up that creates an organisation" do
@@ -312,57 +299,10 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SignUpOpen)
     end
 
-    @tag :feature_sets
-    test "says the first workspace is set up next, with mail or without", %{conn: conn} do
-      Apiary.Mail.put_test_source(:env)
-      {:ok, lv, _html} = live(conn, ~p"/users/register")
-
-      assert has_element?(
-               lv,
-               "#set-up-line",
-               "Start an organisation. You set up its first workspace next."
-             )
-
-      assert has_element?(
-               lv,
-               "#set-up-context #sign-up-context",
-               "We will email you a link to confirm; no password needed."
-             )
-
-      # The flow of the first workspace: every step with the `factory` feature, Model with
-      # `secrets` too; without `factory`, Name alone.
-      flow =
-        if Apiary.Features.on?(:factory) do
-          ["Name", "Work sources", "Destinations"] ++
-            if(Apiary.Features.on?(:secrets), do: ["Model"], else: []) ++
-            ["Harness", "Machines", "Test run"]
-        else
-          ["Name"]
-        end
-
-      flow = Enum.map(flow, &{&1, :to_come})
-
-      assert steps(lv) == [{"Your account", :current} | flow]
-
-      Apiary.Mail.put_test_source(:none)
-      {:ok, lv, _html} = live(conn, ~p"/users/register")
-
-      # The organisation's progress alone: the instance's steps belong to its admin.
-      assert steps(lv) == [{"Your account", :current} | flow]
-
-      # The flow's steps have no group heading.
-      assert count(lv) == "Step 1 of #{length(flow) + 1}"
-      refute has_element?(lv, ".q-su-grp-h")
-
-      assert has_element?(
-               lv,
-               "#set-up-line",
-               "Start an organisation. You set up its first workspace next."
-             )
-
-      refute has_element?(lv, "#set-up-context")
-      refute render(lv) =~ "Choose a password to sign in with."
-    end
+    # The sign-up page of the core, by its steps and its line, under open sign-up. The page
+    # is the edition's: test/apiary_pro_web/live/user_live/set_up_frame_test.exs, "list Your
+    # account alone, so the page shows no steps indicator" and "list none of the workspace's
+    # steps with the factory, for an organisation and an operator".
 
     test "creates the organisation with no workspace, and lands its owner on its overview", %{
       conn: conn
@@ -446,12 +386,12 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   end
 
   describe "registration navigation" do
-    test "redirects to login page when the Log in button is clicked", %{conn: conn} do
+    test "redirects to login page when the Sign in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       {:ok, _login_live, login_html} =
         lv
-        |> element("main a", "Log in")
+        |> element("main a", "Sign in")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/log-in")
 
@@ -539,7 +479,7 @@ defmodule ApiaryWeb.UserLive.RegistrationMailFailsTest do
 
     # The toast shows the first sentence as its title, and the second under it.
     assert html =~ "Your account is made, but the email with its link could not be sent."
-    assert html =~ "Ask for a new link on the log-in page in a few minutes."
+    assert html =~ "Ask for a new link on the sign-in page in a few minutes."
 
     assert Apiary.Accounts.get_user_by_email(email)
   end

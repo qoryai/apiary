@@ -8,6 +8,7 @@
 @source "../js";
 @source "../../lib/apiary_web";
 @source "../../lib/apiary/sources";
+@source "../../lib/apiary_pro_web";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/apiary/*/";
 
@@ -15444,5 +15445,163 @@
   }
   .q-canvas-fill:fullscreen > .q-canvas {
     height: auto;
+  }
+}
+
+/* ======== The edition's rules (lib/apiary_pro_web): after every rule above.
+   test/apiary_pro_web/css_classes_test.exs reads the rules from this line on as the
+   edition's, and holds them to classes that the rules above do not define. ======== */
+
+/* ==== The edition's pages: what the core's list block (docs/ui.md of the core, Lists) does not
+   have. ==== */
+@layer qory {
+  /* A name cell that folds, on the Instance's lists (Organisations,
+     `instance_live/organisations.ex`; Accounts, `instance_live/accounts.ex`): its name,
+     its side words and its states on one line; below 600 px of table, where columns are
+     gone, a line under the name with what they said (an organisation's slug and kind, an
+     account's memberships) and its states, which wrap there (the core's network access
+     folds its reason the same way). */
+  .q-fold-line,
+  .q-fold-states {
+    display: inline-flex;
+    align-items: center;
+    column-gap: 12px;
+  }
+  .q-fold {
+    display: none;
+  }
+  /* An organisation's name gives way to the other columns, cut with an ellipsis at the
+     last letter that fits, whole in its title; a short name keeps its width. The slug
+     beside it gives way first, down to its floor, and the name only after: the slug's
+     share of the shrinking is so much larger that the name loses not even a part of a
+     pixel, which would cut its last letter, while the slug still has room to give. */
+  .q-nm > .q-org-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-all;
+  }
+  .q-tbl .q-nm > .q-org-name + .q-side[title] {
+    flex-shrink: 10000;
+  }
+  @container (max-width: 599px) {
+    .q-fold-nm {
+      flex-wrap: wrap;
+      row-gap: 2px;
+    }
+    .q-fold-line {
+      flex-basis: 100%;
+      flex-wrap: wrap;
+      padding-left: 34px;
+    }
+    .q-fold-states {
+      flex-wrap: wrap;
+    }
+    .q-fold {
+      display: inline;
+      color: var(--q-muted);
+    }
+    /* An organisation's slug there gives way too, cut with an ellipsis at the last
+       letter that fits, as the core's `.q-cut` cuts, whole in its title. */
+    .q-fold-line > .q-org-slug {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 1;
+      line-clamp: 1;
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: normal;
+      word-break: break-all;
+    }
+  }
+}
+
+/* ==== People (the core's `ApiaryWeb.MemberLive.Index`, and a workspace's People): the
+   workspaces a member reaches (`ApiaryProWeb.Slots.member_access/1`), muted beside the
+   email and cut short where they do not fit; below 600 px of table, a line of their own
+   under the email, wrapping there, so the Level column and the menu keep their place.
+   The wrap restyles the core's name cell (`.q-nm`) where it holds them, outside any scope
+   of the edition's: on @allowed in test/apiary_pro_web/css_classes_test.exs, with the
+   reason. ==== */
+@layer qory {
+  .q-member-access {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @container (max-width: 599px) {
+    .q-nm:has(> .q-member-access) {
+      flex-wrap: wrap;
+      row-gap: 2px;
+    }
+    .q-nm > .q-member-access {
+      flex-basis: 100%;
+      padding-left: 34px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+}
+
+/* ==== Who may act, where the reader may not: one muted line with a lock, beside the
+   controls they do not have (an operator's Clients, Policy requests). ==== */
+@layer qory {
+  .q-acts-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+}
+
+/* ==== The organisation's Variables (`ApiaryProWeb.SettingsLive.Variables`): below 600 px
+   of table, where the Lock and Overrides columns are gone, the lock shows beside the name
+   and the counts on a line under it, so neither needs a sideways scroll. The value is the
+   core's one-line cut (`.q-cut`), and the counts break between them (`.q-parts`). ==== */
+@layer qory {
+  .q-var-fold {
+    display: none;
+  }
+  @container (max-width: 599px) {
+    .q-var-nm {
+      flex-wrap: wrap;
+      row-gap: 2px;
+      column-gap: 6px;
+    }
+    .q-var-lock {
+      display: inline-flex;
+    }
+    .q-var-line {
+      display: block;
+      flex-basis: 100%;
+      color: var(--q-muted);
+      font-family: var(--font-sans);
+      font-size: 0.78125rem;
+      font-weight: 400;
+      line-height: 1.125rem;
+    }
+  }
+}
+
+/* ==== An operator's Policy requests (`ApiaryProWeb.ClientLive.Requests`): below 600 px
+   of table, a request's Answers break between their parts ("2 accepted," / "1 declined,"
+   / "1 waiting"), each part whole with its comma; one line from 600 px. ==== */
+@layer qory {
+  @container (max-width: 599px) {
+    .q-req-tally {
+      white-space: normal;
+    }
+    .q-req-tally > * {
+      white-space: nowrap;
+    }
   }
 }

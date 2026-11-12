@@ -56,9 +56,10 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     organisation = Repo.get_by!(Organisation, slug: "acme")
 
-    # A second workspace where the edition allows one; the core's does not.
+    # A second workspace, as the edition allows more than one; and with `factory`, Support,
+    # where the helpdesk's queues go.
     expected =
-      if Apiary.Edition.limits().workspaces == 1, do: ["main"], else: ["main", "shop-ops"]
+      ["main", "shop-ops"] ++ if(Apiary.Features.on?(:factory), do: ["support"], else: [])
 
     assert organisation.id |> workspaces() |> Enum.sort() == expected
 

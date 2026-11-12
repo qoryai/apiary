@@ -39,26 +39,9 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
     log_in_user(build_conn(), user)
   end
 
-  describe "with one workspace an organisation" do
-    test "has no Gateways page, no sidebar entry and no New gateway", %{conn: conn, scope: scope} do
-      assert_error_sent(:not_found, fn -> get(conn, gateways_path(scope)) end)
-      assert_error_sent(:not_found, fn -> get(conn, gateways_path(scope, "/new")) end)
-
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}")
-      refute has_element?(lv, "#nav-gateways")
-      refute has_element?(lv, "#new-menu-gateway")
-    end
-
-    test "a gateway's page at the organisation does not exist", %{conn: conn, scope: scope} do
-      gateway = organisation_gateway_fixture(scope)
-
-      assert_error_sent(:not_found, fn -> get(conn, gateway_path(scope, gateway)) end)
-
-      assert_error_sent(:not_found, fn ->
-        get(conn, gateway_path(scope, gateway, "/access-key"))
-      end)
-    end
-  end
+  # The core, with one workspace an organisation, had no Gateways page, sidebar entry,
+  # New gateway or gateway page. The edition sets no limit, so an organisation has them:
+  # "Organisation › Gateways" and "an organisation's gateway's page" in this file.
 
   describe "Organisation › Gateways" do
     setup :many_workspaces

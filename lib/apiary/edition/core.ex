@@ -72,7 +72,7 @@ defmodule Apiary.Edition.Core do
   def workspace_limit_line(organisation),
     do:
       gettext(
-        "Qory Apiary Community allows one workspace per organisation, and %{organisation} has it.",
+        "This instance allows one workspace per organisation, and %{organisation} has it.",
         organisation: organisation.name
       )
 
@@ -165,6 +165,9 @@ defmodule Apiary.Edition.Core do
   @impl true
   def reach(%Scope{membership: %Membership{}} = scope), do: {:ok, scope}
   def reach(_scope), do: :error
+
+  @impl true
+  def put_organisation(organisation), do: organisation
 
   @impl true
   def role(_scope), do: nil

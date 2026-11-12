@@ -262,6 +262,26 @@ defmodule Apiary.OrganisationsFixtures do
   end
 
   @doc """
+  workspace_access_fixture/2 adds the member `user` to every workspace of `organisation`,
+  as an owner adds a member to a workspace (`ApiaryPro.WorkspaceAccess`): a member reaches
+  only the workspaces they were added to. A membership a test inserts directly has none.
+  """
+  def workspace_access_fixture(%Organisation{id: organisation_id}, %Accounts.User{id: user_id}) do
+    for workspace_id <-
+          Repo.all(
+            from w in Workspace, where: w.organisation_id == ^organisation_id, select: w.id
+          ) do
+      Repo.insert!(%ApiaryPro.WorkspaceAccess.Row{
+        organisation_id: organisation_id,
+        workspace_id: workspace_id,
+        user_id: user_id
+      })
+    end
+
+    :ok
+  end
+
+  @doc """
   The existing account `user` joined the scope's workspace through an invitation, as a
   member: the membership, and `scope`, theirs in that workspace.
   """

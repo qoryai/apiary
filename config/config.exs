@@ -24,6 +24,15 @@ config :apiary,
   ecto_repos: [Apiary.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+# The edition this build is (Apiary.Edition, ApiaryWeb.Edition): the modules under
+# lib/apiary_pro and lib/apiary_pro_web, asked at the places an edition adds to the core or
+# narrows it. The router mounts the core's routes and adds the edition's. Its static files
+# are the core's, in this application's priv/static.
+config :apiary, :edition,
+  module: ApiaryPro.Edition,
+  web: ApiaryProWeb.Edition,
+  router: ApiaryProWeb.Router
+
 # Configure the endpoint
 config :apiary, ApiaryWeb.Endpoint,
   url: [host: "localhost"],

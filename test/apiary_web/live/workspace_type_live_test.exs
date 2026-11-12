@@ -682,32 +682,9 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       assert length(workspaces(organisation)) == 1
     end
 
-    test "at the edition's limit the page shows the edition's line and stays", %{
-      conn: conn,
-      user: user,
-      organisation: organisation,
-      template_path: path
-    } do
-      {:ok, _other} =
-        Organisations.create_workspace_of_kind(
-          scope_of(user, organisation),
-          Apiary.Lingo.Domain.Software,
-          :first
-        )
-
-      view =
-        open(
-          conn,
-          user,
-          organisation,
-          String.replace_prefix(path, ~p"/#{organisation}/workspaces/new/", "")
-        )
-
-      html = view |> element("#workspace-type-create") |> render_click()
-
-      assert html =~ "allows one workspace per organisation"
-      assert length(workspaces(organisation)) == 1
-    end
+    # The core's limit of one workspace kept the page with its line. The edition sets no
+    # limit: "Create workspace makes a second workspace, which Workspaces lists" in
+    # test/apiary_pro_web/live/new_workspace_test.exs.
 
     test "a shared row with no owner says to save the shared harness again", %{
       conn: conn,
@@ -767,7 +744,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
 
     defmodule RefusesWorkspace do
       @moduledoc false
-      # An edition that refuses the workspace after it is made, as Pro's can.
+      # An edition that refuses the workspace after it is made, as `ApiaryPro.Edition` can.
       def workspace_created(_repo, _workspace, _scope), do: {:error, :refused}
     end
 

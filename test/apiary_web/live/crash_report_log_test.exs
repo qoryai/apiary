@@ -250,14 +250,15 @@ defmodule ApiaryWeb.CrashReportLogTest do
       ])
     end
 
+    # The sign-up page is the edition's, at the core's path.
     test "the sign-up page of an invitation", %{conn: conn} do
       owner = sign_up_fixture()
       %{token: token} = invitation_fixture(owner.scope, %{"email" => "bee@example.com"})
 
       for {value, names} <- [
             {%{"password" => @marker},
-             ["no function clause matching in ApiaryWeb.UserLive.Registration.handle_event/3"]},
-            {%{"user" => @marker}, ["ApiaryWeb.UserLive.Registration.handle_event/3"]}
+             ["no function clause matching in ApiaryProWeb.UserLive.Registration.handle_event/3"]},
+            {%{"user" => @marker}, ["ApiaryProWeb.UserLive.Registration.handle_event/3"]}
           ],
           event <- ["validate", "save"] do
         {:ok, view, _html} = live(conn, ~p"/users/register?invitation=#{token}")

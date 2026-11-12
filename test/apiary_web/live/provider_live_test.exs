@@ -222,11 +222,13 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ String.slice(@key, -4, 4)
     end
 
-    test "in the core, adds it for the workspace alone, its key a secret of the workspace",
+    test "with the setting left off, adds it for the workspace alone, its key a secret of the workspace",
          ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
-      refute has_element?(lv, "#new-provider-form input[name='provider[everywhere]']")
+      # The edition shows the setting of where the provider applies, off.
+      assert has_element?(lv, "#new-provider-form input[name='provider[everywhere]']")
+      refute has_element?(lv, "#new-provider-form input[name='provider[everywhere]'][checked]")
 
       lv
       |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})

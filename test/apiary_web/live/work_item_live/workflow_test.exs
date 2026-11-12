@@ -1306,8 +1306,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         :telemetry.attach(
           handler,
           [:apiary, :repo, :query],
-          fn _event, _measurements, _meta, _config ->
-            if self() == pid, do: send(me, :tick_query)
+          # Who may sign up is read from `ApiaryPro.SignUp.Cache` in production, which the
+          # tests start without, so its row is not counted.
+          fn _event, _measurements, meta, _config ->
+            if self() == pid and meta[:source] != "instance_sign_up",
+              do: send(me, :tick_query)
           end,
           nil
         )

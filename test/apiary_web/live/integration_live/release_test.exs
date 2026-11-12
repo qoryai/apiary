@@ -136,7 +136,9 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
     refute has_element?(lv, "#add-release-form fieldset legend", "Applies to")
-    refute has_element?(lv, "#add-release-form input[name='integration[everywhere]']")
+    # The edition shows the setting of where it applies, off.
+    assert has_element?(lv, "#add-release-form input[name='integration[everywhere]']")
+    refute has_element?(lv, "#add-release-form input[name='integration[everywhere]'][checked]")
     assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =
