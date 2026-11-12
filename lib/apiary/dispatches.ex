@@ -175,7 +175,8 @@ defmodule Apiary.Dispatches do
   #      is in cooldown or the check of its provider's settings ran out of time or
   #      crashed. A run that cannot be registered for any other reason is
   #      `{:error, :unavailable}`, and the whole transaction rolls back. An exception
-  #      rolls it back too, is logged by its module alone, and is `{:error, :unavailable}`.
+  #      rolls it back too, is logged by its module alone, and is
+  #      `{:error, :unavailable}`.
   #
   # `{:ok, claimed}` carries the dispatch, its run, the run's work item (nil for a
   # prebuild), the prebuild's collection (nil for any other step), the pool, the
