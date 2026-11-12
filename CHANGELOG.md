@@ -1053,9 +1053,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Qory Apiary removes the spaces, tabs and newlines around a model provider's key before
   it stores the key, on **Add key**, **Edit key**, **New model provider**, the set-up's
   **Model** step, and **Add value** and **Change value** of the key on **Workspace
-  settings › Secrets and variables**. The spaces inside the key stay. A key of only spaces, tabs or newlines is
-  empty: **Key** shows “can't be blank”, and an empty **New value** keeps the key's
-  value. The value of any other secret stays as you typed it, its last newline included.
+  settings › Secrets and variables**. The spaces inside the key stay. A key of only
+  spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
+  value** keeps the key's value. The value of any other secret stays as you typed it, its last newline included.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with
