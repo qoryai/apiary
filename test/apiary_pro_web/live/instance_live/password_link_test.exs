@@ -17,9 +17,10 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Accounts, Features, Organisations, Repo}
+  alias Apiary.{Accounts, Features, Repo}
   alias Apiary.Accounts.{User, UserToken}
   alias Apiary.Audit.Entry
+  alias Apiary.Organisations.Membership
   alias ApiaryPro.Suspensions
 
   @moduletag with_features: Features.all()
@@ -233,14 +234,18 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
   end
 
   test "an instance admin no longer one by the time they ask is refused one", ctx do
-    # Another instance admin, so the first may stop being one.
-    instance_admin_fixture()
     %{user: user} = sign_up_fixture()
     Apiary.Mail.put_test_source(:none)
 
     lv = accounts(ctx.conn)
     assert has_element?(lv, item(user))
-    {:ok, _} = Organisations.revoke_instance_admin(ctx.admin.user)
+
+    # The level changes in the database with no broadcast: the click reaches the page
+    # before the membership change, which would move the page to `/`.
+    membership_id = ctx.admin.instance_scope.membership.id
+
+    query = from(m in Membership, where: m.id == ^membership_id)
+    {1, _} = Repo.update_all(query, set: [level: :member])
 
     render_click(lv, "password_link", %{"id" => user.id})
 

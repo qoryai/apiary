@@ -30,7 +30,7 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
   process's state prints it, and never in a path, a flash or a title.
   """
   use ApiaryProWeb, :live_view
-  on_mount {ApiaryProWeb.InstanceLive.Components, :instance}
+  on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.{Access, Accounts}
   alias ApiaryPro.Suspensions
