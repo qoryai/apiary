@@ -41,14 +41,14 @@ defmodule ApiaryPro.NewOrganisationTest do
       Phoenix.PubSub.subscribe(Apiary.PubSub, Organisations.membership_topic(home.user.id))
 
       assert {:ok, %{organisation: organisation, workspace: nil, membership: membership}} =
-               create(home.scope, name: "  Northwind Labs  ")
+               create(home.scope, name: "  Quorvane Labs  ")
 
-      assert %Organisation{name: "Northwind Labs"} = organisation
+      assert %Organisation{name: "Quorvane Labs"} = organisation
 
       assert %Tenant{kind: :organisation, instance_organisation: false, operator_id: nil} =
                tenant_of(organisation)
 
-      assert organisation.slug =~ ~r/\Anorthwind-labs(-[a-z0-9]+)?\z/
+      assert organisation.slug =~ ~r/\Aquorvane-labs(-[a-z0-9]+)?\z/
       refute Organisations.has_workspace?(organisation)
       assert %Membership{level: :owner, user_id: user_id} = membership
       assert user_id == home.user.id

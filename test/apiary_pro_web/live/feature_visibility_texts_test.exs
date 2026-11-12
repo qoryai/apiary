@@ -32,12 +32,12 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
       "Every other feature needs Runs: show it, or hide them all."
     },
     above: {
-      "Harness Works can grant only what it has itself.",
-      "Harness Works can show only what it is shown."
+      "Tervaskel Works can grant only what it has itself.",
+      "Tervaskel Works can show only what it is shown."
     },
     refused: {
-      "Only an owner of Harness Works grants its clients their features.",
-      "Only an owner of Harness Works chooses what its clients are shown."
+      "Only an owner of Tervaskel Works grants its clients their features.",
+      "Only an owner of Tervaskel Works chooses what its clients are shown."
     },
     filter: {"It has every one chosen", "Shown all chosen"},
     chip: {"Has Security policy", "Security policy shown"}
@@ -120,7 +120,7 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
       end
 
       test "Clients › Features says what the client's people see", _ctx do
-        operator = operator_fixture(%{organisation_name: "Harness Works"})
+        operator = operator_fixture(%{organisation_name: "Tervaskel Works"})
         client = client_fixture(operator.scope, "Acme")
         conn = log_in_user(build_conn(), operator.user)
 
@@ -133,13 +133,13 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
           assert has_element?(
                    lv,
                    "#client-features-page",
-                   "People in Acme see only the features you show here, of those Harness Works is shown; people of Harness Works see in it what Harness Works sees. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
+                   "People in Acme see only the features you show here, of those Tervaskel Works is shown; people of Tervaskel Works see in it what Tervaskel Works sees. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
                  )
         else
           assert has_element?(
                    lv,
                    "#client-features-page",
-                   "The client has only what Harness Works grants it, of what Harness Works has. A feature a new release adds reaches it once you grant it here."
+                   "The client has only what Tervaskel Works grants it, of what Tervaskel Works has. A feature a new release adds reaches it once you grant it here."
                  )
         end
 
@@ -180,7 +180,7 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
       end
 
       test "Clients › Features tells an admin of the operator who chooses", _ctx do
-        operator = operator_fixture(%{organisation_name: "Harness Works"})
+        operator = operator_fixture(%{organisation_name: "Tervaskel Works"})
         client = client_fixture(operator.scope, "Acme")
         %{user: admin} = member_fixture(operator.scope, :admin)
         conn = log_in_user(build_conn(), admin)
