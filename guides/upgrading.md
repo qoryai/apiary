@@ -89,7 +89,7 @@ Further back than one release, restore the dump taken before the upgrade
 Two migrations do not follow expand, then contract: `20261111090000` drops
 `machine_types.image` and `20261111100000` drops `runs.provider_value_id`. A release
 from before them, whose last migration is `20261110090000`, reads both columns and does
-not start on the newer schema. To go back to such a release, first take the schema back
+not run on the newer schema. To go back to such a release, first take the schema back
 with the rollback command below and `20261110153000`, the first migration that release
 does not have, then set the version back. The rollback adds both columns again, with no
 image on any machine type.
