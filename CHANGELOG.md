@@ -1832,24 +1832,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
   keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row
   its new rows refer to until the migration commits. Until then, deleting such a run or
-  key, directly or through a cascade, waits; reads do not. Rolling back changes nothing.
+  key, directly or through a cascade, waits; reads do not. Rolling back changes nothing;
+  rolling back 20261111190000 drops these rows with the table.
 - `secret_values` and `model_key_copies` (20261111190000): a column
   `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
   as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
   new table `model_key_copies`, with a row per run and model key: the `value_set_at` of
-  the value last sealed for that run, deleted with the run and with the key.
+  the value last sealed for that run, deleted with the run and with the key. Rolling back
+  drops `model_key_copies` and `secret_values.value_set_at`.
 - `runs` (20261111170000): a nullable column `resume`, the paused run whose transcript a
   continuation reads, with a check that it is an object of exactly `run_id`,
   `session_id` and `path`, each a string; the check scans `runs` under a lock that
   blocks reads and writes. It changes no row: a continuation registered before it starts
-  a new session.
+  a new session. Rolling back drops `runs.resume`.
 - `session_chunks` and `transcript_paths` (20261111143100): two new tables. The first
   has the chunks of a run's session transcript, with an index on the run, the path and
   the sequence. The second has a row per run and path: the chunks and bytes kept of the
   path, the sequence up to which they were checked for a gap, the offset at which the
   next chunk has to start, and `gap`, whether a checked chunk did not start there. It
   changes no row: the transcript events of a run stored before it become chunks only if
-  that run is rebuilt from its events.
+  that run is rebuilt from its events. Rolling back drops both tables, and with them
+  every stored session transcript.
 - `runs` and `dispatch_runs` (20261111143000): the checks on `runs.state` and
   `runs.exit_state` take `paused`; the first scans `runs` under a lock that blocks reads
   and writes, and the second stays not validated, as it was. Two nullable columns:
@@ -1858,7 +1861,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dispatch_runs` wait until the build ends; and `dispatch_runs.paused_until`, the
   earliest end of a cooldown among the keys of a paused run's provider, when every one of
   them was in cooldown as the run ended. It changes no row. Rolling back makes each
-  paused run Cancelled.
+  paused run Cancelled, its exit state too, and drops both columns, so no run continues
+  another.
 - `runs` and `dispatch_runs` (20261111100000): `runs.model_keys`, a run's keys in the
   order of its run configuration, at most 6, in place of `runs.provider_value_id`, which
   is dropped; and `dispatch_runs.model_provider_ids`, the model providers a queued run
@@ -1870,12 +1874,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `pause_for_s`. A run whose key was deleted after its claim gets a key id that no key
   has, so a secrets request for that key fails, as before. The migration rewrites each
   run with a key, and its two checks on `runs` scan `runs` under a lock that blocks reads
-  and writes. Rolling back sets `provider_value_id` to the first key of the
-  list where that key still exists, and clears the provider columns of a run whose first
-  key is gone. A release from before this migration reads `runs.provider_value_id` and
-  does not run on the schema after it: to go back to such a release, first take the
-  schema back with `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading,
-  Rolling back).
+  and writes. Rolling back keeps only a run's first key, as `provider_value_id`, where
+  that key still exists, and drops `runs.model_keys`, with every other key of each run,
+  and `dispatch_runs.model_provider_ids`. A run whose first key is gone, or that has no
+  key, loses its provider columns. A release from before this migration reads
+  `runs.provider_value_id` and does not run on the schema after it: to go back to such a
+  release, first take the schema back with
+  `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading, Rolling back).
 <!-- /feature -->
 
 - `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
@@ -1894,11 +1899,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a key's row in `secret_values`: a key's Resets and Pause for, and its state in each
   limit window. A unique index on `secret_values` (`id`, `organisation_id`), built inside
   the migration, so writes to `secret_values` wait until the build ends. It changes no
-  row.
+  row. Rolling back drops both tables: every key's Resets, Pause for and state.
 - `model_choice_fallbacks` (20261110153000): a new table of the fallbacks of a model
   choice, each a model provider at a position, with an optional model and effort. A
   unique index on `model_choices` (`id`, `organisation_id`), built inside the migration,
-  so writes to `model_choices` wait until the build ends. It changes no row.
+  so writes to `model_choices` wait until the build ends. It changes no row. Rolling back
+  drops the table, with every fallback of every model choice.
 <!-- /feature -->
 
 - `runs` (20261110090000): a column `configured_image_from_type`, false by default, and

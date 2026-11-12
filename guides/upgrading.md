@@ -77,8 +77,8 @@ possible:
 ## Rolling back
 
 The previous release runs on the new release's schema (expand, then contract, above), so
-going back one release changes nothing in the database, except across the two migrations
-after these steps:
+going back one release changes nothing in the database, except across migrations
+`20261111090000` and `20261111100000`:
 
 1. Set `APIARY_VERSION` in `.env` back to the previous release.
 2. `docker compose up -d`. The previous release starts on the newer schema, and runs no
@@ -90,8 +90,18 @@ from before them, whose last migration is `20261110090000`, reads both columns a
 not run on the newer schema. To go back to such a release, first take the schema back
 with the rollback command at the end of this section and `20261110153000`, the first
 migration that release does not have, then set the version back. The rollback adds both
-columns again, with no image on any machine type. It also reverts every later migration;
-the CHANGELOG entry of each describes what its rollback loses.
+columns again, with no image on any machine type. It also reverts every later migration,
+and loses:
+
+- the fallbacks of every model choice;
+- every key's Resets, Pause for and state;
+- every stored session transcript;
+- a continuation's `resume`;
+- the key copies, and when each key value was set;
+- every key of a run but the first;
+- the paused state: each paused run becomes Cancelled.
+
+Take a database dump before the rollback ([Backup and restore](backup.md)).
 
 Further back than one release, restore the dump taken before the upgrade
 ([Backup and restore](backup.md)), then set the version back and start it.
