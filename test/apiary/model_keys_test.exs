@@ -807,6 +807,41 @@ defmodule Apiary.ModelKeysTest do
       assert DateTime.compare(cooldown_until, until) == :eq
     end
 
+    test "of a key whose value Edit key changed leave out a report of a run with the old value",
+         ctx do
+      value = ctx.values["spare"]
+      run = keys_run(ctx, value)
+      :ok = seal(run, value)
+
+      {:ok, _provider} =
+        Connections.update_provider_key(ctx.scope, ctx.provider, "spare", %{
+          "value_id" => "spare",
+          "value" => "sk-ant-fixture-new-0123456789"
+        })
+
+      until = in_seconds(3_600)
+
+      report = fn ->
+        rejected =
+          item(
+            status: "rejected",
+            resets_at: until,
+            cooldown_until: until,
+            observed_at: in_seconds(1)
+          )
+
+        ModelKeys.record(ModelKeys.run_keys(run), [rejected], DateTime.utc_now())
+      end
+
+      :ok = report.()
+      assert states(value) == []
+
+      # The same report of a run with the new value is recorded.
+      :ok = seal(run, value)
+      :ok = report.()
+      assert [%State{status: "rejected"}] = states(value)
+    end
+
     test "of a key whose new value was set before the run's copy by its clock leave out the report",
          ctx do
       value = ctx.values["spare"]

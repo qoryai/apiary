@@ -1544,13 +1544,17 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A runs column with paused runs: the same outline in two parts that meet, the Paused
-  # part from the baseline, `paused / value` of the height, at least 2 px but at most 1 px less than the
-  # column, and the rest above it. The Paused part is the whole column only when every run paused.
+  # A runs column with paused runs: the same outline in two parts, the Paused part from
+  # the baseline, `paused / value` of the height, at least 2 px but at most 1 px less
+  # than the column, and the rest above it. The Paused part is the whole column only when
+  # every run paused. The Paused part stops 1 px short of the rest, so a 1 px gap that
+  # shows the background behind the column separates the two hues. A 2 px column has no
+  # room for 1 px of each part and the gap: its parts meet.
   defp column(%{value: value, max: max, paused: paused} = assigns)
        when value > 0 and max > 0 and paused > 0 do
     h = col_height(value, max, assigns.plot)
     p = if paused >= value, do: h, else: min(max(round(paused / value * h), 2), h - 1)
+    top = if h >= 3, do: p - 1, else: p
     x = assigns.cx - assigns.col / 2
     col = assigns.col
     base = assigns.base
@@ -1558,7 +1562,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         rest: if(p < h, do: part_d(x, base, h, col, p, h)),
-        paused_d: if(p == h, do: column_d(x, base, h, col), else: part_d(x, base, h, col, 0, p))
+        paused_d: if(p == h, do: column_d(x, base, h, col), else: part_d(x, base, h, col, 0, top))
       )
 
     ~H"""

@@ -1067,8 +1067,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Output tokens per minute”, “Spend limit” and “Limit”. The default key comes first,
   then the other keys in the order they were added. Owners and admins have **Add key**
   above the keys and **Edit** on each row, each a separate page. **Add key** has
-  **Name**, **Key**, **Resets** and **Pause for**; **Edit key** has the same fields
-  without **Key**, so the key's value stays as it is. A provider with 32 keys shows
+  **Name**, **Key**, **Resets** and **Pause for**; **Edit key** has the same fields,
+  with **New value** in place of **Key**. A provider with 32 keys shows
   “Northwind Claude has 32 keys, the most it can have. Delete a key to add another.”
   under **Key**, and a name that another key of the provider has shows “Another key of
   Northwind Claude has this name.” under **Name**.
@@ -1082,6 +1082,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value** and **Change value** of a model provider's key.
 - A key's cooldown ends when **Change value** saves a new value of the key. A save with
   **New value** empty and a rename keep the cooldown.
+- **Edit key** of a model provider's key, on **Organisation settings › Model providers ›
+  a provider**, has the optional field **New value**: “Leave it empty to keep the
+  value.” A new value replaces the key's value, for example after you rotate a
+  subscription's token, and ends the key's cooldown, as **Change value** does. A new
+  value has the checks of **Key** on **Add key**, and the page never shows it.
+- Qory Apiary removes the spaces, tabs and newlines around a model provider's key before
+  it stores the key, on **Add key**, **Edit key**, **New model provider**, the set-up's
+  **Model** step, and **Add value** and **Change value** of the key on **Workspace
+  settings › Secrets and variables**. The spaces inside the key stay. A key of only
+  spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
+  value** keeps the key's value. The value of any other secret stays as you typed it,
+  its last newline included.
 - **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
   Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
   from the next run.” Each fallback has Provider, Model, Another model and Effort, with
@@ -1143,8 +1155,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   has **Paused** after **Cancelled**, and each day reads “Today: 6 runs (1 ended well, 1
   cancelled, 1 paused, 3 alive or ended badly), 0 denied attempts, open that day's
   runs”. Each day's column shows its paused runs as a part at its base, in the colour of
-  a paused run's ring, with a legend “paused” beside “Runs per day”, and the day's tooltip
-  reads “6 runs, 1 paused”.
+  a paused run's ring, with a legend “paused” beside “Runs per day”, and the day's
+  tooltip reads “6 runs, 1 paused”.
 - On the run page, **Run the agent** of a session that paused at its keys' limit, and
   its **Agent session**, show **Paused**, with the ring of a paused run, as the run does.
 - Qory Apiary stores the transcript of a run's agent session, which the gateway sends as
@@ -1810,6 +1822,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Security
 
+- Each field for a model provider's key has `autocomplete="new-password"`: **Key** on
+  **Add key** and **New model provider**, **New value** on **Edit key**, and the key on
+  the set-up's **Model** step. A browser then does not fill it with a saved sign-in
+  password, which a save would have stored as the key.
 <!-- feature: workflow_model -->
 - Where a stage lists approvers, only an approver settles the stage's escalation, or runs
   a stage after Explore again from its gate, with **Run another round**. The escalation
@@ -1882,24 +1898,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its model keys, with the key's `value_set_at`, so a run registered before the upgrade
   keeps its keys' reports. Its foreign-key checks lock each `runs` and `secret_values` row
   its new rows refer to until the migration commits. Until then, deleting such a run or
-  key, directly or through a cascade, waits; reads do not. Rolling back changes nothing.
+  key, directly or through a cascade, waits; reads do not. Rolling back changes nothing;
+  rolling back 20261111190000 drops these rows with the table.
 - `secret_values` and `model_key_copies` (20261111190000): a column
   `secret_values.value_set_at`, the time a key's value was last set, which a rename leaves
   as it is, filled from `updated_at`, which rewrites every row of `secret_values`; and a
   new table `model_key_copies`, with a row per run and model key: the `value_set_at` of
-  the value last sealed for that run, deleted with the run and with the key.
+  the value last sealed for that run, deleted with the run and with the key. Rolling back
+  drops `model_key_copies` and `secret_values.value_set_at`.
 - `runs` (20261111170000): a nullable column `resume`, the paused run whose transcript a
   continuation reads, with a check that it is an object of exactly `run_id`,
   `session_id` and `path`, each a string; the check scans `runs` under a lock that
   blocks reads and writes. It changes no row: a continuation registered before it starts
-  a new session.
+  a new session. Rolling back drops `runs.resume`.
 - `session_chunks` and `transcript_paths` (20261111143100): two new tables. The first
   has the chunks of a run's session transcript, with an index on the run, the path and
   the sequence. The second has a row per run and path: the chunks and bytes kept of the
   path, the sequence up to which they were checked for a gap, the offset at which the
   next chunk has to start, and `gap`, whether a checked chunk did not start there. It
   changes no row: the transcript events of a run stored before it become chunks only if
-  that run is rebuilt from its events.
+  that run is rebuilt from its events. Rolling back drops both tables, and with them
+  every stored session transcript.
 - `runs` and `dispatch_runs` (20261111143000): the checks on `runs.state` and
   `runs.exit_state` take `paused`; the first scans `runs` under a lock that blocks reads
   and writes, and the second stays not validated, as it was. Two nullable columns:
@@ -1908,7 +1927,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dispatch_runs` wait until the build ends; and `dispatch_runs.paused_until`, the
   earliest end of a cooldown among the keys of a paused run's provider, when every one of
   them was in cooldown as the run ended. It changes no row. Rolling back makes each
-  paused run Cancelled.
+  paused run Cancelled, its exit state too, and drops both columns, so no run continues
+  another.
 - `runs` and `dispatch_runs` (20261111100000): `runs.model_keys`, a run's keys in the
   order of its run configuration, at most 6, in place of `runs.provider_value_id`, which
   is dropped; and `dispatch_runs.model_provider_ids`, the model providers a queued run
@@ -1920,12 +1940,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `pause_for_s`. A run whose key was deleted after its claim gets a key id that no key
   has, so a secrets request for that key fails, as before. The migration rewrites each
   run with a key, and its two checks on `runs` scan `runs` under a lock that blocks reads
-  and writes. Rolling back sets `provider_value_id` to the first key of the
-  list where that key still exists, and clears the provider columns of a run whose first
-  key is gone. A release from before this migration reads `runs.provider_value_id` and
-  does not run on the schema after it: to go back to such a release, first take the
-  schema back with `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading,
-  Rolling back).
+  and writes. Rolling back keeps only a run's first key, as `provider_value_id`, where
+  that key still exists, and drops `runs.model_keys`, with every other key of each run,
+  and `dispatch_runs.model_provider_ids`. A run whose first key is gone, or that has no
+  key, loses its provider columns. A release from before this migration reads
+  `runs.provider_value_id` and does not run on the schema after it: to go back to such a
+  release, first take the schema back with
+  `Apiary.Release.rollback(Apiary.Repo, 20261110153000)` (Upgrading, Rolling back).
 <!-- /feature -->
 
 - `machine_types` and `runs` (20261111090000): drops `machine_types.image`, with its
@@ -1944,11 +1965,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a key's row in `secret_values`: a key's Resets and Pause for, and its state in each
   limit window. A unique index on `secret_values` (`id`, `organisation_id`), built inside
   the migration, so writes to `secret_values` wait until the build ends. It changes no
-  row.
+  row. Rolling back drops both tables: every key's Resets, Pause for and state.
 - `model_choice_fallbacks` (20261110153000): a new table of the fallbacks of a model
   choice, each a model provider at a position, with an optional model and effort. A
   unique index on `model_choices` (`id`, `organisation_id`), built inside the migration,
-  so writes to `model_choices` wait until the build ends. It changes no row.
+  so writes to `model_choices` wait until the build ends. It changes no row. Rolling back
+  drops the table, with every fallback of every model choice.
 <!-- /feature -->
 
 - `runs` (20261110090000): a column `configured_image_from_type`, false by default, and

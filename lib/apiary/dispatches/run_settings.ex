@@ -399,8 +399,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # A key as the run keeps it and its run configuration writes it: its row id, its name,
   # `start` on the start key, its Pause for, and, where it has them, its known reset from
-  # the providers' responses, the next reset of its schedule, whether the choice is set to it,
-  # and the end of its cooldown while it is in cooldown at `now`. Times are in whole
+  # the providers' responses, the next reset of its schedule, whether the choice is set to
+  # it, and the end of its cooldown while it is in cooldown at `now`. Times are in whole
   # seconds, rounded up.
   defp stored_key(key, name, start?, now) do
     [

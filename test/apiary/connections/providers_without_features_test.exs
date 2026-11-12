@@ -43,7 +43,7 @@ defmodule Apiary.Connections.ProvidersWithoutFeaturesTest do
       assert Connections.delete_connection(scope, provider) == {:error, :not_found}
       assert Repo.aggregate(Connection, :count) == 1
 
-      # The keys go by the provider's answer.
+      # The keys go by the provider's response.
       assert Connections.delete_provider_key(scope, provider, "main") == {:error, :not_found}
       assert Secrets.delete_secret(scope, provider.secret) == {:error, :not_found}
     end
