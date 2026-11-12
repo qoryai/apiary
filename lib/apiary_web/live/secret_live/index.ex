@@ -2625,9 +2625,6 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 
-  # The write of a model provider's key with the settings its form sent
-  # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
-  # be saved, and their errors come back as `{:settings, errors}`.
   # A provider's key as `Apiary.Connections` checks it, without the whitespace at its
   # ends, so the errors shown with the settings' are those of the save.
   defp trimmed(%{"value" => value} = params),
@@ -2635,6 +2632,9 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp trimmed(params), do: params
 
+  # The write of a model provider's key with the settings its form sent
+  # (`ApiaryWeb.ModelKeyComponents.read_settings/1`); none is written while they cannot
+  # be saved, and their errors come back as `{:settings, errors}`.
   defp with_key_settings(params, fun) do
     case ModelKeyComponents.read_settings(params) do
       {:ok, settings} -> fun.(settings)
