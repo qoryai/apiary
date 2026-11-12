@@ -1328,7 +1328,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
-  columns each, today last and in ink. `days` holds fourteen maps `%{day:, runs:, alive:,
+  columns each, today last and in ink, each runs column with a Paused part at its base on
+  a day with paused runs. `days` is a list of fourteen maps `%{day:, runs:, alive:,
   ended_well:, cancelled:, paused:, ended_badly:, denied:}`, oldest first, zeros filled in by the
   caller.
   `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
@@ -1356,10 +1357,13 @@ defmodule ApiaryWeb.OverviewComponents do
     max_runs = days |> Enum.map(& &1.runs) |> Enum.max(fn -> 0 end)
     max_den = days |> Enum.map(& &1.denied) |> Enum.max(fn -> 0 end)
     peak = Enum.find(days, &(&1.runs == max_runs))
+    title = gettext("Runs per day")
 
     assigns =
       assign(assigns,
         total: total,
+        title: title,
+        paused?: Enum.any?(days, &(&1.paused > 0)),
         max_runs: max_runs,
         max_den: max_den,
         height: @top + @h_runs + @gap + @h_den + @axis,
@@ -1426,7 +1430,10 @@ defmodule ApiaryWeb.OverviewComponents do
           aria-label={@label}
           xmlns="http://www.w3.org/2000/svg"
         >
-          <text class="q-ttl" x="0" y="12">{gettext("Runs per day")}</text>
+          <%!-- The legend of the Paused part follows the title as the browser lays it out;
+            each day's label already reads its paused runs, so the legend is hidden from screen
+            readers. --%>
+          <text class="q-ttl" x="0" y="12" phx-no-format>{@title}<tspan :if={@paused?} dx="8" class="q-legend-paused" aria-hidden="true">■</tspan><tspan :if={@paused?} dx="4" class="q-legend" aria-hidden="true">{gettext("paused")}</tspan></text>
           <text :if={@max_runs > 0} class="q-max" x={@w} y="12" text-anchor="end">
             {gettext("max %{max}", max: Format.number(@max_runs))}
           </text>
@@ -1447,7 +1454,7 @@ defmodule ApiaryWeb.OverviewComponents do
               navigate={day_path(@scope, day)}
               data-day={Date.to_iso8601(day.day)}
               data-label={day_label(day.day, @today)}
-              data-runs={runs_count(day.runs)}
+              data-runs={runs_tip(day)}
               data-den={denied_count(day.denied)}
               aria-label={slot_label(day, @today)}
             >
@@ -1466,6 +1473,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 value={day.runs}
                 max={@max_runs}
                 plot={@h_runs}
+                paused={day.paused}
                 class={["q-col-runs", Date.compare(day.day, @today) == :eq && "q-col-today"]}
               />
               <.column
@@ -1518,26 +1526,44 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :col, :any, default: 22
   attr :base, :integer, required: true
   attr :value, :integer, required: true
+  attr :paused, :integer, default: 0
   attr :max, :integer, required: true
   attr :plot, :integer, required: true
   attr :class, :any, default: nil
 
   # A column at most 26 px wide, rounded at the top, square at the baseline; a 2 px stub
   # for a day with nothing, so the day is visibly there and visibly empty.
-  defp column(%{value: value, max: max} = assigns) when value > 0 and max > 0 do
-    h = max(round(value / max * assigns.plot), 2)
-    r = min(4, h)
-    col = assigns.col
-    x = assigns.cx - col / 2
-    y = assigns.base - h
+  defp column(%{value: value, max: max, paused: 0} = assigns) when value > 0 and max > 0 do
+    h = col_height(value, max, assigns.plot)
 
-    d =
-      "M#{fmt(x)} #{assigns.base}V#{fmt(y + r)}a#{r} #{r} 0 0 1 #{r} -#{r}h#{fmt(col - 2 * r)}a#{r} #{r} 0 0 1 #{r} #{r}V#{assigns.base}z"
-
-    assigns = assign(assigns, :d, d)
+    assigns =
+      assign(assigns, :d, column_d(assigns.cx - assigns.col / 2, assigns.base, h, assigns.col))
 
     ~H"""
     <path class={@class} d={@d} />
+    """
+  end
+
+  # A runs column with paused runs: the same outline in two parts that meet, the Paused
+  # part from the baseline, `paused / value` of the height, at least 2 px but at most 1 px less than the
+  # column, and the rest above it. The Paused part is the whole column only when every run paused.
+  defp column(%{value: value, max: max, paused: paused} = assigns)
+       when value > 0 and max > 0 and paused > 0 do
+    h = col_height(value, max, assigns.plot)
+    p = if paused >= value, do: h, else: min(max(round(paused / value * h), 2), h - 1)
+    x = assigns.cx - assigns.col / 2
+    col = assigns.col
+    base = assigns.base
+
+    assigns =
+      assign(assigns,
+        rest: if(p < h, do: part_d(x, base, h, col, p, h)),
+        paused_d: if(p == h, do: column_d(x, base, h, col), else: part_d(x, base, h, col, 0, p))
+      )
+
+    ~H"""
+    <path :if={@rest} class={@class} d={@rest} />
+    <path class="q-col-paused" d={@paused_d} />
     """
   end
 
@@ -1551,6 +1577,52 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <line class="q-stub" x1={@x1} x2={@x2} y1={@base - 1} y2={@base - 1} />
     """
+  end
+
+  defp col_height(value, max, plot), do: max(round(value / max * plot), 2)
+
+  # The outline of a column `h` high from `base`, its left edge at `x`.
+  defp column_d(x, base, h, col) do
+    r = min(4, h)
+    y = base - h
+
+    "M#{fmt(x)} #{base}V#{fmt(y + r)}a#{r} #{r} 0 0 1 #{r} -#{r}h#{fmt(col - 2 * r)}a#{r} #{r} 0 0 1 #{r} #{r}V#{base}z"
+  end
+
+  # The part of that outline from `lo` to `hi` px above `base`. Where an edge of the part
+  # lies in the rounded corners, it runs from arc to arc, so the two parts of a column
+  # meet on one line and keep the outline.
+  defp part_d(x, base, h, col, lo, hi) do
+    r = min(4, h)
+    corner = h - r
+
+    left = fn t -> fmt(x + inset(t, corner, r)) end
+    right = fn t -> fmt(x + col - inset(t, corner, r)) end
+
+    up =
+      cond do
+        hi <= corner -> "V#{base - hi}"
+        lo < corner -> "V#{base - corner}A#{r} #{r} 0 0 1 #{left.(hi)} #{base - hi}"
+        true -> "A#{r} #{r} 0 0 1 #{left.(hi)} #{base - hi}"
+      end
+
+    down =
+      cond do
+        hi <= corner -> "V#{base - lo}"
+        lo < corner -> "A#{r} #{r} 0 0 1 #{fmt(x + col)} #{base - corner}V#{base - lo}"
+        true -> "A#{r} #{r} 0 0 1 #{right.(lo)} #{base - lo}"
+      end
+
+    "M#{left.(lo)} #{base - lo}#{up}H#{right.(hi)}#{down}z"
+  end
+
+  # How far a column's side is in from its edge `t` px above the base: none below the
+  # corners, which start `corner` px up, then along a corner's arc of radius `r`.
+  defp inset(t, corner, _r) when t <= corner, do: 0.0
+
+  defp inset(t, corner, r) do
+    dy = t - corner
+    r - :math.sqrt(r * r - dy * dy)
   end
 
   defp fmt(x) when is_float(x), do: :erlang.float_to_binary(x, decimals: 2)
@@ -1569,6 +1641,17 @@ defmodule ApiaryWeb.OverviewComponents do
       do: gettext("Today"),
       else: Format.short_date(day)
   end
+
+  # A day's runs in its tooltip, "6 runs", and "6 runs, 1 paused" for a day with a paused
+  # run.
+  defp runs_tip(%{runs: runs, paused: paused}) when paused > 0 do
+    ngettext("%{runs}, %{number} paused", "%{runs}, %{number} paused", paused,
+      runs: runs_count(runs),
+      number: Format.number(paused)
+    )
+  end
+
+  defp runs_tip(day), do: runs_count(day.runs)
 
   defp denied_count(n) do
     ngettext("%{number} denied attempt", "%{number} denied attempts", n, number: Format.number(n))

@@ -316,7 +316,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
 
     * `{:cooldown, until, source}` while the latest `cooldown_until` across its windows is
       after `now`: "In cooldown until Fri 14:00", and where that time comes from; for a
-      Pause for, the cooldown that applied, from the answer that started it to its end
+      Pause for, the cooldown that applied, from the response that started it to its end
       (`cooldown_until` less `observed_at`), whatever the key's Pause for is now;
     * `{:available, segments}` otherwise, one segment per window with a utilization or a
       reset still to come: "5-hour 89%, resets 14:00".
@@ -343,7 +343,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
     |> Enum.max_by(& &1.cooldown_until, DateTime, fn -> nil end)
   end
 
-  defp source(%State{source: "provider"}), do: gettext("from the provider's answer")
+  defp source(%State{source: "provider"}), do: gettext("from the provider's response")
   defp source(%State{source: "schedule"}), do: gettext("from this key's schedule")
 
   defp source(%State{cooldown_until: until, observed_at: observed_at}),

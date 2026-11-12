@@ -3194,6 +3194,13 @@ msgstr ""
 msgid "%{runs} and %{denied} in 14 days; most runs on %{peak}, %{max}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs}, %{number} paused"
+msgid_plural "%{runs}, %{number} paused"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{runs}: %{events} and %{bytes} of log output in %{chunks}."
@@ -25174,7 +25181,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "from the provider's answer"
+msgid "from the provider's response"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -25802,6 +25809,7 @@ msgstr ""
 msgid "path"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "paused"

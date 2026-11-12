@@ -23,7 +23,8 @@ defmodule Apiary.ModelKeys do
   credential in the run's run configuration and the time the run's value of it was set.
   A report and its answer reach a key only through this function. A gateway's secrets
   request keeps which value of each key it sealed for the run (`keep_copies/2`,
-  `Apiary.ModelKeys.Copy`).
+  `Apiary.ModelKeys.Copy`); migration 20261111220000 wrote such a copy for each key of
+  each run that was pending or running at the upgrade.
 
   **At a claim** (`claim_keys/3`): the keys of a provider with their resets, cooldowns
   and Pause for, which `Apiary.ModelKeys.Order` orders. A claim passes a run of the queue
@@ -50,8 +51,10 @@ defmodule Apiary.ModelKeys do
   A model key of a run: `name`, the credential's name in the run's run configuration;
   `secret_value_id`, the value's row id; `organisation_id`, the value's organisation;
   `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown; and
-  `copy_kept`, true when `copy_set_at` is the `value_set_at` a secrets request kept for
-  the run (`keep_copies/2`), false when it is the time the run's row was written.
+  `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
+  run (`Apiary.ModelKeys.Copy`), which a secrets request kept (`keep_copies/2`) or
+  migration 20261111220000 wrote for a run that was pending or running at the upgrade;
+  false when it is the time the run's row was written.
   """
   @type run_key :: %{
           name: String.t(),
@@ -230,7 +233,8 @@ defmodule Apiary.ModelKeys do
   def run_keys(%Run{}), do: []
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
-  # `run` last, by the key's row id.
+  # `run` last, or that migration 20261111220000 copied for a run pending or running at
+  # the upgrade, by the key's row id.
   defp copies(%Run{id: run_id}, ids) when is_binary(run_id) do
     Repo.all(
       from c in Copy,
@@ -298,7 +302,7 @@ defmodule Apiary.ModelKeys do
   The keys of `provider`, the values of its secret, at `now`, for a claim: each with its
   row id and value id; whether it is the key `named_value_id`, which a model choice
   names (nil for none), and whether it is the provider's default key; `resets_at`, the
-  earliest reset after `now` across its windows, from the providers' answers;
+  earliest reset after `now` across its windows, from the providers' responses;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
   `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
   the end of its cooldown, the latest `cooldown_until` across its windows, which only a
