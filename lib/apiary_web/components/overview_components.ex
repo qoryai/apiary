@@ -1431,8 +1431,9 @@ defmodule ApiaryWeb.OverviewComponents do
           xmlns="http://www.w3.org/2000/svg"
         >
           <%!-- The legend of the Paused part follows the title as the browser lays it out;
-            each day's label already reads its paused runs, so the square is hidden. --%>
-          <text class="q-ttl" x="0" y="12" phx-no-format>{@title}<tspan :if={@paused?} dx="8" class="q-legend-paused" aria-hidden="true">■</tspan><tspan :if={@paused?} dx="4" class="q-legend">{gettext("paused")}</tspan></text>
+            each day's label already reads its paused runs, so the legend is hidden from screen
+            readers. --%>
+          <text class="q-ttl" x="0" y="12" phx-no-format>{@title}<tspan :if={@paused?} dx="8" class="q-legend-paused" aria-hidden="true">■</tspan><tspan :if={@paused?} dx="4" class="q-legend" aria-hidden="true">{gettext("paused")}</tspan></text>
           <text :if={@max_runs > 0} class="q-max" x={@w} y="12" text-anchor="end">
             {gettext("max %{max}", max: Format.number(@max_runs))}
           </text>
@@ -1544,8 +1545,8 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   # A runs column with paused runs: the same outline in two parts that meet, the Paused
-  # part from the baseline, `paused / value` of the height, at least 2 px, and the rest
-  # above it. The Paused part is the whole column only when every run paused.
+  # part from the baseline, `paused / value` of the height, at least 2 px but at most 1 px less than the
+  # column, and the rest above it. The Paused part is the whole column only when every run paused.
   defp column(%{value: value, max: max, paused: paused} = assigns)
        when value > 0 and max > 0 and paused > 0 do
     h = col_height(value, max, assigns.plot)

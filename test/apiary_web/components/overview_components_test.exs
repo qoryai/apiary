@@ -202,7 +202,8 @@ defmodule ApiaryWeb.OverviewComponentsTest do
       assert title |> LazyHTML.query("tspan.q-legend-paused[aria-hidden=true]") |> LazyHTML.text() ==
                "■"
 
-      assert title |> LazyHTML.query("tspan.q-legend") |> LazyHTML.text() == "paused"
+      assert title |> LazyHTML.query("tspan.q-legend[aria-hidden=true]") |> LazyHTML.text() ==
+               "paused"
     end
 
     test "at the narrowest width the title and its legend end well before the day's maximum" do
