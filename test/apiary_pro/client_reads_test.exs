@@ -630,9 +630,9 @@ defmodule ApiaryPro.ClientReadsTest do
 
     # A run whose provider the claim recorded on `@old_host`, which the provider's row no
     # longer gives (its address was edited after the claim), beside a registry credential,
-    # each with a connection and an egress event that carry no credential. With `keys` 0,
-    # the run has no model keys, as a run claimed before model keys whose provider row was
-    # deleted.
+    # each with a connection and an egress event, neither with a credential. With `keys`
+    # 0, the run has no model keys, as a run claimed before model keys whose provider row
+    # was deleted.
     defp recorded_run!(ctx, api \\ @api, chain \\ "operator", keys \\ 1) do
       run = run_for!(ctx.person, ctx.provider, chain, api, keys)
 
@@ -845,7 +845,7 @@ defmodule ApiaryPro.ClientReadsTest do
       # row is gone, found by its key's name on an endpoint no entry lists; two with no
       # model keys whose row is gone, one found by its endpoint and one not found; and one
       # of the organisation's chain: each with a connection and an egress event to the
-      # recorded host that carry no credential.
+      # recorded host, neither with a credential.
       live = recorded_run!(ctx)
       found = recorded_run!(ctx, @edited_api)
       organisation = recorded_run!(ctx, @api, "organisation")
