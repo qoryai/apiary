@@ -945,7 +945,9 @@ defmodule ApiaryPro.Operators do
   # An entry of `client.set_model_chain` in the operator's trail, by the person who set it,
   # with the client's id and the switch before and after; nothing changes, and nothing is
   # recorded, for the value it has already. The client's and the operator's people are told
-  # once it is written, so their pages load their scope again.
+  # once it is written, so their pages load their scope again. Once a changed value has
+  # committed, the client's waiting runs get the model providers of the new chain
+  # (`Apiary.Dispatches.refresh_model_providers/1`).
   #
   # `{:ok, client}`; `{:error, :suspended}` for a suspended client; `{:error, :busy}` for
   # a deadlock Postgres broke; `{:error, :not_found}` for an organisation that is no
@@ -975,20 +977,29 @@ defmodule ApiaryPro.Operators do
           {:error, _reason} = error -> error
         end
       end)
-      |> tap(fn
-        {:ok, client} -> tell_people_of([client.id, operator_id])
-        _refused -> :ok
-      end)
+      |> case do
+        {:ok, {client, changed?}} ->
+          if changed? do
+            :ok = Apiary.Dispatches.refresh_model_providers({:organisation, client.id})
+          end
+
+          tell_people_of([client.id, operator_id])
+          {:ok, client}
+
+        refused ->
+          refused
+      end
     end
   end
 
   def set_model_chain(_scope, _client_id, _chain), do: {:error, :not_found}
 
+  # `{:ok, {client, changed?}}`: the client as written, and whether its chain changed.
   defp write_model_chain(scope, client, operator, chain) do
     was = Tenants.model_chain(client)
 
     if was == chain do
-      {:ok, client}
+      {:ok, {client, false}}
     else
       with {:ok, tenant} <-
              client |> Tenants.tenant() |> Tenants.model_chain_changeset(chain) |> Repo.update(),
@@ -998,7 +1009,7 @@ defmodule ApiaryPro.Operators do
                before: %{model_chain: was},
                after: %{model_chain: chain}
              }) do
-        {:ok, Tenants.put_tenant(client, tenant)}
+        {:ok, {Tenants.put_tenant(client, tenant), true}}
       end
     end
   end
