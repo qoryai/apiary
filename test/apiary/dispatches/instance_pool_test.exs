@@ -318,16 +318,13 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     # 2,921 rows, under the bound of 5,015.
     #
     # A Materialize or Memoize node returns the rows of the node under it again from
-    # memory, once for each run, and the count leaves those rows out (`rows_read/1`). In
-    # one CI run, the check for an unresolved walk scanned `run_harnesses` once, 200 rows,
-    # under a Materialize node that returned them for each of 100 runs: with those rows
-    # counted, the plan read 10,901 rows. Postgres chose that plan where the dead rows of
-    # earlier tests had left the table's indexes large. The next test forces, with SET
-    # LOCAL, a plan that scans tables once for each run: with index and bitmap scans, hash
-    # and merge joins, materialize and memoize turned off, it reads about 51,000 rows and
-    # fails the bound. The last test counts the rows of that Materialize node: 500, not
-    # 10,500. Which plan Postgres picks depends on the pages of the tables and indexes, so
-    # no setting forces the Materialize plan in every database.
+    # memory, once for each run, and the count leaves those rows out (`rows_read/1`).
+    # Where dead rows have left the indexes of `run_harnesses` large, Postgres may check
+    # for an unresolved walk with one scan of the table under a Materialize node, which
+    # returns about 100 rows again for each of 100 runs. No setting gives that plan in
+    # every database, so "counts the CI run's Materialize plan under the bound" counts it
+    # from a map. "fails the bound on a plan that scans tables once for each run" forces
+    # its plan with SET LOCAL.
     test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
       queued!(ctx.b)
       few = claim_queries(ctx.key)
@@ -354,47 +351,47 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       queued!(ctx.b)
       counts = queue_of_200!(ctx)
 
-      scans = ~w(enable_indexscan enable_bitmapscan)
+      scans = ~w(enable_indexscan enable_indexonlyscan enable_bitmapscan)
       joins = ~w(enable_hashjoin enable_mergejoin enable_material enable_memoize)
       plan = plan!(ctx.key, scans ++ joins)
 
       assert rows_read(nodes(plan)) > bound(counts), Enum.join(plan_lines(plan), "\n")
     end
 
-    test "counts the rows under a Materialize node once, not on each rescan" do
-      # The check for an unresolved walk in the plan of the CI run that read 10,901 rows:
-      # one scan of `run_harnesses`, and its rows returned from memory for 100 runs.
-      walks = %{
-        "Node Type" => "Seq Scan",
-        "Relation Name" => "run_harnesses",
-        "Actual Rows" => 200,
-        "Actual Loops" => 1
-      }
+    test "counts the CI run's Materialize plan under the bound" do
+      # The nodes that read rows in the plan of the CI run, as reproduced, and the nodes
+      # above them; the rows are those each node returned in one loop.
+      plan =
+        plan_node("Limit", 0, 1, [
+          plan_node("LockRows", 0, 1, [
+            plan_node("Sort", 0, 1, [
+              plan_node("Nested Loop", 0, 1, [
+                plan_node("Nested Loop", 0, 1, [
+                  scan_node("Seq Scan", "dispatch_runs", 200, 1, [
+                    scan_node("Seq Scan", "nodes", 301, 1),
+                    plan_node("Aggregate", 0, 100, [
+                      scan_node("Index Scan", "work_items", 1, 100),
+                      scan_node("Index Scan", "source_collections", 1, 100)
+                    ])
+                  ]),
+                  plan_node("Materialize", 100, 100, [
+                    scan_node("Seq Scan", "run_harnesses", 200, 1)
+                  ])
+                ])
+              ])
+            ])
+          ])
+        ])
 
-      queue = %{
-        "Node Type" => "Seq Scan",
-        "Relation Name" => "dispatch_runs",
-        "Actual Rows" => 200,
-        "Actual Loops" => 1
-      }
+      ci_bound = bound(%{runs: 200, walks: 200, workspaces: 603})
+      assert ci_bound == 5_015
 
-      check = %{
-        "Node Type" => "Nested Loop",
-        "Join Type" => "Anti",
-        "Actual Rows" => 100,
-        "Actual Loops" => 1,
-        "Plans" => [
-          queue,
-          %{
-            "Node Type" => "Materialize",
-            "Actual Rows" => 100,
-            "Actual Loops" => 100,
-            "Plans" => [walks]
-          }
-        ]
-      }
+      # The count with the rows of the Materialize node, as the CI run counted them.
+      with_replays = plan |> nodes() |> Enum.map(&rows/1) |> Enum.sum()
+      assert with_replays == 10_901 and with_replays > ci_bound
 
-      assert rows_read(nodes(check)) == 100 + 200 + 200
+      assert rows_read(nodes(plan)) == 901
+      assert rows_read(nodes(plan)) <= ci_bound
     end
   end
 
@@ -439,6 +436,21 @@ defmodule Apiary.Dispatches.InstancePoolTest do
 
     plan
   end
+
+  # A node of a plan as EXPLAIN gives it: its type, the rows it returned in one loop, its
+  # loops and the nodes under it.
+  defp plan_node(type, rows, loops, plans \\ []) do
+    %{
+      "Node Type" => type,
+      "Actual Rows" => rows,
+      "Actual Loops" => loops,
+      "Plans" => plans
+    }
+  end
+
+  # A node of a plan that reads `table`.
+  defp scan_node(type, table, rows, loops, plans \\ []),
+    do: type |> plan_node(rows, loops, plans) |> Map.put("Relation Name", table)
 
   # The rows the claim's query may read: 5 for each run, harness walk and workspace.
   defp bound(%{runs: runs, walks: walks, workspaces: workspaces}),
