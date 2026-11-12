@@ -556,7 +556,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
   test "an instance admin removed while their scope is in the instance organisation moves to /",
        ctx do
     # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
-    # the page to `/`, before and after the page mounts on the core's Access check.
+    # the page to `/`, before and after the page mounts on Core's Access check.
     workspace = workspace_fixture(ctx.here)
     conn = put_session(ctx.conn, :last_workspace_id, workspace.id)
 

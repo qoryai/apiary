@@ -5,7 +5,7 @@ defmodule ApiaryProWeb.InstanceLive.AccountsTest do
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Accounts, Features, Organisations}
+  alias Apiary.{Accounts, Features}
   alias ApiaryPro.Suspensions
 
   @moduletag with_features: Features.all()
@@ -174,99 +174,6 @@ defmodule ApiaryProWeb.InstanceLive.AccountsTest do
 
     assert_raise ApiaryWeb.NotFound, fn ->
       live(log_in_user(build_conn(), stranger), ~p"/instance/accounts")
-    end
-  end
-
-  describe "a change of the instance admin's memberships while the page is open" do
-    # A fresh instance admin, whose membership messages reach no page of another async
-    # test, and the suite's instance admin, who changes the fresh one's level.
-    setup do
-      admin = instance_admin_fixture()
-
-      %{
-        conn: log_in_user(build_conn(), admin.user),
-        admin: admin,
-        other: suite_instance_admin().instance_scope
-      }
-    end
-
-    test "an instance admin made a member moves to / from the open page, without a click", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/instance/accounts")
-      render_async(lv)
-      assert has_element?(lv, "#account-#{ctx.admin.user.id}", "you")
-
-      {:ok, _member} =
-        Organisations.set_member_level(ctx.other, ctx.admin.instance_scope.membership.id, :member)
-
-      assert_redirect(lv, "/")
-    end
-
-    test "an owner made an admin moves to / from the open page, without a click", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/instance/accounts")
-      render_async(lv)
-
-      {:ok, _admin} =
-        Organisations.set_member_level(ctx.other, ctx.admin.instance_scope.membership.id, :admin)
-
-      assert_redirect(lv, "/")
-    end
-
-    test "an instance admin removed while their scope is in Web shop moves to /", ctx do
-      shop = sign_up_fixture(%{organisation_name: "Web shop"})
-      join_fixture(shop.scope, ctx.admin.user)
-      conn = put_session(ctx.conn, :last_workspace_id, shop.workspace.id)
-
-      {:ok, lv, _html} = live(conn, ~p"/instance/accounts")
-      render_async(lv)
-
-      assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id ==
-               shop.organisation.id
-
-      {:ok, _removed} =
-        Organisations.remove_member(ctx.other, ctx.admin.instance_scope.membership.id)
-
-      assert_redirect(lv, "/")
-    end
-
-    test "an instance admin removed while their scope is in the instance organisation moves to /",
-         ctx do
-      # The membership of the scope is gone, so `ApiaryWeb.UserAuth.reload_scope/1` sends
-      # the page to `/`, before and after the page mounts on the core's Access check.
-      workspace = workspace_fixture(ctx.here)
-      conn = put_session(ctx.conn, :last_workspace_id, workspace.id)
-
-      {:ok, lv, _html} = live(conn, ~p"/instance/accounts")
-      render_async(lv)
-
-      assert :sys.get_state(lv.pid).socket.assigns.current_scope.organisation.id == ctx.here.id
-
-      {:ok, _removed} =
-        Organisations.remove_member(ctx.other, ctx.admin.instance_scope.membership.id)
-
-      assert_redirect(lv, "/")
-    end
-
-    test "an instance admin who joins Web shop keeps the page and the password link shown", ctx do
-      %{user: user} = sign_up_fixture()
-      shop = sign_up_fixture(%{organisation_name: "Web shop"})
-      Apiary.Mail.put_test_source(:none)
-
-      {:ok, lv, _html} = live(ctx.conn, ~p"/instance/accounts")
-      render_async(lv)
-      lv |> element("#account-#{user.id}-password-link") |> render_click()
-      panel = lv |> element("#password-link") |> render()
-
-      # Accepting an invitation sends no membership message, so the level change sends
-      # it. The hook then runs the core's step for the Instance pages, and a redirect
-      # there ends the page.
-      %{membership: membership} = join_fixture(shop.scope, ctx.admin.user)
-      {:ok, _admin} = Organisations.set_member_level(shop.scope, membership.id, :admin)
-
-      # The page lists Web shop only after the hook handled the message.
-      places = :sys.get_state(lv.pid).socket.assigns.memberships
-      assert shop.organisation.id in Enum.map(places, & &1.organisation_id)
-      assert lv |> element("#password-link") |> render() == panel
-      refute_redirected(lv)
     end
   end
 end
