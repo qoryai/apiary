@@ -67,7 +67,8 @@ possible:
 - **Indexes on large tables are created concurrently** (`create index ... concurrently`,
   which Ecto runs outside a transaction), so a busy instance keeps serving.
 - **Every migration has a `down`.** `bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, <version>)"`
-  reverts to the migration version the changelog names for the previous release.
+  reverts every migration from `<version>` on, that version included: give the first
+  migration the previous release does not have.
 - **The keys of the organisation and the workspace come first.** Every table carries
   `organisation_id`, and every table that belongs to a workspace carries `workspace_id`
   beside it with the composite foreign key, from its first migration; no migration
@@ -85,9 +86,17 @@ going back one release changes nothing in the database:
 Further back than one release, restore the dump taken before the upgrade
 ([Backup and restore](backup.md)), then set the version back and start it.
 
+Two migrations do not follow expand, then contract: `20261111090000` drops
+`machine_types.image` and `20261111100000` drops `runs.provider_value_id`. A release
+from before them, whose last migration is `20261110090000`, reads both columns and does
+not start on the newer schema. To go back to such a release, first take the schema back
+with the rollback command below and `20261110153000`, the first migration that release
+does not have, then set the version back. The rollback adds both columns again, with no
+image on any machine type.
+
 Every migration has a `down` all the same. To take the schema back too, run the rollback
 command above from the newer release's image, in a one-off container, while `.env` still
-names it, with the migration version the changelog names for the previous release, and
+names it, with the first migration version the previous release does not have, and
 then set the version back:
 
 ```sh
