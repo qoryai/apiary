@@ -1053,7 +1053,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider nor a fallback already, with the chosen model where the provider has a model
   of the same id. **Save** saves the fallbacks with the model choice. With no such
   provider left, the part shows “Add another model provider that serves Claude Code in
-  Organisation settings › Model providers, then add it here as a fallback.”
+  Organisation settings › Model providers, then add it here as a fallback.” A save that
+  changes the chosen provider to a fallback's provider drops that fallback.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
