@@ -34,7 +34,10 @@ defmodule ApiaryWeb.LiveSocketTest do
     config = Endpoint.bound_https(http: [port: 4002], https: https)
 
     assert config[:https][:websocket_options] == [max_fragmented_message_size: 4_194_304]
-    assert Keyword.delete(config[:https], :websocket_options) == https
+
+    assert Keyword.drop(config[:https], [:websocket_options, :thousand_island_options]) ==
+             https
+
     assert config[:http] == [port: 4002]
 
     assert [http: _, https: opts] = listeners(config)
@@ -47,12 +50,15 @@ defmodule ApiaryWeb.LiveSocketTest do
     assert config[:https] == [
              :inet6,
              port: 4443,
-             websocket_options: [max_fragmented_message_size: 4_194_304, compress: false]
+             websocket_options: [max_fragmented_message_size: 4_194_304, compress: false],
+             thousand_island_options: [shutdown_timeout: 20_000]
            ]
 
     # A bound the `https:` names is kept.
     https = [port: 4443, websocket_options: [max_fragmented_message_size: 1_048_576]]
-    assert Endpoint.bound_https(https: https) == [https: https]
+
+    assert Endpoint.bound_https(https: https)[:https][:websocket_options] ==
+             https[:websocket_options]
   end
 
   test "without an `https:`, none is added, nor a listener" do
