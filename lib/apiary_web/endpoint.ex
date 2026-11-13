@@ -125,22 +125,53 @@ defmodule ApiaryWeb.Endpoint do
   @max_fragmented_message_size 4_194_304
 
   @doc false
-  # The endpoint's configuration with the bound on a fragmented message put into its
-  # `https:` as well, unless that `https:` names a bound already. Called at boot
-  # (`Apiary.Application`): config/config.exs cannot set it there, since, with the server
-  # on, Phoenix starts an https listener for any `https:` that is set. An `https:` that is
-  # not a list (absent, `nil` or `false`) is left as it is, so this never adds a listener.
-  def bound_https(config) do
-    with https when is_list(https) <- config[:https],
-         {:websocket_options, websocket} when is_list(websocket) <-
-           List.keyfind(https, :websocket_options, 0, {:websocket_options, []}) do
-      websocket =
-        Keyword.put_new(websocket, :max_fragmented_message_size, @max_fragmented_message_size)
+  # How long a stop of the endpoint waits for open requests, in milliseconds: the
+  # `shutdown_timeout` that config/config.exs sets for the `http:` listener. The same value
+  # bounds each connection, an `https:` listener's too (`bound_https/1`), and the stop of
+  # every listener together (`Apiary.Application`, `ApiaryWeb.EndpointDeadline`).
+  @spec stop_timeout(keyword) :: pos_integer
+  def stop_timeout(config \\ Application.get_env(:apiary, __MODULE__, [])) do
+    config
+    |> Keyword.fetch!(:http)
+    |> Keyword.fetch!(:thousand_island_options)
+    |> Keyword.fetch!(:shutdown_timeout)
+  end
 
-      https = List.keystore(https, :websocket_options, 0, {:websocket_options, websocket})
-      Keyword.put(config, :https, https)
-    else
-      _absent -> config
+  @doc false
+  # The endpoint's configuration with the bound on a fragmented message and the stop's
+  # wait for open requests (`stop_timeout/1`) put into its `https:` as well, each unless
+  # that `https:` sets it already. Called at boot (`Apiary.Application`):
+  # config/config.exs cannot set them there, since, with the server on, Phoenix starts an
+  # https listener for any `https:` that is set. An `https:` that is not a list (absent,
+  # `nil` or `false`) is left as it is, so this never adds a listener.
+  def bound_https(config) do
+    case config[:https] do
+      https when is_list(https) ->
+        https =
+          https
+          |> put_new_in(
+            :websocket_options,
+            :max_fragmented_message_size,
+            @max_fragmented_message_size
+          )
+          |> put_new_in(:thousand_island_options, :shutdown_timeout, stop_timeout(config))
+
+        Keyword.put(config, :https, https)
+
+      _absent ->
+        config
+    end
+  end
+
+  # `https` with `option` put into its options under `key`, unless they set it already.
+  # Options under `key` that are not a list are left as they are.
+  defp put_new_in(https, key, option, value) do
+    case List.keyfind(https, key, 0, {key, []}) do
+      {^key, options} when is_list(options) ->
+        List.keystore(https, key, 0, {key, Keyword.put_new(options, option, value)})
+
+      _other ->
+        https
     end
   end
 
