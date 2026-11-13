@@ -42,8 +42,8 @@ Give the container or the service a stop grace period of at least 40 seconds:
 - Kubernetes: `terminationGracePeriodSeconds: 40` in the pod's spec.
 - systemd: `TimeoutStopSec=40` in the unit.
 
-With a shorter grace period, Qory Apiary is killed before the open requests and jobs
-end. Docker waits 10 seconds by default.
+With a shorter grace period, Docker can kill Qory Apiary before the open requests and
+jobs end. Docker waits 10 seconds by default.
 
 ## Before an upgrade
 

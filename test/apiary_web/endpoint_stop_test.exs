@@ -48,6 +48,10 @@ defmodule ApiaryWeb.EndpointStopTest do
   end
 
   describe "a stop of the endpoint" do
+    # A stop ends within this many limits. Without `ApiaryWeb.EndpointDeadline`, a stop
+    # with hung requests in two acceptors takes at least two limits.
+    @margin 1.9
+
     # The endpoint's `http:` options on a free port of the loopback address, with `limit`
     # in place of the 20 s, so the tests stay short.
     defp http(limit) do
@@ -56,22 +60,42 @@ defmodule ApiaryWeb.EndpointStopTest do
       |> Keyword.update!(:thousand_island_options, &Keyword.put(&1, :shutdown_timeout, limit))
     end
 
+    # An `https:` listener as `ApiaryWeb.Endpoint.bound_https/1` makes it of the endpoint's
+    # configuration, on a free port, with a certificate made for the test.
+    defp https(limit) do
+      %{cert: cert, key: key} =
+        :public_key.pkix_test_root_cert(~c"localhost", key: {:rsa, 2048, 65_537})
+
+      key = {:RSAPrivateKey, :public_key.der_encode(:RSAPrivateKey, key)}
+      tls = [cert: cert, key: key]
+
+      Endpoint.bound_https(http: http(limit), https: [ip: {127, 0, 0, 1}, port: 0])[:https]
+      |> Keyword.merge(startup_log: false)
+      |> Keyword.update!(:thousand_island_options, &Keyword.put(&1, :transport_options, tls))
+    end
+
     # The endpoint's tree as `Apiary.Application` starts it, with `limit` in place of the
     # 20 s: a supervisor of the listeners, `Served` in place of the endpoint, then
-    # `ApiaryWeb.EndpointDeadline`. Returns the application's supervisor and the port.
-    defp start_endpoint(limit) do
+    # `ApiaryWeb.EndpointDeadline` with the options under `:deadline`. With `https: true`,
+    # an https listener beside the http one. Returns the application's supervisor and the
+    # port of each listener.
+    defp start_endpoint(limit, opts \\ []) do
+      listeners =
+        [http: http(limit)] ++ if(opts[:https], do: [https: https(limit)], else: [])
+
       endpoint = %{
         id: Served,
         start:
           {Supervisor, :start_link,
            [
-             Bandit.PhoenixAdapter.child_specs(Served, otp_app: :apiary, http: http(limit)),
+             Bandit.PhoenixAdapter.child_specs(Served, [otp_app: :apiary] ++ listeners),
              [strategy: :one_for_one, name: Served]
            ]},
         type: :supervisor
       }
 
-      children = [endpoint, {ApiaryWeb.EndpointDeadline, endpoint: Served, timeout: limit}]
+      deadline = [endpoint: Served, timeout: limit] ++ Keyword.get(opts, :deadline, [])
+      children = [endpoint, {ApiaryWeb.EndpointDeadline, deadline}]
 
       app =
         start_supervised!(%{
@@ -81,40 +105,95 @@ defmodule ApiaryWeb.EndpointStopTest do
           restart: :temporary
         })
 
-      {:ok, {_ip, port}} = Bandit.PhoenixAdapter.server_info(Served, :http)
-      {app, port}
+      ports =
+        for {scheme, _opts} <- listeners, into: %{} do
+          {:ok, {_ip, port}} = Bandit.PhoenixAdapter.server_info(Served, scheme)
+          {scheme, port}
+        end
+
+      {app, ports}
     end
 
-    defp connect(port) do
+    defp connect(port, scheme \\ :http)
+
+    defp connect(port, :http) do
       {:ok, socket} = :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false])
-      socket
+      {:gen_tcp, socket}
     end
 
-    defp get(socket, path, connection) do
-      :ok =
-        :gen_tcp.send(
-          socket,
-          "GET #{path} HTTP/1.1\r\nhost: localhost\r\nconnection: #{connection}\r\n\r\n"
-        )
+    defp connect(port, :https) do
+      {:ok, socket} =
+        :ssl.connect(~c"127.0.0.1", port, [:binary, active: false, verify: :verify_none])
+
+      {:ssl, socket}
     end
 
-    # The bytes read until the connection closes, and when it closed.
-    defp read_all(socket, acc \\ "") do
-      case :gen_tcp.recv(socket, 0, 5_000) do
-        {:ok, data} -> read_all(socket, acc <> data)
+    defp get({transport, socket}, path, connection) do
+      request = "GET #{path} HTTP/1.1\r\nhost: localhost\r\nconnection: #{connection}\r\n\r\n"
+      :ok = transport.send(socket, request)
+    end
+
+    # The bytes read until the connection closes, and when it closed: `:open` when it is
+    # still open after 5 s.
+    defp read_all({transport, socket}, acc \\ "") do
+      case transport.recv(socket, 0, 5_000) do
+        {:ok, data} -> read_all({transport, socket}, acc <> data)
         {:error, :closed} -> {acc, System.monotonic_time(:millisecond)}
+        {:error, :timeout} -> {acc, :open}
       end
     end
 
     # One response of a connection kept alive, read up to its body "ok".
-    defp read_ok(socket, acc \\ "") do
-      {:ok, data} = :gen_tcp.recv(socket, 0, 5_000)
-      acc = acc <> data
-      if String.ends_with?(acc, "\r\n\r\nok"), do: acc, else: read_ok(socket, acc)
+    defp read_ok({transport, socket}, acc \\ "") do
+      case transport.recv(socket, 0, 5_000) do
+        {:ok, data} ->
+          acc = acc <> data
+
+          if String.ends_with?(acc, "\r\n\r\nok"),
+            do: acc,
+            else: read_ok({transport, socket}, acc)
+
+        {:error, reason} ->
+          raise "no response to GET /ok after #{inspect(acc)}: #{inspect(reason)}"
+      end
+    end
+
+    # A request that never ends, on a connection of `scheme`, in a task.
+    defp hang(port, scheme, test) do
+      Task.async(fn ->
+        socket = connect(port, scheme)
+        get(socket, Served.path("hang", test), "close")
+        read_all(socket)
+      end)
+    end
+
+    # Returns once the listener on `port` refuses connections.
+    defp await_closed(port, tries \\ 200)
+    defp await_closed(_port, 0), do: flunk("the listener still accepts connections")
+
+    defp await_closed(port, tries) do
+      case :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 100) do
+        {:ok, socket} ->
+          :gen_tcp.close(socket)
+          Process.sleep(10)
+          await_closed(port, tries - 1)
+
+        {:error, _refused} ->
+          :ok
+      end
+    end
+
+    # Each connection closed without a response, within the margin after `started`.
+    defp assert_cut(replies, started, limit) do
+      for {reply, closed} <- replies do
+        assert reply == ""
+        assert is_integer(closed), "a connection is still open 5 s after the stop"
+        assert closed - started < @margin * limit
+      end
     end
 
     test "waits for a request that ends within the limit" do
-      {app, port} = start_endpoint(2_000)
+      {app, %{http: port}} = start_endpoint(2_000)
       test = self()
 
       response =
@@ -133,7 +212,7 @@ defmodule ApiaryWeb.EndpointStopTest do
     end
 
     test "after a crash of the deadline, the listener goes on accepting" do
-      {app, port} = start_endpoint(1_000)
+      {app, %{http: port}} = start_endpoint(1_000)
 
       [deadline] =
         for {ApiaryWeb.EndpointDeadline, pid, _, _} <- Supervisor.which_children(app), do: pid
@@ -145,22 +224,16 @@ defmodule ApiaryWeb.EndpointStopTest do
       assert {"HTTP/1.1 200 OK\r\n" <> _, _closed} = read_all(socket)
     end
 
-    test "ends within its limit, every listener's connection cut, kept-alive ones too" do
+    test "ends within its limit, every connection cut, kept-alive ones too" do
       limit = 1_000
-      {app, port} = start_endpoint(limit)
+      {app, %{http: port}} = start_endpoint(limit)
       test = self()
 
       # Five requests that never end, each on a separate connection.
-      hung =
-        for _ <- 1..5 do
-          Task.async(fn ->
-            socket = connect(port)
-            get(socket, Served.path("hang", test), "close")
-            read_all(socket)
-          end)
-        end
+      hung = for _ <- 1..5, do: hang(port, :http, test)
 
-      # Two connections kept alive, which send a request that never ends during the stop.
+      # Two connections kept alive, which send a request that never ends once the stop has
+      # closed the port.
       kept =
         for _ <- 1..2 do
           Task.async(fn ->
@@ -185,27 +258,56 @@ defmodule ApiaryWeb.EndpointStopTest do
           pid
         end
 
+      endpoint = Process.monitor(Served)
       started = System.monotonic_time(:millisecond)
+      stop = Task.async(fn -> :timer.tc(fn -> Supervisor.stop(app) end) end)
 
-      {{micros, :ok}, log} =
-        with_log(fn ->
-          stop = Task.async(fn -> :timer.tc(fn -> Supervisor.stop(app) end) end)
+      await_closed(port)
+      for pid <- kept_pids, do: send(pid, :go)
 
-          # The stop has begun by then; were it not, the requests would only be open longer.
-          Process.sleep(100)
-          for pid <- kept_pids, do: send(pid, :go)
+      {micros, :ok} = Task.await(stop, 5_000)
+      assert micros < @margin * limit * 1_000
+      # The endpoint stopped, and was not killed: only the connections were.
+      assert_receive {:DOWN, ^endpoint, :process, _pid, :shutdown}
 
-          Task.await(stop, 5_000)
-        end)
+      assert_cut(Task.await_many(hung ++ kept, 10_000), started, limit)
+    end
 
-      assert micros < 1.5 * limit * 1_000
-      # No process of the endpoint was killed: only the connections were.
-      refute log =~ "killed"
+    test "cuts the connections of the http and the https listener together" do
+      limit = 1_000
+      {app, %{http: http, https: https}} = start_endpoint(limit, https: true)
+      test = self()
 
-      for {reply, closed} <- Task.await_many(hung ++ kept, 5_000) do
-        assert reply == ""
-        assert closed - started < 1.5 * limit
-      end
+      hung = [hang(http, :http, test), hang(http, :http, test)]
+      hung = hung ++ [hang(https, :https, test), hang(https, :https, test)]
+      for _ <- 1..4, do: assert_receive({:in_flight, _handler}, 5_000)
+
+      endpoint = Process.monitor(Served)
+      started = System.monotonic_time(:millisecond)
+      {micros, :ok} = :timer.tc(fn -> Supervisor.stop(app) end)
+
+      assert micros < @margin * limit * 1_000
+      assert_receive {:DOWN, ^endpoint, :process, _pid, :shutdown}
+      assert_cut(Task.await_many(hung, 10_000), started, limit)
+    end
+
+    test "cuts the connections at its limit when closing the ports fails" do
+      limit = 1_000
+
+      {app, %{http: port}} =
+        start_endpoint(limit, deadline: [suspend: fn _server -> raise "suspend failed" end])
+
+      test = self()
+      hung = for _ <- 1..3, do: hang(port, :http, test)
+      for _ <- 1..3, do: assert_receive({:in_flight, _handler}, 2_000)
+
+      endpoint = Process.monitor(Served)
+      started = System.monotonic_time(:millisecond)
+      {micros, :ok} = :timer.tc(fn -> Supervisor.stop(app) end)
+
+      assert micros < @margin * limit * 1_000
+      assert_receive {:DOWN, ^endpoint, :process, _pid, :shutdown}
+      assert_cut(Task.await_many(hung, 10_000), started, limit)
     end
   end
 

@@ -1951,7 +1951,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On a stop, Qory Apiary finishes the open requests for up to 20 seconds in total, then
   the running jobs for up to 15 seconds. Give the container or the service a stop grace
   period of at least 40 seconds. `compose.yaml` sets `stop_grace_period: 40s` for the
-  `apiary` service (Upgrading, How the old release stops).
+  `apiary` service (the Upgrading guide, How the old release stops).
 
 ### Migrations
 
