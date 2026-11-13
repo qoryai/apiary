@@ -30,22 +30,27 @@ defmodule ApiaryWeb.LiveSocketTest do
   end
 
   test "an `https:` gets the same bound, and so does the listener made of it" do
+    # The `http:` the app booted with, from which an `https:` takes the stop's limit.
+    http = Application.get_env(:apiary, Endpoint)[:http]
     https = [port: 4443, keyfile: "priv/cert/key.pem", certfile: "priv/cert/cert.pem"]
-    config = Endpoint.bound_https(http: [port: 4002], https: https)
+    config = Endpoint.bound_https(http: http, https: https)
 
     assert config[:https][:websocket_options] == [max_fragmented_message_size: 4_194_304]
 
     assert Keyword.drop(config[:https], [:websocket_options, :thousand_island_options]) ==
              https
 
-    assert config[:http] == [port: 4002]
+    assert config[:http] == http
 
     assert [http: _, https: opts] = listeners(config)
     assert opts[:websocket_options][:max_fragmented_message_size] == 4_194_304
 
     # Beside the websocket options it names, in a list that is not only keywords.
     config =
-      Endpoint.bound_https(https: [:inet6, port: 4443, websocket_options: [compress: false]])
+      Endpoint.bound_https(
+        http: http,
+        https: [:inet6, port: 4443, websocket_options: [compress: false]]
+      )
 
     assert config[:https] == [
              :inet6,
@@ -57,7 +62,7 @@ defmodule ApiaryWeb.LiveSocketTest do
     # A bound the `https:` names is kept.
     https = [port: 4443, websocket_options: [max_fragmented_message_size: 1_048_576]]
 
-    assert Endpoint.bound_https(https: https)[:https][:websocket_options] ==
+    assert Endpoint.bound_https(http: http, https: https)[:https][:websocket_options] ==
              https[:websocket_options]
   end
 

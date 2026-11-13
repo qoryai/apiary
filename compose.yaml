@@ -66,6 +66,9 @@ services:
     image: *apiary-image
     restart: unless-stopped
     init: true
+    # A stop finishes open requests for up to 20 s, then running jobs for up to 15 s:
+    # guides/upgrading.md, How the old release stops.
+    stop_grace_period: 40s
     depends_on:
       keys:
         condition: service_completed_successfully

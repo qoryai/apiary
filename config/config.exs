@@ -39,7 +39,8 @@ config :apiary, ApiaryWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   # The "/live" socket's bound on a fragmented message (`ApiaryWeb.Endpoint`), and how
   # long a stop waits for open requests before it closes their connections, merged with
-  # each environment's `http:`. An `https:` gets both at boot
+  # each environment's `http:`. The same 20 s bounds the stop of every listener together
+  # (`ApiaryWeb.Endpoint.stop_timeout/1`). An `https:` gets both at boot
   # (`ApiaryWeb.Endpoint.bound_https/1`): one set here would start an https listener on
   # every install that runs the server.
   http: [
@@ -182,7 +183,7 @@ config :apiary, Oban,
   lifeline: [rescue_after: {30, :minutes}],
   # The endpoint stops before Oban (`Apiary.Application`): a stop takes up to 20 s for
   # open requests (the endpoint's `http:`), then up to 15 s for running jobs. 35 s stays
-  # under the 40 s stop grace period that guides/upgrading.md asks an install to give.
+  # under a stop grace period of 40 s, the least an install sets (guides/upgrading.md).
   shutdown_grace_period: 15_000
 
 # mdex's NIF (Apiary.Sources.Body) on x86_64 Linux: the build without AVX and FMA, which

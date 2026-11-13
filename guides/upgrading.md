@@ -31,13 +31,14 @@ the restart, for example to watch a long migration.
 
 ## How the old release stops
 
-On a stop, Qory Apiary closes the port it listens on and finishes the requests that are
-open, for up to 20 seconds. Then it finishes the jobs that are running, for up to 15
-seconds. A request or a job still running after that is cut.
+On a stop, Qory Apiary closes the ports it listens on and finishes the open requests for
+up to 20 seconds in total. Then it finishes the running jobs for up to 15 seconds. A
+request still open after the 20 seconds, or a job still running after the 15, is cut.
 
 Give the container or the service a stop grace period of at least 40 seconds:
 
-- Docker Compose: `stop_grace_period: 40s` on the `apiary` service.
+- Docker Compose: `stop_grace_period: 40s` on the `apiary` service, as `compose.yaml`
+  sets it.
 - Kubernetes: `terminationGracePeriodSeconds: 40` in the pod's spec.
 - systemd: `TimeoutStopSec=40` in the unit.
 
@@ -72,8 +73,9 @@ end. Docker waits 10 seconds by default.
 Upgrade every Qory Gateway first, wait until the gateway accepts connections, then
 upgrade Qory Apiary. A new release of Qory Apiary can send the gateway a value of the run
 configuration that only the new gateway reads, and an older gateway then fails the run
-with `run_configuration_invalid`. The script `bin/update` of qoryai/deploy upgrades in
-this order: the gateway, Qory Apiary, the GitHub adapter, the provisioner, and Caddy.
+with `run_configuration_invalid`. The script `aws/host/bin/update` of qoryai/deploy
+upgrades in this order: the gateway, Qory Apiary, the GitHub adapter, the provisioner,
+and Caddy.
 
 ## How migrations are written
 

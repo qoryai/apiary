@@ -1948,10 +1948,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the run
   configuration schema of an earlier gateway does not define.
 <!-- /feature -->
-- On a stop, Qory Apiary finishes the open requests for up to 20 seconds, then the
-  running jobs for up to 15 seconds. Give the container or the service a stop grace
-  period of at least 40 seconds, for example `stop_grace_period: 40s` in Docker Compose
-  (Upgrading, How the old release stops).
+- On a stop, Qory Apiary finishes the open requests for up to 20 seconds in total, then
+  the running jobs for up to 15 seconds. Give the container or the service a stop grace
+  period of at least 40 seconds. `compose.yaml` sets `stop_grace_period: 40s` for the
+  `apiary` service (Upgrading, How the old release stops).
 
 ### Migrations
 

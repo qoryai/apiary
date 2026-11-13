@@ -121,18 +121,29 @@ defmodule ApiaryWeb.Endpoint do
     router.call(conn, router.init([]))
   end
 
-  # The bound on a fragmented message, and how long a stop waits for open requests, the
-  # values config/config.exs sets under `http:`.
+  # The bound on a fragmented message, the one config/config.exs sets under `http:`.
   @max_fragmented_message_size 4_194_304
-  @shutdown_timeout 20_000
+
+  @doc false
+  # How long a stop of the endpoint waits for open requests, in milliseconds: the
+  # `shutdown_timeout` that config/config.exs sets for the `http:` listener. The same value
+  # bounds each connection, an `https:` listener's too (`bound_https/1`), and the stop of
+  # every listener together (`Apiary.Application`, `ApiaryWeb.EndpointDeadline`).
+  @spec stop_timeout(keyword) :: pos_integer
+  def stop_timeout(config \\ Application.get_env(:apiary, __MODULE__, [])) do
+    config
+    |> Keyword.fetch!(:http)
+    |> Keyword.fetch!(:thousand_island_options)
+    |> Keyword.fetch!(:shutdown_timeout)
+  end
 
   @doc false
   # The endpoint's configuration with the bound on a fragmented message and the stop's
-  # wait for open requests put into its `https:` as well, each unless that `https:` sets
-  # it already. Called at boot (`Apiary.Application`): config/config.exs cannot set them
-  # there, since, with the server on, Phoenix starts an https listener for any `https:`
-  # that is set. An `https:` that is not a list (absent, `nil` or `false`) is left as it
-  # is, so this never adds a listener.
+  # wait for open requests (`stop_timeout/1`) put into its `https:` as well, each unless
+  # that `https:` sets it already. Called at boot (`Apiary.Application`):
+  # config/config.exs cannot set them there, since, with the server on, Phoenix starts an
+  # https listener for any `https:` that is set. An `https:` that is not a list (absent,
+  # `nil` or `false`) is left as it is, so this never adds a listener.
   def bound_https(config) do
     case config[:https] do
       https when is_list(https) ->
@@ -143,7 +154,7 @@ defmodule ApiaryWeb.Endpoint do
             :max_fragmented_message_size,
             @max_fragmented_message_size
           )
-          |> put_new_in(:thousand_island_options, :shutdown_timeout, @shutdown_timeout)
+          |> put_new_in(:thousand_island_options, :shutdown_timeout, stop_timeout(config))
 
         Keyword.put(config, :https, https)
 
