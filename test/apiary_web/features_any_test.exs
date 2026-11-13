@@ -248,7 +248,8 @@ defmodule ApiaryWeb.FeaturesAnyTest do
       assert answer("/instance", person([:factory])) == {200, "instance"}
 
       socket = %Phoenix.LiveView.Socket{
-        assigns: %{__changed__: %{}, current_scope: person([:factory])}
+        assigns: %{__changed__: %{}, current_scope: person([:factory])},
+        private: %{lifecycle: %Phoenix.LiveView.Lifecycle{}}
       }
 
       assert {:cont, _socket} =
@@ -329,7 +330,12 @@ defmodule ApiaryWeb.FeaturesAnyTest do
     end
   end
 
-  defp socket, do: %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+  # A socket as a mount gives it, with the lifecycle the gate attaches its event hook to.
+  defp socket,
+    do: %Phoenix.LiveView.Socket{
+      assigns: %{__changed__: %{}},
+      private: %{lifecycle: %Phoenix.LiveView.Lifecycle{}}
+    }
 
   # Compiles a controller whose body is `use_features`, under a name of its own.
   defp compile_page(use_features) do

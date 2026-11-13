@@ -9,6 +9,12 @@ defmodule ApiaryProWeb.ClientLive.CopiedLinkTest do
   # an owner of the suite's one instance organisation.
   use ApiaryWeb.ConnCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
   import Swoosh.TestAssertions

@@ -10,6 +10,12 @@ defmodule ApiaryPro.TransfersTest do
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
@@ -56,9 +62,12 @@ defmodule ApiaryPro.TransfersTest do
       assert %Tenant{operator_id: nil, operator_since: nil} = tenant_of(id)
       organisation = Repo.get!(Organisation, id)
 
-      # It has what an organisation with no operator has: the instance's.
+      # It has what an organisation with no operator has: the instance's, without the
+      # switch of the whole instance, which no organisation is shown.
       assert Repo.all(from g in Grant, where: g.organisation_id == ^id) == []
-      assert ApiaryPro.Features.of(organisation) == Features.enabled()
+
+      assert ApiaryPro.Features.of(organisation) ==
+               Features.enabled() -- [:feature_visibility]
 
       for membership <- [ctx.client.owner.membership, ctx.admin.membership] do
         assert Repo.get!(Membership, membership.id).level == membership.level

@@ -40,13 +40,13 @@ defmodule Apiary.DataCaseFeaturesTest do
 
       error =
         assert_raise ArgumentError, fn ->
-          Apiary.DataCase.setup_features(%{async: false, with_features: [:security]})
+          Apiary.DataCase.setup_features(%{async: false, with_features: [:secrets]})
         end
 
       assert error.message ==
                "Correct the test's with_features: list.\n" <>
                  "QORY_FEATURES list is not valid: " <>
-                 "security needs observability, which is left out ([:security])"
+                 "secrets needs security, which is left out ([:secrets])"
 
       assert Application.get_env(:apiary, :features) == previous
     end

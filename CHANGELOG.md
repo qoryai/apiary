@@ -44,8 +44,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
     of the organisation shares.
 <!-- /feature -->
 
-  The three features are on by default, as every other feature but `registry`:
-  `QORY_FEATURES` unset, empty, `all` or `all-…` turns them on.
+  The three features are on by default: `QORY_FEATURES` set to `all` or `all-…` turns
+  them on, and so do the defaults, which apply where it is not set or is empty and no
+  features are saved.
   `managed_organisations` needs `observability`, `organisation_policy` needs `security`,
   and `organisation_variables` needs `security` and `secrets`. The guides at `/docs`
   describe each one, and the Instance admins guide describes Instance settings.
@@ -1183,6 +1184,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `GET /health` returns `set_up` in its `200`: `false` until the instance's first set-up
   and `true` after it, for a deploy script or an instance admin. The `503` has no
   `set_up`, and a `200` has no `set_up` when the lookup fails.
+- **Instance settings › Features**: an instance admin turns features on and off, and
+  **Save** applies the change on every node without a restart. A run that is already
+  running finishes with the features it started with. While `QORY_FEATURES` is set and
+  not empty, its features apply and the page is read only; each start with it set also
+  saves its features.
+- A switch on that page, off by default: **Features by person**. Where the server's
+  config turned it on, the first start after the upgrade saves it on.
 
 ### Changed
 
@@ -1200,8 +1208,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - The product has one name, Qory Apiary. `EDITIONS.md` and the names of the editions
   are gone from the repository and the documentation.
-- `QORY_FEATURES` unset, empty, `all` or `all-…` turns on every feature: `secrets`,
-  `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
+- `QORY_FEATURES` set to `all` or `all-…`, and the defaults, which apply where it is not
+  set or is empty and no features are saved, turn on every feature that is not off by
+  default: `secrets`, `factory`, `workflow_model` and the Paths field of a policy rule's form are on by
   default, and the private image registry's feature, `registry`, is on where
   `QORY_REGISTRY` is set. Up to this change, those values turned on `observability` and
   `security` alone. An instance whose `QORY_FEATURES` is a list keeps the features in the
@@ -1739,6 +1748,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider has and how many of them are in cooldown, such as “3 keys, 1 in cooldown”, in
   place of a number. A provider's page shows each key's state in place of a mask.
 <!-- /feature -->
+- `observability` is always on: `QORY_FEATURES` no longer turns it off.
+- A feature that a later release adds starts at its default, even on an instance whose
+  features were saved.
 
 ### Fixed
 
@@ -2303,6 +2315,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `lost` has an outcome.
 - `work_items`: a partial index on the work items that explore with their stage running,
   built inside the migration, so writes to `work_items` wait until the build ends.
+- Three migrations add the saved features to the instance's settings (20261112120000,
+  20261112140000) and the features each run started with (20261112120100).
 
 ## [0.1.0] - 2026-10-13
 

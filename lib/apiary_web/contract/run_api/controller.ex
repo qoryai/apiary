@@ -181,11 +181,18 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   ## The feature
 
-  # Where the instance does not have `workflow_model`, the answer a verified request to a
-  # route of a feature that is off gets (`ApiaryWeb.Features`): the error page's `404`,
-  # signed.
+  # Where the run did not keep `workflow_model` when it was claimed, whatever the instance
+  # has now, or, for a run that kept no features, where the instance does not have it
+  # (`ApiaryWeb.Contract.RunFeatures`), the answer a verified request to a route of a
+  # feature that is off gets (`ApiaryWeb.Features`): the error page's `404`, signed.
   defp workflow_model(conn, _opts) do
-    if Boundary.on?() do
+    on? =
+      case ApiaryWeb.Contract.RunFeatures.recorded(conn) do
+        nil -> Boundary.on?()
+        recorded -> Apiary.Features.on?(Boundary.route_feature(), recorded)
+      end
+
+    if on? do
       conn
     else
       conn

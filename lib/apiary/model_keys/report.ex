@@ -23,7 +23,9 @@ defmodule Apiary.ModelKeys.Report do
   `answer/5` takes the report for the run, in order:
 
     1. `{:error, :not_found}` unless model keys apply: the `factory` and `secrets`
-       features on;
+       features on among the ones the run kept when it was claimed, until it has ended
+       and for 60 seconds after (`recorded/3`), or the instance's for a run that ended
+       before that or kept none;
     2. `{:error, :not_found}` for a run the key's gateway does not hold, as a gateway's
        secrets request finds it: a run through the key's gateway, whose run key lists the
        key, that the key and the request's instance may reload, of a workspace the
@@ -214,17 +216,18 @@ defmodule Apiary.ModelKeys.Report do
   def answer(%AccessKey{} = access_key, run_id, report, instance_id, %DateTime{} = now) do
     access_key = Repo.preload(access_key, [:workspace, :node])
 
-    with true <- ProviderCredential.applies?() || {:error, :not_found},
-         {:ok, run} <- run(access_key, run_id, instance_id),
+    with {:ok, run} <- run(access_key, run_id, instance_id),
+         features = window_features(run, now),
+         true <- ProviderCredential.applies?(features) || {:error, :not_found},
          :ok <- may_post(access_key, run) do
       cond do
         live?(run) ->
-          keys = ModelKeys.run_keys(run)
+          keys = ModelKeys.run_keys(run, features)
           :ok = ModelKeys.record(keys, report.keys, now)
           {:ok, body(ModelKeys.run_states(keys, now))}
 
         just_ended?(run, now) ->
-          :ok = ModelKeys.record(ModelKeys.run_keys(run), report.keys, now)
+          :ok = ModelKeys.record(ModelKeys.run_keys(run, features), report.keys, now)
           {:error, :gone}
 
         true ->
@@ -235,6 +238,29 @@ defmodule Apiary.ModelKeys.Report do
     exception ->
       Logger.error("a model keys report could not be taken: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
+  end
+
+  @doc """
+  recorded/3 is the names of the features a report for the run `run_id` from
+  `access_key` is checked against at `now`, as `answer/5` checks them: the ones the run
+  kept when it was claimed, until it has ended and for 60 seconds after, the window in
+  which its last report is still recorded; nil for a run the key does not find, a run
+  that ended before that, or a run that kept none, which follow the instance's features.
+  """
+  @spec recorded(AccessKey.t(), term, DateTime.t()) :: [String.t()] | nil
+  def recorded(%AccessKey{} = access_key, run_id, %DateTime{} = now) do
+    with true <- Batch.uuid?(run_id),
+         %Run{} = run <- Repo.one(Sender.run_query(access_key, run_id)) do
+      window_features(run, now)
+    else
+      _other -> nil
+    end
+  end
+
+  # The features the run kept, until it has ended and while its end is within
+  # `@after_exit_seconds`; else nil.
+  defp window_features(%Run{} = run, now) do
+    if not Run.ended?(run, now) or just_ended?(run, now), do: run.features
   end
 
   # The run as a secrets request finds it: every other run is not found, whatever the

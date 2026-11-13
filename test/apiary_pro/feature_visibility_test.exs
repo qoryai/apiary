@@ -6,6 +6,12 @@ defmodule ApiaryPro.FeatureVisibilityTest do
   # (`ApiaryPro.Flags.put_feature_visibility/1`).
   use Apiary.DataCase, async: true
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Ecto.Query
 
   import Apiary.OrganisationsFixtures
@@ -71,7 +77,9 @@ defmodule ApiaryPro.FeatureVisibilityTest do
 
           # With the switch on, the form leaves the run's Terminal out too, so it is
           # hidden with the rest (ApiaryPro.FeaturePartsTest).
-          taken = Features.enabled() -- [:observability]
+          # The switch of the whole instance, feature_visibility, needs only observability,
+          # so it stays.
+          taken = Features.enabled() -- [:observability, :feature_visibility]
           taken = if @on, do: taken ++ [:"observability.terminal"], else: taken
 
           scope = fresh(user, organisation)

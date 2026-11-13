@@ -1,6 +1,7 @@
 defmodule Apiary.Features do
   @moduledoc """
-  What this instance offers: its **features**, switched when the instance is launched.
+  What this instance offers: its **features**, set by `QORY_FEATURES` or turned on and off
+  by an instance admin in Instance settings › Features (`Apiary.Features.Saved`).
 
   | Feature | Covers | Needs |
   |---|---|---|
@@ -23,26 +24,34 @@ defmodule Apiary.Features do
   `node.*` and `access_key.*` actions belong. A part is never switched on or off: a part of a
   feature is on with its feature (`feature_of/1`), and a part of none on every instance.
 
-  `QORY_FEATURES` names the features the instance has, of the whole list: `all`; `all-`
+  `QORY_FEATURES` lists the features the instance has, of the whole list: `all`; `all-`
   and the features left out, separated by commas (`all-workflow_model`); or the features
-  on, separated by commas (`observability,security`). Unset or blank is `all`. A list keeps
-  off every feature it does not name, one an upgrade adds included; `all` and `all-…`
-  take that one on with the upgrade. A feature of another edition is unknown here.
-  `instance_mail`, a name the list once took, is accepted and ignored: Instance settings ›
-  Mail, which it switched on, is on every instance.
+  on, separated by commas (`observability,security`). `parse/1` reads unset or blank as
+  `all`, the defaults; where the variable is unset or blank, the saved list applies
+  (below). A list keeps off every feature it does not name, one an upgrade adds included;
+  `all` and `all-…` take that one on with the upgrade. `observability` is on whatever the
+  value is: a
+  list or an `all-…` that leaves it out keeps it on. A feature of another edition is
+  unknown here. `instance_mail`, a name the list once took, is accepted and ignored:
+  Instance settings › Mail, which it switched on, is on every instance.
   `config/runtime.exs` keeps the value as it is (a release reads that file before the
   application's modules can be relied on), and `boot!/0` checks it with `parse/1` when
   the application starts: an unknown name or a feature without the features it needs
-  stops the boot. The list is fixed while the instance runs.
+  stops the boot. Where the variable is not set, or is blank, the list an instance admin
+  saved in Instance settings › Features applies, and may change while the instance runs
+  (`Apiary.Features.Saved`); each node keeps a copy, which `enabled/0` reads. A run keeps
+  the features it was claimed with (`recorded/0`), and its requests are checked against
+  those (`on?/2`).
 
-  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on where a list contains
-  it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one does. The
+  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on where a list of
+  `QORY_FEATURES` contains it, or where an instance admin turned it on in the saved list:
+  `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one does. The
   core's `registry` is the one exception: those turn it on where `QORY_REGISTRY`, the
   registry's address, is set. Only an opt-in feature may need one, and it is never one a
   page shows or hides for an organisation (`built/0`).
 
-  A feature that is off is absent, not disabled: its pages answer not found, the navigation
-  leaves it out, its processes are not started. Every surface asks `on?/1`, or
+  A feature that is off is absent, not disabled: its pages answer not found, and the
+  navigation leaves it out. Every surface checks `on?/1`, or
   `visible?/2` with the scope of the person it serves; the discovery document of the
   server contract reads no feature.
 
@@ -60,8 +69,9 @@ defmodule Apiary.Features do
   action of the part (`Apiary.Access.Action`, `part`) is not found. Hiding `:nodes` hides
   the nodes' pages and actions from that person while the nodes keep working.
   What is hidden still works in full for everything that does not ask what a person is
-  shown, which follows the instance's features alone (`on?/1`): what a node is served (a
-  run's registration, events, attach, outcome and reload, and its run configuration),
+  shown, which follows the instance's features alone (`on?/1`), or a run's (`on?/2`):
+  what a node is served (a run's registration, events, attach, outcome and reload, and
+  its run configuration),
   rendering, the instance's jobs, retention and the audit trail, and the guides at
   `/docs`, the sign-in and landing pages and the routes' first answer
   (`ApiaryWeb.Features.Routes`).
@@ -155,9 +165,10 @@ defmodule Apiary.Features do
 
   @doc """
   opt_in/0 is the features listed with `default: false`, in the order of `all/0`: on only
-  where the value of `QORY_FEATURES` lists them by name, but `registry`, which `all` also
-  turns on where `QORY_REGISTRY` is set (`parse/2`), and never offered to show or hide for
-  an organisation (`built/0`).
+  where the value of `QORY_FEATURES` lists them by name, or where the saved list has them
+  (`Apiary.Features.Saved`), but `registry`, which `all` also turns on where
+  `QORY_REGISTRY` is set (`parse/2`); and never offered to show or hide for an
+  organisation (`built/0`).
   """
   @spec opt_in() :: [feature]
   def opt_in, do: registry().opt_in
@@ -329,12 +340,15 @@ defmodule Apiary.Features do
     * `observability,security`: those features and no other; an opt-in feature is on only
       where a list names it.
 
-  `all` may not be one of the features of a list. Every feature but `observability` needs
-  `observability`, whichever form names them. `instance_mail`, a name the list once took,
-  is accepted in either list and ignored.
+  `all` may not be one of the features of a list. `observability` is in every result,
+  whichever form leaves it out, so a list or an `all-…` without it keeps it on.
+  `instance_mail`, a name the list once took, is accepted in either list and ignored.
 
   Options: `registry:`, a value of `QORY_REGISTRY` to read in place of the instance's, for
-  a test.
+  a test; `config:`, the features the server's config turns on
+  (`c:Apiary.Edition.config_features/0`), which a set value that is not empty has as if it
+  listed them, but those an `all-…` leaves out by name, with the same check of their
+  needs. `[]` unless given.
   """
   @spec parse(String.t() | nil, keyword) :: {:ok, [feature]} | {:error, String.t()}
   def parse(value, opts \\ [])
@@ -350,11 +364,11 @@ defmodule Apiary.Features do
         {:ok, all}
 
       "all" ->
-        {:ok, all}
+        with_config(all, [], opts)
 
       "all-" <> left_out ->
         with {:ok, left_out} <- known(terms(left_out)),
-             do: check_needs(all -- left_out)
+             do: with_config(all -- left_out, left_out, opts)
 
       list ->
         names = terms(list)
@@ -368,8 +382,7 @@ defmodule Apiary.Features do
             {:error, "all is not a feature to list: all, all-<features>, or the features on"}
 
           true ->
-            with {:ok, listed} <- known(names),
-                 do: check_needs(Enum.filter(all(), &(&1 in listed)))
+            with {:ok, listed} <- known(names), do: with_config(listed, [], opts)
         end
     end
   end
@@ -387,6 +400,16 @@ defmodule Apiary.Features do
     opt_in = opt_in()
     Enum.filter(all(), &(&1 not in opt_in or (&1 == :registry and registry?)))
   end
+
+  # `features` and the config's features but those `left_out` names, checked for their
+  # needs, with `observability`, in the order of `all/0`.
+  defp with_config(features, left_out, opts) do
+    config = Keyword.get(opts, :config, []) -- left_out
+    check_needs(always(features ++ config))
+  end
+
+  # `features` with `observability`, which every instance has, in the order of `all/0`.
+  defp always(features), do: Enum.filter(all(), &(&1 == :observability or &1 in features))
 
   # The names of a list separated by commas. A list with none names the empty name, so that
   # `all-` alone is refused as naming nothing.
@@ -434,14 +457,17 @@ defmodule Apiary.Features do
   defp plural(_, _one, many), do: many
 
   @doc """
-  Reads `QORY_FEATURES` as `config/runtime.exs` left it, checks it and fixes the instance's
-  features for the life of the node. Called first thing at boot; raises on a list of
-  features `registry/1` refuses, or on a value `parse/1` refuses, so the instance does not
-  start.
+  Reads `QORY_FEATURES` as `config/runtime.exs` left it, checks it and writes the node's
+  copy of the instance's features: the variable's list, with the features the server's
+  config turns on as if it listed them (`config_on/0`), or the defaults where it is not
+  set or is blank. Called first thing at boot; raises on a list of features `registry/1`
+  refuses, or on a value `parse/1` refuses, so the instance does not start. Once the
+  database is reachable, `Apiary.Features.Cache` writes the copy again from the saved
+  list where the variable is not set (`Apiary.Features.Saved`).
   """
   @spec boot!() :: [feature]
   def boot! do
-    case parse(Application.get_env(:apiary, :features_setting)) do
+    case parse(Application.get_env(:apiary, :features_setting), config: config_on()) do
       {:ok, features} ->
         Application.put_env(:apiary, :features, features)
         features
@@ -449,17 +475,22 @@ defmodule Apiary.Features do
       {:error, reason} ->
         raise ArgumentError, """
         environment variable QORY_FEATURES is not valid: #{reason}.
-        Leave it unset or set it to all for the default features, or name them, for example:
+        Remove it to use the saved features, set it to all, or name the features, for example:
         QORY_FEATURES=observability
         """
     end
   end
 
+  # The features the edition's config turns on (`c:Apiary.Edition.config_features/0`), of
+  # this release.
+  defp config_on,
+    do: for({feature, true} <- Apiary.Edition.config_features(), feature in all(), do: feature)
+
   @doc """
   The features this instance has, in the order of `all/0`. Before `boot!/0`, as under
   `bin/apiary eval`, where the application is loaded and not started, the value of
-  `QORY_FEATURES` is read here, so a command run beside an instance has its features
-  rather than all of them.
+  `QORY_FEATURES` is read here: a command run beside an instance has the variable's
+  features where it is set, else the defaults (`parse/1`), not the saved list.
   """
   @spec enabled() :: [feature]
   def enabled do
@@ -475,6 +506,25 @@ defmodule Apiary.Features do
   """
   @spec on?(feature) :: boolean
   def on?(feature), do: known!(feature) in enabled()
+
+  @doc """
+  on?/2 is whether `feature` is on for a run that keeps `recorded`, the names of the
+  features it was claimed with (`recorded/0`, `Apiary.Runs.Run`, `features`): whether
+  `recorded` has it. A run with none kept, nil, was claimed before runs kept them and
+  follows the instance (`on?/1`). Raises `ArgumentError` for a name that is no feature.
+  """
+  @spec on?(feature, [String.t()] | nil) :: boolean
+  def on?(feature, nil), do: on?(feature)
+
+  def on?(feature, recorded) when is_list(recorded),
+    do: Atom.to_string(known!(feature)) in recorded
+
+  @doc """
+  recorded/0 is what a run keeps of the instance's features when it is claimed or
+  registered: the names of `enabled/0`, in its order.
+  """
+  @spec recorded() :: [String.t()]
+  def recorded, do: Enum.map(enabled(), &Atom.to_string/1)
 
   @doc """
   Whether `name`, a feature or a part, is shown where `scope` is: its feature on for the

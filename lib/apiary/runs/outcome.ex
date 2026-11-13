@@ -154,7 +154,12 @@ defmodule Apiary.Runs.Outcome do
     digest = :crypto.hash(:sha256, body)
     access_key = Repo.preload(access_key, [:workspace, :node])
 
-    with :ok <- may_post(Scope.for_access_key(access_key)),
+    scope =
+      access_key
+      |> Scope.for_access_key()
+      |> Scope.for_run(Sender.recorded(access_key, run_id))
+
+    with :ok <- may_post(scope),
          true <- Batch.uuid?(run_id) || {:error, :not_found},
          %Run{} = held <- held(access_key, run_id) || {:error, :not_found},
          true <- direct?(held) || {:error, :not_found},

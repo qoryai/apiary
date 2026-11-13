@@ -748,6 +748,11 @@ msgstr ""
 msgid "%{email} is suspended."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "%{feature} needs it, and stays on while adapters are set in the server's environment. Remove them there to turn it off."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{file} %{problem}"
@@ -756,6 +761,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{filter}: %{value}, change"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "%{first} and %{last}"
 msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
@@ -1264,6 +1274,7 @@ msgstr ""
 msgid "%{list} or %{last}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{list}, and %{last}"
@@ -3938,6 +3949,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "1 run"
 msgid_plural "%{count} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "1 run is running. It finishes with the features it started with."
+msgid_plural "%{count} runs are running. They finish with the features they started with."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -6995,6 +7013,11 @@ msgstr ""
 msgid "Changes requested"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Changes to each workspace's process: its stages, their workflows and gates, as numbered and trial versions. With it off, each workspace keeps version 1 of its process."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Changes to target rules are in that target's history."
@@ -7079,6 +7102,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Check the TLS setting and port, such as 587 with Always, or 465, then send the test link again. The TLS handshake with the relay failed at %{time}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Check the features again and save. Another instance admin saved them at the same time, so your change was not saved."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -9462,6 +9490,11 @@ msgid_plural "Every %{count} hours"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Every instance has it."
+msgstr ""
+
 #: lib/apiary_web/components/adapter_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every minute"
@@ -9903,9 +9936,26 @@ msgstr ""
 msgid "Fallbacks"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
 msgid "Features"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Features by person"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Features saved"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Features saved."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -11088,6 +11138,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/markdown.ex
 #, elixir-autogen, elixir-format
 msgid "Image not in this version: %{alt}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Image registry"
 msgstr ""
 
 #: lib/apiary/sources/body.ex
@@ -13276,6 +13331,11 @@ msgstr ""
 msgid "Needs"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Needs %{features}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -15407,6 +15467,16 @@ msgstr ""
 msgid "Opens %{address}"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Operators and clients"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Operators and their clients, and what an operator does for them."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Optional"
@@ -15449,6 +15519,11 @@ msgstr ""
 msgid "Organisation overview"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation policy"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation renamed"
@@ -15457,6 +15532,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation renamed to %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation secrets and variables"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -15728,6 +15808,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #, elixir-autogen, elixir-format
 msgid "Paths"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Paths in policy rules"
 msgstr ""
 
 #: lib/apiary/policy/export.ex
@@ -16119,6 +16204,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Process files and stages use the key. If you change it, Qory Apiary lists the files that use it before it saves."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Process versions"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -16744,6 +16834,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Record"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Record and runs"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -18132,6 +18227,7 @@ msgstr ""
 #: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -18231,6 +18327,16 @@ msgstr ""
 msgid "Saved as version %{number}. Work items taken in from now on use it."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Saved in Instance settings › Features: %{variable} is not set."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the features"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Saved the mail settings and started a test send"
@@ -18266,6 +18372,7 @@ msgstr ""
 #: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/instance_live/general.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/instance_live/node.ex
@@ -18374,6 +18481,7 @@ msgid "Secrets"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secrets and variables"
@@ -18388,6 +18496,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secrets, %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Security policy"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -18593,6 +18706,11 @@ msgstr ""
 msgid "Set %{variable} on the server to build this target's environment image. Until then, runs start in the pool's default image."
 msgstr "Set %{variable} on the server to build this repository's environment image. Until then, runs start in the pool's default image."
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Set %{variable} on the server to turn this on."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Set Qory Apiary's public key."
@@ -18658,6 +18776,7 @@ msgstr ""
 msgid "Set by a target too"
 msgstr "Set by a repository too"
 
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Set by the server's environment (%{variable}); change it there."
@@ -19499,6 +19618,11 @@ msgstr ""
 msgid "Stored secrets"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Stored secrets and variables, and the organisation's integrations."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Stored secrets, variables and integrations, in each workspace's settings."
@@ -20063,6 +20187,11 @@ msgstr ""
 msgid "That page is no longer shown in %{organisation}."
 msgstr ""
 
+#: lib/apiary_web/user_auth.ex
+#, elixir-autogen, elixir-format
+msgid "That page is no longer shown: its feature is off in Instance settings › Features."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "That password link has expired"
@@ -20215,6 +20344,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The Forager file's lines for this key. Nothing here is secret."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The Paths field of a policy rule's form."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -21007,6 +21141,16 @@ msgstr ""
 msgid "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's policy above its workspaces' security policy: host rules, the lowest mode and the switch."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's secrets beside each workspace's, and its variables, which every workspace inherits."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "The organisation's workspaces and its people."
@@ -21164,6 +21308,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The record, the runs with their terminals and timelines, the connections, and retention."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -21413,6 +21562,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The secret is shown once."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The security policy, and the run configuration sent to gateways."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -21678,6 +21832,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The work item stays in Qory Apiary, closed."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "The work items of a workspace and where they are taken in from, with the set-up steps they need, such as model providers, model and workflow."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -22370,6 +22529,11 @@ msgstr ""
 msgid "Together with %{target}, at most 256 characters."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Tokens for the private image registry, and each run's registry credential."
+msgstr ""
+
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tokens per minute"
@@ -22474,6 +22638,17 @@ msgstr ""
 msgid "Turn failed"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Turn features on or off for every organisation. Save applies them at once, with no restart."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Turn features on or off in %{page}."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Turn finished"
@@ -22521,6 +22696,11 @@ msgstr "Turned off taking a repository's %{items} into the Backlog"
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Turned off: %{features}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Turned on taking %{items} into the Backlog from %{collection} %{name}"
 msgstr ""
 
@@ -22528,6 +22708,21 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Turned on taking a collection's %{items} into the Backlog"
 msgstr "Turned on taking a repository's %{items} into the Backlog"
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned on: %{features}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Turning off %{feature} also turns off %{features}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Turning on %{feature} also turns on %{features}."
+msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -23291,6 +23486,11 @@ msgstr ""
 msgid "What %{name} needs, besides the secret. Nothing here is secret."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "What a person is shown depends on who they are, not only on the organisation they are in."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: the policy or the wall denied it, or a new policy closed it."
@@ -23681,6 +23881,7 @@ msgstr ""
 #: lib/apiary_web/components/work_item_list_components.ex
 #: lib/apiary_web/live/artifact_live/new.ex
 #: lib/apiary_web/live/artifact_live/show.ex
+#: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/work_item_live/index.ex
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
@@ -23695,6 +23896,11 @@ msgstr ""
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "Work items in progress stay on version %{number}. Work items taken in after the save follow version %{next}."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Work items stays on while adapters are set in the server's environment. Remove them there to turn it off."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex

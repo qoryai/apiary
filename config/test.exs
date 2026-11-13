@@ -56,6 +56,7 @@ config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 # keeps a copy of here: each test reads them from its own sandbox.
 config :apiary, Apiary.Mail, smtp_adapter: Swoosh.Adapters.Test
 config :apiary, Apiary.Mail.Cache, enabled: false
+config :apiary, Apiary.Features.Cache, enabled: false
 
 # Nor of the product's name an instance admin sets (`Apiary.ProductName`): each test reads
 # it inside the test's database sandbox.

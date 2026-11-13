@@ -173,6 +173,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
   defp at(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
+  # The features the run kept when it was claimed (`Apiary.Runs.Run`, `features`).
+  defp keep_features!(ctx, recorded) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [features: recorded])
+  end
+
   defp end_run!(ctx) do
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
@@ -183,6 +189,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   describe "the feature" do
     test "off: a verified request is the 404 of a path the router does not know, signed", ctx do
       RunApiStubs.put(:flag, false)
+      keep_features!(ctx, Apiary.Features.recorded() -- ["workflow_model"])
 
       for conn <- [
             read(ctx, "/work-item"),
@@ -195,6 +202,36 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       assert RunApiStubs.pushed() == []
+    end
+
+    test "off for the instance, on for a run that kept it at its claim: the run is served",
+         ctx do
+      RunApiStubs.put(:flag, false)
+      keep_features!(ctx, Enum.uniq(Apiary.Features.recorded() ++ ["workflow_model"]))
+
+      assert read(ctx, "/work-item").status == 200
+    end
+
+    test "off for the instance, kept by a run that has ended: a verified request is the 404",
+         ctx do
+      RunApiStubs.put(:flag, false)
+      keep_features!(ctx, Enum.uniq(Apiary.Features.recorded() ++ ["workflow_model"]))
+      end_run!(ctx)
+
+      for conn <- [read(ctx, "/work-item"), read(ctx, "/artifacts")] do
+        assert conn.status == 404
+        assert signed_answer?(conn)
+      end
+    end
+
+    test "on for the instance, off for a run claimed without it: a verified request is the 404",
+         ctx do
+      keep_features!(ctx, Apiary.Features.recorded() -- ["workflow_model"])
+
+      conn = read(ctx, "/work-item")
+      assert conn.status == 404
+      assert ["text/html" <> _] = get_resp_header(conn, "content-type")
+      assert signed_answer?(conn)
     end
 
     test "the routes belong to workflow_model" do

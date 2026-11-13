@@ -108,6 +108,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"instance.mail_on",
     :"instance.rename",
     :"instance.support_save",
+    :"instance.features_save",
     :"instance.configure",
     :"instance.read_factory",
     :"instance.read_observability",

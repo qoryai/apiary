@@ -17,6 +17,13 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
   # of its operator's kind or the operator's suspension wait for each other on those rows,
   # and Postgres breaks no deadlock between them (`deadlocks/0`).
   use ExUnit.Case, async: false
+
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   @before_compile Apiary.TestSetup
 
   import Ecto.Query

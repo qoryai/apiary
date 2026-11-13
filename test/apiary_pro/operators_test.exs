@@ -8,6 +8,12 @@ defmodule ApiaryPro.OperatorsTest do
   # and instance admins are owners of the suite's one instance organisation.
   use Apiary.DataCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Apiary.AccountsFixtures, only: [user_fixture: 0]
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures

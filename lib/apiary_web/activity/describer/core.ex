@@ -18,6 +18,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   alias Apiary.{Access, Adapters, Features}
   alias ApiaryWeb.{Format, SourceComponents}
+  alias ApiaryWeb.InstanceLive.Features, as: FeaturesPage
 
   # What `connection.write` was before its split: an integration, a service, a runtime or a
   # model provider. The entries stored before the split are under `connection.write`.
@@ -44,6 +45,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance.rename"), do: gettext("Name in the header changed")
   def label(:"instance.configure"), do: gettext("Configuration changed")
   def label(:"instance.support_save"), do: gettext("Support address saved")
+  def label(:"instance.features_save"), do: gettext("Features saved")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -544,6 +546,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"instance.support_save", _details, _actor),
     do: gettext("Saved the support address")
+
+  defp said(:"instance.features_save", _details, _actor), do: gettext("Saved the features")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -1119,6 +1123,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         support_address(before["support_address"]),
         support_address(after_["support_address"])
       )
+
+  # The features a save turned on and off, a line each where it has one, by their titles
+  # on Instance settings › Features (`ApiaryWeb.InstanceLive.Features.titles/1`).
+  def change(:"instance.features_save", %{"features" => before}, %{"features" => after_}, _)
+      when is_list(before) and is_list(after_) do
+    turned_on = after_ -- before
+    turned_off = before -- after_
+
+    Enum.reject(
+      [
+        turned_on != [] &&
+          gettext("Turned on: %{features}", features: FeaturesPage.titles(turned_on)),
+        turned_off != [] &&
+          gettext("Turned off: %{features}", features: FeaturesPage.titles(turned_off))
+      ],
+      &(&1 == false)
+    )
+  end
 
   def change(action, before, after_, _details)
       when action in [:"member.change_level", :"instance_admin.grant", :"instance_admin.revoke"] and

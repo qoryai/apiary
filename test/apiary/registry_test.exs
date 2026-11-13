@@ -105,7 +105,7 @@ defmodule Apiary.RegistryTest do
       assert error.message ==
                "Set QORY_REGISTRY to the registry's host, for example " <>
                  "QORY_REGISTRY=registry.qory.example.\n" <>
-                 "The feature registry is on in QORY_FEATURES, and QORY_REGISTRY is not set.\n"
+                 "The feature registry is on, and QORY_REGISTRY is not set.\n"
     end
 
     test "stops with B2 where QORY_REGISTRY is not a host" do
@@ -150,7 +150,7 @@ defmodule Apiary.RegistryTest do
 
       assert error.message ==
                "Run bin/keys with QORY_REGISTRY set, so it writes the registry signing key " <>
-                 "to #{path}.\nThe feature registry is on, and that file does not exist.\n"
+                 "to #{path}.\nQORY_REGISTRY is set, and that file does not exist.\n"
     end
 
     test "stops with B4 where the key file is not a P-256 key, and shows no key", %{

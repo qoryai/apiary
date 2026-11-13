@@ -106,6 +106,8 @@ defmodule ApiaryWeb do
 
       use ApiaryWeb.Async
 
+      @before_compile ApiaryWeb.Features.ComponentGate
+
       unquote(html_helpers(router, gettext))
     end
   end

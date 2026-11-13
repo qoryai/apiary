@@ -16,6 +16,12 @@ defmodule ApiaryProWeb.RefusalsTest do
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   # A workspace's set-up is finished: the Overview opens, and the rows reach it.
   setup do: Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
 end

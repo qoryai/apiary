@@ -701,6 +701,11 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   @impl true
   def setup(%{owner: owner, member: member, workspace_b: workspace_b, target: target}) do
+    # The edition's switch `feature_visibility` is an opt-in feature, on with every
+    # feature: the world is made with it off, as the rows read it, in the process that
+    # makes it.
+    ApiaryPro.Flags.put_feature_visibility(false)
+
     operators = operators()
 
     # The core's target, by its system and path, in the other workspace too: the page the

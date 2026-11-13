@@ -152,15 +152,17 @@ defmodule Apiary.Adapters.CallTrustTest do
     end
 
     @tag with_features: [:observability]
-    test "without the factory feature reads no file, and keeps no certificate", %{tmp_dir: dir} do
+    test "without the factory feature reads the file too, so the feature may be turned on later",
+         %{tmp_dir: dir} do
       %{authorities: [a]} = chain("tracker.localhost")
+      Application.put_env(:apiary, :ssl_cert_file_setting, write(dir, "ca.pem", pem([a])))
 
-      for path <- [write(dir, "ca.pem", pem([a])), Path.join(dir, "missing.pem")] do
-        trust([a])
-        Application.put_env(:apiary, :ssl_cert_file_setting, path)
-        assert CallTrust.boot!() == :ok
-        assert CallTrust.transport_opts() == []
-      end
+      assert CallTrust.boot!() == :ok
+      assert [cacerts: cacerts] = CallTrust.transport_opts()
+      assert List.last(cacerts) == a
+
+      Application.put_env(:apiary, :ssl_cert_file_setting, Path.join(dir, "missing.pem"))
+      assert_raise ArgumentError, ~r/^Set SSL_CERT_FILE/, fn -> CallTrust.boot!() end
     end
 
     test "stops the boot for a file that cannot be read or has no certificate", %{tmp_dir: dir} do

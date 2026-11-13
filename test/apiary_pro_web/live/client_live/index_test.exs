@@ -3,6 +3,12 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
   # an owner of the suite's one instance organisation.
   use ApiaryWeb.ConnCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   # Offers to an operator and leaving one are shown here, for this process and those it
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)

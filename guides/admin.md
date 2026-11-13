@@ -92,8 +92,8 @@ SIGNUP_ORGANISATIONS=open
 ## Instance settings
 
 The instance admins have separate pages, **Instance settings**, in the Qory Apiary menu:
-General, then Organisations and Accounts, then the other sections, with Mail and
-Configuration last. **Organisations**, `/instance/organisations`, lists every organisation
+General, then Features, then Organisations and Accounts, then the other sections, with
+Mail and Configuration last. **Organisations**, `/instance/organisations`, lists every organisation
 on the instance, with its slug, its kind, its operator, its features and its status: in
 use, suspended, without an owner who may act, or deleted, with the day it is purged.
 **Accounts**, `/instance/accounts`, lists every account, with how many organisations it is
@@ -233,9 +233,10 @@ until the instance has the feature again.
 
 Where the instance does not have `organisation_variables`, the organisation's variables
 reach no workspace, and a workspace's changes are not checked against them. When the
-instance has the feature again, as when `QORY_FEATURES` changes at a restart, nothing is
-checked: a workspace may then spell a name of the organisation's otherwise, or be over a
-limit with the organisation's variables. The organisation's next change to its variables,
+instance has the feature again, by a save in **Instance settings › Features** or a
+restart with another `QORY_FEATURES`, nothing is checked: a workspace may then spell a
+name of the organisation's otherwise, or be over a limit with the organisation's
+variables. The organisation's next change to its variables,
 but the deletion of one that is not locked, is then refused, naming the workspace, until
 the workspace changes or deletes its variable.
 <!-- /feature -->

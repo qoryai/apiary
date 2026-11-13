@@ -15,6 +15,8 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.{Dispatches, Repo}
   alias Apiary.Dispatches.Dispatch
   alias ApiaryWeb.Contract.SignedRequest
@@ -165,6 +167,103 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
     assert %Dispatch{ended_at: %DateTime{}} = Repo.get!(Dispatch, ended.id)
     assert kept?(report(ctx, ended, body("deleting")))
     assert state(ended) == :deleting
+  end
+
+  # A dispatch's routes follow the features of the run its claim registered, whatever the
+  # run's state: the machine's end and log come after the run ended
+  # (`ApiaryWeb.Contract.RunFeatures`).
+  test "factory off since the claim: 204 while the run is live, and after it ended", ctx do
+    dispatch = dispatch!(ctx)
+    previous = Application.get_env(:apiary, :features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Apiary.Features.Saved.close(previous, previous -- [:factory])
+    )
+
+    assert kept?(report(ctx, dispatch, body("deleting")))
+    assert state(dispatch) == :deleting
+
+    {1, _rows} =
+      Repo.update_all(
+        from(r in Apiary.Runs.Run, where: r.dispatch_run_id == ^dispatch.dispatch_run_id),
+        set: [state: "completed"]
+      )
+
+    now = DateTime.utc_now()
+
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [ended_at: now, end_cause: :run_ended]
+      )
+
+    assert kept?(report(ctx, dispatch, body("gone")))
+    assert state(dispatch) == :gone
+  end
+
+  # A dispatch released before its handover, whose run of the queue a later claim took:
+  # the earlier dispatch follows the run its claim registered, never the later one's.
+  test "a released dispatch follows its failed run, not the run a later claim registered",
+       ctx do
+    {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    {:ok, %{dispatch: first}} = walked_claim(ctx.key, Dispatches.now())
+    :ok = Dispatches.release(ctx.key, first.public_id, %{reason: "No machine."})
+    {:ok, %{dispatch: second}} = walked_claim(ctx.key, Dispatches.now())
+    assert second.dispatch_run_id == first.dispatch_run_id
+
+    # The failed run kept no factory; the later run keeps every feature.
+    {1, _rows} =
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.dispatch_id == ^first.id),
+        set: [features: Apiary.Features.recorded() -- ["factory", "workflow_model"]]
+      )
+
+    previous = Application.get_env(:apiary, :features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Apiary.Features.Saved.close(previous, previous -- [:factory])
+    )
+
+    conn = report(ctx, first, body("deleting"))
+    assert json_response(conn, 404) == %{"error" => "not_found"}
+    assert state(first) == nil
+    assert kept?(report(ctx, second, body("deleting")))
+  end
+
+  # A dispatch whose lease lapsed before its handover keeps no `ended_at`; its run failed
+  # and left its run of the queue, which a later claim took. The lapsed dispatch follows
+  # the run its claim registered, never the later one's.
+  test "a lapsed dispatch follows its failed run, not the run a later claim registered",
+       ctx do
+    {:ok, _run} = Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+    now = Dispatches.now()
+    {:ok, %{dispatch: first}} = walked_claim(ctx.key, now)
+    {:ok, %{dispatch: second}} = walked_claim(ctx.key, DateTime.add(now, 700, :second))
+    assert second.dispatch_run_id == first.dispatch_run_id
+    assert %Dispatch{stale_at: %DateTime{}, ended_at: nil} = Repo.get!(Dispatch, first.id)
+
+    # The failed run kept no factory; the later run keeps every feature.
+    {1, _rows} =
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.dispatch_id == ^first.id),
+        set: [features: Apiary.Features.recorded() -- ["factory", "workflow_model"]]
+      )
+
+    previous = Application.get_env(:apiary, :features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Apiary.Features.Saved.close(previous, previous -- [:factory])
+    )
+
+    conn = report(ctx, first, body("deleting"))
+    assert json_response(conn, 404) == %{"error" => "not_found"}
+    assert state(first) == nil
   end
 
   describe "the refusals, in the contract's order" do

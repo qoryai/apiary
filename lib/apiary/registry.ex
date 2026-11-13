@@ -20,7 +20,9 @@ defmodule Apiary.Registry do
   # the registry reads the new certificate, and a token signed under the new key fails
   # until then.
   #
-  # `boot!/0` checks both when the feature is on, and stops the boot with the fix first:
+  # `boot!/0` checks both when the feature is on or `QORY_REGISTRY` is set, so that an
+  # instance admin may turn the feature on without a restart, and stops the boot with the
+  # fix first:
   # a missing or malformed `QORY_REGISTRY`, one whose host is the host of `PUBLIC_URL`
   # (compared without case and without ports), and a key file that is missing or holds
   # no P-256 key. The host must differ because a run's path rules are per host: the
@@ -50,11 +52,12 @@ defmodule Apiary.Registry do
         }
 
   @doc false
-  # boot!/0 checks `QORY_REGISTRY` and the signing key when the feature `registry` is on,
-  # and keeps them for the life of the node. Raises `ArgumentError` with the fix first.
+  # boot!/0 checks `QORY_REGISTRY` and the signing key when the feature `registry` is on
+  # or `QORY_REGISTRY` is set, and keeps them for the life of the node. Raises
+  # `ArgumentError` with the fix first.
   @spec boot!() :: :ok
   def boot! do
-    if Features.on?(:registry) do
+    if Features.on?(:registry) or parse(Application.get_env(:apiary, :registry_setting)) != :unset do
       Application.put_env(:apiary, __MODULE__.Settings, read!())
     end
 
@@ -173,7 +176,7 @@ defmodule Apiary.Registry do
         :unset ->
           raise ArgumentError, """
           Set QORY_REGISTRY to the registry's host, for example QORY_REGISTRY=registry.qory.example.
-          The feature registry is on in QORY_FEATURES, and QORY_REGISTRY is not set.
+          The feature registry is on, and QORY_REGISTRY is not set.
           """
 
         :error ->
@@ -231,7 +234,7 @@ defmodule Apiary.Registry do
         {:error, :enoent} ->
           raise ArgumentError, """
           Run bin/keys with QORY_REGISTRY set, so it writes the registry signing key to #{path}.
-          The feature registry is on, and that file does not exist.
+          QORY_REGISTRY is set, and that file does not exist.
           """
 
         {:error, reason} ->

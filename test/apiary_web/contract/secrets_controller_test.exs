@@ -501,11 +501,17 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   describe "where the factory feature is off and the registry feature on" do
     @describetag :work
 
+    # The run was claimed under these features too: a run keeps the ones it was claimed
+    # with (`Apiary.Runs.Run`, `features`).
     setup ctx do
       previous = Application.get_env(:apiary, :features)
       {:ok, features} = Apiary.Features.parse("observability,security,registry")
       Application.put_env(:apiary, :features, features)
       on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: [features: Apiary.Features.recorded()]
+      )
 
       {key, _seed} = ctx.secrets_key
 
@@ -538,6 +544,158 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert log =~ ctx.run.node_run_id
       assert WorkCredentialStub.calls() == []
       assert issues() == []
+    end
+  end
+
+  # A run keeps the features it was claimed with (`Apiary.Runs.Run`, `features`), and the
+  # reads of its requests follow them, whatever the instance has since: a feature turned
+  # off after the claim still applies to the run, and one turned on after it does not.
+  describe "a run whose features change after its claim" do
+    setup ctx do
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      %{plain: {plain, seed}}
+    end
+
+    test "registry off since the claim: a key not allowed stored secrets passes step 3",
+         ctx do
+      keep_features!(ctx, Apiary.Features.recorded() ++ ["registry"])
+
+      # Past step 3 the key is not among the run key's, so the request stops at step 4.
+      conn = post_secrets(ctx, request(ctx), key: ctx.plain)
+      assert conn.status == 404
+      assert code(conn) == "not_found"
+    end
+
+    test "registry on since a claim without it: a key not allowed stored secrets is refused at step 3",
+         ctx do
+      instance_with!(:registry)
+
+      conn = post_secrets(ctx, request(ctx), key: ctx.plain)
+      assert conn.status == 409
+      assert code(conn) == "secrets_not_allowed"
+    end
+
+    test "factory off since the claim: the secrets request is still answered", ctx do
+      instance_without!(:factory)
+
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200, conn.resp_body
+      assert signed_answer?(conn)
+    end
+
+    test "factory off since the claim, the run ended: the access key may not seal its key",
+         ctx do
+      {key, _seed} = ctx.secrets_key
+      scope = Apiary.Accounts.Scope.for_access_key(Repo.preload(key, [:node, :workspace]))
+      instance_without!(:factory)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      assert Apiary.Access.check(scope, :"secret.seal", Repo.get!(Run, ctx.run.id)) ==
+               {:error, :not_found}
+    end
+
+    test "factory off since the claim: the run is still given its model key", ctx do
+      instance_without!(:factory)
+      run = Repo.get!(Run, ctx.run.id)
+
+      assert Apiary.Runs.ProviderCredential.applies?(run.features)
+      assert {:ok, %{keys: [_ | _]}} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert [_ | _] = Apiary.ModelKeys.run_keys(run)
+    end
+
+    test "factory on since a claim without it: the run is given no model key", ctx do
+      keep_features!(ctx, Apiary.Features.recorded() -- ["factory", "workflow_model"])
+      run = Repo.get!(Run, ctx.run.id)
+
+      refute Apiary.Runs.ProviderCredential.applies?(run.features)
+      assert {:ok, nil} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert Apiary.ModelKeys.run_keys(run) == []
+    end
+
+    test "factory off since the claim: the run's document is still composed with its model key",
+         ctx do
+      instance_without!(:factory)
+      run = Repo.get!(Run, ctx.run.id)
+
+      assert {:ok, %{credential: %{keys: [_ | _]}}} =
+               Apiary.Policy.ComposedConfiguration.members(run)
+    end
+
+    test "factory on since a claim without it: the run's document has no model key", ctx do
+      keep_features!(ctx, Apiary.Features.recorded() -- ["factory", "workflow_model"])
+      run = Repo.get!(Run, ctx.run.id)
+
+      assert {:ok, members} = Apiary.Policy.ComposedConfiguration.members(run)
+      assert is_nil(members) or is_nil(members.credential)
+    end
+
+    test "registry off since the claim: the run keeps its registry access", ctx do
+      keep_features!(ctx, Apiary.Features.recorded() ++ ["registry"])
+      assert Apiary.Registry.RunAccess.applies?(Repo.get!(Run, ctx.run.id))
+    end
+
+    test "registry on since a claim without it: the run has no registry access", ctx do
+      instance_with!(:registry)
+      refute Apiary.Registry.RunAccess.applies?(Repo.get!(Run, ctx.run.id))
+    end
+
+    test "factory off since the claim: the access key may still seal the run's key", ctx do
+      {key, _seed} = ctx.secrets_key
+      scope = Apiary.Accounts.Scope.for_access_key(Repo.preload(key, [:node, :workspace]))
+
+      instance_without!(:factory)
+
+      assert Apiary.Access.check(scope, :"secret.seal", Repo.get!(Run, ctx.run.id)) == :ok
+    end
+
+    test "factory on since a claim without it: the access key may not seal the run's key",
+         ctx do
+      {key, _seed} = ctx.secrets_key
+      scope = Apiary.Accounts.Scope.for_access_key(Repo.preload(key, [:node, :workspace]))
+      run = Repo.get!(Run, ctx.run.id)
+      assert Apiary.Access.check(scope, :"secret.seal", run) == :ok
+
+      keep_features!(ctx, Apiary.Features.recorded() -- ["factory", "workflow_model"])
+
+      assert Apiary.Access.check(scope, :"secret.seal", Repo.get!(Run, ctx.run.id)) ==
+               {:error, :not_found}
+    end
+
+    test "registry off since the claim: the key's document lists the secrets endpoint while the run is live",
+         ctx do
+      {plain, _seed} = ctx.plain
+      plain = Repo.preload(plain, [:node, :workspace])
+      refute document_secrets?(plain)
+
+      keep_features!(ctx, Apiary.Features.recorded() ++ ["registry"])
+      assert document_secrets?(plain)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      refute document_secrets?(plain)
+    end
+
+    test "factory off since the claim: an allowed key's document lists the secrets endpoint while the run is live",
+         ctx do
+      {key, _seed} = ctx.secrets_key
+      key = Repo.preload(key, [:node, :workspace])
+      assert document_secrets?(key)
+
+      instance_without!(:factory)
+      assert document_secrets?(key)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      refute document_secrets?(key)
     end
   end
 
@@ -929,6 +1087,40 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
     assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
     [_call] = WorkCredentialStub.calls()
+  end
+
+  # The features the run kept when it was claimed (`Apiary.Runs.Run`, `features`).
+  defp keep_features!(ctx, recorded) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [features: recorded])
+  end
+
+  # The instance's features with `feature` turned on, or off with the features that need
+  # it, as a save on Instance settings › Features writes them.
+  defp instance_with!(feature) do
+    enabled = Apiary.Features.enabled()
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Apiary.Features.Saved.close(enabled, enabled ++ [feature])
+    )
+  end
+
+  defp instance_without!(feature) do
+    enabled = Apiary.Features.enabled()
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Apiary.Features.Saved.close(enabled, enabled -- [feature])
+    )
+  end
+
+  # Whether the configuration document of `key` lists the secrets endpoint.
+  defp document_secrets?(key) do
+    {body, _digest} = ApiaryWeb.Contract.Configuration.document(key)
+    Map.has_key?(Jason.decode!(body), "secrets")
   end
 
   defp running!(ctx) do

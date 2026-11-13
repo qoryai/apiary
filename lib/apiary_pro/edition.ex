@@ -405,6 +405,9 @@ defmodule ApiaryPro.Edition do
   def features, do: ApiaryPro.Features.features()
 
   @impl true
+  def config_features, do: ApiaryPro.Flags.config_features()
+
+  @impl true
   def hidden(scope), do: ApiaryPro.Features.hidden(scope)
 
   # An organisation has several workspaces: each Add form of a model provider, a

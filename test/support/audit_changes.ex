@@ -106,6 +106,7 @@ defmodule Apiary.AuditChanges do
       :"instance.rename",
       :"instance.configure",
       :"instance.support_save",
+      :"instance.features_save",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -338,6 +339,30 @@ defmodule Apiary.AuditChanges do
 
     {:ok, "support@example.com"} =
       Apiary.SupportAddress.save(admin, %{"support_address" => "support@example.com"})
+
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before
+    }
+  end
+
+  # An instance admin's, in the trail of the instance's organisation, about the
+  # organisation: Paths in policy rules turned off, with QORY_FEATURES unset for the save.
+  def make(:"instance.features_save", _ctx) do
+    admin = password_link_admin()
+    before = entries()
+    setting = Application.get_env(:apiary, :features_setting)
+    Application.put_env(:apiary, :features_setting, nil)
+
+    try do
+      %{features: features, version: version} = Apiary.Features.Saved.current()
+      {:ok, _current} = Apiary.Features.Saved.save(admin, features -- [:path_rules], version)
+    after
+      Application.put_env(:apiary, :features_setting, setting)
+    end
 
     instance = instance_organisation()
 
@@ -1227,6 +1252,12 @@ defmodule Apiary.AuditChanges do
   def refuse(:"instance.support_save", %{scope: scope}) do
     before = entries()
     {before, Apiary.SupportAddress.save(scope, %{"support_address" => "support@example.com"})}
+  end
+
+  # Anyone but an instance admin: the owner of an organisation that is not the instance's.
+  def refuse(:"instance.features_save", %{scope: scope}) do
+    before = entries()
+    {before, Apiary.Features.Saved.save(scope, [:observability], 0)}
   end
 
   def refuse(:"workspace_type.edit", %{scope: scope}) do

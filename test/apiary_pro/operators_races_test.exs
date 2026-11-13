@@ -18,6 +18,12 @@ defmodule ApiaryPro.OperatorsRacesTest do
   # the database, waiting on a lock the first side holds (`pg_blocking_pids`).
   use ExUnit.Case, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Ecto.Query
   import Apiary.Races
 

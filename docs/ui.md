@@ -360,6 +360,8 @@ replaces the navigation it is in.
   Qory Apiary there; and under Save, where the edition says "Powered by Qory Apiary", the
   note of when it does. Saving reloads the page with the toast "Instance renamed to …"; a
   name breaking an organisation's name's rules shows its error under the field. Then the
+  core's Features (`/instance/features`, `ApiaryWeb.InstanceLive.Features`, its `<h1>`
+  Features): the instance's features, turned on and off by its admins. Then the
   edition's sections (`ApiaryWeb.Edition.instance_sections/1`), then the
   core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
   recent sign-in, and Configuration (`/instance/configuration`,

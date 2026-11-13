@@ -47,8 +47,9 @@ defmodule Apiary.Edition do
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
   - **Audit trail** (`Apiary.Audit`): `audit_details/3`, what the edition adds to an
     entry's details as it is written.
-  - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0`
-    (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
+  - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0` and
+    `config_features/0` (`Apiary.Features`, `Apiary.Features.Saved`), `subject_kinds/0`
+    (`Apiary.Audit`).
   - **What a person is shown**: `hidden/1`, features and parts
     (`Apiary.Features.visible?/2`); `scope_setting?/1`, whether the Add forms show the
     setting of the workspaces a thing reaches.
@@ -747,6 +748,16 @@ defmodule Apiary.Edition do
   """
   @callback features() :: [{atom, keyword}]
 
+  @doc """
+  The edition's features that an older release switched in the application's config, each
+  with whether its config value turns it on. While `QORY_FEATURES` is set and not empty, a
+  feature whose value is on counts as listed in it (`Apiary.Features.parse/2`). Else, at
+  the first boot that reads them, a feature whose value is on is turned on in the saved
+  features, once (`Apiary.Features.Saved`); after that its config value is not read
+  again. The core's answer is `[]`.
+  """
+  @callback config_features() :: [{atom, boolean}]
+
   @doc "The edition's schemas an audit entry may be about, with the kind it records."
   @callback subject_kinds() :: %{module => String.t()}
 
@@ -864,6 +875,7 @@ defmodule Apiary.Edition do
     audit_details: 3,
     deletion_tables: 0,
     features: 0,
+    config_features: 0,
     subject_kinds: 0,
     hidden: 1,
     scope_setting?: 1,

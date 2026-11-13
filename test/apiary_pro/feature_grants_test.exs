@@ -9,6 +9,12 @@ defmodule ApiaryPro.FeatureGrantsTest do
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
@@ -33,6 +39,10 @@ defmodule ApiaryPro.FeatureGrantsTest do
   end
 
   defp of(organisation), do: built(ApiaryPro.Features.of(organisation))
+
+  # What the instance has, without its switch of the whole instance, which no organisation
+  # is shown.
+  defp instance_features, do: Features.enabled() -- [:feature_visibility]
 
   describe "the chain" do
     test "an organisation with no operator follows the instance, but for what is taken away" do
@@ -206,7 +216,7 @@ defmodule ApiaryPro.FeatureGrantsTest do
 
     test "the instance organisation has everything, and is granted nothing" do
       admin = instance_admin_fixture()
-      assert ApiaryPro.Features.of(instance_organisation()) == Features.enabled()
+      assert ApiaryPro.Features.of(instance_organisation()) == instance_features()
 
       assert {:error, :forbidden} =
                Grants.set_organisation(admin.instance_scope, instance_organisation().id, [
@@ -415,7 +425,7 @@ defmodule ApiaryPro.FeatureGrantsTest do
 
         {:ok, organisation} = part.(client)
 
-        assert ApiaryPro.Features.of(organisation) == Features.enabled()
+        assert ApiaryPro.Features.of(organisation) == instance_features()
       end
     end
 

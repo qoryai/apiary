@@ -149,6 +149,7 @@ defmodule ApiaryPro.AccessRows do
       {:"instance.rename", yes: [:instance_owner]},
       {:"instance.configure", yes: [:instance_owner]},
       {:"instance.support_save", yes: [:instance_owner]},
+      {:"instance.features_save", yes: [:instance_owner]},
       {:"instance.review_connections", yes: [:instance_owner]},
       {:"instance.read_factory", yes: [:instance_owner]},
       {:"instance.read_observability", yes: [:instance_owner]},

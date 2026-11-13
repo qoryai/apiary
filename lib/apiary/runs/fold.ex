@@ -139,7 +139,7 @@ defmodule Apiary.Runs.Fold do
 
   require Logger
 
-  alias Apiary.Runs.{About, Liveness, Transcript}
+  alias Apiary.Runs.{About, Liveness, Run, Transcript}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -216,7 +216,7 @@ defmodule Apiary.Runs.Fold do
   @statuses 100..599
 
   # The states no start or heartbeat folded later changes.
-  @terminal ~w(completed failed cancelled paused)
+  @terminal Run.ended_states()
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
@@ -741,7 +741,7 @@ defmodule Apiary.Runs.Fold do
   # past the run's backstop, and not once its silence ended it.
   defp started_state(run, event) do
     if ended?(run) or not attaching_instance?(run, event) or
-         Liveness.past_backstop?(run, received_at(event)) or silenced?(run),
+         Run.lost_for_good?(run, received_at(event)),
        do: run,
        else: %{run | state: "running", lost_at: nil}
   end
@@ -914,15 +914,12 @@ defmodule Apiary.Runs.Fold do
         Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at) and
-         not Liveness.past_backstop?(run, received_at) and not silenced?(run),
+         not Run.lost_for_good?(run, received_at),
        do: %{acc | run: revive(run)},
        else: %{acc | run: run}
   end
 
   defp count_beat(acc), do: acc
-
-  # A run the lost-run check ended for its silence (`Apiary.Dispatches.RunEnd`).
-  defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
 
   defp revive(%{state: state} = run) when state in ["lost", "pending"] do
     if exited?(run), do: run, else: %{run | state: "running", lost_at: nil}

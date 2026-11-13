@@ -29,11 +29,26 @@ defmodule Apiary.FeaturesTest do
       assert reason =~ "unknown features Observability, records"
     end
 
-    test "a feature without the features it needs is refused" do
-      for feature <- Features.all() -- [:observability] do
+    test "a feature without the features it needs is refused, observability aside" do
+      for feature <- Features.all(),
+          need = Enum.find(Features.needs(feature), &(&1 != :observability)) do
         assert {:error, reason} = Features.parse(to_string(feature))
-        [need | _] = Features.needs(feature)
         assert reason == "#{feature} needs #{need}, which is left out"
+      end
+    end
+
+    test "observability is on whatever the value leaves out" do
+      default = Features.all() -- Features.opt_in()
+      assert Features.parse("all-observability", registry: nil) == {:ok, default}
+
+      every = Enum.join(Features.all(), ",")
+      assert Features.parse("all-" <> every) == {:ok, [:observability]}
+
+      assert Features.parse("security") == {:ok, [:observability, :security]}
+
+      for feature <- Features.all(), Features.needs(feature) in [[], [:observability]] do
+        assert {:ok, features} = Features.parse(to_string(feature))
+        assert features == Enum.uniq([:observability, feature])
       end
     end
 
@@ -63,8 +78,8 @@ defmodule Apiary.FeaturesTest do
         assert reason =~ ~s(unknown feature ""; the Install guide)
       end
 
-      assert {:error, reason} = Features.parse("all-observability")
-      assert reason == "security needs observability, which is left out"
+      assert {:error, reason} = Features.parse("all-security")
+      assert reason == "secrets needs security, which is left out"
     end
 
     test "registry is opt-in: on with all where QORY_REGISTRY is set, else where a list has it" do
@@ -205,7 +220,7 @@ defmodule Apiary.FeaturesTest do
                {:error, "factory needs security, which is left out"}
 
       assert Features.parse("security,factory") ==
-               {:error, "security needs observability, which is left out"}
+               {:error, "factory needs secrets, which is left out"}
     end
 
     test "secrets named without security is refused" do
@@ -220,7 +235,7 @@ defmodule Apiary.FeaturesTest do
 
       assert Features.parse("observability,instance_mail") == {:ok, [:observability]}
       assert Features.parse(" instance_mail , observability ") == {:ok, [:observability]}
-      assert Features.parse("instance_mail") == {:ok, []}
+      assert Features.parse("instance_mail") == {:ok, [:observability]}
       assert Features.parse("all-instance_mail") == Features.parse("all")
       assert Features.parse("all-path_rules,instance_mail") == Features.parse("all-path_rules")
 
@@ -405,7 +420,8 @@ defmodule Apiary.FeaturesTest do
                :workflow_model,
                :managed_organisations,
                :organisation_policy,
-               :organisation_variables
+               :organisation_variables,
+               :feature_visibility
              ]}
           ] do
         scope = %{ctx.person | hidden: Features.hidden_of(named)}
@@ -492,7 +508,8 @@ defmodule Apiary.FeaturesTest do
                      :workflow_model,
                      :managed_organisations,
                      :organisation_policy,
-                     :organisation_variables
+                     :organisation_variables,
+                     :feature_visibility
                    ])
                )
     end
@@ -524,7 +541,8 @@ defmodule Apiary.FeaturesTest do
                      :workflow_model,
                      :managed_organisations,
                      :organisation_policy,
-                     :organisation_variables
+                     :organisation_variables,
+                     :feature_visibility
                    ])
                ) ++
                  [part]
@@ -542,7 +560,8 @@ defmodule Apiary.FeaturesTest do
                      :workflow_model,
                      :managed_organisations,
                      :organisation_policy,
-                     :organisation_variables
+                     :organisation_variables,
+                     :feature_visibility
                    ])
                )
     end
@@ -566,7 +585,8 @@ defmodule Apiary.FeaturesTest do
                      :workflow_model,
                      :managed_organisations,
                      :organisation_policy,
-                     :organisation_variables
+                     :organisation_variables,
+                     :feature_visibility
                    ])
                ) ++
                  [:nodes]
@@ -638,8 +658,9 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "documented/0 is every feature but path_rules and registry, which the documentation does not differ by" do
-      assert Features.documented() == Features.all() -- [:path_rules, :registry]
+    test "documented/0 is every feature but path_rules, registry and the edition's switch, which the documentation does not differ by" do
+      assert Features.documented() ==
+               Features.all() -- [:path_rules, :registry, :feature_visibility]
     end
 
     test "registry/1 takes docs: false for a feature the documentation does not differ by" do
@@ -934,7 +955,7 @@ defmodule Apiary.FeaturesBootTest do
 
     Application.put_env(:apiary, :features_setting, "factory")
     error = assert_raise ArgumentError, fn -> Features.boot!() end
-    assert error.message =~ "QORY_FEATURES is not valid: factory needs observability"
+    assert error.message =~ "QORY_FEATURES is not valid: factory needs security"
   end
 
   test "boot!/0 boots where QORY_FEATURES still names instance_mail, as if it did not" do
@@ -944,9 +965,14 @@ defmodule Apiary.FeaturesBootTest do
   end
 
   test "boot!/0 stops the boot on a value parse/1 refuses, saying how to fix it" do
-    Application.put_env(:apiary, :features_setting, "security")
+    Application.put_env(:apiary, :features_setting, "secrets")
     error = assert_raise ArgumentError, fn -> Features.boot!() end
-    assert error.message =~ "QORY_FEATURES is not valid: security needs observability"
+    assert error.message =~ "QORY_FEATURES is not valid: secrets needs security"
+
+    assert error.message =~
+             "Remove it to use the saved features, set it to all, or name the features, " <>
+               "for example:\n"
+
     assert error.message =~ "QORY_FEATURES=observability\n"
   end
 end

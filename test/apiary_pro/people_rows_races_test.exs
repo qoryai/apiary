@@ -34,6 +34,12 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   setup_all :clean_up_leftovers
   setup :setup_races
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    Flags.put_feature_visibility(false)
+  end
+
   # An operator, made one as the product makes one, its owner and a second owner, and an
   # admin of it who reads its client through it; the client, with its owner and an admin
   # of its own; and an instance admin. The instance admin's membership is inserted as it

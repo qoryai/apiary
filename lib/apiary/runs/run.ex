@@ -37,6 +37,7 @@ defmodule Apiary.Runs.Run do
   @typep run :: %__MODULE__{}
 
   @states ~w(pending running completed failed cancelled lost paused)
+  @ended_states ~w(completed failed cancelled paused)
 
   # The most a `bigint` holds: the highest number a run can have.
   @max_number 9_223_372_036_854_775_807
@@ -86,6 +87,12 @@ defmodule Apiary.Runs.Run do
     field :image, :string
 
     field :state, :string, default: "pending"
+    # The names of the instance's features when the run was claimed or registered
+    # (`Apiary.Features.recorded/0`): its requests are checked against these until it
+    # has ended (`kept_features/1`, `Apiary.Features.on?/2`). Nil for a run
+    # claimed before they were kept, which follows the instance's features, as an ended
+    # run does.
+    field :features, {:array, :string}
     field :started_at, :utc_datetime_usec
     field :exited_at, :utc_datetime_usec
     field :exit_code, :integer
@@ -327,6 +334,67 @@ defmodule Apiary.Runs.Run do
   def alive_states, do: ~w(pending running)
 
   @doc """
+  The states of a run that has ended: completed, failed, cancelled and paused. No start or
+  heartbeat brings such a run back (`Apiary.Runs.Fold`). A lost run has ended only once it
+  has its exit or is lost for good (`ended?/2`).
+  """
+  def ended_states, do: @ended_states
+
+  @doc """
+  Whether `run` has ended at `at`: its state is one of `ended_states/0`, or it is lost and
+  either has its exit (`exited_at`) or is lost for good (`lost_for_good?/2`). A lost run
+  that has neither can still be revived by a heartbeat or a start.
+  """
+  @spec ended?(t() | map(), DateTime.t()) :: boolean()
+  def ended?(run, at \\ DateTime.utc_now())
+  def ended?(%{state: state}, _at) when state in @ended_states, do: true
+
+  def ended?(%{state: "lost"} = run, at),
+    do: match?(%DateTime{}, Map.get(run, :exited_at)) or lost_for_good?(run, at)
+
+  def ended?(_run, _at), do: false
+
+  @doc """
+  Whether a lost run is lost for good at `at`: no heartbeat or start revives it
+  (`Apiary.Runs.Fold`). The lost-run check ended it for its silence (`silenced_at`); `at`
+  is past its `backstop_at` (`Apiary.Runs.Liveness.past_backstop?/2`); or its gateway never
+  attached it and `at` is past its `attach_by`, the end of its attach window: nobody sends
+  for a run before its attach, and the attach is refused after the window
+  (`Apiary.Runs.Attach`).
+  """
+  @spec lost_for_good?(t() | map(), DateTime.t()) :: boolean()
+  def lost_for_good?(run, %DateTime{} = at),
+    do:
+      match?(%DateTime{}, Map.get(run, :silenced_at)) or
+        Apiary.Runs.Liveness.past_backstop?(run, at) or
+        attach_closed?(run, at)
+
+  @doc """
+  `ended?/2` negated, as a query's condition on the run, the query's first binding: the
+  run has not ended at `at`.
+  """
+  @spec not_ended(DateTime.t()) :: Ecto.Query.dynamic_expr()
+  def not_ended(%DateTime{} = at) do
+    Ecto.Query.dynamic(
+      [r],
+      r.state not in ^@ended_states and
+        not (r.state == "lost" and
+               (not is_nil(r.exited_at) or not is_nil(r.silenced_at) or
+                  (not is_nil(r.backstop_at) and r.backstop_at < ^at) or
+                  (is_nil(r.attached_at) and not is_nil(r.attach_by) and r.attach_by < ^at)))
+    )
+  end
+
+  @doc """
+  kept_features/1 is the names of the features `run` was claimed or registered with
+  (`features`) until it has ended (`ended?/2`); nil once it has ended, or for a run that
+  kept none, so its requests follow the instance's features (`Apiary.Features.on?/2`).
+  """
+  @spec kept_features(t() | map() | nil) :: [String.t()] | nil
+  def kept_features(%{} = run), do: if(ended?(run), do: nil, else: Map.get(run, :features))
+  def kept_features(nil), do: nil
+
+  @doc """
   Whether the run waits in its workspace's queue for a machine: pending, a run of the
   queue (`dispatch_run_id`) with no node and no registration, as it was written when it
   was queued. The pages show it as queued, which is no stored state: the claim that
@@ -458,6 +526,15 @@ defmodule Apiary.Runs.Run do
   end
 
   def outcome_differs?(_run), do: false
+
+  # Never attached, and past the end of its attach window: strictly, as the attach's
+  # refusal and the lost-run check count it.
+  defp attach_closed?(run, at) do
+    case {Map.get(run, :attached_at), Map.get(run, :attach_by)} do
+      {nil, %DateTime{} = attach_by} -> DateTime.compare(at, attach_by) == :gt
+      _attached_or_none -> false
+    end
+  end
 
   @doc """
   Whether the run goes through a gateway: its registration was given a run key, whatever

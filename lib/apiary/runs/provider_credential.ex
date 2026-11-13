@@ -75,7 +75,9 @@ defmodule Apiary.Runs.ProviderCredential do
   # that keeps no key, whose key was gone when the run's keys were first stored.
   @spec for_run(map | nil) :: {:ok, t | nil} | {:error, :unavailable}
   def for_run(%{provider_api: %{} = api, model_keys: [_ | _] = keys} = run) do
-    if applies?(), do: credential(run, api, keys), else: {:ok, nil}
+    if applies?(Apiary.Runs.Run.kept_features(run)),
+      do: credential(run, api, keys),
+      else: {:ok, nil}
   end
 
   def for_run(_run), do: {:ok, nil}
@@ -162,9 +164,19 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @doc false
   # applies?/0 is whether a run with a model provider is given its credential: both
-  # features `factory` and `secrets` on.
+  # features `factory` and `secrets` on, as the instance has them now. For a claim, the
+  # queue and the pages.
   @spec applies?() :: boolean
-  def applies?, do: Features.on?(:factory) and Features.on?(:secrets)
+  def applies?, do: applies?(nil)
+
+  @doc false
+  # applies?/1 is `applies?/0` for a run that kept `recorded`, the names of the features it
+  # was claimed with (`Apiary.Runs.Run`, `features`): both on among them. A run that kept
+  # none, nil, follows the instance (`Apiary.Features.on?/2`). For a run's requests, so a
+  # run already running keeps the features it started with.
+  @spec applies?([String.t()] | nil) :: boolean
+  def applies?(recorded) when is_list(recorded) or is_nil(recorded),
+    do: Features.on?(:factory, recorded) and Features.on?(:secrets, recorded)
 
   @doc false
   # sealable_to?/3 is whether the key of a provider of `chain`, of the run's organisation
