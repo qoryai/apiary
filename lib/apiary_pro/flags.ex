@@ -1,9 +1,18 @@
 defmodule ApiaryPro.Flags do
   # Flags hide functionality that is built and not shown, for the whole instance: off by
-  # default, read from the application's config, and never per organisation, as a feature
-  # is (`Apiary.Features`). A flag that is off hides what it gates as a path that does not
-  # exist. Not in the published documentation: what a flag hides is not named there.
+  # default, and never per organisation. A flag that is off hides what it gates as a path
+  # that does not exist. Not in the published documentation: what a flag hides is not
+  # named there.
+  #
+  # `transfers?/0` and `operator_infrastructure?/0` read the application's config.
+  # `feature_visibility?/0` reads the opt-in feature of the same name
+  # (`ApiaryPro.Features`, `Apiary.Features.on?/1`), which an instance admin turns on and
+  # off in Instance settings › Features. Its config value turns the feature on: while
+  # `QORY_FEATURES` is set and not empty, as if it listed it, at every boot; else once, at
+  # the first boot after the upgrade (`config_features/0`).
   @moduledoc false
+
+  alias Apiary.Features
 
   @transfers :transfers
   @operator_infrastructure :operator_infrastructure
@@ -43,15 +52,16 @@ defmodule ApiaryPro.Flags do
 
   # operator_infrastructure?/0 says whether an operator owns its clients: its owners act
   # as owners in each client and its admins as admins, its members read; a client's first
-  # person is invited as its admin, and nobody in a client is made an owner; workspaces,
-  # nodes and access keys in a client are the operator's to make and remove; only the
-  # operator's owners lock and unlock a client's workspace rules, change or remove a
-  # locked one, and change the client's organisation policy, refused to its owners made
-  # before the switch, and the refusals name the operator; and Drop is hidden. Off by
-  # default: `config :apiary_pro, :operator_infrastructure, true` turns it on. While it
-  # is off, everything is as it was: the operator's people read its clients and change
-  # nothing there, the first person of a client is its owner, and the actions of the
-  # first admin's invitation are not found, for everyone (`ApiaryPro.Access`).
+  # person is invited as its admin, and nobody in a client is made an owner. The operator
+  # makes and removes a client's nodes and access keys, and removes its workspaces. The
+  # client's owners and admins still make workspaces. Only the operator's owners lock and
+  # unlock a client's workspace rules, change or remove a locked one, and change the
+  # client's organisation policy, refused to its owners made before the switch, and the
+  # refusals name the operator; and Drop is hidden. Off by default:
+  # `config :apiary_pro, :operator_infrastructure, true` turns it on. While it is off,
+  # everything is as it was: the operator's people read its clients and change nothing
+  # there, the first person of a client is its owner, and the actions of the first
+  # admin's invitation are not found, for everyone (`ApiaryPro.Access`).
   #
   # The override works as `transfers?/0`'s: for the process that puts it and the
   # processes whose `$callers` name it. What wins: the override the process put, then its
@@ -85,18 +95,17 @@ defmodule ApiaryPro.Flags do
   # every feature the instance has. With it on, the Features pages, the Clients list and
   # the Activity page say "shown" and "hidden" for what they say "grant" and "take away"
   # with it off, and a change of what an organisation is shown is recorded with
-  # `shown: true` in its entry's details. Off by default:
-  # `config :apiary_pro, :feature_visibility, true` turns it on. While it is off, a person
-  # is not shown what the organisation they are in is not shown, whoever they are, as
-  # before.
+  # `shown: true` in its entry's details. It is the opt-in feature `feature_visibility`,
+  # off until an instance admin turns it on. While it is off, a person is not shown what
+  # the organisation they are in is not shown, whoever they are, as before.
   #
   # The override works as `transfers?/0`'s: for the process that puts it and the
-  # processes whose `$callers` name it.
+  # processes whose `$callers` name it. What wins: the override, then the feature.
   @doc false
   @spec feature_visibility?() :: boolean
   def feature_visibility? do
     case override(@feature_visibility) do
-      nil -> Application.get_env(:apiary_pro, @feature_visibility, false) == true
+      nil -> Features.on?(@feature_visibility)
       on? -> on?
     end
   end
@@ -110,6 +119,18 @@ defmodule ApiaryPro.Flags do
     Process.put(key(@feature_visibility), on?)
     :ok
   end
+
+  # config_features/0 is the feature the config of an older release switched, with
+  # whether its config value turns it on: `config :apiary_pro, :feature_visibility, true`.
+  # Read at every boot while `QORY_FEATURES` is set and not empty, else once, at the first
+  # boot after the upgrade (`c:Apiary.Edition.config_features/0`, `Apiary.Features.Saved`).
+  # `transfers` and `operator_infrastructure` stay config values and are not among them.
+  @doc false
+  @spec config_features() :: [{atom, boolean}]
+  def config_features,
+    do: [
+      {@feature_visibility, Application.get_env(:apiary_pro, @feature_visibility, false) == true}
+    ]
 
   defp override(flag) do
     key = key(flag)

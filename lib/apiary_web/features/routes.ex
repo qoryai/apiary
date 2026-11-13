@@ -18,10 +18,11 @@ defmodule ApiaryWeb.Features.Routes do
   `any:`, passes when the instance has one of them. Below the
   instance, where a person may be shown less than the instance has, the gates of
   `ApiaryWeb.Features` still decide per scope, and they alone see a live navigation, which
-  never reaches here. To a signed request of the server contract the gates answer as the
-  instance: its access key follows the instance's features alone.
+  never reaches here. To a signed request of the server contract the gates answer with the
+  features the run it is about kept when it was claimed, and else as the instance
+  (`ApiaryWeb.Contract.RunFeatures`).
 
-  One request passes on to its route with the feature off: a request that carries a
+  One request passes on to its route with the feature off: a request that contains a
   request signature (`X-Qory-Signature-Ed25519`), on a route of the server contract that
   pipes through `:contract`, `:contract_events` or `:contract_registration`, or on a
   signed route of another contract, which this documentation does not name. Each of these
@@ -67,6 +68,7 @@ defmodule ApiaryWeb.Features.Routes do
         cond do
           ApiaryWeb.Features.on?(gate) -> conn
           signed?(route, conn) -> conn
+          run_credential?(route, conn) -> conn
           true -> raise(Phoenix.Router.NoRouteError, conn: conn, router: router)
         end
     end
@@ -102,4 +104,17 @@ defmodule ApiaryWeb.Features.Routes do
   end
 
   defp signed?(_route, _conn), do: false
+
+  # A request of the registry's token route with a Basic credential also passes on, to
+  # the controller's gate, which returns `404` unless the credential is of a run that has
+  # not ended and kept `registry` when it was claimed (`ApiaryWeb.Contract.RunFeatures`).
+  # The documentation leaves the route out.
+  defp run_credential?(%{plug: ApiaryWeb.RegistryTokenController}, conn) do
+    Enum.any?(
+      Plug.Conn.get_req_header(conn, "authorization"),
+      &String.starts_with?(String.downcase(&1), "basic ")
+    )
+  end
+
+  defp run_credential?(_route, _conn), do: false
 end

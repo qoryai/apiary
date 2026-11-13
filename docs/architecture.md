@@ -34,8 +34,9 @@ beside it:
   Each node keeps a copy (`Apiary.InstanceConfig.Cache`), read again over `Apiary.PubSub`
   after each save; a node that misses the broadcast keeps the values it had until it
   starts again.
-- `Apiary.Features`: the instance's features, switched at launch (`QORY_FEATURES`), and
-  what a person is shown of them (Features, below).
+- `Apiary.Features`: the instance's features, from `QORY_FEATURES` if it is set and not
+  empty, else the features saved in Instance settings › Features
+  (`Apiary.Features.Saved`), and what a person is shown of them (Features, below).
 - `Apiary.Deletion`: deleting a workspace or an organisation, which marks it, and the
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
@@ -424,15 +425,20 @@ and never name one of its modules ([conventions.md](conventions.md), Tests).
 
 ## Features
 
-The instance has its features (`QORY_FEATURES`, `Apiary.Features`), switched when it is
-launched and fixed while it runs: the only on and off (`Apiary.Features.on?/1`). Below the
-instance a feature is shown or hidden, never switched off. What a person is not shown in
+The instance has its features (`Apiary.Features`): the list of `QORY_FEATURES` where it
+is set and not empty, else the list an instance admin saves in Instance settings ›
+Features (`Apiary.Features.Saved`), which takes effect on every node without a restart.
+The instance's features are the only on and off (`Apiary.Features.on?/1`); a run is
+checked against the features it was claimed with until it has ended
+(`Apiary.Runs.Run.ended?/2`, `Apiary.Features.on?/2`, `ApiaryWeb.Contract.RunFeatures`).
+Below the instance a feature is shown or hidden, never switched off. What a person is not shown in
 an organisation is the edition's answer (`c:Apiary.Edition.hidden/1`), and nothing else
 answers it: in the core, nothing is hidden. The answer does not depend on the workspace.
 An edition's features are listed after the core's (`c:Apiary.Edition.features/0`), and
 `Apiary.Features.built/0` names the ones a page of an edition may show or hide for an
 organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on
-where `QORY_FEATURES` lists it by name, and is never one of those. The core's opt-in
+where `QORY_FEATURES` lists it by name, or where the saved list has it, and is never one
+of those. The core's opt-in
 feature, `registry`, is also on with `all` where `QORY_REGISTRY` is set. A feature may have
 **parts** (`Apiary.Features.parts/0`), which an edition may hide apart from the rest of the
 feature, and which are never on or off apart from it: the core's one part of a feature is
@@ -447,10 +453,15 @@ gateways, which the `node.*` and `access_key.*` actions belong to.
   the person's scope, which carries what is hidden (`Apiary.Accounts.Scope`, `hidden`).
   What belongs to the instance follows its switch only (`Apiary.Features.on?/1`): the
   guides at `/docs`, the sign-in and landing pages, the routes' first answer
-  (`ApiaryWeb.Features.Routes`), and the server contract, whose access key, and its
-  scope, answer as the instance. A hidden feature still works in full for machines: a run's
-  registration, events, attach, outcome and reload, and its run configuration, follow the
-  instance's features alone, and so do rendering and the instance's jobs; the discovery
+  (`ApiaryWeb.Features.Routes`), and the server contract. A request about a run is
+  checked against the features the run recorded when it started (`runs.features`) until
+  the run has ended (`Apiary.Runs.Run.ended?/2`). After the end, the calls that the
+  contract still accepts keep that record: a dispatch's machine log and machine end, and
+  the model keys report within its 60 s. Every other request is checked against the
+  instance's features (`ApiaryWeb.Contract.RunFeatures`). A hidden feature
+  still works in full for machines: a run's registration, events, attach, outcome and
+  reload, and its run configuration, follow the run's features or the instance's, never
+  what a person is shown, and so do rendering and the instance's jobs; the discovery
   document reads no feature.
 - **Read again under the locks.** `Apiary.Access.reload/2` asks what is hidden after the
   edition's reload, under the edition's locks, so what an edition changes of it under the
@@ -1133,9 +1144,9 @@ level, and the run configuration does not carry them.
 - **What is not checked**: the limits and the one spelling are checked on every write at
   either level, and on nothing else. Where the instance does not have the feature,
   `for_above/1` is empty, so a workspace's writes are checked against none of the
-  organisation's variables; the instance having the feature again, as when
-  `QORY_FEATURES` changes at a restart, checks nothing, and may leave a workspace with
-  another spelling or over a limit. The organisation's next checked write is refused,
+  organisation's variables; the instance having the feature again, by a save in
+  Instance settings › Features or a restart with another `QORY_FEATURES`, checks
+  nothing, and may leave a workspace with another spelling or over a limit. The organisation's next checked write is refused,
   naming the workspace, until the workspace changes or deletes its variable.
 - **The counts** (`overrides/1`) are, per name of the organisation's, how many workspaces
   in use and repositories set it themselves: the values a lock sets aside, or the holders

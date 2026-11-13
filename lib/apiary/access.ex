@@ -2,6 +2,7 @@ defmodule Apiary.Access do
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Dispatches.Dispatch
   alias Apiary.Access.Action
   alias Apiary.Adapters.Connection
   alias Apiary.Accounts.{Scope, User}
@@ -10,7 +11,7 @@ defmodule Apiary.Access do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, Sender}
   alias Apiary.Stages.Approvers
   alias Apiary.WorkItems.WorkItem
 
@@ -189,6 +190,14 @@ defmodule Apiary.Access do
     Action.new(
       :"instance.support_save",
       "save the support address, where Contact support leads (Apiary.SupportAddress.save/2)",
+      roles: @owners,
+      asked_of: :organisation,
+      instance: true
+    ),
+    # The instance's features, in Instance settings › Features.
+    Action.new(
+      :"instance.features_save",
+      "turn the instance's features on and off (Apiary.Features.Saved.save/3)",
       roles: @owners,
       asked_of: :organisation,
       instance: true
@@ -1580,10 +1589,30 @@ defmodule Apiary.Access do
 
     # A part of a feature is shown only where its feature is too
     # (`Apiary.Features.visible?/2`).
-    if not is_nil(shown_as) and not Features.visible?(scope, shown_as),
+    if not is_nil(shown_as) and not shown?(scope, shown_as, subject),
       do: {:error, :not_found},
       else: role_and_place(scope, action, subject)
   end
+
+  # An access key checks a run that kept the features it was claimed with, the scope's
+  # (`Apiary.Accounts.Scope.for_run/2`) or the subject's until it has ended
+  # (`Apiary.Runs.Run.kept_features/1`), for the feature (`Apiary.Features.on?/2`),
+  # whatever the instance has now: a run already running finishes with the features it
+  # started with. A run that kept none, or has ended, follows the instance.
+  defp shown?(%Scope{access_key: %AccessKey{}} = scope, name, subject) do
+    case {recorded(scope, subject), Features.feature_of(name)} do
+      {nil, _feature} -> Features.visible?(scope, name)
+      {_recorded, nil} -> true
+      {recorded, feature} -> Features.on?(feature, recorded)
+    end
+  end
+
+  defp shown?(scope, name, _subject), do: Features.visible?(scope, name)
+
+  defp recorded(%Scope{run_features: recorded}, _subject) when is_list(recorded), do: recorded
+  defp recorded(_scope, %Run{} = run), do: Run.kept_features(run)
+  defp recorded(_scope, %Dispatch{} = dispatch), do: Sender.dispatch_run_features(dispatch)
+  defp recorded(_scope, _subject), do: nil
 
   # An instance action, in the order of the moduledoc's "The instance's admins": its
   # feature, asked of the instance; the instance step; the edition; the place; the role.

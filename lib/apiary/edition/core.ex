@@ -237,6 +237,9 @@ defmodule Apiary.Edition.Core do
   def features, do: []
 
   @impl true
+  def config_features, do: []
+
+  @impl true
   def hidden(_scope), do: []
 
   # The core has one workspace: what a person adds reaches it alone, and no form shows the

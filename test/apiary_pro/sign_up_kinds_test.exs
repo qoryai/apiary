@@ -12,6 +12,12 @@ defmodule ApiaryPro.SignUpKindsTest do
   # instance organisation's row.
   use Apiary.DataCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import ExUnit.CaptureLog
   import ApiaryPro.SignUpFixtures, only: [open!: 1]
   import Apiary.AccountsFixtures

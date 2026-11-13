@@ -477,7 +477,31 @@ environment variable SMTP_TLS must be always, if_available or never
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `QORY_FEATURES` | `all` | The features this instance has: `all`; `all-` and the features left out, separated by commas; or the features on, separated by commas. Not set, or empty, is `all`. |
+| `QORY_FEATURES` | none | The features this instance has: `all`; `all-` followed by the features to leave out, separated by commas; or the features to turn on, separated by commas. If it is set and not empty, its features apply and **Instance settings › Features** is read only. If the server's config turns on `feature_visibility`, that feature also applies as if `QORY_FEATURES` listed it. If it is not set or is empty, the features saved on that page apply. |
+
+An instance admin turns features on and off in **Instance settings › Features**. **Save**
+takes effect at once on every node, with no restart. A run that is already running
+finishes with the features it started with; queued and new runs take the saved features
+when they start.
+
+The features in force come from the first of these that is there:
+
+1. `QORY_FEATURES`, if it is set and not empty. Each start of Qory Apiary also saves these
+   features, so the instance keeps them after you remove the variable, and you then change
+   them on the page.
+2. The features saved in **Instance settings › Features**.
+3. The defaults: every feature but `registry` and the ones marked off by default below.
+   `registry` is on where `QORY_REGISTRY` is set.
+
+A feature that a later release adds starts at its default, even on an instance whose
+features were saved: on, or off for a feature that is off by default.
+
+`observability` is on whatever `QORY_FEATURES` or the saved features say. A saved feature
+that this release does not have is skipped, with this log line:
+
+```text
+Features: skipped the saved feature <name>, which this release does not have.
+```
 
 - `observability`: the record, the runs with their terminals and timelines, the
   connections, and retention. Every instance has it.
@@ -499,9 +523,8 @@ environment variable SMTP_TLS must be always, if_available or never
   `observability`, `security` and `secrets`.
 <!-- /feature -->
 <!-- feature: security -->
-- `registry`: the private image registry's tokens and each run's registry credential. On
-  where `QORY_REGISTRY` is set, unless `all-…` or a list leaves it out. If it is on and
-  `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
+- `registry`: the private image registry's tokens and each run's registry credential. If
+  it is on and `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
@@ -523,6 +546,11 @@ environment variable SMTP_TLS must be always, if_available or never
   and the organisation's variables, which every workspace inherits, above each
   workspace's variables. Needs `security` and `secrets`.
 <!-- /feature -->
+- `feature_visibility`: what a person is shown depends on who they are, not only on the
+  organisation they are in. It can also show more than the organisation has: with
+  `operator_infrastructure` on, an operator's people see the operator's features in its
+  clients, and an instance admin sees every feature. Off by default. Needs
+  `observability`.
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
 the discovery document leave it out, and the documentation at `/docs` does not describe
@@ -579,12 +607,12 @@ needs, stops the boot:
 
 ```text
 environment variable QORY_FEATURES is not valid: unknown feature obsevability; the Install guide at /docs lists the features.
-Leave it unset or set it to all for the default features, or name them, for example:
+Remove it to use the saved features, set it to all, or name the features, for example:
 QORY_FEATURES=observability
 ```
 
-To switch a feature on later, add it to the value and restart. Every instance has the
-whole database schema whatever its features, so nothing is migrated.
+Every instance has the whole database schema whatever its features, so nothing is
+migrated.
 
 <!-- feature: factory -->
 ### The instance's pool and gateway

@@ -11,6 +11,12 @@ defmodule ApiaryPro.InstanceOrganisationTest do
   # instance organisation inside its sandbox, for a first sign-up of its own.
   use Apiary.DataCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   # Offers to an operator and leaving one are shown here, for this process and those it
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
@@ -61,7 +67,10 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     assert Apiary.Edition.instance_organisation_id() == first.organisation.id
     assert Access.instance_admin?(scope)
     assert scope.reach == nil
-    assert ApiaryPro.Features.of(scope.organisation) == Features.enabled()
+
+    # No organisation is shown the switch of the whole instance.
+    assert ApiaryPro.Features.of(scope.organisation) ==
+             Features.enabled() -- [:feature_visibility]
   end
 
   test "no operator's action is found in it, whatever the instance has", %{

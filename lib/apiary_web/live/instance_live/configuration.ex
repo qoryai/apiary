@@ -24,8 +24,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   The audit trail's two periods, the grace period and the invitations a day are forms an
   instance admin saves after a recent sign-in (`Apiary.InstanceConfig.save/3`), each part
   with its Save, unless the environment sets the value, which wins and shows read only;
-  the edition's parts (`c:ApiaryWeb.Edition.configuration_parts/1`) follow. The features,
-  the integration sources and run pruning are read when the server starts, read only.
+  the edition's parts (`c:ApiaryWeb.Edition.configuration_parts/1`) follow. The features
+  are read only here, with where they come from (`QORY_FEATURES`, the list saved in
+  Instance settings › Features, or the defaults), and a line under them links to Instance
+  settings › Features (`ApiaryWeb.InstanceLive.Features`), where they change. The
+  integration sources and run pruning are read when the server starts, read only.
 
   The page asks for a recent sign-in, as Mail does (`ApiaryWeb.UserAuth`'s sudo mode): a
   shorter retention deletes what it no longer keeps. A save after the sign-in has grown
@@ -39,6 +42,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   on_mount {ApiaryWeb.Access, :instance}
 
   alias Apiary.{Access, Features, InstanceConfig}
+  alias Apiary.Features.Saved
   alias Apiary.Integrations.Source
   alias Apiary.Retention.Scheduler
   alias ApiaryWeb.InstanceLive.ConfigurationComponents
@@ -80,6 +84,15 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           </dl>
           <p id="config-features-source" class="text-[12px] text-faint">
             <.rich text={@sources.features} />
+          </p>
+          <p id="config-features-link" class="text-[13px]/[20px]">
+            <.rich text={
+              rich_gettext("Turn features on or off in %{page}.",
+                page:
+                  {:link, ~p"/instance/features",
+                   gettext("Instance settings › %{page}", page: gettext("Features"))}
+              )
+            } />
           </p>
         </SettingsComponents.part>
 
@@ -550,7 +563,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   # Pruning is the application's configuration, which no setting of the environment changes.
   defp sources do
     %{
-      features: env_source("QORY_FEATURES", :features_setting),
+      features: features_source(),
       url_sources: env_source("INTEGRATION_URL_SOURCES", :integration_url_sources_setting),
       pruning:
         if(Keyword.take(scheduler_config(), [:enabled, :hour]) == [],
@@ -558,6 +571,20 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           else: gettext("Set in the application's configuration")
         )
     }
+  end
+
+  # Once an instance admin saved the features, the saved list decides while QORY_FEATURES
+  # is not set or blank (`Apiary.Features.Saved.current/0`).
+  defp features_source do
+    case Saved.current() do
+      %{source: :saved} ->
+        rich_gettext("Saved in Instance settings › Features: %{variable} is not set.",
+          variable: {:code, "QORY_FEATURES", "q-mono"}
+        )
+
+      _env_or_default ->
+        env_source("QORY_FEATURES", :features_setting)
+    end
   end
 
   # Set to a blank value is not unset: the default either way, said as it is.

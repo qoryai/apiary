@@ -601,24 +601,40 @@ defmodule ApiaryWeb.UserAuth do
   # holds, so that scope must stay current: this loads it again on a change of membership,
   # and the Work items pages load it again on a message that work items changed
   # (`reload_scope/1`).
+  #
+  # It follows a save of the instance's features the same way: once this node's copy has
+  # the features (`Apiary.Features.Cache.subscribe/0`), a page with an organisation loads
+  # its scope again, so its menu gains or loses entries at once, and a page whose feature
+  # went off is sent away with its notice.
   defp follow_membership_changes(socket) do
     if Phoenix.LiveView.connected?(socket) do
       Phoenix.PubSub.subscribe(
         Apiary.PubSub,
         Organisations.membership_topic(socket.assigns.current_scope.user.id)
       )
+
+      Apiary.Features.Cache.subscribe()
     end
 
     Phoenix.LiveView.attach_hook(socket, :membership_changed, :handle_info, fn
       {:membership_changed, _change}, socket ->
-        socket = reload_scope(socket)
-        reload = socket.private[:on_membership_change]
+        {:halt, reload_and_follow(socket)}
 
-        {:halt, if(reload && !socket.redirected, do: reload.(socket), else: socket)}
+      {Apiary.Features.Cache, :written, _features}, socket ->
+        if socket.assigns.current_scope.organisation,
+          do: {:halt, reload_and_follow(socket)},
+          else: {:halt, socket}
 
       _message, socket ->
         {:cont, socket}
     end)
+  end
+
+  defp reload_and_follow(socket) do
+    socket = reload_scope(socket)
+    reload = socket.private[:on_membership_change]
+
+    if reload && !socket.redirected, do: reload.(socket), else: socket
   end
 
   @doc """
@@ -641,12 +657,13 @@ defmodule ApiaryWeb.UserAuth do
   as it is now. A page that asks `Apiary.Access.can?/3` as it renders follows. A
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
-  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`;
-  for a page of the Instance level, one the instance does not have,
-  `ApiaryWeb.Features.page_shown?/2`), or whose action (`ApiaryWeb.Access`) belongs to a
-  feature or a part hidden meanwhile (`Apiary.Access.shown_as/1`), sends it to the
-  organisation's overview, which every organisation has, and says so; an organisation's
-  page keeps its workspace while the user reaches it.
+  so; a page of a feature hidden from the person meanwhile (`Apiary.Features.visible?/2`),
+  or whose action (`ApiaryWeb.Access`) belongs to a feature or a part hidden meanwhile
+  (`Apiary.Access.shown_as/1`), sends it to the organisation's overview, which every
+  organisation has, and says so; a page of the Instance level whose feature the instance
+  no longer has (`ApiaryWeb.Features.page_shown?/2`) goes to Instance settings › General,
+  which every instance has, and says so; an organisation's page keeps its workspace while
+  the user reaches it.
   """
   @spec reload_scope(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def reload_scope(socket) do
@@ -669,15 +686,29 @@ defmodule ApiaryWeb.UserAuth do
       |> Phoenix.Component.assign(:memberships, Organisations.list_places(scope.user))
       |> Phoenix.Component.assign(:nav_counts, nav_counts(reloaded))
     else
+      # A page of the Instance level, whose feature the instance no longer has, goes to
+      # the Instance level's first page, which every instance has; an organisation's page
+      # to the organisation's overview.
       {:hidden, reloaded} ->
-        socket
-        |> Phoenix.LiveView.put_flash(
-          :error,
-          gettext("That page is no longer shown in %{organisation}.",
-            organisation: reloaded.organisation.name
+        if ApiaryWeb.Features.instance?(socket.view) do
+          socket
+          |> Phoenix.LiveView.put_flash(
+            :error,
+            gettext(
+              "That page is no longer shown: its feature is off in Instance settings › Features."
+            )
           )
-        )
-        |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}")
+          |> Phoenix.LiveView.redirect(to: ~p"/instance/general")
+        else
+          socket
+          |> Phoenix.LiveView.put_flash(
+            :error,
+            gettext("That page is no longer shown in %{organisation}.",
+              organisation: reloaded.organisation.name
+            )
+          )
+          |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}")
+        end
 
       :error ->
         case suspended_membership(scope, scope.organisation && scope.organisation.slug) do

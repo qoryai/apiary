@@ -1214,16 +1214,20 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
-    test "says so when artifacts are turned off after the page opened", ctx do
+    # The page's event is not run: the page moves away as the save's broadcast moves it
+    # (`ApiaryWeb.Features`).
+    test "moves away with the notice when artifacts are turned off after the page opened",
+         ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
 
       previous = Application.get_env(:apiary, :features)
       Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:workflow_model])
       on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
 
-      html = add_notes(view)
-      assert html =~ "Artifacts are not available here. Contact support if you need them."
-      refute html =~ "QORY_FEATURES"
+      add_notes(view)
+      flash = assert_redirect(view, ~p"/#{ctx.scope.organisation}")
+      assert flash["error"] == "That page is no longer shown in #{ctx.scope.organisation.name}."
+      assert Artifacts.list(ctx.work_item) == []
     end
 
     test "says so when the reader can no longer read the work items", ctx do
@@ -1334,15 +1338,6 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         assert add_notes(view) =~
                  "Store the files again. If it fails again, contact support at support@example.com."
       end)
-
-      Application.put_env(:apiary, :artifacts_dir, Path.join(ctx.tmp_dir, "store"))
-      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "explainer"))
-      previous = Application.get_env(:apiary, :features)
-      Application.put_env(:apiary, :features, Apiary.Features.enabled() -- [:workflow_model])
-      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
-
-      assert add_notes(view) =~
-               "Artifacts are not available here. Contact support at support@example.com if you need them."
     end
 
     test "stores the version in the stage the work item moved to before Add version", ctx do

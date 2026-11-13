@@ -147,7 +147,7 @@ defmodule Apiary.Runs.Attach do
   @int4 2_147_483_647
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
   # The states of a run that has ended.
-  @ended ~w(completed failed cancelled paused)
+  @ended Run.ended_states()
 
   @typedoc "An attach's body, as `parse/1` read it."
   @type t :: %__MODULE__{
@@ -282,7 +282,7 @@ defmodule Apiary.Runs.Attach do
          :ok <- given(run, payload),
          :ok <- in_use(run),
          place = Sender.place_key(run, access_key),
-         :ok <- may_post(place),
+         :ok <- may_post(place, run),
          {:ok, answer} <- store(run.id, access_key, grant, workspace, attach, meta) do
       if not answer.repeated, do: attached(access_key, answer.run, answer.run.attached_at)
       {:ok, answer}
@@ -331,8 +331,8 @@ defmodule Apiary.Runs.Attach do
   end
 
   # The run's workspace may be posted to: what can refuse it is a feature that is off.
-  defp may_post(place) do
-    scope = Scope.for_access_key(place)
+  defp may_post(place, run) do
+    scope = place |> Scope.for_access_key() |> Scope.for_run(Run.kept_features(run))
 
     case Access.authorize(scope, :"run.post_events", scope.workspace) do
       :ok -> :ok

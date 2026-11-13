@@ -129,7 +129,11 @@ defmodule Apiary.Runs.Ingest do
     delivery_id = delivery_id(meta)
     # A verified key carries its workspace and node; one that does not is given them here.
     access_key = Repo.preload(access_key, [:workspace, :node])
-    scope = Scope.for_access_key(access_key)
+
+    scope =
+      access_key
+      |> Scope.for_access_key()
+      |> Scope.for_run(Sender.recorded(access_key, batch.subject))
 
     with :ok <- may_post(scope),
          {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
@@ -384,7 +388,11 @@ defmodule Apiary.Runs.Ingest do
         {:error, :unauthorized}
 
       true ->
-        may_post(Scope.for_access_key(Sender.place_key(run, access_key)))
+        run
+        |> Sender.place_key(access_key)
+        |> Scope.for_access_key()
+        |> Scope.for_run(Run.kept_features(run))
+        |> may_post()
     end
   end
 
@@ -437,6 +445,7 @@ defmodule Apiary.Runs.Ingest do
             node_run_id: batch.subject,
             access_key_id: access_key.id,
             state: "pending",
+            features: Apiary.Features.recorded(),
             forager_version: meta[:forager_version],
             contract_version: meta.contract_version,
             inserted_at: now,

@@ -9,8 +9,9 @@ defmodule Apiary.Adapters.CallTrust do
   # adapter's host.
   #
   # `config/runtime.exs` keeps the variable as `:ssl_cert_file_setting`, outside the
-  # tests. `boot!/0` reads the file once, at boot, with the `factory` feature, and stops
-  # a boot when the file cannot be read or has no certificate. It builds the list of
+  # tests. `boot!/0` reads the file once, at boot, whether the `factory` feature is on or
+  # not, so that an instance admin may turn it on without a restart, and stops a boot when
+  # the file cannot be read or has no certificate. It builds the list of
   # authorities once too and keeps it in `:persistent_term`, so every call passes the
   # same term: the connect options are part of the key of Req's Finch pool, which stays
   # one pool.
@@ -18,20 +19,18 @@ defmodule Apiary.Adapters.CallTrust do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  alias Apiary.Features
-
   @key {__MODULE__, :transport_opts}
 
   @doc false
-  # boot!/0 reads `SSL_CERT_FILE`'s file, with the `factory` feature, and keeps
+  # boot!/0 reads `SSL_CERT_FILE`'s file, whatever the features, and keeps
   # `transport_opts/1` of its certificates for `transport_opts/0`; raises when the file
   # cannot be read or has no certificate.
   @spec boot!() :: :ok
   def boot! do
     certificates =
-      case {Features.on?(:factory), Application.get_env(:apiary, :ssl_cert_file_setting)} do
-        {true, path} when is_binary(path) and path != "" -> load!(path)
-        _off_or_unset -> []
+      case Application.get_env(:apiary, :ssl_cert_file_setting) do
+        path when is_binary(path) and path != "" -> load!(path)
+        _unset -> []
       end
 
     :persistent_term.put(@key, transport_opts(certificates))

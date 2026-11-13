@@ -56,6 +56,7 @@ defmodule Apiary.Runs.Sender do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Dispatches.Dispatch
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
@@ -204,31 +205,124 @@ defmodule Apiary.Runs.Sender do
   def registered_by?(_run, _access_key), do: false
 
   @doc """
-  The query of the run `run_id` as `access_key` names it, its row locked when `lock` is
-  given: a gateway's key names a run that goes through it, by the gateway and the run's
-  id, wherever the run's workspace is (a run id names at most one run through a
+  The query of the run `run_id` as `access_key` finds it, its row locked when `lock` is
+  given: a gateway's key finds a run that goes through it, by the gateway and the run's
+  id, wherever the run's workspace is (a run id matches at most one run through a
   gateway); the key of the instance's pool, which has no workspace, a run its pool is
   bound to; any other key a run of the key's workspace.
   """
   @spec run_query(AccessKey.t(), Ecto.UUID.t(), keyword) :: Ecto.Query.t()
   def run_query(access_key, run_id, opts \\ [])
 
-  def run_query(%AccessKey{node: %Node{kind: :gateway, id: id}}, run_id, opts) do
-    from(r in Run, where: r.gateway_id == ^id and r.node_run_id == ^run_id) |> lock(opts)
+  def run_query(%AccessKey{} = access_key, run_id, opts) do
+    from(r in key_runs(access_key), where: r.node_run_id == ^run_id) |> lock(opts)
   end
 
-  def run_query(%AccessKey{workspace_id: nil, node_id: node_id}, run_id, opts)
-      when is_binary(node_id) do
-    from(r in Run, where: r.node_id == ^node_id and r.node_run_id == ^run_id) |> lock(opts)
-  end
+  # The runs `access_key` finds, as `run_query/3` takes one of them.
+  defp key_runs(%AccessKey{node: %Node{kind: :gateway, id: id}}),
+    do: from(r in Run, where: r.gateway_id == ^id)
 
-  def run_query(%AccessKey{workspace_id: workspace_id}, run_id, opts) do
-    from(r in Run, where: r.workspace_id == ^workspace_id and r.node_run_id == ^run_id)
-    |> lock(opts)
-  end
+  defp key_runs(%AccessKey{workspace_id: nil, node_id: node_id}) when is_binary(node_id),
+    do: from(r in Run, where: r.node_id == ^node_id)
+
+  defp key_runs(%AccessKey{workspace_id: workspace_id}) when is_binary(workspace_id),
+    do: from(r in Run, where: r.workspace_id == ^workspace_id)
+
+  # A key of no node and no workspace finds no run.
+  defp key_runs(%AccessKey{}), do: from(r in Run, where: false)
 
   defp lock(query, opts),
     do: if(opts[:lock], do: Ecto.Query.lock(query, "FOR UPDATE"), else: query)
+
+  @doc """
+  recorded/2 is the names of the features the run `run_id` kept when it was claimed
+  (`Apiary.Features.recorded/0`), as `access_key` finds the run (`run_query/3`), until it
+  has ended (`Apiary.Runs.Run.kept_features/1`): nil for a run id that is no
+  UUID, a run the key does not find, a run that has ended, or a run that kept none.
+  """
+  @spec recorded(AccessKey.t(), term) :: [String.t()] | nil
+  def recorded(%AccessKey{} = access_key, run_id) do
+    if Apiary.Runs.Batch.uuid?(run_id) do
+      Repo.one(
+        from r in run_query(access_key, run_id),
+          where: ^Run.not_ended(DateTime.utc_now()),
+          select: r.features
+      )
+    end
+  end
+
+  @doc """
+  dispatch_recorded/2 is the names of the features kept by the run of the dispatch
+  `dispatch_id`, a dispatch the pool of `access_key` claimed (`dispatch_run_features/1`):
+  nil for an id that is no dispatch's public id, a dispatch of another pool, a dispatch
+  with no run, or a run that kept none.
+  """
+  @spec dispatch_recorded(AccessKey.t(), term) :: [String.t()] | nil
+  def dispatch_recorded(%AccessKey{node_id: pool_id}, dispatch_id) when is_binary(pool_id) do
+    if Dispatch.public_id?(dispatch_id) do
+      case Repo.one(
+             from d in Dispatch, where: d.public_id == ^dispatch_id and d.pool_id == ^pool_id
+           ) do
+        %Dispatch{} = dispatch -> dispatch_run_features(dispatch)
+        nil -> nil
+      end
+    end
+  end
+
+  def dispatch_recorded(%AccessKey{}, _dispatch_id), do: nil
+
+  @doc false
+  # dispatch_run_features/1 is the names of the features kept by the run that the claim of
+  # `dispatch` registered, whatever the run's state or the dispatch's: the pool's calls
+  # about a dispatch, such as its machine's log and end, which can come after the run
+  # ended or the lease lapsed, follow them for as long as the dispatch's routes take them.
+  # The run is found as `Apiary.Runs.RunCode` and `Apiary.Runs.Preparation` find a run's
+  # dispatch, the other way: the run whose start failed under the dispatch, released or
+  # lapsed (`Apiary.Runs.Run`, `dispatch_id`); else the run its run of the queue
+  # registered, where the dispatch is the latest claim of that run of the queue. A run
+  # that a later claim registered, and a queued record no claim registered, are never the
+  # dispatch's. Nil for none, or a run that kept none.
+  @spec dispatch_run_features(Dispatch.t()) :: [String.t()] | nil
+  def dispatch_run_features(%Dispatch{id: id, dispatch_run_id: dispatch_run_id} = dispatch) do
+    case Repo.one(from r in Run, where: r.dispatch_id == ^id, select: {r.features}, limit: 1) do
+      {features} -> features
+      nil -> if latest_claim?(dispatch), do: claimed_run_features(dispatch_run_id)
+    end
+  end
+
+  defp claimed_run_features(dispatch_run_id) do
+    Repo.one(
+      from r in Run,
+        where: r.dispatch_run_id == ^dispatch_run_id and not is_nil(r.registered_at),
+        select: r.features,
+        limit: 1
+    )
+  end
+
+  # Whether no claim of the run of the queue of `dispatch` came after it.
+  defp latest_claim?(%Dispatch{id: id, dispatch_run_id: dispatch_run_id, claimed_at: claimed_at})
+       when is_binary(dispatch_run_id) do
+    not Repo.exists?(
+      from d in Dispatch,
+        where: d.dispatch_run_id == ^dispatch_run_id and d.id != ^id,
+        where: d.claimed_at >= ^claimed_at
+    )
+  end
+
+  defp latest_claim?(%Dispatch{}), do: false
+
+  @doc """
+  kept_by_live_run?/2 is whether a run that has not ended and that `access_key` finds
+  (`run_query/3`) kept every feature of `names` when it was claimed (`recorded/2`).
+  """
+  @spec kept_by_live_run?(AccessKey.t(), [String.t(), ...]) :: boolean
+  def kept_by_live_run?(%AccessKey{} = access_key, [_ | _] = names) do
+    Repo.exists?(
+      from r in key_runs(access_key),
+        where: ^Run.not_ended(DateTime.utc_now()),
+        where: fragment("? @> ?::text[]", r.features, ^names)
+    )
+  end
 
   @doc """
   Whether the gateway of `access_key` may still serve `run`'s workspace

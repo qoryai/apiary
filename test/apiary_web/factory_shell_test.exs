@@ -567,7 +567,11 @@ defmodule ApiaryWeb.FactoryShellTest do
 
       hidden = owner_scope(scope.user)
       refute Apiary.Features.visible?(hidden, :factory)
-      socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, current_scope: hidden}}
+
+      socket = %Phoenix.LiveView.Socket{
+        assigns: %{__changed__: %{}, current_scope: hidden},
+        private: %{lifecycle: %Phoenix.LiveView.Lifecycle{}}
+      }
 
       assert {:cont, _socket} =
                ApiaryWeb.Features.on_mount({:instance, :factory}, %{}, %{}, socket)

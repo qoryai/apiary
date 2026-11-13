@@ -40,12 +40,23 @@ defmodule ApiaryWeb.Contract.ComposedRunConfigurationTest do
 
   # A claim of the pool, made with the `registry` feature on and the run configuration's
   # features as they were: the attach and the reloads after it run without the feature.
+  # A run follows the features it kept at its claim, so the claimed run keeps them
+  # without `registry`.
   defp claim(ctx) do
     previous = Application.get_env(:apiary, :features)
     Application.put_env(:apiary, :features, Enum.uniq(previous ++ [:registry]))
 
     try do
-      Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+      claimed = Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now())
+
+      Repo.update_all(
+        from(r in Run,
+          update: [set: [features: fragment("array_remove(?, 'registry')", r.features)]]
+        ),
+        []
+      )
+
+      claimed
     after
       Application.put_env(:apiary, :features, previous)
     end

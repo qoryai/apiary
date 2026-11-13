@@ -32,8 +32,9 @@ being one. Every variable named here is described in [Install and configure](ins
   Every machine pins the key of
   `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
   [Backup and restore](backup.md) says what each loss costs.
-- **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
-  every feature that is on by default. A feature that is off is absent for everybody on
+- **The features.** If `QORY_FEATURES` is set and not empty, its features apply and
+  **Instance settings › Features** is read only. If it is not set or is empty, the
+  features saved on that page apply. A feature that is off is absent for everybody on
   the instance, so decide before they arrive:
   [Install and configure](install.md#features).
 - **Postgres and the artifact store, backed up.** The database and the artifact store

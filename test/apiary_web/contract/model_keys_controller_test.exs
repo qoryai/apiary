@@ -82,6 +82,74 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
   defp rows, do: Repo.all(from s in State, order_by: [s.secret_value_id, s.window])
 
+  # A run keeps the features it was claimed with (`Apiary.Runs.Run`, `features`), and its
+  # report follows them, whatever the instance has since.
+  describe "a run whose factory feature changes after its claim" do
+    setup do
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    end
+
+    test "off since the claim: the report is still taken", ctx do
+      enabled = Apiary.Features.enabled()
+
+      Application.put_env(
+        :apiary,
+        :features,
+        Apiary.Features.Saved.close(enabled, enabled -- [:factory])
+      )
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 200, conn.resp_body
+      assert [_row] = rows()
+    end
+
+    # The last report comes within 60 s of the run's end, and follows the run's features.
+    test "off since the claim: a report up to 60 s after the exit is stored, later is 404",
+         ctx do
+      enabled = Apiary.Features.enabled()
+
+      Application.put_env(
+        :apiary,
+        :features,
+        Apiary.Features.Saved.close(enabled, enabled -- [:factory])
+      )
+
+      exited = fn seconds_ago ->
+        Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+        Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+          received_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
+        )
+
+        {1, _} =
+          Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+      end
+
+      exited.(59)
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert [%State{window: "five_hour"}] = rows()
+
+      exited.(61)
+      conn = post_report(ctx, report(ctx, [state(ctx, status: "allowed")]))
+      assert conn.status == 404
+      assert [%State{status: "rejected"}] = rows()
+    end
+
+    test "on since a claim without it: the report is the 404 of the feature's gate", ctx do
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [features: Apiary.Features.recorded() -- ["factory", "workflow_model"]]
+        )
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 404
+      assert ["text/html" <> _] = get_resp_header(conn, "content-type")
+      assert rows() == []
+    end
+  end
+
   describe "a report for a live run" do
     test "is stored by the key's row id and answered the run's keys' states", ctx do
       body = report(ctx, [state(ctx)])

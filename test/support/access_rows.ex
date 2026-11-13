@@ -130,6 +130,7 @@ defmodule Apiary.AccessRows do
       {:"instance.rename", yes: @instance_admins},
       {:"instance.configure", yes: @instance_admins},
       {:"instance.support_save", yes: @instance_admins},
+      {:"instance.features_save", yes: @instance_admins},
       {:"instance.read", yes: @instance_admins},
       {:"instance.read_machine", yes: @instance_admins},
       {:"instance.review_connections", yes: @instance_admins},

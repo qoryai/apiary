@@ -210,6 +210,15 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert is_nil(registered.run_key_payload)
     end
 
+    test "keeps the instance's features on the run it registers; the queued run has none",
+         ctx do
+      run = queued!(ctx.scope)
+      assert is_nil(Repo.get_by!(Run, dispatch_run_id: run.id).features)
+
+      assert claim(ctx, body(%{"pool_id" => ctx.pool.public_id})).status == 200
+      assert Repo.get_by!(Run, dispatch_run_id: run.id).features == Apiary.Features.recorded()
+    end
+
     test "with a pool that goes direct is 409 no_gateway, signed, and takes nothing", ctx do
       run = queued!(ctx.scope)
 

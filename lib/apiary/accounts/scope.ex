@@ -42,6 +42,12 @@ defmodule Apiary.Accounts.Scope do
   puts on the scope it loads (`put_origin/2`), or the worker of the job,
   `%{worker: "Apiary.Audit.PruneJob"}`. Nil where nobody said.
 
+  `run_features` is, in an access key's scope, the names of the features the run its
+  request is about kept when it was claimed (`Apiary.Features.recorded/0`), until the run
+  has ended (`Apiary.Runs.Run.kept_features/1`), set by `for_run/2`:
+  `Apiary.Access` checks them in place of the instance's features, so a run already
+  running finishes with the features it started with. Nil in any other scope.
+
   `instance_organisation_id` is the instance organisation's id as
   `Apiary.Access.in_instance/1` read it, so `Apiary.Access.can?/3` reads no row for an
   instance action in that scope, beyond whatever the edition's check
@@ -85,7 +91,8 @@ defmodule Apiary.Accounts.Scope do
             hidden: nil,
             edition: %{},
             key_organisation: nil,
-            instance_organisation_id: nil
+            instance_organisation_id: nil,
+            run_features: nil
 
   @doc """
   Creates a scope for the given user.
@@ -98,6 +105,16 @@ defmodule Apiary.Accounts.Scope do
   end
 
   def for_user(nil), do: nil
+
+  @doc """
+  for_run/2 is the access key's `scope` for a request about a run that kept `recorded`,
+  the names of the features it was claimed with, or nil for a run that kept none or is not
+  known (`run_features`).
+  """
+  @spec for_run(t, [String.t()] | nil) :: t
+  def for_run(%__MODULE__{access_key: %AccessKey{}} = scope, recorded)
+      when is_list(recorded) or is_nil(recorded),
+      do: %{scope | run_features: recorded}
 
   @doc """
   The scope of the gateway at the server contract: the access key it signed with, verified,

@@ -4,7 +4,9 @@ defmodule ApiaryWeb.RegistryTokenController do
   # With the `registry` feature, which the documentation leaves out: the token route of
   # the private image registry, `GET /registry/token?service=<registry>&scope=…`, which
   # the registry names as its token realm. With the feature off, every method is answered
-  # as a path the instance does not serve (`ApiaryWeb.Features.Routes`).
+  # as a path the instance does not serve (`ApiaryWeb.Features.Routes`), but for a request
+  # whose credential is of a run that has not ended and kept the feature when it was
+  # claimed (`ApiaryWeb.Contract.RunFeatures`).
   #
   # The run's gateway sets the run's registry credential on the request, `basic`, the
   # run's public id and its secret (`Apiary.Registry.Credential`). The answer is `200`,
@@ -80,7 +82,7 @@ defmodule ApiaryWeb.RegistryTokenController do
 
   defp answer(conn, query) do
     with {:ok, username, secret} <- basic(conn),
-         {:ok, run} <- verified(username, secret),
+         {:ok, run} <- verified(conn, username, secret),
          {:ok, window} <- limited(run) do
       case issued(run, query, window) do
         {:ok, token, now} ->
@@ -133,8 +135,9 @@ defmodule ApiaryWeb.RegistryTokenController do
     end
   end
 
-  defp verified(username, secret) do
-    case Credential.verify(username, secret) do
+  # The credential's check, as the feature gate made it (`ApiaryWeb.Contract.RunFeatures`).
+  defp verified(conn, username, secret) do
+    case ApiaryWeb.Contract.RunFeatures.verified_credential(conn, username, secret) do
       {:ok, run} ->
         {:ok, run}
 

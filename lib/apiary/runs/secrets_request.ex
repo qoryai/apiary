@@ -25,7 +25,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #  2. `{:error, :unauthorized}`, a `timestamp` more than 300 seconds from the server's
   #     clock, either way;
   #  3. `{:error, :secrets_not_allowed}`, a key not allowed stored secrets, here where
-  #     the `registry` feature is off, else at step 7, for a request that names the
+  #     the `registry` feature is off for the run (the features it kept when it was
+  #     claimed, `Apiary.Features.on?/2`), else at step 7, for a request that names the
   #     run's model key;
   #  4. as a reload of the run is refused (`Apiary.Runs.Registration.fetch/3`):
   #     `{:error, :not_found}` for a run that does not go through a gateway, since only a
@@ -157,10 +158,11 @@ defmodule Apiary.Runs.SecretsRequest do
   @spec answer(AccessKey.t(), binary, String.t() | nil, integer) ::
           {:ok, binary} | {:error, refusal}
   def answer(%AccessKey{} = access_key, raw_body, instance_id, now) when is_integer(now) do
+    access_key = Repo.preload(access_key, [:workspace, :node])
+
     with {:ok, request} <- parse(raw_body),
          :ok <- fresh(request, now),
-         :ok <- allowed(access_key) do
-      access_key = Repo.preload(access_key, [:workspace, :node])
+         :ok <- allowed(access_key, request) do
       for_run(access_key, request, instance_id, now)
     end
   end
@@ -238,13 +240,18 @@ defmodule Apiary.Runs.SecretsRequest do
     if abs(timestamp - now) <= @window_seconds, do: :ok, else: {:error, :unauthorized}
   end
 
-  # A key not allowed stored secrets is refused here, unless the `registry` feature is on:
-  # then it may receive a run's registry credential, and is refused only where the
-  # request names the run's model key or its work entry (`stored_allowed/2`).
-  defp allowed(%AccessKey{allow_secrets: true}), do: :ok
+  # A key not allowed stored secrets is refused here, unless the `registry` feature is on
+  # among the features the request's run kept when it was claimed, or the instance's for a
+  # run that kept none, that has ended, or that the key does not find
+  # (`Apiary.Runs.Sender.recorded/2`, `Apiary.Features.on?/2`): then it
+  # may receive a run's registry credential, and is refused only where the request names
+  # the run's model key or its work entry (`stored_allowed/2`).
+  defp allowed(%AccessKey{allow_secrets: true}, _request), do: :ok
 
-  defp allowed(%AccessKey{}) do
-    if Features.on?(:registry), do: :ok, else: {:error, :secrets_not_allowed}
+  defp allowed(%AccessKey{} = access_key, %{run_id: run_id}) do
+    if Features.on?(:registry, Sender.recorded(access_key, run_id)),
+      do: :ok,
+      else: {:error, :secrets_not_allowed}
   end
 
   defp stored_allowed(nil, _access_key), do: :ok

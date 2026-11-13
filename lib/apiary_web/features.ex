@@ -11,9 +11,14 @@ defmodule ApiaryWeb.Features do
   place among the routes every instance has. The `use` also adds a gate: an `on_mount` hook
   in a LiveView, which is what a live navigation meets, and a plug in a controller. A
   person's scope is asked `Apiary.Features.visible?/2`, what the person is shown; the
-  access key of a signed request of the server contract is asked `Apiary.Features.on?/1`,
-  the instance's switch, so a node is served whatever a level below the instance shows.
+  access key of a signed request of the server contract is asked the features of the run
+  the request is about, as the run kept them when it was claimed, and else the instance's
+  switch, `Apiary.Features.on?/1` (`ApiaryWeb.Contract.RunFeatures`), so a node is served
+  whatever a level below the instance shows.
   `page_shown?/2` asks a page's gate as the hook does, for a page that is already open.
+  The hook also checks the gate again at each event and each async result of the
+  LiveView and of its LiveComponents (`component_gate/1`): neither acts on a page whose
+  feature went off, and the page moves away as the save's broadcast moves it.
 
   A page that belongs to more than one feature names them with `any:`,
   `use ApiaryWeb.Features, any: [:security, :secrets]`: it is there when at least one of
@@ -222,18 +227,92 @@ defmodule ApiaryWeb.Features do
   defp route_module(%{plug: plug}), do: plug
 
   @doc false
-  # A page of the Instance level asks the instance, whoever opens it.
+  # A page of the Instance level checks the instance, whoever opens it. Once the page is
+  # open, each of its events is checked again (`event_gate/3`).
   def on_mount({:instance, gate}, _params, _session, socket) do
-    if on?(gate), do: {:cont, socket}, else: raise(NotFound)
+    if on?(gate),
+      do: {:cont, event_gate(socket, {:instance, gate}, fn _socket -> on?(gate) end)},
+      else: raise(NotFound)
   end
 
   def on_mount(gate, _params, _session, socket) do
     if visible?(socket.assigns[:current_scope], gate) do
-      {:cont, socket}
+      {:cont, event_gate(socket, gate, &visible?(&1.assigns[:current_scope], gate))}
     else
       raise NotFound
     end
   end
+
+  # An event of an open page whose feature went off does not act, nor does the result of
+  # an async read it started (`handle_async`): the page moves away with its notice, as the
+  # save's broadcast moves it (`ApiaryWeb.UserAuth.reload_scope/1`), which an event sent
+  # before the broadcast arrives would otherwise beat. One set of hooks per gate, as a
+  # page may mount more than one. A LiveComponent's events reach no hook of the LiveView,
+  # so the LiveView's process keeps its gates and its scope after each render for
+  # `component_gate/1`, and a component's event the gate stops sends
+  # `{ApiaryWeb.Features, :closed, gate}` for the hook of that gate to move the page.
+  defp event_gate(socket, gate, shown?) do
+    Process.put({__MODULE__, :gates}, Enum.uniq(gates() ++ [gate]))
+    put_scope(socket)
+
+    socket
+    |> Phoenix.LiveView.attach_hook({__MODULE__, gate}, :handle_event, fn
+      _event, _params, socket -> if shown?.(socket), do: {:cont, socket}, else: closed(socket)
+    end)
+    |> Phoenix.LiveView.attach_hook({__MODULE__, gate}, :handle_async, fn
+      _name, _result, socket -> if shown?.(socket), do: {:cont, socket}, else: closed(socket)
+    end)
+    |> Phoenix.LiveView.attach_hook({__MODULE__, gate}, :after_render, &put_scope/1)
+    |> Phoenix.LiveView.attach_hook({__MODULE__, gate}, :handle_info, fn
+      {__MODULE__, :closed, ^gate}, socket -> closed(socket)
+      _message, socket -> {:cont, socket}
+    end)
+  end
+
+  defp closed(socket) do
+    if socket.assigns[:current_scope],
+      do: {:halt, ApiaryWeb.UserAuth.reload_scope(socket)},
+      else: {:halt, socket}
+  end
+
+  defp gates, do: Process.get({__MODULE__, :gates}, [])
+
+  defp put_scope(socket) do
+    Process.put({__MODULE__, :scope}, socket.assigns[:current_scope])
+    socket
+  end
+
+  @doc false
+  # component_gate/1 attaches to a LiveComponent's `socket`, at its mount, the check of
+  # each gate of the LiveView it is in (`event_gate/3`), at each of its events and async
+  # results: neither acts on a page whose feature went off. `use ApiaryWeb, :live_component` calls
+  # it (`ApiaryWeb.Features.ComponentGate`).
+  @spec component_gate(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def component_gate(socket) do
+    socket
+    |> Phoenix.LiveView.attach_hook(__MODULE__, :handle_event, fn _event, _params, socket ->
+      component_shown(socket)
+    end)
+    |> Phoenix.LiveView.attach_hook(__MODULE__, :handle_async, fn _name, _result, socket ->
+      component_shown(socket)
+    end)
+  end
+
+  defp component_shown(socket) do
+    scope = Process.get({__MODULE__, :scope})
+
+    case Enum.find(gates(), &(not gate_shown?(scope, &1))) do
+      nil ->
+        {:cont, socket}
+
+      gate ->
+        send(self(), {__MODULE__, :closed, gate})
+        {:halt, socket}
+    end
+  end
+
+  defp gate_shown?(_scope, {:instance, gate}), do: on?(gate)
+  defp gate_shown?(scope, gate), do: visible?(scope, gate)
 
   @impl Plug
   def init(feature) when is_atom(feature), do: feature
@@ -246,15 +325,22 @@ defmodule ApiaryWeb.Features do
   end
 
   def call(conn, gate) do
-    if shown?(conn, gate), do: conn, else: absent(conn)
+    case shown(conn, gate) do
+      {true, conn} -> conn
+      {false, conn} -> absent(conn)
+    end
   end
 
   # A person's scope asks what the person is shown; a signed request of the server contract,
-  # which carries an access key and no person's scope, asks the instance.
-  defp shown?(%{assigns: %{current_scope: %Apiary.Accounts.Scope{} = scope}}, gate),
-    do: visible?(scope, gate)
+  # which carries an access key and no person's scope, asks the features the run it is
+  # about kept when it was claimed, whatever the instance has now, and else the instance
+  # (`ApiaryWeb.Contract.RunFeatures`).
+  # The conn is given back with what the contract's check read kept, for the controller
+  # (`ApiaryWeb.Contract.RunFeatures.gate/2`).
+  defp shown(%{assigns: %{current_scope: %Apiary.Accounts.Scope{} = scope}} = conn, gate),
+    do: {visible?(scope, gate), conn}
 
-  defp shown?(_conn, gate), do: on?(gate)
+  defp shown(conn, gate), do: ApiaryWeb.Contract.RunFeatures.gate(conn, features(gate))
 
   # For a feature the instance has and a person is not shown, and for a signed request
   # of the server contract to a feature the instance does not have:

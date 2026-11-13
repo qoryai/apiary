@@ -3,6 +3,12 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
   # the features are the node's.
   use ApiaryWeb.ConnCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   # Offers to an operator and leaving one are shown here, for this process and those it
   # starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
@@ -142,8 +148,9 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
              ] = ApiaryProWeb.Edition.instance_sections(scope)
     end
 
-    # After the core's General and before its Mail and Configuration, which the core adds.
-    assert [:general, :organisations, :accounts | _core] =
+    # After the core's General and Features and before its Mail and Configuration, which
+    # the core adds.
+    assert [:general, :features, :organisations, :accounts | _core] =
              ctx.admin.scope |> ApiaryWeb.Layouts.instance_sections() |> Enum.map(& &1.key)
 
     %{scope: io_admin} = member_fixture(ctx.admin.instance_scope, :admin)

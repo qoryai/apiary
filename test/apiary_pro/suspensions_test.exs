@@ -7,6 +7,12 @@ defmodule ApiaryPro.SuspensionsTest do
   # outside the sandbox, whose row and owners they lock (docs/conventions.md, Tests).
   use Apiary.DataCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Swoosh.TestAssertions
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [generate_user_magic_link_token: 1, unique_user_email: 0]

@@ -322,6 +322,34 @@ defmodule ApiaryWeb.RegistryTokenTest do
       assert {:ok, _run} = Credential.verify(ctx.run.public_id, registry_value(plaintext))
     end
 
+    # The gate checks the credential once, and the controller takes that check.
+    test "the gate's check of the credential is the one the controller reads", ctx do
+      conn =
+        build_conn()
+        |> put_req_header(
+          "authorization",
+          Plug.BasicAuth.encode_basic_auth(ctx.run.public_id, ctx.secret)
+        )
+        |> put_private(:phoenix_controller, ApiaryWeb.RegistryTokenController)
+
+      {true, conn} = ApiaryWeb.Contract.RunFeatures.gate(conn, [:registry])
+
+      # A credential changed after the gate's check: the controller reads the check.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [registry_credential_sha256: :crypto.hash(:sha256, "another")]
+        )
+
+      assert {:ok, %Run{id: id}} =
+               ApiaryWeb.Contract.RunFeatures.verified_credential(
+                 conn,
+                 ctx.run.public_id,
+                 ctx.secret
+               )
+
+      assert id == ctx.run.id
+    end
+
     test "has its target's image name, to pull, and a run without a gateway has nothing",
          ctx do
       assert RunAccess.rights(ctx.run) == %{ctx.target => ["pull"]}
@@ -329,6 +357,26 @@ defmodule ApiaryWeb.RegistryTokenTest do
       refute RunAccess.applies?(direct)
       assert RunAccess.rights(direct) == %{}
       assert RunAccess.member(direct) == nil
+    end
+
+    # A run keeps the features it was claimed with until it has ended
+    # (`ApiaryWeb.Contract.RunFeatures`): the token route follows its run's.
+    test "registry off since the claim: a token while the run is live, 404 once it ended",
+         ctx do
+      assert "registry" in Repo.get!(Run, ctx.run.id).features
+      previous = Application.get_env(:apiary, :features)
+      on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+      Application.put_env(:apiary, :features, previous -- [:registry])
+
+      assert [_ | _] = access(token_for(ctx, scopes(["repository:#{ctx.target}:pull"])))
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      conn = token_for(ctx, scopes(["repository:#{ctx.target}:pull"]))
+      assert conn.status == 404
+      refute conn.resp_body =~ "registry"
+      refute RunAccess.applies?(Repo.get!(Run, ctx.run.id))
     end
 
     test "gets a signed token for its target's image, pull alone", ctx do

@@ -265,10 +265,13 @@ defmodule Apiary.ModelKeys do
   @doc """
   The model keys of `run`, in the order of its run configuration's `credentials`, each
   with its credential's name: none unless model keys apply, with the `factory` and
-  `secrets` features on. They are the keys the run's claim stored (`runs.model_keys`),
-  each by its row id, so a key renamed since the claim stays a key of the run. A key
-  removed since the claim, or no longer a value of the run's secret, and every key of a
-  run whose provider's row no longer has that secret, is not a key of the run.
+  `secrets` features on among `features`: by default the ones the run kept when it was
+  claimed, until it has ended, or the instance's for a run that has ended or kept none
+  (`Apiary.Runs.Run.kept_features/1`). They are the keys the run's claim stored
+  (`runs.model_keys`), each by its row id, so a key renamed since the claim stays a key of
+  the run. A key removed since the claim, or no longer a value of the run's secret, and
+  every key of a run whose provider's row no longer has that secret, is not a key of the
+  run.
 
   Each has `copy_set_at`, when the value the run has was set: that of the value a secrets
   request sealed for the run last (`keep_copies/2`), with `copy_kept` true; for a key no
@@ -278,17 +281,22 @@ defmodule Apiary.ModelKeys do
   `value_set_at` at the upgrade, so such a run is not compared by the time its row was
   written.
   """
-  @spec run_keys(Run.t()) :: [run_key]
+  @spec run_keys(Run.t(), [String.t()] | nil) :: [run_key]
+  def run_keys(run, features \\ :kept)
+
+  def run_keys(%Run{} = run, :kept), do: run_keys(run, Run.kept_features(run))
+
   def run_keys(
         %Run{
           provider_api: %{},
           provider_connection_id: connection_id,
           provider_secret_id: secret_id,
           model_keys: [_ | _] = keys
-        } = run
+        } = run,
+        features
       )
       when is_binary(connection_id) and is_binary(secret_id) do
-    if ProviderCredential.applies?() do
+    if ProviderCredential.applies?(features) do
       ids = for %{"id" => id} <- keys, do: id
 
       found =
@@ -319,7 +327,7 @@ defmodule Apiary.ModelKeys do
     end
   end
 
-  def run_keys(%Run{}), do: []
+  def run_keys(%Run{}, _features), do: []
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
   # `run` last, or that migration 20261111220000 copied for a run pending or running at

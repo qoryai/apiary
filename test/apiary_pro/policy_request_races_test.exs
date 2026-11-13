@@ -17,6 +17,13 @@ defmodule ApiaryPro.PolicyRequestRacesTest do
   # Each test holds the first side's transaction open until the second side is seen, in
   # the database, waiting on a lock the first side holds (`pg_blocking_pids`).
   use ExUnit.Case, async: false
+
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   @before_compile Apiary.TestSetup
 
   # Offers to an operator and leaving one are shown here, for this process and those it

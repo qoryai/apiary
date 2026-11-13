@@ -56,12 +56,14 @@ parse_public_url = fn value ->
   end
 end
 
-# QORY_FEATURES names the features this instance has: all (the default when unset or
-# blank), all- and the features left out (all-workflow_model), or the features on
-# (observability,security). all turns on every feature but registry, and registry too
-# where QORY_REGISTRY is set. A list turns on only the features in it.
+# QORY_FEATURES, where set and not blank, sets the features this instance has in place of
+# the list an instance admin saves in Instance settings › Features: all, all- and the
+# features left out (all-workflow_model), or the features on (observability,security).
+# all turns on every feature but the opt-in ones; registry, opt-in, comes on with all
+# where QORY_REGISTRY is set. A list turns on only the features in it. Unset or blank,
+# the saved list applies, or the default features (as all) where none is saved.
 # Read in every environment, so the test suite runs under the value CI gives it.
-# `Apiary.Features` checks it at boot and says what each feature covers and needs.
+# `Apiary.Features` checks it at boot and documents what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
 
 # QORY_INSTALLED_ADAPTERS names the adapters installed with this instance, separated by

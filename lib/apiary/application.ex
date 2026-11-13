@@ -70,11 +70,11 @@ defmodule Apiary.Application do
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
-    # With the `registry` feature: a missing or malformed QORY_REGISTRY, and a registry
-    # signing key that is missing or not a P-256 key, stop the boot too.
+    # With the `registry` feature or QORY_REGISTRY set: a missing or malformed
+    # QORY_REGISTRY, and a registry signing key that is missing or not a P-256 key, stop
+    # the boot too.
     Apiary.Registry.boot!()
-    # With the `factory` feature: an SSL_CERT_FILE that cannot be read or has no
-    # certificate stops the boot too.
+    # An SSL_CERT_FILE that cannot be read or has no certificate stops the boot too.
     Apiary.Adapters.CallTrust.boot!()
     # The commit the release was built from, for GET /health.
     Apiary.Revision.boot!()
@@ -147,6 +147,7 @@ defmodule Apiary.Application do
     ] ++
       migrator() ++
       key_check() ++
+      features_cache() ++
       Apiary.Registry.InstanceName.children() ++
       mail_cache() ++
       instance_config_cache() ++
@@ -240,6 +241,13 @@ defmodule Apiary.Application do
   # Off in test, where the tests call `Apiary.Setup.boot/0` themselves.
   defp setup do
     if Apiary.Setup.enabled?(), do: [Apiary.Setup], else: []
+  end
+
+  # The node's copy of the features in force (`Apiary.Features.Saved`), after the migrator
+  # so their columns exist, and before the job queue and the endpoint, which read them. Off
+  # in test, where the suite sets the features.
+  defp features_cache do
+    if Apiary.Features.Cache.enabled?(), do: [Apiary.Features.Cache], else: []
   end
 
   # The node's copy of the mail settings an instance admin saved, after the migrator so

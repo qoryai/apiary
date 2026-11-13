@@ -10,7 +10,8 @@ defmodule ApiaryWeb.Contract.SecretsController do
   # body is read raw, up to 32 KiB (`ApiaryWeb.Contract.RawBody`). Without `registry`, a
   # request that verifies is given a signed `404` where `factory` or `secrets` is off, as
   # a path the instance does not serve: the route's gate is `factory` or `registry`
-  # (`ApiaryWeb.Features.Routes`), and the rest is checked here.
+  # (`ApiaryWeb.Features.Routes`), and the rest is checked here. Each is checked against
+  # the features the request's run kept while it runs (`ApiaryWeb.Contract.RunFeatures`).
   #
   # The answer is `200`, `application/json`, the sealed envelope
   # (`secrets-answer.schema.json`). The refusals: `400` `invalid_request`; `401`,
@@ -27,12 +28,16 @@ defmodule ApiaryWeb.Contract.SecretsController do
 
   alias Apiary.Features
   alias Apiary.Runs.SecretsRequest
-  alias ApiaryWeb.Contract.{Configuration, SignedRequest}
+  alias ApiaryWeb.Contract.{Configuration, RunFeatures, SignedRequest}
 
   @conflicts [:secrets_not_allowed, :credential_unavailable, :credentials_differ]
 
   def create(conn, _params) do
-    if Features.on?(:registry) or (Features.on?(:factory) and Features.on?(:secrets)),
+    # The features of the run the request is about, while it runs, else the instance's.
+    recorded = RunFeatures.recorded(conn)
+    on? = &Features.on?(&1, recorded)
+
+    if on?.(:registry) or (on?.(:factory) and on?.(:secrets)),
       do: answer(conn),
       else: conn |> put_status(404) |> json(%{error: "not_found"})
   end

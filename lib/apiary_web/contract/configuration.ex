@@ -30,12 +30,16 @@ defmodule ApiaryWeb.Contract.Configuration do
   # either feature off, gets none. With the
   # `registry` feature on, which the documentation leaves out, every key's document
   # has it: a gateway fetches a run's registry credential there, and does not start a run
-  # whose run configuration lists credentials without it.
+  # whose run configuration lists credentials without it. A feature the instance turned
+  # off counts while a run of the key that has not ended kept it when it was claimed
+  # (`Apiary.Runs.Sender.kept_by_live_run?/2`), so that run keeps its endpoint until it
+  # ends.
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Features
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.Sender
   alias Apiary.SigningKey
 
   @version 1
@@ -85,10 +89,13 @@ defmodule ApiaryWeb.Contract.Configuration do
   end
 
   # Whether the key's document lists the secrets endpoint: the `registry` feature on; or
-  # `factory` and `secrets` on, and the key allowed stored secrets.
-  defp secrets?(%AccessKey{allow_secrets: allowed}) do
+  # `factory` and `secrets` on, and the key allowed stored secrets. For the instance, or
+  # else for a live run of the key that kept them when it was claimed.
+  defp secrets?(%AccessKey{allow_secrets: allowed} = key) do
     Features.on?(:registry) or
-      (allowed == true and Features.on?(:factory) and Features.on?(:secrets))
+      (allowed == true and Features.on?(:factory) and Features.on?(:secrets)) or
+      Sender.kept_by_live_run?(key, ["registry"]) or
+      (allowed == true and Sender.kept_by_live_run?(key, ["factory", "secrets"]))
   end
 
   @doc """

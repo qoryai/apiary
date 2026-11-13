@@ -319,6 +319,12 @@ defmodule Apiary.ModelKeysTest do
 
       assert ModelKeys.run_keys(run) == []
 
+      # A run that kept `factory` and `secrets` at its claim has its keys until it has
+      # ended: a lost run, which a heartbeat can revive, has them; a paused one does not.
+      kept = %{run | features: ["observability", "security", "secrets", "factory"]}
+      assert [%{name: "model-1"}] = ModelKeys.run_keys(%{kept | state: "lost"})
+      assert ModelKeys.run_keys(%{kept | state: "paused"}) == []
+
       # And a report is answered as for a run the server does not know.
       assert Report.answer(
                %Apiary.AccessKeys.AccessKey{},

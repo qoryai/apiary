@@ -374,11 +374,12 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   instance_sections/1 is the Instance level's sections the scope's person may open, as
-  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, the
-  edition's (`c:ApiaryWeb.Edition.instance_sections/1`) after it, and the core's Mail and
-  Configuration last; the core's each for an instance admin who may take its page's
-  action, asked in their instance scope (`Apiary.Access.instance_scope/1`): General
-  `instance.rename` or `instance.support_save`, Workspace types `workspace_type.edit`,
+  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the core's General, first, then
+  Features, the edition's (`c:ApiaryWeb.Edition.instance_sections/1`) after them, and the
+  core's Mail and Configuration last; the core's each for an instance admin who may take
+  its page's action, asked in their instance scope (`Apiary.Access.instance_scope/1`):
+  General `instance.rename` or `instance.support_save`, Features
+  `instance.features_save`, Workspace types `workspace_type.edit`,
   Adapters, Pool and gateway, and Machine types `instance.read_factory`, Diagnostics keys
   `instance.read_observability`, Mail `instance.mail_save`, Configuration
   `instance.configure`. It
@@ -403,6 +404,18 @@ defmodule ApiaryWeb.Layouts do
           label: gettext("General"),
           icon: "hero-adjustments-horizontal",
           path: ~p"/instance/general",
+          place: :instance
+        }
+
+    # The instance's features, turned on and off: second, after General.
+    features =
+      may?.(:"instance.features_save") &&
+        %Entry{
+          section: :instance,
+          key: :features,
+          label: gettext("Features"),
+          icon: "hero-power",
+          path: ~p"/instance/features",
           place: :instance
         }
 
@@ -496,7 +509,7 @@ defmodule ApiaryWeb.Layouts do
         }
 
     for %Entry{} = entry <-
-          [general] ++
+          [general, features] ++
             ApiaryWeb.Edition.instance_sections(scope) ++
             [workspace_types, adapters, nodes, machine_types, diagnostics_keys, mail] ++
             [configuration],

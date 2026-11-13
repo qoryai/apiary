@@ -9,6 +9,12 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   # the node's.
   use ApiaryWeb.ConnCase, async: false
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures

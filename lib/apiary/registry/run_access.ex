@@ -93,11 +93,13 @@ defmodule Apiary.Registry.RunAccess do
         }
 
   @doc false
-  # applies?/1 is whether `run` has registry access: the feature is on, and the run goes
-  # through a gateway.
+  # applies?/1 is whether `run` has registry access: the feature is on among the features
+  # the run kept when it was claimed, until it has ended
+  # (`Apiary.Runs.Run.kept_features/1`), or the instance's for a run that has ended or
+  # kept none (`Apiary.Features.on?/2`), and the run goes through a gateway.
   @spec applies?(map | nil) :: boolean
   def applies?(%{public_id: public_id} = run) when is_binary(public_id),
-    do: Features.on?(:registry) and Run.through_gateway?(run)
+    do: Features.on?(:registry, Run.kept_features(run)) and Run.through_gateway?(run)
 
   def applies?(_run), do: false
 

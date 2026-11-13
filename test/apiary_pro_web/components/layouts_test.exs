@@ -14,6 +14,12 @@ defmodule ApiaryProWeb.LayoutsTest do
   # A workspace's set-up is finished, so a link to it leads to the Overview.
   setup do: Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 

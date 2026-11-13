@@ -21,6 +21,12 @@ defmodule ApiaryProWeb.TransfersFlagTest do
 
   @moduletag with_features: Features.all()
 
+  # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
+  # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
+  setup do
+    ApiaryPro.Flags.put_feature_visibility(false)
+  end
+
   @hidden [
     :"organisation.transfer",
     :"organisation.withdraw_transfer",

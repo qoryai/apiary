@@ -265,6 +265,7 @@ release command. The last column shows which actions also need a recent sign-in.
 | `instance.rename` | `Apiary.ProductName.rename/2` | none | no |
 | `instance.configure` | `Apiary.InstanceConfig.save/3`, and `Apiary.MachineTypes.create/2`, `update/3`, `make_default/2` and `delete/2` | none | yes |
 | `instance.support_save` | `Apiary.SupportAddress.save/2` | none | no |
+| `instance.features_save` | `Apiary.Features.Saved.save/3` | none | no |
 | `account.password_link` | `Apiary.Accounts.build_password_link/3` | none | yes, for a person |
 | `instance.read_factory` | the reads of the instance's adapters, pool and gateway, with their keys and codes, and Instance settings › Machine types | `factory` | no |
 | `adapter.create` | `Apiary.Adapters.create_adapter/2` | `factory` | yes |

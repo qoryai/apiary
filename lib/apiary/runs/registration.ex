@@ -394,7 +394,11 @@ defmodule Apiary.Runs.Registration do
     access_key = Repo.preload(access_key, [:workspace, :node])
 
     with :ok <- not_queued(registration.run_id),
-         :ok <- may_post(Scope.for_access_key(access_key)),
+         :ok <-
+           access_key
+           |> Scope.for_access_key()
+           |> Scope.for_run(Sender.recorded(access_key, registration.run_id))
+           |> may_post(),
          {:ok, held} <- held(access_key, registration, digest) do
       case held do
         {:repeat, run} ->
@@ -978,6 +982,7 @@ defmodule Apiary.Runs.Registration do
           node_run_id: registration.run_id,
           access_key_id: access_key.id,
           state: "pending",
+          features: Apiary.Features.recorded(),
           forager_version: forager_version(registration, meta),
           contract_version: meta.contract_version,
           registered_at: now,

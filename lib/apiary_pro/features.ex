@@ -54,7 +54,20 @@ defmodule ApiaryPro.Features do
   # has, as any organisation is. Every feature is either here or a grant's
   # (`ApiaryPro.FeaturesTest`), so a feature the core adds fails the tests until it is
   # placed in one of the two.
-  @instance_switched [:secrets, :path_rules, :factory, :registry, :workflow_model]
+  @instance_switched [
+    :secrets,
+    :path_rules,
+    :factory,
+    :registry,
+    :workflow_model,
+    :feature_visibility
+  ]
+
+  # The edition's switches of the whole instance, opt-in features that `ApiaryPro.Flags`
+  # reads (`Apiary.Features.on?/1`): an instance admin turns them on and off. No
+  # organisation is shown them (`of/2`), and one is hidden them only with a feature they
+  # need (`hidden/1`).
+  @switches [:feature_visibility]
 
   # The parts of no feature (`Apiary.Features.parts/0`) only an operator hides, for one
   # client at a time: `:nodes`, the nodes, the node pools, their access keys and the
@@ -70,7 +83,10 @@ defmodule ApiaryPro.Features do
     do: [
       managed_organisations: [needs: [:observability], built: true],
       organisation_policy: [needs: [:security], built: true],
-      organisation_variables: [needs: [:security, :secrets], built: true]
+      organisation_variables: [needs: [:security, :secrets], built: true],
+      # A switch of the whole instance, opt-in and left out of the documentation
+      # (`ApiaryPro.Flags`): `feature_visibility?/0` reads it. No grant names it.
+      feature_visibility: [needs: [:observability], built: true, default: false, docs: false]
     ]
 
   @doc """
@@ -93,10 +109,11 @@ defmodule ApiaryPro.Features do
   # The features kept only with the features they need, until none is left without one:
   # `Apiary.Features.closed/1` takes one pass, so a feature whose needs lose one of
   # theirs in it is taken out by the next. Not shown Runs, an organisation is shown
-  # neither the security policy nor what needs it.
+  # neither the security policy nor what needs it. The switches of the whole instance
+  # (`@switches`) are left out: no organisation is shown or hidden them.
   defp closure(features) do
     case Features.closed(features) do
-      ^features -> features
+      ^features -> features -- @switches
       fewer -> closure(fewer)
     end
   end
@@ -123,7 +140,17 @@ defmodule ApiaryPro.Features do
   @spec hidden(Scope.t()) :: [Features.name()]
   def hidden(%Scope{organisation: %Organisation{} = organisation} = scope) do
     enabled = Features.enabled()
-    (enabled -- shown_to(scope, organisation, enabled)) ++ parts_hidden_from(scope, organisation)
+    taken = (enabled -- @switches) -- shown_to(scope, organisation, enabled)
+
+    # A switch of the whole instance is hidden only with a feature it needs, as
+    # `Apiary.Features.hidden_of/1` adds it.
+    switches =
+      for switch <- @switches,
+          Enum.any?(Features.needs(switch), &(&1 in taken)),
+          do: switch
+
+    Enum.filter(enabled, &(&1 in taken or &1 in switches)) ++
+      parts_hidden_from(scope, organisation)
   end
 
   def hidden(_scope), do: []
@@ -420,6 +447,8 @@ defmodule ApiaryPro.Features do
   no grant names (`ApiaryPro.Grants.Grant`): the core's features but `observability` and
   `security`, such as `secrets`. Every organisation the instance has one for is shown it,
   an operator and a client too, with the features it needs (`Apiary.Features.closed/1`).
+  The edition's opt-in switches of the whole instance are among them, and no organisation
+  is shown or hidden those.
   """
   @spec instance_switched() :: [Features.feature()]
   def instance_switched, do: @instance_switched

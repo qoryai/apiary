@@ -1312,6 +1312,7 @@ defmodule Apiary.Dispatches.Handover do
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,
       configured_image: Map.get(locked, :image),
+      features: Apiary.Features.recorded(),
       inserted_at: now,
       updated_at: now
     }
