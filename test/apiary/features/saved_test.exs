@@ -441,6 +441,10 @@ defmodule Apiary.Features.SavedTest do
   end
 
   describe "Apiary.Features.Cache, each node's copy" do
+    # The copy differs from every list these tests store, whatever QORY_FEATURES the run
+    # has: the cache sends `{Cache, :written, features}` only for a copy it changed.
+    setup do: Application.put_env(:apiary, :features, [:observability])
+
     test "reads the list when it starts, and again when another node saves" do
       store!(["observability", "security"])
       :ok = Cache.subscribe()
