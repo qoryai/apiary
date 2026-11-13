@@ -29,6 +29,21 @@ goes wrong.
 `MIGRATE_ON_BOOT=false` turns step 1 off for whoever runs `bin/migrate` by hand before
 the restart, for example to watch a long migration.
 
+## How the old release stops
+
+On a stop, Qory Apiary closes the port it listens on and finishes the requests that are
+open, for up to 20 seconds. Then it finishes the jobs that are running, for up to 15
+seconds. A request or a job still running after that is cut.
+
+Give the container or the service a stop grace period of at least 40 seconds:
+
+- Docker Compose: `stop_grace_period: 40s` on the `apiary` service.
+- Kubernetes: `terminationGracePeriodSeconds: 40` in the pod's spec.
+- systemd: `TimeoutStopSec=40` in the unit.
+
+With a shorter grace period, Qory Apiary is killed before the open requests and jobs
+end. Docker waits 10 seconds by default.
+
 ## Before an upgrade
 
 - Read the release's section in `CHANGELOG.md`, the file at the root of the repository.
@@ -51,6 +66,14 @@ the restart, for example to watch a long migration.
   the upgrade keeps its one key and goes on across the deploy; its run configuration
   gains `pause_for_s`, the key's Pause for when the upgrade runs.
 <!-- /feature -->
+
+## Upgrade the gateway before Qory Apiary
+
+Upgrade every Qory Gateway first, wait until the gateway accepts connections, then
+upgrade Qory Apiary. A new release of Qory Apiary can send the gateway a value of the run
+configuration that only the new gateway reads, and an older gateway then fails the run
+with `run_configuration_invalid`. The script `bin/update` of qoryai/deploy upgrades in
+this order: the gateway, Qory Apiary, the GitHub adapter, the provisioner, and Caddy.
 
 ## How migrations are written
 
