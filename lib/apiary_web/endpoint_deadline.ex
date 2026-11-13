@@ -52,14 +52,13 @@ defmodule ApiaryWeb.EndpointDeadline do
   # The timer first, so that a failure after it, or a kill of this process, leaves the
   # stop bounded.
   defp cut({endpoint, timeout, suspend}) do
-    root = Process.whereis(endpoint)
     # The supervisor of this process and of the endpoint.
     [parent | _] = Process.get(:"$ancestors")
 
     # Not linked, so it outlives this process and the endpoint's stop.
     spawn(fn ->
       Process.sleep(timeout)
-      Enum.each(connections(root, endpoint, parent), &Process.exit(&1, :kill))
+      Enum.each(connections(endpoint, parent), &Process.exit(&1, :kill))
     end)
 
     for scheme <- [:http, :https], do: suspend(endpoint, scheme, suspend)
@@ -78,26 +77,28 @@ defmodule ApiaryWeb.EndpointDeadline do
     :exit, _not_running -> :error
   end
 
-  # The connections under `root`, the endpoint's supervisor, registered as `endpoint`
-  # and started by `parent`. The supervisors between them are stopping by then: they take
-  # no calls, and each unlinks a child as it stops it. So every process is read for its
-  # label and its `$ancestors`, which contain `root` or the name `endpoint`, and `parent`.
-  defp connections(nil, _endpoint, _parent), do: []
-
-  defp connections(root, endpoint, parent) do
-    for pid <- Process.list(), connection?(pid), under?(pid, root, endpoint, parent), do: pid
+  # The connections under the endpoint's supervisor, which Phoenix registers as
+  # `endpoint`, started by `parent`. The supervisors between them are stopping by then:
+  # they take no calls, and each unlinks a child as it stops it. So every process is read
+  # for its label and its `$ancestors`, where proc_lib puts the registered name `endpoint`.
+  defp connections(endpoint, parent) do
+    for pid <- Process.list(), connection?(pid), under?(pid, endpoint, parent), do: pid
   end
 
-  defp under?(pid, root, endpoint, parent) do
+  defp under?(pid, endpoint, parent) do
     case :erlang.process_info(pid, {:dictionary, :"$ancestors"}) do
       {_item, ancestors} when is_list(ancestors) ->
-        parent in ancestors and (root in ancestors or endpoint in ancestors)
+        endpoint in ancestors and parent in ancestors
 
       _ended_or_none ->
         false
     end
   end
 
-  # A process that Thousand Island labels as the handler of one connection.
+  # A process that Thousand Island labels as the handler of one connection. The label is
+  # private to Thousand Island: `ThousandIsland.ProcessLabel`, which has no docs, builds it
+  # (deps/thousand_island/lib/thousand_island/process_label.ex:21), and the handler sets
+  # it (handler.ex:379), only under Elixir 1.17 or later and OTP 27 or later. If a
+  # dependency bump changes the label, test/apiary_web/endpoint_stop_test.exs fails.
   defp connection?(pid), do: match?({:thousand_island, :connection, _}, :proc_lib.get_label(pid))
 end
