@@ -315,40 +315,27 @@ defmodule Apiary.Dispatches.InstancePoolTest do
     # include the dead rows of earlier tests, so the plan differed from one CI run to the
     # next, and the test failed in some. The 400 workspaces with no run make the table 14
     # pages, where the scan costs about 3 times the probe. The plans seen read 2,920 and
-    # 2,921 rows, under the bound of 5,015. With index scans, hash joins, materialize and
-    # memoize turned off, the plan scans tables once per run and reads 54,010.
+    # 2,921 rows, under the bound of 5,015.
+    #
+    # A Materialize or Memoize node returns the rows of the node under it again from
+    # memory, once for each run, and the count leaves those rows out (`rows_read/1`).
+    # Where dead rows have left the indexes of `run_harnesses` large, Postgres may check
+    # for an unresolved walk with one scan of the table under a Materialize node, which
+    # returns about 100 rows again for each of 100 runs. No setting gives that plan in
+    # every database, so "counts the CI run's Materialize plan under the bound" counts it
+    # from a map. "fails the bound on a plan that scans tables once for each run" forces
+    # its plan with SET LOCAL.
     test "reads each run of the queue of 200 workspaces at most once, in one query", ctx do
       queued!(ctx.b)
       few = claim_queries(ctx.key)
-      organisation = ctx.a.organisation
-
-      for n <- 1..199 do
-        workspace = workspace_fixture(organisation)
-        scope = %{ctx.a | workspace: workspace}
-        if rem(n, 2) == 0, do: pool_fixture(scope)
-        queued!(scope)
-      end
-
-      # Workspaces with no run, so a scan of `workspaces` costs more than a probe.
-      for _n <- 1..400, do: workspace_fixture(organisation)
-
-      runs = Repo.aggregate(DispatchRun, :count)
-      workspaces = Repo.aggregate(Apiary.Organisations.Workspace, :count)
-      walks = Repo.aggregate(Apiary.Harnesses.RunHarness, :count)
-
-      Repo.query!(
-        "ANALYZE dispatch_runs, workspaces, organisations, nodes, source_collections, " <>
-          "work_items, environments, run_harnesses"
-      )
-
-      [%{"Plan" => plan}] =
-        Repo.explain(:all, Dispatches.waiting_query(ctx.key), analyze: true, format: :map)
+      counts = queue_of_200!(ctx)
+      plan = plan!(ctx.key)
 
       scans = scans(plan, "dispatch_runs")
       assert scans != []
-      assert rows_read(scans) <= runs, inspect(scans)
+      assert rows_read(scans) <= counts.runs, inspect(scans)
 
-      assert rows_read(nodes(plan)) <= 5 * (runs + walks + workspaces),
+      assert rows_read(nodes(plan)) <= bound(counts),
              Enum.join(
                ["The plan of the claim's query read these rows:" | plan_lines(plan)],
                "\n"
@@ -359,7 +346,115 @@ defmodule Apiary.Dispatches.InstancePoolTest do
       assert length(queue) == 1
       assert length(many) == length(few)
     end
+
+    test "fails the bound on a plan that scans tables once for each run", ctx do
+      queued!(ctx.b)
+      counts = queue_of_200!(ctx)
+
+      scans = ~w(enable_indexscan enable_indexonlyscan enable_bitmapscan)
+      joins = ~w(enable_hashjoin enable_mergejoin enable_material enable_memoize)
+      plan = plan!(ctx.key, scans ++ joins)
+
+      assert rows_read(nodes(plan)) > bound(counts), Enum.join(plan_lines(plan), "\n")
+    end
+
+    test "counts the CI run's Materialize plan under the bound" do
+      # The nodes that read rows in the plan of the CI run, as reproduced, and the nodes
+      # above them; the rows are those each node returned in one loop.
+      plan =
+        plan_node("Limit", 0, 1, [
+          plan_node("LockRows", 0, 1, [
+            plan_node("Sort", 0, 1, [
+              plan_node("Nested Loop", 0, 1, [
+                plan_node("Nested Loop", 0, 1, [
+                  scan_node("Seq Scan", "dispatch_runs", 200, 1, [
+                    scan_node("Seq Scan", "nodes", 301, 1),
+                    plan_node("Aggregate", 0, 100, [
+                      scan_node("Index Scan", "work_items", 1, 100),
+                      scan_node("Index Scan", "source_collections", 1, 100)
+                    ])
+                  ]),
+                  plan_node("Materialize", 100, 100, [
+                    scan_node("Seq Scan", "run_harnesses", 200, 1)
+                  ])
+                ])
+              ])
+            ])
+          ])
+        ])
+
+      ci_bound = bound(%{runs: 200, walks: 200, workspaces: 603})
+      assert ci_bound == 5_015
+
+      # The count with the rows of the Materialize node, as the CI run counted them.
+      with_replays = plan |> nodes() |> Enum.map(&rows/1) |> Enum.sum()
+      assert with_replays == 10_901 and with_replays > ci_bound
+
+      assert rows_read(nodes(plan)) == 901
+      assert rows_read(nodes(plan)) <= ci_bound
+    end
   end
+
+  # The queue of 200 workspaces of the claim's query: a run in each of 199 more
+  # workspaces of the organisation of `ctx.a`, with a node pool in every second one, and
+  # 400 workspaces with no run, then the tables analyzed. The counts of runs, workspaces
+  # and harness walks.
+  defp queue_of_200!(ctx) do
+    organisation = ctx.a.organisation
+
+    for n <- 1..199 do
+      workspace = workspace_fixture(organisation)
+      scope = %{ctx.a | workspace: workspace}
+      if rem(n, 2) == 0, do: pool_fixture(scope)
+      queued!(scope)
+    end
+
+    # Workspaces with no run, so a scan of `workspaces` costs more than a probe.
+    for _n <- 1..400, do: workspace_fixture(organisation)
+
+    counts = %{
+      runs: Repo.aggregate(DispatchRun, :count),
+      workspaces: Repo.aggregate(Apiary.Organisations.Workspace, :count),
+      walks: Repo.aggregate(Apiary.Harnesses.RunHarness, :count)
+    }
+
+    Repo.query!(
+      "ANALYZE dispatch_runs, workspaces, organisations, nodes, source_collections, " <>
+        "work_items, environments, run_harnesses"
+    )
+
+    counts
+  end
+
+  # The plan of the claim's query by `key`, as run, with the planner settings `off` turned
+  # off until the test's transaction ends.
+  defp plan!(key, off \\ []) do
+    for setting <- off, do: Repo.query!("SET LOCAL #{setting} = off")
+
+    [%{"Plan" => plan}] =
+      Repo.explain(:all, Dispatches.waiting_query(key), analyze: true, format: :map)
+
+    plan
+  end
+
+  # A node of a plan as EXPLAIN gives it: its type, the rows it returned in one loop, its
+  # loops and the nodes under it.
+  defp plan_node(type, rows, loops, plans \\ []) do
+    %{
+      "Node Type" => type,
+      "Actual Rows" => rows,
+      "Actual Loops" => loops,
+      "Plans" => plans
+    }
+  end
+
+  # A node of a plan that reads `table`.
+  defp scan_node(type, table, rows, loops, plans \\ []),
+    do: type |> plan_node(rows, loops, plans) |> Map.put("Relation Name", table)
+
+  # The rows the claim's query may read: 5 for each run, harness walk and workspace.
+  defp bound(%{runs: runs, walks: walks, workspaces: workspaces}),
+    do: 5 * (runs + walks + workspaces)
 
   # The statements a claim by `key` runs, which claims a run.
   defp claim_queries(key) do
@@ -393,21 +488,32 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   end
 
   # The rows the plan's nodes read, over every loop: those returned and those a filter
-  # removed. EXPLAIN gives both per loop; a node never run has 0 loops.
+  # removed. EXPLAIN gives both per loop; a node never run has 0 loops. A Materialize or
+  # Memoize node returns the rows of the node under it again from memory, and is left
+  # out; the node under it counts with its loops.
   defp rows_read(nodes) do
     nodes
-    |> Enum.map(fn node ->
-      (node["Actual Rows"] + Map.get(node, "Rows Removed by Filter", 0)) * node["Actual Loops"]
-    end)
+    |> Enum.reject(&from_memory?/1)
+    |> Enum.map(&rows/1)
     |> Enum.sum()
   end
 
+  defp rows(node) do
+    removed = Map.get(node, "Rows Removed by Filter", 0)
+    (node["Actual Rows"] + removed) * node["Actual Loops"]
+  end
+
+  defp from_memory?(node), do: node["Node Type"] in ["Materialize", "Memoize"]
+
   # The plan as lines, one for each node, indented under its parent: the node's type, its
-  # table and index, its loops and the rows it read over every loop.
+  # table and index, its loops and the rows it read over every loop, or for a Materialize
+  # or Memoize node the rows it returned from memory.
   defp plan_lines(node, depth \\ 0) do
+    read = if from_memory?(node), do: "from memory", else: "read"
+
     line =
       "#{String.duplicate("  ", depth)}#{label(node)}: " <>
-        "#{round(rows_read([node]))} rows in #{node["Actual Loops"]} loops"
+        "#{round(rows(node))} rows #{read} in #{node["Actual Loops"]} loops"
 
     [line | Enum.flat_map(Map.get(node, "Plans", []), &plan_lines(&1, depth + 1))]
   end
