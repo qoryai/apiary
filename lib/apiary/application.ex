@@ -165,14 +165,18 @@ defmodule Apiary.Application do
       setup() ++
       [
         # Start to serve requests, typically the last entry
-        endpoint()
+        endpoint(),
+        # After the endpoint, so a stop reaches it first: it cuts the requests still open
+        # when the endpoint's stop has lasted its limit (`ApiaryWeb.EndpointDeadline`).
+        {ApiaryWeb.EndpointDeadline,
+         endpoint: ApiaryWeb.Endpoint, timeout: ApiaryWeb.Endpoint.stop_timeout()}
       ]
   end
 
   # The endpoint, once an `https:` in its configuration has the bound on a fragmented
-  # message that config/config.exs gives `http:` (`ApiaryWeb.Endpoint.bound_https/1`).
-  # Kept in the application's environment, which the endpoint reads as it starts. Without
-  # an `https:`, the environment is left as it is.
+  # message and the stop's limit that config/config.exs sets for `http:`
+  # (`ApiaryWeb.Endpoint.bound_https/1`). Kept in the application's environment, which the
+  # endpoint reads as it starts. Without an `https:`, the environment is left as it is.
   defp endpoint do
     config = Application.get_env(:apiary, ApiaryWeb.Endpoint, [])
     bounded = ApiaryWeb.Endpoint.bound_https(config)

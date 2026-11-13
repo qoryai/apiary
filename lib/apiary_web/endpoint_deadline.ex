@@ -38,8 +38,14 @@ defmodule ApiaryWeb.EndpointDeadline do
     {:ok, state}
   end
 
+  # Only a stop cuts the connections; after a crash, the supervisor starts this process
+  # again and the listeners go on accepting.
   @impl GenServer
-  def terminate(_reason, {endpoint, timeout}) do
+  def terminate(:shutdown, state), do: cut(state)
+  def terminate({:shutdown, _reason}, state), do: cut(state)
+  def terminate(_crash, _state), do: :ok
+
+  defp cut({endpoint, timeout}) do
     connections = Enum.flat_map([:http, :https], &suspend(endpoint, &1))
 
     # Not linked, so it outlives this process and the endpoint's stop.

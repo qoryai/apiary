@@ -4,6 +4,8 @@ defmodule ApiaryWeb.EndpointStopTest do
   # 40 s, the least an install sets (guides/upgrading.md).
   use ExUnit.Case, async: true
 
+  import ExUnit.CaptureLog
+
   alias ApiaryWeb.Endpoint
   alias ApiaryWeb.EndpointStopTest.Served
 
@@ -55,9 +57,8 @@ defmodule ApiaryWeb.EndpointStopTest do
     end
 
     # The endpoint's tree as `Apiary.Application` starts it, with `limit` in place of the
-    # 20 s: a supervisor of the listeners, `Served` in place of the endpoint, killed when
-    # its stop outlasts `limit`, then `ApiaryWeb.EndpointDeadline`. Returns the
-    # application's supervisor and the port.
+    # 20 s: a supervisor of the listeners, `Served` in place of the endpoint, then
+    # `ApiaryWeb.EndpointDeadline`. Returns the application's supervisor and the port.
     defp start_endpoint(limit) do
       endpoint = %{
         id: Served,
@@ -67,8 +68,7 @@ defmodule ApiaryWeb.EndpointStopTest do
              Bandit.PhoenixAdapter.child_specs(Served, otp_app: :apiary, http: http(limit)),
              [strategy: :one_for_one, name: Served]
            ]},
-        type: :supervisor,
-        shutdown: limit
+        type: :supervisor
       }
 
       children = [endpoint, {ApiaryWeb.EndpointDeadline, endpoint: Served, timeout: limit}]
@@ -132,6 +132,19 @@ defmodule ApiaryWeb.EndpointStopTest do
       assert micros < 2_000_000
     end
 
+    test "after a crash of the deadline, the listener goes on accepting" do
+      {app, port} = start_endpoint(1_000)
+
+      [deadline] =
+        for {ApiaryWeb.EndpointDeadline, pid, _, _} <- Supervisor.which_children(app), do: pid
+
+      capture_log(fn -> :ok = GenServer.stop(deadline, :crash) end)
+
+      socket = connect(port)
+      get(socket, Served.path("ok", self()), "close")
+      assert {"HTTP/1.1 200 OK\r\n" <> _, _closed} = read_all(socket)
+    end
+
     test "ends within its limit, every listener's connection cut, kept-alive ones too" do
       limit = 1_000
       {app, port} = start_endpoint(limit)
@@ -173,14 +186,21 @@ defmodule ApiaryWeb.EndpointStopTest do
         end
 
       started = System.monotonic_time(:millisecond)
-      stop = Task.async(fn -> :timer.tc(fn -> Supervisor.stop(app) end) end)
 
-      # The stop has begun by then; were it not, the requests would only be open longer.
-      Process.sleep(100)
-      for pid <- kept_pids, do: send(pid, :go)
+      {{micros, :ok}, log} =
+        with_log(fn ->
+          stop = Task.async(fn -> :timer.tc(fn -> Supervisor.stop(app) end) end)
 
-      {micros, :ok} = Task.await(stop, 5_000)
+          # The stop has begun by then; were it not, the requests would only be open longer.
+          Process.sleep(100)
+          for pid <- kept_pids, do: send(pid, :go)
+
+          Task.await(stop, 5_000)
+        end)
+
       assert micros < 1.5 * limit * 1_000
+      # No process of the endpoint was killed: only the connections were.
+      refute log =~ "killed"
 
       for {reply, closed} <- Task.await_many(hung ++ kept, 5_000) do
         assert reply == ""
@@ -190,7 +210,7 @@ defmodule ApiaryWeb.EndpointStopTest do
   end
 
   defmodule Served do
-    # Stands in for the endpoint: `GET /ok/<token>` is answered at once, `GET
+    # Stands in for the endpoint: `GET /ok/<token>` gets a 200 at once, `GET
     # /sleep/<ms>/<token>` after `ms` milliseconds, and `GET /hang/<token>` never. Each
     # request but `/ok` first sends `{:in_flight, handler}` to the process of the token.
     @behaviour Plug
