@@ -67,29 +67,52 @@ defmodule Apiary.Stages.StopCause do
   # `{:lines, cause, fix}` for a run that ended before it started; and
   # `{:fix_first, fix, cause}` for a read-only run that could not go on, whose text has the
   # fix first.
-  defp split(%DispatchRun{end_cause: :run_ended, result_outcome: :error}, _work_item, _ctx),
-    do: {:one, "The run ended with an error."}
+  #
+  # A run a member cancelled (`Apiary.Runs.Cancel`) stopped because they did, whatever it
+  # ended by: "<person> cancelled it.", after "The run stopped:".
+  defp split(%DispatchRun{} = run, work_item, context) do
+    case Apiary.Runs.Cancel.cancelled_run(run) do
+      nil -> stopped_split(run, work_item, context)
+      cancelled -> {:one, cancelled(cancelled)}
+    end
+  end
+
+  # cancelled/1 is the cause of a run a member cancelled, in the default locale's words
+  # (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's locale, as the
+  # escalation stores it.
+  defp cancelled(run) do
+    Gettext.with_locale(ApiaryWeb.Gettext, ApiaryWeb.Lingo.default_locale(), fn ->
+      gettext("%{person} cancelled it.", person: Apiary.Runs.Cancel.canceller(run))
+    end)
+  end
+
+  defp stopped_split(
+         %DispatchRun{end_cause: :run_ended, result_outcome: :error},
+         _work_item,
+         _ctx
+       ),
+       do: {:one, "The run ended with an error."}
 
   # A run that sent no result: qory closed it with `workflow_not_in_harness` when the
   # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`),
   # and with a `read_needs_*` reason when a read-only run could not go on
   # (`Apiary.Runs.ReadNeeds`).
-  defp split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
+  defp stopped_split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
       %{} = facts -> workflow_gap(facts, work_item)
       nil -> no_gap(run, work_item)
     end
   end
 
-  defp split(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
+  defp stopped_split(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
     do: {:one, "The run ended without a result."}
 
-  defp split(%DispatchRun{end_cause: :lost}, _work_item, _context),
+  defp stopped_split(%DispatchRun{end_cause: :lost}, _work_item, _context),
     do:
       {:point, "The run stopped reporting and was marked lost.",
        "Qory Apiary got no report from it and marked it lost."}
 
-  defp split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
+  defp stopped_split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
     {:lines, cause, fix}
   end

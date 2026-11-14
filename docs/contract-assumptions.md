@@ -1348,6 +1348,55 @@ events under the gateway's keys (`Apiary.Runs.Sender`), and the run's workspace,
 and instance stay the registration's. `host` is the machine the runtime runs on, so the
 run's Node is the node that registered it and its Host that machine.
 
+## What a run wrote to its targets
+
+A run's gateway reports each write the run sends through its proxy to a place in another
+system: a `dev.qory.run.target_write` with `system`, `path`, `state` and an optional
+`request_id`, the `request_id` of the request's `dev.qory.run.egress`. One write has a
+`started`, then one end with the same `request_id`: `changed`, `refused` or `cut`. The
+gateway recognises one kind of write, a git push over HTTP: `system` is the request's
+host, lower case and without the port, and `path` the repository's path, without
+`/git-receive-pack`, its leading and trailing slashes and a trailing `.git`. That is the
+rule by which `qory run` labels a run from its origin remote, so in a software workspace
+`system` and `path` are the forge and repository labels of the target
+(`Apiary.Lingo.Domain.Software`).
+
+The states of a git push, as the gateway sends them:
+
+- `changed`: the push had at least one ref accepted.
+- `refused`: the unpack failed, every ref was refused, or the answer was a `4xx`.
+- `cut`: the answer was a `5xx`, the transport failed, the answer went past 4 MiB, or the
+  run ended during the push. The system may have applied the push.
+
+The projection folds each event into `run_target_writes`, one row per event, in every
+workspace (`Apiary.Runs.TargetWrite`), with the workspace's target of that system and path,
+or none: a write creates no target. An event whose `system` or `path` cannot name a target
+(`Apiary.Runs.Target.label/1`), or whose `state` is none of the four, is stored and folded
+into nothing; a `request_id` that is not 32 lower-case hexadecimal digits is absent.
+
+`Apiary.Runs.TargetWrite.writes/2` reads a run's rows by place. The rows with one
+`request_id` are one write, in the state of the row with the highest sequence; a row
+without a `request_id` is a write alone. A `started` with no later state in a run that has
+ended reads as `cut`: the gateway ends every open write before the run's
+`dev.qory.run.exited`, unless the gateway stops first.
+
+In a software workspace, the page of a run a member cancelled during its push shows these
+lines after "while the run was pushing its changes.", for the run's repositories alone:
+its target's and the further ones its `repositories` label lists, in the target's forge
+(`Apiary.Runs.TargetWrite.of_run_targets/3`). A write to any other place has no line,
+such as a path the gateway could not clean and kept as sent.
+
+- `<repository> was pushed.` for each repository with a `changed` write;
+- `<repository> may have been pushed.` for each one with a `started` or `cut` write and
+  no `changed` one;
+- nothing for a repository whose every write was `refused`;
+- `No push to this run's repositories was recorded.` when the run has no write, or only
+  refused ones. A push can leave no write, such as one the proxy cannot read inside its
+  connection, a push over SSH, or a write through a forge's API.
+
+The line shows once the run's push step has started, or once it has a write to one of its
+repositories that is not refused. Retention deletes a run's writes with its events (`Apiary.Retention`).
+
 ## How a run ends
 
 Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it ended well; `failed`, it ended badly;

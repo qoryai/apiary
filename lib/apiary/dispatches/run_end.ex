@@ -400,8 +400,10 @@ defmodule Apiary.Dispatches.RunEnd do
   # A run that is not a prebuild ended by its exit, `failed` with the reason
   # `image_missing`, whose records and collections `hold/1` held: that image cleared, a
   # build queued, and the next run of its take in queued with one more attempt, unless
-  # the run came from such a requeue (the moduledoc). The workspaces whose queue changed,
-  # and the work item to tell.
+  # the run came from such a requeue (the moduledoc) or a member cancelled it
+  # (`Apiary.Runs.Run.cancel_requested?/1`): its image is still cleared, as the pool
+  # lacks it, and no run follows it. The workspaces whose queue changed, and the work
+  # item to tell.
   defp image_missing(
          {:image_missing, records, collections},
          %DispatchRun{} = dispatch_run,
@@ -411,17 +413,22 @@ defmodule Apiary.Dispatches.RunEnd do
        ) do
     if missing_exit?(run) do
       queued = Enum.map(Environments.forget_image(records, collections, now), & &1.workspace_id)
-
-      case Dispatches.requeue_for_image(dispatch_run) do
-        {:ok, next} -> queued ++ [next.workspace_id | Settle.told(next.work_item_id)]
-        {:error, _not_requeued} -> queued
-      end
+      queued ++ requeue_for_image(dispatch_run, run)
     else
       []
     end
   end
 
   defp image_missing(_held, _dispatch_run, _run, _cause, _now), do: []
+
+  defp requeue_for_image(dispatch_run, run) do
+    with false <- Run.cancel_requested?(run),
+         {:ok, next} <- Dispatches.requeue_for_image(dispatch_run) do
+      [next.workspace_id | Settle.told(next.work_item_id)]
+    else
+      _cancelled_or_not_requeued -> []
+    end
+  end
 
   # A run that is not a prebuild whose locked registered run paused, while its work item
   # is not held `FOR UPDATE`: `hold/1` read the run before its exit was folded, with the
@@ -433,12 +440,13 @@ defmodule Apiary.Dispatches.RunEnd do
     do: Run.paused?(run) and not Apiary.Stages.on?()
 
   # A run that is not a prebuild ended by its exit at its model keys' limit: the run that
-  # continues it queued (the moduledoc). The workspaces whose queue changed, and the work
-  # item to tell.
+  # continues it queued (the moduledoc), unless a member cancelled it
+  # (`Apiary.Runs.Run.cancel_requested?/1`), which then changes nothing more. The
+  # workspaces whose queue changed, and the work item to tell.
   defp paused(_held, %DispatchRun{step: @prebuild}, _run, _cause, _now), do: []
 
   defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
-    if Run.paused?(run) do
+    if Run.paused?(run) and not Run.cancel_requested?(run) do
       providers = if run.provider_connection_id, do: [run.provider_connection_id], else: []
 
       case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do

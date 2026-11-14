@@ -217,6 +217,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"node.read", yes: @all},
       {:"run.read", yes: @all},
       {:"run.read_log", yes: @all},
+      {:"run.cancel", yes: @writers},
       {:"security_policy.read", yes: @all},
       {:"security_policy.edit", yes: @writers},
       {:"security_policy.lock", yes: @operator_owners},

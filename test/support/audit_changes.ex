@@ -161,7 +161,8 @@ defmodule Apiary.AuditChanges do
       :"artifact_type.edit",
       :"gate.approve",
       :"workspace_type.edit",
-      :"machine_type.rekey"
+      :"machine_type.rekey",
+      :"run.cancel"
     ] ++ @work_item_moves ++ @work_item_comments
   end
 
@@ -993,6 +994,14 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: subject_of(subject), before: before}
   end
 
+  # A member cancels a running run of the workspace.
+  def make(:"run.cancel", %{scope: scope} = ctx) do
+    run = prepare(:"run.cancel", ctx)
+    before = entries()
+    {:ok, _cancelled} = attempt(:"run.cancel", scope, run)
+    %{scope: scope, subject: {"run", run.id}, before: before}
+  end
+
   def make(:"node.clear_instance", %{scope: scope}) do
     node = node_fixture(scope)
     instance = instance_fixture(node, name: "build-01.example.com")
@@ -1734,6 +1743,8 @@ defmodule Apiary.AuditChanges do
 
   defp prepare(:"artifact.write", %{scope: scope}), do: work_item_fixture(scope)
 
+  defp prepare(:"run.cancel", %{scope: scope}), do: Apiary.RunListFixtures.started_run(scope)
+
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -1871,6 +1882,8 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"work_item.undo", scope, work_item), do: Apiary.WorkItems.undo(scope, work_item)
 
   defp attempt(:"work_item.close", scope, work_item), do: Apiary.WorkItems.close(scope, work_item)
+
+  defp attempt(:"run.cancel", scope, run), do: Apiary.Runs.cancel(scope, run)
 
   defp attempt(:"work_item.answer", scope, work_item),
     do: Apiary.WorkItems.answer(scope, work_item, 1, %{"1" => @answer})

@@ -105,7 +105,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <.link
           id={"#{@id}-alive"}
           navigate={
-            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running,cancelling"}}"
           }
           class="q-sum-c"
           aria-label={
@@ -1296,7 +1296,8 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   A run's state as a dot, with its word only when the run needs a look (running, ended
   badly) or was cancelled, grey; a run that completed is its dot, and a screen reader hears
-  the word. Then when it started.
+  the word. A cancelling run (`ApiaryWeb.RunCancelComponents.cancelling?/1`) has "Cancelling" for its
+  word. Then when it started.
   """
   attr :run, :map, required: true
   attr :quiet, :boolean, default: false
@@ -1305,13 +1306,18 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         tone: if(assigns.quiet, do: "quiet", else: assigns.run.state),
-        said?: assigns.run.state not in ["completed", "pending"]
+        said?: assigns.run.state not in ["completed", "pending"],
+        word:
+          if(Apiary.Runs.Cancel.cancelling?(assigns.run),
+            do: gettext("Cancelling"),
+            else: state_label(assigns.run.state)
+          )
       )
 
     ~H"""
     <span class={["q-rs", "q-rs-#{@tone}"]}>
       <span class="q-rs-dot" aria-hidden="true"></span>
-      <span class={if(@said?, do: "q-rs-w", else: "sr-only")}>{state_label(@run.state)}</span>
+      <span class={if(@said?, do: "q-rs-w", else: "sr-only")}>{@word}</span>
     </span>
     <.relative_time at={@run.started_at || @run.inserted_at} class="q-rs-t" />
     """

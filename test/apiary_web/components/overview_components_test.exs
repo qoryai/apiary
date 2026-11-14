@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.OverviewComponentsTest do
   @moduledoc """
-  What a row of the overview calls a run (`ApiaryWeb.OverviewComponents.row_title/1`), and
-  the Paused part of the fourteen-day chart (`ApiaryWeb.OverviewComponents.days_chart/1`).
+  What a row of the overview calls a run (`ApiaryWeb.OverviewComponents.row_title/1`), a
+  target's last run (`ApiaryWeb.OverviewComponents.last_run/1`), and the Paused part of
+  the fourteen-day chart (`ApiaryWeb.OverviewComponents.days_chart/1`).
   """
   use ExUnit.Case, async: true
 
@@ -10,6 +11,19 @@ defmodule ApiaryWeb.OverviewComponentsTest do
   alias ApiaryWeb.OverviewComponents
 
   @public_id "rn_7f3e9b205b1d4c7e"
+
+  test "a target's last run reads Cancelling once a member cancelled it, until it ends" do
+    run = %Apiary.Runs.Run{state: "running", started_at: DateTime.utc_now()}
+    word = &(&1 |> LazyHTML.from_fragment() |> LazyHTML.query(".q-rs-w") |> LazyHTML.text())
+
+    assert word.(render_component(&OverviewComponents.last_run/1, run: run)) == "Running"
+
+    marked = %{run | cancel_requested_at: DateTime.utc_now()}
+    assert word.(render_component(&OverviewComponents.last_run/1, run: marked)) == "Cancelling"
+
+    ended = %{marked | state: "cancelled", exit_state: "cancelled"}
+    assert word.(render_component(&OverviewComponents.last_run/1, run: ended)) == "Cancelled"
+  end
 
   test "a row calls a run by its title, else its command line, else Run and its number" do
     run = %{

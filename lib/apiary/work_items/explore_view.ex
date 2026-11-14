@@ -440,6 +440,18 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
+  # The registered runs' numbers of the steps of the current take in, without the runs a
+  # member cancelled, as the stage counts them
+  # (`Apiary.Explore.Questions.counted_take_in_runs/2`): a question a cancelled run asked
+  # is not one of the take in's open questions.
+  defp current_runs(%WorkItem{id: id, take_in: take_in}, current) when is_integer(take_in) do
+    counted = Questions.counted_take_in_runs(id, take_in)
+    for %{run: %{number: n}} <- current, MapSet.member?(counted, n), into: MapSet.new(), do: n
+  end
+
+  defp current_runs(_work_item, current),
+    do: for(%{run: %{number: n}} <- current, into: MapSet.new(), do: n)
+
   # The `reopened.run` of the last entry of the question's `history` that has one; nil
   # for none.
   defp reopened_run(question) do
@@ -595,7 +607,7 @@ defmodule Apiary.WorkItems.ExploreView do
   # `waiting`, the latest run of the current take in where its questions wait, else nil.
   # The newest questions and review comments are read once, for `given` too.
   defp context(work_item, steps, events, waiting) do
-    {pushed, markdown} = pushed(work_item.id)
+    {pushed, counted, markdown} = pushed(work_item.id)
     questions = Questions.newest(work_item)
     review_comments = document(ReviewComments.newest(work_item))
     current = Enum.filter(steps, &(&1.take_in == work_item.take_in))
@@ -615,13 +627,14 @@ defmodule Apiary.WorkItems.ExploreView do
           do: {{data["take_in"], data["attempt"]}, event.actor_id}
         ),
       pushed: pushed,
+      counted: counted,
       markdown: markdown,
       questions: document(questions),
       questions_version: number(questions),
       review_comments: review_comments,
       by_number: for(%{run: %{number: n}} = step <- steps, into: %{}, do: {n, step}),
       current: current,
-      current_runs: for(%{run: %{number: n}} <- current, into: MapSet.new(), do: n),
+      current_runs: current_runs(work_item, current),
       waiting: waiting || nil,
       # Why each paused run paused, in one read for every run of the work item.
       pauses: Pause.of(for(%{run: %{id: id, state: "paused"}} <- steps, do: id))
@@ -717,6 +730,11 @@ defmodule Apiary.WorkItems.ExploreView do
     view = %{
       id: step.run && step.run.public_id,
       number: step.run && step.run.number,
+      # A member's cancel (`Apiary.Runs.Cancel`): whether a member can cancel the run now,
+      # and whether a member cancelled it and it has not ended, so its state reads
+      # "Cancelling".
+      cancellable: step.run != nil and Apiary.Runs.Cancel.cancellable?(step.run),
+      cancelling: step.run != nil and Apiary.Runs.Cancel.cancelling?(step.run),
       workspace_id: step.dispatch_run.workspace_id,
       stage_id: step.dispatch_run.stage_id,
       attempt: step.attempt,
@@ -786,17 +804,27 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # The version of `type` the run `attempt` of take in `take_in` stands at, as
   # `Apiary.WorkItems.Explore.version/4` reads it: the newest version a run of the take in
-  # up to it pushed, from `ctx.pushed` (`pushed/1`); nil for none.
-  defp version_at(take_in, attempt, ctx, type \\ "proposal") do
-    ctx.pushed
+  # up to it pushed, from `ctx.pushed` (`pushed/1`); nil for none. For the proposal, as
+  # `Apiary.WorkItems.Explore.proposal_version/3` reads it: a run a member cancelled left
+  # out, from `ctx.counted`, so its proposal is not the one the take in stands at.
+  defp version_at(take_in, attempt, ctx, type \\ "proposal")
+
+  defp version_at(take_in, attempt, ctx, "proposal"),
+    do: newest_at(ctx.counted, take_in, attempt, "proposal")
+
+  defp version_at(take_in, attempt, ctx, type), do: newest_at(ctx.pushed, take_in, attempt, type)
+
+  defp newest_at(pushed, take_in, attempt, type) do
+    pushed
     |> Enum.filter(fn {{y, t, a}, _number} -> y == type and t == take_in and a <= attempt end)
     |> Enum.map(fn {_run, number} -> number end)
     |> Enum.max(fn -> nil end)
   end
 
   # The newest version of each artifact named `main` each run of the work item `id` pushed,
-  # by `{type, take_in, attempt}`, and whether each proposal version has Markdown, read in
-  # one query for the page.
+  # by `{type, take_in, attempt}`; the same without the runs a member cancelled
+  # (`Apiary.Runs.Run.cancel_requested?/1`), whose versions count for nothing; and
+  # whether each proposal version has Markdown, read in one query for the page.
   defp pushed(id) do
     rows =
       Repo.all(
@@ -805,6 +833,7 @@ defmodule Apiary.WorkItems.ExploreView do
           join: a in Artifact,
           on: a.id == v.artifact_id,
           join: d in DispatchRun,
+          as: :dispatch_run,
           on: d.id == v.run_id,
           where: a.work_item_id == ^id and a.name == "main",
           where: d.work_item_id == ^id,
@@ -815,16 +844,21 @@ defmodule Apiary.WorkItems.ExploreView do
                  where:
                    f.version_id == parent_as(:version).id and
                      like(f.content_type, "text/markdown%")
-             )}
+             ), exists(Apiary.Runs.Run.cancelled_dispatch_run(:dispatch_run, :id))}
       )
 
-    newest =
-      Enum.reduce(rows, %{}, fn {type, take_in, attempt, number, _markdown}, newest ->
+    newest = fn rows ->
+      Enum.reduce(rows, %{}, fn {type, take_in, attempt, number, _markdown, _cancelled}, newest ->
         Map.update(newest, {type, take_in, attempt}, number, &max(&1, number))
       end)
+    end
 
-    {newest,
-     for({"proposal", _take_in, _attempt, n, markdown} <- rows, into: %{}, do: {n, markdown})}
+    {newest.(rows), newest.(Enum.reject(rows, &elem(&1, 5))),
+     for(
+       {"proposal", _take_in, _attempt, n, markdown, _cancelled} <- rows,
+       into: %{},
+       do: {n, markdown}
+     )}
   end
 
   # Every confirmation of the work item `id`, by take in, read in one query for the page.
@@ -846,10 +880,10 @@ defmodule Apiary.WorkItems.ExploreView do
   # it stood at another; nil for none.
   defp wrote(%{run: nil}, _ctx), do: nil
 
-  defp wrote(%{attempt: attempt} = step, ctx) do
-    before = attempt > 1 && version_at(step.take_in, attempt - 1, ctx)
+  defp wrote(%{attempt: attempt, take_in: take_in}, ctx) do
+    before = attempt > 1 && newest_at(ctx.pushed, take_in, attempt - 1, "proposal")
 
-    case version(step, ctx) do
+    case newest_at(ctx.pushed, take_in, attempt, "proposal") do
       version when is_integer(version) and version != before -> version
       _same -> nil
     end

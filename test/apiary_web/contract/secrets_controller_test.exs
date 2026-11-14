@@ -281,6 +281,24 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert signed_answer?(conn)
     end
 
+    @tag needs: [:factory, :observability]
+    test "200 for a running run a member cancelled, while it is live", ctx do
+      assert post_secrets(ctx, request(ctx)).status == 200
+
+      # Running, as a member can cancel it.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [state: "running", started_at: DateTime.utc_now()]
+        )
+
+      {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
+
+      # The gateway opens the run and ends it at its next batch, by the `end` there.
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200
+      assert signed_answer?(conn)
+    end
+
     test "410 run_configuration_superseded for a digest the run is not answered now", ctx do
       stale = request(ctx, digest: "sha256=" <> String.duplicate("0", 64))
       conn = post_secrets(ctx, stale)

@@ -43,9 +43,11 @@ defmodule Apiary.Runs.Ingest do
   its instance was known takes the instance of the first batch its gateway sends while
   its sending has not ended, under the run's row lock.
 
-  **The end.** Once the run's starter has given its outcome (`Apiary.Runs.Outcome`), every
-  answer for the run says so, `end` in the result, until the run's `dev.qory.run.exited`
-  arrives: the answer to the batch that carries it, and to every batch after, has none.
+  **The end.** Once a member cancelled the run (`Apiary.Runs.cancel/2`), or its starter gave
+  its outcome (`Apiary.Runs.Outcome`), the result of each batch of the run has `end`:
+  `cancelled` with the reason `cancelled_by_member` for the cancel, which comes first,
+  else the outcome's state and reason. The result has no `end` once the run's
+  `dev.qory.run.exited` arrives: not for the batch with the exit, nor for any after it.
 
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the
@@ -253,17 +255,22 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # The run's outcome, while the run has one and its exit has not arrived: not in this
-  # batch, and not among the events it holds. Read under the run's lock, so an outcome
-  # stored meanwhile is seen by the next answer.
-  defp run_end(%Run{outcome_state: nil}, _batch), do: nil
+  # A member's cancel (`Apiary.Runs.Cancel`), `cancelled` with its reason, else the run's
+  # outcome, while the run has one of the two and its exit has not arrived: not in this
+  # batch, and not among the stored events. Read under the run's lock, so the next batch
+  # reads a cancel or an outcome stored meanwhile.
+  defp run_end(%Run{outcome_state: nil, cancel_requested_at: nil}, _batch), do: nil
 
   defp run_end(%Run{} = run, %Batch{events: events}) do
     exited? =
       Enum.any?(events, &(&1.type == @exited)) or
         Repo.exists?(from e in Event, where: e.run_id == ^run.id and e.type == @exited)
 
-    if not exited?, do: %{state: run.outcome_state, reason: run.outcome_reason}
+    cond do
+      exited? -> nil
+      Run.cancel_requested?(run) -> %{state: "cancelled", reason: Run.cancel_reason()}
+      true -> %{state: run.outcome_state, reason: run.outcome_reason}
+    end
   end
 
   # A run whose log retention has pruned takes no more log events: the ones it had are

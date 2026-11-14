@@ -209,6 +209,24 @@ defmodule Apiary.Dispatches.ImageMissingTest do
            } = run_of(dispatch_run.work_item_id, 2)
   end
 
+  test "a run a member cancelled clears the image and queues no next attempt", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: ctx.scope.user.id]
+      )
+
+    exit!(run, @missing)
+
+    # The pool lacks the image, so it is cleared and built; the cancelled run changes
+    # nothing more, so no attempt follows it.
+    assert_cleared(ctx)
+    assert prebuilds(ctx) == [{:waiting, "env-1"}]
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+    refute Dispatches.requeued_for_image?(Repo.get!(Run, run.id))
+  end
+
   test "an image_missing of the run that requeue queued ends it without a requeue", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @missing)

@@ -247,25 +247,56 @@ defmodule ApiaryWeb.ArtifactComponents do
   registered (`Apiary.Runs.Run`), and the round where the run of the queue has one and
   `round` is true, such as "Run 14 · round 2" or "Run 14"; "A run" where no run is
   registered or read. The Explore tab passes `round` false: inside a work item, its
-  runs count by attempt.
+  runs count by attempt. A version of a run a member cancelled has its round, whatever
+  `round`, and "cancelled, not counted" after them: "Run 14 · round 2 · cancelled, not
+  counted".
   """
   @spec writer(Version.t(), boolean) :: String.t()
-  def writer(version, round \\ true)
+  def writer(version, round \\ true) do
+    if Apiary.Artifacts.cancelled?(version),
+      do: version |> run_writer(true) |> not_counted(),
+      else: run_writer(version, round)
+  end
 
-  def writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}, _round),
+  defp run_writer(%Version{writer: :person, user: %Apiary.Accounts.User{} = user}, _round),
     do: People.email(user)
 
-  def writer(%Version{writer: :person}, _round), do: People.former_member()
+  defp run_writer(%Version{writer: :person}, _round), do: People.former_member()
 
-  def writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}}, true)
-      when is_integer(number) and is_integer(round),
-      do: gettext("Run %{run} · round %{round}", run: number, round: Format.number(round))
+  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}}, true),
+    do: run_words(number, round)
 
-  def writer(%Version{writer: :run, run: %{run: %Run{number: number}}}, _round)
-      when is_integer(number),
-      do: gettext("Run %{run}", run: number)
+  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}}}, _round),
+    do: run_words(number, nil)
 
-  def writer(%Version{writer: :run}, _round), do: gettext("A run")
+  defp run_writer(%Version{writer: :run}, _round), do: run_words(nil, nil)
+
+  # The run that made a version: its number, and its round where it has one.
+  defp run_words(number, round) when is_integer(number) and is_integer(round),
+    do: gettext("Run %{run} · round %{round}", run: number, round: Format.number(round))
+
+  defp run_words(number, _round) when is_integer(number), do: gettext("Run %{run}", run: number)
+  defp run_words(_number, _round), do: gettext("A run")
+
+  @doc """
+  pushed_not_counted/2 is `words`, a version a run pushed as its run's page lists it, with
+  the run and its round and "cancelled, not counted" after them when a member cancelled
+  the run (`version`'s `cancelled`, `run_number` and `round`, as
+  `Apiary.Runs.Preparation` reads them): "proposal/main version 1 · Run 12 · round 2 ·
+  cancelled, not counted".
+  """
+  @spec pushed_not_counted(String.t(), map) :: String.t()
+  def pushed_not_counted(words, %{cancelled: true} = version),
+    do:
+      gettext("%{version} · %{writer}",
+        version: words,
+        writer: not_counted(run_words(version[:run_number], version[:round]))
+      )
+
+  def pushed_not_counted(words, _version), do: words
+
+  # The run that made a version, a run a member cancelled, so the version does not count.
+  defp not_counted(writer), do: gettext("%{writer} · cancelled, not counted", writer: writer)
 
   @doc """
   made_by/1 is who made a version (`writer/2`, with its round where `round` is true); for

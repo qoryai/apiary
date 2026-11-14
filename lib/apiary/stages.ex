@@ -120,7 +120,7 @@ defmodule Apiary.Stages do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
   alias Apiary.Stages.StopCause
@@ -1833,12 +1833,13 @@ defmodule Apiary.Stages do
   end
 
   # The open questions of the work item's newest questions that are of the run's take in
-  # (`Apiary.Explore.Questions.open_in_take_in/2`); a newest version whose file cannot be
-  # read raises, so the end is not read as one with no open question.
+  # (`Apiary.Explore.Questions.open_in_take_in/2`), asked by a run no member cancelled
+  # (`Apiary.Explore.Questions.counted_take_in_runs/2`); a newest version whose file
+  # cannot be read raises, so the end is not read as one with no open question.
   defp open_questions(work_item, %DispatchRun{take_in: take_in}) do
     case Apiary.Explore.Questions.current(work_item) do
       {:ok, {_version, document}} ->
-        runs = Apiary.Explore.Questions.take_in_runs(work_item.id, take_in)
+        runs = Apiary.Explore.Questions.counted_take_in_runs(work_item.id, take_in)
         Apiary.Explore.Questions.open_in_take_in(document, runs)
 
       {:ok, nil} ->
@@ -1850,18 +1851,20 @@ defmodule Apiary.Stages do
   end
 
   # A run that ended before its exit, or whose registered run failed, was lost or was
-  # cancelled.
+  # cancelled; or that a member cancelled, whatever its exit (`Apiary.Runs.Cancel`).
   defp stopped?(%DispatchRun{end_cause: :run_ended} = run) do
-    match?(
-      %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
-      Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
-    )
+    case Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id) do
+      %Run{exit_state: state} when state in ["failed", "lost", "cancelled"] -> true
+      %Run{} = registered -> Run.cancel_requested?(registered)
+      nil -> false
+    end
   end
 
   defp stopped?(%DispatchRun{}), do: true
 
   # The number of the newest version of the proposal named `main` that `run`, which ended
-  # by its exit, pushed before its registered run failed; nil for none.
+  # by its exit, pushed before its registered run failed; nil for none, and for a run a
+  # member cancelled, whose proposal does not count.
   defp failed_proposal(%DispatchRun{id: id, end_cause: :run_ended}) do
     Repo.one(
       from v in Apiary.Artifacts.Version,
@@ -1870,7 +1873,7 @@ defmodule Apiary.Stages do
         join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == v.run_id,
         where: v.run_id == ^id and a.type == "proposal" and a.name == "main",
-        where: r.exit_state == "failed",
+        where: r.exit_state == "failed" and is_nil(r.cancel_requested_at),
         select: max(v.number)
     )
   end
@@ -1880,7 +1883,8 @@ defmodule Apiary.Stages do
   # A run of a workflow other than Explore: the open questions of the run's take in
   # (`open_questions/2`), with the points of its verdict `escalate` where it pushed one,
   # else the newest verdict named `main` that the run pushed (`verdict!/1`), else stopped
-  # when its registered run failed, was lost or was cancelled.
+  # when its registered run failed, was lost or was cancelled, or a member cancelled it
+  # (`stopped?/1`).
   defp reported_result(work_item, run) do
     open = open_questions(work_item, run)
 
@@ -1891,10 +1895,7 @@ defmodule Apiary.Stages do
       verdict = verdict!(run) ->
         open_points(verdict, open)
 
-      match?(
-        %Run{exit_state: state} when state in ["failed", "lost", "cancelled"],
-        Repo.one(from r in Run.registered(), where: r.dispatch_run_id == ^run.id)
-      ) ->
+      stopped?(run) ->
         {:stopped, stopped_points(run, work_item, %{})}
 
       true ->
@@ -1907,12 +1908,19 @@ defmodule Apiary.Stages do
   # `{:verdict, verdict, points}`, with a nil verdict for a value other than `passed`,
   # `changes-requested` or `escalate`, or for a file that is not a JSON object;
   # `{:error, :store_unavailable}` when the store cannot read its file; nil where the run
-  # pushed none or ended another way. `Apiary.Explore.Outcome` reads it for Explore's
+  # pushed none, ended another way, or a member cancelled it (`Apiary.Runs.Cancel`),
+  # whose verdict does not count. `Apiary.Explore.Outcome` reads it for Explore's
   # `escalate`.
   @doc false
   @spec reported_verdict(DispatchRun.t()) ::
           Runner.run_result() | {:error, :store_unavailable} | nil
   def reported_verdict(%DispatchRun{end_cause: :run_ended} = run) do
+    if Cancel.dispatch_run_cancelled?(run), do: nil, else: newest_verdict(run)
+  end
+
+  def reported_verdict(%DispatchRun{}), do: nil
+
+  defp newest_verdict(run) do
     case Artifacts.newest_of_run(run, "verdict", "main") do
       nil ->
         nil
@@ -1924,8 +1932,6 @@ defmodule Apiary.Stages do
         end
     end
   end
-
-  def reported_verdict(%DispatchRun{}), do: nil
 
   # The verdict of a run of any workflow as `reported_verdict/1` reads it; a verdict whose
   # file the store cannot read raises, so the end is not read as one with no verdict.
@@ -2285,7 +2291,9 @@ defmodule Apiary.Stages do
   defp run_stopped?(%DispatchRun{end_cause: nil}, _artifacts), do: false
 
   defp run_stopped?(%DispatchRun{explore: false, end_cause: :run_ended} = run, artifacts),
-    do: not pushed_verdict?(run, artifacts) and stopped?(run)
+    do:
+      (Cancel.dispatch_run_cancelled?(run) or not pushed_verdict?(run, artifacts)) and
+        stopped?(run)
 
   defp run_stopped?(%DispatchRun{} = run, _artifacts), do: stopped?(run)
   defp run_stopped?(nil, _artifacts), do: false
@@ -2329,11 +2337,12 @@ defmodule Apiary.Stages do
         do: version
   end
 
+  # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`).
   defp newest_made_in(artifacts, type, stage_id) do
     artifacts
     |> Enum.filter(&(&1.type == type))
     |> Enum.flat_map(& &1.versions)
-    |> Enum.filter(&(&1.stage_id == stage_id))
+    |> Enum.filter(&(&1.stage_id == stage_id and not Artifacts.cancelled?(&1)))
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 

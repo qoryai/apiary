@@ -154,12 +154,17 @@ defmodule Apiary.Runs.ListingTest do
       assert Enum.map(Filters.families(), & &1.label) ==
                ["Alive", "Ended well", "Cancelled", "Paused", "Ended badly"]
 
-      # Every state the pages show is in exactly one family: the seven and queued.
+      # Every state the filter offers is in exactly one family: the seven, queued and
+      # cancelling.
       states = Filters.families() |> Enum.flat_map(& &1.states)
-      assert Enum.sort(states) == Enum.sort(Apiary.Runs.Run.shown_states())
+      assert Enum.sort(states) == Enum.sort(Filters.states())
+
+      assert Enum.sort(Filters.states()) ==
+               Enum.sort(["cancelling" | Apiary.Runs.Run.shown_states()])
+
       assert length(states) == length(Enum.uniq(states))
 
-      assert Filters.family_states("alive") == ~w(queued pending running)
+      assert Filters.family_states("alive") == ~w(queued pending running cancelling)
       assert Filters.family_states("ended_well") == ~w(completed)
       assert Filters.family_states("cancelled") == ~w(cancelled)
       assert Filters.family_states("paused") == ~w(paused)
@@ -171,10 +176,10 @@ defmodule Apiary.Runs.ListingTest do
         assert Filters.families_of(Enum.reverse(family.states)) == [family.key]
       end
 
-      assert Filters.families_of(~w(completed cancelled running pending queued)) ==
+      assert Filters.families_of(~w(completed cancelled running cancelling pending queued)) ==
                ~w(alive ended_well cancelled)
 
-      assert Filters.families_of(Apiary.Runs.Run.shown_states()) ==
+      assert Filters.families_of(Filters.states()) ==
                ~w(alive ended_well cancelled paused ended_badly)
 
       # Alive without Queued is no whole family.
@@ -430,8 +435,8 @@ defmodule Apiary.Runs.ListingTest do
       assert f.states == ~w(cancelled)
 
       {f, []} = query("STATE:Completed,alive")
-      assert f.states == ~w(queued pending running completed)
-      assert Filters.to_params(f) == %{"state" => "queued,pending,running,completed"}
+      assert f.states == ~w(queued pending running cancelling completed)
+      assert Filters.to_params(f) == %{"state" => "queued,pending,running,cancelling,completed"}
     end
 
     test "started: a preset, a day, from, up to, and two days" do

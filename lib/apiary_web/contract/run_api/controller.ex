@@ -18,7 +18,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
   #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, read here
-  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), then a body
+  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), and so is a
+  #      run a member cancelled, from the cancel on, with the message for a cancel; then a body
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
@@ -207,7 +208,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp run(conn, run_id),
     do: Run.fetch(conn.assigns.access_key, run_id, conn.assigns[:instance_id])
 
-  defp live(run), do: if(Run.live?(run), do: :ok, else: {:error, :run_ended})
+  # A run a member cancelled gets the message for a cancel, whatever its state.
+  defp live(run) do
+    cond do
+      Apiary.Runs.Run.cancel_requested?(run.run) -> {:error, :run_cancelled}
+      Run.live?(run) -> :ok
+      true -> {:error, :run_ended}
+    end
+  end
 
   ## Versions and files
 
@@ -442,6 +450,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   # A run that ended after `live/1` read it, found ended under the work item's lock.
   defp refused(:run_ended, _push), do: {:error, :run_ended}
+  defp refused(:run_cancelled, _push), do: {:error, :run_cancelled}
 
   defp refused(_refusal, _push), do: {:error, :unavailable}
 
@@ -635,6 +644,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp write_error(conn, {:error, :run_ended}) do
     error(conn, 409, "run_ended",
       message: "The run has ended, so it can no longer push artifacts or give a verdict."
+    )
+  end
+
+  defp write_error(conn, {:error, :run_cancelled}) do
+    error(conn, 409, "run_ended",
+      message: "The run was cancelled, so it can no longer push artifacts or give a verdict."
     )
   end
 

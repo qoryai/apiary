@@ -258,14 +258,19 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   An artifact version the run pushed: its artifact's type and name, its number, when it
-  was pushed, and the version's public id.
+  was pushed, the version's public id, whether a member cancelled the run
+  (`Apiary.Runs.Run.cancel_requested?/1`), so the version does not count, and the run's
+  number and the round of its run of the queue (nil for none), which mark such a version.
   """
   @type output_version :: %{
           type: String.t(),
           name: String.t(),
           number: pos_integer,
           at: DateTime.t(),
-          public_id: String.t()
+          public_id: String.t(),
+          cancelled: boolean,
+          run_number: pos_integer | nil,
+          round: pos_integer | nil
         }
 
   @typedoc """
@@ -804,13 +809,20 @@ defmodule Apiary.Runs.Preparation do
 
   # The versions a run of the queue wrote, through the run's `dispatch_run_id`; none for a
   # run no queue started.
-  defp outputs(%Scope{organisation: organisation, workspace: workspace}, %Run{
-         dispatch_run_id: id
-       })
+  defp outputs(
+         %Scope{organisation: organisation, workspace: workspace},
+         %Run{
+           dispatch_run_id: id
+         } = run
+       )
        when is_binary(id) do
+    cancelled = Run.cancel_requested?(run)
+
     Repo.all(
       from v in Version,
         join: a in assoc(v, :artifact),
+        left_join: d in Apiary.Dispatches.DispatchRun,
+        on: d.id == v.run_id,
         where: v.organisation_id == ^organisation.id and v.workspace_id == ^workspace.id,
         where: v.writer == :run and v.run_id == ^id,
         order_by: [asc: v.inserted_at, asc: v.number],
@@ -819,7 +831,10 @@ defmodule Apiary.Runs.Preparation do
           name: a.name,
           number: v.number,
           at: v.inserted_at,
-          public_id: v.public_id
+          public_id: v.public_id,
+          cancelled: type(^cancelled, :boolean),
+          run_number: type(^run.number, :integer),
+          round: d.round
         }
     )
   end

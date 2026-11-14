@@ -86,14 +86,17 @@ defmodule Apiary.Targets do
         }
 
   @typedoc """
-  A row of the index: the target, its last run (`state`, `at`, `public_id`) or nil, its runs
+  A row of the index: the target, its last run (`state`, `at`, `public_id`, and
+  `cancelling`: whether a member cancelled it and it has not ended) or nil, its runs
   a day over fourteen days (oldest first, today last), how many of those ended well, were
   cancelled and ended badly, its denied attempts in those fourteen days, and whether its
   path is in another system too.
   """
   @type row :: %{
           target: Target.t(),
-          last: %{state: String.t(), at: DateTime.t(), public_id: String.t()} | nil,
+          last:
+            %{state: String.t(), at: DateTime.t(), public_id: String.t(), cancelling: boolean}
+            | nil,
           days: [non_neg_integer],
           runs: non_neg_integer,
           ended_well: non_neg_integer,
@@ -192,6 +195,16 @@ defmodule Apiary.Targets do
             last_state: l.state,
             last_at: l.at,
             last_public_id: l.public_id,
+            last_cancel: %{
+              state: l.state,
+              cancel_requested_at: l.cancel_requested_at,
+              exit_state: l.exit_state,
+              exited_at: l.exited_at,
+              silenced_at: l.silenced_at,
+              backstop_at: l.backstop_at,
+              attached_at: l.attached_at,
+              attach_by: l.attach_by
+            },
             runs: s.runs,
             ended_well: s.ended_well,
             cancelled: s.cancelled,
@@ -346,7 +359,8 @@ defmodule Apiary.Targets do
   end
 
   # A target's last run, for a lateral join on `:target`: one probe of the index of a
-  # target's runs by when they started.
+  # target's runs by when they started. With the fields `Apiary.Runs.Cancel.cancelling?/1`
+  # reads.
   defp last_run do
     from r in Run,
       where: r.workspace_id == parent_as(:target).workspace_id,
@@ -356,7 +370,14 @@ defmodule Apiary.Targets do
       select: %{
         state: r.state,
         at: type(coalesce(r.started_at, r.inserted_at), :utc_datetime_usec),
-        public_id: r.public_id
+        public_id: r.public_id,
+        cancel_requested_at: r.cancel_requested_at,
+        exit_state: r.exit_state,
+        exited_at: r.exited_at,
+        silenced_at: r.silenced_at,
+        backstop_at: r.backstop_at,
+        attached_at: r.attached_at,
+        attach_by: r.attach_by
       }
   end
 
@@ -428,7 +449,12 @@ defmodule Apiary.Targets do
       target: found.target,
       last:
         found.last_public_id &&
-          %{state: found.last_state, at: found.last_at, public_id: found.last_public_id},
+          %{
+            state: found.last_state,
+            at: found.last_at,
+            public_id: found.last_public_id,
+            cancelling: Apiary.Runs.Cancel.cancelling?(found.last_cancel)
+          },
       days: days(found.days),
       runs: found.runs || 0,
       ended_well: found.ended_well || 0,

@@ -805,12 +805,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       attempt: WorkItemComponents.attempt_words(run),
       workflow: run.workflow || "",
       round: Format.number(run.round || 1),
-      verdict:
-        cond do
-          run.shows == :running -> running_word(%{class: "text-info-soft-content"})
-          run.shows == :paused -> PauseWords.line(run.paused, run.paused_path)
-          true -> shows_words(run.shows)
-        end
+      verdict: verdict_word(run, "text-info-soft-content")
     )
   end
 
@@ -822,18 +817,41 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     [
       run.workflow,
       run.round && gettext("round %{round}", round: Format.number(run.round)),
-      cond do
-        run.shows == :running -> running_word(%{class: running_class})
-        run.shows == :paused -> PauseWords.line(run.paused, run.paused_path)
-        true -> shows_words(run.shows)
-      end
+      verdict_word(run, running_class)
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
   end
 
-  defp running_word(assigns) do
+  # The verdict of a stage run, or what it shows without one. A run a member cancelled
+  # that has not ended (`cancelling`, `Apiary.Runs.Cancel.cancelling?/1`) is Cancelling,
+  # in the colours of its run's state (`run_state`) as the run's line on the tab: those of
+  # running while it runs, red once it is lost.
+  defp verdict_word(run, running_class) do
+    cond do
+      Map.get(run, :cancelling) == true ->
+        word(%{class: cancelling_class(run, running_class), word: gettext("Cancelling")})
+
+      run.shows == :running ->
+        word(%{class: running_class, word: shows_words(:running)})
+
+      run.shows == :paused ->
+        PauseWords.line(run.paused, run.paused_path)
+
+      true ->
+        shows_words(run.shows)
+    end
+  end
+
+  defp cancelling_class(run, running_class) do
+    case Map.get(run, :run_state) do
+      state when state in [nil, :running] -> running_class
+      state -> WorkItemComponents.state_class(%{state: state})
+    end
+  end
+
+  defp word(assigns) do
     ~H"""
-    <span class={@class}>{shows_words(:running)}</span>
+    <span class={@class}>{@word}</span>
     """
   end
 

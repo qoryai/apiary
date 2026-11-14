@@ -43,6 +43,7 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
   import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 2]
   import ApiaryWeb.PreparationComponents, only: [run_list: 1]
+  import ApiaryWeb.RunCancelComponents
 
   alias Apiary.Access
   alias Apiary.Dispatches
@@ -52,7 +53,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Policy
   alias Apiary.Policy.RequiredHosts
   alias Apiary.Runs
-  alias Apiary.Runs.{Preparation, Record, Run}
+  alias Apiary.Runs.{Cancel, Preparation, Record, Run, TargetWrite}
   alias Apiary.Targets
   alias Apiary.Runs.Record.{Overview, Timeline}
   alias ApiaryWeb.ConnectionLive.Rules
@@ -154,19 +155,30 @@ defmodule ApiaryWeb.RunLive.Show do
               <p id="run-meta" class="q-run-meta">
                 <%!-- A state its starter's outcome set, unlike what the exit said: the
                       sentence in the place of the state's word. --%>
+                <%!-- A run a member cancelled reads "Cancelling" until its exit. --%>
+                <.cancelling
+                  :if={cancelling?(@run)}
+                  id="run-state"
+                  state={Run.shown_state(@run)}
+                />
                 <span
-                  :if={outcome_sentence(@run)}
+                  :if={!cancelling?(@run) && outcome_sentence(@run)}
                   id="run-state"
                   class={["q-sdot", "q-sdot-#{@run.state}"]}
                 >
                   <i aria-hidden="true"></i><span id="run-outcome">{outcome_sentence(@run)}</span>
                 </span>
                 <.state_mark
-                  :if={!outcome_sentence(@run)}
+                  :if={!cancelling?(@run) && !outcome_sentence(@run)}
                   id="run-state"
                   state={Run.shown_state(@run)}
                   quiet={@quiet_for != nil}
                   word
+                />
+                <.cancel_button
+                  :if={@can_cancel && !@cancel_confirm && Cancel.cancellable?(@run)}
+                  id="run-cancel"
+                  event="ask_cancel_run"
                 />
                 <.end_reason run={@run} id="run-reason" />
                 <.alive
@@ -224,6 +236,29 @@ defmodule ApiaryWeb.RunLive.Show do
                   )}
                 </.link>
               </p>
+              <.cancel_confirm
+                :if={@can_cancel && @cancel_confirm && Cancel.cancellable?(@run)}
+                id="run-cancel-confirm"
+                class="mt-2"
+                number={@run.number}
+                write={@write_run}
+                event="cancel_run"
+                keep={JS.push("keep_running")}
+              />
+              <.cancel_line
+                :if={Run.cancel_requested?(@run)}
+                id="run-cancelled"
+                class="q-run-why"
+                run={@run}
+                person={@canceller}
+                reader={@current_scope.user && @current_scope.user.email}
+                pushing={
+                  @current_scope.workspace.domain == "software" and
+                    (pushing?(@preparation) or wrote?(@cancel_writes))
+                }
+                writes={@cancel_writes}
+                quiet_since={@quiet_for && heard_at(@run)}
+              />
               <p :if={@ending} id="run-why" class="q-run-why">
                 <span class="q-run-why-k">{gettext("How it ended")}</span>
                 <%!-- A step's ending has no item to jump to, and wraps whole. A paused
@@ -413,6 +448,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 alive={alive?(@run)}
                 clean_up={@clean_up}
                 run_state={Run.shown_state(@run)}
+                cancelling={cancelling?(@run)}
                 wall={is_binary(@run.wall)}
               />
               <%!-- A queued run's empty Timeline under its steps: it has not pinged, so the
@@ -677,6 +713,7 @@ defmodule ApiaryWeb.RunLive.Show do
         alive={alive?(@run)}
         clean_up={@clean_up}
         run_state={Run.shown_state(@run)}
+        cancelling={cancelling?(@run)}
         wall={is_binary(@run.wall)}
         session_open={@focused && row_session(@preparation, focused_row(@index, @focused))}
       >
@@ -1100,7 +1137,12 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl id="run-facts" class="q-rail-kv">
           <dt>{gettext("State")}</dt>
           <dd>
-            <.state_mark state={Run.shown_state(@run)} quiet={@quiet} word />
+            <.state_mark
+              state={Run.shown_state(@run)}
+              quiet={@quiet}
+              cancelling={cancelling?(@run)}
+              word
+            />
             <span :if={Run.shown_state(@run) == "pending"} class="q-rail-sub">
               {if @run.registered_at, do: gettext("Registered only"), else: gettext("Ping only")}
             </span>
@@ -1634,6 +1676,11 @@ defmodule ApiaryWeb.RunLive.Show do
      |> assign(
        security: security,
        run: nil,
+       can_cancel: false,
+       cancel_confirm: false,
+       write_run: false,
+       canceller: nil,
+       canceller_of: nil,
        loaded_id: nil,
        loaded: false,
        page_title: gettext("Run"),
@@ -1838,14 +1885,65 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp assign_run(socket, %Run{} = run) do
+    scope = socket.assigns.current_scope
+
     socket
     |> assign_work_item(run)
     |> assign(
       run: run,
       quiet_for: quiet_for(run),
-      page_title: run_title(run, socket.assigns.tab)
+      page_title: run_title(run, socket.assigns.tab),
+      can_cancel: Access.can?(scope, :"run.cancel", run),
+      cancel_writes: cancel_writes(scope, run),
+      cancel_confirm: socket.assigns.cancel_confirm and Cancel.cancellable?(run)
+    )
+    |> assign_canceller(run)
+  end
+
+  # Who cancelled the run, read once its mark is set, and read again for another run
+  # (`canceller_of`, the run's id), as a patch to another run's page keeps the assigns.
+  defp assign_canceller(
+         %{assigns: %{canceller: %{}, canceller_of: id}} = socket,
+         %Run{id: id, cancel_requested_at: %{}}
+       ),
+       do: socket
+
+  defp assign_canceller(socket, %Run{cancel_requested_at: %DateTime{}} = run) do
+    id = run.cancel_requested_by_id
+    people = ApiaryWeb.WorkItemLive.View.people(socket.assigns.current_scope, [id])
+
+    assign(socket,
+      canceller: ApiaryWeb.WorkItemLive.View.person(people, id),
+      canceller_of: run.id
     )
   end
+
+  defp assign_canceller(socket, _run), do: assign(socket, canceller: nil, canceller_of: nil)
+
+  # What a run a member cancelled wrote to its targets, read once it has ended, in a
+  # software workspace, where the cancel's line lists what it pushed
+  # (`Apiary.Runs.TargetWrite.writes/2`), without a write to a place that is none of the
+  # run's targets (`Apiary.Runs.TargetWrite.of_run_targets/3`); nil otherwise.
+  defp cancel_writes(%{workspace: %{domain: "software"} = workspace}, %Run{} = run) do
+    if Run.cancel_requested?(run) and ended?(run) do
+      run
+      |> TargetWrite.of_run()
+      |> TargetWrite.writes(true)
+      |> TargetWrite.of_run_targets(run, Domain.paths_label(workspace))
+    end
+  end
+
+  defp cancel_writes(_scope, _run), do: nil
+
+  # Whether a write to a target started, changed it or was cut.
+  defp wrote?(writes) when is_list(writes), do: Enum.any?(writes, &(&1.written != :refused))
+  defp wrote?(_writes), do: false
+
+  # Whether the run's push step had started (`Apiary.Runs.Preparation`).
+  defp pushing?(%{after_session: steps}),
+    do: Enum.any?(steps, &(&1.kind == "push" and &1.started_at != nil))
+
+  defp pushing?(_preparation), do: false
 
   # The run's work item, from its run of the queue, as the runs list reads it
   # (`Apiary.Runs.work_item/2`), not from the subjects the run reports. It is read when
@@ -3056,6 +3154,28 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A crafted event, or one for a page without a run: nothing to do.
+  # Cancel run: the inline confirm opens, and Keep running closes it.
+  def handle_event("ask_cancel_run", _params, %{assigns: %{run: %Run{} = run}} = socket) do
+    write = Cancel.write_run?(socket.assigns.current_scope.workspace, run)
+    {:noreply, assign(socket, cancel_confirm: true, write_run: write)}
+  end
+
+  def handle_event("keep_running", _params, socket),
+    do: {:noreply, assign(socket, cancel_confirm: false)}
+
+  # The cancel, then the run read again. A refusal closes the confirm too: the run's
+  # state shows why there is nothing to cancel.
+  def handle_event("cancel_run", _params, %{assigns: %{run: %Run{} = run}} = socket) do
+    scope = socket.assigns.current_scope
+    _cancelled = Runs.cancel(scope, run)
+    socket = assign(socket, cancel_confirm: false)
+
+    case Record.reload(scope, run) do
+      %Run{} = run -> {:noreply, socket |> follow_run(run) |> assign_preparation()}
+      nil -> {:noreply, socket}
+    end
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp open_panel(socket, row, act, action) do

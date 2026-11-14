@@ -255,12 +255,18 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  # Where a run ran, else its state's word: a path sent with nothing left to show is
+  # Where a run ran, else its state's word, "Cancelling" for a cancelling run
+  # (`Apiary.Runs.Cancel.cancelling?/1`): a path sent with nothing left to show is
   # marked, since it was sent (`Apiary.ExternalText.sent/1`).
   defp run_detail(run) do
     case Apiary.ExternalText.sent(run.target_path) do
-      nil -> ApiaryWeb.RunComponents.state_label(run.state)
-      path -> path
+      nil ->
+        if Apiary.Runs.Cancel.cancelling?(run),
+          do: gettext("Cancelling"),
+          else: ApiaryWeb.RunComponents.state_label(run.state)
+
+      path ->
+        path
     end
   end
 

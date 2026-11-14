@@ -100,11 +100,13 @@ defmodule ApiaryWeb.TargetComponents do
   A run's state as a dot and its word (pending, running, failed, cancelled, lost); the dot
   alone for one that completed, its word there for a screen reader. `word` forces the word,
   as a header does. A running run that is `quiet` has the still amber dot of the run's
-  alive line (`ApiaryWeb.RunComponents.alive/1`), in place of the dot that pulses.
+  alive line (`ApiaryWeb.RunComponents.alive/1`), in place of the dot that pulses. A run
+  that is `cancelling` (`ApiaryWeb.RunCancelComponents.cancelling?/1`) has "Cancelling" for its word.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.shown_states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
   attr :quiet, :boolean, default: false, doc: "the run's heartbeat is late"
+  attr :cancelling, :boolean, default: false, doc: "a member cancelled the run, not ended"
   attr :class, :any, default: nil
   attr :rest, :global
 
@@ -121,7 +123,7 @@ defmodule ApiaryWeb.TargetComponents do
       <span :if={@quiet and @state == "running"} class="q-dot q-alive-amber" aria-hidden="true"></span>
       <i :if={!@quiet or @state != "running"} aria-hidden="true"></i><span class={
         @dot_only && "sr-only"
-      }>{state_label(@state)}</span>
+      }>{if @cancelling, do: gettext("Cancelling"), else: state_label(@state)}</span>
     </span>
     """
   end
@@ -206,7 +208,7 @@ defmodule ApiaryWeb.TargetComponents do
       class={["q-tgt-runs", @class]}
     >
       <:col :let={run} label={gettext("State")} class="q-tgt-st">
-        <.state_mark state={run.state} />
+        <.state_mark state={run.state} cancelling={Apiary.Runs.Cancel.cancelling?(run)} />
       </:col>
       <:col :let={run} label={gettext("Run")} kind="title" class="q-tgt-run">
         <.link

@@ -389,6 +389,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             foot={@view.foot}
             verdicts={(@flow && @flow.runs) || []}
             no_pool={@no_pool}
+            cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
               <StageComponents.needs_block page={@flow} questions={@questions} />
@@ -432,6 +433,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             verdicts={@flow.runs}
             item_noun={@source.item_noun}
             now={@now}
+            cancel={@cancel}
           >
             <:artifacts :if={!lists_above?(@flow)}>
               <.artifacts_section
@@ -572,6 +574,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            questions_version: nil,
            review_comments: [],
            can_review: false,
+           cancel: nil,
            flow: nil,
            artifacts: [],
            view: nil,
@@ -827,7 +830,53 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  # Cancel run on the running run's line: its inline confirm opens, and Keep running
+  # closes it. The cancel, then the page read again; a refusal closes the confirm too, and
+  # the run's line shows why there is nothing to cancel.
+  def handle_event("ask_cancel_run", %{"run" => id}, socket) when is_binary(id) do
+    scope = scope(socket)
+
+    case running_run(scope, id) do
+      %Run{} = run ->
+        write = Apiary.Runs.Cancel.write_run?(scope.workspace, run)
+        {:noreply, update(socket, :cancel, &%{&1 | confirm: id, write: write})}
+
+      nil ->
+        {:noreply, load(socket)}
+    end
+  end
+
+  def handle_event("keep_running", _params, socket),
+    do: {:noreply, update(socket, :cancel, &%{&1 | confirm: nil, write: false})}
+
+  def handle_event("cancel_run", %{"run" => id}, socket) when is_binary(id) do
+    scope = scope(socket)
+    if run = running_run(scope, id), do: Runs.cancel(scope, run)
+
+    {:noreply, socket |> update(:cancel, &%{&1 | confirm: nil, write: false}) |> load()}
+  end
+
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # The run `public_id` of the reader's workspace.
+  defp running_run(scope, public_id) do
+    Apiary.Repo.get_by(Run,
+      public_id: public_id,
+      organisation_id: scope.organisation.id,
+      workspace_id: scope.workspace.id
+    )
+  end
+
+  # The tabs' `cancel` (`ApiaryWeb.WorkItemComponents.explore_tab/1`): whether the reader
+  # may cancel a run, and the confirm open, which a reload keeps.
+  defp cancel(scope, open) do
+    %{
+      can: Access.can?(scope, :"run.cancel", scope.workspace),
+      workspace_id: scope.workspace.id,
+      confirm: open && open.confirm,
+      write: (open && open.write) || false
+    }
+  end
 
   # An action of the page, with `:ask` from a click: where it starts a run, the spend's
   # dialog opens and nothing else happens (`spend/3`); with `:act`, from the dialog's
@@ -1913,6 +1962,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can_comment: Comments.can_comment?(scope, row),
         deleting_comment: Comments.still_asking(socket.assigns.deleting_comment, thread),
         can: can(scope, row, explore.status, flow),
+        cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
         artifacts: if(flow, do: Artifacts.list(row), else: []),
         no_pool: no_pool(scope, page.work_item),

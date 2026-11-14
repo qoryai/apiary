@@ -57,11 +57,13 @@ The checks run in this order:
    serve the run's workspace; and the run must be a run of a work item. Any other case
    is `404` `not_found`, the same answer whatever the cause.
 4. For a POST: a run that is no longer pending or running, whose sending has ended, or
-   whose run of the workspace's queue has ended, is `409` `run_ended`. A run reads its work item after it ends; it writes nothing.
-   A push or a verdict checks the run of the queue again when it stores the version,
-   under the lock of the work item that the end of a run also takes: a run whose run of
-   the queue ended between the two checks is `409` `run_ended`, and no version is
-   stored.
+   whose run of the workspace's queue has ended, is `409` `run_ended`. So is a run a
+   member cancelled, from the commit of the cancel, whatever its state, with the message
+   for a cancelled run. A run reads its work item after it ends; it writes nothing.
+   A push or a verdict checks the run of the queue, and the cancel, again when it stores
+   the version, under the lock of the work item that the end of a run and a cancel also
+   take: a run whose run of the queue ended, or that a member cancelled, between the two
+   checks is `409` `run_ended`, and no version is stored.
 5. The checks listed with each request below.
 
 An error is a JSON object with `error`, the code. Some errors also have `type`,
@@ -505,7 +507,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served |
 | `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
-| `409` | `run_ended` | `message` | A push or a verdict after the run ended, checked before the push and again when the version is stored |
+| `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
@@ -518,6 +520,8 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 The messages:
 
 - `run_ended`: "The run has ended, so it can no longer push artifacts or give a verdict."
+  For a run a member cancelled: "The run was cancelled, so it can no longer push
+  artifacts or give a verdict."
 - `unknown_type`, for a custom name: "Define the artifact type demo-findings in the
   workspace's Artifact types, then run the round again."
 - `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type

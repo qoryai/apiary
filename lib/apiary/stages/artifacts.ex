@@ -1,6 +1,7 @@
 defmodule Apiary.Stages.Artifacts do
   # Artifacts is the one place the stage runner (`Apiary.Stages`) reaches a work item's
-  # artifacts through: `push/5`, `list/1` and `exists?/3` of `Apiary.Artifacts`, and
+  # artifacts through: `push/5`, `list/1`, `exists?/3` and `cancelled?/1` of
+  # `Apiary.Artifacts`, and
   # `push_json/5`, `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module
   # adds.
   @moduledoc false
@@ -42,6 +43,12 @@ defmodule Apiary.Stages.Artifacts do
   @doc false
   @spec exists?(struct, String.t(), String.t()) :: boolean
   def exists?(work_item, stage_id, type), do: Artifacts.exists?(work_item, stage_id, type)
+
+  # cancelled?/1 is whether a run a member cancelled wrote `version`
+  # (`Apiary.Artifacts.cancelled?/1`).
+  @doc false
+  @spec cancelled?(map) :: boolean
+  def cancelled?(version), do: Artifacts.cancelled?(version)
 
   # newest_of_run/3 is the newest version of the artifact of `type` and `name` that the
   # run of the queue `run` pushed, with its files in the order of their names; nil for

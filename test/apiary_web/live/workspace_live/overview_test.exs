@@ -2368,6 +2368,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "live" do
+    test "a cancelling run that is lost and may still attach stays among the alive runs",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop(), ago: 600)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+        )
+
+      view = open(conn, scope)
+      alive = fn -> Enum.map(:sys.get_state(view.pid).socket.assigns.alive_runs, & &1.id) end
+      assert alive.() == [run.id]
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [state: "lost", backstop_at: DateTime.add(DateTime.utc_now(), 3600, :second)]
+        )
+
+      lost = Repo.get!(Run, run.id)
+      assert Apiary.Runs.Cancel.cancelling?(lost)
+
+      # The broadcast patches the run in place, and the read that follows keeps it.
+      send(view.pid, {:run_changed, lost})
+      assert alive.() == [run.id]
+      render_async(view, 5_000)
+      assert alive.() == [run.id]
+      assert text(view, "#overview-strip-alive .q-sum-v") == "1"
+
+      # A later read patches the runs the page shows from the database: the run stays.
+      send(view.pid, :run_flush)
+      render_async(view, 5_000)
+      assert alive.() == [run.id]
+      assert text(view, "#overview-strip-alive .q-sum-v") == "1"
+    end
+
     test "a run that starts is counted; the active target's last run follows in place",
          %{conn: conn, scope: scope} do
       first = started_run(scope, shop(), ago: 600)

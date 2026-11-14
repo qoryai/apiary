@@ -31,6 +31,47 @@ defmodule Apiary.RunsTest do
       assert Runs.count_alive(scope) == 3
       assert Runs.count_alive(other) == 1
     end
+
+    test "counts a cancelling run that is lost and may still attach, as the Alive view lists it",
+         %{scope: scope} do
+      now = DateTime.utc_now()
+      marked = %{cancel_requested_at: now}
+      later = DateTime.add(now, 3600, :second)
+
+      run_fixture(scope, Map.merge(marked, %{state: "lost", backstop_at: later}))
+      run_fixture(scope, Map.merge(marked, %{state: "running"}))
+      # Lost for good, and a cancelled run with its exit: neither is alive.
+      run_fixture(scope, Map.merge(marked, %{state: "lost", silenced_at: now}))
+      run_fixture(scope, Map.merge(marked, %{state: "cancelled", exit_state: "cancelled"}))
+      run_fixture(scope, %{state: "lost", backstop_at: later})
+
+      assert Runs.count_alive(scope) == 2
+
+      assert Runs.view_counts(scope, Apiary.Runs.Filters.new()).alive == 2
+    end
+  end
+
+  describe "list_alive/2" do
+    test "lists the runs count_alive/1 counts, a lost cancelling run that may still attach among them",
+         %{scope: scope} do
+      now = DateTime.utc_now()
+      marked = %{cancel_requested_at: now}
+      later = DateTime.add(now, 3600, :second)
+
+      lost = run_fixture(scope, Map.merge(marked, %{state: "lost", backstop_at: later}))
+      running = run_fixture(scope, %{state: "running"})
+      pending = run_fixture(scope, %{state: "pending"})
+      run_fixture(scope, Map.merge(marked, %{state: "lost", silenced_at: now}))
+      run_fixture(scope, %{state: "lost", backstop_at: later})
+      run_fixture(scope, %{state: "completed"})
+
+      listed = Runs.list_alive(scope, 10)
+
+      assert Enum.sort(Enum.map(listed, & &1.id)) == Enum.sort([lost.id, running.id, pending.id])
+      assert length(listed) == Runs.count_alive(scope)
+      assert [%{state: "lost"} = run] = Enum.filter(listed, &(&1.id == lost.id))
+      assert Apiary.Runs.Cancel.cancelling?(run)
+    end
   end
 
   describe "get_run!/2 and list_runs/2" do

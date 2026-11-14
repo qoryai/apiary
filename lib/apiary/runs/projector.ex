@@ -1,7 +1,8 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `run_steps`, its `log_chunks`, its `session_chunks` and the workspace's `targets`.
+  its `run_steps`, its `run_target_writes`, its `log_chunks`, its `session_chunks` and the
+  workspace's `targets`.
   A rebuild deletes and folds again all but the `session_chunks`, which it adds to: the
   transcript of a paused run outlives the events the retention deletes
   (`Apiary.Runs.Transcript`).
@@ -37,6 +38,10 @@ defmodule Apiary.Runs.Projector do
   which this server never receives. A step exit folded later sets the step's state
   as the exit says.
 
+  A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
+  its sequence, with the workspace's target of its system and path when the workspace has
+  one: a write links to a target that exists, and creates none.
+
   Once its passes have committed, a projection records the run's `last_heartbeat_at` as
   its access key's last heartbeat when it is later than the key's
   (`Apiary.AccessKeys.touch_heartbeat/2`), so the key's is the latest of its runs'.
@@ -55,7 +60,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
-  alias Apiary.Runs.{Step, Target, Transcript, TranscriptPath}
+  alias Apiary.Runs.{Step, Target, TargetWrite, Transcript, TranscriptPath}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -199,6 +204,7 @@ defmodule Apiary.Runs.Projector do
   defp reset(%Run{id: id} = current) do
     Repo.delete_all(from c in Connection, where: c.run_id == ^id)
     Repo.delete_all(from s in Step, where: s.run_id == ^id)
+    Repo.delete_all(from w in TargetWrite, where: w.run_id == ^id)
     Repo.delete_all(from l in LogChunk, where: l.run_id == ^id)
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
@@ -364,6 +370,7 @@ defmodule Apiary.Runs.Projector do
       LeakedSecrets.record_run(run, fold.log_chunks, events)
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
+      insert_target_writes(run, fold.target_writes)
       if Enum.any?(events, &(&1.type in @ending)), do: end_open_steps(run)
       mark_projected(Enum.map(events, & &1.id))
 
@@ -700,6 +707,48 @@ defmodule Apiary.Runs.Projector do
       end
 
     Repo.insert_all(LogChunk, rows,
+      on_conflict: :nothing,
+      conflict_target: [:run_id, :sequence],
+      log: false
+    )
+  end
+
+  defp insert_target_writes(_run, []), do: :ok
+
+  defp insert_target_writes(run, writes) do
+    places = writes |> Enum.map(&{&1.system, &1.path}) |> Enum.uniq()
+    systems = Enum.map(places, &elem(&1, 0))
+    paths = Enum.map(places, &elem(&1, 1))
+
+    targets =
+      Repo.all(
+        from(t in Target,
+          join:
+            p in fragment(
+              "SELECT * FROM unnest(?::text[], ?::text[]) AS p(system, path)",
+              ^systems,
+              ^paths
+            ),
+          on: t.system == p.system and t.path == p.path,
+          where: t.workspace_id == ^run.workspace_id,
+          select: {{t.system, t.path}, t.id}
+        ),
+        log: false
+      )
+      |> Map.new()
+
+    rows =
+      for write <- writes do
+        Map.merge(write, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          run_id: run.id,
+          target_id: Map.get(targets, {write.system, write.path})
+        })
+      end
+
+    Repo.insert_all(TargetWrite, rows,
       on_conflict: :nothing,
       conflict_target: [:run_id, :sequence],
       log: false

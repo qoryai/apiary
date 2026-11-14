@@ -317,6 +317,13 @@ defmodule Apiary.Runs.Run do
     field :started_image_from, :string
     field :started_image, :string
 
+    # A member's cancel (`Apiary.Runs.cancel/2`): when they pressed Cancel run, and who,
+    # nil once their account is deleted. From that moment the run changes nothing more
+    # (`cancel_requested?/1`), whatever its exit. Nil for every other run. Not folded: a
+    # rebuild keeps them.
+    field :cancel_requested_at, :utc_datetime_usec
+    belongs_to :cancel_requested_by, Apiary.Accounts.User
+
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
     has_many :connections, Apiary.Runs.Connection
@@ -471,6 +478,40 @@ defmodule Apiary.Runs.Run do
   never a person's cancel.
   """
   def paused_states, do: ~w(paused)
+
+  @doc """
+  The reason in the `end` of each `202` to a run's batches once a member cancelled it
+  (`Apiary.Runs.cancel/2`): its gateway ends it `cancelled` with this reason. A
+  starter's outcome may not have it (`Apiary.Runs.Outcome.reserved_reasons/0`).
+  """
+  def cancel_reason, do: "cancelled_by_member"
+
+  @doc """
+  Whether a member cancelled the run (`Apiary.Runs.cancel/2`): its `cancel_requested_at`
+  is set. From then the run changes nothing more, whatever its state or its exit: each
+  request of the run that writes fails, and what the run pushed does not count for its
+  stage. The one check of the mark, which each route of the run calls.
+  """
+  @spec cancel_requested?(t() | map() | nil) :: boolean()
+  def cancel_requested?(%{cancel_requested_at: %DateTime{}}), do: true
+  def cancel_requested?(_run), do: false
+
+  @doc """
+  The registered run, cancelled by a member (`cancel_requested?/1`), of the run of the
+  queue whose id is the field `field` of the named binding `binding` of the outer query:
+  a subquery for `exists/1`, for a condition on what that run of the queue wrote. Reads
+  one row by the unique index on `dispatch_run_id`, so a query with it scans no runs.
+  """
+  @spec cancelled_dispatch_run(atom(), atom()) :: Ecto.Query.t()
+  def cancelled_dispatch_run(binding, field) when is_atom(binding) and is_atom(field) do
+    import Ecto.Query, only: [from: 2]
+
+    from r in __MODULE__,
+      where:
+        r.dispatch_run_id == field(parent_as(^binding), ^field) and
+          not is_nil(r.cancel_requested_at),
+      select: 1
+  end
 
   @doc "Whether the run paused (`paused_states/0`)."
   @spec paused?(t() | map()) :: boolean()
