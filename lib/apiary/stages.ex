@@ -1278,7 +1278,8 @@ defmodule Apiary.Stages do
   end
 
   # artifact_index/1 is every artifact of the work item with its versions, newest first,
-  # their writers and the approvals that cover each: for each artifact, the public id of
+  # their writers, the approvals that cover each and whether a run a member cancelled
+  # wrote it (`Apiary.Artifacts.cancelled?/1`): for each artifact, the public id of
   # the newest approved version, and whether a version of an earlier stage's artifact was
   # made after that approval ("changed after approval").
   @doc false
@@ -1487,7 +1488,8 @@ defmodule Apiary.Stages do
       note: Map.get(version, :note),
       inserted_at: version.inserted_at,
       files: Map.get(version, :files, []),
-      approvals: Map.get(approvals, version.public_id, [])
+      approvals: Map.get(approvals, version.public_id, []),
+      cancelled: Artifacts.cancelled?(version)
     }
   end
 

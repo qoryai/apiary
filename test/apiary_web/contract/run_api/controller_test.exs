@@ -515,6 +515,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                        "id" => version.public_id,
                        "number" => 1,
                        "writer" => %{"kind" => "run", "run_id" => ctx.dispatch_run.run_id},
+                       "cancelled" => false,
                        "stage_id" => @explore,
                        "note" => nil,
                        "at" =>
@@ -566,6 +567,82 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(approval.inserted_at)
                }
              ]
+    end
+
+    @tag needs: [:workflow_model, :factory, :secrets, :observability]
+    test "marks each version that a run a member cancelled wrote", ctx do
+      # Running, as a member can cancel it.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [state: "running", started_at: DateTime.utc_now()]
+        )
+
+      for content <- [@png <> "a", @png <> "b"] do
+        assert write(
+                 ctx,
+                 "/artifacts",
+                 push_body("screenshot", [{"one.png", "image/png", content}])
+               ).status == 201
+      end
+
+      # A person, and another run of the work item that a claim registered and no
+      # member cancelled, store a version each.
+      other =
+        Repo.insert!(%DispatchRun{
+          organisation_id: ctx.dispatch_run.organisation_id,
+          workspace_id: ctx.dispatch_run.workspace_id,
+          work_item_id: ctx.work_item.id,
+          run_id: Ecto.UUID.generate(),
+          step: ctx.dispatch_run.step,
+          take_in: ctx.dispatch_run.take_in,
+          attempt: ctx.dispatch_run.attempt + 1,
+          of: ctx.dispatch_run.of + 1,
+          queued_at: Apiary.Dispatches.now()
+        })
+
+      registered =
+        Apiary.RunEventsFixtures.run_fixture(ctx.scope, %{
+          dispatch_run_id: other.id,
+          state: "completed",
+          started_at: DateTime.utc_now(),
+          exited_at: DateTime.utc_now()
+        })
+
+      assert Run.registered?(registered)
+      refute Run.cancel_requested?(registered)
+
+      other_version =
+        store!(%{ctx | dispatch_run: other}, "explainer", [
+          file("notes.md", "text/markdown", "x")
+        ])
+
+      # The index reads the mark from that registered run, not from a run with none.
+      assert %{run: %{run: %Run{id: registered_id}}} =
+               Apiary.Artifacts.get_version!(other_version.public_id)
+
+      assert registered_id == registered.id
+
+      {:ok, _person} =
+        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
+          file("notes.md", "text/markdown", "y")
+        ])
+
+      {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
+
+      body = json_response(read(ctx, "/artifacts"), 200)
+      by_type = Map.new(body["artifacts"], &{&1["type"], &1["versions"]})
+
+      assert [
+               %{"number" => 2, "cancelled" => true},
+               %{"number" => 1, "cancelled" => true}
+             ] = by_type["screenshot"]
+
+      assert [
+               %{"number" => 2, "writer" => %{"kind" => "person"}, "cancelled" => false},
+               %{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}
+             ] = by_type["explainer"]
+
+      assert run_id == other.run_id
     end
   end
 
