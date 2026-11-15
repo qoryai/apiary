@@ -33,7 +33,7 @@ defmodule ApiaryWeb.Edition do
     `ApiaryWeb.UserAuth.nav_counts/1`; `c:switcher_place/1`, which workspaces of a place
     the organisation menu lists under it, and which under another organisation of the
     menu;
-    `c:place_scope/2`, which the core no longer asks.
+    `c:place_scope/2`, which the core does not call.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave;

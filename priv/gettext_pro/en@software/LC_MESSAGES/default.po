@@ -2793,12 +2793,12 @@ msgstr ""
 
 #: lib/apiary_pro_web/readers.ex
 #, elixir-autogen, elixir-format
-msgid "You can read this organisation as a person of its operator, and change nothing here."
+msgid "You can read this organisation as support, and change nothing here."
 msgstr ""
 
 #: lib/apiary_pro_web/readers.ex
 #, elixir-autogen, elixir-format
-msgid "You can read this organisation as support, and change nothing here."
+msgid "You can read this workspace as a person of its operator, and change nothing here."
 msgstr ""
 
 #: lib/apiary_pro_web/live/user_live/new_organisation.ex

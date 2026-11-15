@@ -36,7 +36,7 @@ membership in the organisation allows, and reads the rest of the workspace.
 The organisation menu of the operator's people lists each workspace the operator operates,
 under its organisation.
 
-A suspended operator is read-only, and its people no longer reach the workspaces it
+A suspended operator is read-only, and its people do not reach the workspaces it
 operates. Those workspaces keep running, with their runs, access keys and people, until
 the operator is activated.
 

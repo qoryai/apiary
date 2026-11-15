@@ -307,16 +307,12 @@ defmodule ApiaryPro.Access do
        the instance's jobs;
      - **the operator of a workspace** (`ApiaryPro.WorkspaceOperators`): a person of the
        operator reaches the workspaces it operates alone, and reads everything in them
-       (`reads/0`) but their secrets and variables; nothing the organisation owns as a
-       whole is found, its policy, people, connections, secrets and variables among them,
-       nor any action asked of the organisation. In such a workspace they
-       change only the time limits, the retention, the process, its artifact types and
-       the model choices, at the role their level in the operator maps to
-       there: while the configuration flag `operator_infrastructure` is on, an owner's or an
-       admin's for its owners and admins, else `reader`. The organisation's owners and
-       admins keep every action in the workspace. A person of the operator who holds a
-       membership in the organisation too acts there at that membership's level, and in
-       such a workspace at the higher of the two for what the operator changes there;
+       (`reads/0`) but their secrets and variables, as the role `reader`, and changes
+       nothing there; nothing the organisation owns as a whole is found, its policy,
+       people, connections, secrets and variables among them, nor any action asked of the
+       organisation. The organisation's owners and admins keep every action in the
+       workspace. A person of the operator who holds a membership in the organisation too
+       acts there at that membership's level;
      - **the reader**: an instance admin reads everything in every workspace
        (`reads/0`);
      - **workspace access**: adding a person to a workspace and removing them from one are

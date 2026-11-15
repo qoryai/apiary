@@ -5,7 +5,7 @@ defmodule ApiaryPro.AccessRows do
   the core's. The actors:
 
       unreached_member    a member of the organisation, not added to the workspace
-      client_owner        an owner of an organisation whose workspace Main an operator
+      operated_owner      an owner of an organisation whose workspace Main an operator
                           operates, in that organisation: an owner as anywhere
       operator_owner      an owner of that operator, in Main, through the operator:
                           read-only
@@ -44,14 +44,14 @@ defmodule ApiaryPro.AccessRows do
             :unreached_member,
             :admin,
             :owner,
-            :client_owner,
+            :operated_owner,
             :other_owner,
             :operator_elsewhere,
             :instance_owner,
             :instance_admin,
             :instance_org_admin
           ] ++ @readers
-  @owners [:client_owner, :instance_owner, :instance_admin]
+  @owners [:operated_owner, :instance_owner, :instance_admin]
   # The instance actions the edition adds, by whether they are taken of the instance organisation
   # itself, which the core's instance admin asks of, and whether they have a feature: the
   # feature's rows take it away (`feature_off`), and no edition hides an instance action
@@ -78,7 +78,7 @@ defmodule ApiaryPro.AccessRows do
   def actors do
     [
       :unreached_member,
-      :client_owner,
+      :operated_owner,
       :operator_owner,
       :operator_admin,
       :operator_member,
@@ -121,7 +121,7 @@ defmodule ApiaryPro.AccessRows do
       {:"diagnostics_key.revoke", yes: [:instance_owner]},
       {:"node.set_instance_limit", yes: [:instance_owner]},
       {:"organisation.rename", yes: @owners},
-      {:"organisation.delete", yes: [:client_owner]},
+      {:"organisation.delete", yes: [:operated_owner]},
       {:"organisation.restore", yes: @owners},
       {:"member.read", yes: [:unreached_member] ++ @owners ++ @organisation_readers},
       {:"member.invite", yes: @owners},
@@ -222,7 +222,7 @@ defmodule ApiaryPro.AccessRows do
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
       {:"workspace_access.remove",
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
-      {:"organisation.withdraw_transfer", yes: [:owner, :client_owner, :feature_off, :hidden]},
+      {:"organisation.withdraw_transfer", yes: [:owner, :operated_owner, :feature_off, :hidden]},
       {:"organisation.accept_transfer", yes: []},
       {:"instance.read", yes: [:instance_owner]},
       {:"instance.create_organisation", yes: @instance_itself},
@@ -262,7 +262,8 @@ defmodule ApiaryPro.AccessRows do
   end
 
   @doc """
-  setup/1 makes the edition's places, `client`, a client of an operator, and
+  setup/1 makes the edition's places, `operated`, an organisation whose workspace Main an
+  operator operates, and
   `instance_organisation`, the suite's instance organisation as an instance admin sees it,
   made an operator, and the scopes of the edition's actors, given the core's `home`. The core's
   `instance_admin` and `instance_org_admin` ask in that organisation as an operator.
@@ -274,7 +275,7 @@ defmodule ApiaryPro.AccessRows do
     {:ok, _} = ApiaryPro.WorkspaceAccess.remove(owner, unreached_membership.id, home.workspace.id)
 
     operator = operator_fixture()
-    client = operated_fixture(operator.scope)
+    operated = operated_fixture(operator.scope)
     operator_admin = member_fixture(operator.scope, :admin).user
     operator_member = member_fixture(operator.scope, :member).user
     admin = instance_admin_fixture()
@@ -288,19 +289,19 @@ defmodule ApiaryPro.AccessRows do
       # The core's adapter, the instance's, beside each place: what an adapter's key is
       # asked of, wherever the edition's actors ask.
       places: %{
-        client: Map.put(client, :adapter, home.adapter),
+        operated: Map.put(operated, :adapter, home.adapter),
         instance_organisation: Map.put(instance_scope, :adapter, home.adapter)
       },
       scopes: %{
         # Asking in the workspace all the same, as a page loaded before they were removed
         # from it would, without the workspace access it no longer has.
         unreached_member: ApiaryPro.WorkspaceAccess.put(unreached, nil),
-        client_owner: client.owner.scope,
-        # The operator's people, in its client: through the relationship, not a
-        # membership there.
-        operator_owner: client.scope,
-        operator_admin: scope_in(operator_admin, client.organisation, client.workspace),
-        operator_member: scope_in(operator_member, client.organisation, client.workspace),
+        operated_owner: operated.owner.scope,
+        # The operator's people, in the operated organisation: through the relationship,
+        # not a membership there.
+        operator_owner: operated.scope,
+        operator_admin: scope_in(operator_admin, operated.organisation, operated.workspace),
+        operator_member: scope_in(operator_member, operated.organisation, operated.workspace),
         # An operator's owner, asking in the operator of an organisation it does not
         # manage.
         operator_elsewhere: operator.scope,
@@ -316,12 +317,13 @@ defmodule ApiaryPro.AccessRows do
   defp again_in(scope, organisation), do: scope_in(scope.user, organisation, scope.workspace)
 
   @doc """
-  place/2 is where the edition's actors ask: the client's people and the operator's in the client;
+  place/2 is where the edition's actors ask: the operated organisation's people and the
+  operator's in it;
   an instance admin in the instance organisation, of it, or of the organisation, `home`,
   for the instance actions taken on another; everyone else at home.
   """
   @spec place(atom, atom) :: atom | nil
-  def place(_action, actor) when actor in [:client_owner | @operators], do: :client
+  def place(_action, actor) when actor in [:operated_owner | @operators], do: :operated
   def place(action, :instance_owner) when action in @on_another, do: :home
   def place(_action, :instance_owner), do: :instance_organisation
   def place(_action, actor), do: if(actor in actors(), do: :home)

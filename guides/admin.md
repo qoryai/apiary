@@ -89,7 +89,7 @@ SIGNUP_ORGANISATIONS=open
 The instance admins have separate pages, **Instance settings**, in the Qory Apiary menu:
 General, then Features, then Organisations and Accounts, then the other sections, with
 Mail and Configuration last. **Organisations**, `/instance/organisations`, lists every organisation
-on the instance, with its slug, its kind, its operator, its features and its status: in
+on the instance, with its slug, its kind, its features and its status: in
 use, suspended, without an owner who may act, or deleted, with the day it is purged.
 **Accounts**, `/instance/accounts`, lists every account, with how many organisations it is
 in and whether it is suspended. Instance settings' former addresses, under the instance's

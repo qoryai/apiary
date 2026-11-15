@@ -206,19 +206,19 @@ defmodule ApiaryPro.AuditChanges do
   # The arbiter's offer is the organisation's entry, by the instance admin.
   def make(:"instance.transfer", _ctx) do
     instance_admin = instance_admin_fixture()
-    %{client: client, admin: admin} = client_with_admin()
-    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, client.owner.user.id)
+    %{operated: operated, admin: admin} = operated_with_admin()
+    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, operated.owner.user.id)
     before = entries()
 
     {:ok, transfer} =
       Transfers.arbitrate(
         instance_admin.instance_scope,
-        client.organisation.id,
+        operated.organisation.id,
         admin.membership.id,
         "The owner is away."
       )
 
-    scope = %Scope{user: instance_admin.user, organisation: client.organisation}
+    scope = %Scope{user: instance_admin.user, organisation: operated.organisation}
     %{scope: scope, subject: {"transfer", transfer.id}, before: before}
   end
 
@@ -490,10 +490,10 @@ defmodule ApiaryPro.AuditChanges do
   # An organisation whose workspace a fresh operator operates, with its owner and an admin:
   # the operator's fixture, the organisation's, with the operator's owner's scope in it,
   # and the admin's.
-  defp client_with_admin do
+  defp operated_with_admin do
     operator = operator_fixture()
-    client = operated_fixture(operator.scope)
-    %{operator: operator, client: client, admin: organisation_member_fixture(client)}
+    operated = operated_fixture(operator.scope)
+    %{operator: operator, operated: operated, admin: organisation_member_fixture(operated)}
   end
 
   # An organisation as the core's edition created it, with its workspace and its owner,

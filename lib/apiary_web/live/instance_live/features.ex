@@ -371,7 +371,7 @@ defmodule ApiaryWeb.InstanceLive.Features do
   defp title_of(:factory), do: gettext("Work items")
   defp title_of(:registry), do: gettext("Image registry")
   defp title_of(:workflow_model), do: gettext("Process versions")
-  defp title_of(:managed_organisations), do: gettext("Operators and clients")
+  defp title_of(:managed_organisations), do: gettext("Operators")
   defp title_of(:organisation_policy), do: gettext("Organisation policy")
   defp title_of(:organisation_variables), do: gettext("Organisation secrets and variables")
   defp title_of(:feature_visibility), do: gettext("Features by person")

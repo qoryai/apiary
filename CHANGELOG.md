@@ -1200,12 +1200,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
-  (`workspace_operators`), and no longer every workspace of an organisation the operator
-  had. No screen starts or ends such a link. In an operated workspace they read everything
-  but its secrets and variables, and, with `operator_infrastructure` on, its owners and
-  admins change its time limits, retention, process, artifact types and model choices.
-  Its nodes, access keys and harness documents are changed by the organisation's owners
-  and admins alone, who keep every action in the workspace. Of the organisation they reach nothing: its people, policy, trail,
+  (`workspace_operators`). No screen starts or ends such a link. In an operated
+  workspace they read everything but its secrets and variables, and change nothing. The
+  organisation's owners and admins keep every action in the workspace. Of the
+  organisation the operator's people reach nothing: its people, policy, trail,
   connections, secrets, variables and settings are not found for them. The owners and
   admins of an organisation that has an operator connect its systems, add its gateways,
   lock its workspaces' rules, change its policy and make its first workspace, as in any
@@ -1223,7 +1221,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   are shown the features and parts the organisation is shown there, and hidden those
   hidden from it. Up to this change they were shown the operator's features, so they could
   see more than the organisation was granted. An instance admin who reaches an
-  organisation through the instance is still shown every feature.
+  organisation through the instance is shown every feature.
 <!-- /feature -->
 
 <!-- feature: factory, secrets -->
@@ -1787,8 +1785,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Removed
 
 <!-- feature: managed_organisations -->
-- An operator no longer manages whole organisations: it relates only to the workspaces it
-  operates (under Changed). These parts of the earlier model are gone:
+- An operator relates only to the workspaces it operates (under Changed), not to whole
+  organisations. These parts of the earlier model are gone:
   - the operator's pages of the organisations it managed ("Clients"), with their sidebar
     entry, the creation of such an organisation and the invitation of its first owner,
     and the Clients view, the Operator column and the filter by operator on

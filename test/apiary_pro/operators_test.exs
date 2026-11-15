@@ -257,7 +257,7 @@ defmodule ApiaryPro.OperatorsTest do
                  Policy.allow(scope, nil, %{host: "git.example"})
 
         assert message ==
-                 "You can read this organisation as a person of its operator, and change nothing here."
+                 "You can read this workspace as a person of its operator, and change nothing here."
 
         assert {:error, %Policy.Error{reason: :forbidden}} = Policy.lock(scope, rule)
       end

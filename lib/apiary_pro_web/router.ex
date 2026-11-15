@@ -63,8 +63,8 @@ defmodule ApiaryProWeb.Router do
       # them from.
       live "/settings/people/:id/workspaces", ApiaryProWeb.MemberLive.Workspaces, :index
 
-      # The organisation's ownership, a section of its settings: its operator, and the
-      # arbiter's offer of its ownership.
+      # The organisation's ownership, a section of its settings: the arbiter's offer of
+      # its ownership.
       live "/settings/ownership", ApiaryProWeb.SettingsLive.Ownership, :index
 
       # The organisation's secrets, the Secrets tab of its settings' Secrets and

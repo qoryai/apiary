@@ -31,7 +31,7 @@ defmodule ApiaryProWeb.Readers do
              ApiaryPro.Reach.operator_level(scope) not in [:owner, :admin],
            do:
              gettext(
-               "You can read this organisation as a person of its operator, and change nothing here."
+               "You can read this workspace as a person of its operator, and change nothing here."
              )
 
       _other ->

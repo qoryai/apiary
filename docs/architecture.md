@@ -405,7 +405,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisation menu and workspace menu, and which workspaces of a place the edition gives
   the organisation menu lists under it and which under another organisation
   (`switcher_entries/1`, `workspace_switcher_entries/1`, `switcher_place/1`;
-  `place_scope/2`, which the core no longer asks); what a page says to
+  `place_scope/2`, which the core does not call); what a page says to
   a person it lets in without a membership, of a refusal the edition makes, and, where the pages
   `who_may_sentence/2` lists call it, of who may take an action, which changes only the words,
   since `Apiary.Access` decides (`reader_sentence/2`,
@@ -1220,7 +1220,7 @@ and its acceptance (`ApiaryPro.Transfers`; [access.md](access.md), The instance 
   withdrawn, so the trail keeps what happened. The arbiter's is of the kind `to_admin`,
   always `arbitrated` and with its `reason`, and `recipient_id`, the admin, under a
   composite key against their membership, so their removal takes the offer with it.
-  Nothing writes or reads rows of the kind `to_operator` any more.
+  No code writes or reads rows of the kind `to_operator`.
   Checks keep the fields of each kind together. The table is in the edition's deletion
   tables (`ApiaryPro.Deletion.Tables`).
 - **The arbiter.** An instance admin's offer of the ownership of an organisation whose
@@ -1349,10 +1349,10 @@ core's `Apiary.Deletion`.
   keeps whichever run finishes the purge.
 - **The edition's tables in the walk** (`ApiaryPro.Deletion.Tables`), purged before the
   core's: the rows of `policy_request_answers` before those of `policy_requests`, tables
-  that nothing writes any more; the transfers, the feature grants
+  that no code writes; the transfers, the feature grants
   and the workspace access before the core's memberships and workspaces they point to; the
   rows of `operator_invitations` before the core's invitations, and the rows of
-  `operator_harness_assignments`, tables that nothing writes any more; the operators of
+  `operator_harness_assignments`, tables that no code writes; the operators of
   the organisation's workspaces (`workspace_operators`); and the people locks, then the
   tenants, last. The rows of other organisations that refer to the one purged go with its
   row by their keys: rows of `operator_invitations` and `operator_harness_assignments`, by

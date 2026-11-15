@@ -15507,7 +15507,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
-msgid "Operators and clients"
+msgid "Operators"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex

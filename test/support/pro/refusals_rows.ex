@@ -10,13 +10,13 @@ defmodule ApiaryProWeb.RefusalsRows do
       elsewhere      a member added to another workspace of the organisation only, on that
                      workspace's pages, sending ids of this one
       operator_owner, operator_admin, operator_member
-                     an owner, an admin and a member of an operator, in its client, which
-                     they read and change nothing in
-      client_owner   the owner of that client
-      client_admin, client_member
-                     an admin and a member of that client, in it
-      client_unplaced
-                     a member of that client added to no workspace of it
+                     an owner, an admin and a member of an operator, in the organisation
+                     whose workspace it operates, which they read and change nothing in
+      operated_owner the owner of that organisation
+      operated_admin, operated_member
+                     an admin and a member of that organisation, in it
+      operated_unplaced
+                     a member of that organisation added to no workspace of it
       instance_admin an owner of the instance organisation: on the Instance settings pages, and
                      reading the organisation, which they reach only as one, read-only
       revoked_instance_admin
@@ -27,9 +27,9 @@ defmodule ApiaryProWeb.RefusalsRows do
                      page
 
   The world adds to the core's: the instance organisation with an instance admin, an admin
-  and a member; an operator made one by that instance admin, with an admin, a member and a
-  client, and the client's owner, an admin, a member and a member added to no workspace of
-  the client.
+  and a member; an operator made one by that instance admin, with an admin, a member and an
+  organisation whose workspace it operates, and that organisation's owner, an admin, a
+  member and a member added to no workspace of it.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -52,10 +52,10 @@ defmodule ApiaryProWeb.RefusalsRows do
       :operator_owner,
       :operator_admin,
       :operator_member,
-      :client_owner,
-      :client_admin,
-      :client_member,
-      :client_unplaced,
+      :operated_owner,
+      :operated_admin,
+      :operated_member,
+      :operated_unplaced,
       :instance_admin,
       :revoked_instance_admin,
       :io_admin,
@@ -64,7 +64,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   end
 
   @impl true
-  def rows, do: organisation_rows() ++ key_rows() ++ in_client_rows() ++ instance_rows()
+  def rows, do: organisation_rows() ++ key_rows() ++ in_operated_rows() ++ instance_rows()
 
   defp organisation_rows do
     [
@@ -94,8 +94,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       # the page opens. The arbiter's offer, made to another admin of the organisation.
       {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
        %{}, setup: :arbitrated_to_another_admin, answer: :refused_at_mount},
-      {:"organisation.accept_transfer", :client_admin, "/:client/settings/ownership",
-       "accept_transfer", %{}, setup: :client_arbitrated, needs: :managed_organisations},
+      {:"organisation.accept_transfer", :operated_admin, "/:operated/settings/ownership",
+       "accept_transfer", %{}, setup: :operated_arbitrated, needs: :managed_organisations},
 
       # A member who no longer reaches the workspace, and one of another workspace
       # carrying the ids of this one.
@@ -132,9 +132,9 @@ defmodule ApiaryProWeb.RefusalsRows do
 
       # The organisation's policy: read by its owners, admins and readers, changed by its
       # owners alone. A member does not open the page; an admin, an instance admin and an
-      # owner demoted while the page is open are refused each change; the people of a
-      # client's operator read it there and change nothing. Those rows need the managed
-      # organisations as well as the organisation's policy, and a row names one feature:
+      # owner demoted while the page is open are refused each change; the people of the
+      # operator of its workspace read it there and change nothing. Those rows need the
+      # managed organisations as well as the organisation's policy, and a row names one feature:
       # they name the policy's, which the wall and the record leaves out while it has the
       # managed organisations, and no instance CI makes has without them.
       {:"organisation_policy.edit", :member, "/:org/policy/rules/new", "rule_save", %{},
@@ -155,20 +155,20 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"organisation_policy.edit", :instance_admin, "/:org/policy", "rule_save", %{},
        prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # The organisation's policy page is not found for the operator's people.
-      {:"organisation_policy.edit", :operator_owner, "/:client/policy", "rule_save", %{},
+      {:"organisation_policy.edit", :operator_owner, "/:operated/policy", "rule_save", %{},
        answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_open", %{}},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_set", %{}},
       {:"organisation_policy.set_floor", :demoted_owner, "/:org/policy", "mode_set", %{},
        prelude: [{"mode_open", %{}}, {"mode_pick", %{"mode" => "enforce"}}]},
       {:"organisation_policy.set_floor", :instance_admin, "/:org/policy", "mode_open", %{}},
-      {:"organisation_policy.set_floor", :operator_owner, "/:client/policy", "mode_open", %{},
+      {:"organisation_policy.set_floor", :operator_owner, "/:operated/policy", "mode_open", %{},
        answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_switch", :admin, "/:org/policy", "switch_ask", %{}},
       {:"organisation_policy.set_switch", :demoted_owner, "/:org/policy", "setting_confirm", %{},
        prelude: [{"switch_ask", %{}}]},
       {:"organisation_policy.set_switch", :instance_admin, "/:org/policy", "switch_ask", %{}},
-      {:"organisation_policy.set_switch", :operator_owner, "/:client/policy", "switch_ask", %{},
+      {:"organisation_policy.set_switch", :operator_owner, "/:operated/policy", "switch_ask", %{},
        answer: :not_found_at_mount, needs: :organisation_policy},
 
       # The organisation's variables, the Variables tab of its settings' Secrets and
@@ -237,8 +237,8 @@ defmodule ApiaryProWeb.RefusalsRows do
   # The keys of the model providers added for every workspace, on the Secrets tab, changed
   # under `provider.write`: a member does not open the page, and an admin demoted while it
   # is open is refused each change. (An owner demoted to admin keeps `provider.write`.) In a
-  # client, the page is not there for a person of the operator, who reaches the
-  # workspace the operator operates and nothing the client owns as a whole.
+  # organisation, the page is not there for a person of the operator, who reaches the
+  # workspace the operator operates and nothing the organisation has as a whole.
   defp key_rows do
     changes = fn secret ->
       [
@@ -259,17 +259,17 @@ defmodule ApiaryProWeb.RefusalsRows do
           {:demoted_admin, "/:org", ":org_key", [needs: [:factory, :secrets]]},
           {:instance_admin, "/:org", ":org_key",
            [answer: :refused_at_mount, needs: [:factory, :secrets, :organisation_variables]]},
-          {:operator_owner, "/:client", ":client_key",
+          {:operator_owner, "/:operated", ":operated_key",
            [
              answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
-          {:operator_admin, "/:client", ":client_key",
+          {:operator_admin, "/:operated", ":operated_key",
            [
              answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
-          {:operator_member, "/:client", ":client_key",
+          {:operator_member, "/:operated", ":operated_key",
            [
              answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
@@ -279,41 +279,42 @@ defmodule ApiaryProWeb.RefusalsRows do
         do: {:"provider.write", actor, path, event, params, opts}
   end
 
-  # In a client, the operator's people, at every level, read everything and change
-  # nothing: each change the client's pages offer, sent by an owner, an admin and a member
-  # of the operator.
-  defp in_client_rows do
+  # In an operated workspace, the operator's people, at every level, read everything and
+  # change nothing: each change the organisation's pages offer, sent by an owner, an admin
+  # and a member of the operator.
+  defp in_operated_rows do
     for actor <- [:operator_owner, :operator_admin, :operator_member],
         row <- [
-          {:"organisation.rename", actor, "/:client/settings", "save_organisation",
+          {:"organisation.rename", actor, "/:operated/settings", "save_organisation",
            %{"organisation" => %{"name" => "Renamed"}}, needs: :managed_organisations},
-          {:"workspace.delete", actor, "/:client/settings", "delete_workspace",
-           %{"confirm" => %{"slug" => :client_ws}}, needs: :managed_organisations},
-          {:"workspace.create", actor, "/:client/workspaces/new?step=name&type=software",
+          {:"workspace.delete", actor, "/:operated/settings", "delete_workspace",
+           %{"confirm" => %{"slug" => :operated_ws}}, needs: :managed_organisations},
+          {:"workspace.create", actor, "/:operated/workspaces/new?step=name&type=software",
            "create", %{"workspace" => %{"name" => "Sneaky"}},
            answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"retention.edit", actor, "/:client/:client_ws/settings", "save_retention",
+          {:"retention.edit", actor, "/:operated/:operated_ws/settings", "save_retention",
            %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}},
            needs: :managed_organisations},
-          {:"node.create", actor, "/:client/:client_ws/machines", "create",
+          {:"node.create", actor, "/:operated/:operated_ws/machines", "create",
            %{"node" => %{"name" => "sneaky"}}, needs: :managed_organisations},
           # The People page is not found for them (`member.read`).
-          {:"member.invite", actor, "/:client/settings/people", "invite",
+          {:"member.invite", actor, "/:operated/settings/people", "invite",
            %{"invitation" => %{"email" => "invitee@example.com"}},
            answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"member.remove", actor, "/:client/settings/people", "remove", %{},
+          {:"member.remove", actor, "/:operated/settings/people", "remove", %{},
            answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"member.remove", actor, "/:client/settings/people/:client_member_membership/remove",
-           "remove", %{}, answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"member.change_level", actor, "/:client/settings/people", "set_level",
-           %{"membership_id" => :client_member_membership, "level" => "admin"},
+          {:"member.remove", actor,
+           "/:operated/settings/people/:operated_member_membership/remove", "remove", %{},
            answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"security_policy.edit", actor, "/:client/:client_ws/policy", "rule_save", %{},
+          {:"member.change_level", actor, "/:operated/settings/people", "set_level",
+           %{"membership_id" => :operated_member_membership, "level" => "admin"},
+           answer: :not_found_at_mount, needs: :managed_organisations},
+          {:"security_policy.edit", actor, "/:operated/:operated_ws/policy", "rule_save", %{},
            prelude: [
              {"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}
            ],
            needs: [:managed_organisations, :security]},
-          {:"security_policy.set_mode", actor, "/:client/:client_ws/policy", "mode_set",
+          {:"security_policy.set_mode", actor, "/:operated/:operated_ws/policy", "mode_set",
            %{"mode" => "enforce"}, needs: [:managed_organisations, :security]}
         ],
         do: row
@@ -347,11 +348,12 @@ defmodule ApiaryProWeb.RefusalsRows do
        "change_kind", %{"kind" => "operator"}, answer: :not_found_at_mount},
       {:"instance.change_kind", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/kind", "change_kind", %{"kind" => "operator"}},
-      # An operator with clients stays an operator, and a client becomes none. The
-      # instance organisation's kind changes as any other's (`ApiaryPro.OperatorsTest`).
+      # An operator that operates a workspace stays an operator, and the organisation of
+      # that workspace is not made one. The instance organisation's kind changes as any
+      # other's (`ApiaryPro.OperatorsTest`).
       {:"instance.change_kind", :instance_admin, "/instance/organisations/:operator_id/kind",
        "change_kind", %{"kind" => "organisation"}},
-      {:"instance.change_kind", :instance_admin, "/instance/organisations/:client_id/kind",
+      {:"instance.change_kind", :instance_admin, "/instance/organisations/:operated_id/kind",
        "change_kind", %{"kind" => "operator"}},
       {:"instance.purge_organisation", :io_admin,
        "/instance/organisations/:organisation_id/purge", "purge",
@@ -364,7 +366,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"instance.purge_organisation", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/purge", "purge",
        %{"confirm" => %{"slug" => :org}}},
-      # The instance organisation is never purged, nor an operator with clients.
+      # The instance organisation is never purged, nor an operator that operates a
+      # workspace.
       {:"instance.purge_organisation", :instance_admin,
        "/instance/organisations/:instance_org_id/purge", "purge",
        %{"confirm" => %{"slug" => :instance_org}}},
@@ -392,16 +395,16 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"instance.activate_organisation", :revoked_instance_admin, "/instance/organisations",
        "activate_organisation", %{"id" => :organisation_id}},
       {:"instance.transfer", :revoked_instance_admin,
-       "/instance/organisations/:client_id/transfer", "transfer",
+       "/instance/organisations/:operated_id/transfer", "transfer",
        %{
-         "transfer" => %{"membership_id" => :client_admin_membership, "reason" => "Gone quiet"}
+         "transfer" => %{"membership_id" => :operated_admin_membership, "reason" => "Gone quiet"}
        }, needs: :managed_organisations},
       {:"instance.grant_features", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/features", "save_features",
        %{"features" => %{"observability" => "true"}}},
-      {:"instance.grant_features", :instance_admin, "/instance/organisations/:client_id/features",
-       "save_features", %{"features" => %{"observability" => "true"}},
-       needs: :managed_organisations},
+      {:"instance.grant_features", :instance_admin,
+       "/instance/organisations/:operated_id/features", "save_features",
+       %{"features" => %{"observability" => "true"}}, needs: :managed_organisations},
       # Who may sign up, on Instance settings › Configuration, which is not found for
       # anyone but an instance admin.
       {:"instance.change_sign_up", :io_admin, "/instance/configuration", "save",
@@ -532,7 +535,7 @@ defmodule ApiaryProWeb.RefusalsRows do
     |> Map.merge(organisation_secret(owner))
     |> Map.merge(%{
       org_key: key_secret(owner),
-      client_key: operators.client && key_secret(operators.client_owner.scope)
+      operated_key: operators.operated && key_secret(operators.operated_owner.scope)
     })
     |> Map.merge(%{
       stale_member: member,
@@ -604,8 +607,8 @@ defmodule ApiaryProWeb.RefusalsRows do
   end
 
   # The instance organisation with an instance admin, an admin and a member; an operator
-  # made one by that instance admin, with an admin, a member and a client, and the
-  # client's owner, and an admin and a member of the client.
+  # made one by that instance admin, with an admin, a member and an organisation whose
+  # workspace it operates, and that organisation's owner, an admin and a member.
   # The people of the instance organisation are inserted as they are, without the locks
   # the product takes on its row and its owners, which every row of this test shares.
   defp operators do
@@ -625,9 +628,9 @@ defmodule ApiaryProWeb.RefusalsRows do
 
     operator_owner = scope_in(operator_owner.user, operator)
 
-    client =
+    operated =
       if ApiaryPro.Tenants.operator?(operator),
-        do: ApiaryPro.OperatorsFixtures.operated_fixture(operator_owner, "Client")
+        do: ApiaryPro.OperatorsFixtures.operated_fixture(operator_owner, "Fabrikam")
 
     %{
       instance_organisation: instance_organisation,
@@ -636,19 +639,19 @@ defmodule ApiaryProWeb.RefusalsRows do
       io_member: instance_person(instance_organisation, :member),
       operator: operator,
       operator_member: RefusalsCase.person(operator_owner, :member),
-      client: client && client.organisation,
-      client_owner: client && client.owner,
-      client_admin: client && RefusalsCase.person(client.owner.scope, :admin),
-      client_member: client && RefusalsCase.person(client.owner.scope, :member),
-      client_unplaced: client && unplaced(client.owner.scope, client.workspace),
-      client_workspace: client && client.workspace,
+      operated: operated && operated.organisation,
+      operated_owner: operated && operated.owner,
+      operated_admin: operated && RefusalsCase.person(operated.owner.scope, :admin),
+      operated_member: operated && RefusalsCase.person(operated.owner.scope, :member),
+      operated_unplaced: operated && unplaced(operated.owner.scope, operated.workspace),
+      operated_workspace: operated && operated.workspace,
       operator_admin: RefusalsCase.person(operator_owner, :admin),
       operator_owner: %{user: operator_owner.user, scope: operator_owner}
     }
   end
 
-  # A member of the client removed from its one workspace: in it, and in none of its
-  # workspaces.
+  # A member of the operated organisation removed from its one workspace: in it, and in
+  # none of its workspaces.
   defp unplaced(owner, workspace) do
     %{membership: membership} = unplaced = RefusalsCase.person(owner, :member)
     {:ok, _} = WorkspaceAccess.remove(owner, membership.id, workspace.id)
@@ -676,37 +679,38 @@ defmodule ApiaryProWeb.RefusalsRows do
   @impl true
   def value(:instance_org, world), do: world.instance_organisation.slug
   def value(:operator, world), do: world.operator.slug
-  def value(:client, world), do: world.client.slug
-  def value(:client_ws, world), do: world.client_workspace.slug
-  def value(:client_name, world), do: world.client.name
+  def value(:operated, world), do: world.operated.slug
+  def value(:operated_ws, world), do: world.operated_workspace.slug
+  def value(:operated_name, world), do: world.operated.name
   def value(:instance_org_id, world), do: {:id, world.instance_organisation.id}
-  def value(:client_id, world), do: {:id, world.client.id}
+  def value(:operated_id, world), do: {:id, world.operated.id}
   def value(:operator_id, world), do: {:id, world.operator.id}
   def value(:member_user_id, world), do: {:id, world.member.user.id}
-  def value(:client_admin_membership, world), do: {:id, world.client_admin.membership.id}
-  def value(:client_member_membership, world), do: {:id, world.client_member.membership.id}
+  def value(:operated_admin_membership, world), do: {:id, world.operated_admin.membership.id}
+  def value(:operated_member_membership, world), do: {:id, world.operated_member.membership.id}
   def value(:org_rule, world), do: {:id, world.org_rule.id}
   def value(:org_variable, world), do: {:id, world.org_variable.id}
   def value(:org_locked_variable, world), do: {:id, world.org_locked_variable.id}
   def value(:org_secret, world), do: {:id, world.org_secret.public_id}
   def value(:org_key, world), do: {:id, world.org_key.public_id}
-  def value(:client_key, world), do: {:id, world.client_key.public_id}
+  def value(:operated_key, world), do: {:id, world.operated_key.public_id}
   def value(:target_page_b, world), do: world.target_b.public_id
   def value(_name, _world), do: nil
 
-  # The operator and its clients, whose features and people a row may reach.
+  # The operator and the organisation whose workspace it operates, whose features and
+  # people a row may reach.
   @impl true
-  def watched(world), do: [world.operator, world.client]
+  def watched(world), do: [world.operator, world.operated]
 
-  # The client's ownership offered by the instance's arbiter to a second admin of it:
+  # The operated organisation's ownership offered by the instance's arbiter to a second admin of it:
   # seeded as the offer's row, since its owner may act.
   @impl true
-  def before_page(:client_arbitrated, world) do
-    if is_nil(Repo.get_by(ApiaryPro.Transfers.Transfer, organisation_id: world.client.id)) do
-      %{user: second} = RefusalsCase.person(world.client_owner.scope, :admin)
+  def before_page(:operated_arbitrated, world) do
+    if is_nil(Repo.get_by(ApiaryPro.Transfers.Transfer, organisation_id: world.operated.id)) do
+      %{user: second} = RefusalsCase.person(world.operated_owner.scope, :admin)
 
       Repo.insert!(%ApiaryPro.Transfers.Transfer{
-        organisation_id: world.client.id,
+        organisation_id: world.operated.id,
         kind: :to_admin,
         recipient_id: second.id,
         offered_by_id: world.instance_admin.user.id,
@@ -738,11 +742,11 @@ defmodule ApiaryProWeb.RefusalsRows do
     :ok
   end
 
-  # The client suspended by an instance admin.
-  def before_page(:client_suspended, world) do
-    if is_nil(ApiaryPro.Tenants.suspended_at(Repo.reload!(world.client))) do
+  # The operated organisation suspended by an instance admin.
+  def before_page(:operated_suspended, world) do
+    if is_nil(ApiaryPro.Tenants.suspended_at(Repo.reload!(world.operated))) do
       admin = scope_in(world.instance_admin.user, world.instance_organisation)
-      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(admin, world.client.id)
+      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(admin, world.operated.id)
     end
 
     :ok
