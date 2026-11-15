@@ -1201,15 +1201,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
-  (`workspace_operators`), not every workspace of a client. No screen starts such a link.
-  In an operated workspace they read everything but its secrets and variables, and, with
-  `operator_infrastructure` on, its owners and admins change its time limits, retention,
-  harness, process, artifact types, model choices, nodes and access keys. Of the
-  organisation they reach nothing: its people, policy, trail, connections, secrets,
-  variables and settings are not found for them. A client's people connect its systems,
-  add its gateways, lock its workspaces' rules, change its policy and make its first
-  workspace, as in any organisation. An operated workspace is not deleted, and an operator
-  is not deleted or made an organisation, while a link stands. A client that leaves its
+  (`workspace_operators`), and no longer every workspace of an organisation the operator
+  had. No screen starts such a link. In an operated workspace they read everything but its
+  secrets and variables, and, with `operator_infrastructure` on, its owners and admins
+  change its time limits, retention, harness, process, artifact types, model choices,
+  nodes and access keys. Of the organisation they reach nothing: its people, policy,
+  trail, connections, secrets, variables and settings are not found for them. The owners
+  and admins of an organisation that has an operator connect its systems, add its
+  gateways, lock its workspaces' rules, change its policy and make its first workspace, as
+  in any organisation. An operated workspace is not deleted, and an operator is not
+  deleted or made an organisation, while a link stands. An organisation that leaves its
   operator, or that the operator drops, ends that operator's links in it.
 <!-- /feature -->
 <!-- feature: managed_organisations -->

@@ -1209,27 +1209,28 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
 2. **Their membership in the operator of a workspace there** (`{:operator, operated}` in
    the scope, each operated workspace's id with that membership;
    `ApiaryPro.WorkspaceOperators`). A workspace has at most one operator, a row of
-   `workspace_operators`. No screen starts such a link; a client's leaving or drop ends
-   its operator's links in it. Every person of the operator, owner, admin or member,
-   reaches the workspaces it operates there, and no other workspace of the organisation,
-   and reads everything in them but the workspaces' secrets and variables (`secret.read`,
-   `variable.read`): the role `reader`. Nothing the organisation owns as a whole, its
-   policy, its people, its trail, its connections, its secrets, its variables or its
-   settings, is found for them, and no action asked of the organisation
-   (`Apiary.Access.Action`, `asked_of`): its pages, People among them (`member.read`), are
-   not found. Its gateways, the connections of its systems, the security policies of its
-   workspaces and its first workspace are changed by the organisation's people, at their
-   levels, as in any organisation. While `ApiaryPro.Flags.operator_infrastructure?/0` is
-   on, the operator's owners and admins act in such a workspace at their level there, on
-   the workspace's time limits and retention, its harness, process and artifact types, its
-   model choices, and its node pools with their access keys; the ones of these the
-   operator sets are not found for anyone else in the workspace. A person of the operator
-   who also holds a membership in the organisation acts at that membership's level, and in
-   an operated workspace at the higher of their two levels on what the operator changes
-   there. A workspace with an operator is not deleted until the link ends (`:operated`),
-   and an operator is neither deleted nor made an organisation while it operates a
-   workspace (`:has_operated_workspaces`). A suspended operator's workspaces keep running;
-   its people reach nothing. An instance admin who is a person of the operator, with no
+   `workspace_operators`. No screen starts such a link; an organisation that leaves its
+   operator, or that the operator drops, ends that operator's links in it. Every person of
+   the operator, owner, admin or member, reaches the workspaces it operates there, and no
+   other workspace of the organisation, and reads everything in them but the workspaces'
+   secrets and variables (`secret.read`, `variable.read`): the role `reader`. Nothing the
+   organisation owns as a whole, its policy, its people, its trail, its connections, its
+   secrets, its variables or its settings, is found for them, and no action asked of the
+   organisation (`Apiary.Access.Action`, `asked_of`): its pages, People among them
+   (`member.read`), are not found. Its gateways, the connections of its systems, the
+   security policies of its workspaces and its first workspace are changed by the
+   organisation's people, at their levels, as in any organisation. While
+   `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator's owners and admins
+   act in such a workspace at their level there, on the workspace's time limits and
+   retention, its harness, process and artifact types, its model choices, and its node
+   pools with their access keys; the ones of these the operator sets are not found for
+   anyone else in the workspace. A person of the operator who also holds a membership in
+   the organisation acts at that membership's level, and in an operated workspace at the
+   higher of their two levels on what the operator changes there. A workspace with an
+   operator is not deleted until the link ends (`:operated`), and an operator is neither
+   deleted nor made an organisation while it operates a workspace
+   (`:has_operated_workspaces`). A suspended operator's workspaces keep running; its
+   people reach nothing. An instance admin who is a person of the operator, with no
    membership in the organisation, keeps the instance admin's reach beside it, and reads
    every workspace there.
 3. **As an instance admin**, an owner of the instance organisation, in an organisation
