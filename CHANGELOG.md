@@ -1201,16 +1201,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
   (`workspace_operators`), and no longer every workspace of an organisation the operator
-  had. No screen starts such a link. In an operated workspace they read everything but its
-  secrets and variables, and, with `operator_infrastructure` on, its owners and admins
-  change its time limits, retention, harness, process, artifact types, model choices,
-  nodes and access keys. Of the organisation they reach nothing: its people, policy,
-  trail, connections, secrets, variables and settings are not found for them. The owners
-  and admins of an organisation that has an operator connect its systems, add its
-  gateways, lock its workspaces' rules, change its policy and make its first workspace, as
-  in any organisation. An operated workspace is not deleted, and an operator is not
-  deleted or made an organisation, while a link stands. An organisation that leaves its
-  operator, or that the operator drops, ends that operator's links in it.
+  had. No screen starts or ends such a link. In an operated workspace they read everything
+  but its secrets and variables, and, with `operator_infrastructure` on, its owners and
+  admins change its time limits, retention, process, artifact types, model choices, nodes
+  and access keys. Its harness documents are saved by the organisation's owners and
+  admins alone. Of the organisation they reach nothing: its people, policy, trail,
+  connections, secrets, variables and settings are not found for them. The owners and
+  admins of an organisation that has an operator connect its systems, add its gateways,
+  lock its workspaces' rules, change its policy and make its first workspace, as in any
+  organisation. An operated workspace is not deleted, and an operator is not deleted,
+  purged or made an organisation, while a link stands.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - The organisation menu lists a workspace an operator operates under the operator, after
@@ -1784,6 +1784,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
 
+### Removed
+
+<!-- feature: managed_organisations -->
+- An operator no longer manages whole organisations: it relates only to the workspaces it
+  operates (under Changed). These parts of the earlier model are gone:
+  - the operator's pages of the organisations it managed ("Clients"), with their sidebar
+    entry, the creation of such an organisation and the invitation of its first owner,
+    and the Clients view, the Operator column and the filter by operator on
+    **Instance settings › Organisations**;
+  - policy requests: an operator's requests for changes to the security policy of an
+    organisation it managed, with their pages and notices;
+  - transfers to an operator, an organisation leaving its operator, and an operator
+    dropping an organisation;
+  - an operator's grants of features to the organisations it managed;
+  - an operator's assignments of harness sources to the organisations it managed;
+  - the operator's chain of model providers and choices for the organisations it
+    managed, and the operator's gateways serving those organisations' workspaces.
+<!-- /feature -->
+
 ### Fixed
 
 - A run's notes on missing session events sit inside or after the run's steps, never
@@ -1888,12 +1907,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   counted the run API's requests (the host `run-api.qory.invalid`) as a destination
   enforce would deny.
 <!-- /feature -->
-<!-- feature: managed_organisations -->
-- An operated client no longer sees the operator's model keys of a run whose model
-  provider the operator deleted, and, where the run has its key names, still sees the
-  run's other credentials, such as a registry credential. Before, the client saw some of
-  those keys, or saw none of the run's credentials.
-<!-- /feature -->
 
 ### Security
 
@@ -1968,7 +1981,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   - each organisation's secrets and variables;
   <!-- /feature -->
   <!-- feature: managed_organisations -->
-  - the relationships between operators and their clients;
+  - operators, and the operators of workspaces;
   <!-- /feature -->
   - the features an instance admin took away from an organisation or granted to it:
     every organisation has every feature the instance has;
