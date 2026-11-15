@@ -109,11 +109,9 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   The pool that claimed the run: its public id, its name, and where it lives:
-  `:instance` for the instance's pool, `:workspace` for a pool of the run's workspace,
-  `:other` for a pool of another organisation than the run's, left from before migration
-  20261115110000.
+  `:instance` for the instance's pool, `:workspace` for a pool of the run's workspace.
   """
-  @type pool :: %{id: String.t(), name: String.t(), place: :instance | :workspace | :other}
+  @type pool :: %{id: String.t(), name: String.t(), place: :instance | :workspace}
 
   @typedoc """
   What the pool's starter last reported about the removal of the machine, at
@@ -315,9 +313,8 @@ defmodule Apiary.Runs.Preparation do
       arrived is in the machine log, under Start the machine.
     * `{:pool_log, pool}`: for anyone else, on a pool of the run's workspace, it is in
       the log of the pool named `pool` on its host.
-    * `{:support, run}`: on the instance's pool or a pool of another organisation, and
-      for a report whose form or run does not pass the check, support, given the run's
-      public id `run`.
+    * `{:support, run}`: on the instance's pool, and for a report whose form or run does
+      not pass the check, support, given the run's public id `run`.
     * `{:rebuild, target}`: for a run whose documents have no destination, a reader who
       may rebuild the environment of the run's target, `target`
       (`target.rebuild_environment`), rebuilds it.
@@ -546,7 +543,7 @@ defmodule Apiary.Runs.Preparation do
 
     %{
       dispatch_id: dispatch.public_id,
-      pool: pool(dispatch.pool, run),
+      pool: pool(dispatch.pool),
       queued_at: queued_at,
       machine_type:
         if(dispatch.machine_type,
@@ -619,15 +616,11 @@ defmodule Apiary.Runs.Preparation do
   defp started_by(_run, _dispatch), do: nil
 
   # A pool's key claims only the runs of its workspace, or of any workspace for the
-  # instance's pool (`Apiary.Access`). A dispatch left from before migration
-  # 20261115110000 can have a pool of another organisation than the run's.
-  defp pool(%Node{organisation_id: nil} = pool, _run),
+  # instance's pool (`Apiary.Access`).
+  defp pool(%Node{organisation_id: nil} = pool),
     do: %{id: pool.public_id, name: pool.name, place: :instance}
 
-  defp pool(%Node{organisation_id: id} = pool, %Run{organisation_id: id}),
-    do: %{id: pool.public_id, name: pool.name, place: :workspace}
-
-  defp pool(%Node{} = pool, _run), do: %{id: pool.public_id, name: pool.name, place: :other}
+  defp pool(%Node{} = pool), do: %{id: pool.public_id, name: pool.name, place: :workspace}
 
   defp between(%DateTime{} = from, %DateTime{} = to),
     do: max(DateTime.diff(to, from, :millisecond), 0)
@@ -1346,12 +1339,10 @@ defmodule Apiary.Runs.Preparation do
 
   defp pool_name(%{name: name}), do: name
 
-  # Who fixes a cause in the pool: support for the instance's pool and for a pool of
-  # another organisation than the run's, as `built_fix/4` has it; an admin of the
+  # Who fixes a cause in the pool: support for the instance's pool, an admin of the
   # workspace for the workspace's and for a pool that is not known.
-  defp pool_fixer(_scope, %{place: place}, %Run{public_id: run})
-       when place in [:instance, :other],
-       do: {:support, {:support, gettext("Contact support with run %{run}.", run: run)}}
+  defp pool_fixer(_scope, %{place: :instance}, %Run{public_id: run}),
+    do: {:support, {:support, gettext("Contact support with run %{run}.", run: run)}}
 
   defp pool_fixer(scope, _pool, _run), do: workspace_fixer(scope)
 
