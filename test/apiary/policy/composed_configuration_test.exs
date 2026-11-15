@@ -604,7 +604,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       resume = %{
         "run_id" => "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
         "session_id" => "5f2c9a1e",
-        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
+        "path" => "~/.claude/projects/-workspace/5f2c9a1e.jsonl",
+        "runs" => ["0192f0c1-1111-7a2b-8c3d-4e5f6a7b8c9d", "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d"]
       }
 
       members = stack_members(["git.example"], %{resume: resume, harness_hidden: true})
@@ -617,8 +618,24 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Enum.map(decoded.values, &elem(&1, 0)) ==
                ~w(version security_policy stack_hosts resume harness_hidden)
 
-      assert Enum.map(decoded["resume"].values, &elem(&1, 0)) == ~w(run_id session_id path)
+      assert Enum.map(decoded["resume"].values, &elem(&1, 0)) == ~w(run_id session_id path runs)
       assert Jason.decode!(bytes)["resume"] == resume
+      assert Schema.validate(bytes) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+
+      # A resume its claim stored before it kept runs has none.
+      before = Map.delete(resume, "runs")
+
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(
+                 @document,
+                 nil,
+                 false,
+                 false,
+                 stack_members([], %{resume: before})
+               )
+
+      assert Jason.decode!(bytes)["resume"] == before
       assert Schema.validate(bytes) == :ok
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
 

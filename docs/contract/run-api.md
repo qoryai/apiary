@@ -449,18 +449,22 @@ The body, at most 64 KiB:
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
-- `points`: what a person reads when the stage escalates, 1 to 20 points, required with
-  `escalate` and absent otherwise. Each point has `text`, one plain sentence on one line
-  of 1 to 500 characters that says what is wrong, with no action, and `action`: `answer`,
-  with `question`, the id of an open question, or `run_again`, without `question`. The
-  work item page adds the action's sentence: "Answer question 4." or "Run another
-  round." The schema of the type `verdict`
-  checks them (`priv/schemas/artifacts/verdict.schema.json`, a copy of qory's
-  `contracts/harness/v1/verdict.schema.json`).
+- `points`: what is wrong or missing, 1 to 20 points. With `escalate`, points are
+  required, and a person reads them when the stage escalates. With `changes-requested`,
+  points are optional, and each point's `action` is `run_again`; the verdict's page shows
+  them as it shows every other member of the file. With `passed`, a verdict has none.
+  Each point has `text`, one plain sentence on one line of 1 to 500 characters that
+  states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
+  an open question, or `run_again`, without `question`. For an escalation, the work item
+  page adds the action's sentence: "Answer question 4." or "Run another round." The
+  schema of the type `verdict` checks them (`priv/schemas/artifacts/verdict.schema.json`).
+  That file is the source of the schema, and qory keeps a byte copy of it at
+  `contracts/harness/v1/verdict.schema.json`.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "points": ...}`, without `points` when the body
-has none. A run of any workflow may push a verdict. For a run of Explore, only
+has none. A run of any workflow may push a verdict. A `changes-requested` verdict moves
+the stage in the same way with points as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
 `passed` and `changes-requested` as no verdict. A run that leaves questions open and
 gives `escalate` waits for answers first: its escalation is kept, and the answers run the
@@ -490,7 +494,8 @@ The session of a run that continues a paused run reads the paused run's transcri
 this request before its runtime starts, to resume the runtime's session. Unlike the other
 requests, it belongs to the feature `observability`, the run endpoint's: without
 `workflow_model` it is served all the same. The run's run configuration has `resume`,
-with the paused run's id and the path of the transcript
+with the paused run's id, the path of the transcript, and `runs`, every paused run the
+run continues, oldest first
 ([contract-assumptions.md](../contract-assumptions.md), A run that continues a paused
 run).
 

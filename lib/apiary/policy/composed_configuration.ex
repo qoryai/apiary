@@ -99,9 +99,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #
   # For a run of a workspace's queue that continues a paused run, whose transcript could
   # be restored at its claim: `resume`, as the claim stored it (`runs.resume`,
-  # `Apiary.Runs.Transcript.resume/1`), the paused run's id and the session id and the
-  # path of its transcript's last chunk, the same in each document. Any other run gains no
-  # such member, and starts a new session. A `resume` the stored document has is dropped,
+  # `Apiary.Runs.Transcript.resume/1`), the paused run's id, the session id and the path
+  # of its transcript's last chunk, and the paused runs it continues where the claim
+  # stored them, the same in each document. Any other run gains no such member, and
+  # starts a new session. A `resume` the stored document has is dropped,
   # so only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
@@ -629,15 +630,16 @@ defmodule Apiary.Policy.ComposedConfiguration do
          do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
   end
 
-  # The `resume` member, its members in the schema's order.
-  defp resume_member(%{"run_id" => run_id, "session_id" => session_id, "path" => path}) do
+  # The `resume` member, its members in the schema's order. A `resume` stored before the
+  # claim kept `runs` has none.
+  defp resume_member(%{"run_id" => run_id, "session_id" => session_id, "path" => path} = resume) do
+    runs = if is_list(resume["runs"]), do: [{"runs", resume["runs"]}], else: []
+
     [
       {"resume",
-       Jason.OrderedObject.new([
-         {"run_id", run_id},
-         {"session_id", session_id},
-         {"path", path}
-       ])}
+       Jason.OrderedObject.new(
+         [{"run_id", run_id}, {"session_id", session_id}, {"path", path}] ++ runs
+       )}
     ]
   end
 
