@@ -199,8 +199,9 @@ defmodule ApiaryWeb.RunLive.Index do
                   label={gettext("State")}
                   multiple
                   values={@filters.states}
-                  options={state_options(@facets)}
-                  groups={state_groups()}
+                  options={state_options(@facets, @narrow["state"], @filters.states)}
+                  groups={state_groups(state_options(@facets, @narrow["state"], @filters.states))}
+                  query={@narrow["state"]}
                 />
               </:section>
               <:section
@@ -842,7 +843,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # What the reader types in a section narrows that section's options on the server, over
   # every value there is; Show more asks for more of them.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
-      when name in ~w(target runtime host node item) and is_binary(q) do
+      when name in ~w(target state runtime host node item) and is_binary(q) do
     narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
     {:noreply, socket |> assign(:narrow, narrow) |> load_facets()}
   end
@@ -1616,19 +1617,29 @@ defmodule ApiaryWeb.RunLive.Index do
 
   # Every state, in its family's order, with its count under the other filters; a state no
   # run has shows without a count, so the section keeps its shape from one view to the next.
-  defp state_options(facets) do
+  # What the reader typed in the section (`narrow`) keeps the states whose word contains
+  # it, in any case; a chosen state stays, so that a change of the boxes keeps it.
+  defp state_options(facets, narrow, chosen) do
     counts =
       for {state, _value, count} <- facet_options(facets, :state), into: %{}, do: {state, count}
 
+    typed = narrow |> to_string() |> String.trim() |> String.downcase()
+
     for family <- Filters.families(),
         state <- family.states,
-        do: {state_label(state), state, counts[state]}
+        label = state_label(state),
+        typed == "" or String.contains?(String.downcase(label), typed) or state in chosen,
+        do: {label, state, counts[state]}
   end
 
-  # The section's headings: the family's checkbox reads its label and is named for a screen
-  # reader as a sentence ("Every alive state").
-  defp state_groups do
-    for family <- Filters.families() do
+  # The section's headings, each over the family's states among `options`: the family's
+  # checkbox reads its label and is named for a screen reader as a sentence ("Every alive
+  # state"). A family with none of `options` has no heading; with none at all, the section
+  # says that nothing matches.
+  defp state_groups(options) do
+    shown = for {_label, state, _count} <- options, do: state
+
+    for family <- Filters.families(), Enum.any?(family.states, &(&1 in shown)) do
       %{
         key: family.key,
         label: family.label,

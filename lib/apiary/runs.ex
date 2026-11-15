@@ -37,7 +37,7 @@ defmodule Apiary.Runs do
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
-  alias Apiary.Runs.{Connection, Filters, ListFacts, RunApi, Target, Run}
+  alias Apiary.Runs.{Cancel, Connection, Filters, ListFacts, RunApi, Target, Run}
   alias Apiary.WorkItems.WorkItem
 
   @default_limit 50
@@ -93,6 +93,16 @@ defmodule Apiary.Runs do
     Repo.all(where(in_scope(scope), ^dynamic([run: r], ^Run.queued_condition() or r.id in ^ids)))
   end
 
+  @doc """
+  Cancels a running run of the scope's workspace for the scope's person (`run.cancel`), so
+  it changes nothing more: it writes the mark (`Apiary.Runs.Run.cancel_requested?/1`).
+  `{:error, :forbidden}` for a person who may not, `{:error, :not_found}` for a run the
+  workspace does not have, `{:error, :not_running}` for a run that is not running.
+  """
+  @spec cancel(Scope.t(), Run.t()) ::
+          {:ok, Run.t()} | {:error, :forbidden | :not_found | :not_running}
+  defdelegate cancel(scope, run), to: Apiary.Runs.Cancel
+
   @doc false
   def broadcast_changed(%Run{} = run) do
     broadcast_touched(run)
@@ -131,12 +141,30 @@ defmodule Apiary.Runs do
 
   ## Reads
 
-  @doc "How many runs of the workspace are alive now: pending or running."
+  @doc """
+  How many runs of the workspace are alive now: pending, running, or cancelling
+  (`ApiaryWeb.RunCancelComponents.cancelling?/1`), a lost run that may still attach among
+  them, as the runs list's Alive view finds them.
+  """
   def count_alive(%Scope{} = scope) do
     # Tagged, so that what measures a page's own reads can tell the sidebar's timed count
     # from them (`metadata.options[:sidebar]` of the repo's telemetry event).
-    Repo.aggregate(from(r in in_scope(scope), where: r.state in ^Run.alive_states()), :count,
+    Repo.aggregate(
+      from(r in in_scope(scope), where: ^alive_condition(DateTime.utc_now())),
+      :count,
       telemetry_options: [sidebar: true]
+    )
+  end
+
+  # A run alive at `at`: pending, running, or cancelling. A cancelling run that is neither
+  # pending nor running is lost, and the condition says so, so that each side of the `or`
+  # can read an index on the state.
+  defp alive_condition(at) do
+    alive = Run.alive_states()
+
+    dynamic(
+      [run: r],
+      r.state in ^alive or (r.state == "lost" and ^Cancel.cancelling_condition(at))
     )
   end
 
@@ -370,14 +398,21 @@ defmodule Apiary.Runs do
   with_denials:}`, in one query. The families are `Apiary.Runs.Filters.families/0`.
   """
   def view_counts(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+    # A cancelling run is alive until it ends, and not lost (`Apiary.Runs.Filters`).
+    cancelling = Cancel.cancelling_condition(now)
+    alive = Run.alive_states()
+    badly = Run.ended_badly_states()
+
     Repo.one(
       from r in filtered(scope, %{filters | states: [], denials: false}, now),
-        select: %{
-          all: count(r.id),
-          alive: filter(count(r.id), r.state in ^Run.alive_states()),
-          ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
-          with_denials: filter(count(r.id), r.denied_count > 0)
-        }
+        select:
+          ^%{
+            all: dynamic([run: r], count(r.id)),
+            alive: dynamic([run: r], filter(count(r.id), r.state in ^alive or ^cancelling)),
+            ended_badly:
+              dynamic([run: r], filter(count(r.id), r.state in ^badly and not (^cancelling))),
+            with_denials: dynamic([run: r], filter(count(r.id), r.denied_count > 0))
+          }
     )
   end
 
@@ -664,23 +699,37 @@ defmodule Apiary.Runs do
 
   defp state_facet(scope, filters, now) do
     # A queued run (`Apiary.Runs.Run.queued?/1`) is counted as `queued`, apart from the
-    # other pending runs.
+    # other pending runs, and a cancelling run (`Apiary.Runs.Cancel.cancelling?/2`) as
+    # `cancelling`, apart from the running and lost runs.
+    # Each run's state and both conditions first, grouped by after: a condition with
+    # parameters cannot be grouped by in the query that selects it.
+    each =
+      from r in filtered(scope, %{filters | states: []}, now),
+        select:
+          ^%{
+            state: dynamic([run: r], r.state),
+            queued: Run.queued_condition(),
+            cancelling: Cancel.cancelling_condition(now)
+          }
+
     counts =
       Repo.all(
-        from r in filtered(scope, %{filters | states: []}, now),
-          group_by: ^[dynamic([run: r], r.state), Run.queued_condition()],
-          select:
-            ^%{
-              state: dynamic([run: r], r.state),
-              queued: Run.queued_condition(),
-              n: dynamic([run: r], count(r.id))
-            }
+        from s in subquery(each),
+          group_by: [s.state, s.queued, s.cancelling],
+          select: %{state: s.state, queued: s.queued, cancelling: s.cancelling, n: count()}
       )
-      |> Enum.reduce(%{}, fn %{state: state, queued: queued, n: n}, acc ->
-        Map.update(acc, if(queued, do: "queued", else: state), n, &(&1 + n))
+      |> Enum.reduce(%{}, fn %{state: state, queued: queued, cancelling: cancelling, n: n}, acc ->
+        key =
+          cond do
+            cancelling -> "cancelling"
+            queued -> "queued"
+            true -> state
+          end
+
+        Map.update(acc, key, n, &(&1 + n))
       end)
 
-    options = for state <- Run.shown_states(), count = counts[state], do: {state, state, count}
+    options = for state <- Filters.states(), count = counts[state], do: {state, state, count}
     %{options: options, total: length(options)}
   end
 
@@ -959,7 +1008,7 @@ defmodule Apiary.Runs do
     {from, to} = Filters.bounds(f, now, Scope.time_zone(scope))
 
     in_scope(scope)
-    |> where_if(f.states != [], where_states(f.states))
+    |> where_if(f.states != [], where_states(f.states, now))
     |> where_target(scope, f.target)
     |> where_text(:runtime, f.runtime)
     |> where_host(f.host)
@@ -972,10 +1021,13 @@ defmodule Apiary.Runs do
     |> where_if(to, dynamic([r], coalesce(r.started_at, r.inserted_at) < ^to))
   end
 
-  # The states the page shows (`Apiary.Runs.Run.shown_states/0`) as a condition: `queued`
-  # is a queued run (`Apiary.Runs.Run.queued?/1`), `pending` any other pending run.
-  defp where_states(states) do
-    stored = states -- ["queued", "pending"]
+  # The states the filter offers (`Apiary.Runs.Filters.states/0`) as a condition at `now`:
+  # `queued` is a queued run (`Apiary.Runs.Run.queued?/1`), `pending` any other pending
+  # run, `cancelling` a cancelling run (`Apiary.Runs.Cancel.cancelling_condition/1`), which
+  # no other state matches.
+  defp where_states(states, now) do
+    stored = states -- ["queued", "pending", "cancelling"]
+    cancelling = Cancel.cancelling_condition(now)
     condition = dynamic([run: r], r.state in ^stored)
 
     condition =
@@ -983,10 +1035,18 @@ defmodule Apiary.Runs do
         do: dynamic(^condition or ^Run.queued_condition()),
         else: condition
 
-    if "pending" in states,
-      do:
-        dynamic([run: r], ^condition or (r.state == "pending" and not (^Run.queued_condition()))),
-      else: condition
+    condition =
+      if "pending" in states,
+        do:
+          dynamic(
+            [run: r],
+            ^condition or (r.state == "pending" and not (^Run.queued_condition()))
+          ),
+        else: condition
+
+    condition = dynamic(^condition and not (^cancelling))
+
+    if "cancelling" in states, do: dynamic(^condition or ^cancelling), else: condition
   end
 
   defp where_if(query, condition, dynamic) do
@@ -2090,12 +2150,15 @@ defmodule Apiary.Runs do
     |> MapSet.new()
   end
 
-  @doc "The alive runs of the workspace, the most recently started first; at most `limit` (default 6)."
+  @doc """
+  The alive runs of the workspace, as `count_alive/1` counts them, the most recently
+  started first; at most `limit` (default 6).
+  """
   @spec list_alive(Scope.t(), pos_integer) :: [Run.t()]
   def list_alive(%Scope{} = scope, limit \\ 6) do
     Repo.all(
       from r in in_scope(scope),
-        where: r.state in ^Run.alive_states(),
+        where: ^alive_condition(DateTime.utc_now()),
         order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
         limit: ^bound(limit)
     )

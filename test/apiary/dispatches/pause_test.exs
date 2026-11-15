@@ -126,6 +126,16 @@ defmodule Apiary.Dispatches.PauseTest do
     assert Pause.of_public_ids([paused.public_id]) == %{paused.public_id => Pause.of_run(paused)}
   end
 
+  @tag needs: [:factory, :secrets, :observability]
+  test "a paused run a member cancelled is not continued", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, run.id))
+    exit!(run, @paused)
+
+    assert %Run{state: "paused"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}]
+  end
+
   test "keeps the earliest end of a cooldown when every key of the provider cools", ctx do
     soon = in_seconds(3_600)
     key_state!(ctx.provider, "main", until: in_seconds(7_200))

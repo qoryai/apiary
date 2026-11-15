@@ -311,6 +311,24 @@ defmodule Apiary.Explore.Questions do
     |> MapSet.new()
   end
 
+  # counted_take_in_runs/2 is `take_in_runs/2` without the runs a member cancelled
+  # (`Apiary.Runs.Run.cancel_requested?/1`): the runs whose open questions hold a run's
+  # end (`Apiary.Stages`, `Apiary.Explore.Outcome`). A cancelled run changes nothing more,
+  # so the questions it asked hold neither its end nor a later run's.
+  @doc false
+  @spec counted_take_in_runs(Ecto.UUID.t(), pos_integer) :: MapSet.t(pos_integer)
+  def counted_take_in_runs(work_item_id, take_in) when is_integer(take_in) do
+    Repo.all(
+      from r in Run.registered(),
+        join: d in DispatchRun,
+        on: d.id == r.dispatch_run_id,
+        where: d.work_item_id == ^work_item_id and d.take_in == ^take_in,
+        where: is_nil(r.cancel_requested_at),
+        select: r.number
+    )
+    |> MapSet.new()
+  end
+
   # The `reopened.run` of the last entry of the question's history that has one, nil for
   # none.
   defp reopened_run(question) do

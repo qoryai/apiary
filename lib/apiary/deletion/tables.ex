@@ -82,6 +82,7 @@ defmodule Apiary.Deletion.Tables do
     {"events", :workspace},
     {"connections", :workspace},
     {"run_steps", :workspace},
+    {"run_target_writes", :workspace},
     {"deliveries", :workspace},
     {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},

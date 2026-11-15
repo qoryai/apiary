@@ -61,11 +61,24 @@ defmodule Apiary.Runs.Filters do
   alias Apiary.PublicId
   alias Apiary.Runs.Run
 
+  # The states the state filter offers, in the order every page lists them: the states
+  # the pages show (`Apiary.Runs.Run.shown_states/0`), with `cancelling` after `running`:
+  # a run a member cancelled that has not ended (`Apiary.Runs.Cancel.cancelling?/2`),
+  # which no other state matches then, as its row reads "Cancelling".
+  @states Enum.flat_map(Run.shown_states(), fn
+            "running" -> ["running", "cancelling"]
+            state -> [state]
+          end)
+
   # The five families the states read as, in the order they are shown. Only their states
   # go in a URL: `state=failed,lost`. The families runs are counted in (`Apiary.Runs.Run`):
-  # one definition.
+  # one definition. A cancelling run is alive until it ends.
   @families [
-    %{key: "alive", label: gettext_noop("Alive"), states: ["queued" | Run.alive_states()]},
+    %{
+      key: "alive",
+      label: gettext_noop("Alive"),
+      states: ["queued" | Run.alive_states()] ++ ["cancelling"]
+    },
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
     %{key: "cancelled", label: gettext_noop("Cancelled"), states: Run.cancelled_states()},
     %{key: "paused", label: gettext_noop("Paused"), states: Run.paused_states()},
@@ -188,8 +201,17 @@ defmodule Apiary.Runs.Filters do
   @type family :: %{key: String.t(), label: String.t(), states: [String.t()]}
 
   @doc """
-  The five families the states read as, in the order they are shown: alive (`pending`,
-  `running`), ended well (`completed`), cancelled (`cancelled`), paused (`paused`) and
+  The states the state filter offers, in the order every page lists them: `queued`,
+  `pending`, `running`, `cancelling` (a run a member cancelled that has not ended,
+  `ApiaryWeb.RunCancelComponents.cancelling?/1`, which no other state matches then), and
+  the other stored states.
+  """
+  @spec states() :: [String.t()]
+  def states, do: @states
+
+  @doc """
+  The five families the states read as, in the order they are shown: alive (`queued`,
+  `pending`, `running`, `cancelling`), ended well (`completed`), cancelled (`cancelled`), paused (`paused`) and
   ended badly (`failed`, `lost`). Every state is in exactly one.
   The labels are in the domain's words: translated here, at call time, because the list is
   made at compile time.
@@ -551,7 +573,7 @@ defmodule Apiary.Runs.Filters do
       |> Enum.map(&(&1 |> String.downcase() |> String.replace(~r/[\s-]/, "_")))
       |> Enum.map(fn word ->
         cond do
-          word in Run.shown_states() -> [word]
+          word in @states -> [word]
           states = family_states(word) -> states
           true -> nil
         end
@@ -602,7 +624,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   # The states in the order every page lists them.
-  defp order(states), do: Run.shown_states() |> Enum.filter(&(&1 in states)) |> Enum.join(",")
+  defp order(states), do: @states |> Enum.filter(&(&1 in states)) |> Enum.join(",")
 
   defp yes_no(value) do
     case String.downcase(value) do
@@ -960,7 +982,7 @@ defmodule Apiary.Runs.Filters do
           |> String.split(",", trim: true)
           |> Enum.uniq()
 
-        known = Enum.filter(Run.shown_states(), &(&1 in chosen))
+        known = Enum.filter(@states, &(&1 in chosen))
         {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
 
       {:ok, _other} ->

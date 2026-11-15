@@ -14,8 +14,8 @@ defmodule Apiary.Retention do
 
     * Past the log cut-off, the run's `log_chunks` and its `dev.qory.run.log` events are
       deleted and `runs.log_pruned_at` is set. The timeline stays whole.
-    * Past the events cut-off, all the run's `events`, its `log_chunks`, its `run_steps`
-      and its `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is
+    * Past the events cut-off, all the run's `events`, its `log_chunks`, its `run_steps`,
+      its `run_target_writes` and its `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is
       set. The job counts no steps.
 
   A `lost` run is not due in either phase until #{Apiary.Runs.Run.lost_days()} days after it
@@ -26,7 +26,7 @@ defmodule Apiary.Retention do
 
   The tables of each phase are deleted in the order the purge of a deleted workspace or
   organisation deletes them too (`Apiary.Deletion.Tables`): a run's log chunks, then its
-  events, then its steps, then its deliveries.
+  events, then its steps, then its writes, then its deliveries.
 
   A pruned run takes nothing more: `Apiary.Runs.Ingest` answers `410` for a run whose
   events are pruned, since what a replay would be deduplicated against is gone, and drops
@@ -87,7 +87,7 @@ defmodule Apiary.Retention do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
-  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, Step}
+  alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, Step, TargetWrite}
   alias Apiary.Runs.TranscriptPath
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
@@ -100,7 +100,7 @@ defmodule Apiary.Retention do
   @quiet_hours 12
 
   # What a phase deletes of a run, table by table in delete order: in `:events` the run's
-  # log chunks, its events, its steps and its deliveries; in `:log` its log chunks and its
+  # log chunks, its events, its steps, its writes and its deliveries; in `:log` its log chunks and its
   # log events. Each with its schema, the column that names the run and the field of the
   # run it holds, the count its rows go into (nil for none), the phase in which only the
   # run's log events go, and whether the rows' bytes are measured.
@@ -125,6 +125,15 @@ defmodule Apiary.Retention do
     },
     %{
       schema: Step,
+      phases: [:events],
+      run_column: :run_id,
+      run_field: :id,
+      count: nil,
+      log_only_in: nil,
+      bytes: false
+    },
+    %{
+      schema: TargetWrite,
       phases: [:events],
       run_column: :run_id,
       run_field: :id,

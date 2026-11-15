@@ -858,6 +858,13 @@ for each other and never on each other at once:
    its values `FOR UPDATE` by id before it deletes the secret, as the delete's cascade
    would take them in an order the statement does not fix. So the deletion and a secrets
    request take the keys' rows in the same order, and cannot deadlock.
+   A member's cancel of a running run (`run.cancel`, "cancel a running run, so it changes
+   nothing more"; `Apiary.Runs.cancel/2`), which every member may take, takes the locks
+   of the run's end in their order: the rows `Apiary.Dispatches.RunEnd.hold/1` locks, the
+   work item among them, then the run of the queue (`Apiary.Dispatches.RunEnd.lock/1`),
+   then the run's row `FOR UPDATE`; a direct run, its row alone. A push of the run locks
+   the same work item, and a batch of its events the same run row, so each commits before
+   the cancel or reads its mark.
    A model keys report reads the run's copies without a lock, then takes the rows of its
    keys in `secret_values` `FOR SHARE`, by id, then the locks of their state rows in one
    order, so two reports of the same keys at once cannot deadlock, a key deleted before

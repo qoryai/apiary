@@ -139,7 +139,8 @@ defmodule Apiary.Artifacts do
   # workspace can hide, the workspace's row locked `FOR SHARE` and its list read again, a
   # hidden type `{:unknown_type, name}`; the work item locked `FOR UPDATE`, read again in
   # the workspace it was in, else `{:error, :not_found}`; for a run, its run of the queue
-  # read again, one that ended `{:error, :run_ended}`; the artifact found or made; the
+  # read again, one that ended `{:error, :run_ended}`, one a member cancelled
+  # `{:error, :run_cancelled}`; the artifact found or made; the
   # check of what members wrote and the integers, as above; the next number, one more
   # than the highest; the version and its audit entry; then every file is kept in the
   # store, and its row written. The workspace's lock comes first, as in the core's
@@ -597,7 +598,8 @@ defmodule Apiary.Artifacts do
              | :not_approver
              | :store_unavailable
              | :stage_changed
-             | :run_ended}
+             | :run_ended
+             | :run_cancelled}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
@@ -1229,15 +1231,24 @@ defmodule Apiary.Artifacts do
   end
 
   # A run's push: its run of the queue read again under the work item's lock, so a run
-  # that ended since the caller's check pushes nothing, `{:error, :run_ended}`. The end
+  # that ended since the caller's check pushes nothing, `{:error, :run_ended}`, and
+  # neither does one a member cancelled since, `{:error, :run_cancelled}`. The end
   # of a run holds its work item before it ends the run of the queue and stores what the
-  # run gave (`Apiary.Dispatches.RunEnd.hold/1`, `Apiary.Dispatches.Settle`), so the end
-  # and the push take turns at the work item: the end reads every version the push
-  # stored, or the push reads the run ended.
+  # run gave (`Apiary.Dispatches.RunEnd.hold/1`, `Apiary.Dispatches.Settle`), and so does
+  # a member's cancel before it marks the run (`Apiary.Runs.Cancel`), so the end, the
+  # cancel and the push take turns at the work item: the end reads every version the push
+  # stored, or the push reads the run ended or cancelled.
   defp run_live(%{writer: :run, run_id: run_id}) do
-    case Repo.one(from d in DispatchRun, where: d.id == ^run_id, select: d.state) do
-      :ended -> {:error, :run_ended}
+    case Repo.one(
+           from d in DispatchRun,
+             left_join: r in Apiary.Runs.Run,
+             on: r.dispatch_run_id == d.id,
+             where: d.id == ^run_id,
+             select: {d.state, r.cancel_requested_at}
+         ) do
       nil -> {:error, :not_found}
+      {_state, %DateTime{}} -> {:error, :run_cancelled}
+      {:ended, _marked} -> {:error, :run_ended}
       _live -> :ok
     end
   end
@@ -1399,13 +1410,31 @@ defmodule Apiary.Artifacts do
   end
 
   # The run a run of the queue registered when it was claimed (`Apiary.Runs.Run`), for its
-  # number and its page: its id, public id and number, and `dispatch_run_id`, which the
-  # preload needs to match each run to its run of the queue.
+  # number and its page: its id, public id and number, `dispatch_run_id`, which the
+  # preload needs to match each run to its run of the queue, and a member's cancel of it
+  # (`cancelled?/1`).
   defp runs_query,
     do:
       from(r in Apiary.Runs.Run.registered(),
-        select: struct(r, [:id, :public_id, :number, :dispatch_run_id])
+        select:
+          struct(r, [
+            :id,
+            :public_id,
+            :number,
+            :dispatch_run_id,
+            :cancel_requested_at,
+            :cancel_requested_by_id
+          ])
       )
+
+  # cancelled?/1 is whether a run a member cancelled wrote `version`
+  # (`Apiary.Runs.Run.cancel_requested?/1`), as `list/1` and the other reads here preload
+  # its run: such a version stays, marked, and counts for no stage. False for a person's
+  # version.
+  @doc false
+  @spec cancelled?(Version.t() | map) :: boolean
+  def cancelled?(%{writer: :run, run: %{run: run}}), do: Apiary.Runs.Run.cancel_requested?(run)
+  def cancelled?(_version), do: false
 
   @doc false
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
@@ -1431,15 +1460,18 @@ defmodule Apiary.Artifacts do
   def exists?(%WorkItem{}, _stage_id, _type_name), do: false
 
   # The content types of the files of each version of `type`, of any name, made in
-  # `stage_id`: a list per version. A version has one file or more.
+  # `stage_id`, but by a run a member cancelled (`cancelled?/1`): a list per version. A
+  # version has one file or more.
   defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type) do
     Repo.all(
       from v in Version,
+        as: :version,
         join: a in assoc(v, :artifact),
         join: f in assoc(v, :files),
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
+        where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
         group_by: v.id,
         select: fragment("array_agg(?)", f.content_type)
     )

@@ -357,6 +357,39 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a cancelling run's fold row reads Cancelling in the colours of its line" do
+      run = Map.merge(running_run(3), %{liveness: :alive, other_stage: false, cancelling: true})
+      item = invoice_item(%{status: :running, run: run})
+      word = "text-info-soft-content"
+
+      # With no stage run, Cancelling is in place of the state.
+      html = tab(item)
+      assert texts(html, "#work-item-explore-run .#{word}") == ["Cancelling"]
+      assert texts(html, "#work-item-record-43 .#{word}") == ["Cancelling"]
+      refute text(html, "#work-item-record-43") =~ "Running"
+
+      # With its stage run, Cancelling is in place of running, after the workflow and round.
+      stage_run = %{
+        attempt: 3,
+        workflow: "capture-demo",
+        round: 1,
+        shows: :running,
+        paused: nil,
+        paused_path: nil
+      }
+
+      html = tab(item, verdicts: [stage_run])
+      assert texts(html, "#work-item-record-43 .#{word}") == ["Cancelling"]
+      assert text(html, "#work-item-record-43") =~ "capture-demo round 1 Cancelling"
+      refute text(html, "#work-item-record-43") =~ "running"
+
+      # A lost run that may still attach has the colour of a lost run, as its line.
+      lost = invoice_item(%{status: :running, run: %{run | state: :lost, ended_at: ago(60)}})
+      html = tab(lost)
+      assert texts(html, "#work-item-explore-run .q-xp-run-bad") == ["Cancelling"]
+      assert texts(html, "#work-item-record-43 .q-xp-run-bad") == ["Cancelling"]
+    end
+
     test "a queued run's badge and word are unchanged, and an ended run has no running colour" do
       queued = invoice_item(%{status: :queued, run: pending_run(3)})
       assert text(card(queued), ".q-wi-badge") == "Queued"

@@ -1068,7 +1068,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       view |> element("#runs-view-alive") |> render_click()
-      assert_patch(view, runs(scope, "?host=build-02&state=queued%2Cpending%2Crunning"))
+
+      assert_patch(
+        view,
+        runs(scope, "?host=build-02&state=queued%2Cpending%2Crunning%2Ccancelling")
+      )
+
       render_async(view)
       assert has_element?(view, "#runs-view-alive[aria-current=page]")
       refute has_element?(view, "#runs-view-all[aria-current]")
@@ -1259,7 +1264,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Queued Pending Running 1 Ended well Completed Cancelled Cancelled Paused Paused Ended badly Failed 1 Lost"
+               "Alive Queued Pending Running 1 Cancelling Ended well Completed Cancelled Cancelled Paused Paused Ended badly Failed 1 Lost"
 
       refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
@@ -1287,7 +1292,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert headings == ["Alive", "Ended well", "Cancelled", "Paused", "Ended badly"]
 
       assert text(view, form) =~
-               "Alive Queued Pending 1 Running 2 Ended well Completed 1 Cancelled Cancelled 1 Paused Paused 1 Ended badly Failed 2 Lost 1"
+               "Alive Queued Pending 1 Running 2 Cancelling Ended well Completed 1 Cancelled Cancelled 1 Paused Paused 1 Ended badly Failed 2 Lost 1"
 
       for state <- ~w(pending running completed failed cancelled lost paused),
           do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
@@ -1323,11 +1328,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> render_change(%{
         "_target" => ["family_alive"],
         "family_alive" => "1",
-        "state" => ~w(queued pending running failed lost)
+        "state" => ~w(queued pending running cancelling failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=queued,pending,running,failed,lost"
+               "#{workspace_path(scope)}/runs?state=queued,pending,running,cancelling,failed,lost"
 
       render_async(view)
       assert text(view, "#runs-filter-value-state") == "alive, ended badly"
@@ -1339,11 +1344,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_change(view, "filter", %{
         "_filter" => "state",
         "_target" => ["family_ended_badly"],
-        "state" => ~w(queued pending running failed lost)
+        "state" => ~w(queued pending running cancelling failed lost)
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "#{workspace_path(scope)}/runs?state=queued,pending,running"
+               "#{workspace_path(scope)}/runs?state=queued,pending,running,cancelling"
     end
 
     test "a family with some of its states chosen is mixed, and the token reads the states",

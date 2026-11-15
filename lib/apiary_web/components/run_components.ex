@@ -51,6 +51,7 @@ defmodule ApiaryWeb.RunComponents do
   alias Apiary.Runs
   alias Apiary.Dispatches.Dispatch
   alias Apiary.Harnesses.WorkflowGap
+  alias Apiary.Runs.Cancel
   alias Apiary.Runs.Run
   alias Apiary.Runs.RunApi
   alias Phoenix.LiveView.JS
@@ -142,7 +143,9 @@ defmodule ApiaryWeb.RunComponents do
   defp state_name(state), do: state
 
   @doc """
-  The word of a state, as the badge says it, for its name as a string or an atom.
+  The word of a state, as the badge says it, for its name as a string or an atom, and the
+  word of `cancelling`, the state filter's state of a cancelling run
+  (`ApiaryWeb.RunCancelComponents.cancelling?/1`).
   """
   @spec state_label(String.t() | atom()) :: String.t()
   def state_label(state) do
@@ -150,6 +153,7 @@ defmodule ApiaryWeb.RunComponents do
       "queued" -> gettext("Queued")
       "pending" -> gettext("Pending")
       "running" -> gettext("Running")
+      "cancelling" -> gettext("Cancelling")
       "completed" -> gettext("Completed")
       "failed" -> gettext("Failed")
       "cancelled" -> gettext("Cancelled")
@@ -1963,13 +1967,15 @@ defmodule ApiaryWeb.RunComponents do
   look (pending, running, failed, lost) and for a run that was cancelled, in grey; a run
   that completed is its dot, its word for a screen reader only, unless `word` asks for it.
   `quiet_for` turns a running run's dot amber and adds the note, as `run_state/1` does;
-  `code` follows the word (why it ended, or its exit, for the preview).
+  `code` follows the word (why it ended, or its exit, for the preview). A run that is
+  `cancelling` (`ApiaryWeb.RunCancelComponents.cancelling?/1`) has "Cancelling" for its word.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.shown_states()
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil
   attr :interval, :integer, default: nil
   attr :word, :boolean, default: false
+  attr :cancelling, :boolean, default: false
   attr :code, :string, default: nil
   attr :class, :any, default: nil
 
@@ -1983,7 +1989,9 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <span class={["q-st", "q-st-#{@state}", @quiet? && "q-st-quiet", @class]}>
       <i aria-hidden="true"></i>
-      <span class={["q-st-w", @completed? && !@word && "sr-only"]}>{state_label(@state)}</span>
+      <span class={["q-st-w", @completed? && !@word && "sr-only"]}>{if @cancelling,
+        do: gettext("Cancelling"),
+        else: state_label(@state)}</span>
       <span :if={@code} class="q-st-code">{@code}</span>
       <span
         :if={@quiet?}
@@ -2294,6 +2302,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-rl-st" role="cell">
         <.run_mark
           state={Run.shown_state(@run)}
+          cancelling={Cancel.cancelling?(@run)}
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
@@ -2523,6 +2532,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-rl-st" role="cell">
         <.run_mark
           state={Run.shown_state(@run)}
+          cancelling={Cancel.cancelling?(@run)}
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
@@ -2667,6 +2677,7 @@ defmodule ApiaryWeb.RunComponents do
         <div class="q-pv-h">
           <.run_mark
             state={Run.shown_state(@preview.run)}
+            cancelling={Cancel.cancelling?(@preview.run)}
             word
             code={exit_note(@preview.run)}
             quiet_for={if @preview.quiet, do: quiet_for(@preview.run) || 0}
@@ -3273,7 +3284,11 @@ defmodule ApiaryWeb.RunComponents do
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >
-              <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
+              <.run_mark
+                state={hit.run.state}
+                quiet_for={quiet_for(hit.run)}
+                cancelling={Cancel.cancelling?(hit.run)}
+              />
               <span class="truncate" title={shown_run_title(hit.run)}>
                 <b
                   :if={shown_run_title(hit.run)}

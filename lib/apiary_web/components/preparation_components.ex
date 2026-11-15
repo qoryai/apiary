@@ -209,7 +209,8 @@ defmodule ApiaryWeb.PreparationComponents do
   `sequence` of the start of the agent session whose Agent session and Run the agent
   open when they appear on a run that ended, as for a link to an event inside it; nil
   for none. `run_state` is the run's state, for the heading, and a session that paused
-  on a run that is `completed` reads as one that succeeded. `wall` is whether the run
+  on a run that is `completed` reads as one that succeeded; a run that is `cancelling`
+  (`ApiaryWeb.RunCancelComponents.cancelling?/1`) has "Cancelling" in the heading. `wall` is whether the run
   has a wall: only then does a Start the wall that did not run have a row. The `session`
   slot is a session's Timeline, inside its Run the agent, called with that `sequence`.
   """
@@ -220,6 +221,7 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :clean_up, :any, default: nil
   attr :session_open, :integer, default: nil
   attr :run_state, :string, default: nil
+  attr :cancelling, :boolean, default: false
   attr :wall, :boolean, default: true
   slot :session
 
@@ -245,7 +247,7 @@ defmodule ApiaryWeb.PreparationComponents do
             do: queued_nodes(queued),
             else: nodes(preparation, removed, alive, assigns.session_open, assigns.wall)
           ),
-        heading: heading(machine, assigns.run_state, alive),
+        heading: heading(machine, assigns.run_state, alive, assigns.cancelling),
         total:
           if(queued,
             do: %{from: queued.queued_at},
@@ -558,14 +560,14 @@ defmodule ApiaryWeb.PreparationComponents do
   end
 
   # The heading: the run, the pool it ran on, and its state. A run no pool claimed has
-  # "Run" alone, with its state.
-  defp heading(machine, state, alive) do
+  # "Run" alone, with its state. A cancelling run has "Cancelling" for its state.
+  defp heading(machine, state, alive, cancelling) do
     run =
       if machine,
         do: gettext("Run on %{pool}", pool: ExternalText.line(machine.pool.name)),
         else: gettext("Run")
 
-    case heading_state(state, alive) do
+    case if(cancelling, do: gettext("Cancelling"), else: heading_state(state, alive)) do
       nil -> run
       word -> [run, " · ", word]
     end
@@ -1449,7 +1451,10 @@ defmodule ApiaryWeb.PreparationComponents do
       ) ++
         for version <- place.versions do
           {{:external, version.type},
-           gettext("Version %{number}", number: Format.number(version.number))}
+           ApiaryWeb.ArtifactComponents.pushed_not_counted(
+             gettext("Version %{number}", number: Format.number(version.number)),
+             version
+           )}
         end
 
     entry(

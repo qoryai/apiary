@@ -332,6 +332,10 @@ defmodule Apiary.Access do
       roles: @members,
       audited: {:not, @read}
     ),
+    Action.new(:"run.cancel", "cancel a running run, so it changes nothing more",
+      feature: :observability,
+      roles: @members
+    ),
     Action.new(:"retention.edit", "set how long the record is kept",
       feature: :observability,
       roles: @admins

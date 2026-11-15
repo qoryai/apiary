@@ -40,7 +40,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Pause
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stages.{Approvers, Runner}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkItemLive.{StageComponents, View}
@@ -186,7 +186,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # The runs of the work item's current take in, newest first, each numbered by its attempt
   # in the take in, as the step card and Details count it, with its workflow, its round,
-  # and what it gave: its verdict, its questions, or, with neither, its state.
+  # and what it gave: its verdict, its questions, or, with neither, its state; and whether
+  # a member cancelled its run and the run has not ended (`cancelling`).
   defp runs(row, index) do
     all = Stages.runs(row)
     take_in = current_take_in(row, all)
@@ -205,8 +206,49 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         round: run.round,
         shows: shows(run, asked),
         paused: nil,
-        paused_path: nil
+        paused_path: nil,
+        cancelling: false,
+        run_state: nil
       }
+    end
+    |> with_cancelling()
+  end
+
+  # Each registered run that a member cancelled and that has not ended is cancelling
+  # (`Apiary.Runs.Cancel.cancelling?/1`), with its stored state (`run_state`): the fields
+  # the rule reads, in one query.
+  defp with_cancelling(runs) do
+    ids = for %{id: id} when is_binary(id) <- runs, do: id
+
+    cancelling =
+      if ids == [] do
+        %{}
+      else
+        Repo.all(
+          from r in Run.registered(),
+            where: r.public_id in ^ids and not is_nil(r.cancel_requested_at),
+            select:
+              {r.public_id,
+               %{
+                 state: r.state,
+                 cancel_requested_at: r.cancel_requested_at,
+                 exit_state: r.exit_state,
+                 exited_at: r.exited_at,
+                 silenced_at: r.silenced_at,
+                 backstop_at: r.backstop_at,
+                 attached_at: r.attached_at,
+                 attach_by: r.attach_by
+               }}
+        )
+        |> Enum.filter(fn {_id, run} -> Cancel.cancelling?(run) end)
+        |> Map.new(fn {id, run} -> {id, String.to_existing_atom(run.state)} end)
+      end
+
+    for run <- runs do
+      case cancelling[run.id] do
+        nil -> run
+        state -> %{run | cancelling: true, run_state: state}
+      end
     end
   end
 

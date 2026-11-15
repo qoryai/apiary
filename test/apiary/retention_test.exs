@@ -8,6 +8,7 @@ defmodule Apiary.RetentionTest do
   alias Apiary.Organisations.Workspace
   alias Apiary.Retention
   alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run, Step}
+  alias Apiary.Runs.TargetWrite
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -257,6 +258,38 @@ defmodule Apiary.RetentionTest do
 
       assert count(Step, young) == 3
       assert count(LogChunk, young) == 4
+    end
+
+    test "a run's writes to its targets go with its events, not with its log", %{
+      scope: scope
+    } do
+      scope = retain(scope, events_retention_days: 90, log_retention_days: 30)
+
+      [ancient, middle] =
+        for days <- [100, 60] do
+          run = run_fixture(scope)
+
+          events_fixture(run, [
+            {1, "run.target_write",
+             %{"system" => "git.example", "path" => "example-org/app", "state" => "started"}},
+            {2, "run.target_write",
+             %{"system" => "git.example", "path" => "example-org/app", "state" => "changed"}},
+            {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}
+          ])
+
+          {:ok, run} = Projector.project(run)
+
+          Repo.update_all(from(r in Run, where: r.id == ^run.id),
+            set: [last_event_at: days_ago(days), event_count: 3]
+          )
+
+          run
+        end
+
+      Retention.prune_workspace(scope.workspace, now: @now)
+
+      assert count(TargetWrite, ancient) == 0
+      assert count(TargetWrite, middle) == 2
     end
 
     test "both settings: the log first, the events later, nothing counted twice", %{scope: scope} do

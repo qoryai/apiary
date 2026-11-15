@@ -81,6 +81,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"work_item.take_in"), do: gettext("Work item taken in")
   def label(:"work_item.undo"), do: gettext("Take in undone")
   def label(:"work_item.close"), do: gettext("Work item closed")
+  def label(:"run.cancel"), do: gettext("Run cancelled")
   def label(:"work_item.answer"), do: gettext("Work item questions answered")
   def label(:"work_item.confirm"), do: gettext("Work item proposal approved")
   def label(:"work_item.explore_again"), do: gettext("Work item explored again")
@@ -621,6 +622,11 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Undid a take in, before a run started")
 
   defp said(:"work_item.close", _details, _actor), do: gettext("Closed a work item")
+
+  # A member's cancel of a running run (`Apiary.Runs.Cancel`): its number, as its entry
+  # recorded it.
+  defp said(:"run.cancel", %{"number" => number}, _actor) when is_integer(number),
+    do: gettext("Cancelled run %{number}", number: number)
 
   # A reply to a review comment: an entry of `work_item.answer` with `"comment"` set and
   # the reply's position (`"reply"`).

@@ -92,6 +92,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.HarnessComponents
   alias ApiaryWeb.PauseWords
+  alias ApiaryWeb.RunCancelComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
   alias ApiaryWeb.WorkItemLive.StageComponents
@@ -2283,6 +2284,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the block \"What the run needs from you\" of an open escalation, at the top of the tab, in place of the banner of a run with no result"
 
+  attr :cancel, :map,
+    default: nil,
+    doc:
+      "a member's cancel of the running run (`ApiaryWeb.RunCancelComponents`): `%{can:, workspace_id:, confirm:, write:}`, whether the reader may cancel a run, the reader's workspace, the public id of the run whose confirm is open, and whether that run writes changes its end pushes; nil for none"
+
   def explore_tab(assigns) do
     work_item = at_limit(assigns.work_item)
     status = explore_status(work_item.status, work_item[:run])
@@ -2342,7 +2348,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <div id={@id} class="q-xp">
-      <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} />
+      <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} cancel={@cancel} />
       <.no_pool_box :if={@no_pool} id={"#{@id}-no-pool"} run={@run} no_pool={@no_pool} />
       <.explore_wait
         :if={@running and !@no_pool}
@@ -2520,6 +2526,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   slot :row, doc: "an output's artifact row, for a version with no Markdown; takes its type"
 
+  attr :cancel, :map,
+    default: nil,
+    doc:
+      "a member's cancel of the running run (`ApiaryWeb.RunCancelComponents`): `%{can:, workspace_id:, confirm:, write:}`, whether the reader may cancel a run, the reader's workspace, the public id of the run whose confirm is open, and whether that run writes changes its end pushes; nil for none"
+
   def stage_tab(assigns) do
     run = List.last(assigns.runs)
     running = match?(%{place: place} when place in [:queued, :running], run)
@@ -2568,7 +2579,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <div id={@id} class="q-xp">
-      <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} />
+      <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} cancel={@cancel} />
       <.stage_wait
         :if={@running}
         id={"#{@id}-wait"}
@@ -2967,29 +2978,33 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :id, :string, required: true
   attr :run, :map, required: true
   attr :now, :any, required: true
+  attr :cancel, :map, default: nil, doc: "as the tabs' `cancel`"
 
   # Which run of the take in, as a link to its page, its state, its time. Before a run
   # exists, and while it is pending, it is Queued, Explore's word. A paused run that a run
-  # continues has why it paused in place of its state (`ApiaryWeb.PauseWords`).
+  # continues has why it paused in place of its state (`ApiaryWeb.PauseWords`). A run a
+  # member cancelled is Cancelling until it ends (`Apiary.Runs.Cancel.cancelling?/1`); one
+  # a member can cancel has Cancel run, and its inline confirm.
   defp run_line(assigns) do
     run = assigns.run
     state = run[:state]
+    cancel = assigns.cancel
 
     assigns =
       assign(assigns,
         place: run_place(run),
+        # Cancel run, for a run of the reader's workspace that a member can cancel now.
+        cancel:
+          cancel && cancel.can && run[:cancellable] == true && is_binary(run[:id]) &&
+            run[:workspace_id] == cancel.workspace_id && cancel,
         state_word:
           cond do
+            run[:cancelling] == true -> gettext("Cancelling")
             state in [nil, :pending] -> gettext("Queued")
             run[:paused] -> PauseWords.line(run.paused, run[:paused_path])
             true -> RunComponents.state_label(state)
           end,
-        state_class:
-          cond do
-            state == :running -> running_word_class(run)
-            state in [:failed, :cancelled, :lost] -> "q-xp-run-bad"
-            true -> nil
-          end,
+        state_class: state_class(run),
         time: run_time(run, assigns.now)
       )
 
@@ -2998,7 +3013,23 @@ defmodule ApiaryWeb.WorkItemComponents do
       <span><b><.rich text={place_ref(@run, @place)} /></b></span>
       <span class={@state_class}><.rich text={@state_word} /></span>
       <span :if={@time}><.rich text={@time} /></span>
+      <RunCancelComponents.cancel_button
+        :if={@cancel && @cancel.confirm != @run.id}
+        id={"#{@id}-cancel"}
+        event="ask_cancel_run"
+        values={%{run: @run.id}}
+      />
     </p>
+    <RunCancelComponents.cancel_confirm
+      :if={@cancel && @cancel.confirm == @run.id}
+      id={"#{@id}-cancel-confirm"}
+      class="mt-2"
+      number={@run.number}
+      write={@cancel.write}
+      event="cancel_run"
+      values={%{run: @run.id}}
+      keep={JS.push("keep_running")}
+    />
     """
   end
 
@@ -3009,6 +3040,26 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A running run's word has the colours of its badge: blue, amber once the run is quiet.
   defp running_word_class(run),
     do: if(quiet?(run), do: "text-primary-soft-content", else: "text-info-soft-content")
+
+  @doc false
+  # state_class/1 is the colours of a run's state word: running blue or amber as its badge,
+  # red for a run that failed, was cancelled or was lost.
+  def state_class(run) do
+    cond do
+      run[:state] == :running -> running_word_class(run)
+      run[:state] in [:failed, :cancelled, :lost] -> "q-xp-run-bad"
+      true -> nil
+    end
+  end
+
+  attr :run, :map, required: true
+
+  # Cancelling, in the colours of the run's state (`state_class/1`), as the run's line.
+  defp cancelling_word(assigns) do
+    ~H"""
+    <span class={state_class(@run)}>{gettext("Cancelling")}</span>
+    """
+  end
 
   attr :run, :map, required: true
 
@@ -5130,7 +5181,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A stage run with no verdict (running, or ended without one) whose run failed, was
   # lost, was cancelled or paused reads that state, as the top line, in place of the
   # verdict; a paused run that a run continues shows why it paused
-  # (`StageComponents.verdict_parts/2`).
+  # (`StageComponents.verdict_parts/2`). A cancelling run (`Apiary.Runs.Cancel.cancelling?/1`)
+  # reads Cancelling in place of its state or of running, in the colours of the top line.
   # A run with no stage run has what it wrote, or its state, in place of the three. In a
   # fold's summary, a click on `place`'s link opens the run's page, and a click beside it
   # opens the fold (`open_fold`).
@@ -5145,10 +5197,17 @@ defmodule ApiaryWeb.WorkItemComponents do
     # The verdict is the last of `parts`: `verdict_parts/2` drops only a missing workflow
     # or round.
     parts =
-      if stage_run.shows in [:running, :no_verdict] and
-           run[:state] in [:failed, :lost, :cancelled, :paused],
-         do: List.replace_at(parts, -1, RunComponents.state_label(run.state)),
-         else: parts
+      cond do
+        stage_run.shows in [:running, :no_verdict] and run[:cancelling] == true ->
+          List.replace_at(parts, -1, cancelling_word(%{run: run}))
+
+        stage_run.shows in [:running, :no_verdict] and
+            run[:state] in [:failed, :lost, :cancelled, :paused] ->
+          List.replace_at(parts, -1, RunComponents.state_label(run.state))
+
+        true ->
+          parts
+      end
 
     time =
       case run[:state] do
@@ -5163,10 +5222,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp run_parts(place, run, nil, now) do
     attempt = {:b, place}
 
+    cancelling = run[:cancelling] == true
+
     rest =
       case run[:state] do
         state when state in [nil, :pending] ->
           [gettext("Queued")]
+
+        _cancelling when cancelling ->
+          [cancelling_word(%{run: run}), run_time(run, now)]
 
         :running ->
           [running_word(%{run: run}), run_time(run, now)]

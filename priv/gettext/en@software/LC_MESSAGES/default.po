@@ -3085,6 +3085,11 @@ msgstr ""
 msgid "%{person} approves"
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "%{person} cancelled it."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one."
@@ -3149,6 +3154,16 @@ msgid "%{repository} lists %{count} more module. New workspace reads the first 2
 msgid_plural "%{repository} lists %{count} more modules. New workspace reads the first 20."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{repository} may have been pushed."
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{repository} was pushed."
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3673,6 +3688,11 @@ msgstr ""
 msgid "%{version} has been in force since %{time}."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{version} · %{writer}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{via} sends every request to Qory Apiary through %{gateway}."
@@ -3884,6 +3904,11 @@ msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{writer} · cancelled, not counted"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
 msgid "(empty)"
 msgstr ""
 
@@ -3910,6 +3935,7 @@ msgstr ""
 msgid "(was %{mode})"
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "(you)"
@@ -6481,6 +6507,16 @@ msgstr ""
 msgid "Cancel deletion"
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancel run"
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancel run %{number}?"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel the command from %{time}"
@@ -6551,6 +6587,26 @@ msgstr ""
 msgid "Cancelled an adapter's code it no longer needs"
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled by %{person} at %{time}"
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled by %{person} at %{time}, while the run was pushing its changes."
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled by %{person} at %{time}. The run ended %{exit} before it stopped; nothing it sent counts."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled run %{number}"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled the organisation's deletion"
@@ -6586,6 +6642,8 @@ msgstr ""
 msgid "Cancelled."
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -11775,6 +11833,11 @@ msgid_plural "All %{number} targets follow it."
 msgstr[0] "Its %{number} repository follows it."
 msgstr[1] "All %{number} repositories follow it."
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its changes are not pushed, unless the run had already started pushing them."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Its hosts: %{hosts}."
@@ -11991,6 +12054,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Keep running"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -13969,9 +14037,19 @@ msgstr ""
 msgid "No prune has run yet. The job runs every day."
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "No push to this run's targets was recorded."
+msgstr "No push to this run's repositories was recorded."
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "No removal report"
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "No report from the machine since %{since}. The run ends at its next report, or is marked lost once its heartbeats stop."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -17836,6 +17914,11 @@ msgstr ""
 msgid "Run another round?"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Run cancelled"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run cancelled."
@@ -20460,6 +20543,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The agent is writing a reply to the line."
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "The agent stops at its next report to Qory Apiary, and the run changes nothing more. What it already sent stays, marked as from a cancelled run."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex

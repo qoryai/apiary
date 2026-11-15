@@ -732,7 +732,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     kept =
       (shown || [])
       |> Enum.map(&Map.get(fresh, &1.id, &1))
-      |> Enum.filter(&(&1.state in Run.alive_states()))
+      |> Enum.filter(&alive?/1)
 
     arrived = Enum.reject(read.alive_runs, &(&1.id in alive_ids))
 
@@ -982,6 +982,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp refresh_runs(socket), do: socket
 
+  # A run is alive as `Apiary.Runs.list_alive/2` lists it: pending, running, or cancelling.
+  defp alive?(run), do: run.state in Run.alive_states() or Apiary.Runs.Cancel.cancelling?(run)
+
   # A run on the page is patched from the message, in place: an alive run, and the last
   # run of an active target, which a newer run of it replaces. The counts wait for the
   # next read; nothing moves under the reader.
@@ -992,7 +995,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       alive_runs &&
         alive_runs
         |> Enum.map(&if(&1.id == run.id, do: run, else: &1))
-        |> Enum.filter(&(&1.state in Run.alive_states()))
+        |> Enum.filter(&alive?/1)
 
     targets =
       targets &&
@@ -1622,7 +1625,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         %{
           count: count,
           navigate:
-            ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"state" => "pending,running,lost"}}",
+            ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"state" => "pending,running,cancelling,lost"}}",
           title:
             ngettext(
               "%{number} more item, on the runs list",

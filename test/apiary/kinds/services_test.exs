@@ -264,7 +264,8 @@ defmodule Apiary.Kinds.ServicesTest do
                     model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
                     events/runtime.tool_denied.schema.json
-                    events/session.transcript.schema.json)
+                    events/session.transcript.schema.json
+                    events/run.target_write.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
                  |> Enum.concat(
                    for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json
@@ -323,7 +324,13 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/run-configuration-credentials-api-use-up-to-windows-alone.json
                                   invalid/run-configuration-credentials-api-use-up-to-windows-empty.json
                                   invalid/run-configuration-credentials-api-use-up-to-zero.json
-                                  invalid/run-configuration-credentials-host-use-up-to.json),
+                                  invalid/run-configuration-credentials-host-use-up-to.json
+                                  batch/target-write.json
+                                  invalid/event-target-write-empty-system.json
+                                  invalid/event-target-write-ref-member.json
+                                  invalid/event-target-write-request-id-upper-case.json
+                                  invalid/event-target-write-unknown-state.json
+                                  invalid/event-target-write-without-path.json),
                        do: "test/fixtures/forager-contract/" <> file
                  )
                )

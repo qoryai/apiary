@@ -489,14 +489,24 @@ defmodule ApiaryWeb.TargetLive.Index do
     """
   end
 
-  # The last run: its dot and when, and its word for every state but completed.
+  # The last run: its dot and when, and its word for every state but completed; a
+  # cancelling run's word is "Cancelling" (`Apiary.Targets.page/3`, `cancelling`).
   attr :last, :map, required: true
 
   defp last_run(assigns) do
+    assigns =
+      assign(assigns,
+        word:
+          if(assigns.last.cancelling,
+            do: gettext("Cancelling"),
+            else: state_label(assigns.last.state)
+          )
+      )
+
     ~H"""
     <span class="q-tgt-last">
       <span class={["q-sdot", "q-sdot-#{@last.state}"]}>
-        <i aria-hidden="true"></i><span class="sr-only">{state_label(@last.state)}</span>
+        <i aria-hidden="true"></i><span class="sr-only">{@word}</span>
       </span>
       <.relative_time at={@last.at} />
       <span
@@ -504,7 +514,7 @@ defmodule ApiaryWeb.TargetLive.Index do
         class={["q-tgt-lw", "q-sdot-#{@last.state}"]}
         aria-hidden="true"
       >
-        {state_label(@last.state)}
+        {@word}
       </span>
     </span>
     """

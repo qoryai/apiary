@@ -754,9 +754,17 @@ version in force is exported; another version's path sends on to it.
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no other
   is. Ended badly counts the runs that failed or were lost. The Filter menu's State
-  section lists the seven states and Queued under their five families, each heading a
-  checkbox for the whole family: Alive (Queued, Pending, Running), Ended well
-  (Completed), Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed, Lost).
+  section lists the seven states, Queued and Cancelling under their five families, each
+  heading a checkbox for the whole family: Alive (Queued, Pending, Running, Cancelling),
+  Ended well (Completed), Cancelled (Cancelled), Paused (Paused) and Ended badly (Failed,
+  Lost). Cancelling is a run whose row reads "Cancelling"
+  (`Apiary.Runs.Cancel.cancelling?/1`): a member cancelled it and it has not ended, a lost
+  run until it is lost for good. It is found under Cancelling and counted there, and
+  not under Running or Lost; Alive, the overview's alive now and the sidebar's count of
+  runs alive count it and Ended badly does not, and the address writes it
+  `state=cancelling`. The section's box (Find a state) keeps the states whose word
+  contains what the reader types, in any case, under their families, and a chosen state
+  stays.
   Queued is a pending run that waits in the queue for a machine
   (`Apiary.Runs.Run.queued?/1`): it has its run record and its number from the moment it
   is queued (`Apiary.Dispatches.Queued`), with no node and no registration; Pending is
@@ -954,8 +962,7 @@ what needs the reader, then what their agents did, and never grows with the data
   lost-run check marked it, with the tip "Nothing was heard for three heartbeat intervals.
   The run may still be going; the record is not.", and "Lost, stopped responding" or
   "Lost, end not recorded" when its exit said so, with the tip "The run's end was not
-  recorded; how it went is not known." It offers Open, its page: Qory Apiary records what
-  a run reports and never ends a run it did not start; it starts none today. A run the
+  recorded; how it went is not known." It offers Open, its page. A run the
   check marked leaves when its start arrives, an exit that does not say it was lost, or a
   heartbeat that counts within three intervals of its arrival (a backlog's old heartbeats
   do not), and then says what became of it ("Completed.", "Failed.", "Cancelled.",
@@ -1931,8 +1938,36 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
   (Copy run id, Raw log, Download log, a file with the `rn_` id as its name,
-  `rn_0123456789abcdef.log`), and no Close: Qory Apiary records what a run reports and
-  never ends a run it did not start; it starts none today. The seven
+  `rn_0123456789abcdef.log`). Beside the state of a running run, a member who may cancel
+  it (`run.cancel`) has **Cancel run**, which opens an inline confirm: "Cancel run 12? The
+  agent stops at its next report to Qory Apiary, and the run changes nothing more. What
+  it already sent stays, marked as from a cancelled run." For a run whose end pushes its
+  changes, the confirm adds "Its changes are not pushed, unless the run had already
+  started pushing them." Its buttons are **Cancel run** and **Keep running**. The running
+  run's line on its work item's page has the same button and confirm. A person who may
+  not cancel the run has no **Cancel run** on either page. After the press, the run's
+  state reads "Cancelling" until the run ends (`Apiary.Runs.Cancel.cancelling?/1`); a lost
+  run that may still attach again reads "Cancelling" too. Every place that shows the
+  run's state uses the word: the run page's header, Details and Timeline heading, the
+  runs list's row and preview, a machine's runs, a target's last runs, the last run on
+  Repositories and on the overview's Active targets, the runs that reached a destination
+  on Network access, Search or jump to, and on its work item's page the run's line, its
+  row in the take in's runs and its row in the Runs list over the tabs. The dot keeps the colour of the stored state, and the runs list's State filter finds the
+  run under Cancelling, not under Running or Lost. While the
+  machine sends no heartbeat, the run page adds under the meta line "No report from the
+  machine since 10:00:30. The run ends at its next report, or is marked lost once its
+  heartbeats stop." Once the run ends, the line
+  there reads "Cancelled by <person> at 10:00:30", with "(you)" after the reader's name
+  and "Former member" for a deleted account. In a software workspace, for a run whose
+  push step had started, the line reads "Cancelled by <person> at 10:00:30, while the run
+  was pushing its changes.", and one line follows for each of the run's repositories:
+  "<repository> was pushed." or "<repository> may have been pushed.", or, with none, "No
+  push to this run's repositories was recorded." (`docs/contract-assumptions.md`, What a
+  run wrote to its targets). A run that ended another way before it stopped reads
+  "Cancelled by <person> at 10:00:30. The run ended <exit> before it stopped; nothing it
+  sent counts." Each version a cancelled run pushed has "cancelled, not counted" after
+  its run, in the run page's list of what the run pushed and wherever the work item's
+  page shows who made a version: "Run 12 · round 2 · cancelled, not counted". The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) shows how under the
   meta line, after "How it ended". A paused run shows its paused line there, whole, with
   no "Jump to it" (`ApiaryWeb.PauseWords`): "Paused: every key of Northwind Claude is in

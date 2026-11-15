@@ -56,6 +56,13 @@ defmodule Apiary.Runs.Fold do
   (`exit_state/2`). A step event whose `step` is not such an integer is folded into
   nothing. A log chunk keeps its event's `step`, read the same way.
 
+  A write the run sent to a place in another system (`Apiary.Runs.TargetWrite`) is folded
+  from each `run.target_write` into `target_writes`, one entry per event in sequence
+  order: its sequence, time, `system`, `path`, `state` and `request_id`. `system` and
+  `path` must each be a label that can name a target (`Apiary.Runs.Target.label/1`) and
+  `state` one of `started`, `changed`, `refused` and `cut`, or the event is folded into
+  nothing. A `request_id` that is not 32 lower-case hexadecimal digits is absent.
+
   An egress event is folded into the connection of its destination (host, port and path)
   and its channel: `channel` `stack` for the stack proxy, which fetches the run's harness
   definition, and `session` for any other value or none, the run's proxy. One destination
@@ -139,7 +146,7 @@ defmodule Apiary.Runs.Fold do
 
   require Logger
 
-  alias Apiary.Runs.{About, Liveness, Run, Transcript}
+  alias Apiary.Runs.{About, Liveness, Run, Target, TargetWrite, Transcript}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -156,6 +163,7 @@ defmodule Apiary.Runs.Fold do
   @result "dev.qory.runtime.result"
   @step_started "dev.qory.run.step_started"
   @step_exited "dev.qory.run.step_exited"
+  @target_write "dev.qory.run.target_write"
 
   # The most bytes of a connection's host, and what ends one cut to fit (`host/1`).
   @host_max 255
@@ -241,6 +249,7 @@ defmodule Apiary.Runs.Fold do
             beaten: false,
             connections: %{},
             steps: %{},
+            target_writes: [],
             log_chunks: [],
             skipped_log_chunks: 0,
             transcript_chunks: [],
@@ -255,6 +264,7 @@ defmodule Apiary.Runs.Fold do
           beaten: boolean(),
           connections: %{optional({String.t(), integer(), String.t(), String.t()}) => map()},
           steps: %{optional(pos_integer()) => map()},
+          target_writes: [map()],
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer(),
           transcript_chunks: [map()],
@@ -273,7 +283,8 @@ defmodule Apiary.Runs.Fold do
   or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
-  (host, port, path, channel), `steps` as one delta per step number, `log_chunks` in sequence order
+  (host, port, path, channel), `steps` as one delta per step number, `target_writes` in
+  sequence order, `log_chunks` in sequence order
   and the count of log events skipped because their bytes were not base64, and
   `transcript_chunks`, the chunks of `dev.qory.session.transcript` events in sequence
   order (`Apiary.Runs.Transcript.parse/1`), with the count of those events whose data is
@@ -299,6 +310,7 @@ defmodule Apiary.Runs.Fold do
     %{
       acc
       | run: settle(acc.run),
+        target_writes: Enum.reverse(acc.target_writes),
         log_chunks: Enum.reverse(acc.log_chunks),
         transcript_chunks: Enum.reverse(acc.transcript_chunks)
     }
@@ -589,6 +601,27 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
+  # A write to a place in another system: kept whole, or not at all.
+  defp event(acc, %{type: @target_write, data: data, time: time, sequence: sequence})
+       when is_map(data) do
+    with system when is_binary(system) <- Target.label(data["system"]),
+         path when is_binary(path) <- Target.label(data["path"]),
+         state when is_binary(state) <- target_write_state(data["state"]) do
+      write = %{
+        sequence: sequence,
+        at: time,
+        system: system,
+        path: path,
+        state: state,
+        request_id: request_id(data["request_id"])
+      }
+
+      %{acc | target_writes: [write | acc.target_writes]}
+    else
+      _ -> acc
+    end
+  end
+
   # The cost a non-interactive session reported is the runtime's own total for the
   # session, its subagents included (`docs/contract-assumptions.md`): every result of the
   # run adds its `cost_usd` to the run's, once, so the run's cost is a sum of totals and
@@ -639,6 +672,16 @@ defmodule Apiary.Runs.Fold do
       _ -> nil
     end
   end
+
+  defp target_write_state(state) do
+    if state in TargetWrite.states(), do: state
+  end
+
+  defp request_id(id) when is_binary(id) do
+    if Regex.match?(~r/\A[0-9a-f]{32}\z/, id), do: id
+  end
+
+  defp request_id(_id), do: nil
 
   # An exit that says no state of the three ended badly, as a run's does (`exit_state/2`).
   defp step_state(data) do

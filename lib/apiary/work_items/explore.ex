@@ -416,10 +416,16 @@ defmodule Apiary.WorkItems.Explore do
 
   # proposal_version/3 is the version of the proposal the run `attempt` of take in
   # `take_in` of the work item `id` stands at: the number of the newest version of the
-  # `proposal` named `main` a run of the take in up to it pushed; nil for none.
+  # `proposal` named `main` a run of the take in up to it pushed, a run a member cancelled
+  # left out (`Apiary.Runs.Run.cancel_requested?/1`); nil for none.
   @doc false
   @spec proposal_version(Ecto.UUID.t(), pos_integer, pos_integer) :: pos_integer | nil
-  def proposal_version(id, take_in, attempt), do: version(id, take_in, attempt, "proposal")
+  def proposal_version(id, take_in, attempt) do
+    Repo.one(
+      from v in version_query(id, take_in, attempt, "proposal"),
+        where: not exists(Run.cancelled_dispatch_run(:dispatch_run, :id))
+    )
+  end
 
   # version/4 is the version of the type `type` the run `attempt` of take in `take_in` of
   # the work item `id` stands at, the version a review comment on that type is on: the
@@ -428,19 +434,20 @@ defmodule Apiary.WorkItems.Explore do
   # artifact name, so `main` is the only artifact of a type it can be on.
   @doc false
   @spec version(Ecto.UUID.t(), pos_integer, pos_integer, String.t()) :: pos_integer | nil
-  def version(id, take_in, attempt, type) do
-    Repo.one(
-      from v in Version,
-        join: a in Artifact,
-        on: a.id == v.artifact_id,
-        join: d in DispatchRun,
-        on: d.id == v.run_id,
-        where: a.work_item_id == ^id and a.type == ^type and a.name == "main",
-        where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
-        order_by: [desc: v.number],
-        limit: 1,
-        select: v.number
-    )
+  def version(id, take_in, attempt, type), do: Repo.one(version_query(id, take_in, attempt, type))
+
+  defp version_query(id, take_in, attempt, type) do
+    from v in Version,
+      join: a in Artifact,
+      on: a.id == v.artifact_id,
+      join: d in DispatchRun,
+      as: :dispatch_run,
+      on: d.id == v.run_id,
+      where: a.work_item_id == ^id and a.type == ^type and a.name == "main",
+      where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
+      order_by: [desc: v.number],
+      limit: 1,
+      select: v.number
   end
 
   # versions/2 is the type and number of each version of an artifact named `main` that the

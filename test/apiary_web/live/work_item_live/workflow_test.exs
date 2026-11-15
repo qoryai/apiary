@@ -1196,6 +1196,38 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, ~s(#work-item-explore-wait-h a[href="#{path.(explore)}"]))
     end
 
+    test "after a move back, a cancelled run of Build reads Cancelling in the Runs list", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = moved_back!(scope)
+      {_explore, _dispatch_run} = registered!(work_item, newest_run(work_item), :handed_over)
+      {build, _dispatch_run} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^build.id),
+          set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # Newest first: Build's run, cancelled and still running, then Explore's.
+      assert line(view, "#work-item-runs-0") =~
+               ~r/^Attempt \d+ · capture-demo · round 1 · Cancelling$/
+
+      assert line(view, "#work-item-runs-1") =~ ~r/ · running$/
+      assert has_element?(view, "#work-item-runs-0 .text-info-soft-content", "Cancelling")
+
+      # Lost, and it may still attach: Cancelling, red as a lost run's line.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^build.id),
+          set: [state: "lost", backstop_at: DateTime.add(DateTime.utc_now(), 3600, :second)]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-runs-0 .q-xp-run-bad", "Cancelling")
+    end
+
     test "after a move back, Build's run is at another stage and Explore's run is not", %{
       scope: scope
     } do

@@ -4,6 +4,7 @@ defmodule Apiary.Explore.Outcome do
   #
   #   * `:questions` when the newest questions of its work item have a question of its
   #     take in that waits for an answer (`Apiary.Explore.Questions.open_in_take_in/2`),
+  #     asked by a run no member cancelled (`Apiary.Explore.Questions.counted_take_in_runs/2`),
   #     whatever else the run did: open questions come before a proposal and before a run
   #     that stopped. A question left open in an earlier take in does not count;
   #   * `:none` when the run ended by its exit and its newest `verdict` named `main` is
@@ -13,8 +14,9 @@ defmodule Apiary.Explore.Outcome do
   #   * `:proposal` when a run of its take in, this one or an earlier one, pushed a
   #     version of the work item's `proposal` named `main`, the one Explore reads
   #     (`Apiary.WorkItems.Explore.proposal/2`), and the run did not stop: its registered
-  #     run did not exit failed, lost or cancelled, as the stage runner reads a run that
-  #     stopped (`Apiary.Stages`);
+  #     run did not exit failed, lost or cancelled, and no member cancelled it, as the
+  #     stage runner reads a run that stopped (`Apiary.Stages`). A proposal a cancelled
+  #     run pushed counts for no run;
   #   * `:none` otherwise.
   #
   # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`),
@@ -69,7 +71,7 @@ defmodule Apiary.Explore.Outcome do
   end
 
   defp open?({_version, document}, %DispatchRun{work_item_id: id, take_in: take_in}),
-    do: Questions.open_in_take_in(document, Questions.take_in_runs(id, take_in)) != []
+    do: Questions.open_in_take_in(document, Questions.counted_take_in_runs(id, take_in)) != []
 
   defp open?(nil, _run), do: false
 
@@ -82,24 +84,30 @@ defmodule Apiary.Explore.Outcome do
     end
   end
 
+  # Its registered run failed, was lost or was cancelled, or a member cancelled it
+  # (`Apiary.Runs.Cancel`), whatever its exit.
   defp stopped?(%DispatchRun{id: id}),
     do:
       Repo.exists?(
         from r in Apiary.Runs.Run.registered(),
-          where: r.dispatch_run_id == ^id and r.exit_state in ["failed", "lost", "cancelled"]
+          where: r.dispatch_run_id == ^id,
+          where:
+            r.exit_state in ["failed", "lost", "cancelled"] or not is_nil(r.cancel_requested_at)
       )
 
   # Whether a run of the take in of `run`, up to it, pushed a version of the proposal
-  # named `main`.
+  # named `main`; a run a member cancelled counts for none.
   defp proposal?(%DispatchRun{work_item_id: id, take_in: take_in, attempt: attempt}) do
     Repo.exists?(
       from v in Version,
         join: a in Artifact,
         on: a.id == v.artifact_id,
         join: d in DispatchRun,
+        as: :dispatch_run,
         on: d.id == v.run_id,
         where: a.work_item_id == ^id and a.type == "proposal" and a.name == "main",
-        where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt
+        where: d.work_item_id == ^id and d.take_in == ^take_in and d.attempt <= ^attempt,
+        where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:dispatch_run, :id))
     )
   end
 end

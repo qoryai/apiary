@@ -156,6 +156,7 @@ defmodule Apiary.AccessRows do
       {:"node.clear_instance", yes: @owners ++ [:admin, :feature_off]},
       {:"run.read", yes: @owners ++ [:member, :admin]},
       {:"run.read_log", yes: @owners ++ [:member, :admin]},
+      {:"run.cancel", yes: @owners ++ [:member, :admin]},
       {:"retention.edit", yes: @owners ++ [:admin]},
       {:"security_policy.read", yes: @owners ++ [:member, :admin]},
       {:"security_policy.edit", yes: @owners ++ [:member, :admin]},

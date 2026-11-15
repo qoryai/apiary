@@ -32,7 +32,8 @@ defmodule Apiary.Runs.Outcome do
     2. a run id the key's workspace does not hold, a run of another node, and a run
        whose events retention has pruned are `{:error, :not_found}`;
     3. a run that was given another outcome, another state or reason, is
-       `{:error, :outcome_given}`: each run gets one;
+       `{:error, :outcome_given}`: each run gets one; so is a run a member cancelled
+       (`Apiary.Runs.Run.cancel_requested?/1`), whose end the cancel decided;
     4. else the outcome is stored on the run, with when it arrived and the SHA-256 of its
        bytes, and the run's state and reason are the outcome's at once
        (`Apiary.Runs.Fold.outcome/1`). What the run's exit said, its exit code, its signal
@@ -63,13 +64,15 @@ defmodule Apiary.Runs.Outcome do
   @states ~w(succeeded failed cancelled)
   @code ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons Forager writes for itself in `dev.qory.run.exited`, and the old names it
-  # never writes, and `released`, which Qory sets itself for a run its starter released
-  # (`Apiary.Runs.Fold.settle/1`): a starter's outcome may not give one.
+  # never writes, `released`, which Qory sets itself for a run its starter released
+  # (`Apiary.Runs.Fold.settle/1`), and `cancelled_by_member`, the reason of a member's
+  # cancel (`Apiary.Runs.Cancel`): a starter's outcome may not give one.
   @reserved ~w(
     timeout interrupted no_session quiet credential_expired stopped session_lost gateway_lost
     batch_refused credential_check_unreachable credential_check_invalid run_closed
     run_ended_at_issuer issuer_unreachable issuer_answer_invalid image_missing
     image_access_denied image_rate_limited image_registry_unreachable model_key_limit released
+    cancelled_by_member
   )
   @max_skew_seconds 300
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -84,8 +87,8 @@ defmodule Apiary.Runs.Outcome do
   def max_skew_seconds, do: @max_skew_seconds
 
   @doc """
-  The reasons a starter may not give: Forager's reasons, the old names it never writes, and
-  `released`, which Qory sets itself.
+  The reasons a starter may not give: Forager's reasons, the old names it never writes,
+  `released`, which Qory sets itself, and `cancelled_by_member`, a member's cancel's.
   """
   def reserved_reasons, do: @reserved
 
@@ -218,6 +221,9 @@ defmodule Apiary.Runs.Outcome do
 
         not is_nil(run.events_pruned_at) ->
           {:error, :not_found}
+
+        Run.cancel_requested?(run) ->
+          {:error, :outcome_given}
 
         not is_nil(run.outcome_state) ->
           {:error, :outcome_given}

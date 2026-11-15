@@ -354,6 +354,12 @@ defmodule ApiaryWeb.RefusalsRows do
        "/:other_org/:other_ws/machines/:node/instances/:instance/clear", "clear_instance", %{},
        answer: :not_found_at_mount},
 
+      # A run's Cancel run, on its page: a member who was removed after the page opened.
+      # The page has no words for the refusal: it closes the confirm and reads the run
+      # again, which is not cancelled.
+      {:"run.cancel", :removed_member, "/:org/:workspace/runs/:run_page", "cancel_run", %{},
+       answer: :ignored},
+
       # A node's access keys and enrolment codes, its Access key tab. Without the page or
       # the confirmation open, from a member: refused, as the page offers them no button;
       # a demoted admin's page or confirmation was open, and the context refuses them. A
@@ -713,6 +719,8 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:target_page, world), do: world.target.public_id
   def value(:other_target_page, world), do: world.other_target.public_id
   def value(:run, world), do: {:id, world.run.node_run_id}
+  # A run's page is its number.
+  def value(:run_page, world), do: Integer.to_string(world.run.number)
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}

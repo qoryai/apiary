@@ -185,6 +185,7 @@ defmodule ApiaryPro.AccessRows do
       {:"node.clear_instance", yes: @owners},
       {:"run.read", yes: @owners ++ @readers},
       {:"run.read_log", yes: @owners ++ @readers},
+      {:"run.cancel", yes: @owners},
       # Only a diagnostics key may, in the core's rows: none of the edition's actors.
       {:"run.read_diagnostics", yes: []},
       {:"run.list_instance", yes: []},

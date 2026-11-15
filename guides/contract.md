@@ -490,7 +490,7 @@ The answers, in order; the first that applies is the answer:
 | `404` | the key may not post (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the same outcome again, the same state and reason after the rules above, whatever its bytes or `time`, under any active key of the run's node; nothing changes | `{"version":1}` |
 | `404` | the workspace holds no run of this id, the run is another node's, or retention has pruned its events | `{"error":"not_found"}` |
-| `409` | the run was given another outcome, another state or reason: each run gets one | `{"error":"outcome_given"}` |
+| `409` | the run was given another outcome, another state or reason: each run gets one; or a member cancelled the run | `{"error":"outcome_given"}` |
 | `503` | the outcome could not be stored | `{"error":"unavailable"}` |
 | `200` | stored | `{"version":1}` |
 
@@ -635,7 +635,9 @@ else is retried with backoff until the run ends.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
   batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
   `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, `reason` left out when the
-  outcome gave none. The answer to the batch that carries the exit has none. The answer's
+  outcome gave none. Once a member cancelled the run, every `2xx` to its batches has
+  `{"end":{"state":"cancelled","reason":"cancelled_by_member"}}` in its place, before any
+  outcome. The answer to the batch that carries the exit has none. The answer's
   signature covers the body, as it covers every body.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again, or `410` for a run retention has
