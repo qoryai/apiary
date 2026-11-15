@@ -94,8 +94,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       # the page opens. The arbiter's offer, made to another admin of the organisation.
       {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
        %{}, setup: :arbitrated_to_another_admin, answer: :refused_at_mount},
-      {:"organisation.accept_transfer", :operated_admin, "/:operated/settings/ownership",
-       "accept_transfer", %{}, setup: :operated_arbitrated, needs: :managed_organisations},
 
       # A member who no longer reaches the workspace, and one of another workspace
       # carrying the ids of this one.
@@ -402,9 +400,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"instance.grant_features", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/features", "save_features",
        %{"features" => %{"observability" => "true"}}},
-      {:"instance.grant_features", :instance_admin,
-       "/instance/organisations/:operated_id/features", "save_features",
-       %{"features" => %{"observability" => "true"}}, needs: :managed_organisations},
       # Who may sign up, on Instance settings › Configuration, which is not found for
       # anyone but an instance admin.
       {:"instance.change_sign_up", :io_admin, "/instance/configuration", "save",
@@ -702,29 +697,10 @@ defmodule ApiaryProWeb.RefusalsRows do
   @impl true
   def watched(world), do: [world.operator, world.operated]
 
-  # The operated organisation's ownership offered by the instance's arbiter to a second admin of it:
-  # seeded as the offer's row, since its owner may act.
-  @impl true
-  def before_page(:operated_arbitrated, world) do
-    if is_nil(Repo.get_by(ApiaryPro.Transfers.Transfer, organisation_id: world.operated.id)) do
-      %{user: second} = RefusalsCase.person(world.operated_owner.scope, :admin)
-
-      Repo.insert!(%ApiaryPro.Transfers.Transfer{
-        organisation_id: world.operated.id,
-        kind: :to_admin,
-        recipient_id: second.id,
-        offered_by_id: world.instance_admin.user.id,
-        arbitrated: true,
-        reason: "Seeded for the refusal table."
-      })
-    end
-
-    :ok
-  end
-
   # The organisation's ownership offered by the instance's arbiter to an admin of it
   # other than the world's admin: seeded as the offer's row, since the organisation has
   # owners who may act, whom the arbiter would not overrule.
+  @impl true
   def before_page(:arbitrated_to_another_admin, world) do
     if is_nil(ApiaryPro.Transfers.pending(world.owner)) do
       %{user: other} = RefusalsCase.person(world.owner, :admin)
