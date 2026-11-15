@@ -585,7 +585,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                ).status == 201
       end
 
-      # Another run of the work item, and a person, store a version each.
+      # Another run of the work item, which a claim registered and no member cancelled,
+      # and a person store a version each.
       other =
         Repo.insert!(%DispatchRun{
           organisation_id: ctx.dispatch_run.organisation_id,
@@ -599,9 +600,27 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           queued_at: Apiary.Dispatches.now()
         })
 
-      store!(%{ctx | dispatch_run: other}, "explainer", [
-        file("notes.md", "text/markdown", "x")
-      ])
+      registered =
+        Apiary.RunEventsFixtures.run_fixture(ctx.scope, %{
+          dispatch_run_id: other.id,
+          state: "completed",
+          started_at: DateTime.utc_now(),
+          exited_at: DateTime.utc_now()
+        })
+
+      assert Run.registered?(registered)
+      refute Run.cancel_requested?(registered)
+
+      other_version =
+        store!(%{ctx | dispatch_run: other}, "explainer", [
+          file("notes.md", "text/markdown", "x")
+        ])
+
+      # The index reads the mark from that registered run, not from a run with none.
+      assert %{run: %{run: %Run{id: registered_id}}} =
+               Apiary.Artifacts.get_version!(other_version.public_id)
+
+      assert registered_id == registered.id
 
       {:ok, _person} =
         Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
