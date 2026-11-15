@@ -71,7 +71,10 @@ defmodule ApiaryWeb.StagesLive.Editor do
         socket
         |> assign(selected: params["id"])
         |> edit_selected(&Draft.apply_form(&1, params), refresh)
-        |> assign(rounds_errors: rounds_errors(form), workflow_errors: workflow_errors(form))
+        |> assign(
+          rounds_errors: rounds_errors(form),
+          workflow_errors: workflow_errors(form, stage)
+        )
     end
   end
 
@@ -239,16 +242,45 @@ defmodule ApiaryWeb.StagesLive.Editor do
 
   # Each workflow field whose name breaks the pattern, by its entry's place: "0" for the
   # first entry, "1-0" for the first workflow of a loop in the second.
-  defp workflow_errors(%{"sequence" => %{} = sequence}) do
+  defp workflow_errors(%{"sequence" => %{} = sequence}, stage) do
     for {i, entry} <- sequence,
         is_map(entry),
         {place, name} <- workflow_names(i, entry),
         not Draft.workflow_name?(name),
+        not unnamed_kept?(stage, place, name),
         into: %{},
         do: {place, Words.workflow_refused()}
   end
 
-  defp workflow_errors(_params), do: %{}
+  defp workflow_errors(_params, _stage), do: %{}
+
+  # An empty name for an entry that has no workflow: the dropdown's empty option, which a
+  # change of another field sends. The entry stays without one, with no error.
+  defp unnamed_kept?(stage, place, ""), do: entry_workflow(stage, place) in [nil, ""]
+  defp unnamed_kept?(_stage, _place, _name), do: false
+
+  # The workflow of the entry at `place`, "0" or "1-0" in a loop; :none for no entry there.
+  defp entry_workflow(stage, place) do
+    entry =
+      case place |> String.split("-") |> Enum.map(&at/1) do
+        [i] when is_integer(i) ->
+          Enum.at(stage["sequence"], i)
+
+        [i, j] when is_integer(i) and is_integer(j) ->
+          case Enum.at(stage["sequence"], i) do
+            %{"loop" => %{"body" => body}} -> Enum.at(body, j)
+            _other -> nil
+          end
+
+        _other ->
+          nil
+      end
+
+    case entry do
+      %{"workflow" => workflow} -> workflow
+      _none -> :none
+    end
+  end
 
   defp workflow_names(i, %{"body" => %{} = body}),
     do: for({j, %{"workflow" => name}} <- body, do: {"#{i}-#{j}", name})
