@@ -626,6 +626,7 @@ defmodule ApiaryProWeb.RefusalsRows do
       operator: operator,
       operator_member: RefusalsCase.person(operator_owner, :member),
       operated: operated && operated.organisation,
+      operated_owner: operated && operated.owner,
       operated_admin: operated && RefusalsCase.person(operated.owner.scope, :admin),
       operated_member: operated && RefusalsCase.person(operated.owner.scope, :member),
       operated_workspace: operated && operated.workspace,
