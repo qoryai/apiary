@@ -72,9 +72,20 @@ defmodule Apiary.TestDatabase do
     kind, reason -> warn(database, {kind, reason})
   end
 
+  # The command is suggested only for a database that `to_drop/2` let drop: a name it keeps,
+  # such as apiary_test, never appears in it.
+  defp warn(nil, reason) do
+    IO.puts(
+      :stderr,
+      "warning: the drop of the test database at the end of the run failed before it " <>
+        "read the database's name: #{first_line(message(reason))}"
+    )
+
+    :error
+  end
+
   defp warn(database, reason) do
-    partition = System.get_env("MIX_TEST_PARTITION")
-    database = database || "apiary_test#{partition}"
+    partition = String.replace_prefix(database, "apiary_test", "")
 
     IO.puts(
       :stderr,

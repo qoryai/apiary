@@ -28,10 +28,12 @@
 #   - mix test runs with --max-cases 4, and ERL_FLAGS gets "+S 4" (4 schedulers) and
 #     "+Bi" (INT goes to the script, which stops mix test with TERM). The script refuses
 #     --max-cases and --listen-on-stdin.
-#   - A run with no test file is a full suite. Full suites run one at a time: a run waits
-#     until it can create the lock directory APIARY_TEST_LOCK, and removes it when it
-#     ends. The default is apiary-test-full-suite.lock in the Git directory that every
-#     worktree of the checkout shares. A lock whose process no longer runs is removed.
+#   - A run with no test file is a full suite. Full suites run one at a time on the
+#     machine: a run waits until it can create the lock directory APIARY_TEST_LOCK
+#     (default /tmp/apiary-test-full-suite.lock), and removes it when it ends. The lock's
+#     owner file lists the process ids of the script and of mix test, one per line. A lock
+#     whose processes no longer run is removed; a lock with an empty or missing owner file
+#     is being taken, and stays.
 #   - --repeat-until-failure takes test files and at most 20 repeats.
 #   - Run the script in the foreground, one run at a time.
 #
@@ -85,6 +87,10 @@ if [ -n "$repeat" ]; then
 	fi
 	case "$repeat" in
 	*[!0-9]*) ;;
+	*) repeat=${repeat#"${repeat%%[!0]*}"} repeat=${repeat:-0} ;;
+	esac
+	case "$repeat" in
+	*[!0-9]*) ;;
 	???*)
 		say "repeat at most 20 times: --repeat-until-failure is $repeat"
 		exit 2
@@ -98,15 +104,15 @@ if [ -n "$repeat" ]; then
 	esac
 fi
 
-# Computed before TMPDIR changes, so that every run finds the same lock.
-git_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || git_dir=""
-lock_dir=${APIARY_TEST_LOCK:-${git_dir:-${TMPDIR:-/tmp}}/apiary-test-full-suite.lock}
+lock_dir=${APIARY_TEST_LOCK:-/tmp/apiary-test-full-suite.lock}
+break_dir="$lock_dir.break"
 tmp_base=${TMPDIR:-/tmp}
 tmp_base=${tmp_base%/}
 
 database=""
 child=""
 lock=""
+breaking=0
 run_tmp=""
 
 # Drops this run's database if it is still there. A failed drop writes one warning line.
@@ -118,6 +124,9 @@ drop_database() {
 }
 
 cleanup() {
+	if [ "$breaking" -eq 1 ]; then
+		rmdir "$break_dir" 2>/dev/null
+	fi
 	drop_database
 	if [ -n "$run_tmp" ]; then
 		rm -rf "$run_tmp"
@@ -167,23 +176,53 @@ for name in $stale; do
 	fi
 done
 
-# The first line of the lock's owner file is the process id of the run that took it.
-lock_pid() { head -n 1 "$lock_dir/owner" 2>/dev/null; }
+# The process ids in the lock's owner file, on one line: the lines that are only digits.
+lock_pids() { grep -E '^[0-9]+$' "$lock_dir/owner" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+
+# Removes a lock that a run stopped by SIGKILL left. Returns 0 once it removed the lock, 1
+# while a process of the lock runs or its owner file is empty or missing (the lock is
+# being taken), and 2 while another run removes it. The directory $break_dir lets one run
+# at a time remove the lock: without it, a run could remove the lock that another run has
+# just taken. A $break_dir older than 60 seconds was left by a killed run, and is removed.
+break_stale_lock() {
+	local pids pid
+	pids=$(lock_pids)
+	[ -n "$pids" ] || return 1
+	for pid in $pids; do
+		kill -0 "$pid" 2>/dev/null && return 1
+	done
+	if ! mkdir "$break_dir" 2>/dev/null; then
+		if [ -n "$(find "$break_dir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+			rmdir "$break_dir" 2>/dev/null
+		fi
+		return 2
+	fi
+	breaking=1
+	local removed=1
+	if [ "$(lock_pids)" = "$pids" ]; then
+		say "removing the full-suite lock $lock_dir of processes $pids, which no longer run"
+		rm -f "$lock_dir/owner"
+		rmdir "$lock_dir" 2>/dev/null
+		removed=0
+	fi
+	rmdir "$break_dir" 2>/dev/null
+	breaking=0
+	return "$removed"
+}
 
 if [ "$targeted" -eq 0 ]; then
 	until mkdir "$lock_dir" 2>/dev/null; do
-		pid=$(lock_pid)
-		# A run stopped by SIGKILL leaves the lock: remove it once its process is gone. The
-		# second read skips a lock that another run took again in the meantime.
-		if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null && [ "$(lock_pid)" = "$pid" ]; then
-			say "removing the full-suite lock $lock_dir of process $pid, which no longer runs"
-			rm -f "$lock_dir/owner"
-			rmdir "$lock_dir" 2>/dev/null
-			continue
-		fi
-		say "waiting for the full-suite lock $lock_dir, taken by: $(tail -n +2 "$lock_dir/owner" 2>/dev/null)"
+		break_stale_lock
+		case $? in
+		0) continue ;;
+		2) wait_seconds=1 ;;
+		*)
+			wait_seconds=30
+			say "waiting for the full-suite lock $lock_dir, taken by: $(grep -vE '^[0-9]+$' "$lock_dir/owner" 2>/dev/null)"
+			;;
+		esac
 		# In the background, so that a signal reaches the trap at once.
-		sleep 30 &
+		sleep "$wait_seconds" &
 		wait $!
 	done
 	lock=$lock_dir
@@ -205,6 +244,10 @@ say "database $database"
 # mix test runs as a child the script waits for, so that a signal reaches the trap at once.
 mix test --max-cases 4 "$@" </dev/null &
 child=$!
+# The lock stays live while mix test runs, also if SIGKILL stops the script.
+if [ -n "$lock" ]; then
+	echo "$child" >>"$lock/owner"
+fi
 wait "$child"
 status=$?
 child=""
