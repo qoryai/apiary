@@ -882,9 +882,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   purge takes the workspace from every list.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- A stage's workflow, in Workspace settings › **Stages** and Instance settings ›
-  **Workspace types**, is a text field: it suggests the workflows the harness lists and
-  takes any name of lower-case letters, digits and hyphens that starts with a letter.
+- A stage's workflow, in Workspace settings › **Workflows** and Instance settings ›
+  **Workspace types**, is a dropdown of the workflows the harness lists, in alphabetical
+  order, and of the stage's saved name when the harness does not list it.
   Each workflow on the canvas and in the stage's panel shows a check, “A stage can run
   it”, when it is a workflow the harness listed at its last read, or a workflow saved
   on the **Workflow** page; else a cross, “Not in the harness”, with
