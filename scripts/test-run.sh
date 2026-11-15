@@ -228,7 +228,7 @@ break_stale_lock() {
 		else
 			# Put the process ids back, so the next check finds the same stale lock.
 			if [ -n "$pids" ]; then
-				printf '%s\n' $pids >"$lock_dir/owner" 2>/dev/null
+				{ printf '%s\n' $pids >"$lock_dir/owner"; } 2>/dev/null
 			fi
 			removed=4
 		fi
@@ -241,6 +241,10 @@ break_stale_lock() {
 if [ "$targeted" -eq 0 ]; then
 	said_fix=0
 	until mkdir "$lock_dir" 2>/dev/null; do
+		if [ ! -e "$lock_dir" ]; then
+			say "create the directory $(dirname "$lock_dir") or set APIARY_TEST_LOCK: the lock cannot be made"
+			exit 2
+		fi
 		break_stale_lock
 		case $? in
 		0) continue ;;
@@ -267,9 +271,14 @@ if [ "$targeted" -eq 0 ]; then
 		wait "$sleeper"
 		sleeper=""
 	done
+	if ! { printf '%s\nscripts/test-run.sh, pid %s, in %s, since %s\n' "$$" "$$" "$(pwd)" \
+		"$(date '+%Y-%m-%d %H:%M:%S')" >"$lock_dir/owner"; } 2>/dev/null; then
+		rm -f "$lock_dir/owner" 2>/dev/null
+		rmdir "$lock_dir" 2>/dev/null
+		say "make $lock_dir writable or set APIARY_TEST_LOCK: the lock's owner file cannot be written"
+		exit 2
+	fi
 	lock=$lock_dir
-	printf '%s\nscripts/test-run.sh, pid %s, in %s, since %s\n' "$$" "$$" "$(pwd)" \
-		"$(date '+%Y-%m-%d %H:%M:%S')" >"$lock/owner"
 fi
 
 partition="run$(date +%s)p$$"
