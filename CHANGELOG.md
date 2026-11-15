@@ -1978,6 +1978,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: managed_organisations -->
+- `workspace_operators` (20261115100000), a table of the operator of a workspace: at
+  most one per workspace, of the kind operator, never of the workspace's organisation.
+  No row is written, and no existing table changes. Rolling back drops it.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no
