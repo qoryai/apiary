@@ -12,6 +12,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A changes-requested verdict may list run_again points for the next round, and a
+  continuation's run configuration lists the paused runs it continues in `resume.runs`.
 - **Cancel run** on a running run's page and on its work item stops the run: the agent
   stops at its next report to Qory Apiary. What the run already sent stays, is marked as
   from a cancelled run, and does not count for its stage. In a software workspace, a

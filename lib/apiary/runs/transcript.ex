@@ -35,7 +35,8 @@ defmodule Apiary.Runs.Transcript do
   contains the run's id and the cause alone.
   """
 
-  import Ecto.Query, only: [from: 2, subquery: 1]
+  import Ecto.Query,
+    only: [from: 2, subquery: 1, recursive_ctes: 2, with_cte: 3, union_all: 2]
 
   require Logger
 
@@ -58,6 +59,8 @@ defmodule Apiary.Runs.Transcript do
   @members ~w(bytes offset path session session_id)
   # The chunks one read of the file takes.
   @batch 64
+  # The most paused runs `resume.runs` lists, the contract's bound.
+  @max_continued 256
 
   @typedoc "A chunk as `parse/1` reads it, its bytes decoded."
   @type chunk :: %{
@@ -315,10 +318,10 @@ defmodule Apiary.Runs.Transcript do
 
   @doc """
   The `resume` of the run of the queue `continuation` at its claim, which the claim
-  stores with the run (`runs.resume`): the paused run's id, and the session id and the
-  path of its last chunk, while that run is the paused run it continues and its
-  transcript there passes `check/2`; nil for any other run, so the continuation starts a
-  new session.
+  stores with the run (`runs.resume`): the paused run's id, the session id and the path
+  of its last chunk, and `runs` (`continued_runs/1`), while that run is the paused run it
+  continues and its transcript there passes `check/2`; nil for any other run, so the
+  continuation starts a new session.
   """
   @spec resume_at_claim(map) :: map | nil
   def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation)
@@ -327,13 +330,58 @@ defmodule Apiary.Runs.Transcript do
          %{session_id: session_id, path: path} <- last(paused.id),
          true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do
-      %{"run_id" => paused.node_run_id, "session_id" => session_id, "path" => path}
+      %{
+        "run_id" => paused.node_run_id,
+        "session_id" => session_id,
+        "path" => path,
+        "runs" => continued_runs(continuation)
+      }
     else
       _none -> nil
     end
   end
 
   def resume_at_claim(%DispatchRun{}), do: nil
+
+  # continued_runs/1 is the run ids of the runs of the queue that `continuation`
+  # continues, oldest first: the run its `continues_id` links to, the run that run's
+  # `continues_id` links to, and so on, of the same organisation and workspace, at most
+  # the newest 256 (`@max_continued`). The last is the run it continues; `continuation`
+  # itself is not among them. A run's `continues_id` is set when the run is queued, to a
+  # run queued before it, so the links form no loop.
+  @doc false
+  @spec continued_runs(DispatchRun.t()) :: [Ecto.UUID.t()]
+  def continued_runs(%DispatchRun{continues_id: paused_id} = continuation)
+      when is_binary(paused_id) do
+    first =
+      from(d in DispatchRun,
+        where: d.id == ^paused_id,
+        where: d.organisation_id == ^continuation.organisation_id,
+        where: d.workspace_id == ^continuation.workspace_id,
+        select: %{
+          run_id: d.run_id,
+          continues_id: d.continues_id,
+          depth: type(^1, :integer)
+        }
+      )
+
+    next =
+      from(d in DispatchRun,
+        join: c in "continued",
+        on: d.id == c.continues_id,
+        where: c.depth < @max_continued,
+        where: d.organisation_id == ^continuation.organisation_id,
+        where: d.workspace_id == ^continuation.workspace_id,
+        select: %{run_id: d.run_id, continues_id: d.continues_id, depth: c.depth + 1}
+      )
+
+    from(c in "continued", order_by: [desc: c.depth], select: type(c.run_id, Ecto.UUID))
+    |> recursive_ctes(true)
+    |> with_cte("continued", as: ^union_all(first, ^next))
+    |> Repo.all()
+  end
+
+  def continued_runs(%DispatchRun{}), do: []
 
   @doc """
   The `resume` member of the run configuration of `run`: the one its claim stored
