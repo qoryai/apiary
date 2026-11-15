@@ -1217,11 +1217,10 @@ address under `/machines`, with what followed `/nodes` and the query.
 - **A workspace's Machines and an organisation's gateways.** Machines lists the
   organisation's gateways under the heading Gateways, after the workspace's, each with
   "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway the workspace's default resolves to. A
-  gateway of another organisation that serves the workspace is no row of it. A machine's or pool's
-  Gateway select groups the gateways by level where there is more than one, "This
+  machine's or pool's Gateway select groups the gateways by level where there is more than one, "This
   workspace" first, then its organisation, then the instance, in the order their
-  defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
-  whose default it is. Where a machine or pool uses a gateway of another organisation, its About,
+  defaults resolve (`Apiary.Gateways.levels/1`), and its hint shows whose default it is:
+  the organisation's name, or Qory Apiary for the instance's. Where a machine or pool uses a gateway of another organisation, its About,
   its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
   to its page under that organisation's Gateways only where the reader reads it there
   (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the machines is the core's sentence unless
@@ -1987,8 +1986,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   model key reached its limit or its Use up to percentage. It continues in run 15.", or
   "Paused: a model key reached its limit or its Use up to percentage." where no run
   continues it. A provider of another organisation than the run's, left from when an
-  operator managed whole organisations, is not named: "Paused: every model key is in cooldown until
-  Fri 14:00. It continues in run 15." while that time is still to come, else the lines
+  operator managed whole organisations, is not named: "Paused: every model key is in
+  cooldown until Fri 14:00. It continues in run 15." while that time is still to come, else the lines
   of a deleted provider. On the work item's page, the run's row on Explore and the stage's round
   show the same line in place of the run's state, the number a link where the reader
   may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
@@ -2148,8 +2147,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      settings › Machine types, or the admin of build-pool adds an offer that fits." with
      the first such pool, "Qory Pool" for the instance's pool. Anyone else reads, in
      plain text, "Contact support with run rn_…, or ask the admin of build-pool to add
-     an offer that fits." where the first such pool is a pool of the workspace or of
-     another organisation, and "Contact support with run rn_…." where it is the
+     an offer that fits." where the first such pool is a pool of the workspace, and
+     "Contact support with run rn_…." where it is the
      instance's pool, whose admins are the instance admins. The header has the cause
      too, after "Why it waits". "Waiting: no pool can start machine type large", under
      the fold, where the run has no spec.
@@ -2162,8 +2161,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
      first, and when, the time as a key's row on Model providers shows it. For a
      provider of another organisation than the run's, left from when an operator
-     managed whole organisations, the line has no name: "Waiting for a model key: every model key is
-     in cooldown until 14:00." Nothing runs when the cooldown ends: the first claim
+     managed whole organisations, the line has no name: "Waiting for a model key: every
+     model key is in cooldown until 14:00." Nothing runs when the cooldown ends: the first claim
      after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with

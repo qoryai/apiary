@@ -520,8 +520,8 @@ deletion, and its keys and codes, by owners and admins of the organisation. An
 enrolment code's maker is read again at the organisation, without a workspace, and a key
 of such a gateway is asked at its organisation (`Apiary.Accounts.Scope.key_place/1`).
 Everyone in the organisation reads its gateways. While its organisation is out of use,
-such a gateway keeps its keys, which are verified for the runs of other organisations it
-serves (`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
+such a gateway keeps its keys, which are verified for the runs it serves
+(`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
 enrolment code of an organisation out of use is found by none. A workspace's gateway is
 held to its organisation's use as any node is.
 

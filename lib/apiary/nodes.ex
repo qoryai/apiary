@@ -1160,7 +1160,7 @@ defmodule Apiary.Nodes do
 
   @doc """
   activity/3 is what each of `nodes`, nodes the caller read under the scope (of its
-  workspace, or gateways of its organisation or of one that serves it), is doing at `now`
+  workspace, or gateways of its organisation), is doing at `now`
   (`t:activity/0`), by node id: its instances running now, those with a run alive by the
   lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; the instance
   seen last; and when one of its keys was last used, which still says the node was seen

@@ -23,8 +23,8 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   The world adds to the core's: the instance organisation with an instance admin, an admin
   and a member; an operator made one by that instance admin, with an admin, a member and an
-  organisation whose workspace it operates, and that organisation's owner, an admin, a
-  member and a member added to no workspace of it.
+  organisation whose workspace it operates, and that organisation's owner, an admin and a
+  member.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -658,7 +658,6 @@ defmodule ApiaryProWeb.RefusalsRows do
   def value(:operator, world), do: world.operator.slug
   def value(:operated, world), do: world.operated.slug
   def value(:operated_ws, world), do: world.operated_workspace.slug
-  def value(:operated_name, world), do: world.operated.name
   def value(:instance_org_id, world), do: {:id, world.instance_organisation.id}
   def value(:operated_id, world), do: {:id, world.operated.id}
   def value(:operator_id, world), do: {:id, world.operator.id}
@@ -695,16 +694,6 @@ defmodule ApiaryProWeb.RefusalsRows do
         arbitrated: true,
         reason: "Seeded for the refusal table."
       })
-    end
-
-    :ok
-  end
-
-  # The operated organisation suspended by an instance admin.
-  def before_page(:operated_suspended, world) do
-    if is_nil(ApiaryPro.Tenants.suspended_at(Repo.reload!(world.operated))) do
-      admin = scope_in(world.instance_admin.user, world.instance_organisation)
-      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(admin, world.operated.id)
     end
 
     :ok

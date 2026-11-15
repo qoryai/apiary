@@ -290,9 +290,8 @@ defmodule Apiary.Gateways do
 
   @doc """
   default_gateway_for/1 is the default gateway of `workspace`, most specific level first
-  (`levels/1`): the workspace's default, else its organisation's, else that of each
-  organisation that serves it, in turn, else the instance's gateway. Nil when no level has
-  one.
+  (`levels/1`): the workspace's default, else its organisation's, else the instance's
+  gateway. Nil when no level has one.
   """
   @spec default_gateway_for(%Workspace{}) :: Node.t() | nil
   def default_gateway_for(%Workspace{} = workspace), do: default_for(workspace, levels(workspace))

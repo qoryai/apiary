@@ -10,8 +10,8 @@ defmodule ApiaryWeb.PauseWords do
   # with no such time, or with no run that continues it, the line shows that a key reached
   # its limit or its Use up to percentage. A provider deleted since, or one of another
   # organisation than the run's, left from when an operator managed whole organisations,
-  # has no name, and the line is about a model key. The provider's name came from a person and is shown
-  # as a text an external system sent.
+  # has no name, and the line is about a model key. The provider's name came from a
+  # person and is shown as a text an external system sent.
 
   use Gettext, backend: ApiaryWeb.Gettext
 
