@@ -30,9 +30,9 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   @terminal :"observability.terminal"
   @description "The run's log: the Terminal tab, the last lines on the Runs list, Raw log and Download log. Runs still record it while it is hidden."
 
-  # An operator shown Runs, the security policy and the run's Terminal; its client, whose
-  # workspace has a node, shown what the operator is, and a run of that node with a line
-  # in its terminal, as the node posted it.
+  # An operator shown Runs, the security policy and the run's Terminal; an organisation
+  # whose workspace Main it operates, which follows the instance, with a node in Main, and
+  # a run of that node with a line in its terminal, as the node posted it.
   defp chain do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
@@ -80,9 +80,10 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   defp run_path(ctx, tail \\ ""),
     do: ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}/runs/#{ctx.run}" <> tail
 
+  # The instance admin leaves the organisation Runs alone, without the run's Terminal.
   defp hide_from_client(ctx) do
     assert {:ok, _} =
-             Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, ["observability"])
+             Grants.set_organisation(ctx.admin, ctx.client.organisation.id, ["observability"])
   end
 
   defp events_of(run), do: Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count)
@@ -154,14 +155,14 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       {:ok, _run} = Projector.project(ctx.run)
 
       # The operator's people, in the workspace the operator operates, see what the
-      # client sees: no log.
+      # organisation's people see: no log.
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
       refute has_element?(lv, "#run-tab-terminal")
       assert get(conn, run_path(ctx, "/log") <> "?stream=terminal").status == 404
     end
 
-    test "with the switch off, the client's row hides nothing", ctx do
+    test "with the switch off, the organisation's row hides nothing", ctx do
       Flags.put_feature_visibility(false)
       conn = log_in_user(build_conn(), ctx.client.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
@@ -175,7 +176,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   describe "an open Terminal tab" do
     setup do: chain()
 
-    test "leaves for the Timeline once the operator hides the Terminal from the client", ctx do
+    test "leaves for the Timeline once the instance hides the Terminal from the organisation",
+         ctx do
       conn = log_in_user(build_conn(), ctx.client.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
@@ -188,16 +190,13 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       assert has_element?(lv, "#run-tab-timeline[aria-current]")
     end
 
-    test "leaves for the operator's people once the instance hides it from the operator", ctx do
+    test "leaves for the operator's people there once the instance hides it from the organisation",
+         ctx do
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
 
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin, ctx.operator.organisation.id, [
-                 "observability",
-                 "security"
-               ])
+      hide_from_client(ctx)
 
       assert_patch(lv, run_path(ctx))
       refute has_element?(lv, "#run-tab-terminal")

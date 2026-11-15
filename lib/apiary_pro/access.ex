@@ -35,14 +35,6 @@ defmodule ApiaryPro.Access do
       "accept the ownership the instance admins offered you, an admin of the organisation: the offer allows it, and no role",
       asked_of: :organisation
     ),
-    # An operator's grant of features to a client.
-    Action.new(
-      :"client.grant_features",
-      "show or hide features for a client of the operator, of those the operator is shown",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
     # The instance: the instance organisation's owners, on Instance settings' pages.
     Action.new(
       :"instance.create_organisation",

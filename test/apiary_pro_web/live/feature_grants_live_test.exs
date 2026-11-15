@@ -32,18 +32,19 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
     end
   end
 
-  describe "a client's features, granted by its operator" do
+  describe "a feature taken away from an organisation, for the people of its operator" do
     setup %{conn: conn} do
+      %{instance_scope: admin} = suite_instance_admin()
       operator = operator_fixture()
       client = client_fixture(operator.scope, "Acme")
-      %{conn: log_in_user(conn, operator.user), operator: operator, client: client}
+      %{conn: log_in_user(conn, operator.user), admin: admin, client: client}
     end
 
-    test "a feature taken away is absent in the client: its page answers not found", ctx do
-      %{operator: operator, client: client} = ctx
+    test "is absent in the operated workspace: its page answers not found", ctx do
+      %{admin: admin, client: client} = ctx
 
       {:ok, _} =
-        ApiaryPro.Grants.set_client(operator.scope, client.organisation.id, [
+        ApiaryPro.Grants.set_organisation(admin, client.organisation.id, [
           "observability"
         ])
 
@@ -52,14 +53,14 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       end
     end
 
-    test "a client's page open on a feature taken away meanwhile says so and leaves", ctx do
-      %{operator: operator, client: client} = ctx
+    test "a page open on it meanwhile says so and leaves", ctx do
+      %{admin: admin, client: client} = ctx
 
       {:ok, policy, _html} =
         live(ctx.conn, ~p"/#{client.organisation}/#{client.workspace}/policy")
 
       {:ok, _} =
-        ApiaryPro.Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+        ApiaryPro.Grants.set_organisation(admin, client.organisation.id, ["observability"])
 
       assert {path, flash} = assert_redirect(policy)
       assert path == ~p"/#{client.organisation}"
@@ -175,7 +176,8 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       assert built_of(organisation) == [:observability, :security]
     end
 
-    test "a client offers no Features button: its operator grants it", ctx do
+    test "an organisation an operator operates in offers a Features button; the instance organisation none",
+         ctx do
       operator = operator_fixture()
       client = client_fixture(operator.scope)
       here = ctx.admin.instance_scope.organisation
@@ -183,7 +185,7 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations")
       render_async(lv)
       assert has_element?(lv, "#organisation-#{operator.organisation.id}-features-button")
-      refute has_element?(lv, "#organisation-#{client.organisation.id}-features-button")
+      assert has_element?(lv, "#organisation-#{client.organisation.id}-features-button")
       refute has_element?(lv, "#organisation-#{here.id}-features-button")
     end
 
@@ -215,7 +217,7 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       refute has_element?(lv, "#workspace-#{workspace.id}-features-button")
       refute has_element?(lv, "#workspace-#{platform.id}-features-button")
 
-      # No route has its address any more: the router's own answer, not found.
+      # No route has its address any more: the router answers not found.
       assert conn
              |> get("/#{organisation.slug}/settings/workspaces/#{workspace.id}/features")
              |> html_response(404)

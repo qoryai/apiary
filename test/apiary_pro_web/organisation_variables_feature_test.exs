@@ -4,9 +4,9 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
   core's `secrets` (`ApiaryPro.Features`). Where `secrets` is off, as a `QORY_FEATURES`
   list without it leaves it, they are absent: their pages answer as paths that do not
   exist, and the settings, the palette and the Audit log's Action filter leave them out.
-  A grant of them kept from before gives nothing there. On, each of them has them, and a
-  new client of the instance organisation, which has every feature, is granted them as its
-  operator has them.
+  A grant of them kept from before gives nothing there. On, each of them has them, and an
+  organisation whose workspace the instance organisation operates is shown them, as the
+  instance has them, with no grant written.
   """
   # Not async: the tests switch the instance's features, which are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -244,20 +244,15 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
       assert grant_change(["observability", "secrets"], ["observability"]) == "Runs → Runs"
     end
 
-    test "a new client of the instance organisation is granted them, as its operator has them" do
+    test "an organisation the instance organisation operates in is shown them, with no grant" do
       admin = instance_admin_fixture()
       instance_scope = make_instance_organisation_an_operator(admin)
       assert :organisation_variables in ApiaryPro.Features.of(instance_scope.organisation)
 
       client = client_fixture(instance_scope, "Acme")
 
-      assert grants(client.organisation) ==
-               Enum.sort([
-                 {:observability, true},
-                 {:security, true},
-                 {:organisation_policy, true},
-                 {:organisation_variables, true}
-               ])
+      assert :organisation_variables in ApiaryPro.Features.of(client.organisation)
+      assert grants(client.organisation) == []
     end
   end
 end

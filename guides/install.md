@@ -534,8 +534,8 @@ Features: skipped the saved feature <name>, which this release does not have.
   `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
-- `managed_organisations`: operators and their clients, and what an operator does for
-  them. Needs `observability`.
+- `managed_organisations`: operators, and the workspaces of other organisations they
+  operate. Needs `observability`.
 <!-- /feature -->
 <!-- feature: organisation_policy -->
 - `organisation_policy`: the organisation's policy above its workspaces' security policy:
@@ -547,9 +547,8 @@ Features: skipped the saved feature <name>, which this release does not have.
   workspace's variables. Needs `security` and `secrets`.
 <!-- /feature -->
 - `feature_visibility`: what a person is shown depends on who they are, not only on the
-  organisation they are in. It can also show more than the organisation has: with
-  `operator_infrastructure` on, an operator's people see the operator's features in its
-  clients, and an instance admin sees every feature. Off by default. Needs
+  organisation they are in. It can also show more than the organisation has: an instance
+  admin sees every feature. Off by default. Needs
   `observability`.
 
 A feature that is off is absent, not disabled: its pages answer not found, the console and
@@ -563,8 +562,8 @@ taken away is hidden from the organisation's people; its machines and runs keep 
 feature the instance has. The instance owner, the organisation created with the set-up link
 ([Sign-up and invitations](#sign-up-and-invitations)), has every feature the instance has.
 <!-- feature: managed_organisations -->
-Of the features that can be granted, an operator other than the instance owner, and every
-client, have only those granted to them ([Operators and their clients](operators.md)).
+Of the features that can be granted, an operator other than the instance owner has only
+those granted to it ([Operators and their clients](operators.md)).
 <!-- /feature -->
 
 An instance with the record alone:

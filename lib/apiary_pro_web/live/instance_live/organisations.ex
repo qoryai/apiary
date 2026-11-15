@@ -25,9 +25,8 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   - **Transfer ownership**, a page: the arbiter's offer of an organisation's ownership to
     one of its admins, with a reason, for an organisation whose owners are all suspended
     (`ApiaryPro.Transfers.arbitrate/4`);
-  - **Features**, a page: what an operator is granted, opt-in, or what an organisation with
-    no operator keeps of the instance's, opt-out (`ApiaryPro.Grants.set_organisation/3`);
-    a client's are its operator's to grant.
+  - **Features**, a page: what an operator is granted, opt-in, or what any other
+    organisation keeps of the instance's, opt-out (`ApiaryPro.Grants.set_organisation/3`).
 
   Of them only the change of kind is offered for the instance organisation, which may be
   of either kind: it is never purged or suspended, is transferred to no one and has every
@@ -491,7 +490,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   defp features_sentence(false, false),
     do:
       gettext(
-        "An organisation with no operator has what this instance has, but for what you take away here. A feature a new release adds reaches it."
+        "An organisation has what this instance has, but for what you take away here. A feature a new release adds reaches it."
       )
 
   defp features_sentence(true, true),
@@ -506,12 +505,10 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
         "Its people see every feature this instance has, but those you hide here. Hidden features still work for its machines and runs. A feature a new release adds is shown to it."
       )
 
-  # A client's features are its operator's to choose.
-  defp client_features_sentence do
-    if Flags.feature_visibility?(),
-      do: gettext("A client's operator chooses which features it is shown."),
-      else: gettext("A client's features are its operator's to grant.")
-  end
+  # Why the Features page offers no boxes: the instance organisation has every feature the
+  # instance has, and a deleted organisation is changed no more.
+  defp no_features_sentence,
+    do: gettext("This organisation's features can't be changed.")
 
   defp needs_runs do
     if Flags.feature_visibility?(),
@@ -655,7 +652,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
 
     ~H"""
     <p :if={!@may_grant} id="organisation-features-none" class="text-muted">
-      {client_features_sentence()}
+      {no_features_sentence()}
     </p>
     <.form
       :if={@may_grant}
@@ -1106,13 +1103,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
            errors: [needs_runs()]
          })}
 
-      {:error, :client} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, client_features_sentence())
-         |> load()
-         |> back()}
-
       {:error, :busy} ->
         {:noreply,
          socket
@@ -1178,12 +1168,10 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     Enum.map(rows, &Map.put(&1, :features, Map.fetch!(features, &1.organisation.id)))
   end
 
-  # Features are granted to an operator and taken away from an organisation with no
-  # operator, in use; a client's are its operator's, and the instance organisation has
-  # all.
+  # Features are granted to an operator and taken away from any other organisation, in
+  # use; the instance organisation has all.
   defp may_grant?(scope, %{organisation: organisation} = row) do
-    in_use?(row) and not Tenants.client?(organisation) and
-      Access.can?(scope, :"instance.grant_features", organisation)
+    in_use?(row) and Access.can?(scope, :"instance.grant_features", organisation)
   end
 
   # The arbiter's choice of admin and reason, and what was refused of them. A radio group

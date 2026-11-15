@@ -20,12 +20,8 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
       "Its people see only the features you show here. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
     },
     organisation: {
-      "An organisation with no operator has what this instance has, but for what you take away here. A feature a new release adds reaches it.",
+      "An organisation has what this instance has, but for what you take away here. A feature a new release adds reaches it.",
       "Its people see every feature this instance has, but those you hide here. Hidden features still work for its machines and runs. A feature a new release adds is shown to it."
-    },
-    client_on_instance: {
-      "A client's features are its operator's to grant.",
-      "A client's operator chooses which features it is shown."
     },
     needs_runs: {
       "Every other feature needs Runs: keep it, or take them all away.",
@@ -74,16 +70,37 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
         refute has_element?(lv, "#organisation-page", not_said)
       end
 
-      test "Instance › Organisations › Features says who chooses what a client is shown", ctx do
+      test "Instance › Organisations › Features says what an organisation an operator operates in is shown",
+           ctx do
         operator = operator_fixture()
         client = client_fixture(operator.scope)
-        {said, _not_said} = words(:client_on_instance, @on)
+        {said, not_said} = words(:organisation, @on)
 
         {:ok, lv, _html} =
           live(ctx.conn, ~p"/instance/organisations/#{client.organisation.id}/features")
 
         render_async(lv)
-        assert has_element?(lv, "#organisation-features-none", said)
+        assert has_element?(lv, "#organisation-page", said)
+        refute has_element?(lv, "#organisation-page", not_said)
+        assert has_element?(lv, "#organisation-features-form")
+        refute has_element?(lv, "#organisation-features-none")
+      end
+
+      test "Instance › Organisations › Features says the instance organisation's features can't be changed",
+           ctx do
+        here = ctx.admin.instance_scope.organisation
+
+        {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations/#{here.id}/features")
+
+        render_async(lv)
+
+        assert has_element?(
+                 lv,
+                 "#organisation-features-none",
+                 "This organisation's features can't be changed."
+               )
+
+        refute has_element?(lv, "#organisation-features-form")
       end
 
       test "Instance › Organisations › Features says why a save without Runs stays", ctx do

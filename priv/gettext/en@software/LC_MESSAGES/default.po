@@ -15557,7 +15557,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
-msgid "Operators and their clients, and what an operator does for them."
+msgid "Operators, and the workspaces of other organisations they operate."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

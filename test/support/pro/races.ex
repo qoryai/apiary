@@ -42,7 +42,6 @@ defmodule ApiaryPro.Races do
       )
 
     client = ApiaryPro.Tenants.put(Repo.get!(Organisation, organisation.id))
-    {:ok, _features} = ApiaryPro.Grants.written_out(client, {:client, operator})
 
     if ApiaryPro.Flags.operator_infrastructure?() do
       {1, _} =

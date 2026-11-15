@@ -177,8 +177,8 @@ is not shown to its people, in the organisation and its workspaces, and still wo
 its machines: its runs are recorded and served their policy. The documentation at `/docs`,
 the sign-in page and the landing page follow the instance only.
 <!-- feature: managed_organisations -->
-Of the features a grant can name, an operator other than the instance owner, and every
-client, have only what is granted to them ([Operators and their clients](operators.md)).
+Of the features a grant can name, an operator other than the instance owner has only
+what is granted to it ([Operators and their clients](operators.md)).
 <!-- /feature -->
 <!-- feature: organisation_policy -->
 `organisation_policy`, the organisation's policy above its workspaces'

@@ -11,7 +11,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Features, Nodes, Organisations, Repo}
-  alias ApiaryPro.{Flags, Grants, Reach}
+  alias ApiaryPro.{Flags, Reach}
 
   @moduletag with_features: Features.all()
 
@@ -43,12 +43,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query(".q-cut, .q-faint")
     |> Enum.map_join(" ", &(&1 |> LazyHTML.text() |> String.trim()))
-  end
-
-  # Every entry in `organisation` that names an operator beside its person.
-  defp tagged(organisation) do
-    Repo.all(from e in Apiary.Audit.Entry, where: e.organisation_id == ^organisation.id)
-    |> Enum.filter(&Map.has_key?(&1.details || %{}, "via_operator_id"))
   end
 
   # `user` in the operator at `operator_level` and in the client at `client_level`, joined
@@ -105,19 +99,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   end
 
   describe "while the operator owns its clients, from the operator's pages" do
-    test "a client's features granted", ctx do
-      {:ok, _} =
-        Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [:observability])
-
-      made = entry(ctx.client.organisation, :"client.grant_features")
-      assert made.details["via_operator_id"] == ctx.operator.organisation.id
-
-      assert actor(ctx.client.owner.user, ctx.client.organisation, made) ==
-               "#{ctx.operator.user.email} of #{ctx.operator_name}"
-
-      assert tagged(ctx.operator.organisation) == []
-    end
-
     test "nobody without a level in the operator, and nobody in the client's scope", ctx do
       stranger = Apiary.OrganisationsFixtures.sign_up_fixture()
       client = ctx.client.organisation
@@ -211,21 +192,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       Flags.put_operator_infrastructure(false)
 
       assert actor(ctx.client.owner.user, ctx.client.organisation, made) ==
-               ctx.operator.user.email
-    end
-
-    test "an operator's entries in a client name nobody beside its person", ctx do
-      Flags.put_operator_infrastructure(false)
-
-      {:ok, _} =
-        Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [:observability])
-
-      granted = entry(ctx.client.organisation, :"client.grant_features")
-
-      assert tagged(ctx.client.organisation) == []
-      assert tagged(ctx.operator.organisation) == []
-
-      assert actor(ctx.client.owner.user, ctx.client.organisation, granted) ==
                ctx.operator.user.email
     end
 

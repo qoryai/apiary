@@ -283,7 +283,7 @@ edition's (`ApiaryPro.Races`) follows the core's rules for races: outside the sa
 **The feature sets.** A test reads the instance's features when it calls the core's reads
 (`Apiary.Features.on?/1`, `enabled/0`, `visible?/2` and `hidden_of/1`,
 `Apiary.TestSetup.off/0`) or the edition's (`ApiaryPro.Features.of/1`,
-`of_organisation/1`, `of_all/1` and `hidden/1`, and `ApiaryPro.Grants.offered/1` and
+`of_all/1` and `hidden/1`, and `ApiaryPro.Grants.offered/1` and
 `shown/1`). Such a test takes the tag `:feature_sets`, as the core's section Tests says.
 `test/apiary/feature_sets_tag_test.exs` is the guard for both: it runs
 `Apiary.FeatureSetsScan` over `test/`, with the edition's reads among the calls it looks

@@ -24,16 +24,12 @@ defmodule ApiaryProWeb.FeatureComponents do
   @spec label(Features.feature()) :: String.t() | nil
   def label(:observability), do: gettext("Runs")
   def label(:security), do: gettext("Security policy")
-  def label(:managed_organisations), do: gettext("Clients")
+  def label(:managed_organisations), do: gettext("Operators")
   def label(:organisation_policy), do: gettext("Organisation policy")
   def label(:organisation_variables), do: gettext("Organisation secrets and variables")
   # The part of Runs a page shows or hides while features are shown by who asks
   # (`ApiaryPro.Grants.shown/1`), indented under Runs.
   def label(:"observability.terminal"), do: gettext("Terminal tab")
-  # The nodes, a part of no feature, which a client's page shows or hides while the
-  # operator owns its clients and features are shown by who asks
-  # (`ApiaryPro.Features.client_parts/1`), after the features.
-  def label(:nodes), do: gettext("Machines and access keys")
   def label(_feature), do: nil
 
   @doc "One sentence on what a feature covers, for beside its checkbox."
@@ -48,7 +44,7 @@ defmodule ApiaryProWeb.FeatureComponents do
     do: gettext("The security policy's pages. Runs are served their policy either way.")
 
   def description(:managed_organisations),
-    do: gettext("Running organisations for clients, as an operator.")
+    do: gettext("Operators, and the workspaces of other organisations they operate.")
 
   def description(:organisation_policy),
     do:
@@ -82,10 +78,6 @@ defmodule ApiaryProWeb.FeatureComponents do
   attr :offered, :list, required: true, doc: "the features the form may name"
   attr :has, :list, required: true, doc: "the features it has now"
   attr :focus, :boolean, default: false, doc: "focus the first checkbox once it is mounted"
-
-  attr :operator, :string,
-    default: nil,
-    doc: "the name of the client's operator, which a client's page passes"
 
   attr :errors, :list,
     default: [],
@@ -122,15 +114,15 @@ defmodule ApiaryProWeb.FeatureComponents do
           type="checkbox"
           label={label(feature)}
           checked={feature in @has}
-          aria-describedby={describe(feature, @operator) && "#{@id}-#{dom_id(feature)}-description"}
+          aria-describedby={description(feature) && "#{@id}-#{dom_id(feature)}-description"}
           phx-mounted={@focus && i == 0 && JS.focus()}
         />
         <p
-          :if={describe(feature, @operator)}
+          :if={description(feature)}
           id={"#{@id}-#{dom_id(feature)}-description"}
           class="pl-6 text-[12.5px]/[18px] text-muted"
         >
-          {describe(feature, @operator)}
+          {description(feature)}
         </p>
       </div>
       <p
@@ -146,37 +138,22 @@ defmodule ApiaryProWeb.FeatureComponents do
   end
 
   # The features offered that have a name, each followed by the parts of it offered, which
-  # a page offers only while features are shown by who asks (`ApiaryPro.Grants.shown/1`);
-  # then the parts of no feature offered, the nodes, which only a client's page offers.
+  # a page offers only while features are shown by who asks (`ApiaryPro.Grants.shown/1`).
   defp in_order(offered) do
-    of_features =
-      for feature <- offered,
-          not part?(feature),
-          label(feature),
-          name <- [feature | Enum.filter(offered, &(part?(&1) and part_of?(&1, feature)))],
-          label(name),
-          do: name
-
-    of_features ++ Enum.filter(offered, &(part?(&1) and is_nil(Features.feature_of(&1))))
+    for feature <- offered,
+        not part?(feature),
+        label(feature),
+        name <- [feature | Enum.filter(offered, &(part?(&1) and part_of?(&1, feature)))],
+        label(name),
+        do: name
   end
 
   defp part?(name), do: name in Features.parts()
 
   defp part_of?(part, feature), do: Features.feature_of(part) == feature
 
-  # A part of a feature is indented under it; a part of no feature, the nodes, is not.
-  defp part_of_feature?(name), do: part?(name) and not is_nil(Features.feature_of(name))
-
-  # The sentence beside a box: the nodes' names the client's operator, which runs them.
-  defp describe(:nodes, operator) when is_binary(operator),
-    do:
-      gettext(
-        "The machines, pools, access keys and gateways %{operator} runs in this client's workspaces, which its people read only.",
-        operator: operator
-      )
-
-  defp describe(:nodes, _operator), do: nil
-  defp describe(feature, _operator), do: description(feature)
+  # A part of a feature is indented under it.
+  defp part_of_feature?(name), do: part?(name)
 
   # A name as an id takes it: a part's dot, `observability.terminal`, is a dash there, so
   # a selector reads it as one name.

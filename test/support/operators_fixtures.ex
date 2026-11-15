@@ -74,8 +74,7 @@ defmodule ApiaryPro.OperatorsFixtures do
   tenant row, since no code in the product makes a client any more. Its first person signs
   up and creates it with its first workspace, Main, which the operator operates
   (`operate_fixture/2`); while `ApiaryPro.Flags.operator_infrastructure?/0` is on, that
-  person is its admin, as the operator's invitation made them. The client is granted what
-  its operator has (`ApiaryPro.Grants.written_out/3`). The client, its workspace, `scope`,
+  person is its admin, as the operator's invitation made them. The client, its workspace, `scope`,
   the operator's person's scope in it, reached through the operator, and `owner`, what
   `sign_up_fixture/1` returns for the first person, `scope` theirs in Main.
   """
@@ -92,7 +91,6 @@ defmodule ApiaryPro.OperatorsFixtures do
       )
 
     client = ApiaryPro.Tenants.put(Repo.get!(Organisation, organisation.id))
-    {:ok, _features} = ApiaryPro.Grants.written_out(client, {:client, operator})
 
     if ApiaryPro.Flags.operator_infrastructure?() do
       {1, _} =

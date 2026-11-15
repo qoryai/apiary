@@ -342,16 +342,6 @@ msgstr ""
 msgid "A client of an operator cannot be made an operator."
 msgstr ""
 
-#: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "A client's features are its operator's to grant."
-msgstr ""
-
-#: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "A client's operator chooses which features it is shown."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "A deny here holds in every workspace and target, in either mode; an allow reaches every workspace, and a workspace or a target may still deny it. Each workspace whose policy a change changes gets a new version of it."
@@ -636,13 +626,13 @@ msgid "An operator with clients is not purged: each client is deleted first."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "An organisation with an operated workspace cannot be made an operator."
+#, elixir-autogen, elixir-format, fuzzy
+msgid "An organisation has what this instance has, but for what you take away here. A feature a new release adds reaches it."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
-msgid "An organisation with no operator has what this instance has, but for what you take away here. A feature a new release adds reaches it."
+msgid "An organisation with an operated workspace cannot be made an operator."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
@@ -752,16 +742,6 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
-msgid "Changed the features its operator grants it"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Changed the features its operator shows it"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
 msgid "Changed the features the organisation is shown"
 msgstr ""
 
@@ -821,21 +801,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "Clear the search"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Client's features changed"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Client's shown features changed"
-msgstr ""
-
-#: lib/apiary_pro_web/components/feature_components.ex
-#, elixir-autogen, elixir-format
-msgid "Clients"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -1410,11 +1375,6 @@ msgstr ""
 msgid "Lowercase letters, digits, ., _ and -."
 msgstr ""
 
-#: lib/apiary_pro_web/components/feature_components.ex
-#, elixir-autogen, elixir-format
-msgid "Machines and access keys"
-msgstr ""
-
 #: lib/apiary_pro_web/edition.ex
 #, elixir-autogen, elixir-format
 msgid "Machines and pools in %{organisation}'s workspaces can use the gateways of %{operator}, its operator, whose owners and admins also add gateways here."
@@ -1875,10 +1835,16 @@ msgid "Operator created"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
+#: lib/apiary_pro_web/components/feature_components.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
 #, elixir-autogen, elixir-format
 msgid "Operators"
+msgstr ""
+
+#: lib/apiary_pro_web/components/feature_components.ex
+#, elixir-autogen, elixir-format
+msgid "Operators, and the workspaces of other organisations they operate."
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -2156,11 +2122,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Rules every workspace of %{name} follows. A workspace or a target may narrow them, never widen them."
 msgstr "Rules every workspace of %{name} follows. A workspace or a repository may narrow them, never widen them."
-
-#: lib/apiary_pro_web/components/feature_components.ex
-#, elixir-autogen, elixir-format
-msgid "Running organisations for clients, as an operator."
-msgstr ""
 
 #: lib/apiary_pro_web/components/feature_components.ex
 #, elixir-autogen, elixir-format
@@ -2469,11 +2430,6 @@ msgstr ""
 msgid "The link confirms that the address is yours and signs you in."
 msgstr ""
 
-#: lib/apiary_pro_web/components/feature_components.ex
-#, elixir-autogen, elixir-format
-msgid "The machines, pools, access keys and gateways %{operator} runs in this client's workspaces, which its people read only."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "The mode is set per workspace now."
@@ -2594,6 +2550,11 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "There is nothing about the ownership of %{name} for you to do here."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format, fuzzy
+msgid "This organisation's features can't be changed."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex

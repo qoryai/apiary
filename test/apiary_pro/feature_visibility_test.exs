@@ -32,9 +32,10 @@ defmodule ApiaryPro.FeatureVisibilityTest do
     fun.()
   end
 
-  # An operator shown Runs and the security policy, and not the organisation's policy; its
-  # client shown Runs alone, so the client is not shown the security policy, and not the
-  # organisation's policy, which its operator is not shown either.
+  # An operator shown Runs and the security policy, and not the organisation's policy; an
+  # organisation whose workspace Main it operates, which an instance admin left Runs alone,
+  # so it is not shown the security policy, the organisation's policy or
+  # `managed_organisations`.
   defp chain do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
@@ -46,7 +47,7 @@ defmodule ApiaryPro.FeatureVisibilityTest do
              ])
 
     client = client_fixture(operator.scope, "Acme")
-    assert {:ok, _} = Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+    assert {:ok, _} = Grants.set_organisation(admin, client.organisation.id, ["observability"])
 
     %{admin: admin, operator: operator, client: client}
   end
@@ -100,14 +101,12 @@ defmodule ApiaryPro.FeatureVisibilityTest do
         end)
       end
 
-      test "a client's people are not shown what the client is not, nor what its operator is not (flag #{@on})" do
+      test "the people of an organisation an operator operates in are not shown what it is not (flag #{@on})" do
         with_flag(@on, fn ->
           %{client: client} = chain()
           scope = fresh(client.owner.user, client.organisation, client.workspace)
 
-          # Hidden from the client.
           assert :security in scope.hidden
-          # Hidden from its operator, and never shown to a client.
           assert :organisation_policy in scope.hidden
           assert :managed_organisations in scope.hidden
           refute :observability in scope.hidden
@@ -277,7 +276,7 @@ defmodule ApiaryPro.FeatureVisibilityTest do
       true
     )
 
-    rows.(client.organisation.id, [:security, :organisation_policy], true)
+    rows.(client.organisation.id, [:observability], false)
     rows.(organisation.id, [:observability], false)
 
     organisations = [operator.organisation, client.organisation, organisation]

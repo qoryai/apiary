@@ -2,8 +2,8 @@ defmodule ApiaryPro.FeaturePartsTest do
   # The parts of a feature a person is not shown (`ApiaryPro.Features.hidden/1`), the
   # run's Terminal, `:"observability.terminal"`, and the grants that hide them
   # (`ApiaryPro.Grants`): while `ApiaryPro.Flags.feature_visibility?/0` is on, a part is
-  # shown wherever its feature is, but where a row hides it, down the chain and by who
-  # asks; with it off, no part is hidden and no grant names one.
+  # shown wherever its feature is, but where a row of the organisation hides it, and by
+  # who asks; with it off, no part is hidden and no grant names one.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -31,8 +31,9 @@ defmodule ApiaryPro.FeaturePartsTest do
   # What `scope` may do with a run's log in its workspace, as the core asks it.
   defp log?(scope), do: Access.authorize(scope, :"run.read_log", scope.workspace)
 
-  # An operator shown Runs and the security policy, and its client shown Runs.
-  defp chain(admin) do
+  # An operator shown Runs, its Terminal tab and the security policy, and an organisation
+  # whose workspace Main it operates, which follows the instance.
+  defp operated(admin) do
     operator = operator_fixture()
 
     assert {:ok, _} =
@@ -42,15 +43,12 @@ defmodule ApiaryPro.FeaturePartsTest do
                "observability.terminal"
              ])
 
-    client = client_fixture(operator.scope, "Acme")
+    %{operator: operator, operated: client_fixture(operator.scope, "Acme")}
+  end
 
-    assert {:ok, _} =
-             Grants.set_client(operator.scope, client.organisation.id, [
-               "observability",
-               "observability.terminal"
-             ])
-
-    %{operator: operator, client: client}
+  # The organisation's features shown on its page, but the run's Terminal.
+  defp hide_terminal(admin, organisation) do
+    Grants.set_organisation(admin, organisation.id, Grants.shown(organisation) -- [@terminal])
   end
 
   defp rows(organisation_id) do
@@ -176,12 +174,12 @@ defmodule ApiaryPro.FeaturePartsTest do
     end
   end
 
-  describe "down the chain" do
-    setup ctx, do: chain(ctx.admin)
+  describe "in a workspace an operator operates" do
+    setup ctx, do: operated(ctx.admin)
 
-    test "a part the operator is hidden is hidden from its client's people, and not offered",
+    test "a part the operator is hidden is not hidden from the people of the organisation operated",
          ctx do
-      %{operator: operator, client: client} = ctx
+      %{operator: operator, operated: operated} = ctx
 
       assert {:ok, _} =
                Grants.set_organisation(ctx.admin, operator.organisation.id, [
@@ -191,120 +189,78 @@ defmodule ApiaryPro.FeaturePartsTest do
 
       assert @terminal in fresh(operator.user, operator.organisation).hidden
 
-      owner = fresh(client.owner.user, client.organisation, client.workspace)
-      assert @terminal in owner.hidden
-      assert {:error, :not_found} = log?(owner)
-
-      # The client has no row of the part: its operator hides it.
-      refute {@terminal, false} in rows(client.organisation.id)
-      refute @terminal in Grants.shown(client.organisation)
-
-      assert {:error, :above} =
-               Grants.set_client(operator.scope, client.organisation.id, [
-                 "observability",
-                 "observability.terminal"
-               ])
+      owner = fresh(operated.owner.user, operated.organisation, operated.workspace)
+      refute @terminal in owner.hidden
+      assert :ok = log?(owner)
+      assert @terminal in Grants.shown(operated.organisation)
     end
 
-    test "a part the client is hidden is hidden from its people and from the operator's people there",
+    test "a part the organisation is hidden is hidden from its people and from the operator's people there",
          ctx do
-      %{operator: operator, client: client} = ctx
+      %{operator: operator, operated: operated} = ctx
 
-      assert {:ok, _} =
-               Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+      assert {:ok, _} = hide_terminal(ctx.admin, operated.organisation)
+      assert {@terminal, false} in rows(operated.organisation.id)
 
-      assert {@terminal, false} in rows(client.organisation.id)
-
-      owner = fresh(client.owner.user, client.organisation, client.workspace)
+      owner = fresh(operated.owner.user, operated.organisation, operated.workspace)
       assert @terminal in owner.hidden
       assert {:error, :not_found} = log?(owner)
 
       # The operator's people, in the workspace the operator operates, are shown what the
-      # client is: never more.
-      theirs = fresh(operator.user, client.organisation, client.workspace)
+      # organisation is: never more.
+      theirs = fresh(operator.user, operated.organisation, operated.workspace)
       assert {:operator, _via} = theirs.reach
       assert @terminal in theirs.hidden
       assert {:error, :not_found} = log?(theirs)
 
-      # And hidden what the operator is hidden, as the client is.
       assert {:ok, _} =
-               Grants.set_client(operator.scope, client.organisation.id, [
-                 "observability",
-                 "observability.terminal"
-               ])
+               Grants.set_organisation(
+                 ctx.admin,
+                 operated.organisation.id,
+                 Grants.shown(operated.organisation)
+               )
 
-      theirs = fresh(operator.user, client.organisation, client.workspace)
+      theirs = fresh(operator.user, operated.organisation, operated.workspace)
       refute @terminal in theirs.hidden
       assert :ok = log?(theirs)
-
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin, operator.organisation.id, [
-                 "observability",
-                 "security"
-               ])
-
-      theirs = fresh(operator.user, client.organisation, client.workspace)
-      assert @terminal in theirs.hidden
-      assert {:error, :not_found} = log?(theirs)
     end
 
-    test "with the switch off, the operator's people see the client's set, with no part hidden",
-         ctx do
-      %{operator: operator, client: client} = ctx
+    test "with the switch off, no part is hidden there", ctx do
+      %{operator: operator, operated: operated} = ctx
 
-      assert {:ok, _} =
-               Grants.set_client(operator.scope, client.organisation.id, ["observability"])
-
+      assert {:ok, _} = hide_terminal(ctx.admin, operated.organisation)
       Flags.put_feature_visibility(false)
 
-      for {user, organisation} <- [
-            {client.owner.user, client.organisation},
-            {operator.user, client.organisation}
-          ] do
-        scope = fresh(user, organisation, client.workspace)
+      for user <- [operated.owner.user, operator.user] do
+        scope = fresh(user, operated.organisation, operated.workspace)
         refute @terminal in scope.hidden
         assert :ok = log?(scope)
       end
     end
 
-    test "a grant of the client's part tells the people of the client and of the operator",
+    test "a change of the organisation's part tells its people and the operator's people",
          ctx do
-      %{operator: operator, client: client} = ctx
+      %{operator: operator, operated: operated} = ctx
 
-      for user <- [operator.user, client.owner.user],
+      for user <- [operator.user, operated.owner.user],
           do: Phoenix.PubSub.subscribe(Apiary.PubSub, Organisations.membership_topic(user.id))
 
-      assert {:ok, _} =
-               Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+      assert {:ok, _} = hide_terminal(ctx.admin, operated.organisation)
 
-      client_id = client.organisation.id
+      operated_id = operated.organisation.id
       operator_id = operator.organisation.id
-      assert_received {:membership_changed, %{organisation_id: ^client_id}}
+      assert_received {:membership_changed, %{organisation_id: ^operated_id}}
       assert_received {:membership_changed, %{organisation_id: ^operator_id}}
 
-      # The test's transaction gives its entries one time: the client's entries, the last
-      # of which hides the part.
-      entries =
-        Repo.all(
-          from e in Entry,
-            where: e.organisation_id == ^client_id and e.action == "client.grant_features",
-            select: {e.before["features"], e.after["features"]}
-        )
+      assert [entry] =
+               Repo.all(
+                 from e in Entry,
+                   where:
+                     e.organisation_id == ^operated_id and e.action == "instance.grant_features"
+               )
 
-      assert {["observability", "observability.terminal"], ["observability"]} in entries
-    end
-
-    test "a client its operator drops is shown the part again, its rows gone", ctx do
-      %{operator: operator, client: client} = ctx
-
-      assert {:ok, _} =
-               Grants.set_client(operator.scope, client.organisation.id, ["observability"])
-
-      assert {@terminal, false} in rows(client.organisation.id)
-
-      dropped = Repo.reload!(client.organisation)
-      assert {:ok, _} = Grants.written_out(dropped, :left)
-      assert rows(client.organisation.id) == []
+      assert "observability.terminal" in entry.before["features"]
+      assert entry.after["features"] == entry.before["features"] -- ["observability.terminal"]
     end
   end
 

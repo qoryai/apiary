@@ -1,7 +1,7 @@
 defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   # A feature hidden from a person is absent for them, its pages and actions not found, and
   # still works in full for the organisation's nodes and runs. The operator's people see
-  # in the workspace it operates what the client is shown, never more, with
+  # in the workspace it operates what the organisation is shown, never more, with
   # `ApiaryPro.Flags.feature_visibility?/0` on or off (`ApiaryPro.Features.hidden/1`).
   use ApiaryWeb.ConnCase, async: true
 
@@ -24,8 +24,9 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # An operator shown Runs and the security policy; its client, whose workspace has a rule
-  # and a node, shown Runs alone, so its security policy is hidden from its people.
+  # An operator shown Runs and the security policy; an organisation whose workspace Main it
+  # operates, with a rule and a node in Main, which an instance admin left Runs alone, so
+  # its security policy is hidden from its people.
   setup do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
@@ -42,7 +43,7 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
     {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
     {:ok, %{digest: baseline}} = Policy.current_configuration(in_client, nil)
 
-    assert {:ok, _} = Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+    assert {:ok, _} = Grants.set_organisation(admin, client.organisation.id, ["observability"])
 
     %{operator: operator, client: client, key: {key, secret}, node: node, baseline: baseline}
   end
@@ -119,13 +120,13 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
     for on? <- [false, true] do
       @on on?
 
-      test "leaves for its client's people when the operator hides it (flag #{@on})", ctx do
+      test "leaves for the organisation's people when the instance hides it (flag #{@on})", ctx do
         Flags.put_feature_visibility(@on)
         conn = log_in_user(build_conn(), ctx.client.owner.user)
         {:ok, lv, _html} = live(conn, policy_page(ctx.client))
 
         assert {:ok, _} =
-                 Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [
+                 Grants.set_organisation(ctx.admin, ctx.client.organisation.id, [
                    "observability"
                  ])
 
@@ -135,33 +136,18 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
       end
     end
 
-    test "leaves for the operator's people when the operator hides it from the client (flag on)",
+    test "leaves for the operator's people when the instance hides it from the organisation (flag on)",
          ctx do
       Flags.put_feature_visibility(true)
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, policy_page(ctx.client))
 
       assert {:ok, _} =
-               Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [
+               Grants.set_organisation(ctx.admin, ctx.client.organisation.id, [
                  "observability"
                ])
 
-      # Told, it loads its scope again and leaves: the client is not shown it any more.
-      assert {path, flash} = assert_redirect(lv)
-      assert path == ~p"/#{ctx.client.organisation}"
-      assert flash["error"] =~ "is no longer shown in Beacon"
-    end
-
-    test "leaves for the operator's people when the operator is not shown it (flag on)", ctx do
-      Flags.put_feature_visibility(true)
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, policy_page(ctx.client))
-
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin, ctx.operator.organisation.id, [
-                 "observability"
-               ])
-
+      # Told, it loads its scope again and leaves: the organisation is not shown it any more.
       assert {path, flash} = assert_redirect(lv)
       assert path == ~p"/#{ctx.client.organisation}"
       assert flash["error"] =~ "is no longer shown in Beacon"

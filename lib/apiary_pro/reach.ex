@@ -269,18 +269,6 @@ defmodule ApiaryPro.Reach do
     end
   end
 
-  # operator_membership/3 is one of the person's memberships in the operators of the
-  # organisation's workspaces (`operator_memberships/3`), the first by its operator's id;
-  # nil where they have none. For `ApiaryPro.Features`, which asks whether there is one.
-  @doc false
-  @spec operator_membership(%Organisation{}, Ecto.UUID.t(), keyword) :: %Membership{} | nil
-  def operator_membership(organisation, user_id, opts \\ []) do
-    organisation
-    |> operator_memberships(user_id, opts)
-    |> Map.values()
-    |> Enum.min_by(& &1.organisation_id, fn -> nil end)
-  end
-
   @doc """
   instance_organisation_id/0 is the id of the instance organisation, whose owners are the
   instance admins, of either kind (`c:Apiary.Edition.instance_organisation_id/0`); nil

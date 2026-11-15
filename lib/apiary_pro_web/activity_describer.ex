@@ -2,7 +2,7 @@ defmodule ApiaryProWeb.ActivityDescriber do
   @moduledoc """
   The edition's words for the audit log (`ApiaryWeb.Activity.Describer`), which the page asks
   before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): the instance's actions,
-  changes of ownership and the instance's arbiter, the features granted down the chain, a
+  changes of ownership and the instance's arbiter, the features granted to an organisation, a
   member's workspace access, the organisation's policy and its variables, which are said
   by name, never by value. It also says the entries of an action no longer taken, features
   taken away from a workspace, as they were said.
@@ -39,14 +39,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   def label(:"organisation.withdraw_transfer"), do: gettext("Offer withdrawn")
   def label(:"organisation.accept_transfer"), do: gettext("Ownership accepted")
-  # While features are shown by who asks (`ApiaryPro.Flags.feature_visibility?/0`), a
-  # change of features is said as a change of what is shown.
-  def label(:"client.grant_features") do
-    if Flags.feature_visibility?(),
-      do: gettext("Client's shown features changed"),
-      else: gettext("Client's features changed")
-  end
-
   def label(:"instance.suspend_account"), do: gettext("Account suspended")
   def label(:"instance.activate_account"), do: gettext("Account activated")
 
@@ -133,18 +125,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp said(:"organisation.accept_transfer", _details, _actor),
     do: gettext("Accepted the organisation's ownership")
 
-  # An entry of a change of what is shown (`shown: true`, `ApiaryPro.Grants`) is said in
-  # those words while features are shown by who asks; any other in the words it was
-  # written under.
-  defp said(:"client.grant_features", %{"shown" => true}, _actor) do
-    if Flags.feature_visibility?(),
-      do: gettext("Changed the features its operator shows it"),
-      else: gettext("Changed the features its operator grants it")
-  end
-
-  defp said(:"client.grant_features", _details, _actor),
-    do: gettext("Changed the features its operator grants it")
-
   defp said(:"instance.suspend_account", _details, _actor),
     do: gettext("Suspended an account")
 
@@ -160,6 +140,9 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp said(:"instance.transfer", _details, _actor),
     do: gettext("Offered the organisation's ownership to an admin, as support")
 
+  # An entry of a change of what is shown (`shown: true`, `ApiaryPro.Grants`) is said in
+  # those words while features are shown by who asks; any other in the words it was
+  # written under.
   defp said(:"instance.grant_features", %{"shown" => true}, _actor) do
     if Flags.feature_visibility?(),
       do: gettext("Changed the features the organisation is shown"),
@@ -277,7 +260,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def change(action, %{"features" => from}, %{"features" => to}, _details)
       when action in [
              :"instance.grant_features",
-             :"client.grant_features",
              :"workspace.narrow_features"
            ],
       do: from_to(features(from), features(to))
@@ -333,9 +315,8 @@ defmodule ApiaryProWeb.ActivityDescriber do
   # The features an entry names, as a page names them: the built ones, which are all a
   # grant's entry records, and, as the core's Configuration page lists them, an opt-in one
   # where the instance has it on, which an entry written before it was opt-in may name. A
-  # feature without a label of the edition's is not named. A part of a feature is named after it,
-  # as an entry written while features are shown by who asks lists it, and the nodes, a
-  # part of no feature, after the features, as a client's entry lists them.
+  # feature without a label of the edition's is not named. A part of a feature is named
+  # after it, as an entry written while features are shown by who asks lists it.
   defp features([]), do: gettext("None")
 
   defp features(names) when is_list(names) do

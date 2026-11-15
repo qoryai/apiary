@@ -484,9 +484,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   # (`test/apiary_pro_web/live/settings_live/variables_test.exs`), and so are its secrets
   # (`test/apiary_pro_web/live/settings_live/secrets_test.exs`). No page makes a link to
   # one of its secrets yet: the edition's answer for `:use` is asked directly
-  # (`test/apiary_pro/organisation_secrets_test.exs`). No page grants features to a client
-  # either: `ApiaryPro.Grants.set_client/3` refuses an operator's admin
-  # (`test/apiary_pro/feature_grants_test.exs`).
+  # (`test/apiary_pro/organisation_secrets_test.exs`).
   # No page starts or ends a workspace's operator yet: `ApiaryPro.WorkspaceOperators`
   # refuses a member, an admin who ends one, and the operator's admin
   # (`test/apiary_pro/workspace_operators_test.exs`). No page withdraws an offer of
@@ -504,7 +502,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       after_migrate: [:"instance.adopt"],
       no_page: [
         :"organisation_secret.use",
-        :"client.grant_features",
         :"organisation.withdraw_transfer"
       ]
     }

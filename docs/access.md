@@ -1053,7 +1053,7 @@ means the rest of the code, and the sections before this one are the core's.
 
 What the edition adds to the core's rules: the roles `reader` and `person`;
 reach into an organisation through its operator and as an instance admin; a member's
-access to the workspaces they were added to; an operator's actions over its clients;
+access to the workspaces they were added to;
 gateways at the organisation level; the instance organisation and the instance actions; the suspension of accounts and organisations;
 features below the instance; a person's new organisation; the organisation's policy, its
 variables and its secrets; and the lock order as the edition takes it. Everything the
@@ -1073,9 +1073,7 @@ part of that check (`c:Apiary.Edition.check/3`).
 
 The core's sections of this file list what stays outside `Apiary.Access`: authentication,
 data rules, the last-owner rule, wording and lists on a page, feature gates, and the 4
-callbacks below. The edition adds one more: the **operator parts**, its code for an
-operator and its clients, also check beside `Apiary.Access`: `ApiaryPro.Grants.set_client/3`
-compares a client's operator with the operator that acts.
+callbacks below.
 
 #### The 4 callbacks beside `Apiary.Access`
 
@@ -1116,7 +1114,7 @@ them, has a row. `Apiary.AccessCase.answering/1` reads the edition's rows from
 answer; the list is not complete:
 
 - `test/apiary_pro/access_test.exs`: reach, suspension, the marks for deletion, workspace
-  access, an operator's actions over its clients, the instance step, the instance actions
+  access, the instance step, the instance actions
   on the instance organisation itself, the recipient of an offer of ownership, the actions
   a flag hides and the creation of an organisation;
 - `test/apiary_pro/instance_organisation_test.exs`: an instance admin changes nothing in
@@ -1178,8 +1176,6 @@ the organisation and is told so at the organisation's address, `/:org`.
 Beside the core's exceptions, and the instance actions of the instance organisation's
 owners, these are an owner's alone:
 
-- the features of its clients, in an operator (`client.grant_features`; Features,
-  below);
 - the organisation's policy: its rules (`organisation_policy.edit`), the floor
   (`organisation_policy.set_floor`) and the switch (`organisation_policy.set_switch`),
   which an admin reads (The organisation's policy, below).
@@ -1263,13 +1259,7 @@ invitations, its settings and its security policy. Its owners and admins invite 
 manage its people, the last-owner rule holds there as anywhere, and its policy belongs
 to the client: the operator's people read it and do not change it.
 
-### An operator's actions
-
-An organisation of the kind `operator` has clients. Its action over them belongs to the
-feature `managed_organisations`:
-
-- `client.grant_features`: the features of a client, out of the operator's features; an
-  owner's of the operator (Features, below).
+### Invitations, and deleting an operator
 
 Each organisation has a separate allowance of invitations, a client as any other:
 `Apiary.Instance.invitations_per_day/0` a day, and three times as many attempts.
@@ -1397,8 +1387,7 @@ operator where the instance has `managed_organisations`, an organisation otherwi
 (`ApiaryPro.Tenants.first_sign_up_kind/0`). It is the instance's organisation of the core
 (`c:Apiary.Edition.instance_organisation_id/0`,
 `ApiaryPro.Reach.instance_organisation_id/0`). Inside it, its people act at their level
-as in any organisation, and what the kind decides holds there as anywhere: an
-operator's actions over its clients are found in it only while it is an operator.
+as in any organisation, and what the kind decides holds there as anywhere.
 
 The instance's admins are the owners of the instance organisation; its other people reach
 it at their level, read its clients once it is an operator, as any operator's people read
@@ -1616,13 +1605,10 @@ withdrawn while a change is asked is waited for, or seen. An access key, and wha
 is served, follow the instance's features alone. Who changes them (`ApiaryPro.Grants`):
 
 - `instance.grant_features`: an instance admin's, under Instance settings › Organisations, of the
-  organisation acted on: what an operator is granted, or what an organisation with no
-  operator keeps. Never a client, whose operator grants it, nor the instance organisation,
-  which has what the instance has.
-- `client.grant_features`: an owner's of the operator: what a client is granted, out of
-  the operator's features.
+  organisation acted on: what an operator is granted, or what any other organisation
+  keeps. Never the instance organisation, which has what the instance has.
 
-A suspended organisation or client is granted nothing. An operator's
+A suspended organisation is granted nothing. An operator's
 `managed_organisations` is not a grant's to take away: it goes when it is made an
 organisation again. A write changes only the features its page shows, the built ones the
 granter has; a grant of a feature the granter lacks for now is kept, and back in force
@@ -1709,19 +1695,9 @@ edition's rows in it:
    it does not hold. A deadlock Postgres breaks all the same, once the core has taken the
    rows again, is the change's answer to try again where it has one, and an error
    otherwise. Where the modes conflict with `FOR SHARE`, the rows are only those whose
-   place in the order cannot change while they are held. Two changes take several so. The
+   place in the order cannot change while they are held. One change takes several so: the
    adoption of the organisations the core created (`ApiaryPro.Adoption`) locks those
    without a tenant, which are no clients, and the one it makes the instance organisation.
-   A change of an operator's features (`ApiaryPro.Grants.set_organisation/3`) locks its
-   clients, then the operator, since a new workspace in a client holds the client alone
-   while it reads its features; a client stays the operator's while its row is held, since
-   every change of a client's operator locks the client's row first. It reads the clients
-   again once it holds them: a client created between the read and the lock means a set
-   taken stale, which it lets go of, rolling back to a savepoint taken before the lock,
-   and takes afresh, three attempts in all, and `{:error, :busy}` after. A grant to a
-   client (`ApiaryPro.Grants.set_client/3`) locks the client `FOR NO KEY UPDATE` and holds
-   its operator `FOR SHARE`, at one point, then asks `client.grant_features` again, so a
-   suspension of the operator that came while it waited is seen.
 2. **People locks** (`people_locks`, one per organisation, `ApiaryPro.Tenants.lock_rows/1`),
    after the organisation rows, in the order of their ids: all of a change's at one point,
    before its first write, in the strongest mode it needs, and none later. A write in a
@@ -1782,8 +1758,7 @@ The modes keep a row that only names another out of it:
   workspace-level gateway's) holds the organisation and those that serve it `FOR SHARE`,
   then the workspace `FOR NO KEY UPDATE`; then the node rows `FOR UPDATE`.
 - An organisation's suspension, its grants and its marking for deletion lock its row
-  `FOR NO KEY UPDATE`, a change of an operator's features its clients' rows first, and a
-  suspension of an account locks it the same way: they wait
+  `FOR NO KEY UPDATE`, and a suspension of an account locks it the same way: they wait
   for a write in flight, and one asked after them waits and then sees them. What the
   edition keeps of them, the organisation's tenant and the account's row of
   `account_suspensions`, is written under that lock, and read by a change that holds the

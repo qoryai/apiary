@@ -32,7 +32,6 @@ defmodule ApiaryPro.AuditChanges do
       :"workspace_access.remove",
       :"organisation.withdraw_transfer",
       :"organisation.accept_transfer",
-      :"client.grant_features",
       :"instance.create_organisation",
       :"instance.create_operator",
       :"instance.change_kind",
@@ -266,21 +265,8 @@ defmodule ApiaryPro.AuditChanges do
     }
   end
 
-  def make(:"client.grant_features", _ctx) do
-    operator = operator_fixture()
-    %{organisation: client} = client_fixture(operator.scope)
-    before = entries()
-    {:ok, _} = Grants.set_client(operator.scope, client.id, ["observability"])
-
-    %{
-      scope: %Scope{user: operator.user, organisation: client},
-      subject: {"organisation", client.id},
-      before: before
-    }
-  end
-
   # The organisation's policy: an owner's change, one entry on the organisation; the
-  # workspaces it renders again leave their own entries, the policy's, in the trail
+  # workspaces it renders again leave entries of `security_policy.edit` in the trail
   # before it.
   def make(:"organisation_policy.edit", %{scope: scope}) do
     before = entries()
@@ -458,11 +444,6 @@ defmodule ApiaryPro.AuditChanges do
        :ok = ApiaryPro.Adoption.run()
        Apiary.Repo.rollback(:rolled_back)
      end)}
-  end
-
-  def refuse(:"client.grant_features", %{scope: scope}) do
-    before = entries()
-    {before, Grants.set_client(scope, Ecto.UUID.generate(), ["observability"])}
   end
 
   # The organisation's policy is an owner's: an admin reads it and is refused each change.

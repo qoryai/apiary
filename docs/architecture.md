@@ -1227,52 +1227,51 @@ and its acceptance (`ApiaryPro.Transfers`; [access.md](access.md), The instance 
 ### Features below the instance
 
 The instance has its features (`QORY_FEATURES`, `Apiary.Features`), and the edition adds
-three: `managed_organisations`, operators and their clients, and what an operator does for
-them, which needs `observability`; `organisation_policy`, the organisation's policy above
+three: `managed_organisations`, operators, and the workspaces of other organisations they
+operate, which needs `observability`; `organisation_policy`, the organisation's policy above
 its workspaces', which needs `security`; and `organisation_variables`, the organisation's
 secrets beside its workspaces' and its variables above them, which needs `security` and
-`secrets`. Below the instance the chain is instance, operator, client, and each link only
-narrows the one above: `ApiaryPro.Features.of/2` answers what an organisation is shown,
+`secrets`. Below the instance an organisation only narrows what the instance has:
+`ApiaryPro.Features.of/2` answers what an organisation is shown,
 and `ApiaryPro.Features.of_all/1` the same for each of a list; the edition's `hidden/1`
 (`ApiaryPro.Features.hidden/1`) answers what a person is not shown in it, which the core
 keeps on the person's scope; nothing else does. A workspace is shown what its organisation
-is shown.
+is shown, to the people of its operator too.
 
 - **`feature_grants`**, one row per organisation and feature, under a unique index. A
-  row says a feature is `granted`, to an operator or a client, or taken away, from an
-  organisation with no operator. The table is in the edition's
+  row says a feature is `granted`, to an operator, or taken away, from any other
+  organisation. The table is in the edition's
   deletion tables (`ApiaryPro.Deletion.Tables`). `ApiaryPro.Grants` writes it, and nothing
   else.
-- **Opt-in below an operator.** An operator has what an instance admin granted it, of the
-  instance's; a client what its operator granted it, of the operator's, never
-  `managed_organisations`. A feature a grant can name, added to the instance later,
-  reaches neither until it is granted. The features no grant can name, the core's
-  features but `observability` and `security`, such as `secrets`, are shown to both
-  wherever the instance has them, as to any organisation: only the instance switches
-  them. **Opt-out without one.** An organisation with no operator has what the instance
+- **Opt-in for an operator.** An operator has what an instance admin granted it, of the
+  instance's. A feature a grant can name, added to the instance later, reaches it only
+  once it is granted. The features no grant can name, the core's features but
+  `observability` and `security`, such as `secrets`, are shown to it wherever the
+  instance has them, as to any organisation: only the instance switches them.
+  **Opt-out for any other organisation.** Any other organisation has what the instance
   has but what an instance admin took away, and gains what the instance gains. The
   instance organisation has what the instance has, whatever its kind. **A workspace** has
   what its organisation has.
 - **Clipped where it is read.** A grant above what the granter has is refused at write;
-  when a link narrows later, what is below it is clipped by `of/2`, with no rewrite. A
+  when the instance narrows later, what is below it is clipped by `of/2`, with no
+  rewrite. A
   feature is kept only with the features it needs.
 - **Where an organisation sits.** Its grants are written out in the transaction that
   moves it: made an operator, it is granted what it had, and from then only a grant
   changes it; made an organisation again, it keeps what it had, opt-out; a new operator
-  is granted what the instance has; a new client what the operator has.
+  is granted what the instance has.
 - **Absent, as off on the instance.** Every surface a person meets asks
   `Apiary.Features.visible?/2` with their scope, as in the core, so what an organisation
   is not shown is absent for its people there, and in its workspaces, as a feature the
   instance lacks is. Its machines and runs are served in full, as the instance's features
   say.
-- **Pages.** Instance settings › Organisations grants operators and organisations with no
-  operator their features. It offers only the features built (`Apiary.Features.built/0`);
+- **Pages.** Instance settings › Organisations grants every organisation but the instance
+  organisation its features. It offers only the features built (`Apiary.Features.built/0`);
   one not built yet keeps what its grants say.
-- **Race safety.** A write locks what it narrows `FOR NO KEY UPDATE`, an operator's
-  clients and then the operator, in the lock order of
-  [access.md](access.md) (The lock order); a change that asked `Apiary.Access` holds them
-  `FOR SHARE` while it is written and reads the features after its locks, so one of the
-  two waits for the other and the second sees the first.
+- **Race safety.** A write locks the organisation it narrows `FOR NO KEY UPDATE`, in the
+  lock order of [access.md](access.md) (The lock order); a change that asked
+  `Apiary.Access` holds it `FOR SHARE` while it is written and reads the features after
+  its locks, so one of the two waits for the other and the second sees the first.
 
 ### The audit trail
 
@@ -1297,7 +1296,7 @@ What the edition adds:
   an organisation's ownership (`instance.transfer`, in the organisation offered, with its
   reason), its lapse and its acceptance (`organisation.withdraw_transfer` and
   `organisation.accept_transfer`, in it); the grants of features
-  (`instance.grant_features`, `client.grant_features`); the organisation's policy
+  (`instance.grant_features`); the organisation's policy
   (`organisation_policy.edit`, `set_floor`, `set_switch`, on the organisation), its
   variables (`organisation_variable.edit`, on the variable, by name and never by value)
   and its secrets, which the core writes as a workspace's (`secret.write`, on the secret,

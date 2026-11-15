@@ -396,22 +396,6 @@ defmodule ApiaryPro.GatewayRacesTest do
     end
   end
 
-  describe "R8: a node made in the client while the operator grants the client its features" do
-    @tag :feature_sets
-    test "the node first: the grant waits for it", ctx do
-      {node, granted} = race(fn -> pool_on_default(ctx) end, fn -> grant_client(ctx) end)
-      assert {:ok, %Node{}} = node
-      assert {:ok, _features} = granted
-    end
-
-    @tag :feature_sets
-    test "the grant first: the node waits for it", ctx do
-      {granted, node} = race(fn -> grant_client(ctx) end, fn -> pool_on_default(ctx) end)
-      assert {:ok, _features} = granted
-      assert {:ok, %Node{}} = node
-    end
-  end
-
   # A node in the client's workspace that names the operator's gateway, with its key, and
   # the gateway's key, each as a verified request carries it.
   defp through_gateway(ctx) do
@@ -470,11 +454,6 @@ defmodule ApiaryPro.GatewayRacesTest do
   defp regrant(ctx) do
     features = form(Repo.get!(Organisation, ctx.operator.id)) -- [:managed_organisations]
     Grants.set_organisation(ctx.instance_admin, ctx.operator.id, features)
-  end
-
-  defp grant_client(ctx) do
-    features = form(Repo.get!(Organisation, ctx.client.organisation.id))
-    Grants.set_client(ctx.in_operator, ctx.client.organisation.id, features)
   end
 
   # What a Features form names of what the organisation is shown: the built features, as

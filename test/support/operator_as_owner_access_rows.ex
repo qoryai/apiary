@@ -212,8 +212,6 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"workspace_access.remove", yes: @own_admins},
       {:"organisation.withdraw_transfer", yes: @own_owners},
       {:"organisation.accept_transfer", yes: []},
-      # An owner's, of the organisation they ask in, whatever its kind.
-      {:"client.grant_features", yes: @own_owners},
       {:"organisation_policy.read", yes: @own_admins},
       {:"organisation_policy.edit", yes: @own_owners},
       {:"organisation_policy.set_floor", yes: @own_owners},

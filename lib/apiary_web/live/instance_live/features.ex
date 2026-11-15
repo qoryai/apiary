@@ -408,7 +408,7 @@ defmodule ApiaryWeb.InstanceLive.Features do
       )
 
   defp sentence(:managed_organisations),
-    do: gettext("Operators and their clients, and what an operator does for them.")
+    do: gettext("Operators, and the workspaces of other organisations they operate.")
 
   defp sentence(:organisation_policy),
     do:

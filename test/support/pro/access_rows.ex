@@ -226,8 +226,6 @@ defmodule ApiaryPro.AccessRows do
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
       {:"organisation.withdraw_transfer", yes: [:owner, :client_owner, :feature_off, :hidden]},
       {:"organisation.accept_transfer", yes: []},
-      # An owner's, of the organisation they ask in, whatever its kind.
-      {:"client.grant_features", yes: [:owner] ++ @owners},
       {:"instance.read", yes: [:instance_owner]},
       {:"instance.create_organisation", yes: @instance_itself},
       {:"instance.create_operator", yes: @instance_itself_of_feature},

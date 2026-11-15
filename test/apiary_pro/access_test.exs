@@ -54,7 +54,7 @@ defmodule ApiaryPro.AccessTest do
     # The operator's flag hides nothing, on or off.
     for on? <- [true, false] do
       Flags.put_operator_infrastructure(on?)
-      hides.([], transfers ++ [:"client.grant_features"])
+      hides.([], transfers)
     end
   end
 
@@ -740,7 +740,6 @@ defmodule ApiaryPro.AccessTest do
       assert Enum.sort(owner_only) ==
                Enum.sort(
                  [
-                   :"client.grant_features",
                    :"organisation.withdraw_transfer",
                    :"organisation_policy.edit",
                    :"organisation_policy.set_floor",
