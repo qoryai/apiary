@@ -418,15 +418,15 @@ defmodule Apiary.Stages.StopCause do
 
   # A gateway that may not receive the run's secrets: one of its keys was made without
   # stored secrets, or the model key may not be sealed for it.
+  # No run matches this head: the claim and `Apiary.Stages.claim_context/1` set
+  # `gateway:` to the tuple `Apiary.Dispatches.Handover.gateway/1` returns, not to a
+  # `%Node{}`, so the clause after it shows its line instead.
   defp secrets(n, %{gateway: %Node{} = gateway} = ctx) do
     cond do
       # The instance's gateway: the person sees neither it nor its keys.
       Gateways.level(gateway) == :instance ->
         secrets(n, %{})
 
-      # A gateway serves only its organisation's runs, so no claim ends a run here; the
-      # stage sweep does, when the keys it reads again (`Apiary.Stages.claim_context/1`)
-      # all allow stored secrets though those of the claim did not.
       Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) ->
         {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
          "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
