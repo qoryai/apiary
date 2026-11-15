@@ -1910,5 +1910,21 @@ defmodule Apiary.Dispatches.HandoverTest do
                  {:end, :secrets_not_allowed}
       end
     end
+
+    # A wrong argument raises, with a model provider or without one, so the seal is not
+    # skipped. `Apiary.Dispatches.RunSettingsTest` checks the seal through the claim.
+    test "raises for a gateway or a run of the queue of another shape" do
+      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      keys = [%AccessKey{allow_secrets: true}]
+      run = %DispatchRun{organisation_id: Ecto.UUID.generate(), workspace_id: nil}
+      gateway = %Node{kind: :gateway, organisation_id: run.organisation_id}
+
+      for formed <- [formed, {:ok, %{settings: %{columns: %{}}}}],
+          {gateway, run} <- [{gateway, %{run_id: "run"}}, {nil, run}] do
+        assert_raise FunctionClauseError, fn ->
+          Apiary.Dispatches.Handover.model_sealable(formed, gateway, run, keys)
+        end
+      end
+    end
   end
 end

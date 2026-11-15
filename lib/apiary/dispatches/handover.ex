@@ -768,7 +768,10 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  def model_sealable(formed, _gateway, _dispatch_run, _keys), do: formed
+  # A run formed with no model provider, or not formed: nothing to seal. Any gateway or
+  # run of the queue of another shape raises `FunctionClauseError`, so the seal is not
+  # skipped.
+  def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
 
   # The run's work credential entry, formed from what the run is formed from
   # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
