@@ -10,8 +10,9 @@ defmodule ApiaryWeb.Contract.RunApi.Run do
   # work item. Every other case is `{:error, :not_found}`, the same answer whatever the
   # cause.
   #
-  # `live?/1` is whether the run may still write: pending or running, and its sending
-  # not ended (`Apiary.Runs.Sender.sending_ended?/1`).
+  # `live?/1` is whether the run may still write: its run of the queue has not ended, and
+  # the run is live now (`Apiary.Runs.Sender.live?/2`), pending or running, or lost after
+  # its attach and not lost for good, with no exit and no pruned events.
 
   alias Apiary.Repo
   alias Apiary.AccessKeys.AccessKey
@@ -54,6 +55,6 @@ defmodule ApiaryWeb.Contract.RunApi.Run do
 
   @spec live?(t) :: boolean
   def live?(%{run: %Run{} = run, dispatch_run: %DispatchRun{state: state}}) do
-    state != :ended and run.state in Run.alive_states() and not Sender.sending_ended?(run)
+    state != :ended and Sender.live?(run, DateTime.utc_now())
   end
 end

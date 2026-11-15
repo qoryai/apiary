@@ -423,8 +423,8 @@ contract version, the body, the `time`); the first that applies is the answer:
 | `401` | the run's workspace or organisation is out of use, as a key of it would be | `{"error":"unauthorized"}` |
 | `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | a repeat, as below, while the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
-| `200` | a repeat: the gateway node and the instance that attached the run, under any of the node's active keys, attaching it again while the run is live | the answer it was given |
-| `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
+| `200` | a repeat: the gateway node and the instance that attached the run, under any of the node's active keys, attaching it again while the run is live, a lost run that is not lost for good included | the answer it was given |
+| `410` | the run has ended: its exit arrived, its starter gave its outcome, it is lost for good, or retention pruned its events; or its record is gone | empty |
 | `409` | the run was never attached and its attach window has closed: past `attach_by`, or the run already found lost | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
@@ -440,6 +440,17 @@ attached before Qory Apiary kept the attaching instance has none: the first inst
 its gateway that attaches it again, or sends a batch or a heartbeat for it, holds it from
 then on. The run key names the gateway the run was registered for, so no other gateway
 node attaches the run: it is refused `wrong_gateway` before `run_attached`.
+
+A run found lost, with no heartbeat for three of its intervals (90 seconds at Forager's
+30), is still live until it is lost for good. A run of a workspace's queue is lost for
+good once it has gone 600 seconds without a heartbeat, or once it is past its backstop,
+the deadline its attach set for its end. Between 90 and 600 seconds, a gateway that
+restarted attaches the run again, from the same node and instance, is given the answer it
+was given, and every route of the run serves it: the secrets request and the work entry
+it issues, the registry credential, the model keys report, the run API and the
+transcript. The run's next heartbeat makes it running again.
+A run that is not of a workspace's queue has no backstop and no 600-second end: it stays
+live until its exit arrives or retention prunes its events.
 
 The `200` carries `X-Qory-Run-Configuration`, `ETag` and `X-Qory-Configuration`. Its body
 is the run configuration a direct registration of the run would get, read under the run's
@@ -543,7 +554,7 @@ contract version); the first that applies is the answer:
 | `400` | the body is not a report, has a member twice, or has an `observed_at` more than 300 seconds after the server's clock | `{"error":"invalid_request","names":["<member>"]}` |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
 | `404` | the instance does not have the features `factory` and `secrets`; or the run is not attached to the gateway that sends the report: through this gateway, its run key listing the key, reloadable by this key and instance, of a workspace the gateway may still serve, whose events the key may post (`run.post_events`) | `{"error":"not_found"}` |
-| `410` | the run has ended; a report that arrives at most 60 seconds after the run ended is recorded first: by the server's clock, the first of when its first `dev.qory.run.exited` or `dev.qory.run.refused` arrived and when Qory Apiary ended it | empty |
+| `410` | the run has ended, a lost run once it is lost for good, as for the attach; a report that arrives at most 60 seconds after the run ended is recorded first: by the server's clock, the first of when its first `dev.qory.run.exited` or `dev.qory.run.refused` arrived and when Qory Apiary ended it | empty |
 | `503` | the report could not be stored | `{"error":"unavailable"}` |
 | `200` | recorded | `{"version":1,"keys":[…]}` |
 
@@ -564,7 +575,7 @@ the run endpoint's.
 
 | Status | When | Body |
 |---|---|---|
-| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
+| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, a lost run once it is lost for good, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
 | `503` | the transcript could not be read | `{"error":"unavailable"}` |
 | `200` | found | the transcript, `application/x-ndjson` |
 

@@ -33,8 +33,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #     gateway seals, for a run whose run key does not list the access key among the
   #     gateway's keys (`Apiary.Runs.RunKey.lists_key?/2`), and for a run the key may not
   #     reload; then `{:error, :workspace_not_served}`; then `{:error, :gone}` for a run
-  #     that is not live: not pending or running, or its sending ended
-  #     (`Apiary.Runs.Sender`);
+  #     that is not live on the server's clock at the request
+  #     (`Apiary.Runs.Sender.live?/2`): not pending or running, unless it is lost after
+  #     its attach and not lost for good, or with its exit or its events pruned;
   #  5. `{:error, :run_configuration_superseded}`, a digest other than the one a reload
   #     of the run returns now: the gateway reads the run configuration and its digest
   #     from a reload;
@@ -42,8 +43,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #     credential and no work entry, or whose provider cannot be read: the run
   #     configuration has no credential, or none can be composed. The provider's columns
   #     of a run are NULL when its claim set no provider, or when the provider was
-  #     deleted; a provider's deletion is refused while a pending or running run uses it,
-  #     so only a run that ended, refused at step 4, has them NULL after a deletion;
+  #     deleted; a provider's deletion is refused while a live run uses it, as step 4
+  #     reads it, so only a run that ended, refused at step 4, has them NULL after a
+  #     deletion;
   #  7. `{:error, :credentials_differ}`, a `credentials` list that is not a subset of the
   #     credential names of that run configuration, in its order (the schema already
   #     refuses an empty list or a name twice); then `:secrets_not_allowed` for a key not
@@ -160,7 +162,7 @@ defmodule Apiary.Runs.SecretsRequest do
   # The credentials are read before the reload, which cannot compose a run configuration
   # without them, and their refusal follows the digest's.
   defp for_run(access_key, request, instance_id, now) do
-    with {:ok, run} <- run(access_key, request.run_id, instance_id),
+    with {:ok, run} <- run(access_key, request.run_id, instance_id, now),
          credentials = credentials(run),
          {:ok, digest} <- in_force(access_key, run, instance_id, credentials),
          :ok <- same_digest(request, digest),
@@ -262,7 +264,7 @@ defmodule Apiary.Runs.SecretsRequest do
 
   ## The run, as a reload reads it
 
-  defp run(access_key, run_id, instance_id) do
+  defp run(access_key, run_id, instance_id, now) do
     case Repo.one(Sender.run_query(access_key, run_id)) do
       %Run{} = run ->
         cond do
@@ -278,7 +280,7 @@ defmodule Apiary.Runs.SecretsRequest do
           not Sender.serves?(run, access_key) ->
             {:error, :workspace_not_served}
 
-          not live?(run) ->
+          not Sender.live?(run, DateTime.from_unix!(now)) ->
             {:error, :gone}
 
           true ->
@@ -289,9 +291,6 @@ defmodule Apiary.Runs.SecretsRequest do
         {:error, :not_found}
     end
   end
-
-  defp live?(%Run{} = run),
-    do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
 
   # The run's credentials, as its run configuration contains them: `{:ok, %{model:,
   # registry:, work:, names:}}`, the model key (nil for none), whether the run has a

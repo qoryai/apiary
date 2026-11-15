@@ -220,7 +220,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def mark_label(workflow, false),
     do: gettext("%{workflow}: not in the harness", workflow: workflow)
 
-  # A typed workflow name that breaks the schema's pattern, under its field.
+  # A sent workflow name that breaks the schema's pattern, under its field.
   @doc false
   def workflow_refused,
     do:

@@ -6607,11 +6607,18 @@ msgstr ""
 msgid "Cancelled."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_cancel_components.ex
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/user_live/organisations.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelling"
 msgstr ""
@@ -9011,6 +9018,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Domains"
+msgstr ""
+
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Don't cancel"
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -12014,11 +12026,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
-msgstr ""
-
-#: lib/apiary_web/components/run_cancel_components.ex
-#, elixir-autogen, elixir-format
-msgid "Keep running"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

@@ -74,6 +74,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     default: true,
     doc: "whether a gate may name its approvers; false offers any member alone"
 
+  attr :read_failed, :any,
+    default: nil,
+    doc: "the line of a read of the harness that failed, shown above the workflows; nil for none"
+
   def stage_panel(%{may: false} = assigns) do
     ~H"""
     <section
@@ -180,6 +184,9 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             </.button>
           </:trailing>
           <div class="grid gap-3 px-4 py-3">
+            <p :if={@read_failed} id="stage-sequence-read" class="text-[13px]/5 text-error">
+              <.rich text={@read_failed} />
+            </p>
             <p :if={@stage["sequence"] == []} class="text-[13px]/5 text-muted">
               {gettext("No workflow")}
             </p>
@@ -400,18 +407,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           <.input
             id={"#{@id}-workflow"}
             name={"#{@name}[workflow]"}
-            value={@entry["workflow"]}
+            type="select"
+            value={@entry["workflow"] || ""}
             aria-label={gettext("Workflow")}
             errors={@errors}
-            list={"#{@id}-workflow-names"}
-            maxlength="64"
-            autocomplete="off"
-            spellcheck="false"
+            options={workflow_options(@declared, @entry["workflow"])}
             class="w-full font-mono"
           />
-          <datalist id={"#{@id}-workflow-names"}>
-            <option :for={name <- @declared} value={name}></option>
-          </datalist>
         </div>
         <.workflow_mark
           :if={listed?(@entry, @marks)}
@@ -552,6 +554,21 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   defp listed?(_entry, nil), do: false
   defp listed?(entry, marks), do: entry["workflow"] in marks
+
+  # The options of a workflow's field: the listed workflows in alphabetical order, then the
+  # entry's workflow when the list does not have it, so the field shows the entry's name.
+  # An entry with no workflow gets an empty option first, selected, so the field shows no
+  # name; a change of another field sends "", which keeps the entry without one
+  # (`ApiaryWeb.StagesLive.Editor`).
+  defp workflow_options(declared, workflow) do
+    listed = declared |> Enum.uniq() |> Enum.sort()
+
+    cond do
+      workflow in [nil, ""] -> [{"", ""} | listed]
+      workflow in listed -> listed
+      true -> listed ++ [workflow]
+    end
+  end
 
   attr :key, :string, required: true
   attr :stage, :map, required: true

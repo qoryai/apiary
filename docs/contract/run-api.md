@@ -56,10 +56,15 @@ The checks run in this order:
    run's run key, from the instance that attached the run, of a gateway that may still
    serve the run's workspace; and the run must be a run of a work item. Any other case
    is `404` `not_found`, the same answer whatever the cause.
-4. For a POST: a run that is no longer pending or running, whose sending has ended, or
-   whose run of the workspace's queue has ended, is `409` `run_ended`. So is a run a
-   member cancelled, from the commit of the cancel, whatever its state, with the message
-   for a cancelled run. A run reads its work item after it ends; it writes nothing.
+4. For a POST: a run that has ended is `409` `run_ended`: a run that is not pending or
+   running, unless it is lost after its attach and not yet lost for good; a run with its
+   exit or whose events were pruned; and a run whose run of the workspace's queue has
+   ended. A run found lost after its attach is lost for good once it has gone 600
+   seconds without a heartbeat or is past its backstop; until then the gateway that
+   attached it, restarted, attaches it again and pushes for it. A run a member cancelled
+   is `409` `run_ended` too, from the commit of the cancel, whatever its state, with the
+   message for a cancelled run. A run reads its work item after it ends; it writes
+   nothing.
    A push or a verdict checks the run of the queue, and the cancel, again when it stores
    the version, under the lock of the work item that the end of a run and a cancel also
    take: a run whose run of the queue ended, or that a member cancelled, between the two
@@ -489,9 +494,8 @@ with the paused run's id and the path of the transcript
 ([contract-assumptions.md](../contract-assumptions.md), A run that continues a paused
 run).
 
-The checks are 1 and 3 of the order of checks, then: a run that is no longer pending or
-running, whose sending has ended, or whose run of the workspace's queue has ended, a run
-with no `resume`, a paused run that is no longer the one the run continues, and a
+The checks are 1 and 3 of the order of checks, then: a run that has ended, as in check
+4, a run with no `resume`, a paused run that is no longer the one the run continues, and a
 transcript that is gone, has a gap in its offsets, is over 64 MiB or has 100,000 chunks
 or more, are each `404`
 `not_found`. Else the answer is `200`, `application/x-ndjson`, the paused run's chunks of

@@ -25,8 +25,9 @@ defmodule Apiary.Runs.Attach do
        and a run whose workspace `Apiary.Access` does not let post (`run.post_events`) is
        `{:error, :not_found}`;
     4. a repeat: the same gateway node and the same instance id, under any of the node's
-       active keys, attaching the same run again while the run is live, is given the
-       answer it was given, nothing stored again, while the gateway may still serve the
+       active keys, attaching the same run again while the run is live, a run lost after
+       its attach and not lost for good (`Apiary.Runs.Run.lost_for_good?/2`) included, is
+       given the answer it was given, nothing stored again, while the gateway may still serve the
        run's workspace (`Apiary.Access.may_serve?/2`); once it may not, the repeat is
        `{:error, :workspace_not_served}`, and the run goes lost by liveness. A repeat is the gateway's, its
        instance's and the run's, not the body's bytes, so a gateway that restarted, or
@@ -37,7 +38,8 @@ defmodule Apiary.Runs.Attach do
     5. a run that has ended is `{:error, :gone}`: its exit arrived, an outcome stored on
        it ended it (a run of a workspace's queue takes none, and one stored on it before
        that rule ends it all the same), it was released after its handover, it was lost
-       after its attach, or its events were pruned. So is a run whose record is gone;
+       after its attach and is lost for good on the clock read once the run's row is
+       locked, or its events were pruned. So is a run whose record is gone;
     6. a run never attached whose attach window has closed is
        `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
@@ -357,13 +359,14 @@ defmodule Apiary.Runs.Attach do
       cond do
         # A repeat is held to the workspace as the first attach is: a gateway that may no
         # longer serve it is refused, and the run goes lost by liveness.
-        repeat?(run, gateway, meta[:instance_id]) and not Access.may_serve?(gateway, workspace) ->
+        repeat?(run, gateway, meta[:instance_id], now) and
+            not Access.may_serve?(gateway, workspace) ->
           {:error, :workspace_not_served}
 
-        repeat?(run, gateway, meta[:instance_id]) ->
+        repeat?(run, gateway, meta[:instance_id], now) ->
           repeat(access_key, run, meta[:instance_id])
 
-        ended?(run) or prebuilt?(run) ->
+        ended?(run, now) or prebuilt?(run) ->
           {:error, :gone}
 
         expired?(run, now) ->
@@ -393,19 +396,26 @@ defmodule Apiary.Runs.Attach do
 
   # The gateway that attached the run, under any of its keys, and the instance that
   # attached it, or any of its instances while that is not known, while the run is live.
-  defp repeat?(%Run{attached_at: %DateTime{}, gateway_id: id} = run, %Node{id: id}, instance_id),
-    do: not ended?(run) and Sender.attaching_instance?(run, instance_id)
+  defp repeat?(
+         %Run{attached_at: %DateTime{}, gateway_id: id} = run,
+         %Node{id: id},
+         instance_id,
+         now
+       ),
+       do: not ended?(run, now) and Sender.attaching_instance?(run, instance_id)
 
-  defp repeat?(_run, _gateway, _instance_id), do: false
+  defp repeat?(_run, _gateway, _instance_id, _now), do: false
 
   # Its exit arrived, an outcome stored on it ended it (a run of the queue takes none; one
   # stored before that rule ends it all the same), its starter released it after a queue
   # handed it over (cancelled, `released_at`, `Apiary.Dispatches.RunEnd`), or it was lost
-  # after its attach; or retention pruned its events, and the workspace wants nothing more
-  # of it.
-  defp ended?(%Run{} = run) do
+  # after its attach and is lost for good at `now` (`Apiary.Runs.Run.lost_for_good?/2`);
+  # or retention pruned its events, and the workspace wants nothing more of it. A run lost
+  # after its attach and not lost for good has not ended: its gateway may attach it again.
+  defp ended?(%Run{} = run, now) do
     run.state in @ended or not is_nil(run.exited_at) or not is_nil(run.outcome_state) or
-      not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
+      not is_nil(run.events_pruned_at) or
+      (run.state == "lost" and not is_nil(run.attached_at) and Run.lost_for_good?(run, now))
   end
 
   # A prebuild whose run of the queue its starter's `prebuilt` ended

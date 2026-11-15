@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.WorkItemLive.CancelTest do
-  # Cancel run on the running run's line of a work item's page
+  # Cancel run on the line of a work item's page of a running run, or of a lost run that
+  # may still attach again
   # (`ApiaryWeb.WorkItemLive.Show`), "Cancelling" there until the exit, and the versions
   # of a cancelled run, marked on the run's page and wherever a version's maker shows
   # (`ApiaryWeb.ArtifactComponents.writer/2`).
@@ -34,6 +35,15 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
     }
   end
 
+  defp lost!(run, changes) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now(), silenced_at: nil] ++ changes
+      )
+
+    :ok
+  end
+
   defp explore(scope, work_item),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/explore"
 
@@ -45,7 +55,7 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
 
     lv |> element("#{line}-cancel") |> render_click()
     assert has_element?(lv, "#{line}-cancel-confirm-question", "Cancel run #{ctx.run.number}?")
-    assert has_element?(lv, "#{line}-cancel-confirm-cancel", "Keep running")
+    assert has_element?(lv, "#{line}-cancel-confirm-cancel", "Don't cancel")
 
     lv |> element("#{line}-cancel-confirm-cancel") |> render_click()
     refute has_element?(lv, "#{line}-cancel-confirm")
@@ -99,6 +109,43 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
 
     {:ok, lv, _html} = live(ctx.conn, explore(ctx.scope, ctx.work_item))
     refute has_element?(lv, "#work-item-record-#{ctx.run.number}", "Cancelling")
+  end
+
+  test "a lost run that may still attach has Cancel run on its line until lost for good",
+       ctx do
+    now = DateTime.utc_now()
+    lost!(ctx.run, backstop_at: DateTime.add(now, 3600, :second))
+
+    {:ok, lv, _html} = live(ctx.conn, explore(ctx.scope, ctx.work_item))
+
+    line = "#work-item-explore-run"
+    assert has_element?(lv, "#{line}-cancel", "Cancel run")
+
+    lv |> element("#{line}-cancel") |> render_click()
+    lv |> element("#{line}-cancel-confirm-yes") |> render_click()
+
+    assert %Run{state: "lost"} = cancelled = Repo.get!(Run, ctx.run.id)
+    assert Run.cancel_requested?(cancelled)
+    assert has_element?(lv, line, "Cancelling")
+    refute has_element?(lv, "#{line}-cancel")
+
+    assert [_entry] =
+             Repo.all(
+               from e in Apiary.Audit.Entry,
+                 where: e.subject_id == ^ctx.run.id and e.action == "run.cancel"
+             )
+
+    # Past its backstop, the run is lost for good: no Cancel run, and no cancel.
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: [cancel_requested_at: nil, cancel_requested_by_id: nil]
+      )
+
+    lost!(ctx.run, backstop_at: DateTime.add(now, -1, :second))
+
+    {:ok, lv, _html} = live(ctx.conn, explore(ctx.scope, ctx.work_item))
+    refute has_element?(lv, "#{line}-cancel")
+    assert {:error, :not_running} = Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
   end
 
   test "a write run of a software workspace says its changes are not pushed", ctx do

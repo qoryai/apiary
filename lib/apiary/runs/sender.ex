@@ -43,6 +43,13 @@ defmodule Apiary.Runs.Sender do
   and posts the run's events, and the run's starter, which holds the node's key, gives its
   outcome.
 
+  **The routes of a run** (`live?/2`): the attach's repeat, the secrets request and the
+  work entry it issues, the registry credential, the model keys report and the run API
+  serve a run that is pending or running, or lost after its attach and not lost for good
+  (`Apiary.Runs.Run.lost_for_good?/2`), with no exit and no pruned events: a gateway that
+  restarts while its run is lost takes the run on again. Batches and heartbeats follow
+  `sending_ended?/1` instead.
+
   **The run's place** (`place_key/2`): what is read for a run, its workspace's run
   configuration, is read under the run's workspace and organisation, never the gateway
   key's: a gateway may serve a workspace other than the key's.
@@ -53,7 +60,7 @@ defmodule Apiary.Runs.Sender do
   This is the one place these rules are kept, and every caller follows them.
   """
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [from: 2, dynamic: 2]
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches.Dispatch
@@ -63,6 +70,7 @@ defmodule Apiary.Runs.Sender do
   alias Apiary.Runs.{Event, Run}
 
   @exited "dev.qory.run.exited"
+  @alive Run.alive_states()
 
   @doc """
   Whether `access_key` may send batches, heartbeats and reloads for `run`: a key of the
@@ -161,6 +169,45 @@ defmodule Apiary.Runs.Sender do
       {:ok, run} -> {:ok, run}
       {:error, :other_instance} -> :refused
     end
+  end
+
+  @doc """
+  Whether `run` may still be served at `at`, the one check of the routes a gateway calls
+  for a run it attached: the attach's repeat, the secrets request and the work entry it
+  issues, the registry credential, the model keys report and the run API with the
+  transcript. The run is pending or running, or lost after its attach and not lost for
+  good (`Apiary.Runs.Run.lost_for_good?/2`), so a gateway that restarts while the run is
+  lost takes it on again; and it has no exit (`exited_at`, `exit_state`, or a stored
+  `dev.qory.run.exited`) and no pruned events. A cancel is each route's to check.
+  """
+  @spec live?(Run.t(), DateTime.t()) :: boolean
+  def live?(%Run{} = run, %DateTime{} = at) do
+    live_state?(run, at) and is_nil(run.exited_at) and is_nil(run.exit_state) and
+      is_nil(run.events_pruned_at) and
+      not Repo.exists?(from e in Event, where: e.run_id == ^run.id and e.type == @exited)
+  end
+
+  defp live_state?(%Run{state: state}, _at) when state in @alive, do: true
+
+  defp live_state?(%Run{state: "lost", attached_at: %DateTime{}} = run, at),
+    do: not Run.lost_for_good?(run, at)
+
+  defp live_state?(%Run{}, _at), do: false
+
+  @doc """
+  `live?/2` for a run that is lost after its attach, as a query's condition on the run,
+  the query's first binding, named `:run`: lost and attached, not ended at `at`
+  (`Apiary.Runs.Run.not_ended/1`, so not lost for good and with no `exited_at`), and with
+  no `exit_state`, no stored `dev.qory.run.exited` and no pruned events.
+  """
+  @spec revivable(DateTime.t()) :: Ecto.Query.dynamic_expr()
+  def revivable(%DateTime{} = at) do
+    dynamic(
+      [r],
+      r.state == "lost" and not is_nil(r.attached_at) and ^Run.not_ended(at) and
+        is_nil(r.exit_state) and is_nil(r.events_pruned_at) and
+        not exists(from e in Event, where: e.run_id == parent_as(:run).id and e.type == @exited)
+    )
   end
 
   @doc """

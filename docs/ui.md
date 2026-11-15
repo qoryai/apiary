@@ -1944,26 +1944,27 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   started, how long it took (left out for a run that did not start, which never ran) and
   its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
   (Copy run id, Raw log, Download log, a file with the `rn_` id as its name,
-  `rn_0123456789abcdef.log`). Beside the state of a running run, a member who may cancel
-  it (`run.cancel`) has **Cancel run**, which opens an inline confirm: "Cancel run 12? The
-  agent stops at its next report to Qory Apiary, and the run changes nothing more. What
-  it already sent stays, marked as from a cancelled run." For a run whose end pushes its
-  changes, the confirm adds "Its changes are not pushed, unless the run had already
-  started pushing them." Its buttons are **Cancel run** and **Keep running**. The running
-  run's line on its work item's page has the same button and confirm. A person who may
-  not cancel the run has no **Cancel run** on either page. After the press, the run's
-  state reads "Cancelling" until the run ends (`Apiary.Runs.Cancel.cancelling?/1`); a lost
-  run that may still attach again reads "Cancelling" too. Every place that shows the
-  run's state uses the word: the run page's header, Details and Timeline heading, the
-  runs list's row and preview, a machine's runs, a target's last runs, the last run on
-  Repositories and on the overview's Active targets, the runs that reached a destination
-  on Network access, Search or jump to, and on its work item's page the run's line, its
-  row in the take in's runs and its row in the Runs list over the tabs. The dot keeps the colour of the stored state, and the runs list's State filter finds the
-  run under Cancelling, not under Running or Lost. While the
-  machine sends no heartbeat, the run page adds under the meta line "No report from the
-  machine since 10:00:30. The run ends at its next report, or is marked lost once its
-  heartbeats stop." Once the run ends, the line
-  there reads "Cancelled by <person> at 10:00:30", with "(you)" after the reader's name
+  `rn_0123456789abcdef.log`). Beside the state of a running run, or of a lost run that
+  may still attach again, a member who may cancel it (`run.cancel`) has **Cancel run**,
+  which opens an inline confirm: "Cancel run 12? The agent stops at its next report to
+  Qory Apiary, and the run changes nothing more. What it already sent stays, marked as
+  from a cancelled run." For a run whose end pushes its changes, the confirm adds "Its
+  changes are not pushed, unless the run had already started pushing them." Its buttons
+  are **Cancel run** and **Don't cancel**. The run's line on its work item's page has the
+  same button and confirm. A person who may not cancel the run has no **Cancel run** on
+  either page. After the press, the run's state reads "Cancelling" until the run ends
+  (`ApiaryWeb.RunCancelComponents.cancelling?/1`); a lost run that may still attach again
+  reads "Cancelling" too. Every place that shows the run's state uses the word: the run
+  page's header, Details and Timeline heading, the runs list's row and preview, a
+  machine's runs, a target's last runs, the last run on Repositories and on the
+  overview's Active targets, the runs that reached a destination on Network access,
+  Search or jump to, and on its work item's page the run's line, its row in the take in's
+  runs and its row in the Runs list over the tabs. The dot keeps the colour of the stored
+  state, and the runs list's State filter finds the run under Cancelling, not under
+  Running or Lost. While the machine sends no heartbeat, the run page adds under the meta
+  line "No report from the machine since 10:00:30. The run ends at its next report, or is
+  marked lost once its heartbeats stop." Once the run ends, the line there reads
+  "Cancelled by <person> at 10:00:30", with "(you)" after the reader's name
   and "Former member" for a deleted account. In a software workspace, for a run whose
   push step had started, the line reads "Cancelled by <person> at 10:00:30, while the run
   was pushing its changes.", and one line follows for each of the run's repositories:
