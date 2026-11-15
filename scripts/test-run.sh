@@ -32,8 +32,8 @@
 #     machine: a run waits until it can create the lock directory APIARY_TEST_LOCK
 #     (default /tmp/apiary-test-full-suite.lock), and removes it when it ends. The lock's
 #     owner file lists the process ids of the script and of mix test, one per line. A lock
-#     whose processes no longer run is removed; a lock with an empty or missing owner file
-#     is being taken, and stays.
+#     whose processes no longer run is removed. A lock with an empty or missing owner file
+#     is being taken; it is removed once it is more than 60 seconds old.
 #   - --repeat-until-failure takes test files and at most 20 repeats.
 #   - Run the script in the foreground, one run at a time.
 #
@@ -113,6 +113,7 @@ database=""
 child=""
 lock=""
 breaking=0
+sleeper=""
 run_tmp=""
 
 # Drops this run's database if it is still there. A failed drop writes one warning line.
@@ -124,6 +125,9 @@ drop_database() {
 }
 
 cleanup() {
+	if [ -n "$sleeper" ]; then
+		kill "$sleeper" 2>/dev/null
+	fi
 	if [ "$breaking" -eq 1 ]; then
 		rmdir "$break_dir" 2>/dev/null
 	fi
@@ -179,31 +183,55 @@ done
 # The process ids in the lock's owner file, on one line: the lines that are only digits.
 lock_pids() { grep -E '^[0-9]+$' "$lock_dir/owner" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
 
-# Removes a lock that a run stopped by SIGKILL left. Returns 0 once it removed the lock, 1
-# while a process of the lock runs or its owner file is empty or missing (the lock is
-# being taken), and 2 while another run removes it. The directory $break_dir lets one run
-# at a time remove the lock: without it, a run could remove the lock that another run has
-# just taken. A $break_dir older than 60 seconds was left by a killed run, and is removed.
+# Whether a path was last changed more than 60 seconds ago.
+older_than_a_minute() { [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }
+
+# Removes a lock that a run stopped by SIGKILL left: one whose processes no longer run, or
+# one with no process id in its owner file that is more than 60 seconds old (the run was
+# stopped between taking the lock and writing the file). Returns:
+#   0  it removed the lock;
+#   1  a process of the lock runs;
+#   2  another run is removing the lock;
+#   3  the lock has no process id yet and is less than 60 seconds old: it is being taken;
+#   4  the lock is stale but this user cannot remove it.
+# The directory $break_dir lets one run at a time remove the lock: without it, a run could
+# remove the lock that another run has just taken. A $break_dir older than 60 seconds was
+# left by a killed run, and is removed. /tmp is shared by every user of the machine, so a
+# process is checked with ps, which also finds another user's process.
 break_stale_lock() {
-	local pids pid
+	local pids pid removed=1
 	pids=$(lock_pids)
-	[ -n "$pids" ] || return 1
-	for pid in $pids; do
-		kill -0 "$pid" 2>/dev/null && return 1
-	done
+	if [ -n "$pids" ]; then
+		for pid in $pids; do
+			ps -p "$pid" >/dev/null 2>&1 && return 1
+		done
+	elif ! older_than_a_minute "$lock_dir"; then
+		return 3
+	fi
 	if ! mkdir "$break_dir" 2>/dev/null; then
-		if [ -n "$(find "$break_dir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-			rmdir "$break_dir" 2>/dev/null
+		[ -d "$break_dir" ] || return 4
+		if older_than_a_minute "$break_dir"; then
+			rmdir "$break_dir" 2>/dev/null || return 4
 		fi
 		return 2
 	fi
 	breaking=1
-	local removed=1
-	if [ "$(lock_pids)" = "$pids" ]; then
-		say "removing the full-suite lock $lock_dir of processes $pids, which no longer run"
-		rm -f "$lock_dir/owner"
-		rmdir "$lock_dir" 2>/dev/null
-		removed=0
+	if [ "$(lock_pids)" = "$pids" ] && { [ -n "$pids" ] || older_than_a_minute "$lock_dir"; }; then
+		rm -f "$lock_dir/owner" 2>/dev/null
+		if rmdir "$lock_dir" 2>/dev/null; then
+			if [ -n "$pids" ]; then
+				say "removed the full-suite lock $lock_dir of processes $pids, which no longer run"
+			else
+				say "removed the full-suite lock $lock_dir, which had no owner for more than 60 seconds"
+			fi
+			removed=0
+		else
+			# Put the process ids back, so the next check finds the same stale lock.
+			if [ -n "$pids" ]; then
+				printf '%s\n' $pids >"$lock_dir/owner" 2>/dev/null
+			fi
+			removed=4
+		fi
 	fi
 	rmdir "$break_dir" 2>/dev/null
 	breaking=0
@@ -211,19 +239,33 @@ break_stale_lock() {
 }
 
 if [ "$targeted" -eq 0 ]; then
+	said_fix=0
 	until mkdir "$lock_dir" 2>/dev/null; do
 		break_stale_lock
 		case $? in
 		0) continue ;;
 		2) wait_seconds=1 ;;
+		3)
+			wait_seconds=30
+			say "waiting for the full-suite lock $lock_dir, which has no owner yet: remove $lock_dir if no full suite runs"
+			;;
+		4)
+			wait_seconds=30
+			if [ "$said_fix" -eq 0 ]; then
+				say "remove $lock_dir and $break_dir if no full suite runs: the lock is stale, and this user cannot remove it"
+				said_fix=1
+			fi
+			;;
 		*)
 			wait_seconds=30
 			say "waiting for the full-suite lock $lock_dir, taken by: $(grep -vE '^[0-9]+$' "$lock_dir/owner" 2>/dev/null)"
 			;;
 		esac
-		# In the background, so that a signal reaches the trap at once.
-		sleep "$wait_seconds" &
-		wait $!
+		# In the background, so that a signal reaches the trap at once; cleanup stops it.
+		sleep "$wait_seconds" >/dev/null 2>&1 &
+		sleeper=$!
+		wait "$sleeper"
+		sleeper=""
 	done
 	lock=$lock_dir
 	printf '%s\nscripts/test-run.sh, pid %s, in %s, since %s\n' "$$" "$$" "$(pwd)" \

@@ -77,8 +77,8 @@ defmodule Apiary.TestDatabase do
   defp warn(nil, reason) do
     IO.puts(
       :stderr,
-      "warning: the drop of the test database at the end of the run failed before it " <>
-        "read the database's name: #{first_line(message(reason))}"
+      "warning: check the test database's name in config/test.exs: the drop at the end " <>
+        "of the run failed before it read the name: #{first_line(message(reason))}"
     )
 
     :error
