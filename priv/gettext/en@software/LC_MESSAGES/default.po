@@ -3492,21 +3492,6 @@ msgstr ""
 msgid "%{step} failed."
 msgstr ""
 
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} has a rule here already: it was added after the request was sent."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} has no rule here any more: it was removed after the request was sent."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} is named twice: a request changes each host once."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{suffix} leads a host name, never an address."
@@ -4360,21 +4345,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A release image builds it and serves it here. In a checkout, run:"
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A request changes at most %{max} rules."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A request changes something: a rule, or the mode."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A rule allows or denies."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -11248,11 +11218,6 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace} (cannot be ticked)"
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "In %{workspace}: %{reason}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -21448,11 +21413,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "The repository's address, without a password or token in it."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "The request holds a change the policy does not know."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

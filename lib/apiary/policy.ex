@@ -73,15 +73,6 @@ defmodule Apiary.Policy do
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
 
-  ## Several changes at once
-
-  Changes of the baseline may be asked for away from the policy page and made later, in
-  several workspaces at once, in one transaction. `requested_changes/1` checks such
-  changes as a write would, and gives them as they are kept; the caller takes
-  `lock_workspaces/2` and makes them with `apply_requested/3`, inside its transaction,
-  as writes of this module by the scope's person, with their questions, locks, renders and
-  entries, and announces them with `announce/1` once it has committed.
-
   ## History
 
   The history of a policy is the audit trail's entries of the policy's actions
@@ -1334,48 +1325,7 @@ defmodule Apiary.Policy do
     {:ok, Map.put(text, :runtime_blocked, runtime_blocked)}
   end
 
-  ## Several changes at once
-
-  # The most rules one set of requested changes holds.
-  @request_rules_max 100
-  @request_changes ~w(rule_added rule_changed rule_removed)
-
-  @typedoc """
-  Changes of a workspace's baseline asked for away from the policy page, to be made later
-  in one transaction, as `requested_changes/1` gives them:
-  `%{"mode" => "observe" | "enforce" | nil, "rules" => [%{"change" => change, "rule" =>
-  rule}]}`, each rule as the history holds one (`Apiary.Policy.Change`).
-  """
-  @type requested :: %{String.t() => term}
-
-  @doc """
-  requested_changes/1 validates changes of the baseline asked for away from the policy
-  page as a write validates them, and gives them as they are kept and made
-  (`t:requested/0`).
-
-  `changes`, with string or atom keys: `mode`, `"observe"` or `"enforce"`, or nil or `""`
-  for none; `rules`, a list of changes, each with `change`:
-
-  - `"rule_added"` or `"rule_changed"`, with `action` (`"allow"` or `"deny"`) and what
-    `allow/3` takes: the rule as it is to be, whole. What it does not name is as a new
-    rule has it: every path for a host allowed with no paths given, not locked. A
-    changed rule replaces the rule there, its lock included.
-  - `"rule_removed"`, with the `host`.
-
-  Each host is named once, at most #{@request_rules_max} rules,
-  and the changes change something: a rule or the mode. `{:ok, requested}`, or
-  `{:error, %Error{}}` with the first sentence of what is wrong.
-  """
-  @spec requested_changes(map) :: {:ok, requested} | refusal
-  def requested_changes(changes) when is_map(changes) do
-    with {:ok, mode} <- requested_mode(any_key(changes, "mode")),
-         {:ok, rules} <- requested_rules(any_key(changes, "rules") || []),
-         :ok <- something(mode, rules) do
-      {:ok, %{"mode" => mode, "rules" => rules}}
-    end
-  end
-
-  def requested_changes(_changes), do: requested_changes(%{})
+  ## Several workspaces at once
 
   @doc """
   lock_workspaces/2 takes, inside the caller's transaction, the first rows of the lock
@@ -1412,225 +1362,6 @@ defmodule Apiary.Policy do
   end
 
   def lock_workspaces(_scope, _workspace_ids), do: {:error, :not_found}
-
-  @doc """
-  apply_requested/3 makes `requested` (`requested_changes/1`) in the baseline of each of
-  `workspaces`, as the scope's person, inside the caller's transaction, which has taken
-  `lock_workspaces/2` first: the rules in their order, then the mode. Each change is a
-  write of this module, with its questions, its lock, its audit entry and its render: a
-  locked rule is an owner's to change or remove, and the mode an owner's or an admin's,
-  as on the policy page.
-
-  `{:ok, changes}`, the changes made, for `announce/1` once the caller has committed.
-  A change that no longer fits refuses the whole, `{:error, %Error{}}` with its sentence
-  and the workspace's name, which the caller rolls back: a rule to add that is there
-  already, a rule to change or remove that is gone, a change the person may not make, or
-  one the policy refuses now.
-  """
-  @spec apply_requested(Scope.t(), [%Workspace{}], requested) :: {:ok, [Change.t()]} | refusal
-  def apply_requested(%Scope{} = scope, workspaces, %{"rules" => rules} = requested)
-      when is_list(workspaces) and is_list(rules) do
-    steps =
-      Enum.map(rules, &{:rule, &1}) ++
-        if(requested["mode"] in @modes, do: [{:mode, requested["mode"]}], else: [])
-
-    Enum.reduce_while(workspaces, {:ok, []}, fn %Workspace{} = workspace, {:ok, made} ->
-      scope = %{scope | workspace: workspace}
-
-      case requested_writes(scope, steps) do
-        {:ok, more} -> {:cont, {:ok, made ++ more}}
-        {:error, %Error{} = error} -> {:halt, {:error, in_workspace(error, workspace)}}
-      end
-    end)
-  end
-
-  defp requested_writes(scope, steps) do
-    Enum.reduce_while(steps, {:ok, []}, fn step, {:ok, made} ->
-      case requested_write(scope, step) do
-        {:ok, {_value, nil}} -> {:cont, {:ok, made}}
-        {:ok, {_value, %Change{} = change}} -> {:cont, {:ok, made ++ [change]}}
-        {:error, %Error{}} = refusal -> {:halt, refusal}
-      end
-    end)
-  end
-
-  # Under a floor the mode is not set here: `enforce` asked for is what holds already,
-  # and `observe` is refused with the floor's sentence.
-  defp requested_write(scope, {:mode, mode}) do
-    case {floor?(above(scope.workspace)), mode} do
-      {true, "enforce"} -> {:ok, {mode, nil}}
-      {true, _mode} -> {:error, fixed(above(scope.workspace))}
-      {false, _mode} -> write_in(scope, nil, [:edit, :set_mode], mode_write(mode))
-    end
-  end
-
-  defp requested_write(scope, {:rule, %{"change" => "rule_removed", "rule" => rule}}) do
-    subject = rule["host"]
-
-    write_in(scope, nil, [:edit], fn workspace, scope ->
-      case Enum.find(rules(workspace.id, nil), &(Rule.subject(&1) == subject)) do
-        nil ->
-          {:error, gone(subject)}
-
-        %Rule{} = rule ->
-          with :ok <- may_change(scope, rule) do
-            Repo.delete_all(from r in Rule, where: r.id == ^rule.id)
-            {:ok, rule, "rule_removed", Rule.subject(rule)}
-          end
-      end
-    end)
-  end
-
-  defp requested_write(scope, {:rule, %{"change" => change, "rule" => rule}})
-       when change in ~w(rule_added rule_changed) do
-    with {:ok, attrs} <- attrs(rule),
-         {:ok, candidate} <- candidate(rule["action"], attrs) do
-      write_in(scope, nil, [:edit], fn workspace, scope ->
-        case {change, existing(workspace.id, nil, candidate)} do
-          {"rule_added", %Rule{}} ->
-            {:error,
-             Error.new(
-               :conflict,
-               gettext(
-                 "%{subject} has a rule here already: it was added after the request was sent.",
-                 subject: Rule.subject(candidate)
-               )
-             )}
-
-          {"rule_changed", nil} ->
-            {:error, gone(Rule.subject(candidate))}
-
-          {_change, _existing} ->
-            put(workspace, scope, nil, candidate, attrs)
-        end
-      end)
-    end
-  end
-
-  defp requested_write(_scope, _step), do: unknown_change()
-
-  defp gone(subject),
-    do:
-      not_found(
-        gettext(
-          "%{subject} has no rule here any more: it was removed after the request was sent.",
-          subject: subject
-        )
-      )
-
-  defp in_workspace(%Error{} = error, %Workspace{name: name}),
-    do: %{
-      error
-      | message: gettext("In %{workspace}: %{reason}", workspace: name, reason: error.message)
-    }
-
-  defp requested_mode(mode) when mode in [nil, ""], do: {:ok, nil}
-  defp requested_mode(mode) when mode in @modes, do: {:ok, mode}
-
-  defp requested_mode(_mode),
-    do: {:error, Error.new(:invalid, gettext("The mode is observe or enforce."), :mode)}
-
-  defp requested_rules(rules) when is_list(rules) and length(rules) > @request_rules_max do
-    {:error,
-     Error.new(
-       :invalid,
-       gettext("A request changes at most %{max} rules.", max: @request_rules_max)
-     )}
-  end
-
-  defp requested_rules(rules) when is_list(rules) do
-    rules
-    |> Enum.reduce_while({:ok, [], MapSet.new()}, fn entry, {:ok, rules, seen} ->
-      with {:ok, requested} <- requested_rule(entry),
-           key = requested["rule"]["host"],
-           :ok <- once(key, seen) do
-        {:cont, {:ok, [requested | rules], MapSet.put(seen, key)}}
-      else
-        {:error, %Error{}} = refusal -> {:halt, refusal}
-      end
-    end)
-    |> case do
-      {:ok, rules, _seen} -> {:ok, Enum.reverse(rules)}
-      refusal -> refusal
-    end
-  end
-
-  defp requested_rules(_rules), do: unknown_change()
-
-  # A change as `requested_changes/1` gave it, its rule apart: read again as it came.
-  defp requested_rule(%{"change" => change, "rule" => %{} = rule}),
-    do: requested_rule(Map.put(rule, "change", change))
-
-  defp requested_rule(entry) when is_map(entry) do
-    case any_key(entry, "change") do
-      change when change in @request_changes -> requested_rule(change, entry)
-      _other -> unknown_change()
-    end
-  end
-
-  defp requested_rule(_entry), do: unknown_change()
-
-  defp unknown_change,
-    do:
-      {:error,
-       Error.new(:invalid, gettext("The request holds a change the policy does not know."))}
-
-  defp requested_rule("rule_removed", entry) do
-    with {:ok, attrs} <- attrs(entry) do
-      case {attrs["kind"] || "host", attrs} do
-        # A removal names a rule stored before the grammar refused its host too.
-        {"host", %{"host" => host}} when is_binary(host) ->
-          if Grammar.in_pattern?(host),
-            do:
-              {:ok, %{"change" => "rule_removed", "rule" => %{"kind" => "host", "host" => host}}},
-            else: candidate("deny", attrs)
-
-        {_kind, attrs} ->
-          candidate("deny", attrs)
-      end
-    end
-  end
-
-  defp requested_rule(change, entry) do
-    action = any_key(entry, "action")
-
-    with {:ok, attrs} <- attrs(entry),
-         :ok <- an_action(action),
-         {:ok, candidate} <- candidate(action, attrs) do
-      {:ok, %{"change" => change, "rule" => rule_map(candidate)}}
-    end
-  end
-
-  defp an_action(action) when action in ~w(allow deny), do: :ok
-
-  defp an_action(_action),
-    do: {:error, Error.new(:invalid, gettext("A rule allows or denies."), :action)}
-
-  defp once(key, seen) do
-    if MapSet.member?(seen, key),
-      do:
-        {:error,
-         Error.new(
-           :invalid,
-           gettext("%{subject} is named twice: a request changes each host once.",
-             subject: key
-           )
-         )},
-      else: :ok
-  end
-
-  defp something(nil, []),
-    do:
-      {:error, Error.new(:invalid, gettext("A request changes something: a rule, or the mode."))}
-
-  defp something(_mode, _rules), do: :ok
-
-  defp any_key(map, key) do
-    case Map.fetch(map, key) do
-      {:ok, value} -> value
-      :error -> Map.get(map, String.to_existing_atom(key))
-    end
-  end
 
   # The mode of the workspace set, as `set_mode/3` sets it.
   defp mode_write(mode) do
@@ -2116,7 +1847,7 @@ defmodule Apiary.Policy do
   changes a write made, once its transaction has committed:
   `{:policy_changed, %{workspace_id:, target_id:, action:}}`. A write of this module
   announces its changes; a caller that made changes inside its transaction
-  (`apply_requested/3`) announces them after it commits.
+  announces them after it commits.
   """
   @spec announce([Change.t()]) :: :ok
   def announce(changes) when is_list(changes) do
@@ -2148,7 +1879,7 @@ defmodule Apiary.Policy do
     }
   end
 
-  # A rule as the history and a set of requested changes hold it.
+  # A rule in the form that the history stores it in.
   defp rule_map(%Rule{} = rule) do
     %{
       "kind" => rule.kind,
