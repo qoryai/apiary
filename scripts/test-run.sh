@@ -242,9 +242,23 @@ if [ "$targeted" -eq 0 ]; then
 	said_fix=0
 	until mkdir "$lock_dir" 2>/dev/null; do
 		lock_parent=$(dirname "$lock_dir")
-		if [ ! -d "$lock_parent" ] || [ ! -w "$lock_parent" ]; then
+		if [ ! -d "$lock_parent" ]; then
 			say "create the directory $lock_parent or set APIARY_TEST_LOCK: the lock cannot be made"
 			exit 2
+		fi
+		if [ ! -w "$lock_parent" ]; then
+			say "make $lock_parent writable or set APIARY_TEST_LOCK: the lock cannot be made"
+			exit 2
+		fi
+		# The permission bits allow mkdir, yet it failed. If no lock exists, try
+		# once more, so a lock freed a moment ago is taken, not refused.
+		if [ ! -e "$lock_dir" ]; then
+			mkdir "$lock_dir" 2>/dev/null && break
+			if [ ! -e "$lock_dir" ]; then
+				say "check the permissions of $lock_parent or set APIARY_TEST_LOCK: mkdir $lock_dir failed"
+				exit 2
+			fi
+			continue
 		fi
 		break_stale_lock
 		case $? in
