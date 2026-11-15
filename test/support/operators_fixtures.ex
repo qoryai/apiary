@@ -2,14 +2,13 @@ defmodule ApiaryPro.OperatorsFixtures do
   @moduledoc """
   Test helpers for operators and the instance admins, created the way the product creates
   them: an instance admin by the release command's function, an operator by an instance
-  admin's change of kind (`ApiaryPro.Operators`). No code in the product makes an
-  organisation an operator's client any more: `client_fixture/2` writes the tenant row
-  directly. An operator needs `managed_organisations`: a test that makes one runs where the
+  admin's change of kind (`ApiaryPro.Operators`). No code in the product starts a link
+  between a workspace and its operator: `operate_fixture/2` inserts the row. An operator
+  needs `managed_organisations`: a test that makes one runs where the
   instance has it (`@tag needs: :managed_organisations`, or `with_features:`).
   """
 
   import Apiary.OrganisationsFixtures
-  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
@@ -69,44 +68,26 @@ defmodule ApiaryPro.OperatorsFixtures do
   end
 
   @doc """
-  An organisation made a client of the scope's operator, an organisation of the kind
-  `organisation` whose tenant's `operator_id` is the operator, written directly to its
-  tenant row, since no code in the product makes a client any more. Its first person signs
-  up and creates it with its first workspace, Main, which the operator operates
-  (`operate_fixture/2`); while `ApiaryPro.Flags.operator_infrastructure?/0` is on, that
-  person is its admin, as the operator's invitation made them. The client, its workspace, `scope`,
-  the operator's person's scope in it, reached through the operator, and `owner`, what
-  `sign_up_fixture/1` returns for the first person, `scope` theirs in Main.
+  An organisation whose first workspace, Main, the scope's operator operates: its first
+  person signs up and creates it, and the link is inserted (`operate_fixture/2`). The
+  organisation, its workspace, `scope`, the operator's person's scope in Main, reached
+  through the operator, and `owner`, what `sign_up_fixture/1` returns for the first person,
+  `scope` theirs in Main.
   """
-  def client_fixture(%Scope{} = operator_scope, name \\ nil) do
-    name = name || "Client #{System.unique_integer([:positive])}"
+  def operated_fixture(%Scope{} = operator_scope, name \\ nil) do
+    name = name || "Operated #{System.unique_integer([:positive])}"
     owner = sign_up_fixture(%{organisation_name: name})
     %{organisation: organisation, workspace: workspace} = owner
     operator = operator_scope.organisation
 
-    {1, _} =
-      Repo.update_all(
-        from(t in ApiaryPro.Tenants.Tenant, where: t.organisation_id == ^organisation.id),
-        set: [kind: :organisation, operator_id: operator.id, operator_since: DateTime.utc_now()]
-      )
-
-    client = ApiaryPro.Tenants.put(Repo.get!(Organisation, organisation.id))
-
-    if ApiaryPro.Flags.operator_infrastructure?() do
-      {1, _} =
-        Repo.update_all(
-          from(m in Apiary.Organisations.Membership, where: m.id == ^owner.membership.id),
-          set: [level: :admin]
-        )
-    end
-
     operate_fixture(workspace, operator)
+    organisation = Repo.get!(Organisation, organisation.id) |> ApiaryPro.Tenants.put()
 
     %{
-      organisation: client,
+      organisation: organisation,
       workspace: workspace,
-      scope: scope_in(operator_scope.user, client, workspace),
-      owner: %{owner | scope: scope_in(owner.user, client, workspace)}
+      scope: scope_in(operator_scope.user, organisation, workspace),
+      owner: %{owner | scope: scope_in(owner.user, organisation, workspace)}
     }
   end
 
@@ -122,42 +103,16 @@ defmodule ApiaryPro.OperatorsFixtures do
   end
 
   @doc """
-  The client with its model chain set to `chain`, `:organisation` or `:operator`, written
-  directly to its tenant row, and the scopes of the client's owner and the operator's
-  person in it made again, since a scope carries the switch as it was when it was made.
+  A person of the organisation that `operated_fixture/2` returned, at `level`, admin by
+  default: invited by its owner and made `level` by them. What `member_fixture/2` returns,
+  `scope` theirs in the organisation's workspace.
   """
-  def model_chain_fixture(%Scope{} = _operator_scope, client, chain)
-      when chain in [:organisation, :operator] do
-    {1, _} =
-      Repo.update_all(
-        from(t in ApiaryPro.Tenants.Tenant, where: t.organisation_id == ^client.organisation.id),
-        set: [model_chain: chain]
-      )
-
-    organisation = ApiaryPro.Tenants.put(Repo.get!(Organisation, client.organisation.id))
-
-    %{
-      client
-      | organisation: organisation,
-        scope: scope_in(client.scope.user, organisation, client.workspace),
-        owner: %{
-          client.owner
-          | scope: scope_in(client.owner.user, organisation, client.workspace)
-        }
-    }
-  end
-
-  @doc """
-  A person of the client's own, at `level`, admin by default: invited by the client's
-  owner, whose scope `client_fixture/2` returned, and made `level` by them. What
-  `member_fixture/2` returns, `scope` theirs in the client's workspace.
-  """
-  def client_member_fixture(
-        %{organisation: client, workspace: workspace, owner: %{scope: scope}},
+  def organisation_member_fixture(
+        %{organisation: organisation, workspace: workspace, owner: %{scope: scope}},
         level \\ :admin
       ) do
     person = member_fixture(scope, level)
-    %{person | scope: scope_in(person.user, client, workspace)}
+    %{person | scope: scope_in(person.user, organisation, workspace)}
   end
 
   @doc """

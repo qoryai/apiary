@@ -27,15 +27,15 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     Flags.put_feature_visibility(true)
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
-    client = client_fixture(operator.scope, "Acme")
-    scope = client.owner.scope
+    operated = operated_fixture(operator.scope, "Acme")
+    scope = operated.owner.scope
 
     gateway = gateway_fixture(scope, name: "edge-1")
     node = node_fixture(scope, name: "build-01")
     _key = contract_key_fixture(scope, node: node)
 
     Apiary.Repo.insert!(%Grant{
-      organisation_id: client.organisation.id,
+      organisation_id: operated.organisation.id,
       feature: :nodes,
       granted: false
     })
@@ -43,7 +43,7 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     ctx = %{
       admin: admin,
       operator: operator,
-      client: client,
+      operated: operated,
       node: node,
       gateway: gateway,
       organisation_gateway: organisation_gateway_fixture(scope, name: "edge-org")
@@ -53,18 +53,18 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     ctx
   end
 
-  defp client_path(ctx, tail),
-    do: "/#{ctx.client.organisation.slug}/#{ctx.client.workspace.slug}" <> tail
+  defp operated_path(ctx, tail),
+    do: "/#{ctx.operated.organisation.slug}/#{ctx.operated.workspace.slug}" <> tail
 
   # The pages of the nodes, the access keys and the gateways of the organisation.
   defp node_pages(ctx) do
-    org = ctx.client.organisation.slug
+    org = ctx.operated.organisation.slug
 
     [
-      client_path(ctx, "/machines"),
-      client_path(ctx, "/machines/#{ctx.node.public_id}"),
-      client_path(ctx, "/machines/#{ctx.node.public_id}/access-key"),
-      client_path(ctx, "/machines/#{ctx.gateway.public_id}"),
+      operated_path(ctx, "/machines"),
+      operated_path(ctx, "/machines/#{ctx.node.public_id}"),
+      operated_path(ctx, "/machines/#{ctx.node.public_id}/access-key"),
+      operated_path(ctx, "/machines/#{ctx.gateway.public_id}"),
       "/#{org}/gateways",
       "/#{org}/gateways/#{ctx.organisation_gateway.public_id}",
       "/#{org}/gateways/#{ctx.organisation_gateway.public_id}/access-key"
@@ -72,7 +72,7 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
   end
 
   test "a row of the nodes hides no page of them from the organisation's owner", ctx do
-    conn = log_in_user(build_conn(), ctx.client.owner.user)
+    conn = log_in_user(build_conn(), ctx.operated.owner.user)
 
     for path <- node_pages(ctx),
         do: assert({:ok, _lv, _html} = live(conn, path))
@@ -81,7 +81,7 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
   test "the nodes' box is not on Instance settings › Organisations › Features", ctx do
     conn = log_in_user(build_conn(), ctx.admin.user)
 
-    for organisation <- [ctx.operator.organisation, ctx.client.organisation] do
+    for organisation <- [ctx.operator.organisation, ctx.operated.organisation] do
       {:ok, lv, _html} = live(conn, "/instance/organisations/#{organisation.id}/features")
 
       render_async(lv)

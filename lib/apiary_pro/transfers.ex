@@ -4,7 +4,7 @@ defmodule ApiaryPro.Transfers do
 
   **The arbiter** (`arbitrate/4`, `instance.transfer`, an instance admin's, on Instance
   settings › Organisations). When an organisation has owners and none of them may act
-  (`ApiaryPro.Suspensions.owner_suspended?/1`), a client as any other, an instance admin
+  (`ApiaryPro.Suspensions.owner_suspended?/1`), an instance admin
   offers its ownership to one of its admins, with a reason, replacing any offer pending
   (`ApiaryPro.Transfers.Transfer`, one per organisation). The admin accepts (`accept/1`,
   `organisation.accept_transfer`, which the offer allows and no role): they become an
@@ -13,10 +13,10 @@ defmodule ApiaryPro.Transfers do
   Every arbitration, lapse and acceptance is an audit entry in the organisation, in its
   transaction.
 
-  **Race safety.** Every change takes its rows in the lock order of docs/access.md, a
-  client's row before its operator's. `accept/1` first reads the offer without a lock: a
-  person it is not offered to, and an organisation with no offer, get not found and take
-  no lock. It then takes the organisation and its operator `FOR SHARE` and locks its
+  **Race safety.** Every change takes its rows in the lock order of docs/access.md.
+  `accept/1` first reads the offer without a lock: a person it is not offered to, and an
+  organisation with no offer, get not found and take no lock. It then takes the
+  organisation `FOR SHARE` and locks its
   owners' memberships, in the order `Apiary.Organisations.lock_owners/1` takes them, then
   the membership of the person who accepts, their account, and the offer. A deadlock or a
   serialisation failure Postgres breaks all the same is taken again, twice at most, and
@@ -109,8 +109,8 @@ defmodule ApiaryPro.Transfers do
   arbitrate/4 is the arbiter's transfer (`instance.transfer`, an instance admin's, asked
   in the instance organisation, of the organisation `organisation_id`): its ownership
   offered to the admin of the membership `membership_id`, with `reason`, which the entry
-  keeps. For an organisation whose owners are all suspended, a client as any other; never
-  the instance organisation. It replaces an offer pending, which its entry names. The
+  keeps. For an organisation whose owners are all suspended; never the instance
+  organisation. It replaces an offer pending, which its entry names. The
   admin accepts with `accept/1`. An entry of `instance.transfer` in the organisation's
   trail, by the instance admin.
 
@@ -152,7 +152,6 @@ defmodule ApiaryPro.Transfers do
                  %{
                    details: %{
                      user_id: membership.user_id,
-                     operator_id: Tenants.operator_id(organisation),
                      reason: reason,
                      replaced: replaced && replaced.id
                    }
@@ -241,8 +240,7 @@ defmodule ApiaryPro.Transfers do
   @doc """
   accept/1 accepts the ownership of the scope's organisation the arbiter offered the
   scope's person, an admin of it (`organisation.accept_transfer`, which the offer allows,
-  and no role): they become an owner, and the offer is deleted. A client stays its
-  operator's. An entry of `organisation.accept_transfer` in the organisation's trail.
+  and no role): they become an owner, and the offer is deleted. An entry of `organisation.accept_transfer` in the organisation's trail.
   `Apiary.Access.check/3` checks the offer without a lock first, for anyone it is not
   offered to, then checks the offer, locked, with the person's membership, locked.
 
@@ -280,19 +278,13 @@ defmodule ApiaryPro.Transfers do
          %Scope{user: %User{id: user_id}, organisation: %Organisation{id: id}} = scope
        ) do
     retrying(fn ->
-      # The lock order (docs/access.md): the organisation's row `FOR SHARE`, and a
-      # client's operator's, which the suspension of either waits for, at one point, in
-      # the lock order; `Apiary.Organisations.lock_owners/1` takes them again in the same
-      # mode, then the owners' memberships; then the person's membership, then their
-      # account, then the offer. The operator is read first, without a lock; once the
-      # client is held it changes no more, so one that came in between is a change to try
-      # again.
-      operator_id = Tenants.operator_id(%Organisation{id: id})
-
-      with {:ok, held} <- lock_pair(id, :share, operator_id, :share),
+      # The lock order (docs/access.md): the organisation's row `FOR SHARE`, which its
+      # suspension waits for; `Apiary.Organisations.lock_owners/1` takes it again in the
+      # same mode, then the owners' memberships; then the person's membership, then their
+      # account, then the offer.
+      with {:ok, held} <- Tenants.lock_organisations([id], :share),
            %Organisation{deletion_marked_at: nil} = organisation <-
              held[id] || {:error, :not_found},
-           :ok <- held_operator(organisation, operator_id),
            :ok <- Organisations.lock_owners(%Scope{organisation: organisation}),
            membership = locked_membership_in_use(organisation, user_id),
            %Transfer{} = transfer <- lock_pending(organisation) || {:error, :not_found},
@@ -366,24 +358,6 @@ defmodule ApiaryPro.Transfers do
   # (`ApiaryPro.Tenants.lock_organisation/2`).
   defp lock_row(id, how), do: Tenants.lock_organisation(id, how)
 
-  # Two organisations' rows, `id`'s in `mode` and `other`'s in `other_mode`, at a change's
-  # one point, in the lock order (`ApiaryPro.Tenants.lock_organisations/2`); `other` may be
-  # nil, or `id` itself, which is then held in `mode`: `{:ok, held}`, the organisations
-  # held by their ids, each carrying its tenant, or `{:error, :busy}` for a deadlock that
-  # outlived the core's one retry, which is not taken again here.
-  defp lock_pair(id, mode, other, other_mode) do
-    Tenants.lock_organisations(Enum.reject([id, other], &is_nil/1), fn
-      ^id -> mode
-      _other -> other_mode
-    end)
-  end
-
-  # An organisation whose operator, if it has one, is the one read before its row was held,
-  # and held with it.
-  defp held_operator(organisation, operator_id) do
-    if Tenants.operator_id(organisation) in [nil, operator_id], do: :ok, else: {:error, :busy}
-  end
-
   defp lock_pending(%Organisation{id: id}) do
     Repo.one(from t in Transfer, where: t.organisation_id == ^id, lock: "FOR UPDATE")
   end
@@ -441,20 +415,9 @@ defmodule ApiaryPro.Transfers do
     end
   end
 
-  # An organisation whose owners are all suspended, a client as any other. While
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, a client is its operator's, which
-  # the instance does not overrule.
+  # An organisation whose owners are all suspended.
   defp arbitrable(%Organisation{} = organisation) do
-    cond do
-      ApiaryPro.Flags.operator_infrastructure?() and Tenants.client?(organisation) ->
-        {:error, :has_owner}
-
-      Suspensions.owner_suspended?(organisation) ->
-        :ok
-
-      true ->
-        {:error, :has_owner}
-    end
+    if Suspensions.owner_suspended?(organisation), do: :ok, else: {:error, :has_owner}
   end
 
   defp reason(reason) when is_binary(reason) do
@@ -468,7 +431,7 @@ defmodule ApiaryPro.Transfers do
 
   # The people an offer concerns, told once it is written, so their pages show it.
   defp tell({:ok, %Transfer{} = transfer} = result) do
-    tell_people_of(Enum.reject([transfer.organisation_id, transfer.operator_id], &is_nil/1))
+    tell_people_of([transfer.organisation_id])
     result
   end
 

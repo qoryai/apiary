@@ -1,7 +1,7 @@
 defmodule ApiaryPro.DeletionTest do
   # What the edition adds to a deletion, the core's (`Apiary.DeletionTest`): a member
-  # added to a workspace alone, the instance organisation and an operator's clients, and
-  # the release command's purge.
+  # added to a workspace alone, the instance organisation, an operator and the workspaces
+  # it operates, and the release command's purge.
   # Not async: the purge is asked on an instance with every feature, so each table holds
   # rows, and the grace period's setting is the node's.
   use Apiary.DataCase, async: false
@@ -83,17 +83,19 @@ defmodule ApiaryPro.DeletionTest do
   end
 
   describe "the edition's part" do
-    test "a refusal touches nothing: the instance organisation, an operator with clients" do
+    test "a refusal touches nothing: the instance organisation, an operator that operates a workspace" do
       instance = ApiaryPro.Organisations.instance_organisation()
       assert {:error, :instance_organisation} = Deletion.purge_now(instance)
       assert %Organisation{deletion_marked_at: nil} = Repo.get!(Organisation, instance.id)
 
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-      ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
+      ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope)
       slug = operator.organisation.slug
 
-      assert {:error, :has_clients} = Deletion.delete_organisation(operator.scope, slug)
-      assert {:error, :has_clients} = Deletion.purge_now(operator.organisation)
+      assert {:error, :has_operated_workspaces} =
+               Deletion.delete_organisation(operator.scope, slug)
+
+      assert {:error, :has_operated_workspaces} = Deletion.purge_now(operator.organisation)
 
       assert %Organisation{deletion_marked_at: nil} =
                Repo.get!(Organisation, operator.organisation.id)
@@ -126,39 +128,39 @@ defmodule ApiaryPro.DeletionTest do
       assert Enum.all?(Enum.drop(pages, -1), &(length(&1) == 1))
     end
 
-    test "the operator of a client's workspace hears of the client's marking and its cancelling, as its members do" do
+    test "the operator of a workspace hears of its organisation's marking and its cancelling, as its members do" do
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
+      operated = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope)
       operator_id = operator.organisation.id
-      client_id = client.organisation.id
+      operated_id = operated.organisation.id
 
-      for user <- [operator.user, client.owner.user] do
+      for user <- [operator.user, operated.owner.user] do
         Phoenix.PubSub.subscribe(Apiary.PubSub, Organisations.membership_topic(user.id))
       end
 
       # Main, which the operator operates, is not deleted until the link ends, whatever
-      # other workspace the client has.
-      _second = workspace_fixture(client.organisation)
+      # other workspace the organisation has.
+      _second = workspace_fixture(operated.organisation)
 
       assert {:error, :operated} =
                Deletion.delete_workspace(
-                 client.owner.scope,
-                 client.workspace.id,
-                 client.workspace.slug
+                 operated.owner.scope,
+                 operated.workspace.id,
+                 operated.workspace.slug
                )
 
-      {:ok, _} = Deletion.delete_organisation(client.owner.scope, client.organisation.slug)
+      {:ok, _} = Deletion.delete_organisation(operated.owner.scope, operated.organisation.slug)
       assert_receive {:membership_changed, %{organisation_id: ^operator_id}}
-      assert_receive {:membership_changed, %{organisation_id: ^client_id}}
+      assert_receive {:membership_changed, %{organisation_id: ^operated_id}}
 
       {:ok, _} =
         Deletion.restore_organisation(
-          Apiary.Accounts.Scope.for_user(client.owner.user),
-          client_id
+          Apiary.Accounts.Scope.for_user(operated.owner.user),
+          operated_id
         )
 
       assert_receive {:membership_changed, %{organisation_id: ^operator_id}}
-      assert_receive {:membership_changed, %{organisation_id: ^client_id}}
+      assert_receive {:membership_changed, %{organisation_id: ^operated_id}}
 
       # An organisation with no operator: its members alone.
       %{scope: other, user: user} = sign_up_fixture()

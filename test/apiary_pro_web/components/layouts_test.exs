@@ -150,7 +150,7 @@ defmodule ApiaryProWeb.LayoutsTest do
   @tag with_features: Apiary.Features.all()
   test "an operator's sidebar: Policy after Overview, no Operator group, and the settings beside" do
     operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-    ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
+    ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope)
     org = operator.organisation.slug
 
     {:ok, view, html} =
@@ -167,7 +167,7 @@ defmodule ApiaryProWeb.LayoutsTest do
     assert List.last(ids) == "nav-organisation_policy"
     refute has_element?(view, "#nav-group-guard")
 
-    # No group of the operator's, and no Clients entry, though it has a client.
+    # No group of the operator's and no Clients entry, though it operates a workspace.
     refute has_element?(view, "#nav-group-operator")
     refute has_element?(view, "#nav-clients")
 
@@ -189,7 +189,7 @@ defmodule ApiaryProWeb.LayoutsTest do
     # Operator A operates Main of Acme (O); Platform of Acme has no operator.
     setup do
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Acme")
+      client = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Acme")
       platform = workspace_fixture(client.organisation, "Platform")
       %{operator: operator, client: client, platform: platform}
     end
@@ -319,7 +319,7 @@ defmodule ApiaryProWeb.LayoutsTest do
     test "the operator's workspaces of several organisations come by organisation name",
          %{operator: operator, client: client} do
       a = operator.organisation.slug
-      beta = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Beta")
+      beta = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Beta")
       conn = log_in_user(build_conn(), operator.user)
 
       {:ok, _view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")

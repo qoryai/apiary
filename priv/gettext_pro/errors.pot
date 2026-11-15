@@ -38,16 +38,6 @@ msgstr ""
 
 #: lib/apiary_pro/tenants.ex
 #, elixir-autogen, elixir-format
-msgid "cannot be an operator: it is a client of one"
-msgstr ""
-
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
-msgid "cannot be an organisation while it has clients"
-msgstr ""
-
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
 msgid "cannot be changed: it is the instance owner"
 msgstr ""
 
@@ -104,11 +94,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "is no longer an admin who can act: choose another"
-msgstr ""
-
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
-msgid "is not an operator"
 msgstr ""
 
 #: lib/apiary_pro/sign_up.ex

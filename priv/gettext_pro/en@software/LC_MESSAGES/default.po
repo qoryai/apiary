@@ -146,16 +146,6 @@ msgstr ""
 msgid "%{name} is used by %{uses}: unlink it there first."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} runs the harness %{operator} provides. %{operator} owns it: its owners and admins run its workspaces, machines and keys, and its members read everything in it."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} runs the harness %{operator} provides. The people of %{operator} read everything in %{name} to support its harness, and change nothing."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} account matches"
@@ -335,11 +325,6 @@ msgstr[1] "%{workspace} observes again, and so do %{number} repositories of it t
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} observes again."
-msgstr ""
-
-#: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "A client of an operator cannot be made an operator."
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -608,21 +593,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "An operator that operates a workspace cannot be made an organisation."
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format, fuzzy
-msgid "An operator with clients cannot be deleted."
-msgstr ""
-
-#: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "An operator with clients cannot be made an organisation."
-msgstr ""
-
-#: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format
-msgid "An operator with clients is not purged: each client is deleted first."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -1400,11 +1370,6 @@ msgstr ""
 msgid "Make organisation…"
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Manages members and settings"
-msgstr ""
-
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Member added to a workspace"
@@ -1605,11 +1570,6 @@ msgstr "No workspace or repository set observe for itself, so each keeps enforci
 msgid "No workspace yet"
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Nobody in %{organisation} is made an owner: %{operator}, its operator, owns it."
-msgstr ""
-
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "None"
@@ -1736,11 +1696,6 @@ msgstr ""
 msgid "Only owners and admins of %{organisation} change its variables."
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of %{organisation} create workspaces."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners of %{name} change its policy: these settings and its rules."
@@ -1782,11 +1737,6 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
-#: lib/apiary_pro_web/components/slots.ex
-#, elixir-autogen, elixir-format
-msgid "Operated by %{operator}"
-msgstr ""
-
 #: lib/apiary_pro_web/components/organisation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Operates workspaces of other organisations."
@@ -1795,7 +1745,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #: lib/apiary_pro_web/components/organisation_components.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Operator"
 msgstr ""
@@ -1890,19 +1839,9 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
-#: lib/apiary_pro_web/components/slots.ex
-#, elixir-autogen, elixir-format
-msgid "Owned by %{operator}"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Owner suspended"
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Owners and admins of %{operator}, its operator, manage the machines, pools and access keys here."
 msgstr ""
 
 #: lib/apiary_pro_web/components/slots.ex
@@ -2157,11 +2096,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Set a variable of the organisation, for every workspace"
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Set by your operator, %{operator}. Ask them to change it."
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/words.ex
@@ -2630,11 +2564,6 @@ msgstr ""
 msgid "Views of the organisations"
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "We email them a link that works for seven days and brings them into %{workspace} as a member; %{organisation}'s admins can change their level afterwards."
-msgstr ""
-
 #: lib/apiary_pro_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "We sent a confirmation link to %{email}. It works for 15 minutes."
@@ -2664,16 +2593,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "While it is locked, no workspace or target may override it."
 msgstr "While it is locked, no workspace or repository may override it."
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Whose harness this organisation runs, and offers of its ownership."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Whose harness this organisation runs."
-msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
@@ -2887,11 +2806,6 @@ msgstr ""
 msgid "You cannot create a new organisation here. %{contact_support}."
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; %{organisation}'s admins can change their level afterwards."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
 msgid "You must re-authenticate to access this page."
@@ -2900,16 +2814,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "You no longer have access to this workspace."
-msgstr ""
-
-#: lib/apiary_pro_web/components/notices.ex
-#, elixir-autogen, elixir-format
-msgid "You read %{organisation} as a person of %{operator}, its operator: everything here can be read, and nothing changed."
-msgstr ""
-
-#: lib/apiary_pro_web/components/notices.ex
-#, elixir-autogen, elixir-format
-msgid "You read %{organisation} as a person of its operator: everything here can be read, and nothing changed."
 msgstr ""
 
 #: lib/apiary_pro_web/components/notices.ex
@@ -2927,16 +2831,6 @@ msgstr ""
 msgid "You sign in with a password."
 msgstr ""
 
-#: lib/apiary_pro_web/components/notices.ex
-#, elixir-autogen, elixir-format
-msgid "You work in %{organisation} as an admin of %{operator}, its operator."
-msgstr ""
-
-#: lib/apiary_pro_web/components/notices.ex
-#, elixir-autogen, elixir-format
-msgid "You work in %{organisation} as an owner of %{operator}, its operator."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "You're its only owner"
@@ -2944,7 +2838,7 @@ msgstr ""
 
 #: lib/apiary_pro/sign_up.ex
 #, elixir-autogen, elixir-format
-msgid "Your account and your operator, to run organisations for clients."
+msgid "Your account and your operator, to operate workspaces of other organisations."
 msgstr ""
 
 #: lib/apiary_pro_web/live/user_live/registration.ex

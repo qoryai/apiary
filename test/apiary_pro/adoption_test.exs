@@ -160,8 +160,6 @@ defmodule ApiaryPro.AdoptionTest do
       assert %Tenant{
                kind: :organisation,
                instance_organisation: true,
-               operator_id: nil,
-               operator_since: nil,
                suspended_at: nil
              } = Repo.get!(Tenant, instance.id)
 
@@ -171,8 +169,6 @@ defmodule ApiaryPro.AdoptionTest do
         assert %Tenant{
                  kind: :organisation,
                  instance_organisation: false,
-                 operator_id: nil,
-                 operator_since: nil,
                  suspended_at: nil,
                  suspended_by_id: nil
                } = Repo.get!(Tenant, id)

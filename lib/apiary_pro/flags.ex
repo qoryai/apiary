@@ -81,10 +81,9 @@ defmodule ApiaryPro.Flags do
 
   # feature_visibility?/0 says whether a feature below the instance is shown or hidden to
   # people by who they are, not only by where they are (`ApiaryPro.Features.hidden/1`): a
-  # person who holds a level in a client's operator sees in the client what the operator
-  # is shown, and an instance admin who reaches an organisation through the instance sees
-  # every feature the instance has. With it on, the Features pages, the Clients list and
-  # the Activity page say "shown" and "hidden" for what they say "grant" and "take away"
+  # person of the operator of a workspace sees there what the organisation is shown, and
+  # an instance admin who reaches an organisation through the instance sees every feature
+  # the instance has. With it on, the Features pages and the Activity page say "shown" and "hidden" for what they say "grant" and "take away"
   # with it off, and a change of what an organisation is shown is recorded with
   # `shown: true` in its entry's details. It is the opt-in feature `feature_visibility`,
   # off until an instance admin turns it on. While it is off, a person is not shown what

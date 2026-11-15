@@ -68,22 +68,23 @@ defmodule ApiaryProWeb.PolicyPageProTest do
 
   defp organisation_policy(ctx), do: ~p"/#{ctx.organisation}/policy"
 
-  # A client's workspace policy page, as one of its people or of its operator's.
+  # The policy page of the workspace the operator operates, as one of the organisation's
+  # people or of the operator's.
   defp open_as(ctx, actor), do: open(log_in_user(ctx.conn, ctx.people[actor]), ctx.path)
 
-  # Whether the client's rule not locked, then its locked one, are locked now.
+  # Whether the workspace's rule not locked, then its locked one, are locked now.
   defp locks(ctx), do: Enum.map([ctx.open, ctx.locked], &Repo.get!(Policy.Rule, &1.id).locked)
 
   # What a target's rule form and a connection's panel say of vault.example before who may
   # change it.
   @vault_on_the_target "A locked workspace rule denies vault.example . It holds against every repository, so no rule added here would change what happens."
 
-  # The sentences of who may change a locked rule, for a member of the client, in the
-  # core's words.
+  # The sentences of who may change a locked rule, for a member of the organisation, in
+  # the core's words.
   defp assert_core_lock_words(ctx, places) do
-    locker = %{user: ctx.people.client_owner, scope: ctx.client.owner.scope}
+    locker = %{user: ctx.people.organisation_owner, scope: ctx.operated.owner.scope}
     words = lock_words(ctx, places, locker)
-    by = "Locked by #{ctx.people.client_owner.email} on ‹date›."
+    by = "Locked by #{ctx.people.organisation_owner.email} on ‹date›."
 
     assert dated(words.tips) == [
              [
@@ -151,14 +152,14 @@ defmodule ApiaryProWeb.PolicyPageProTest do
     |> hd()
   end
 
-  # Where a client's people read who may change a locked rule. Before the flag, Acme's
+  # Where the organisation's people read who may change a locked rule. Before the flag, Acme's
   # owner locked api.example, so the pages know who locked it, and a run of acme/shop was
   # refused vault.example, which the locked rule denies, and let bin.lock.example through
   # with no rule.
   defp lock_places(ctx) do
     on? = ApiaryPro.Flags.operator_infrastructure?()
     ApiaryPro.Flags.put_operator_infrastructure(false)
-    owner = ctx.client.owner.scope
+    owner = ctx.operated.owner.scope
     {:ok, api} = Policy.allow(owner, nil, %{host: "api.example"})
     {:ok, _} = Policy.lock(owner, api)
 
@@ -177,7 +178,7 @@ defmodule ApiaryProWeb.PolicyPageProTest do
 
     [%{target: target}] = Policy.list_targets(owner)
     ApiaryPro.Flags.put_operator_infrastructure(on?)
-    workspace = "/#{ctx.client.organisation.slug}/#{ctx.client.workspace.slug}"
+    workspace = "/#{ctx.operated.organisation.slug}/#{ctx.operated.workspace.slug}"
 
     %{
       run: run,
@@ -192,13 +193,13 @@ defmodule ApiaryProWeb.PolicyPageProTest do
   # who may lock: it picks enforce on the target's tab, then locks a deny of
   # *.lock.example, which bin.lock.example falls under, and removes it again.
   defp lock_words(ctx, places, locker) do
-    conn = log_in_user(build_conn(), ctx.people.client_member)
+    conn = log_in_user(build_conn(), ctx.people.organisation_member)
 
     member =
       OperatorsFixtures.scope_in(
-        ctx.people.client_member,
-        ctx.client.organisation,
-        ctx.client.workspace
+        ctx.people.organisation_member,
+        ctx.operated.organisation,
+        ctx.operated.workspace
       )
 
     tips =
@@ -563,41 +564,42 @@ defmodule ApiaryProWeb.PolicyPageProTest do
     assert text(view, "#policy-mode-value") == "Enforce"
   end
 
-  describe "a client's workspace policy page while the operator owns it" do
-    # Hive Ops and its client Acme, whose owner was made while the flag was off: a rule of
-    # Acme's workspace and a locked one, then the flag on, and the people who open it.
+  describe "the policy page of a workspace an operator operates, while its owners and admins act there" do
+    # Hive Ops and Acme, whose workspace Main Hive Ops operates, and whose owner was made
+    # while the flag was off: a rule of Main and a locked one, then the flag on, and the
+    # people who open it.
     setup do
       ApiaryPro.Flags.put_operator_infrastructure(false)
       operator = OperatorsFixtures.operator_fixture(%{organisation_name: "Hive Ops"})
-      client = OperatorsFixtures.client_fixture(operator.scope, "Acme")
+      operated = OperatorsFixtures.operated_fixture(operator.scope, "Acme")
       operator_admin = member_fixture(operator.scope, :admin)
-      {:ok, open} = Policy.allow(client.owner.scope, nil, %{host: "cdn.example"})
+      {:ok, open} = Policy.allow(operated.owner.scope, nil, %{host: "cdn.example"})
 
       {:ok, locked} =
-        Policy.deny(client.owner.scope, nil, %{host: "vault.example", locked: true})
+        Policy.deny(operated.owner.scope, nil, %{host: "vault.example", locked: true})
 
       ApiaryPro.Flags.put_operator_infrastructure(true)
 
       people = %{
         operator_owner: operator.user,
         operator_admin: operator_admin.user,
-        client_owner: client.owner.user,
-        client_admin: OperatorsFixtures.client_member_fixture(client, :admin).user,
-        client_member: OperatorsFixtures.client_member_fixture(client, :member).user
+        organisation_owner: operated.owner.user,
+        organisation_admin: OperatorsFixtures.organisation_member_fixture(operated, :admin).user,
+        organisation_member: OperatorsFixtures.organisation_member_fixture(operated, :member).user
       }
 
       %{
-        client: client,
+        operated: operated,
         open: open,
         locked: locked,
         people: people,
-        path: "/#{client.organisation.slug}/#{client.workspace.slug}/policy"
+        path: "/#{operated.organisation.slug}/#{operated.workspace.slug}/policy"
       }
     end
 
-    test "the client's owner locks and unlocks the client's rules, as in any organisation",
+    test "the organisation's owner locks and unlocks the workspace's rules, as in any organisation",
          ctx do
-      view = open_as(ctx, :client_owner)
+      view = open_as(ctx, :organisation_owner)
       open = row(view, "cdn.example")
       locked = row(view, "vault.example")
       assert text(view, "##{open}-lock-toggle") == "Lock"
@@ -623,8 +625,8 @@ defmodule ApiaryProWeb.PolicyPageProTest do
       end
     end
 
-    test "the client's admin and member are refused a lock in the core's words", ctx do
-      for actor <- [:client_admin, :client_member] do
+    test "the organisation's admin and member are refused a lock in the core's words", ctx do
+      for actor <- [:organisation_admin, :organisation_member] do
         view = open_as(ctx, actor)
         open = row(view, "cdn.example")
         assert has_element?(view, "##{open}-change"), "#{actor}"
@@ -651,15 +653,15 @@ defmodule ApiaryProWeb.PolicyPageProTest do
       end
     end
 
-    test "with the flag off, the client's owner locks, and its admin is refused as before",
+    test "with the flag off, the organisation's owner locks, and its admin is refused as before",
          ctx do
       ApiaryPro.Flags.put_operator_infrastructure(false)
 
-      view = open_as(ctx, :client_owner)
+      view = open_as(ctx, :organisation_owner)
       assert text(view, "##{row(view, "cdn.example")}-lock-toggle") == "Lock"
       assert text(view, "##{row(view, "vault.example")}-lock-toggle") == "Unlock"
 
-      view = open_as(ctx, :client_admin)
+      view = open_as(ctx, :organisation_admin)
       refute has_element?(view, "##{row(view, "cdn.example")}-lock-toggle")
       render_hook(view, "lock_toggle", %{"id" => ctx.open.id})
 
@@ -668,9 +670,9 @@ defmodule ApiaryProWeb.PolicyPageProTest do
 
       admin_scope =
         OperatorsFixtures.scope_in(
-          ctx.people.client_admin,
-          ctx.client.organisation,
-          ctx.client.workspace
+          ctx.people.organisation_admin,
+          ctx.operated.organisation,
+          ctx.operated.workspace
         )
 
       assert {:error, %Policy.Error{message: "Only an owner locks or unlocks a rule."}} =

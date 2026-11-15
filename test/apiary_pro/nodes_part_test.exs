@@ -17,27 +17,23 @@ defmodule ApiaryPro.NodesPartTest do
   @moduletag with_features: Features.all()
 
   # An operator, an organisation whose workspace Main it operates, with an admin and a
-  # member, and an organisation with no operator, all made with the operator's flag off;
-  # then both switches on.
+  # member, and an organisation with no operator, with both switches on.
   setup do
-    Flags.put_operator_infrastructure(false)
+    Flags.put_operator_infrastructure(true)
     Flags.put_feature_visibility(true)
     %{instance_scope: admin, user: admin_user} = suite_instance_admin()
     operator = operator_fixture()
-    operated = client_fixture(operator.scope, "Acme")
+    operated = operated_fixture(operator.scope, "Acme")
 
-    ctx = %{
+    %{
       admin: admin,
       admin_user: admin_user,
       operator: operator,
       operated: operated,
-      operated_admin: client_member_fixture(operated, :admin),
-      operated_member: client_member_fixture(operated, :member),
+      operated_admin: organisation_member_fixture(operated, :admin),
+      operated_member: organisation_member_fixture(operated, :member),
       lone: sign_up_fixture()
     }
-
-    Flags.put_operator_infrastructure(true)
-    ctx
   end
 
   defp fresh(user, organisation, workspace \\ nil), do: scope_in(user, organisation, workspace)

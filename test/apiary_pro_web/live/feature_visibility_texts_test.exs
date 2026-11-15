@@ -73,11 +73,11 @@ defmodule ApiaryProWeb.FeatureVisibilityTextsTest do
       test "Instance › Organisations › Features says what an organisation an operator operates in is shown",
            ctx do
         operator = operator_fixture()
-        client = client_fixture(operator.scope)
+        operated = operated_fixture(operator.scope)
         {said, not_said} = words(:organisation, @on)
 
         {:ok, lv, _html} =
-          live(ctx.conn, ~p"/instance/organisations/#{client.organisation.id}/features")
+          live(ctx.conn, ~p"/instance/organisations/#{operated.organisation.id}/features")
 
         render_async(lv)
         assert has_element?(lv, "#organisation-page", said)

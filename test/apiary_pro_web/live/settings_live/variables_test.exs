@@ -835,8 +835,6 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert Repo.get!(Variable, variable.id).locked
     end
 
-    # A client holds no grant of `secrets` (no grant names it), so it has no organisation
-    # variables: the reader here is an instance admin, who reads as an operator's people do.
     test "an instance admin, a reader with no membership, reads them, and sees no control",
          _ctx do
       home = sign_up_fixture()
@@ -1018,11 +1016,11 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
     end
 
     @tag needs: :managed_organisations
-    test "an operator's person, not a member of the client, is named by their account" do
+    test "an operator's person, not a member of the operated organisation, is named by their account" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
-      for organisation <- [operator.organisation, client.organisation] do
+      for organisation <- [operator.organisation, operated.organisation] do
         Repo.insert!(
           %ApiaryPro.Grants.Grant{
             organisation_id: organisation.id,
@@ -1034,12 +1032,12 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
         )
       end
 
-      members = Apiary.Organisations.list_members(client.owner.scope)
+      members = Apiary.Organisations.list_members(operated.owner.scope)
       refute Enum.any?(members, &(&1.user.id == operator.user.id))
-      variable = create!(client.owner.scope, "LOG_LEVEL", "info")
+      variable = create!(operated.owner.scope, "LOG_LEVEL", "info")
       Repo.update!(Ecto.Changeset.change(variable, updated_by_id: operator.user.id))
 
-      row = row(client.owner.user, client.owner.scope, variable)
+      row = row(operated.owner.user, operated.owner.scope, variable)
       assert row =~ "by #{letter(operator.user)}"
       refute row =~ "Former member"
     end

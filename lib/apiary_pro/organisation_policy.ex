@@ -802,7 +802,7 @@ defmodule ApiaryPro.OrganisationPolicy do
   defp forbidden(_scope, :"organisation_policy.read"),
     do: gettext("Only an owner or an admin reads the organisation's policy.")
 
-  # A change is the organisation's owners', a client's as any other's (`ApiaryPro.Access`).
+  # A change is the organisation's owners' (`ApiaryPro.Access`).
   defp forbidden(_scope, _action),
     do: gettext("Only an owner changes the organisation's policy.")
 end

@@ -1,4 +1,4 @@
-defmodule ApiaryPro.ClientReach do
+defmodule ApiaryPro.OperatedPlace do
   @moduledoc """
   An organisation as a person of an operator reaches it through the workspaces the
   operator operates there: the organisation, the person's membership in the organisation

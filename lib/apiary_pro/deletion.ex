@@ -7,11 +7,10 @@ defmodule ApiaryPro.Deletion do
 
   The instance organisation holds the instance admins, and an instance without it would
   give its next sign-up the instance: it is never marked nor purged,
-  `:instance_organisation`. An operator is deleted once it has no clients, `:has_clients`:
-  each is deleted first, and the database keeps the reference until then; and
-  once it operates no workspace, `:has_operated_workspaces`: each link ends first
-  (`ApiaryPro.WorkspaceOperators`), and the database keeps the reference until then. A
-  workspace with an operator is not deleted, `:operated`, until its link ends. The people of the operators of an organisation's
+  `:instance_organisation`. An operator is deleted once it operates no workspace,
+  `:has_operated_workspaces`: each link ends first (`ApiaryPro.WorkspaceOperators`), and
+  the database keeps the reference until then. A workspace with an operator is not
+  deleted, `:operated`, until its link ends. The people of the operators of an organisation's
   workspaces reach those workspaces, so they hear of the organisation's marking and its
   cancelling, and of their workspaces', as its members do.
   """
@@ -22,26 +21,21 @@ defmodule ApiaryPro.Deletion do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
   alias ApiaryPro.Tenants
-  alias ApiaryPro.Tenants.Tenant
 
   @doc """
   refusal/2 is why `subject` may not be deleted or purged, or nil:
-  `:instance_organisation` for the instance organisation, `:has_clients` for an operator
-  that still has clients, `:has_operated_workspaces` for an operator that still operates
-  a workspace, one marked for deletion included; and `:operated` for a workspace marked
+  `:instance_organisation` for the instance organisation, `:has_operated_workspaces` for
+  an operator that still operates a workspace, one marked for deletion included; and `:operated` for a workspace marked
   for deletion while it has an operator. Asked on the row locked for the change, whose
   tenant it reads under the lock when the organisation has none
   (`ApiaryPro.Tenants`). A workspace whose organisation is purged goes with its link.
   """
   @spec refusal(:delete | :purge, %Organisation{} | %Workspace{}) ::
-          nil | :instance_organisation | :has_clients | :has_operated_workspaces | :operated
+          nil | :instance_organisation | :has_operated_workspaces | :operated
   def refusal(_what, %Organisation{} = organisation) do
     cond do
       Tenants.instance_organisation?(organisation) ->
         :instance_organisation
-
-      Tenants.operator?(organisation) and ApiaryPro.Operators.has_clients?(organisation) ->
-        :has_clients
 
       Tenants.operator?(organisation) and
           ApiaryPro.WorkspaceOperators.operates_workspaces?(organisation) ->
@@ -111,8 +105,8 @@ defmodule ApiaryPro.Deletion do
 
   `{:ok, :purged}`, or `{:ok, :gone}` should a purge have finished it meanwhile;
   `{:error, :confirmation}` for a confirmation that is not its slug, `{:error,
-  :has_clients}` for an operator that still has clients, `{:error, :not_found}` for one
-  that is not there, and `Apiary.Access`'s answer: `{:error, :forbidden}` for the instance
+  :has_operated_workspaces}` for an operator that still operates a workspace,
+  `{:error, :not_found}` for one that is not there, and `Apiary.Access`'s answer: `{:error, :forbidden}` for the instance
   organisation, which is never purged.
   """
   @spec purge_on_request(Scope.t(), String.t(), String.t() | nil) ::
@@ -165,17 +159,7 @@ defmodule ApiaryPro.Deletion do
 
   defp not_found, do: {:error, :not_found}
 
-  # The memberships whose people hear of a change to the organisation: the organisation's,
-  # and its operator's for a client.
-  defp told_of(organisation_id) do
-    operator =
-      from t in Tenant,
-        where: t.organisation_id == ^organisation_id and not is_nil(t.operator_id),
-        select: t.operator_id
-
-    Repo.all(
-      from m in Membership,
-        where: m.organisation_id == ^organisation_id or m.organisation_id in subquery(operator)
-    )
-  end
+  # The memberships whose people hear of a change to the organisation.
+  defp told_of(organisation_id),
+    do: Repo.all(from m in Membership, where: m.organisation_id == ^organisation_id)
 end

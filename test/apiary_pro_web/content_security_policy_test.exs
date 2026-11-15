@@ -61,7 +61,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     # A nonce is never used twice.
     nonces = Enum.map(answers, &elem(&1, 0))
     assert length(Enum.uniq(nonces)) == length(nonces)
-    # The edition's pages were loaded: the instance's, the organisation's and the operator's.
+    # The edition's pages were loaded: the instance's and the organisation's.
     assert length(known) >= 40
   end
 
@@ -257,8 +257,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/instance/accounts/:id/suspend"), do: {:instance_admin, nil, :member_user_id}
 
   defp page("/:org/settings/people/:id/workspaces"), do: {:owner, :org, :membership_id}
-  # Ownership is listed for a person who reads a client's settings.
-  defp page("/:org/settings/ownership"), do: {:client_owner, :client, nil}
+  # Ownership is listed for the admin offered the ownership.
+  defp page("/:org/settings/ownership"), do: {:offered_admin, :offered, nil}
   defp page("/:org/settings/variables"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/new"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/:id/change"), do: {:owner, :org, :variable_id}
@@ -305,9 +305,9 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
 
   # The people each page is for, logged in, and the records the pages are about, in the
   # states they open in: an owner's organisation with a member, a second workspace, its
-  # variables, its secrets and its policy; the operator, with a client whose owner signed
-  # up; an organisation suspended; and one whose owner's account
-  # is, with an admin.
+  # variables, its secrets and its policy; an organisation suspended; one whose owner's
+  # account is, with an admin; and one whose admin the instance admins offer the
+  # ownership to.
   defp world do
     admin = suite_instance_admin()
 
@@ -342,9 +342,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
 
     {:ok, org_rule} = ApiaryPro.OrganisationPolicy.deny(owner.scope, %{host: "org.example"})
 
-    operator = operator_fixture(%{organisation_name: "Hive Ops"})
-    client = client_fixture(operator.scope, "Acme")
-
     suspended = sign_up_fixture()
     {:ok, _} = Suspensions.suspend_organisation(admin.instance_scope, suspended.organisation.id)
 
@@ -352,19 +349,29 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     member_fixture(arbitrated.scope, :admin)
     {:ok, _} = Suspensions.suspend_account(admin.instance_scope, arbitrated.user.id)
 
+    offered = sign_up_fixture()
+    %{user: offered_admin, membership: offered_membership} = member_fixture(offered.scope, :admin)
+    {:ok, _} = Suspensions.suspend_account(admin.instance_scope, offered.user.id)
+
+    {:ok, _} =
+      ApiaryPro.Transfers.arbitrate(
+        admin.instance_scope,
+        offered.organisation.id,
+        offered_membership.id,
+        "The owner is away."
+      )
+
     %{
       conns: %{
         owner: log_in_user(build_conn(), owner.user),
         signed_out: build_conn(),
         instance_admin: log_in_user(build_conn(), admin.user),
-        client_owner: log_in_user(build_conn(), client.owner.user),
-        operator_owner: log_in_user(build_conn(), operator.user)
+        offered_admin: log_in_user(build_conn(), offered_admin)
       },
       values: %{
         org: owner.organisation.slug,
         org_id: owner.organisation.id,
-        client: client.organisation.slug,
-        operator: operator.organisation.slug,
+        offered: offered.organisation.slug,
         suspended_id: suspended.organisation.id,
         arbitrated_id: arbitrated.organisation.id,
         member_user_id: member.user.id,

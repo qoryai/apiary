@@ -52,23 +52,24 @@ defmodule ApiaryProWeb.SuspensionNoticesTest do
     assert has_element?(lv, "#member-#{member.id}-suspend")
   end
 
-  test "a client of a suspended operator carries no notice: its owners are its own", ctx do
+  test "an organisation whose workspace a suspended operator operates carries no notice",
+       ctx do
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
-    %{user: admin} = member_fixture(client.owner.scope, :admin)
+    operated = operated_fixture(operator.scope)
+    %{user: admin} = member_fixture(operated.owner.scope, :admin)
     {:ok, _} = Suspensions.suspend_organisation(ctx.instance, operator.organisation.id)
 
     {:ok, lv, _html} =
-      live(log_in_user(build_conn(), admin), ~p"/#{client.organisation}/settings/people")
+      live(log_in_user(build_conn(), admin), ~p"/#{operated.organisation}/settings/people")
 
     refute has_element?(lv, "#owner-suspended")
     refute has_element?(lv, "#organisation-suspended")
 
-    # Its own owner suspended, it says so.
-    {:ok, _} = Suspensions.suspend_account(ctx.instance, client.owner.user.id)
+    # Once the organisation's owner is suspended, the page says so.
+    {:ok, _} = Suspensions.suspend_account(ctx.instance, operated.owner.user.id)
 
     {:ok, lv, _html} =
-      live(log_in_user(build_conn(), admin), ~p"/#{client.organisation}/settings/people")
+      live(log_in_user(build_conn(), admin), ~p"/#{operated.organisation}/settings/people")
 
     assert has_element?(lv, "#owner-suspended", "its runs continue")
     assert has_element?(lv, "#owner-suspended", "waits until support acts. Contact support.")

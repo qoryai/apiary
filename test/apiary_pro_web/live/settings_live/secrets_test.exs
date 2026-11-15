@@ -508,11 +508,11 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "in a client, the operator's people find neither tab: the client's alone" do
+    test "in an operated organisation, the operator's people find neither tab" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
-      for organisation <- [operator.organisation, client.organisation] do
+      for organisation <- [operator.organisation, operated.organisation] do
         Repo.insert!(
           %ApiaryPro.Grants.Grant{
             organisation_id: organisation.id,
@@ -530,8 +530,8 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
         conn = log_in_user(build_conn(), user)
 
         for path <- [
-              ~p"/#{client.organisation}/settings/secrets",
-              ~p"/#{client.organisation}/settings/variables"
+              ~p"/#{operated.organisation}/settings/secrets",
+              ~p"/#{operated.organisation}/settings/variables"
             ] do
           assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
         end
@@ -775,11 +775,11 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "an operator's person, not a member of the client, is named by their account" do
+    test "an operator's person, not a member of the operated organisation, is named by their account" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
-      for organisation <- [operator.organisation, client.organisation] do
+      for organisation <- [operator.organisation, operated.organisation] do
         Repo.insert!(
           %ApiaryPro.Grants.Grant{
             organisation_id: organisation.id,
@@ -791,9 +791,9 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
         )
       end
 
-      members = Apiary.Organisations.list_members(client.owner.scope)
+      members = Apiary.Organisations.list_members(operated.owner.scope)
       refute Enum.any?(members, &(&1.user.id == operator.user.id))
-      secret = create!(client.owner.scope, "DEPLOY_TOKEN")
+      secret = create!(operated.owner.scope, "DEPLOY_TOKEN")
 
       for schema <- [Secret, Apiary.Secrets.Value] do
         field = if schema == Secret, do: :id, else: :secret_id
@@ -803,7 +803,7 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
         )
       end
 
-      row = row(client.owner.user, client.owner.scope, secret)
+      row = row(operated.owner.user, operated.owner.scope, secret)
       assert row =~ "by #{letter(operator.user)}"
       refute row =~ "Former member"
     end

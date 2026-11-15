@@ -107,8 +107,8 @@ defmodule ApiaryPro.Operators.WorkspaceOperatorsSchemaTest do
 
     test "the row goes with its workspace and with its organisation" do
       operator = operator!()
-      %{organisation: client, workspace: w1} = organisation!()
-      w2 = workspace_fixture(client)
+      %{organisation: organisation, workspace: w1} = organisation!()
+      w2 = workspace_fixture(organisation)
       link!(w1, operator.id)
       link!(w2, operator.id)
 
@@ -116,7 +116,7 @@ defmodule ApiaryPro.Operators.WorkspaceOperatorsSchemaTest do
       assert count("workspace_operators", "workspace_id", w1.id) == 0
       assert count("workspace_operators", "workspace_id", w2.id) == 1
 
-      delete_organisation!(client.id)
+      delete_organisation!(organisation.id)
       assert count("workspace_operators", "operator_id", operator.id) == 0
     end
 

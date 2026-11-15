@@ -11,15 +11,15 @@ defmodule ApiaryPro.Operators do
   Instance settings' pages, each asked of `Apiary.Access` in the instance organisation:
 
   - `list_organisations/1` (`instance.read`): every organisation on the instance, with its
-    kind, its operator and whether it is marked for deletion;
+    kind and whether it is marked for deletion;
   - `create_organisation/2` (`instance.create_organisation`, `instance.create_operator`):
     an organisation or an operator, with no workspace, whose first owner is the
     instance admin who created it, who makes its first workspace from the kind cards on
     its overview (`/:org`), invites its people and may leave once another owner is
     there;
-  - `change_kind/3` (`instance.change_kind`): an organisation that is no client made an
-    operator, or an operator without clients made an organisation, the instance
-    organisation as any other;
+  - `change_kind/3` (`instance.change_kind`): an organisation made an operator, or an
+    operator made an organisation, while no workspace of it has an operator and it
+    operates none, the instance organisation as any other;
   - purging an organisation at once, on an erasure request, is `Apiary.Deletion`'s
     (`ApiaryPro.Deletion.purge_on_request/3`).
 
@@ -40,12 +40,7 @@ defmodule ApiaryPro.Operators do
   alias ApiaryPro.Tenants.Tenant
 
   @typedoc "An organisation on Instance settings › Organisations."
-  @type instance_row :: %{
-          organisation: %Organisation{},
-          operator: %Organisation{} | nil,
-          clients: non_neg_integer,
-          only_owner?: boolean
-        }
+  @type instance_row :: %{organisation: %Organisation{}, only_owner?: boolean}
 
   @doc """
   change_organisation/1 is the changeset of the form that names a new organisation on
@@ -54,28 +49,12 @@ defmodule ApiaryPro.Operators do
   @spec change_organisation(map) :: Ecto.Changeset.t()
   def change_organisation(attrs \\ %{}), do: Organisation.changeset(%Organisation{}, attrs)
 
-  @doc """
-  operator_of/1 is the operator of the scope's organisation, when it is a client: the
-  organisation whose harness it runs, which its settings page names, and which its owners
-  may leave. Nil for an organisation that is no client.
-  """
-  @spec operator_of(Scope.t()) :: %Organisation{} | nil
-  def operator_of(%Scope{organisation: %Organisation{} = organisation}) do
-    case Tenants.operator_id(organisation) do
-      nil -> nil
-      operator_id -> Organisation |> Repo.get(operator_id) |> then(&(&1 && Tenants.put(&1)))
-    end
-  end
-
-  def operator_of(_scope), do: nil
-
   ## The instance
 
   @doc """
   list_organisations/1 is every organisation on the instance, by name, the instance
-  organisation first, each with its operator when it is a client, and how many clients it
-  has when it is an operator (`instance.read`, an owner's of the instance organisation,
-  asked in it), each carrying its tenant (`ApiaryPro.Tenants`): those marked for deletion
+  organisation first (`instance.read`, an owner's of the instance organisation, asked in
+  it), each carrying its tenant (`ApiaryPro.Tenants`): those marked for deletion
   among them, which the page says, and `only_owner?` where the reader is still its only
   owner, as after they created it, for the page to say to invite an owner and leave.
   `{:ok, rows}`; `{:error, :not_found}` anywhere but in the instance organisation, and
@@ -84,12 +63,6 @@ defmodule ApiaryPro.Operators do
   @spec list_organisations(Scope.t()) :: {:ok, [instance_row]} | {:error, Access.reason()}
   def list_organisations(%Scope{organisation: %Organisation{} = here} = scope) do
     with :ok <- Access.authorize(scope, :"instance.read", here) do
-      clients =
-        from c in Tenant,
-          where: not is_nil(c.operator_id),
-          group_by: c.operator_id,
-          select: %{operator_id: c.operator_id, count: count(c.organisation_id)}
-
       # The organisations the reader owns, and how many owners each has whose account is
       # not deleted: the reader alone, and it is theirs to hand on.
       owners =
@@ -108,18 +81,12 @@ defmodule ApiaryPro.Operators do
           from o in Organisation,
             join: t in Tenant,
             on: t.organisation_id == o.id,
-            left_join: p in Organisation,
-            on: p.id == t.operator_id,
-            left_join: c in subquery(clients),
-            on: c.operator_id == o.id,
             left_join: w in subquery(owners),
             on: w.organisation_id == o.id,
             order_by: [desc: t.instance_organisation, asc: o.name, asc: o.id],
             select: %{
               organisation: o,
               tenant: t,
-              operator: p,
-              clients: coalesce(c.count, 0),
               only_owner?:
                 not t.instance_organisation and coalesce(w.count, 0) == 1 and
                   coalesce(w.reader, 0) == 1
@@ -203,13 +170,10 @@ defmodule ApiaryPro.Operators do
   @doc """
   change_kind/3 makes the organisation `organisation_id` of the kind `kind`
   (`instance.change_kind`, an owner's of the instance organisation, asked in it, with
-  `managed_organisations`): an organisation an operator, unless it is a client of one,
-  `{:error, :client}`, or a workspace of it has an operator,
-  `{:error, :has_operated_workspaces}`; an operator an organisation, once it has no
-  clients, marked for deletion or not, `{:error, :has_clients}`, and operates no
-  workspace, one marked for deletion included, `{:error, :has_operated_workspaces}`.
-  A database constraint holds each of these but the operated workspaces of an
-  organisation made an operator. The instance organisation is changed as any other. The
+  `managed_organisations`): an organisation an operator, unless a workspace of it has an
+  operator, `{:error, :has_operated_workspaces}`; an operator an organisation, once it
+  operates no workspace, one marked for deletion included,
+  `{:error, :has_operated_workspaces}`. The instance organisation is changed as any other. The
   organisation's row is locked `FOR UPDATE` while its tenant is changed. An entry of
   `instance.change_kind` in the changed organisation's trail, by the instance admin, with
   the kind before and after; nothing changes, and nothing is recorded, for the kind it
@@ -220,12 +184,7 @@ defmodule ApiaryPro.Operators do
   """
   @spec change_kind(Scope.t(), String.t(), Tenants.kind() | String.t()) ::
           {:ok, %Organisation{}}
-          | {:error,
-             :client
-             | :has_clients
-             | :has_operated_workspaces
-             | Ecto.Changeset.t()
-             | Access.reason()}
+          | {:error, :has_operated_workspaces | Ecto.Changeset.t() | Access.reason()}
   def change_kind(%Scope{} = scope, organisation_id, kind) do
     with {:ok, kind} <- kind(kind),
          {:ok, id} <- cast(organisation_id) do
@@ -239,14 +198,8 @@ defmodule ApiaryPro.Operators do
             was == kind ->
               {:ok, organisation}
 
-            kind == :operator and Tenants.client?(organisation) ->
-              {:error, :client}
-
             kind == :operator and WorkspaceOperators.has_operated_workspaces?(organisation) ->
               {:error, :has_operated_workspaces}
-
-            kind == :organisation and has_clients?(organisation) ->
-              {:error, :has_clients}
 
             kind == :organisation and WorkspaceOperators.operates_workspaces?(organisation) ->
               {:error, :has_operated_workspaces}
@@ -281,14 +234,6 @@ defmodule ApiaryPro.Operators do
       end)
     end
   end
-
-  @doc """
-  has_clients?/1 says whether an organisation is the operator of any client, one marked
-  for deletion included, as the database has it now.
-  """
-  @spec has_clients?(%Organisation{}) :: boolean
-  def has_clients?(%Organisation{id: id}),
-    do: Repo.exists?(from t in Tenant, where: t.operator_id == ^id)
 
   ## Helpers
 

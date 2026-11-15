@@ -40,7 +40,7 @@ defmodule ApiaryPro.FeatureGrantsTest do
   # is shown.
   defp instance_features, do: Features.enabled() -- [:feature_visibility]
 
-  describe "the chain" do
+  describe "what each organisation is shown" do
     test "an organisation with no operator follows the instance, but for what is taken away" do
       %{scope: owner, organisation: organisation} = sign_up_fixture()
       admin = instance_admin_fixture()
@@ -71,12 +71,12 @@ defmodule ApiaryPro.FeatureGrantsTest do
     test "an operator has what it is granted; an organisation it operates in follows the instance" do
       operator = operator_fixture()
       admin = instance_admin_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
       # Made an operator, it is granted what it had. The organisation whose workspace it
       # operates is shown what the instance has, as any organisation.
       assert of(operator.organisation) == @built
-      assert of(client.organisation) == @built
+      assert of(operated.organisation) == @built
 
       # An operator keeps `managed_organisations` whatever the form says of it, and the
       # organisation whose workspace it operates is not narrowed with it.
@@ -87,16 +87,16 @@ defmodule ApiaryPro.FeatureGrantsTest do
 
       assert built(features) == [:observability, :managed_organisations]
       assert of(operator.organisation) == [:observability, :managed_organisations]
-      assert of(client.organisation) == @built
+      assert of(operated.organisation) == @built
 
       # An instance admin takes features away from it as from any organisation.
       assert {:ok, features} =
-               Grants.set_organisation(admin.instance_scope, client.organisation.id, [
+               Grants.set_organisation(admin.instance_scope, operated.organisation.id, [
                  "observability"
                ])
 
       assert built(features) == [:observability]
-      assert of(client.organisation) == [:observability]
+      assert of(operated.organisation) == [:observability]
     end
 
     test "an operator's managed_organisations is not the grants': it is its kind" do
@@ -214,50 +214,50 @@ defmodule ApiaryPro.FeatureGrantsTest do
   describe "a feature no grant can name" do
     test "secrets is shown to an operator and an organisation it operates in, and their people, with no row" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
       refute :secrets in Ecto.Enum.values(Grant, :feature)
 
-      for organisation <- [operator.organisation, client.organisation] do
+      for organisation <- [operator.organisation, operated.organisation] do
         assert :secrets in ApiaryPro.Features.of(organisation)
         refute :secrets in Grants.shown(organisation)
       end
 
-      all = ApiaryPro.Features.of_all([operator.organisation, client.organisation])
+      all = ApiaryPro.Features.of_all([operator.organisation, operated.organisation])
       assert :secrets in all[operator.organisation.id]
-      assert :secrets in all[client.organisation.id]
+      assert :secrets in all[operated.organisation.id]
 
       # The operator's people at home and in the operated workspace, and the owner of the
       # organisation operated. In the operated workspace, its secrets are not there for the
       # operator's people.
-      for scope <- [operator.scope, client.scope, client.owner.scope] do
+      for scope <- [operator.scope, operated.scope, operated.owner.scope] do
         refute :secrets in scope.hidden
       end
 
-      for scope <- [operator.scope, client.owner.scope],
+      for scope <- [operator.scope, operated.owner.scope],
           do: assert(Access.can?(scope, :"secret.read", scope.workspace))
 
-      refute Access.can?(client.scope, :"secret.read", client.scope.workspace)
+      refute Access.can?(operated.scope, :"secret.read", operated.scope.workspace)
 
-      assert Access.can?(client.owner.scope, :"secret.write", client.workspace)
+      assert Access.can?(operated.owner.scope, :"secret.write", operated.workspace)
     end
 
     test "with secrets shown, organisation_variables follows the grants of each organisation" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
       # The organisation whose workspace the operator operates is shown the organisation's
       # variables, as the instance has them; a page offers a box for them.
       assert :organisation_variables in ApiaryPro.Features.of(operator.organisation)
-      assert :organisation_variables in ApiaryPro.Features.of(client.organisation)
-      assert :organisation_variables in Grants.offered(client.organisation)
-      assert :organisation_variables in Grants.shown(client.organisation)
-      refute :organisation_variables in client.owner.scope.hidden
+      assert :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      assert :organisation_variables in Grants.offered(operated.organisation)
+      assert :organisation_variables in Grants.shown(operated.organisation)
+      refute :organisation_variables in operated.owner.scope.hidden
 
       assert Access.can?(
-               client.owner.scope,
+               operated.owner.scope,
                :"organisation_variable.edit",
-               client.organisation
+               operated.organisation
              )
 
       # Not granted to the operator, it is hidden from the operator alone.
@@ -269,20 +269,20 @@ defmodule ApiaryPro.FeatureGrantsTest do
       )
 
       refute :organisation_variables in ApiaryPro.Features.of(operator.organisation)
-      assert :organisation_variables in ApiaryPro.Features.of(client.organisation)
-      assert :secrets in ApiaryPro.Features.of(client.organisation)
+      assert :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      assert :secrets in ApiaryPro.Features.of(operated.organisation)
     end
 
     @tag with_features: [:observability, :security, :managed_organisations, :organisation_policy]
     test "without secrets on the instance, nothing changes" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
 
       shown = [:observability, :security, :managed_organisations, :organisation_policy]
       assert ApiaryPro.Features.of(operator.organisation) == shown
-      assert ApiaryPro.Features.of(client.organisation) == shown
+      assert ApiaryPro.Features.of(operated.organisation) == shown
 
-      for scope <- [operator.scope, client.scope, client.owner.scope] do
+      for scope <- [operator.scope, operated.scope, operated.owner.scope] do
         assert {:error, :not_found} = Access.authorize(scope, :"secret.read", scope.workspace)
       end
     end

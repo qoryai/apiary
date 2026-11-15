@@ -5,10 +5,9 @@ defmodule ApiaryPro.AccessRows do
   the core's. The actors:
 
       unreached_member    a member of the organisation, not added to the workspace
-      client_owner        an owner of a client of an operator, in the client: an owner as
-                          anywhere
-      operator_owner      an owner of an operator, in the workspace Main of a client of
-                          it, which the operator operates, through the operator:
+      client_owner        an owner of an organisation whose workspace Main an operator
+                          operates, in that organisation: an owner as anywhere
+      operator_owner      an owner of that operator, in Main, through the operator:
                           read-only
       operator_admin      an admin of that operator, in the same workspace: read-only
       operator_member     a member of that operator, in the same workspace: read-only
@@ -24,10 +23,9 @@ defmodule ApiaryPro.AccessRows do
   The core's `instance_admin` and `instance_org_admin` ask in the instance organisation,
   of it, made an operator here.
 
-  A client owns its people: its owner acts there as an owner anywhere. An operator's
-  people read everything in the workspaces it operates at every level, and change nothing
-  there; of what the client owns as a whole they read its policy alone, and find nothing
-  else. An instance admin reads every organisation they reach neither way, and changes it
+  The organisation owns its people: its owner acts there as an owner anywhere. An
+  operator's people read everything in the workspaces it operates at every level, and
+  change nothing there; of what the organisation owns as a whole they find nothing. An instance admin reads every organisation they reach neither way, and changes it
   only by the instance actions. Both are the role `reader`. The instance actions are asked
   in the instance organisation alone. Creating an
   organisation is a person's own, asked of the new organisation, of a kind the suite's
@@ -250,8 +248,7 @@ defmodule ApiaryPro.AccessRows do
       {:"organisation_policy.set_floor", yes: [:owner] ++ @owners},
       {:"organisation_policy.set_switch", yes: [:owner] ++ @owners},
       # The organisation's variables: read by its owners and admins and by the readers,
-      # changed by its owners and admins. A client is shown them as its operator is
-      # granted them: `secrets`, which they need, is no grant's and shown to both.
+      # changed by its owners and admins.
       {:"organisation_variable.read",
        yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @organisation_readers},
       {:"organisation_variable.edit", yes: [:owner, :admin, :instance_org_admin] ++ @owners},
@@ -277,7 +274,7 @@ defmodule ApiaryPro.AccessRows do
     {:ok, _} = ApiaryPro.WorkspaceAccess.remove(owner, unreached_membership.id, home.workspace.id)
 
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
+    client = operated_fixture(operator.scope)
     operator_admin = member_fixture(operator.scope, :admin).user
     operator_member = member_fixture(operator.scope, :member).user
     admin = instance_admin_fixture()
@@ -371,8 +368,8 @@ defmodule ApiaryPro.AccessRows do
       actor in @operators and action in [:"secret.read", :"variable.read"] ->
         :not_found
 
-      # What the client owns as a whole is not there for a person of the operator of a
-      # workspace of it.
+      # What the organisation owns as a whole is not there for a person of the operator of
+      # a workspace of it.
       actor in @operators and
           match?(%Apiary.Organisations.Organisation{id: id} when is_binary(id), subject) ->
         :not_found

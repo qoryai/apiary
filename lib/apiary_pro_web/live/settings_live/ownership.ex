@@ -1,29 +1,26 @@
 defmodule ApiaryProWeb.SettingsLive.Ownership do
   @moduledoc """
   The ownership of an organisation, a section of its settings (`ApiaryWeb.SettingsComponents`):
-  `/:org/settings/ownership`. Its operator, and the arbiter's offer of its ownership
-  (`ApiaryPro.Transfers`).
+  `/:org/settings/ownership`. The arbiter's offer of its ownership (`ApiaryPro.Transfers`).
 
   - An offer of the instance admins to one of its admins, while its owners are all
     suspended, is not withdrawn here; the admin it names reads it at the top of the page,
     with the admins' reason, and accepts it there. Every other page of the organisation
     tells them of it, and leads here (`ApiaryProWeb.Notices`).
-  - A client names its operator to all of its people in its Operator part.
   - An owner reads the offer pending in its Ownership part, while the config flag
     `transfers` is on, and cannot withdraw it.
 
-  The section is there for a person who has an offer to accept or reads a pending one, or
-  who reads a client's settings (`tab?/1`); anyone else who opens the path is sent to
-  General, told there is nothing here for them. The section is flat, a part for the
-  operator and one for the ownership (`ApiaryWeb.SettingsComponents.part/1`). The page
-  follows the membership changes an acceptance tells the people concerned of.
+  The section is there for a person who has an offer to accept or reads a pending one
+  (`tab?/1`); anyone else who opens the path is sent to General, told there is nothing
+  here for them. The section is flat, one part for the ownership
+  (`ApiaryWeb.SettingsComponents.part/1`). The page follows the membership changes an acceptance tells the people concerned of.
   """
   use ApiaryProWeb, :live_view
 
   alias Apiary.Access
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Organisation
-  alias ApiaryPro.{Flags, Operators, Tenants, Transfers}
+  alias ApiaryPro.Transfers
   alias ApiaryPro.Transfers.Transfer
   alias ApiaryWeb.{People, SettingsComponents, UserAuth}
 
@@ -41,7 +38,7 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
     >
       <.settings_page section={:ownership} title={gettext("Ownership")}>
         <:subtitle>
-          {subtitle(@operator, @ownership? or @offered_to_me)}
+          {gettext("Offers of the ownership of this organisation.")}
         </:subtitle>
 
         <.notice :if={@offered_to_me} kind={:info}>
@@ -67,27 +64,7 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
           </div>
         </.notice>
 
-        <%!-- A part has its heading where the section has two. --%>
-        <SettingsComponents.part
-          :if={@operator}
-          id="operator"
-          title={@ownership? && gettext("Operator")}
-        >
-          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <.avatar name={@operator.name} kind="organisation" />
-            <span id="operator-name" class="min-w-0 truncate font-medium">{@operator.name}</span>
-            <span class="text-[12.5px] text-muted">{gettext("Operator")}</span>
-          </div>
-          <p class="max-w-[60ch] text-muted">
-            {operator_sentence(@current_scope.organisation, @operator)}
-          </p>
-        </SettingsComponents.part>
-
-        <SettingsComponents.part
-          :if={@ownership?}
-          id="ownership"
-          title={@operator && gettext("Ownership")}
-        >
+        <SettingsComponents.part :if={@ownership?} id="ownership">
           <div :if={@pending} id="ownership-pending" class="grid gap-3">
             <p class="max-w-[60ch]">
               <.rich text={pending_sentence(@pending, @current_scope.organisation)} />
@@ -179,8 +156,7 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
   @doc """
   state/1 is the ownership of the organisation of `scope`, as its page shows it to the
   reader: the pending offer, whether it is offered to them and why they could not accept
-  it now, whether the Ownership part is theirs to read, and a client's operator. Two
-  reads: the offer and the operator.
+  it now, and whether the Ownership part is theirs to read. One read: the offer.
   """
   @spec state(Scope.t()) :: map
   def state(%Scope{} = scope) do
@@ -191,8 +167,7 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
       pending: pending,
       offered_to_me: offered_to_me,
       acceptance_refused: offered_to_me && Transfers.acceptance_refused(scope, pending),
-      ownership?: reads_pending?(scope, pending),
-      operator: Operators.operator_of(scope)
+      ownership?: reads_pending?(scope, pending)
     }
   end
 
@@ -211,16 +186,13 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
 
   @doc """
   tab?/1 says whether the organisation's settings list the Ownership section for the
-  reader of `scope`: for a person with an offer to accept or who reads a pending one, and
-  anyone who reads a client's settings, who reads its operator there. Anyone else's path
-  to it sends them to General.
+  reader of `scope`: for a person with an offer to accept or who reads a pending one.
+  Anyone else's path to it sends them to General.
   """
   @spec tab?(Scope.t()) :: boolean
-  def tab?(%Scope{organisation: %Organisation{} = organisation} = scope) do
+  def tab?(%Scope{organisation: %Organisation{}} = scope) do
     pending = Transfers.pending(scope)
-
-    Tenants.client?(organisation) or offered_to_reader?(scope, pending) or
-      reads_pending?(scope, pending)
+    offered_to_reader?(scope, pending) or reads_pending?(scope, pending)
   end
 
   def tab?(_scope), do: false
@@ -233,22 +205,6 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
 
   # The organisation's actions are asked of the organisation.
   defp may?(scope, action), do: Access.can?(scope, action, scope.organisation)
-
-  # The section's line under its title, of what the page holds for the reader: the
-  # operator, where the organisation is a client; offers of its ownership, where there is
-  # an Ownership part or an offer to accept.
-  defp subtitle(operator, offers?) do
-    cond do
-      operator && offers? ->
-        gettext("Whose harness this organisation runs, and offers of its ownership.")
-
-      operator ->
-        gettext("Whose harness this organisation runs.")
-
-      true ->
-        gettext("Offers of the ownership of this organisation.")
-    end
-  end
 
   # What the page shows, and the sections beside it, read again after a change. The offer
   # is this page's notice: the navigation's counts carry it for the other pages' notice
@@ -300,24 +256,6 @@ defmodule ApiaryProWeb.SettingsLive.Ownership do
 
   defp accept_refused(name),
     do: gettext("Only the admin of %{name} it is offered to accepts its ownership.", name: name)
-
-  # What the operator is to a client: while it owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`), their owner; else a reader of them.
-  defp operator_sentence(organisation, operator) do
-    if Flags.operator_infrastructure?() do
-      gettext(
-        "%{name} runs the harness %{operator} provides. %{operator} owns it: its owners and admins run its workspaces, machines and keys, and its members read everything in it.",
-        name: organisation.name,
-        operator: operator.name
-      )
-    else
-      gettext(
-        "%{name} runs the harness %{operator} provides. The people of %{operator} read everything in %{name} to support its harness, and change nothing.",
-        name: organisation.name,
-        operator: operator.name
-      )
-    end
-  end
 
   # The arbiter's offer, as the notice at the top says it.
   defp offer_to_me_sentence(organisation) do

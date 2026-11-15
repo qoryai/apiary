@@ -148,7 +148,7 @@ defmodule ApiaryPro.Features do
   # is readable to them and changes nothing.
   #
   # The locks: under `Apiary.Access.reload/2` with `lock: :share` the core holds the
-  # organisation's row and, for a client, its operator's `FOR SHARE`
+  # organisation's row and the rows of the operators of its workspaces `FOR SHARE`
   # (`ApiaryPro.Reach.places_to_lock/1`), and the edition the operator's people lock
   # (`ApiaryPro.Tenants.lock_rows/1`, `{:places, scope}`), before `hidden/1` is asked.
   # What is read here is covered by them: an organisation's tenant and its grant rows are

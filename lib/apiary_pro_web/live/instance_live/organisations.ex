@@ -14,9 +14,8 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   - **New organisation**, a page: an organisation, or with `managed_organisations` an
     operator, whose first owner is the instance admin who creates it
     (`ApiaryPro.Operators.create_organisation/2`);
-  - **Make operator** and **Make organisation**, confirmed on the row: an organisation that
-    is no client made an operator, an operator without clients made an organisation
-    (`ApiaryPro.Operators.change_kind/3`);
+  - **Make operator** and **Make organisation**, confirmed on the row: an organisation made
+    an operator, an operator made an organisation (`ApiaryPro.Operators.change_kind/3`);
   - **Purge now**, confirmed on the row: an organisation purged at once on an erasure
     request, its slug typed to confirm (`ApiaryPro.Deletion.purge_on_request/3`);
   - **Suspend**, confirmed on the row, and **Activate**, at once: an organisation or an
@@ -924,21 +923,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
          |> load()
          |> back()}
 
-      {:error, :client} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("A client of an operator cannot be made an operator."))
-         |> back()}
-
-      {:error, :has_clients} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext("An operator with clients cannot be made an organisation.")
-         )
-         |> back()}
-
       {:error, :has_operated_workspaces} ->
         {:noreply, socket |> put_flash(:error, operated_refusal(kind)) |> back()}
 
@@ -964,15 +948,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
 
       {:error, :confirmation} ->
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
-
-      {:error, :has_clients} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext("An operator with clients is not purged: each client is deleted first.")
-         )
-         |> back()}
 
       {:error, _reason} ->
         {:noreply, refused(socket)}
@@ -1310,16 +1285,14 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       Access.can?(scope, :"instance.create_organisation", scope.organisation) or
         Access.can?(scope, :"instance.create_operator", scope.organisation)
 
-  # The kind a row may be changed to, as the page offers it: an organisation that is no
-  # client an operator, an operator without clients an organisation, the instance
-  # organisation as any other; nil for none.
+  # The kind a row may be changed to, as the page offers it: an organisation an operator,
+  # an operator an organisation, the instance organisation as any other; nil for none.
   defp kind_change(scope, %{organisation: organisation} = row) do
     cond do
       not in_use?(row) -> nil
       not Access.can?(scope, :"instance.change_kind", organisation) -> nil
-      not Tenants.operator?(organisation) and not Tenants.client?(organisation) -> :operator
-      Tenants.operator?(organisation) and row.clients == 0 -> :organisation
-      true -> nil
+      Tenants.operator?(organisation) -> :organisation
+      true -> :operator
     end
   end
 

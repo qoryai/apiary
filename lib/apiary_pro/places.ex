@@ -3,7 +3,7 @@ defmodule ApiaryPro.Places do
   Places is every organisation a person reaches from the organisation switcher and their
   organisations page (`c:Apiary.Edition.places/1`): their memberships, and the
   organisations whose workspaces an operator they belong to operates, which they reach
-  through it (`ApiaryPro.Reach`), each an `ApiaryPro.ClientReach`.
+  through it (`ApiaryPro.Reach`), each an `ApiaryPro.OperatedPlace`.
   """
 
   import Ecto.Query, warn: false
@@ -11,22 +11,22 @@ defmodule ApiaryPro.Places do
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.User
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
-  alias ApiaryPro.{ClientReach, Tenants, WorkspaceOperators}
+  alias ApiaryPro.{OperatedPlace, Tenants, WorkspaceOperators}
   alias ApiaryPro.Operators.WorkspaceOperator
 
   @doc """
   places/1 is every organisation the user reaches from the switcher: their memberships,
   as `Apiary.Organisations.list_memberships/1` has them, and each organisation with a
   workspace that an operator they belong to operates, where the operator is not
-  suspended, as a `ApiaryPro.ClientReach` with those workspaces, the ones they reach
+  suspended, as a `ApiaryPro.OperatedPlace` with those workspaces, the ones they reach
   through their operators. An organisation they are also a member of is one
-  `ClientReach`, which has that membership too, and the workspaces it reaches besides.
+  `OperatedPlace`, which has that membership too, and the workspaces it reaches besides.
   Its `operated` is the workspaces reached through the operators, each with its
   operator's id, by name. These come after the memberships, by name. None marked for
   deletion. Each organisation has its tenant (`ApiaryPro.Tenants`) and the links of its
   workspaces (`ApiaryPro.WorkspaceOperators`).
   """
-  @spec places(%User{}) :: [%Membership{} | ClientReach.t()]
+  @spec places(%User{}) :: [%Membership{} | OperatedPlace.t()]
   def places(%User{} = user) do
     memberships = put_tenants(Organisations.list_memberships(user))
 
@@ -63,7 +63,7 @@ defmodule ApiaryPro.Places do
         through = Enum.map(rows, fn {_organisation, workspace, _operator_id} -> workspace end)
         operated = Enum.map(rows, fn {_organisation, workspace, id} -> {id, workspace} end)
 
-        %ClientReach{
+        %OperatedPlace{
           organisation: organisation,
           organisation_id: organisation.id,
           membership: membership,

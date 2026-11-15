@@ -1,12 +1,13 @@
 defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   @moduledoc false
-  # The refusals test's rows while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`), after the core's and the edition's
-  # (`ApiaryWeb.RefusalsRows`, `ApiaryProWeb.RefusalsRows`), whose world they use: the
-  # client, its owner, made while the flag was off, its admin and its member, a pool with
-  # a limit, a rule and a locked rule, and the operator's people. Its setup comes last and turns the flag on last, so the client keeps the
-  # owner it had; then the operator's owner adds a gateway at the operator, and the
-  # client's owner one at the client. Sent by
+  # The refusals test's rows while `ApiaryPro.Flags.operator_infrastructure?/0` is on,
+  # after the core's and the edition's (`ApiaryWeb.RefusalsRows`,
+  # `ApiaryProWeb.RefusalsRows`), whose world they use: the organisation whose workspace
+  # the operator operates (`:client` in the paths), its owner, made while the flag was off,
+  # its admin and its member, a pool with a limit, a rule and a locked rule, and the
+  # operator's people. Its setup comes last and turns the flag on last; then the operator's
+  # owner adds a gateway at the operator, and the organisation's owner one at the
+  # organisation. Sent by
   # `ApiaryProWeb.OperatorAsOwnerRefusalsTest`, which asks these rows alone: the flag-off
   # rows cover every action already.
 
@@ -20,24 +21,7 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   @impl true
   def rows do
     [
-      # A client's admin acts on its admins and members, never on an owner, and makes
-      # nobody an owner.
-      {:"member.change_level", :client_admin, "/:client/settings/people", "set_level",
-       %{"membership_id" => :client_member_membership, "level" => "owner"}},
-      {:"member.change_level", :client_admin, "/:client/settings/people", "set_level",
-       %{"membership_id" => :client_owner_membership, "level" => "member"}},
-      # Nor does its owner, made before the flag was on, nor the operator's owner.
-      {:"member.change_level", :client_owner, "/:client/settings/people", "set_level",
-       %{"membership_id" => :client_admin_membership, "level" => "owner"}},
-      # The People page is not found for the operator's owner.
-      {:"member.change_level", :operator_owner, "/:client/settings/people", "set_level",
-       %{"membership_id" => :client_admin_membership, "level" => "owner"},
-       answer: :not_found_at_mount},
-      {:"member.remove", :client_admin,
-       "/:client/settings/people/:client_owner_membership/remove", "remove", %{},
-       answer: :refused_at_mount},
-
-      # What is the client's own to decide: refused to the operator's owner.
+      # What the organisation decides as a whole: refused to the operator's owner.
       {:"organisation.delete", :operator_owner, "/:client/settings", "delete_organisation",
        %{"confirm" => %{"slug" => :client}}},
 

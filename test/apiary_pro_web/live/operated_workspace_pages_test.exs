@@ -14,15 +14,15 @@ defmodule ApiaryProWeb.OperatedWorkspacePagesTest do
 
   setup %{conn: conn} do
     operator = operator_fixture()
-    client = client_fixture(operator.scope, "Acme")
+    operated = operated_fixture(operator.scope, "Acme")
     %{user: ann} = member_fixture(operator.scope, :member)
 
     conn =
       conn
       |> log_in_user(ann)
-      |> put_session(:last_workspace_id, client.workspace.id)
+      |> put_session(:last_workspace_id, operated.workspace.id)
 
-    %{conn: conn, client: client}
+    %{conn: conn, operated: operated}
   end
 
   for {page, path} <- [
@@ -35,7 +35,7 @@ defmodule ApiaryProWeb.OperatedWorkspacePagesTest do
     @path path
     test "the organisation's #{page} page is not found", ctx do
       assert_raise ApiaryWeb.NotFound, fn ->
-        live(ctx.conn, "/#{ctx.client.organisation.slug}#{@path}")
+        live(ctx.conn, "/#{ctx.operated.organisation.slug}#{@path}")
       end
     end
   end
@@ -44,7 +44,7 @@ defmodule ApiaryProWeb.OperatedWorkspacePagesTest do
   # W1, the workspace the scope keeps from her last visit.
   describe "the organisation's gateways" do
     setup ctx do
-      gateway = Apiary.NodesFixtures.organisation_gateway_fixture(ctx.client.owner.scope)
+      gateway = Apiary.NodesFixtures.organisation_gateway_fixture(ctx.operated.owner.scope)
       %{gateway: gateway}
     end
 
@@ -59,12 +59,12 @@ defmodule ApiaryProWeb.OperatedWorkspacePagesTest do
       test "the #{page} page is not found for her, and opens for the organisation's owner",
            ctx do
         path =
-          ~p"/#{ctx.client.organisation}/gateways" <>
+          ~p"/#{ctx.operated.organisation}/gateways" <>
             String.replace(@rest, ":gateway", ctx.gateway.public_id)
 
         assert_raise ApiaryWeb.NotFound, fn -> live(ctx.conn, path) end
 
-        owner = log_in_user(build_conn(), ctx.client.owner.user)
+        owner = log_in_user(build_conn(), ctx.operated.owner.user)
         assert {:ok, _lv, _html} = live(owner, path)
       end
     end
@@ -72,6 +72,6 @@ defmodule ApiaryProWeb.OperatedWorkspacePagesTest do
 
   test "the operated workspace's page opens", ctx do
     assert {:ok, _lv, _html} =
-             live(ctx.conn, ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}")
+             live(ctx.conn, ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}")
   end
 end

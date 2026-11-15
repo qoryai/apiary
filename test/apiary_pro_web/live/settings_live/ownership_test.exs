@@ -1,9 +1,9 @@
 defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
   @moduledoc """
-  The Ownership section of an organisation's settings: a client's operator, and the
-  arbiter's offer to an admin, told on every page and accepted here.
+  The Ownership section of an organisation's settings: the arbiter's offer to an admin,
+  told on every page and accepted here.
   """
-  # Not async: the features are the node's, and an operator is made by an instance admin,
+  # Not async: the features are the node's, and a suspension is made by an instance admin,
   # an owner of the suite's one instance organisation.
   use ApiaryWeb.ConnCase, async: false
 
@@ -19,56 +19,57 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
-  import ApiaryPro.OperatorsFixtures
+  import ApiaryPro.OperatorsFixtures, only: [instance_admin_fixture: 0]
 
   alias Apiary.{Features, Repo}
   alias Apiary.Organisations.Membership
   alias ApiaryPro.Transfers
-  alias ApiaryPro.Tenants.Tenant
   alias ApiaryProWeb.Trail
 
   @moduletag with_features: Features.all()
 
-  # An operator, its client Acme with its owner, and an admin of Acme; the client's owner
-  # logged in.
-  defp client_with_admin(%{conn: conn}) do
-    operator = operator_fixture()
-    client = client_fixture(operator.scope, "Acme")
-    admin = member_fixture(client.owner.scope, :admin)
+  # Acme, with its owner and an admin, and an instance admin, the arbiter, who suspended
+  # the owner's account.
+  defp suspended_owner(_ctx) do
+    owner = sign_up_fixture(%{organisation_name: "Acme"})
+    admin = member_fixture(owner.scope, :admin)
+    %{instance_scope: arbiter} = instance_admin_fixture()
+    {:ok, _} = ApiaryPro.Suspensions.suspend_account(arbiter, owner.user.id)
 
-    %{
-      conn: log_in_user(conn, client.owner.user),
-      operator: operator,
-      client: client,
-      admin: admin
-    }
+    %{owner: owner, organisation: owner.organisation, admin: admin, arbiter: arbiter}
+  end
+
+  defp arbitrate(ctx) do
+    {:ok, _} =
+      Transfers.arbitrate(
+        ctx.arbiter,
+        ctx.organisation.id,
+        ctx.admin.membership.id,
+        "The owner is away."
+      )
   end
 
   defp settings(organisation), do: ~p"/#{organisation}/settings"
   defp ownership(organisation), do: ~p"/#{organisation}/settings/ownership"
 
-  describe "a client and its operator" do
-    setup :client_with_admin
+  describe "the arbiter's offer in an organisation whose owner is suspended" do
+    setup :suspended_owner
 
-    test "its owners are listed as any organisation's, and its operator named", ctx do
-      client = ctx.client.organisation
-      {:ok, lv, _html} = live(ctx.conn, settings(client))
+    test "the admin it is offered to has the section in the organisation's settings", ctx do
+      arbitrate(ctx)
+      conn = log_in_user(build_conn(), ctx.admin.user)
+      organisation = ctx.organisation
+      {:ok, lv, _html} = live(conn, settings(organisation))
 
-      assert has_element?(
-               lv,
-               "#owner-#{ctx.client.owner.membership.id}",
-               ctx.client.owner.user.email
-             )
-
-      # The settings' list beside the section: the Ownership entry leads to the operator.
+      # The settings' list beside the section leads to Ownership.
       assert has_element?(lv, "#settings-tab-organisation[aria-current='page']")
 
       assert {:error, {:live_redirect, %{to: to}}} =
                lv |> element("#settings-tab-ownership") |> render_click()
 
-      assert to == ownership(client)
+      assert to == ownership(organisation)
 
-      {:ok, lv, _html} = live(ctx.conn, ownership(client))
+      {:ok, lv, _html} = live(conn, ownership(organisation))
 
       # The edition's section is in the organisation's list, under the organisation's sidebar.
       assert has_element?(lv, "#settings-tabs #settings-tab-ownership[aria-current='page']")
@@ -91,71 +92,17 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
              |> Enum.count() == 1
 
       assert page_title(lv) ==
-               "Ownership · Organisation settings · #{client.name} · Qory Apiary"
-
-      assert has_element?(lv, "#operator-name", ctx.operator.organisation.name)
-      assert has_element?(lv, "#operator", "to support its harness, and change nothing")
-      # A client's section says whose harness it runs, and no offers where it has none.
-      assert has_element?(lv, ".q-settings-head-sub", "Whose harness this organisation runs.")
-      refute has_element?(lv, ".q-settings-head-sub", "offers")
-      # With no offer pending, there is no Ownership part.
-      refute has_element?(lv, "#ownership")
+               "Ownership · Organisation settings · #{organisation.name} · Qory Apiary"
     end
 
-    test "every one of its people sees its operator, a member too", ctx do
-      member = client_member_fixture(ctx.client, :member)
-      conn = log_in_user(build_conn(), member.user)
-      operator = ctx.operator.organisation.name
-
-      # A member takes no action there, yet the list leads to it: it names the operator.
-      {:ok, lv, _html} = live(conn, settings(ctx.client.organisation))
-      assert has_element?(lv, "#settings-tab-ownership")
-
-      {:ok, lv, _html} = live(conn, ownership(ctx.client.organisation))
-      assert has_element?(lv, "#operator-name", operator)
-
-      {:ok, lv, _html} = live(conn, ~p"/#{ctx.client.organisation}/settings/people")
-      assert has_element?(lv, "#operated-by", "Operated by #{operator}")
-    end
-
-    test "the operator's people read the page, and are told they change nothing", ctx do
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, settings(ctx.client.organisation))
-
-      assert has_element?(
-               lv,
-               "#operator-reader",
-               "as a person of #{ctx.operator.organisation.name}"
-             )
-
-      assert has_element?(lv, "#settings-tab-ownership")
-      refute has_element?(lv, "#organisation-form button[type=submit]")
-    end
-  end
-
-  describe "the arbiter's offer in a client whose owner is suspended" do
-    setup ctx do
-      ctx = client_with_admin(ctx)
-      %{instance_scope: arbiter} = instance_admin_fixture()
-      {:ok, _} = ApiaryPro.Suspensions.suspend_account(arbiter, ctx.client.owner.user.id)
-      Map.put(ctx, :arbiter, arbiter)
-    end
-
-    test "the admin it is offered to reads it with its reason, accepts, and is an owner; the client stays its operator's",
-         ctx do
+    test "the admin it is offered to reads it with its reason, accepts, and is an owner", ctx do
       conn = log_in_user(build_conn(), ctx.admin.user)
-      {:ok, lv, _html} = live(conn, settings(ctx.client.organisation))
+      {:ok, lv, _html} = live(conn, settings(ctx.organisation))
       refute has_element?(lv, "#ownership-offer-notice")
-      # A client's people read its operator there.
-      assert has_element?(lv, "#settings-tab-ownership")
+      # With no offer, the admin has no Ownership section.
+      refute has_element?(lv, "#settings-tab-ownership")
 
-      {:ok, _} =
-        Transfers.arbitrate(
-          ctx.arbiter,
-          ctx.client.organisation.id,
-          ctx.admin.membership.id,
-          "The owner is away."
-        )
+      arbitrate(ctx)
 
       # The offer reaches the admin's open page, and leads to the Ownership section.
       assert has_element?(
@@ -169,13 +116,13 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
       assert {:error, {:live_redirect, %{to: to}}} =
                lv |> element("#ownership-offer-notice a") |> render_click()
 
-      assert to == ownership(ctx.client.organisation)
+      assert to == ownership(ctx.organisation)
 
       # Another page of the organisation says it too.
-      {:ok, members, _html} = live(conn, ~p"/#{ctx.client.organisation}/settings/people")
+      {:ok, members, _html} = live(conn, ~p"/#{ctx.organisation}/settings/people")
       assert has_element?(members, "#ownership-offer-notice")
 
-      {:ok, lv, _html} = live(conn, ownership(ctx.client.organisation))
+      {:ok, lv, _html} = live(conn, ownership(ctx.organisation))
       assert render(lv) =~ "Support offers you the ownership of Acme."
       assert has_element?(lv, "#ownership-offer-reason", "The owner is away.")
       # The page's own notice is the offer: the top one is not said twice.
@@ -189,68 +136,46 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
       assert has_element?(lv, "#owner-#{ctx.admin.membership.id}", ctx.admin.user.email)
 
       assert Repo.get!(Membership, ctx.admin.membership.id).level == :owner
-
-      assert Repo.get!(Tenant, ctx.client.organisation.id).operator_id ==
-               ctx.operator.organisation.id
-
       assert Transfers.pending(ctx.admin.scope) == nil
     end
 
-    test "it is not withdrawn here, and another of its people sees no controls", ctx do
-      {:ok, _} =
-        Transfers.arbitrate(
-          ctx.arbiter,
-          ctx.client.organisation.id,
-          ctx.admin.membership.id,
-          "The owner is away."
-        )
-
+    test "it is not withdrawn here, and another of its people has no section", ctx do
+      arbitrate(ctx)
       other = member_fixture(ctx.admin.scope, :member)
       conn = log_in_user(build_conn(), other.user)
 
-      {:ok, lv, _html} = live(conn, settings(ctx.client.organisation))
-      assert has_element?(lv, "#settings-tab-ownership")
+      {:ok, lv, _html} = live(conn, settings(ctx.organisation))
+      refute has_element?(lv, "#settings-tab-ownership")
       refute has_element?(lv, "#ownership-offer-notice")
 
-      {:ok, lv, _html} = live(conn, ownership(ctx.client.organisation))
-      refute has_element?(lv, "#ownership")
-      refute has_element?(lv, "#ownership-offer")
+      general = settings(ctx.organisation)
+
+      assert {:error, {:live_redirect, %{to: ^general, flash: flash}}} =
+               live(conn, ownership(ctx.organisation))
+
+      assert flash["error"] == "There is nothing about the ownership of Acme for you to do here."
+
       assert %{arbitrated: true} = Transfers.pending(ctx.admin.scope)
     end
 
     test "the admin is not offered Accept when it would be refused, and is told why", ctx do
-      {:ok, _} =
-        Transfers.arbitrate(
-          ctx.arbiter,
-          ctx.client.organisation.id,
-          ctx.admin.membership.id,
-          "The owner is away."
-        )
-
-      {:ok, _} =
-        ApiaryPro.Suspensions.suspend_organisation(ctx.arbiter, ctx.client.organisation.id)
+      arbitrate(ctx)
+      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(ctx.arbiter, ctx.organisation.id)
 
       conn = log_in_user(build_conn(), ctx.admin.user)
-      {:ok, lv, _html} = live(conn, ownership(ctx.client.organisation))
+      {:ok, lv, _html} = live(conn, ownership(ctx.organisation))
       assert has_element?(lv, "#ownership-offer")
       refute has_element?(lv, "#accept-ownership")
       assert has_element?(lv, "#ownership-offer-waits", "once it is activated")
     end
 
     test "a withdrawn offer is not accepted, and the page says so", ctx do
-      {:ok, _} =
-        Transfers.arbitrate(
-          ctx.arbiter,
-          ctx.client.organisation.id,
-          ctx.admin.membership.id,
-          "The owner is away."
-        )
-
+      arbitrate(ctx)
       conn = log_in_user(build_conn(), ctx.admin.user)
-      {:ok, lv, _html} = live(conn, ownership(ctx.client.organisation))
+      {:ok, lv, _html} = live(conn, ownership(ctx.organisation))
 
       # The owner may act again: the offer lapses.
-      {:ok, _} = ApiaryPro.Suspensions.activate_account(ctx.arbiter, ctx.client.owner.user.id)
+      {:ok, _} = ApiaryPro.Suspensions.activate_account(ctx.arbiter, ctx.owner.user.id)
 
       html = render_click(lv, "accept_transfer", %{})
       assert html =~ "No ownership is offered to you here any more"
@@ -258,7 +183,7 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
     end
   end
 
-  describe "the arbiter's offer in an organisation with no operator" do
+  describe "the arbiter's offer, read on the Ownership page" do
     test "the recipient made a member still reads the offer, and Accept shows why the acceptance fails",
          %{conn: conn} do
       signed_up = sign_up_fixture(%{organisation_name: "Initech"})
@@ -308,9 +233,6 @@ defmodule ApiaryProWeb.SettingsLive.OwnershipTest do
                ".q-settings-head-sub",
                "Offers of the ownership of this organisation."
              )
-
-      refute has_element?(lv, ".q-settings-head-sub", "harness")
-      refute has_element?(lv, "#operator")
 
       # The offer, its reason, then Accept, one under the other in the notice.
       assert has_element?(

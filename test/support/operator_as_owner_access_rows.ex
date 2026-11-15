@@ -1,30 +1,32 @@
 defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   @moduledoc false
-  # The rows of the access test (`Apiary.AccessCase`) while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`): every action, asked in a client by its
-  # own people, by the operator's and by people in both. A table of its own, asked by
+  # The rows of the access test (`Apiary.AccessCase`) while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on: every action, asked in an
+  # organisation whose workspace Main an operator operates, by the organisation's people, by
+  # the operator's and by people in both. A table apart, asked by
   # `ApiaryPro.OperatorAsOwnerAccessTest`, not merged into the core's and the edition's, which ask
-  # with the flag off. The actors, each asking in the client's workspace Main:
+  # with the flag off. The actors keep the names they had when the organisation was the
+  # operator's "client"; each asks in Main:
   #
-  #     client_owner             an owner of the client, made before the flag was on
-  #     client_admin             an admin of the client
-  #     client_member            a member of the client
-  #     operator_owner           an owner of the operator, with no membership in the client
+  #     client_owner             an owner of the organisation, made before the flag was on
+  #     client_admin             an admin of the organisation
+  #     client_member            a member of the organisation
+  #     operator_owner           an owner of the operator, with no membership in the organisation
   #     operator_admin           an admin of the operator, likewise
   #     operator_member          a member of the operator, likewise: read-only
-  #     owner_and_client_member  an owner of the operator who is a member of the client
-  #     member_and_client_admin  a member of the operator who is an admin of the client
-  #     admin_and_client_owner   an admin of the operator who is an owner of the client
+  #     owner_and_client_member  an owner of the operator who is a member of the organisation
+  #     member_and_client_admin  a member of the operator who is an admin of the organisation
+  #     admin_and_client_owner   an admin of the operator who is an owner of the organisation
   #
   # The operator operates Main. In Main, the operator's owners and admins act at their
   # level on what the operator changes there (`ApiaryPro.Access`'s `@operator_in_workspace`):
   # its nodes, a pool's limit and keys, its time limits and retention, the harness saved in
-  # it, its process and artifact types, and, on the operator's providers, its model
-  # choices; someone in both at the higher of their two levels. Everything else in Main they
-  # read. Of what the client owns as a whole, a person of the operator with no membership
-  # there reads its policy alone, and finds nothing else. What the operator sets in Main is
-  # not there for anyone else, the client's owners and admins among them. The client's
-  # people act in it, by their membership, as in any organisation.
+  # it, its process and artifact types, and its model choices; someone in both at the
+  # higher of their two levels. Everything else in Main they read. Of what the
+  # organisation owns as a whole, a person of the operator with no membership there finds
+  # nothing. What the operator sets in Main is not there for anyone else, the
+  # organisation's owners and admins among them. The organisation's people act in it, by
+  # their membership, as in any organisation.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -76,18 +78,13 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"harness.save"
   ]
 
-  # What the operator changes in Main beside what it sets: the client's owners and admins
-  # change it too.
-  @operator_changes [:"process.edit", :"artifact_type.edit"]
+  # What the operator changes in Main beside what it sets: the organisation's owners and
+  # admins change it too.
+  @operator_changes [:"process.edit", :"artifact_type.edit", :"model_choice.write"]
 
-  # What the client's switch decides: its model providers and runtimes, and the model
-  # choices of its workspaces and targets.
-  @chain_held [:"provider.write", :"runtime.write", :"model_choice.write"]
-
-  # Who holds them on the client's providers: its owners and admins, and a person of the
-  # operator who is one of them in the client at an equal or higher level there. Someone
-  # who acts there through the operator, with no membership or a lower level, reads only.
-  @chain_on_organisation @own_admins
+  # The organisation's model providers and runtimes, which it owns as a whole: its owners
+  # and admins change them, and a level in the operator counts for nothing there.
+  @organisation_models [:"provider.write", :"runtime.write"]
 
   # Core's instance actions: not found in a client, for everyone.
   @instance_only [
@@ -181,7 +178,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"instance_admin.revoke", yes: []},
       {:"audit.read", yes: @own_admins},
       {:"audit.prune", yes: []},
-      {:"workspace.create", yes: @own_admins},
+      {:"workspace.create", yes: @own_owners},
       {:"workspace.rename", yes: @own_admins},
       {:"workspace.delete", yes: @own_admins},
       {:"workspace.restore", yes: @own_admins},
@@ -248,7 +245,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
         @operator_changes,
         &{&1, yes: Enum.uniq(@own_admins ++ @operator_owners_admins)}
       ) ++
-      Enum.map(@chain_held, &{&1, yes: @chain_on_organisation}) ++
+      Enum.map(@organisation_models, &{&1, yes: @own_admins}) ++
       Enum.map(@adapter_keys, &{&1, yes: [], on: :adapter}) ++
       Enum.map(@pool_keys, &{&1, yes: []}) ++
       Enum.map(@instance_only ++ @not_here, &{&1, yes: []})
@@ -258,25 +255,19 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   def operator_held, do: @operator_held
 
   @doc false
-  def chain_held, do: @chain_held
-
-  @doc false
   def operator_owners_admins, do: @operator_owners_admins
 
   @doc false
-  # The client made while the flag is off, with its owner, then the flag on, on the
-  # client's providers: the actors, `member` for what is asked of an account, and the core's
-  # `instance_admin`, who saved the mail settings that some actions are asked of.
-  def setup(made), do: setup(made, :organisation)
-
-  @doc false
-  # As `setup/1`, with the client's switch set to `chain` by its operator.
-  def setup(_made, chain) do
+  # The organisation made while the flag is off, with its owner, then the flag on: the
+  # actors, `member` for what is asked of an account, and the core's `instance_admin`, who
+  # saved the mail settings that some actions are asked of. The place `:client` has the
+  # operator's organisation under `:operator`.
+  def setup(_made) do
     ApiaryPro.Flags.put_transfers(true)
     ApiaryPro.Flags.put_operator_infrastructure(false)
 
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
+    client = operated_fixture(operator.scope)
     owner = client.owner.scope
 
     operator_admin = member_fixture(operator.scope, :admin).user
@@ -291,16 +282,19 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
 
     ApiaryPro.Flags.put_operator_infrastructure(true)
 
-    client = model_chain_fixture(operator.scope, client, chain)
-    owner = client.owner.scope
-
-    client_admin = client_member_fixture(client, :admin)
-    client_member = client_member_fixture(client, :member)
+    client_admin = organisation_member_fixture(client, :admin)
+    client_member = organisation_member_fixture(client, :member)
     in_client = &scope_in(&1, client.organisation, client.workspace)
 
     %{
-      # An adapter of the instance beside the client: what an adapter's key is asked of.
-      places: %{client: Map.put(client, :adapter, Apiary.NodesFixtures.adapter_fixture())},
+      # An adapter of the instance beside the organisation: what an adapter's key is asked
+      # of.
+      places: %{
+        client:
+          client
+          |> Map.put(:adapter, Apiary.NodesFixtures.adapter_fixture())
+          |> Map.put(:operator, operator.organisation)
+      },
       scopes: %{
         member: client_member.scope,
         instance_admin: instance_admin_scope(),
@@ -433,8 +427,7 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   # operator a place of its own.
   def setup(%{places: %{client: client}, scopes: scopes}) do
     ApiaryPro.Flags.put_operator_infrastructure(false)
-    operator_id = ApiaryPro.Tenants.operator_id(client.organisation)
-    operator = Apiary.Repo.get!(Apiary.Organisations.Organisation, operator_id)
+    operator = client.operator
     owner = scope_in(scopes.operator_owner.user, operator)
     admin = scope_in(member_fixture(owner, :admin).user, operator)
     member = scope_in(member_fixture(owner, :member).user, operator)
@@ -471,42 +464,4 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
         :forbidden
     end
   end
-end
-
-defmodule ApiaryPro.OperatorAsOwnerOperatorChainAccessRows do
-  @moduledoc false
-  # The rows of the access test for what the client's switch decides, while the operator
-  # owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`) and the switch is on the
-  # operator's providers, `ApiaryPro.OperatorAsOwnerAccessRows`'s actors asking as there:
-  # Main's model choices are the operator's owners' and admins', and not there for anyone
-  # else. The client's model providers and runtimes, which the client owns as a whole, are
-  # not there for anyone: a level in the operator counts in Main alone. The time limits and
-  # the retention, which the operator holds whatever the switch, beside them.
-
-  alias ApiaryPro.OperatorAsOwnerAccessRows, as: Rows
-
-  @in_main [:"model_choice.write", :"time_limit.edit", :"retention.edit"]
-  @of_client [:"provider.write", :"runtime.write"]
-  @asked @in_main ++ @of_client
-
-  @doc false
-  def actions, do: @asked
-
-  @doc false
-  defdelegate actors, to: Rows
-
-  @doc false
-  def rows do
-    Enum.map(@in_main, &{&1, yes: Rows.operator_owners_admins()}) ++
-      Enum.map(@of_client, &{&1, yes: []})
-  end
-
-  @doc false
-  def setup(made), do: Rows.setup(made, :operator)
-
-  @doc false
-  defdelegate place(action, actor), to: Rows
-
-  @doc false
-  def refusal(_action, _actor, _subject), do: :not_found
 end

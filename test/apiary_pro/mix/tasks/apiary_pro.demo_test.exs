@@ -107,11 +107,12 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
            )
   end
 
-  test "an operator with no clients, and runs in every workspace with an owner", %{admin: admin} do
+  test "an operator that operates no workspace, and runs in every workspace with an owner",
+       %{admin: admin} do
     build(admin)
     operator = organisation("Zentrevo Works")
     assert Repo.get!(Tenant, operator.id).kind == :operator
-    refute Repo.exists?(from t in Tenant, where: t.operator_id == ^operator.id)
+    refute ApiaryPro.WorkspaceOperators.operates_workspaces?(operator)
 
     for name <- ["Vellorin Analytics", "Ostrevane Robotics", "Zentrevo Works"],
         workspace <- workspaces(organisation(name)),

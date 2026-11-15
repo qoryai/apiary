@@ -265,7 +265,10 @@ defmodule Apiary.MixProject do
           ~r/^ApiaryPro\.WorkspaceAccess/,
           ApiaryPro.Invitations
         ],
-        "Operators and their clients": [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach],
+        "Operators and the workspaces they operate": [
+          ~r/^ApiaryPro\.Operators/,
+          ApiaryPro.OperatedPlace
+        ],
         "The organisation's policy": [~r/^ApiaryPro\.OrganisationPolicy/],
         "The organisation's variables": [~r/^ApiaryPro\.OrganisationVariables/],
         "The organisation's secrets": [~r/^ApiaryPro\.OrganisationSecrets/],
@@ -302,10 +305,10 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        # Operators and their clients.
+        # Operators and the workspaces they operate.
         managed_organisations: [
           extras: ["guides/operators.md"],
-          modules: [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach]
+          modules: [~r/^ApiaryPro\.Operators/, ApiaryPro.OperatedPlace]
         ],
         # The organisation's policy, above its workspaces' security policy.
         organisation_policy: [

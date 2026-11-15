@@ -43,7 +43,7 @@ defmodule ApiaryPro.FeaturePartsTest do
                "observability.terminal"
              ])
 
-    %{operator: operator, operated: client_fixture(operator.scope, "Acme")}
+    %{operator: operator, operated: operated_fixture(operator.scope, "Acme")}
   end
 
   # The organisation's features shown on its page, but the run's Terminal.

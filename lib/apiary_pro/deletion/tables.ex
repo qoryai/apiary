@@ -6,21 +6,20 @@ defmodule ApiaryPro.Deletion.Tables do
   `policy_requests`; the organisation's policy, its rules and its row; the organisation's
   variables; the transfers, which name a membership; the feature grants; and the workspace
   access, which names a workspace or a membership, before the core's memberships and
-  workspaces it points to; an operator's invitations of its clients' first owners before
-  the core's invitations they sit beside; the rows of `operator_harness_assignments`; the
+  workspaces it points to; the rows of `operator_invitations` before the core's
+  invitations they sit beside; the rows of `operator_harness_assignments`; the
   operators of the organisation's workspaces; and the people locks, then the tenants they
   reference, last. Each is marked `:workspace` when it has `workspace_id`, and
   `:organisation` when it holds the organisation's rows. Nothing writes
-  `policy_request_answers`, `policy_requests` and `operator_harness_assignments` any more;
-  they stay on the list while they have `organisation_id`.
+  `policy_request_answers`, `policy_requests`, `operator_invitations` and
+  `operator_harness_assignments` any more; they stay on the list while they have
+  `organisation_id`.
 
-  The rows of other organisations that name the one purged go with its row, by their
-  keys: an operator's invitations into its former clients, by
-  `operator_invitations.operator_id`, and its rows of `operator_harness_assignments`, by
-  `operator_harness_assignments.operator_id`.
-  A client's tenant names its operator's with a key that takes no action, so an operator
-  is purged only once it has no clients (`ApiaryPro.Deletion`, `:has_clients`). A row
-  of `workspace_operators` has a key of the same kind to its operator's tenant, so the
+  The rows of other organisations that refer to the one purged go with its row, by their
+  keys: rows of `operator_invitations`, by `operator_invitations.operator_id`, and of
+  `operator_harness_assignments`, by `operator_harness_assignments.operator_id`. The
+  column `tenants.operator_id`, which nothing writes any more, has a key to another
+  tenant that takes no action. A row of `workspace_operators` has a key of the same kind to its operator's tenant, so the
   purge of an operator that operates a workspace fails at that key. The
   account suspensions and the instance's branding belong to no organisation, and are not
   listed.

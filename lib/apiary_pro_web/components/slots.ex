@@ -9,8 +9,7 @@ defmodule ApiaryProWeb.Slots do
     for a person `workspace.create` allows, once the organisation has a workspace; it leads
     to the core's type cards, `/:org/workspaces/new`. An organisation with none shows the
     cards on its overview, and no button beside them.
-  - `members_heading/1`, the People page's title: which workspaces each level reaches,
-    and the operator of a client, for every one of its people.
+  - `members_heading/1`, the People page's title: which workspaces each level reaches.
   - `member_access/1`, each member on the People page, beside their name, in muted words
     on the row's one line: the workspaces they reach, of those the reader reaches, which
     the membership carries (`Apiary.Organisations.list_members/1`).
@@ -25,7 +24,6 @@ defmodule ApiaryProWeb.Slots do
   use ApiaryProWeb, :html
 
   alias Apiary.{Access, Organisations}
-  alias ApiaryPro.Operators
 
   @doc """
   workspaces_heading/1 renders, for a person `workspace.create` allows in the organisation
@@ -59,33 +57,18 @@ defmodule ApiaryProWeb.Slots do
 
   @doc """
   members_heading/1 renders which workspaces each level reaches, a sentence that goes on
-  from the People section's subtitle, and the operator of the organisation of `scope`,
-  when it is a client: "Operated by" its name, on a separate line.
+  from the People section's subtitle.
   """
   attr :scope, :any, required: true
 
   @spec members_heading(map) :: Phoenix.LiveView.Rendered.t()
   def members_heading(assigns) do
-    assigns = assign(assigns, :operator, Operators.operator_of(assigns.scope))
-
     ~H"""
-    <%!-- The subtitle's next sentence, in its paragraph; the operator on a separate
-         line. --%>
+    <%!-- The subtitle's next sentence, in its paragraph. --%>
     <span id="workspace-reach">
       {gettext("Owners and admins reach every workspace; members, the workspaces they are added to.")}
     </span>
-    <span :if={@operator} id="operated-by" class="mt-1 block">
-      {operated_by(@operator)}
-    </span>
     """
-  end
-
-  # While the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), it
-  # is their owner.
-  defp operated_by(operator) do
-    if ApiaryPro.Flags.operator_infrastructure?(),
-      do: gettext("Owned by %{operator}", operator: operator.name),
-      else: gettext("Operated by %{operator}", operator: operator.name)
   end
 
   @doc """

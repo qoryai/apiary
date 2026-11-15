@@ -433,55 +433,6 @@ defmodule ApiaryPro.Reach do
 
   defp operator_membership_for(_scope, _workspace_id), do: nil
 
-  # in_client/2 is `Apiary.Accounts.Scope.in_organisation/2` for an entry the scope's
-  # person writes in `client` from its operator's pages: the membership they act from goes
-  # with it, in the scope's `edition` under `:acted_from`, for the entry to say they acted
-  # through the operator (`acted_through_operator?/1`). A scope already moved into the
-  # client keeps the one it carries.
-  @doc false
-  @spec in_client(Scope.t(), %Organisation{}) :: Scope.t()
-  def in_client(%Scope{} = scope, %Organisation{} = client) do
-    acted_from = scope.membership || scope.edition[:acted_from]
-    scoped = Scope.in_organisation(scope, client)
-
-    case acted_from do
-      %Membership{} -> %{scoped | edition: %{acted_from: acted_from}}
-      nil -> scoped
-    end
-  end
-
-  # acted_through_operator?/1 says whether the person of a scope `in_client/2` made acted
-  # in the client through its operator (`ApiaryPro.Access.through_operator?/1`): from the
-  # membership in the operator they acted from and their membership in the client, read
-  # without a lock, none where they have none or it is suspended. False for any other
-  # scope, and for a membership in another organisation than the client's operator. It
-  # reads the two levels alone, so no scope with the operator's reach leaves it.
-  @doc false
-  @spec acted_through_operator?(Scope.t()) :: boolean
-  def acted_through_operator?(%Scope{
-        user: %User{id: user_id},
-        organisation: %Organisation{id: client_id} = client,
-        membership: nil,
-        reach: nil,
-        edition: %{acted_from: %Membership{user_id: user_id, organisation_id: via_id} = via}
-      }) do
-    if is_binary(via_id) and via_id == Tenants.operator_id(client) do
-      own =
-        Repo.one(
-          from m in Membership,
-            where: m.organisation_id == ^client_id and m.user_id == ^user_id,
-            where: is_nil(m.suspended_at),
-            select: m.level
-        )
-
-      ApiaryPro.Access.through_operator_at?(via.level, own)
-    else
-      false
-    end
-  end
-
-  def acted_through_operator?(_scope), do: false
-
   @doc """
   instance_reach?/1 says whether the scope has an instance admin's reach, in an
   organisation other than the instance organisation where they have no membership:

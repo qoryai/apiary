@@ -59,9 +59,9 @@ defmodule ApiaryPro.AccessTest do
   end
 
   describe "an operator's reach" do
-    test "its people read in the organisations it operates, and reach no other" do
+    test "its people read in the workspaces it operates, and reach no other organisation" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       other = sign_up_fixture()
 
       for user <- [
@@ -69,11 +69,11 @@ defmodule ApiaryPro.AccessTest do
             member_fixture(operator.scope, :admin).user,
             member_fixture(operator.scope, :member).user
           ] do
-        in_client = scope_in(user, client.organisation, client.workspace)
-        assert Access.reach(in_client) == :operator
-        assert Access.reader(in_client) == :operator
-        assert Access.level(in_client) == nil
-        assert Access.authorize(in_client, :"run.read", client.workspace) == :ok
+        in_operated = scope_in(user, operated.organisation, operated.workspace)
+        assert Access.reach(in_operated) == :operator
+        assert Access.reader(in_operated) == :operator
+        assert Access.level(in_operated) == nil
+        assert Access.authorize(in_operated, :"run.read", operated.workspace) == :ok
 
         assert scope_in(user, other.organisation, other.workspace) == nil
       end
@@ -104,26 +104,26 @@ defmodule ApiaryPro.AccessTest do
     end
   end
 
-  describe "an operated client's owner" do
+  describe "the owner of an organisation with an operated workspace" do
     test "acts there as an owner anywhere; the operator's people do not" do
       # The operator's people change nothing in Main, which the operator operates, and find
-      # nothing the client owns as a whole.
+      # nothing the organisation owns as a whole.
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      owner = client.owner.scope
+      operated = operated_fixture(operator.scope)
+      owner = operated.owner.scope
 
       assert Access.reach(owner) == :membership
       assert Access.level(owner) == :owner
       assert Access.reader(owner) == nil
 
       for {action, subject} <- [
-            {:"node.create", client.workspace},
-            {:"organisation.rename", client.organisation}
+            {:"node.create", operated.workspace},
+            {:"organisation.rename", operated.organisation}
           ] do
         assert Access.authorize(owner, action, subject) == :ok, "#{action}"
 
-        assert Access.authorize(client.scope, action, subject) ==
-                 {:error, if(subject == client.workspace, do: :forbidden, else: :not_found)},
+        assert Access.authorize(operated.scope, action, subject) ==
+                 {:error, if(subject == operated.workspace, do: :forbidden, else: :not_found)},
                "#{action}"
       end
     end
@@ -293,23 +293,25 @@ defmodule ApiaryPro.AccessTest do
       assert Access.authorize(other_scope, :"security_policy.edit", other_scope.workspace) == :ok
     end
 
-    test "a suspended operator's people read its client no more; the client's owner still acts",
+    test "a suspended operator's people read the workspace it operates no more; the organisation's owner still acts",
          ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      assert Access.authorize(client.scope, :"run.read", client.workspace) == :ok
+      operated = operated_fixture(operator.scope)
+      assert Access.authorize(operated.scope, :"run.read", operated.workspace) == :ok
 
       {:ok, _} =
         ApiaryPro.Suspensions.suspend_organisation(ctx.instance_admin, operator.organisation.id)
 
-      assert Access.authorize(client.scope, :"run.read", client.workspace) == {:error, :forbidden}
-      assert Access.reload(client.scope).reach == nil
+      assert Access.authorize(operated.scope, :"run.read", operated.workspace) ==
+               {:error, :forbidden}
+
+      assert Access.reload(operated.scope).reach == nil
 
       for action <- [:"node.create", :"run.read"] do
-        assert Access.authorize(client.owner.scope, action, client.workspace) == :ok
+        assert Access.authorize(operated.owner.scope, action, operated.workspace) == :ok
       end
 
-      # The operator itself is read-only for its own people.
+      # The operator itself is read-only for its people.
       assert Access.authorize(operator.scope, :"run.read", operator.scope.workspace) == :ok
 
       assert Access.authorize(operator.scope, :"node.create", operator.scope.workspace) ==
@@ -318,43 +320,43 @@ defmodule ApiaryPro.AccessTest do
       {:ok, _} =
         ApiaryPro.Suspensions.activate_organisation(ctx.instance_admin, operator.organisation.id)
 
-      assert Access.authorize(client.scope, :"run.read", client.workspace) == :ok
+      assert Access.authorize(operated.scope, :"run.read", operated.workspace) == :ok
     end
   end
 
-  describe "an operator's people in a client" do
+  describe "an operator's people in a workspace it operates" do
     # An operator's people read everything in Main, which the operator operates, at every
     # level they hold in the operator, and change nothing there while
-    # `ApiaryPro.Flags.operator_infrastructure?/0` is off. Of what the client owns as a
-    # whole they read its policy alone: the client owns its people and its settings.
+    # `ApiaryPro.Flags.operator_infrastructure?/0` is off. Of what the organisation owns as
+    # a whole they find nothing: its people, its policy and its settings.
     setup do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       operator_admin = member_fixture(operator.scope, :admin).user
       operator_member = member_fixture(operator.scope, :member).user
 
       %{
-        client: client,
-        client_admin: client_member_fixture(client, :admin),
-        client_member: client_member_fixture(client, :member),
-        invitation: invitation_fixture(client.owner.scope).invitation,
-        as_owner: client.scope,
-        as_admin: scope_in(operator_admin, client.organisation, client.workspace),
-        as_member: scope_in(operator_member, client.organisation, client.workspace),
+        operated: operated,
+        organisation_admin: organisation_member_fixture(operated, :admin),
+        organisation_member: organisation_member_fixture(operated, :member),
+        invitation: invitation_fixture(operated.owner.scope).invitation,
+        as_owner: operated.scope,
+        as_admin: scope_in(operator_admin, operated.organisation, operated.workspace),
+        as_member: scope_in(operator_member, operated.organisation, operated.workspace),
         operator_admin: operator_admin,
         operator_member: operator_member,
         operator: operator
       }
     end
 
-    @reads_in_client [
+    @reads_in_operated [
       {:"run.read", :workspace},
       {:"run.read_log", :workspace},
       {:"security_policy.read", :workspace},
       {:"node.read", :workspace}
     ]
 
-    @not_found_in_client [
+    @not_found_in_operated [
       {:"secret.read", :workspace},
       {:"variable.read", :workspace},
       {:"organisation_policy.read", :organisation},
@@ -364,7 +366,7 @@ defmodule ApiaryPro.AccessTest do
       {:"organisation_variable.read", :organisation}
     ]
 
-    @changes_in_client [
+    @changes_in_operated [
       {:"organisation.rename", :organisation},
       {:"organisation.delete", :organisation},
       {:"workspace.rename", :workspace},
@@ -379,12 +381,12 @@ defmodule ApiaryPro.AccessTest do
       {:"security_policy.set_mode", :workspace},
       {:"member.invite", :invitation},
       {:"invitation.revoke", :invitation},
-      {:"member.change_level", :client_member},
-      {:"member.remove", :client_member},
-      {:"member.suspend", :client_member},
-      {:"member.activate", :client_member},
-      {:"workspace_access.add", :client_member},
-      {:"workspace_access.remove", :client_member}
+      {:"member.change_level", :organisation_member},
+      {:"member.remove", :organisation_member},
+      {:"member.suspend", :organisation_member},
+      {:"member.activate", :organisation_member},
+      {:"workspace_access.add", :organisation_member},
+      {:"workspace_access.remove", :organisation_member}
     ]
 
     test "at every level, they read everything and change nothing", ctx do
@@ -393,17 +395,17 @@ defmodule ApiaryPro.AccessTest do
         assert Access.level(scope) == nil
         assert Access.reader(scope) == :operator
 
-        for {action, on} <- @reads_in_client do
+        for {action, on} <- @reads_in_operated do
           assert Access.authorize(scope, action, on(ctx, on)) == :ok, "#{as} #{action}"
         end
 
-        for {action, on} <- @not_found_in_client do
+        for {action, on} <- @not_found_in_operated do
           assert Access.authorize(scope, action, on(ctx, on)) == {:error, :not_found},
                  "#{as} #{action}"
         end
 
-        # In Main forbidden; of what the client owns as a whole, not found.
-        for {action, on} <- @changes_in_client do
+        # In Main forbidden; of what the organisation owns as a whole, not found.
+        for {action, on} <- @changes_in_operated do
           refute Access.can?(scope, action, on(ctx, on)), "#{as} #{action}"
           refusal = if on == :workspace, do: :forbidden, else: :not_found
 
@@ -413,58 +415,62 @@ defmodule ApiaryPro.AccessTest do
       end
     end
 
-    test "the client's owner and admin manage their own people", ctx do
-      owner = ctx.client.owner.scope
-      admin = ctx.client_admin.scope
+    test "the organisation's owner and admin manage its people", ctx do
+      owner = ctx.operated.owner.scope
+      admin = ctx.organisation_admin.scope
 
       for scope <- [owner, admin],
           action <- [:"member.remove", :"member.suspend", :"workspace_access.add"] do
-        assert Access.authorize(scope, action, ctx.client_member.membership) == :ok
+        assert Access.authorize(scope, action, ctx.organisation_member.membership) == :ok
       end
 
       assert Access.authorize(admin, :"member.invite", ctx.invitation) == :ok
-      assert Access.authorize(owner, :"member.change_level", ctx.client_admin.membership) == :ok
-      assert Access.authorize(owner, :"security_policy.lock", ctx.client.workspace) == :ok
+
+      assert Access.authorize(owner, :"member.change_level", ctx.organisation_admin.membership) ==
+               :ok
+
+      assert Access.authorize(owner, :"security_policy.lock", ctx.operated.workspace) == :ok
     end
 
-    test "with a membership in the client too, it decides what they change, and the operator's reach adds the workspace it operates",
+    test "with a membership in the organisation too, it decides what they change, and the operator's reach adds the workspace it operates",
          ctx do
-      platform = workspace_fixture(ctx.client.organisation, "Platform")
+      platform = workspace_fixture(ctx.operated.organisation, "Platform")
+      member = ctx.organisation_member.membership
 
-      # A member of the operator who is a member of the client, added to Main only.
-      %{membership: joined} = join_fixture(ctx.client.owner.scope, ctx.operator_member)
-      in_main = scope_in(ctx.operator_member, ctx.client.organisation, ctx.client.workspace)
-      in_platform = scope_in(ctx.operator_member, ctx.client.organisation, platform)
+      # A member of the operator who is a member of the organisation, added to Main only.
+      %{membership: joined} = join_fixture(ctx.operated.owner.scope, ctx.operator_member)
+      in_main = scope_in(ctx.operator_member, ctx.operated.organisation, ctx.operated.workspace)
+      in_platform = scope_in(ctx.operator_member, ctx.operated.organisation, platform)
 
       assert Access.reach(in_main) == :operator
       assert Access.level(in_main) == :member
       assert Access.reader(in_main) == nil
 
-      assert Access.authorize(in_main, :"security_policy.edit", ctx.client.workspace) == :ok
+      assert Access.authorize(in_main, :"security_policy.edit", ctx.operated.workspace) == :ok
 
       # Platform, which the operator does not operate, they do not reach as a member.
       assert in_platform == nil
 
-      assert Access.authorize(in_main, :"member.remove", ctx.client_member.membership) ==
+      assert Access.authorize(in_main, :"member.remove", member) == {:error, :forbidden}
+
+      # What the organisation owns as a whole they read at their level there.
+      assert Access.authorize(in_main, :"audit.read", ctx.operated.organisation) ==
                {:error, :forbidden}
 
-      # What the client owns as a whole they read at their level there.
-      assert Access.authorize(in_main, :"audit.read", ctx.client.organisation) ==
-               {:error, :forbidden}
+      # Made an admin of the organisation, they reach every workspace and act on its members.
+      {:ok, _} =
+        Apiary.Organisations.set_member_level(ctx.operated.owner.scope, joined.id, :admin)
 
-      # Made an admin of the client, they reach every workspace and act on its members.
-      {:ok, _} = Apiary.Organisations.set_member_level(ctx.client.owner.scope, joined.id, :admin)
-      in_platform = scope_in(ctx.operator_member, ctx.client.organisation, platform)
+      in_platform = scope_in(ctx.operator_member, ctx.operated.organisation, platform)
       assert Access.authorize(in_platform, :"security_policy.edit", platform) == :ok
 
-      assert Access.authorize(in_platform, :"member.remove", ctx.client_member.membership) ==
-               :ok
+      assert Access.authorize(in_platform, :"member.remove", member) == :ok
     end
 
-    defp on(ctx, :workspace), do: ctx.client.workspace
-    defp on(ctx, :organisation), do: ctx.client.organisation
+    defp on(ctx, :workspace), do: ctx.operated.workspace
+    defp on(ctx, :organisation), do: ctx.operated.organisation
     defp on(ctx, :invitation), do: ctx.invitation
-    defp on(ctx, :client_member), do: ctx.client_member.membership
+    defp on(ctx, :organisation_member), do: ctx.organisation_member.membership
   end
 
   # The instance actions never taken on the instance organisation itself.
@@ -865,13 +871,12 @@ defmodule ApiaryPro.AccessTest do
       assert Access.authorize(home.scope, :"organisation.create", new) == :ok
     end
 
-    test "is of a new organisation, of no operator, only", %{home: home} do
+    test "is of a new organisation only", %{home: home} do
       open!([:organisation, :operator])
 
       for subject <- [
             home.organisation,
             home.workspace,
-            Tenants.put_tenant(%Organisation{}, %Tenant{operator_id: home.organisation.id}),
             Tenants.put_tenant(%Organisation{}, %Tenant{
               kind: :operator,
               instance_organisation: true

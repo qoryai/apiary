@@ -4,8 +4,8 @@ defmodule ApiaryPro.TenantsTest do
   written in the transaction that inserts the organisation
   (`ApiaryPro.Tenants.organisation_created/2`), by every way there is of creating one: the
   instance's first sign-up, its set-up, a later sign-up, a signed-in person's new
-  organisation, an instance admin's, and an operator's client. And the people locks a
-  change takes (`ApiaryPro.Tenants.lock_rows/1`), written first where one is missing.
+  organisation, and an instance admin's. And the people locks a change takes
+  (`ApiaryPro.Tenants.lock_rows/1`), written first where one is missing.
   """
   # Not async: the instance's set-up takes the flag off the suite's instance
   # organisation, an instance admin is made an owner of it, and the kinds a sign-up may
@@ -83,8 +83,6 @@ defmodule ApiaryPro.TenantsTest do
     assert %Tenant{
              kind: ^kind,
              instance_organisation: true,
-             operator_id: nil,
-             operator_since: nil,
              suspended_at: nil
            } = tenant!(organisation.id)
 
@@ -94,20 +92,14 @@ defmodule ApiaryPro.TenantsTest do
   test "a later sign-up's tenant is of the kind it chose, never the instance organisation" do
     %{organisation: organisation} = sign_up_fixture()
 
-    assert %Tenant{kind: :organisation, instance_organisation: false, operator_id: nil} =
-             tenant!(organisation.id)
+    assert %Tenant{kind: :organisation, instance_organisation: false} = tenant!(organisation.id)
 
     open!([:organisation, :operator])
 
     for kind <- [:organisation, :operator] do
       %{organisation: organisation} = sign_up_fixture(%{kind: Atom.to_string(kind)})
 
-      assert %Tenant{
-               kind: ^kind,
-               instance_organisation: false,
-               operator_id: nil,
-               operator_since: nil
-             } = tenant!(organisation.id)
+      assert %Tenant{kind: ^kind, instance_organisation: false} = tenant!(organisation.id)
     end
   end
 
@@ -117,42 +109,21 @@ defmodule ApiaryPro.TenantsTest do
 
     for kind <- [:organisation, :operator] do
       organisation = create_organisation(scope, Atom.to_string(kind))
-
-      assert %Tenant{kind: ^kind, instance_organisation: false, operator_id: nil} =
-               tenant!(organisation.id)
+      assert %Tenant{kind: ^kind, instance_organisation: false} = tenant!(organisation.id)
     end
   end
 
   test "an instance admin's new organisation has the tenant of the kind they asked for" do
     %{instance_scope: instance_scope} = instance_admin_fixture()
     organisation = create_on_the_instance(instance_scope, "organisation")
-
-    assert %Tenant{kind: :organisation, instance_organisation: false, operator_id: nil} =
-             tenant!(organisation.id)
+    assert %Tenant{kind: :organisation, instance_organisation: false} = tenant!(organisation.id)
   end
 
   @tag needs: :managed_organisations
   test "an instance admin's new operator has the tenant of an operator" do
     %{instance_scope: instance_scope} = instance_admin_fixture()
     organisation = create_on_the_instance(instance_scope, "operator")
-
-    assert %Tenant{kind: :operator, instance_organisation: false, operator_id: nil} =
-             tenant!(organisation.id)
-  end
-
-  @tag needs: :managed_organisations
-  test "an operator's client has a tenant naming the operator, and since when" do
-    %{organisation: operator, scope: operator_scope} = operator_fixture()
-    %{organisation: client} = client_fixture(operator_scope)
-
-    operator_id = operator.id
-
-    assert %Tenant{
-             kind: :organisation,
-             instance_organisation: false,
-             operator_id: ^operator_id,
-             operator_since: %DateTime{}
-           } = tenant!(client.id)
+    assert %Tenant{kind: :operator, instance_organisation: false} = tenant!(organisation.id)
   end
 
   @tag needs: :managed_organisations
@@ -163,7 +134,7 @@ defmodule ApiaryPro.TenantsTest do
     create_on_the_instance(instance_scope, "organisation")
     create_on_the_instance(instance_scope, "operator")
     %{scope: operator_scope} = operator_fixture()
-    client_fixture(operator_scope)
+    operated_fixture(operator_scope)
 
     open!([:organisation, :operator])
     sign_up_fixture(%{kind: "operator"})
@@ -185,45 +156,46 @@ defmodule ApiaryPro.TenantsTest do
   end
 
   describe "lock_rows/1" do
-    # Operators and their clients are there with the managed organisations.
+    # Operators are there with the managed organisations.
     @describetag needs: :managed_organisations
 
-    # An operator, a client of it with its owner, and an ordinary organisation, with their
-    # people locks deleted, as a tenant written without its row would have none.
+    # An operator, an organisation whose workspace Main it operates, with its owner, and an
+    # ordinary organisation, with their people locks deleted, as a tenant written without
+    # its row would have none.
     setup do
       %{scope: in_operator} = operator = operator_fixture()
-      client = client_fixture(in_operator)
+      operated = operated_fixture(in_operator)
       %{organisation: other} = sign_up_fixture()
-      ids = [operator.organisation.id, client.organisation.id, other.id]
+      ids = [operator.organisation.id, operated.organisation.id, other.id]
       Repo.delete_all(from p in PeopleLock, where: p.organisation_id in ^ids)
 
       %{
         operator: operator.organisation,
         in_operator: in_operator,
-        client: client,
+        operated: operated,
         other: other
       }
     end
 
-    test "a write in a client takes its operator's row, written first when it is missing",
+    test "a write in an operated organisation takes its operator's row, written first when it is missing",
          ctx do
-      assert :ok = Tenants.lock_rows({:places, ctx.client.owner.scope})
+      assert :ok = Tenants.lock_rows({:places, ctx.operated.owner.scope})
       assert people_locks(ctx) == [ctx.operator.id]
 
       # The same rows again, in the same change.
-      assert :ok = Tenants.lock_rows({:places, ctx.client.owner.scope})
+      assert :ok = Tenants.lock_rows({:places, ctx.operated.owner.scope})
       assert people_locks(ctx) == [ctx.operator.id]
     end
 
-    test "a write without a person, or in no client, takes no row", ctx do
-      assert :ok = Tenants.lock_rows({:places, Scope.for_instance(ctx.client.organisation)})
+    test "a write without a person, or with no operated workspace, takes no row", ctx do
+      assert :ok = Tenants.lock_rows({:places, Scope.for_instance(ctx.operated.organisation)})
       assert :ok = Tenants.lock_rows({:places, ctx.in_operator})
       assert people_locks(ctx) == []
     end
 
-    test "a change of an operator's people takes its own row; of a client's, its operator's",
+    test "a change of an operator's people takes the operator's row; of an operated organisation's, its operator's",
          ctx do
-      assert :ok = Tenants.lock_rows({:people, nil, ctx.client.organisation})
+      assert :ok = Tenants.lock_rows({:people, nil, ctx.operated.organisation})
       assert people_locks(ctx) == []
 
       assert :ok = Tenants.lock_rows({:people, ctx.in_operator, ctx.operator})
@@ -232,13 +204,13 @@ defmodule ApiaryPro.TenantsTest do
       Repo.delete_all(from p in PeopleLock, where: p.organisation_id == ^ctx.operator.id)
 
       assert :ok =
-               Tenants.lock_rows({:people, ctx.client.owner.scope, ctx.client.organisation})
+               Tenants.lock_rows({:people, ctx.operated.owner.scope, ctx.operated.organisation})
 
       assert people_locks(ctx) == [ctx.operator.id]
     end
 
     test "an account's deletion takes the rows of exactly the organisations given", ctx do
-      ids = [ctx.other.id, ctx.client.organisation.id]
+      ids = [ctx.other.id, ctx.operated.organisation.id]
       assert :ok = Tenants.lock_rows({:account, Ecto.UUID.generate(), ids})
       assert people_locks(ctx) == Enum.sort(ids)
     end
@@ -253,7 +225,7 @@ defmodule ApiaryPro.TenantsTest do
 
   # The people locks there are of the test's organisations, in order.
   defp people_locks(ctx) do
-    ids = [ctx.operator.id, ctx.client.organisation.id, ctx.other.id]
+    ids = [ctx.operator.id, ctx.operated.organisation.id, ctx.other.id]
 
     Repo.all(
       from p in PeopleLock,

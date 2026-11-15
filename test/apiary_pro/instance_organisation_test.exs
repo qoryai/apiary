@@ -5,7 +5,8 @@ defmodule ApiaryPro.InstanceOrganisationTest do
   (`ApiaryPro.Tenants.first_sign_up_kind/0`), whose owners are the instance admins, who
   read every other organisation and take every instance action the instance has from it;
   once the instance has the feature, an
-  instance admin makes it an operator, and an organisation again while it has no clients.
+  instance admin makes it an operator, and an organisation again once it operates no
+  workspace.
   """
   # Not async: the features are the node's, and each test takes the flag off the suite's
   # instance organisation inside its sandbox, for a first sign-up of its own.
@@ -22,7 +23,7 @@ defmodule ApiaryPro.InstanceOrganisationTest do
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Apiary.OrganisationsFixtures
-  import ApiaryPro.OperatorsFixtures, only: [client_fixture: 1, scope_in: 2, tenant_of: 1]
+  import ApiaryPro.OperatorsFixtures, only: [operated_fixture: 1, scope_in: 2, tenant_of: 1]
 
   alias Apiary.{Access, Features}
   alias Apiary.Organisations.Organisation
@@ -49,7 +50,7 @@ defmodule ApiaryPro.InstanceOrganisationTest do
        %{first: first, scope: scope} do
     assert Tenants.first_sign_up_kind() == :organisation
 
-    assert %Tenant{kind: :organisation, instance_organisation: true, operator_id: nil} =
+    assert %Tenant{kind: :organisation, instance_organisation: true} =
              tenant_of(first.organisation)
 
     assert Tenants.instance_organisation_id() == first.organisation.id
@@ -153,25 +154,21 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     assert {:ok, operator} = Operators.change_kind(scope, here, :operator)
     assert %Tenant{kind: :operator, instance_organisation: true} = tenant_of(operator)
 
-    # Its clients, as any operator's.
+    # It operates a workspace of another organisation, as any operator does.
     scope = scope_in(first.user, operator)
     assert Access.can?(scope, :"instance.read", scope.organisation)
-    client = client_fixture(scope)
-    assert Tenants.operator_id(client.organisation) == here
-    assert client.scope.reach |> elem(0) == :operator
+    operated = operated_fixture(scope)
+    assert operated.scope.reach |> elem(0) == :operator
 
-    # An organisation again once it has no clients, the rule of every operator.
-    assert {:error, :has_clients} = Operators.change_kind(scope, here, :organisation)
-    # Nothing in the product ends the relation or the link to the client's workspace any
-    # more: the test ends both in the database.
-    id = client.organisation.id
+    # An organisation again once it operates no workspace, the rule of every operator.
+    assert {:error, :has_operated_workspaces} =
+             Operators.change_kind(scope, here, :organisation)
+
+    # Nothing in the product ends the link to the workspace: the test deletes the row.
+    id = operated.organisation.id
 
     Repo.delete_all(
       from l in ApiaryPro.Operators.WorkspaceOperator, where: l.organisation_id == ^id
-    )
-
-    Repo.update_all(from(t in Tenant, where: t.organisation_id == ^id),
-      set: [operator_id: nil, operator_since: nil, model_chain: :organisation]
     )
 
     assert {:ok, organisation} = Operators.change_kind(scope, here, :organisation)

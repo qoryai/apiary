@@ -13,8 +13,8 @@ defmodule ApiaryPro.SignUp do
 
   - Organisations, `open` or `closed`: whether a sign-up may create an ordinary
     organisation, to work in;
-  - Operators, `open` or `closed`: whether it may create an operator, to run
-    organisations for clients.
+  - Operators, `open` or `closed`: whether it may create an operator, to operate
+    workspaces of other organisations.
 
   **The setting in effect** for each kind (`settings/0`) is, in order:
 
@@ -342,7 +342,7 @@ defmodule ApiaryPro.SignUp do
   def first_sign_up_line do
     case Tenants.first_sign_up_kind() do
       :operator ->
-        gettext("Your account and your operator, to run organisations for clients.")
+        gettext("Your account and your operator, to operate workspaces of other organisations.")
 
       :organisation ->
         Apiary.Edition.Core.first_sign_up_line()

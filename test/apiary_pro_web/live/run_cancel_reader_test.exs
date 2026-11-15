@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.RunCancelReaderTest do
-  # Cancel run shows only to a person who may cancel the run (`run.cancel`): a person of a
-  # client's operator, who reads the client and changes nothing there, has no Cancel run
-  # on a running run's page (`ApiaryWeb.RunLive.Show`) or on its work item
-  # (`ApiaryWeb.WorkItemLive.Show`). The client's owner has it on both.
+  # Cancel run shows only to a person who may cancel the run (`run.cancel`): a person of
+  # the operator of a workspace, who reads the workspace and changes nothing there, has no
+  # Cancel run on a running run's page (`ApiaryWeb.RunLive.Show`) or on its work item
+  # (`ApiaryWeb.WorkItemLive.Show`). The organisation's owner has it on both.
   # Not async: the features are the node's.
   use ApiaryWeb.ConnCase, async: false
 
@@ -20,19 +20,19 @@ defmodule ApiaryProWeb.RunCancelReaderTest do
 
   setup do
     operator = OperatorsFixtures.operator_fixture(%{organisation_name: "Hive Ops"})
-    client = OperatorsFixtures.client_fixture(operator.scope, "Acme")
-    owner = client.owner.scope
+    operated = OperatorsFixtures.operated_fixture(operator.scope, "Acme")
+    owner = operated.owner.scope
 
     pool = pool_fixture(owner)
     %{access_key: key} = enrolled_key_fixture(owner, pool)
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(owner, key)
     run = Repo.get!(Run, run.id)
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
-    place = "/#{client.organisation.slug}/#{client.workspace.slug}"
+    place = "/#{operated.organisation.slug}/#{operated.workspace.slug}"
 
     %{
-      people: %{reader: operator.user, owner: client.owner.user},
-      reader_scope: client.scope,
+      people: %{reader: operator.user, owner: operated.owner.user},
+      reader_scope: operated.scope,
       run: run,
       run_page: "#{place}/runs/#{run.number}",
       work_item_page: "#{place}/work/#{work_item.number}/explore"
@@ -44,7 +44,7 @@ defmodule ApiaryProWeb.RunCancelReaderTest do
     lv
   end
 
-  test "the operator's person may not cancel the client's run", ctx do
+  test "the operator's person may not cancel a run in the operated workspace", ctx do
     refute Access.can?(ctx.reader_scope, :"run.cancel", ctx.run)
   end
 

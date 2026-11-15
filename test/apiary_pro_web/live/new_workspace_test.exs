@@ -14,12 +14,11 @@ defmodule ApiaryProWeb.NewWorkspaceTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
-  import ApiaryPro.OperatorsFixtures
   import ApiaryPro.SignUpFixtures, only: [open!: 1]
 
   alias Apiary.{Features, Organisations, Policy, Repo}
   alias Apiary.Organisations.Membership
-  alias ApiaryPro.{Flags, OrganisationPolicy}
+  alias ApiaryPro.OrganisationPolicy
 
   setup :register_and_log_in_user
 
@@ -188,30 +187,6 @@ defmodule ApiaryProWeb.NewWorkspaceTest do
     end
   end
 
-  describe "a client's admin, with a workspace" do
-    @describetag needs: :managed_organisations
-
-    for {flag, state} <- [{false, "off"}, {true, "on"}] do
-      test "sees New workspace on Workspaces and on the overview, with the flag #{state}" do
-        Flags.put_operator_infrastructure(unquote(flag))
-        operator = operator_fixture()
-        client = client_fixture(operator.scope)
-        admin = client_member_fixture(client, :admin)
-        conn = log_in_user(build_conn(), admin.user)
-
-        for page <- ["", "/settings/workspaces"] do
-          {:ok, lv, _html} = live(conn, "/#{client.organisation.slug}" <> page)
-
-          assert has_element?(
-                   lv,
-                   "a#new-workspace.btn-primary[href='/#{client.organisation.slug}/workspaces/new']",
-                   "New workspace"
-                 )
-        end
-      end
-    end
-  end
-
   describe "the dead end of New workspace, for a person who may not create one" do
     # Core's 404 page for the path, with who creates workspaces.
     defp dead_end(conn, organisation) do
@@ -226,26 +201,12 @@ defmodule ApiaryProWeb.NewWorkspaceTest do
       |> String.trim()
     end
 
-    test "says Core's line in an organisation that is no client", ctx do
+    test "says Core's line to a member", ctx do
       %{user: user} = member_fixture(ctx.scope, :member)
       conn = log_in_user(build_conn(), user)
 
       assert dead_end(conn, ctx.scope.organisation) ==
                "Only owners of #{ctx.scope.organisation.name} create workspaces."
-    end
-
-    for {flag, state} <- [{false, "off"}, {true, "on"}] do
-      @tag needs: :managed_organisations
-      test "names a client's owners and admins, with the flag #{state}" do
-        Flags.put_operator_infrastructure(unquote(flag))
-        operator = operator_fixture()
-        client = client_fixture(operator.scope)
-        member = client_member_fixture(client, :member)
-        conn = log_in_user(build_conn(), member.user)
-
-        assert dead_end(conn, client.organisation) ==
-                 "Only owners and admins of #{client.organisation.name} create workspaces."
-      end
     end
   end
 

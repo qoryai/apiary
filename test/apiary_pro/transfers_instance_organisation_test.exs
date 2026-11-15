@@ -22,7 +22,6 @@ defmodule ApiaryPro.TransfersInstanceOrganisationTest do
   alias Apiary.Organisations.{Membership, Organisation}
   alias ApiaryPro.{Suspensions, Transfers}
   alias ApiaryPro.Transfers.Transfer
-  alias ApiaryPro.Tenants.Tenant
 
   describe "the instance organisation" do
     test "nobody withdraws an offer of its ownership" do
@@ -37,59 +36,55 @@ defmodule ApiaryPro.TransfersInstanceOrganisationTest do
     end
 
     @tag needs: :managed_organisations
-    test "offers a client whose owners are all suspended to one of its admins; it stays its operator's",
+    test "offers an operated organisation whose owners are all suspended to one of its admins, whatever the operator",
          ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      chosen = client_member_fixture(client, :admin)
+      operated = operated_fixture(operator.scope)
+      chosen = organisation_member_fixture(operated, :admin)
 
       # Its owner may act: the instance does not overrule them.
       assert {:error, :has_owner} =
                Transfers.arbitrate(
                  ctx.instance_admin,
-                 client.organisation.id,
+                 operated.organisation.id,
                  chosen.membership.id,
                  "Stuck."
                )
 
-      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, client.owner.user.id)
-      assert ApiaryPro.Suspensions.owner_suspended?(client.organisation)
+      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, operated.owner.user.id)
+      assert ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
 
       assert {:ok, [_]} =
-               Transfers.arbitration_candidates(ctx.instance_admin, client.organisation.id)
+               Transfers.arbitration_candidates(ctx.instance_admin, operated.organisation.id)
 
       assert {:ok, %Transfer{arbitrated: true, reason: "The owner is away."} = transfer} =
                Transfers.arbitrate(
                  ctx.instance_admin,
-                 client.organisation.id,
+                 operated.organisation.id,
                  chosen.membership.id,
                  "  The owner is away.  "
                )
 
       assert transfer.recipient_id == chosen.user.id
-      # It names no operator but in its entry.
       assert transfer.operator_id == nil
 
       assert %Entry{action: "instance.transfer", subject_kind: "transfer"} = entry = last()
-      assert entry.organisation_id == client.organisation.id
-      assert entry.details["operator_id"] == operator.organisation.id
+      assert entry.organisation_id == operated.organisation.id
+      refute Map.has_key?(entry.details, "operator_id")
       assert {entry.actor_kind, entry.actor_id} == {:person, ctx.instance_admin.user.id}
       assert entry.details["reason"] == "The owner is away."
 
-      # Accepted whatever its operator is.
+      # The operator's suspension changes nothing for the acceptance.
       {:ok, _} = Suspensions.suspend_organisation(ctx.instance_admin, operator.organisation.id)
 
-      assert {:ok, %Organisation{edition: %{tenant: %Tenant{operator_id: operator_id}}}} =
-               Transfers.accept(chosen.scope)
-
-      assert operator_id == operator.organisation.id
+      assert {:ok, %Organisation{}} = Transfers.accept(chosen.scope)
       assert %Membership{level: :owner} = Repo.get!(Membership, chosen.membership.id)
 
       assert %Entry{action: "organisation.accept_transfer", details: %{"arbitrated" => true}} =
                Repo.one!(
                  from e in Entry,
                    where:
-                     e.organisation_id == ^client.organisation.id and
+                     e.organisation_id == ^operated.organisation.id and
                        e.action == "organisation.accept_transfer"
                )
     end

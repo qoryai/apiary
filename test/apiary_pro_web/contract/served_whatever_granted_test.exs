@@ -89,21 +89,21 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   describe "an organisation an operator operates in, whose Runs are taken away" do
     setup ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      in_client = client.owner.scope
+      operated = operated_fixture(operator.scope, "Acme")
+      in_operated = operated.owner.scope
 
       # The workspace's first gateway is its default: a node made after it goes through it.
-      gateway = gateway_fixture(in_client)
+      gateway = gateway_fixture(in_operated)
 
       %{access_key: gateway_key, secret: gateway_secret} =
-        contract_key_fixture(in_client, node: gateway)
+        contract_key_fixture(in_operated, node: gateway)
 
-      %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_client)
-      {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
-      {:ok, %{digest: baseline}} = Policy.current_configuration(in_client, nil)
+      %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_operated)
+      {:ok, _rule} = Policy.deny(in_operated, nil, %{host: "ads.example"})
+      {:ok, %{digest: baseline}} = Policy.current_configuration(in_operated, nil)
 
-      assert {:ok, _} = Grants.set_organisation(ctx.admin, client.organisation.id, [])
-      refute has?(client.organisation, :observability)
+      assert {:ok, _} = Grants.set_organisation(ctx.admin, operated.organisation.id, [])
+      refute has?(operated.organisation, :observability)
 
       Map.merge(ctx, %{
         node: node,
@@ -201,21 +201,21 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   describe "an organisation an operator operates in, without the security policy" do
     setup ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      in_client = client.owner.scope
-      %{access_key: key, secret: secret} = contract_key_fixture(in_client)
-      {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
+      operated = operated_fixture(operator.scope, "Acme")
+      in_operated = operated.owner.scope
+      %{access_key: key, secret: secret} = contract_key_fixture(in_operated)
+      {:ok, _rule} = Policy.deny(in_operated, nil, %{host: "ads.example"})
       key = {key, secret}
       served = digest(key)
       assert served
 
-      Map.merge(ctx, %{client: client, key: key, served: served})
+      Map.merge(ctx, %{operated: operated, key: key, served: served})
     end
 
     test "keeps the same digest", ctx do
-      client = ctx.client.organisation
-      assert {:ok, _} = Grants.set_organisation(ctx.admin, client.id, [:observability])
-      refute has?(client, :security)
+      operated = ctx.operated.organisation
+      assert {:ok, _} = Grants.set_organisation(ctx.admin, operated.id, [:observability])
+      refute has?(operated, :security)
       assert digest(ctx.key) == ctx.served
     end
   end

@@ -5,7 +5,6 @@ defmodule ApiaryPro.Edition do
   """
 
   use Apiary.Edition
-  use Gettext, backend: ApiaryProWeb.Gettext
 
   # --- Access, suspension, places, invitations -----------------------------------------
 
@@ -68,30 +67,13 @@ defmodule ApiaryPro.Edition do
     do: ApiaryPro.Invitations.accepted(repo, scope, invitation, membership)
 
   # A person made a member keeps a workspace; an owner who may act again takes back what
-  # the arbiter offered. While `ApiaryPro.Flags.operator_infrastructure?/0` is on, nobody
-  # in a client is made an owner: the operator owns it, and the change is rolled back.
+  # the arbiter offered.
   @impl true
-  def membership_changed(repo, scope, :level, old, new) do
-    if ApiaryPro.Flags.operator_infrastructure?() and new.level == :owner and
-         ApiaryPro.Tenants.client?(%Apiary.Organisations.Organisation{id: new.organisation_id}),
-       do: {:error, :forbidden},
-       else: ApiaryPro.WorkspaceAccess.level_changed(repo, scope, old, new)
-  end
+  def membership_changed(repo, scope, :level, old, new),
+    do: ApiaryPro.WorkspaceAccess.level_changed(repo, scope, old, new)
 
   def membership_changed(_repo, _scope, :activated, _old, new),
     do: ApiaryPro.Transfers.membership_activated(new)
-
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, owner is not given in a
-  # client, by anyone: the operator owns it. Asked inside a change (`lock:`), the client's
-  # tenant is read again as the database has it, without a lock; a page asks the one its
-  # scope carries. `membership_changed/5` still rolls back a change that makes an owner.
-  @impl true
-  def level_refusal(_scope, organisation, :owner, opts) do
-    if ApiaryPro.Flags.operator_infrastructure?() and client_now?(organisation, opts),
-      do: :operator_owns
-  end
-
-  def level_refusal(_scope, _organisation, _level, _opts), do: nil
 
   # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, an entry made in a workspace
   # by a person who acts there through its operator keeps the operator they acted through,
@@ -116,31 +98,7 @@ defmodule ApiaryPro.Edition do
     end
   end
 
-  # An entry a person of the operator writes in its client from the operator's pages
-  # (`ApiaryPro.Reach.in_client/2`) keeps the operator by the same rule; their membership in
-  # the client is read, without a lock, only while the flag is on.
-  def audit_details(
-        %Apiary.Accounts.Scope{
-          organisation: %Apiary.Organisations.Organisation{id: id},
-          reach: nil,
-          edition: %{acted_from: %Apiary.Organisations.Membership{organisation_id: operator_id}}
-        } = scope,
-        id,
-        details
-      ) do
-    if ApiaryPro.Flags.operator_infrastructure?() and
-         ApiaryPro.Reach.acted_through_operator?(scope),
-       do: Map.put(details, "via_operator_id", operator_id),
-       else: details
-  end
-
   def audit_details(_scope, _organisation_id, details), do: details
-
-  defp client_now?(%Apiary.Organisations.Organisation{id: id} = organisation, opts) do
-    if Keyword.has_key?(opts, :lock),
-      do: ApiaryPro.Tenants.client?(%Apiary.Organisations.Organisation{id: id}),
-      else: ApiaryPro.Tenants.client?(organisation)
-  end
 
   @impl true
   def set_up_steps(scope, steps), do: ApiaryPro.SetUp.steps(scope, steps)
@@ -150,32 +108,6 @@ defmodule ApiaryPro.Edition do
 
   @impl true
   def set_up_context(scope, step_id), do: Apiary.Edition.Core.set_up_context(scope, step_id)
-
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a harness document that a
-  # person of an operator saves in one of its clients is owned by the operator
-  # (`harness_owner/1`, hidden from the documentation): the scope reaches the client
-  # through the person's membership in the operator, and the client's tenant names that
-  # operator. Any other scope, and every scope while the flag is off, gets the core's
-  # answer: a person of another operator saves nothing in the client, and no other scope
-  # gets an owner that the core would not give it.
-  @impl true
-  def harness_owner(
-        %Apiary.Accounts.Scope{
-          organisation: %Apiary.Organisations.Organisation{} = organisation,
-          reach: {:operator, _operated}
-        } = scope
-      ) do
-    with true <- ApiaryPro.Flags.operator_infrastructure?(),
-         %Apiary.Organisations.Membership{organisation_id: operator_id} <-
-           ApiaryPro.Reach.operator_membership(scope),
-         ^operator_id <- ApiaryPro.Tenants.operator_id(organisation) do
-      operator_id
-    else
-      _other -> Apiary.Edition.Core.harness_owner(scope)
-    end
-  end
-
-  def harness_owner(scope), do: Apiary.Edition.Core.harness_owner(scope)
 
   # The instance's organisation is the instance organisation, whose owners are the
   # instance admins (`Apiary.Access.instance_admin?/1`).

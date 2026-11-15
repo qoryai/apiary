@@ -36,34 +36,34 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
     setup %{conn: conn} do
       %{instance_scope: admin} = suite_instance_admin()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      %{conn: log_in_user(conn, operator.user), admin: admin, client: client}
+      operated = operated_fixture(operator.scope, "Acme")
+      %{conn: log_in_user(conn, operator.user), admin: admin, operated: operated}
     end
 
     test "is absent in the operated workspace: its page answers not found", ctx do
-      %{admin: admin, client: client} = ctx
+      %{admin: admin, operated: operated} = ctx
 
       {:ok, _} =
-        ApiaryPro.Grants.set_organisation(admin, client.organisation.id, [
+        ApiaryPro.Grants.set_organisation(admin, operated.organisation.id, [
           "observability"
         ])
 
       assert_raise ApiaryWeb.Features.NotFound, fn ->
-        live(ctx.conn, ~p"/#{client.organisation}/#{client.workspace}/policy")
+        live(ctx.conn, ~p"/#{operated.organisation}/#{operated.workspace}/policy")
       end
     end
 
     test "a page open on it meanwhile says so and leaves", ctx do
-      %{admin: admin, client: client} = ctx
+      %{admin: admin, operated: operated} = ctx
 
       {:ok, policy, _html} =
-        live(ctx.conn, ~p"/#{client.organisation}/#{client.workspace}/policy")
+        live(ctx.conn, ~p"/#{operated.organisation}/#{operated.workspace}/policy")
 
       {:ok, _} =
-        ApiaryPro.Grants.set_organisation(admin, client.organisation.id, ["observability"])
+        ApiaryPro.Grants.set_organisation(admin, operated.organisation.id, ["observability"])
 
       assert {path, flash} = assert_redirect(policy)
-      assert path == ~p"/#{client.organisation}"
+      assert path == ~p"/#{operated.organisation}"
       assert flash["error"] =~ "is no longer shown in"
     end
   end
@@ -179,13 +179,13 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
     test "an organisation an operator operates in offers a Features button; the instance organisation none",
          ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       here = ctx.admin.instance_scope.organisation
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations")
       render_async(lv)
       assert has_element?(lv, "#organisation-#{operator.organisation.id}-features-button")
-      assert has_element?(lv, "#organisation-#{client.organisation.id}-features-button")
+      assert has_element?(lv, "#organisation-#{operated.organisation.id}-features-button")
       refute has_element?(lv, "#organisation-#{here.id}-features-button")
     end
 

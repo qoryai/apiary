@@ -2,8 +2,8 @@ defmodule ApiaryProWeb.RefusalsTest do
   # Every change the pages offer, the core's and the edition's, sent through the web layer by
   # someone who may not make it: the core's rows (`ApiaryWeb.RefusalsRows`) again, under
   # the edition, and the edition's (`ApiaryProWeb.RefusalsRows`): a member of another
-  # workspace or one removed from it, an operator's people, a client's, and the instance's
-  # admins, on the edition's pages and on the core's. Sent by `ApiaryWeb.RefusalsCase`,
+  # workspace or one removed from it, an operator's people, the people of an organisation
+  # whose workspace it operates, and the instance's admins, on the edition's pages and on the core's. Sent by `ApiaryWeb.RefusalsCase`,
   # which fails for any action of `Apiary.Access` that changes something and has no row. Not
   # async: its tests write through the suite's instance organisation, committed once outside
   # the sandbox, whose row and owners they lock (docs/conventions.md, Tests). The world is

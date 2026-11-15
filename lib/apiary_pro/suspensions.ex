@@ -10,7 +10,7 @@ defmodule ApiaryPro.Suspensions do
   row (`ApiaryPro.Suspensions.AccountSuspension`), inserted by the suspension and deleted
   by the activation; an organisation's is its tenant's `suspended_at` and
   `suspended_by_id` (`ApiaryPro.Tenants.Tenant`), which activating empties. Memberships,
-  workspace access, history, access keys and the managing relationship all stay.
+  workspace access, history, access keys and the operators of workspaces all stay.
   "Activating" is only the end of a suspension. Each suspension and each activation is an
   audit entry, written in its transaction.
 
@@ -23,14 +23,14 @@ defmodule ApiaryPro.Suspensions do
     `instance.suspend_organisation`) is read-only: its people sign in and read everything,
     under a notice, and change nothing; it sends no invitation and accepts none; its access
     keys are refused as a revoked key is, so no run starts or reports. A suspended
-    operator's people read its clients no more, and its workspaces are suspended
-    with it; its clients keep running, their keys and their people working as before. The
-    entry is the suspended organisation's.
+    operator's people reach the workspaces it operates no more; those workspaces keep
+    running, their keys and their organisations' people working as before. The entry is
+    the suspended organisation's.
 
   **The last owner.** Nobody suspends the instance organisation, nor their account,
   and the account of the instance organisation's last owner who may act is not suspended,
   `{:error, :last_owner}`: the release command is the way back. Anywhere else the instance
-  admins may leave an organisation, a client as any other, without an owner who may act,
+  admins may leave an organisation without an owner who may act,
   by suspending the account of its only owner: it runs below the owner level, its admins
   told so (`owner_suspended?/1`), until an instance admin activates it again or transfers
   the ownership to one of its admins (`ApiaryPro.Transfers.arbitrate/4`).
@@ -145,8 +145,8 @@ defmodule ApiaryPro.Suspensions do
   organisation the account is a member of and the instance organisation, in one pass, the
   instance organisation `FOR SHARE` and the rest `FOR KEY SHARE`; then the people locks of
   exactly those organisations `FOR UPDATE` (`ApiaryPro.Tenants.lock_people/2`), so a
-  write in a client that relies on the person's level in its operator waits for the
-  suspension, or came first; then the instance organisation's owners
+  write in an operated workspace that relies on the person's level in its operator waits
+  for the suspension, or came first; then the instance organisation's owners
   (`Apiary.Organisations.lock_owners/1`), whose people locks are among those held.
 
   `{:ok, %{user: user, tokens: tokens}}`, tokens empty for an account suspended already,
@@ -251,8 +251,8 @@ defmodule ApiaryPro.Suspensions do
   suspend_organisation/2 suspends the organisation `organisation_id`, of either kind,
   never the instance organisation (`instance.suspend_organisation`, an instance admin's,
   asked in the instance organisation): read-only until it is activated, its access keys
-  refused. A suspended operator's people lose their reach into its clients, which keep
-  running. Its people's open pages follow, and say so. The entry is the suspended
+  refused. A suspended operator's people lose their reach into the workspaces it
+  operates, which keep running. Its people's open pages follow, and say so. The entry is the suspended
   organisation's.
 
   `{:ok, organisation}`, nothing changed and no entry for one suspended already;
@@ -274,7 +274,7 @@ defmodule ApiaryPro.Suspensions do
   @doc """
   activate_organisation/2 ends the suspension of the organisation `organisation_id`
   (`instance.activate_organisation`): it works again, its access keys with it, and a
-  suspended operator's people reach its clients again. The entry is the organisation's.
+  suspended operator's people reach the workspaces it operates again. The entry is the organisation's.
   `{:ok, organisation}`, nothing changed and no entry for one not suspended;
   `{:error, :not_found}` for one that is not there, and `Apiary.Access`'s answer
   otherwise.
@@ -342,9 +342,8 @@ defmodule ApiaryPro.Suspensions do
   # The organisations of which the account holds an owner's membership, held
   # `FOR SHARE`: an acceptance of the arbiter's offer there, which locks the owners for
   # update, waits for the activation, or comes first and is seen. The organisation rows
-  # first, `FOR SHARE`, in the order of `Apiary.Organisations.lock_order/1`, the clients
-  # before the rest, so a client comes before its operator, each in the order of their
-  # ids; then the memberships, as the lock order has them.
+  # first, `FOR SHARE`, in the order of `Apiary.Organisations.lock_order/1`; then the
+  # memberships, as the lock order has them.
   defp lock_owned(user_id) do
     owned =
       from m in Membership,
@@ -363,9 +362,7 @@ defmodule ApiaryPro.Suspensions do
   end
 
   # Every organisation the account is a member of, and the instance organisation, in one
-  # statement in the lock order (`ApiaryPro.Tenants.lock_organisations!/2`): the clients
-  # first, so a client comes before its operator, then the rest, each in the order of their
-  # ids; the
+  # statement in the lock order (`ApiaryPro.Tenants.lock_organisations!/2`); the
   # instance organisation `FOR SHARE`, as `Apiary.Organisations.lock_owners/1` holds it
   # next, and the rest `FOR KEY SHARE`, which waits only for a change that takes an
   # organisation `FOR UPDATE`. Then the people locks of exactly the organisations held,
@@ -427,8 +424,8 @@ defmodule ApiaryPro.Suspensions do
     |> Organisations.broadcast_membership_changes()
   end
 
-  # Everyone of the organisation, who read its clients through it for an operator: each
-  # page follows its person's memberships.
+  # Everyone of the organisation, who reach the workspaces it operates through it for an
+  # operator: each page follows its person's memberships.
   defp tell_people_of(organisation_id) do
     Repo.all(from m in Membership, where: m.organisation_id == ^organisation_id)
     |> Organisations.broadcast_membership_changes()
@@ -493,18 +490,10 @@ defmodule ApiaryPro.Suspensions do
   their memberships or their accounts. It then runs below the owner level: its admins and
   members work, and what only an owner does waits (the actions of this module), until the
   instance admins offer its ownership to one of its admins (`ApiaryPro.Transfers`). A page
-  tells its admins. A client's operator has no part in it: a client's owners are the client's.
+  tells its admins.
   """
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a client is its operator's,
-  # so false for a client: the instance's arbiter has no part in it.
   @spec owner_suspended?(%Organisation{}) :: boolean
-  def owner_suspended?(%Organisation{id: id} = organisation) do
-    if ApiaryPro.Flags.operator_infrastructure?() and Tenants.client?(organisation),
-      do: false,
-      else: owners_suspended?(id)
-  end
-
-  defp owners_suspended?(id) do
+  def owner_suspended?(%Organisation{id: id}) do
     owners = from m in Membership, where: m.organisation_id == ^id and m.level == :owner
 
     Repo.exists?(owners) and

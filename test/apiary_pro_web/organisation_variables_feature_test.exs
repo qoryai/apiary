@@ -183,31 +183,32 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
                "Runs, Security policy, Organisation secrets and variables → Runs, Security policy"
     end
 
-    test "a grant of them kept from before gives a client nothing", %{conn: conn} do
+    test "a grant of them kept from before gives an operated organisation nothing",
+         %{conn: conn} do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
+      operated = operated_fixture(operator.scope, "Acme")
       grant!(operator.organisation)
-      grant!(client.organisation)
+      grant!(operated.organisation)
 
-      refute :organisation_variables in ApiaryPro.Features.of(client.organisation)
-      refute ActivityDescriber.offered?(client.owner.scope, :"organisation_variable.edit")
+      refute :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      refute ActivityDescriber.offered?(operated.owner.scope, :"organisation_variable.edit")
 
-      conn = log_in_user(conn, client.owner.user)
-      unknown = "/#{client.organisation.slug}/settings/no-such-page"
+      conn = log_in_user(conn, operated.owner.user)
+      unknown = "/#{operated.organisation.slug}/settings/no-such-page"
 
-      assert answer(fn -> get(conn, ~p"/#{client.organisation}/settings/variables") end) ==
+      assert answer(fn -> get(conn, ~p"/#{operated.organisation}/settings/variables") end) ==
                answer(fn -> get(conn, unknown) end)
 
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
+      {:ok, view, _html} = live(conn, ~p"/#{operated.organisation}/settings")
       refute has_element?(view, "#settings-tab-secrets")
 
       refute "Organisation settings › Secrets and variables" in go_to(
                conn,
-               client.owner.scope,
+               operated.owner.scope,
                "variables"
              )
 
-      {actions, _view} = audit_actions(conn, client.organisation)
+      {actions, _view} = audit_actions(conn, operated.organisation)
       assert "workspace.rename" in actions
       refute "organisation_variable.edit" in actions
     end
@@ -244,15 +245,15 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
       assert grant_change(["observability", "secrets"], ["observability"]) == "Runs → Runs"
     end
 
-    test "an organisation the instance organisation operates in is shown them, with no grant" do
+    test "an organisation whose workspace the instance organisation operates is shown them, with no grant" do
       admin = instance_admin_fixture()
       instance_scope = make_instance_organisation_an_operator(admin)
       assert :organisation_variables in ApiaryPro.Features.of(instance_scope.organisation)
 
-      client = client_fixture(instance_scope, "Acme")
+      operated = operated_fixture(instance_scope, "Acme")
 
-      assert :organisation_variables in ApiaryPro.Features.of(client.organisation)
-      assert grants(client.organisation) == []
+      assert :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      assert grants(operated.organisation) == []
     end
   end
 end

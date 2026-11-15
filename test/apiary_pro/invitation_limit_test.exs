@@ -1,8 +1,8 @@
 defmodule ApiaryPro.InvitationLimitTest do
   @moduledoc """
-  An operator and its clients under `INVITATIONS_PER_DAY` (the core's limit,
-  `Apiary.InvitationLimitTest`): a client counts its invitations as any other
-  organisation, apart from its operator's.
+  The limit `INVITATIONS_PER_DAY` (the core's, `Apiary.InvitationLimitTest`) for an
+  operator and the organisations whose workspaces it operates: an operated organisation
+  counts its invitations as any other organisation, apart from the operator's.
   """
   # Not async: the limit is the node's setting.
   use Apiary.DataCase, async: false
@@ -41,21 +41,21 @@ defmodule ApiaryPro.InvitationLimitTest do
 
   defp refused_for_the_day?(_result, _organisation), do: false
 
-  describe "an operator and its clients" do
-    # Each organisation has a separate allowance, a client as any other.
+  describe "an operator and the organisations it operates" do
+    # Each organisation has a separate allowance, an operated one as any other.
     @describetag with_features: Apiary.Features.all()
 
-    test "each client has a separate allowance, apart from its operator's" do
+    test "each operated organisation has a separate allowance, apart from the operator's" do
       operator = OperatorsFixtures.operator_fixture()
-      first = OperatorsFixtures.client_fixture(operator.scope, "First")
-      second = OperatorsFixtures.client_fixture(operator.scope, "Second")
+      first = OperatorsFixtures.operated_fixture(operator.scope, "First")
+      second = OperatorsFixtures.operated_fixture(operator.scope, "Second")
 
-      for client <- [first, second] do
-        for _ <- 1..@limit, do: assert({:ok, %Invitation{}} = invite(client.owner.scope))
-        assert refused_for_the_day?(invite(client.owner.scope), client.organisation)
+      for operated <- [first, second] do
+        for _ <- 1..@limit, do: assert({:ok, %Invitation{}} = invite(operated.owner.scope))
+        assert refused_for_the_day?(invite(operated.owner.scope), operated.organisation)
       end
 
-      # The operator's day is untouched by its clients' invitations.
+      # The invitations of the operated organisations leave the operator's day as it was.
       for _ <- 1..@limit, do: assert({:ok, %Invitation{}} = invite(operator.scope))
       assert refused_for_the_day?(invite(operator.scope), operator.organisation)
 
@@ -70,10 +70,10 @@ defmodule ApiaryPro.InvitationLimitTest do
       assert first.organisation.id in allowances
     end
 
-    test "a client's attempts count against the client's ceiling, not its operator's" do
+    test "an operated organisation's attempts count against its ceiling, not the operator's" do
       operator = OperatorsFixtures.operator_fixture()
-      client = OperatorsFixtures.client_fixture(operator.scope)
-      owner = client.owner.scope
+      operated = OperatorsFixtures.operated_fixture(operator.scope)
+      owner = operated.owner.scope
 
       # Attempts beyond the allowance: entries of invitations withdrawn as undelivered,
       # which count against the ceiling alone.
@@ -85,14 +85,14 @@ defmodule ApiaryPro.InvitationLimitTest do
           from(e in Entry,
             where: e.subject_id == ^invitation.id and e.action == "invitation.revoke"
           ),
-          set: [details: %{"reason" => "undelivered"}, workspace_id: client.workspace.id]
+          set: [details: %{"reason" => "undelivered"}, workspace_id: operated.workspace.id]
         )
       end
 
       assert {:error, %Ecto.Changeset{} = changeset} = invite(owner)
 
       assert errors_on(changeset).email == [
-               "was not invited: #{client.organisation.name} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
+               "was not invited: #{operated.organisation.name} sent as many invitations in the last 24 hours as it may. Try again later, or contact support."
              ]
 
       assert {:ok, %Invitation{}} = invite(operator.scope)

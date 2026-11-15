@@ -46,8 +46,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
                "observability.terminal"
              ])
 
-    client = client_fixture(operator.scope, "Acme")
-    %{access_key: key, secret: secret, node: node} = contract_key_fixture(client.owner.scope)
+    operated = operated_fixture(operator.scope, "Acme")
+    %{access_key: key, secret: secret, node: node} = contract_key_fixture(operated.owner.scope)
 
     Repo.update_all(from(n in Node, where: n.id == ^node.id), set: [gateway_choice: :direct])
 
@@ -71,19 +71,19 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     %{
       admin: admin,
       operator: operator,
-      client: client,
+      operated: operated,
       key: {key, secret},
       run: run
     }
   end
 
   defp run_path(ctx, tail \\ ""),
-    do: ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}/runs/#{ctx.run}" <> tail
+    do: ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}/runs/#{ctx.run}" <> tail
 
   # The instance admin leaves the organisation Runs alone, without the run's Terminal.
-  defp hide_from_client(ctx) do
+  defp hide_from_organisation(ctx) do
     assert {:ok, _} =
-             Grants.set_organisation(ctx.admin, ctx.client.organisation.id, ["observability"])
+             Grants.set_organisation(ctx.admin, ctx.operated.organisation.id, ["observability"])
   end
 
   defp events_of(run), do: Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count)
@@ -91,12 +91,12 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   describe "a person the run's Terminal is hidden from" do
     setup do
       ctx = chain()
-      hide_from_client(ctx)
+      hide_from_organisation(ctx)
       ctx
     end
 
     test "finds no Terminal tab, no log in the more menu, and no /terminal", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, html} = live(conn, run_path(ctx))
 
       refute has_element?(lv, "#run-tab-terminal")
@@ -110,7 +110,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     end
 
     test "is answered not found at the log's address, every stream and the download", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
 
       for query <- ~w(? ?stream=terminal ?stream=stdout ?stream=stderr ?download=1) do
         answer = get(conn, run_path(ctx, "/log") <> query)
@@ -121,12 +121,12 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     end
 
     test "sees no last lines of the log on the Runs list", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
 
       {:ok, lv, _html} =
         live(
           conn,
-          ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}/runs?run=#{ctx.run.number}"
+          ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}/runs?run=#{ctx.run.number}"
         )
 
       render_hook(lv, "viewport", %{"wide" => true})
@@ -164,7 +164,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
 
     test "with the switch off, the organisation's row hides nothing", ctx do
       Flags.put_feature_visibility(false)
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
 
       assert has_element?(lv, "#run-tab-terminal")
@@ -178,11 +178,11 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
 
     test "leaves for the Timeline once the instance hides the Terminal from the organisation",
          ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
 
-      hide_from_client(ctx)
+      hide_from_organisation(ctx)
 
       assert_patch(lv, run_path(ctx))
       refute has_element?(lv, "#terminal")
@@ -196,7 +196,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
 
-      hide_from_client(ctx)
+      hide_from_organisation(ctx)
 
       assert_patch(lv, run_path(ctx))
       refute has_element?(lv, "#run-tab-terminal")
@@ -207,8 +207,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     setup do
       admin = suite_instance_admin()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      %{admin: admin, operator: operator, client: client}
+      operated = operated_fixture(operator.scope, "Acme")
+      %{admin: admin, operator: operator, operated: operated}
     end
 
     test "is a checkbox under Runs on Instance settings › Organisations, with the switch on",

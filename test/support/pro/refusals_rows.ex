@@ -627,7 +627,7 @@ defmodule ApiaryProWeb.RefusalsRows do
 
     client =
       if ApiaryPro.Tenants.operator?(operator),
-        do: ApiaryPro.OperatorsFixtures.client_fixture(operator_owner, "Client")
+        do: ApiaryPro.OperatorsFixtures.operated_fixture(operator_owner, "Client")
 
     %{
       instance_organisation: instance_organisation,

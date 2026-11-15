@@ -1,17 +1,17 @@
 defmodule ApiaryPro.LockOrderRacesTest do
   # The acceptance of the arbiter's offer against a change paused half way: one that holds
-  # the owners and has not written its entry. Each side runs on a connection of its own,
+  # the owners and has not written its entry. Each side runs on a separate connection,
   # outside the SQL sandbox; the first is held half way (`hold/1`), the second started and
   # seen waiting on it (`await_blocked/2`), then the first finishes its second half in the
   # same transaction (`continue/2`): what a deadlock needs, each side waiting
   # on the other. Not async: what these tests commit is visible to every other test while
   # they run, and they delete it again before they end.
   #
-  # The rule under test is the lock order of docs/access.md: organisation rows first, a
-  # client before its operator, then workspaces, memberships and accounts. Each side
-  # takes the rows it needs in that order, so the second waits on the first's first row
-  # and holds nothing the first's second half needs: nothing deadlocks, which Postgres's
-  # own count of deadlocks shows.
+  # The rule under test is the lock order of docs/access.md: organisation rows first, then
+  # people locks (the operators of the organisation's workspaces), then workspaces,
+  # memberships and accounts. Each side takes the rows it needs in that order, so the
+  # second waits on the first's first row and holds nothing the first's second half needs:
+  # nothing deadlocks, which the deadlock count of Postgres shows.
   use ExUnit.Case, async: false
 
   # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
@@ -37,8 +37,9 @@ defmodule ApiaryPro.LockOrderRacesTest do
   setup_all :clean_up_leftovers
   setup :setup_races
 
-  # An operator, made one as the product makes one, and an instance admin; and a client of
-  # the operator with its owner and a first admin.
+  # An operator, made one as the product makes one, and an instance admin; and an
+  # organisation whose workspace Main the operator operates, with its owner and a first
+  # admin.
   setup do
     admin = sign_up()
     instance_organisation = ApiaryPro.Organisations.instance_organisation()
@@ -62,43 +63,41 @@ defmodule ApiaryPro.LockOrderRacesTest do
     {:ok, _features} = Grants.written_out(operator_row, :operator)
     in_operator = scope_in(operator.user, operator_row)
 
-    client = client(in_operator)
-    client_admin = member(client.owner.scope, :admin)
+    operated = operated(in_operator)
+    admin = member(operated.owner.scope, :admin)
 
     %{
       instance_admin: instance_admin,
-      operator: operator_row,
-      in_operator: in_operator,
-      client: client.organisation,
-      workspace: client.workspace,
-      client_owner: client.owner,
-      client_admin: client_admin
+      organisation: operated.organisation,
+      workspace: operated.workspace,
+      owner: operated.owner,
+      admin: admin
     }
   end
 
-  describe "the arbiter's offer, accepted by a client's admin" do
-    # The client's owner suspended, the arbiter offers its ownership to a second admin.
+  describe "the arbiter's offer, accepted by an admin of an operated organisation" do
+    # The organisation's owner suspended, the arbiter offers its ownership to a second admin.
     setup ctx do
-      recipient = member(ctx.client_owner.scope, :admin)
-      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, ctx.client_owner.user.id)
+      recipient = member(ctx.owner.scope, :admin)
+      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, ctx.owner.user.id)
 
       {:ok, _} =
         Transfers.arbitrate(
           ctx.instance_admin,
-          ctx.client.id,
+          ctx.organisation.id,
           recipient.membership.id,
           "Races."
         )
 
-      %{recipient: scope_in(recipient.user, ctx.client, ctx.workspace)}
+      %{recipient: scope_in(recipient.user, ctx.organisation, ctx.workspace)}
     end
 
     test "against a change of a level holding the owners, its entry not yet written", ctx do
       before = deadlocks()
-      admin = ctx.client_admin.scope
+      admin = ctx.admin.scope
 
       {change, change_pid} =
-        hold(fn -> level_change_first_half(admin, ctx.client_admin.membership) end)
+        hold(fn -> level_change_first_half(admin, ctx.admin.membership) end)
 
       acceptance = start(fn -> Transfers.accept(ctx.recipient) end)
       await_blocked(acceptance.backend, change_pid)
@@ -106,10 +105,8 @@ defmodule ApiaryPro.LockOrderRacesTest do
       assert {:ok, _entry} = continue(change, fn -> level_change_entry(admin, change) end)
       commit(change)
 
-      assert {:ok, %Organisation{edition: %{tenant: %Tenant{operator_id: operator_id}}}} =
-               Task.await(acceptance.task)
-
-      assert operator_id == ctx.operator.id
+      assert {:ok, %Organisation{id: organisation_id}} = Task.await(acceptance.task)
+      assert organisation_id == ctx.organisation.id
       assert deadlocks() == before
     end
   end

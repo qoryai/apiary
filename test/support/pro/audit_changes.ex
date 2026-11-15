@@ -222,8 +222,7 @@ defmodule ApiaryPro.AuditChanges do
     %{scope: scope, subject: {"transfer", transfer.id}, before: before}
   end
 
-  # Features: an instance admin's grant is the organisation's entry, an operator's the
-  # client's.
+  # Features: an instance admin's grant is the organisation's entry.
   def make(:"instance.grant_features", %{scope: scope}) do
     admin = instance_admin_fixture()
     before = entries()
@@ -317,11 +316,11 @@ defmodule ApiaryPro.AuditChanges do
     {before, Operators.create_organisation(scope, %{"name" => "Acme", "kind" => kind})}
   end
 
-  # An operator with clients stays an operator.
+  # An operator that operates a workspace stays an operator.
   def refuse(:"instance.change_kind", _ctx) do
     admin = instance_admin_fixture()
     operator = operator_fixture()
-    client_fixture(operator.scope)
+    operated_fixture(operator.scope)
     before = entries()
 
     {before, Operators.change_kind(admin.instance_scope, operator.organisation.id, :organisation)}
@@ -488,12 +487,13 @@ defmodule ApiaryPro.AuditChanges do
   defp attempt(:"workspace_access.remove", scope, {membership, workspace}),
     do: ApiaryPro.WorkspaceAccess.remove(scope, membership.id, workspace.id)
 
-  # A client of a fresh operator, with its owner and an admin of its own: the operator's
-  # fixture, the client's, with the operator's owner's scope in it, and the admin's.
+  # An organisation whose workspace a fresh operator operates, with its owner and an admin:
+  # the operator's fixture, the organisation's, with the operator's owner's scope in it,
+  # and the admin's.
   defp client_with_admin do
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
-    %{operator: operator, client: client, admin: client_member_fixture(client)}
+    client = operated_fixture(operator.scope)
+    %{operator: operator, client: client, admin: organisation_member_fixture(client)}
   end
 
   # An organisation as the core's edition created it, with its workspace and its owner,

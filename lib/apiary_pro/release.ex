@@ -22,7 +22,7 @@ defmodule ApiaryPro.Release do
   holds the data. Refused for an address that is no instance admin's,
   `{:error, :not_instance_admin}`, and as the edition refuses it
   (`c:Apiary.Edition.deletion_refusal/2`): the instance organisation, and an operator that
-  still has clients, `{:error, :has_clients}`. Prints what it did and returns
+  still operates a workspace, `{:error, :has_operated_workspaces}`. Prints what it did and returns
   `{:ok, outcome}` or `{:error, reason}`.
   """
   @spec purge_now(String.t(), String.t()) :: {:ok, atom} | {:error, term}
@@ -103,14 +103,6 @@ defmodule ApiaryPro.Release do
           {:error, :instance_organisation} = error ->
             IO.puts(
               "That is the instance owner, which holds the instance admins: " <>
-                "nothing was purged."
-            )
-
-            error
-
-          {:error, :has_clients} = error ->
-            IO.puts(
-              "Not purged: it is an operator with clients. Each client is deleted first: " <>
                 "nothing was purged."
             )
 
