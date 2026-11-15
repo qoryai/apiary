@@ -353,13 +353,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
       in_client = &scope_in(&1, ctx.client.organisation, ctx.client.workspace)
       organisation = ctx.client.organisation
 
-      # Policy requests are not there, for anyone.
-      for user <- [admin_of_both, member_and_admin, owner_and_admin],
-          action <- [:"policy_request.accept", :"policy_request.decline"] do
-        assert Access.authorize(in_client.(user), action, organisation) == {:error, :not_found},
-               "#{action}"
-      end
-
       for action <- @own_to_decide do
         assert Access.authorize(in_client.(owner_and_admin), action, organisation) ==
                  {:error, :forbidden},

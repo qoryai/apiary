@@ -116,7 +116,7 @@ defmodule Apiary.EditionWordsTest do
                    scripts/changelog-section.sh .github/workflows/ci.yml config/dev.exs
                    Dockerfile guides/admin.md guides/operators.md guides/organisations.md
                    guides/organisation-policy.md guides/organisation-secrets.md
-                   guides/organisation-variables.md guides/policy-requests.md),
+                   guides/organisation-variables.md),
         do: assert(file in whole, "#{file} is not held")
 
     refute "assets/vendor/topbar.js" in whole

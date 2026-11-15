@@ -4,8 +4,7 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   # (`ApiaryPro.Flags.operator_infrastructure?/0`), after the core's and the edition's
   # (`ApiaryWeb.RefusalsRows`, `ApiaryProWeb.RefusalsRows`), whose world they use: the
   # client, its owner, made while the flag was off, its admin and its member, a pool with
-  # a limit, a rule and a locked rule, the operator's people, and its policy request to
-  # the client. Its setup comes last and turns the flag on last, so the client keeps the
+  # a limit, a rule and a locked rule, and the operator's people. Its setup comes last and turns the flag on last, so the client keeps the
   # owner it had; then the operator's owner adds a gateway at the operator, and the
   # client's owner one at the client. Sent by
   # `ApiaryProWeb.OperatorAsOwnerRefusalsTest`, which asks these rows alone: the flag-off
@@ -90,20 +89,6 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
        answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.edit", :operator_admin, "/:client/policy", "rule_save", %{},
        answer: :not_found_at_mount, needs: :organisation_policy},
-
-      # Policy requests are not there: their pages are not found as they open.
-      {:"policy_request.send", :operator_owner, "/:operator/clients/requests/new", "send",
-       %{"request" => %{"note" => "Sneaky", "mode" => "enforce"}}, answer: :not_found_at_mount},
-      {:"policy_request.withdraw", :operator_owner,
-       "/:operator/clients/requests/:request_id/withdraw", "withdraw", %{"id" => :request_id},
-       answer: :not_found_at_mount},
-      {:"policy_request.accept", :client_owner, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       answer: :not_found_at_mount},
-      {:"policy_request.decline", :client_owner,
-       "/:client/policy-requests/:client_answer/decline", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :not_found_at_mount},
 
       # The first owner's invitation and the drop are not there; the first admin's is
       # refused where the client has someone already.

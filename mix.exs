@@ -202,7 +202,6 @@ defmodule Apiary.MixProject do
         "guides/forager-file.md",
         "guides/organisations.md",
         "guides/operators.md",
-        "guides/policy-requests.md",
         "guides/organisation-policy.md",
         "guides/organisation-variables.md",
         "guides/organisation-secrets.md",
@@ -225,7 +224,6 @@ defmodule Apiary.MixProject do
           "guides/forager-file.md",
           "guides/organisations.md",
           "guides/operators.md",
-          "guides/policy-requests.md",
           "guides/organisation-policy.md",
           "guides/organisation-variables.md",
           "guides/organisation-secrets.md"
@@ -268,7 +266,6 @@ defmodule Apiary.MixProject do
           ApiaryPro.Invitations
         ],
         "Operators and their clients": [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach],
-        "Policy requests": [~r/^ApiaryPro\.PolicyRequests/],
         "The organisation's policy": [~r/^ApiaryPro\.OrganisationPolicy/],
         "The organisation's variables": [~r/^ApiaryPro\.OrganisationVariables/],
         "The organisation's secrets": [~r/^ApiaryPro\.OrganisationSecrets/],
@@ -305,15 +302,10 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        # Operators and their clients, and the policy requests between them, whose
-        # passages that need the security policy too are marked in the guide.
+        # Operators and their clients.
         managed_organisations: [
-          extras: ["guides/operators.md", "guides/policy-requests.md"],
-          modules: [
-            ~r/^ApiaryPro\.Operators/,
-            ApiaryPro.ClientReach,
-            ~r/^ApiaryPro\.PolicyRequests/
-          ]
+          extras: ["guides/operators.md"],
+          modules: [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach]
         ],
         # The organisation's policy, above its workspaces' security policy.
         organisation_policy: [

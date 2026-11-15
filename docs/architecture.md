@@ -660,8 +660,7 @@ core means the rest of the code.
 
 This section covers the edition's layout, its tables and their keys, the tenants and the
 instance organisation, the adoption of an instance whose organisations have no tenant,
-operators and their clients, policy requests, the organisation's policy, its variables
-and its secrets, the suspension of accounts and organisations, transfers, features below
+operators and their clients, the organisation's policy, its variables and its secrets, the suspension of accounts and organisations, transfers, features below
 the instance, and the edition's part of the audit trail and of deletion. Who may do what
 is in [access.md](access.md), Who may do what: operators, clients and the instance; the
 edition's conventions are in [conventions.md](conventions.md), Conventions of the
@@ -703,8 +702,6 @@ schemas beside it:
   instance organisation's owners: creating a client and inviting its first owner, listing
   an operator's clients, listing the organisations of the instance, creating an
   organisation or an operator there, and changing a kind (Operators and clients, below).
-- `ApiaryPro.PolicyRequests`: an operator's requests for changes to its clients' policy,
-  and the clients' answers (Policy requests, below).
 - `ApiaryPro.OrganisationPolicy`: the organisation's policy, the level above its
   workspaces' security policy: its host rules, the mode floor and the switch, and the
   render of every workspace a change makes (The organisation's policy, below).
@@ -735,9 +732,8 @@ The edition's web side is under `lib/apiary_pro_web/`, `ApiaryProWeb.*`: its rou
 (`ApiaryProWeb.Router`), which calls the core's route macros (`ApiaryWeb.Routes`) with
 the edition's pages in the core's `live_session`s and serves the edition's sign-up page at
 the core's path, since it offers kinds; its web edition (`ApiaryProWeb.Edition`); the
-edition's pages under `live/` (an operator's clients and its policy requests, Instance
-settings' Organisations and Accounts, a client's policy requests, the organisation's
-policy, the organisation's Ownership section, a member's workspaces, a new organisation
+edition's pages under `live/` (an operator's clients, Instance settings' Organisations
+and Accounts, the organisation's policy, the organisation's Ownership section, a member's workspaces, a new organisation
 and the sign-up page with kinds); and what it renders in the core's pages: its notices
 (`ApiaryProWeb.Notices`), its slots (`ApiaryProWeb.Slots`), its words for a reader
 (`ApiaryProWeb.Readers`) and for its actions in the audit log
@@ -1017,28 +1013,6 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   `:has_clients`), which the foreign key would refuse at the purge's end. A client is
   deleted by one of the client's owners, who cancels its deletion from their organisations
   page during the grace period.
-
-### Policy requests
-
-The policy is the client's, and the operator asks for what its harness needs
-(`ApiaryPro.PolicyRequests`, with `security`; [access.md](access.md), Policy requests).
-
-- **A request** (`policy_requests`, the operator's rows) holds the changes, rules of a
-  workspace's baseline to add, change or remove and the mode, in the form
-  `Apiary.Policy.requested_changes/1` gives them once it has checked them as a change of
-  the policy is checked, and a note.
-- **The answers.** Each client it goes to answers separately (`policy_request_answers`,
-  the client's rows, one per request and client), `pending` until it is `accepted`,
-  `declined` or `withdrawn`. The answers' `request_id` is the operator's row, so an
-  operator's purge takes the answers of a former client with it; its trail keeps what was
-  answered.
-- **An acceptance** makes the changes through the same writes as any change of the
-  policy, as the person who accepts, in the workspaces they choose, inside one transaction
-  (`Apiary.Policy.lock_workspaces/2`, `Apiary.Policy.apply_requested/3`): every check,
-  lock, render and audit entry of a change of the policy is the same, and one that no
-  longer fits rolls the whole back.
-- **A client that parts.** A client that is dropped or deleted has its pending
-  answers withdrawn in that change (`ApiaryPro.PolicyRequests.withdraw_for_client/4`).
 
 ### The organisation's policy
 
@@ -1365,11 +1339,7 @@ What the edition adds:
   an organisation's ownership (`instance.transfer`, in the organisation offered, with its
   reason), its lapse and its acceptance (`organisation.withdraw_transfer` and
   `organisation.accept_transfer`, in it); a client's drop (`client.drop`, in the client
-  and in the operator);
-  an operator's policy requests (`policy_request.send` in the operator and, as each
-  client's receipt, in the client; `policy_request.accept`, `policy_request.decline` and
-  `policy_request.withdraw` in the client and in the operator, a withdrawal of a client
-  that parted with the reason); the grants of features (`instance.grant_features`,
+  and in the operator); the grants of features (`instance.grant_features`,
   `client.grant_features`); the organisation's policy
   (`organisation_policy.edit`, `set_floor`, `set_switch`, on the organisation), its
   variables (`organisation_variable.edit`, on the variable, by name and never by value)
@@ -1406,7 +1376,8 @@ core's `Apiary.Deletion`.
   `purge_marked/2`), and record on its row who asked and why, which the instance's line
   keeps whichever run finishes the purge.
 - **The edition's tables in the walk** (`ApiaryPro.Deletion.Tables`), purged before the
-  core's: a policy request's answers before the request; the transfers, the feature grants
+  core's: the rows of `policy_request_answers` before those of `policy_requests`, tables
+  that nothing writes any more; the transfers, the feature grants
   and the workspace access before the core's memberships and workspaces they point to; an
   operator's invitations of its clients' first owners before the core's invitations; and
   the people locks, then the tenants, last. The rows of other organisations that name the

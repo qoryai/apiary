@@ -14,7 +14,7 @@ defmodule ApiaryProWeb.ReservedSlugsTest do
       assert name in ReservedSlugs.organisation(), name
     end
 
-    for page <- ~w(clients instance policy-requests workspaces policy) do
+    for page <- ~w(clients instance workspaces policy) do
       assert page in ReservedSlugs.workspace(), page
     end
   end

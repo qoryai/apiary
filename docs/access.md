@@ -1054,8 +1054,7 @@ means the rest of the code, and the sections before this one are the core's.
 What the edition adds to the core's rules: the roles `reader` and `person`;
 reach into an organisation through its operator and as an instance admin; a member's
 access to the workspaces they were added to; an operator's actions over its clients;
-gateways at the organisation level; an operator's policy requests; the instance
-organisation and the instance actions; the suspension of accounts and organisations;
+gateways at the organisation level; the instance organisation and the instance actions; the suspension of accounts and organisations;
 features below the instance; a person's new organisation; the organisation's policy, its
 variables and its secrets; and the lock order as the edition takes it. Everything the
 core's sections say holds here, and the sections below say what the edition adds to it or
@@ -1076,8 +1075,8 @@ The core's sections of this file list what stays outside `Apiary.Access`: authen
 data rules, the last-owner rule, wording and lists on a page, feature gates, and the 4
 callbacks below. The edition adds one more: the **operator parts**, its code for an
 operator and its clients, also check beside `Apiary.Access`. `ApiaryPro.Operators`
-compares a client's operator with the operator that acts, `ApiaryPro.PolicyRequests` reads
-a feature, and `ApiaryProWeb.ClientLive.Index` reads the flag
+compares a client's operator with the operator that acts, and
+`ApiaryProWeb.ClientLive.Index` reads the flag
 `ApiaryPro.Flags.operator_infrastructure?/0`. While the flag is on, the pages of a
 client's first owner's invitation and of a drop are not found; while it is off, the page
 of the first admin's invitation is not found.
@@ -1359,38 +1358,6 @@ While an operator runs its clients' infrastructure (the flag
 operator's organisation-level gateways, and an operator's serve its clients' workspaces.
 Otherwise the edition answers none to both: an organisation's gateways serve its
 workspaces alone.
-
-### Policy requests
-
-A client's security policy is the client's: the operator's people read it and change
-nothing, and the operator asks for what its harness needs (`ApiaryPro.PolicyRequests`).
-The four actions belong to the feature `security`: the operator needs it to send, and a
-client to receive and to answer; a client without it is not offered as a recipient.
-
-- `policy_request.send`: a request for changes to the clients' policy, rules of a
-  workspace's baseline to add, change or remove and the mode, with a note, to the clients
-  chosen, all by default; an owner's or an admin's of the operator, asked in the operator.
-- `policy_request.withdraw`: a request withdrawn from the clients that have not answered
-  it; an owner's or an admin's of the operator, asked in the operator. An answer given
-  stays.
-- `policy_request.accept` and `policy_request.decline`: a request of the client's operator
-  answered, asked in the client, and not found in an organisation with no operator; every
-  level of the client has them, since every level may change the policy
-  (`security_policy.edit`), and a reader, the operator's people among them, has neither.
-  An answer is the whole client's, so the person must also be able to change the policy
-  of at least one workspace of it, asked under the answer's locks: a member added to no
-  workspace answers nothing, `forbidden`, and the page offers them no answer.
-  An acceptance makes the changes through the same writes as any change of the policy,
-  as the person who accepts, in the workspaces they choose among those their membership
-  reaches (`Apiary.Policy.lock_workspaces/2`, `Apiary.Policy.apply_requested/3`): each
-  change asks what a change of the policy asks, so a locked rule is an owner's
-  (`security_policy.lock`) and the mode an owner's or an admin's
-  (`security_policy.set_mode`), and a refusal of one refuses the whole. A workspace of
-  another organisation, or one marked for deletion, is not found.
-
-A client that is dropped or deleted by its operator has its pending answers withdrawn in
-that transaction, each an entry of `policy_request.withdraw` in both trails with the
-reason.
 
 ### The organisation's policy
 
@@ -1780,7 +1747,8 @@ The edition's part of the answer (`ApiaryPro.Access.check/3`, the edition's `che
 adds to the core's:
 
 - `{:error, :not_found}` for an operator's action in an organisation that is no operator,
-  a client's action (answering a policy request) in an organisation with no operator, and an instance action anywhere but in the instance organisation;
+  a client's action (leaving its operator) in an organisation with no operator, and an
+  instance action anywhere but in the instance organisation;
 - `{:error, :forbidden}` for any action but a read in a suspended organisation, for
   anything but a read by a reader, and for what is refused on the instance organisation
   itself.
@@ -1854,13 +1822,12 @@ edition's rows in it:
    other. A people lock missing beside a tenant is written at the same point, the missing
    ones first, in the order of their ids, then locked as the others are: whatever writing
    one waits for, it waits for before any people lock of the change is held.
-3. **Workspace rows**, in the order of their ids where a change takes several, as an
-   acceptance of a policy request does.
+3. **Workspace rows**, in the order of their ids where a change takes several, as a
+   write of the organisation's policy does.
 4. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 5. **Accounts.**
-6. **Everything else**: offers of ownership, invitations, grants, policy requests and
-   their answers (a request before its answers), access keys, runs.
+6. **Everything else**: offers of ownership, invitations, grants, access keys, runs.
 
 The modes keep a row that only names another out of it:
 
@@ -1941,28 +1908,6 @@ The modes keep a row that only names another out of it:
   `FOR SHARE`), so two such acceptances, and the client's drop and deletion, are one
   after the other. `ApiaryPro.Deletion.delete_client/3` locks the client
   `FOR NO KEY UPDATE`, then holds the operator `FOR SHARE`, as a drop does.
-- A policy request (`ApiaryPro.PolicyRequests`). Sending one holds the operator's clients
-  and the operator `FOR SHARE`, in one statement in the lock order, the clients in the
-  order of their ids, then the operator, then the person's membership and account
-  (`reload/2` with `lock: :share`, which takes the operator again in the same mode), so a
-  client's drop waits for it or came first and is not sent to. An acceptance takes the
-  client and its operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then the
-  workspaces chosen in the order of their ids `FOR NO KEY UPDATE`, as a policy write
-  takes its one
-  (`Apiary.Policy.lock_workspaces/2`), then the membership and the account `FOR SHARE`,
-  then the person's workspace access `FOR SHARE`, which a removal from a workspace locks
-  alone, to find a workspace whose policy they may change, then the answer `FOR UPDATE`;
-  each change it makes is a policy write, which takes the rows it already holds. A
-  decline takes the same without the workspaces. A withdrawal holds the operator, the
-  person's membership in it and their account `FOR SHARE` (`reload/2` with
-  `lock: :share`), then locks the request, then the answers pending, in the order of
-  their ids, and asks `policy_request.withdraw` again of what it holds, so a demotion of
-  its author waits for it, or came first and refuses it. A drop and a client's deletion
-  lock the client `FOR NO KEY UPDATE` first, then its answers pending. So an acceptance
-  and a withdrawal, two acceptances of one answer, and an acceptance and a drop are one
-  after the other, and the second finds the answer given or withdrawn; a withdrawal and
-  its author's demotion are one after the other too
-  (`test/apiary_pro/policy_request_races_test.exs`).
 - The organisation's policy (`ApiaryPro.OrganisationPolicy`). A write holds the
   organisation and its operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then takes
   every workspace of the organisation in use in the order of their ids
@@ -2030,5 +1975,5 @@ core's helpers, in `test/apiary_pro/`: `access_races_test.exs`,
 `feature_grant_races_test.exs`, `gateway_races_test.exs`, `lock_order_races_test.exs`,
 `operators_races_test.exs`, `organisation_policy_races_test.exs`,
 `organisation_variables_races_test.exs`, `people_lock_races_test.exs`,
-`people_rows_races_test.exs`, `policy_request_races_test.exs`, `suspension_races_test.exs`
+`people_rows_races_test.exs`, `suspension_races_test.exs`
 and `transfer_races_test.exs`.

@@ -79,9 +79,7 @@ defmodule ApiaryPro.AccessRows do
     :"client.accept",
     :"client.grant_features",
     :"client.drop",
-    :"client.delete",
-    :"policy_request.send",
-    :"policy_request.withdraw"
+    :"client.delete"
   ]
 
   # The first admin's invitation, not found for everyone while the operator does not own
@@ -98,11 +96,7 @@ defmodule ApiaryPro.AccessRows do
 
   # The actions of a client over its place: asked in an organisation with no operator,
   # they are not found.
-  @in_clients [
-    :"organisation.leave_operator",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
+  @in_clients [:"organisation.leave_operator"]
 
   # The instance actions asked of another organisation than the instance organisation.
   @on_another [
@@ -296,10 +290,6 @@ defmodule ApiaryPro.AccessRows do
       {:"instance.change_sign_up", yes: @instance_itself},
       # Taken after the migrations, by the instance, which no role takes.
       {:"instance.adopt", yes: []},
-      {:"policy_request.send", yes: @operator_admins},
-      {:"policy_request.withdraw", yes: @operator_admins},
-      {:"policy_request.accept", yes: [:client_owner]},
-      {:"policy_request.decline", yes: [:client_owner]},
       # The organisation's policy: read by its owners and admins and by the readers,
       # changed by its owners.
       {:"organisation_policy.read",

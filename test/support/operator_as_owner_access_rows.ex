@@ -24,8 +24,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   # read. Of what the client owns as a whole, a person of the operator with no membership
   # there reads its policy alone, and finds nothing else. What the operator sets in Main is
   # not there for anyone else, the client's owners and admins among them. The client's
-  # people act in it, by their membership, as in any organisation. Policy requests are not
-  # there for anyone.
+  # people act in it, by their membership, as in any organisation.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -141,7 +140,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"dispatch.machine_end"
   ]
 
-  # Not found in a client: an operator's actions, the instance's and the policy requests.
+  # Not found in a client: an operator's actions and the instance's.
   @not_here [
     :"client.read",
     :"client.create",
@@ -168,11 +167,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"instance.transfer",
     :"instance.grant_features",
     :"instance.change_sign_up",
-    :"instance.adopt",
-    :"policy_request.send",
-    :"policy_request.withdraw",
-    :"policy_request.accept",
-    :"policy_request.decline"
+    :"instance.adopt"
   ]
 
   @doc false

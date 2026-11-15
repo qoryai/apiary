@@ -11,7 +11,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Features, Nodes, Organisations, Repo}
-  alias ApiaryPro.{Flags, Grants, Operators, PolicyRequests, Reach}
+  alias ApiaryPro.{Flags, Grants, Operators, Reach}
 
   @moduletag with_features: Features.all()
 
@@ -62,38 +62,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       })
 
     client
-  end
-
-  # A policy request the operator sent while the flag was off, pending in the client.
-  defp pending_request!(ctx) do
-    Flags.put_operator_infrastructure(false)
-
-    {:ok, request} =
-      PolicyRequests.send_request(ctx.operator.scope, %{
-        "changes" => %{
-          "rules" => [
-            %{"change" => "rule_added", "action" => "allow", "host" => "api.harness.example"}
-          ]
-        },
-        "note" => "The harness calls its API."
-      })
-
-    Flags.put_operator_infrastructure(true)
-    request
-  end
-
-  defp withdrawn_for_client(ctx) do
-    {:ok, 1} =
-      Repo.transact(fn ->
-        PolicyRequests.withdraw_for_client(
-          ctx.operator.scope,
-          ctx.client.organisation,
-          ctx.operator.organisation,
-          "dropped"
-        )
-      end)
-
-    entry(ctx.client.organisation, :"policy_request.withdraw")
   end
 
   # `user` in the operator at `operator_level` and in the client at `client_level`, joined
@@ -204,34 +172,14 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       assert tagged(ctx.operator.organisation) == []
     end
 
-    @tag needs: :security
-    test "a client's answers withdrawn with it, the client's copy", ctx do
-      pending_request!(ctx)
-      made = withdrawn_for_client(ctx)
-      assert made.details["via_operator_id"] == ctx.operator.organisation.id
-
-      assert actor(ctx.client.owner.user, ctx.client.organisation, made) ==
-               "#{ctx.operator.user.email} of #{ctx.operator_name}"
-
-      # The operator's copy names the client, and nobody beside its person.
-      copy = entry(ctx.operator.organisation, :"policy_request.withdraw")
-      assert copy.details["organisation_id"] == ctx.client.organisation.id
-      assert tagged(ctx.operator.organisation) == []
-    end
-
-    @tag needs: :security
-    test "a client deleted by the operator: its invitations and answers, not the operator's entry",
-         ctx do
+    test "a client deleted by the operator: its invitations, not the operator's entry", ctx do
       Flags.put_operator_infrastructure(false)
       client = fresh_client(ctx, "Cato")
-      pending_request!(ctx)
 
       {:ok, _} = ApiaryPro.Deletion.delete_client(ctx.operator.scope, client.id, "Cato")
 
-      for action <- [:"invitation.revoke", :"policy_request.withdraw"] do
-        assert entry(client, action).details["via_operator_id"] == ctx.operator.organisation.id,
-               "#{action}"
-      end
+      assert entry(client, :"invitation.revoke").details["via_operator_id"] ==
+               ctx.operator.organisation.id
 
       assert entry(ctx.operator.organisation, :"client.delete")
       assert tagged(ctx.operator.organisation) == []
@@ -333,9 +281,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
                ctx.operator.user.email
     end
 
-    @tag needs: :security
     test "an operator's entries in a client name nobody beside its person", ctx do
-      pending_request!(ctx)
       Flags.put_operator_infrastructure(false)
 
       client = fresh_client(ctx, "Delta")
@@ -343,13 +289,13 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       {:ok, _} =
         Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [:observability])
 
-      withdrawn = withdrawn_for_client(ctx)
+      granted = entry(ctx.client.organisation, :"client.grant_features")
 
       assert tagged(client) == []
       assert tagged(ctx.client.organisation) == []
       assert tagged(ctx.operator.organisation) == []
 
-      assert actor(ctx.client.owner.user, ctx.client.organisation, withdrawn) ==
+      assert actor(ctx.client.owner.user, ctx.client.organisation, granted) ==
                ctx.operator.user.email
     end
 

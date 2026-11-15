@@ -23,7 +23,6 @@ defmodule ApiaryPro.AuditChanges do
     Operators,
     OrganisationPolicy,
     OrganisationVariables,
-    PolicyRequests,
     Suspensions,
     Transfers
   }
@@ -62,10 +61,6 @@ defmodule ApiaryPro.AuditChanges do
       :"instance.grant_features",
       :"instance.change_sign_up",
       :"instance.adopt",
-      :"policy_request.send",
-      :"policy_request.withdraw",
-      :"policy_request.accept",
-      :"policy_request.decline",
       :"organisation_policy.edit",
       :"organisation_policy.set_floor",
       :"organisation_policy.set_switch",
@@ -301,66 +296,6 @@ defmodule ApiaryPro.AuditChanges do
       scope: client.owner.scope,
       subject: {"organisation", client.organisation.id},
       before: before ++ [parted]
-    }
-  end
-
-  # A policy request: sent, an entry in the operator's trail and one in each client's;
-  # answered or withdrawn, one in each trail; the one looked for is the actor's own
-  # organisation's, and an acceptance's policy changes are the policy's own entries.
-  def make(:"policy_request.send", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    before = entries()
-    {:ok, request} = send_policy_request(operator.scope)
-    received = in_trail(entries() -- before, client.organisation)
-
-    %{
-      scope: operator.scope,
-      subject: {"policy_request", request.id},
-      before: before ++ [received]
-    }
-  end
-
-  def make(:"policy_request.withdraw", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    before = entries()
-    {:ok, _} = PolicyRequests.withdraw(operator.scope, request.id)
-    withdrawn = in_trail(entries() -- before, client.organisation)
-
-    %{
-      scope: operator.scope,
-      subject: {"policy_request", request.id},
-      before: before ++ [withdrawn]
-    }
-  end
-
-  def make(action, _ctx) when action in [:"policy_request.accept", :"policy_request.decline"] do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    [answer] = request.answers
-    before = entries()
-
-    {:ok, _} =
-      case action do
-        :"policy_request.accept" ->
-          PolicyRequests.accept(client.owner.scope, answer.id, [client.workspace.id])
-
-        :"policy_request.decline" ->
-          PolicyRequests.decline(client.owner.scope, answer.id, "Not now")
-      end
-
-    made = entries() -- before
-
-    [answered] =
-      Enum.filter(
-        made,
-        &(&1.action == Atom.to_string(action) and &1.organisation_id == client.organisation.id)
-      )
-
-    %{
-      scope: client.owner.scope,
-      subject: {"policy_request_answer", answer.id},
-      before: before ++ (made -- [answered])
     }
   end
 
@@ -768,40 +703,6 @@ defmodule ApiaryPro.AuditChanges do
     {before, Transfers.leave(admin.scope, operator.organisation.name)}
   end
 
-  # A member of the operator: sending and withdrawing are its owners' and admins'.
-  def refuse(:"policy_request.send", _ctx) do
-    %{operator: operator} = client_with_admin()
-    %{scope: member} = member_fixture(operator.scope, :member)
-    before = entries()
-    {before, send_policy_request(member)}
-  end
-
-  def refuse(:"policy_request.withdraw", _ctx) do
-    %{operator: operator} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    %{scope: member} = member_fixture(operator.scope, :member)
-    before = entries()
-    {before, PolicyRequests.withdraw(member, request.id)}
-  end
-
-  # The operator's owner, who reads the client and answers nothing there.
-  def refuse(action, _ctx)
-      when action in [:"policy_request.accept", :"policy_request.decline"] do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    [answer] = request.answers
-    before = entries()
-
-    {before,
-     case action do
-       :"policy_request.accept" ->
-         PolicyRequests.accept(client.scope, answer.id, [client.workspace.id])
-
-       :"policy_request.decline" ->
-         PolicyRequests.decline(client.scope, answer.id, nil)
-     end}
-  end
-
   # Anywhere but in the instance organisation, the instance actions are not found.
   def refuse(action, %{scope: scope})
       when action in [:"instance.create_organisation", :"instance.create_operator"] do
@@ -998,16 +899,6 @@ defmodule ApiaryPro.AuditChanges do
     operator = operator_fixture()
     client = client_fixture(operator.scope)
     %{operator: operator, client: client, admin: client_member_fixture(client)}
-  end
-
-  # A policy request of the scope's operator to its clients, a host to allow.
-  defp send_policy_request(scope) do
-    PolicyRequests.send_request(scope, %{
-      "changes" => %{
-        "rules" => [%{"change" => "rule_added", "action" => "allow", "host" => "api.example"}]
-      },
-      "note" => "The harness calls it."
-    })
   end
 
   # An organisation as the core's edition created it, with its workspace and its owner,

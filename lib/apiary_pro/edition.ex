@@ -398,8 +398,6 @@ defmodule ApiaryPro.Edition do
     %{
       ApiaryPro.WorkspaceAccess.Row => "workspace_access",
       ApiaryPro.Transfers.Transfer => "transfer",
-      ApiaryPro.PolicyRequests.Request => "policy_request",
-      ApiaryPro.PolicyRequests.Answer => "policy_request_answer",
       ApiaryPro.OrganisationVariables.Variable => "organisation_variable"
     }
   end

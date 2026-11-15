@@ -50,7 +50,7 @@ defmodule ApiaryPro.AccessTest do
       :"client.accept"
     ]
 
-    while_on = [:"client.drop", :"client.invite_owner", :"policy_request.send"]
+    while_on = [:"client.drop", :"client.invite_owner"]
     while_off = [:"client.invite_admin", :"client.set_model_chain"]
 
     Flags.put_transfers(false)
@@ -525,16 +525,6 @@ defmodule ApiaryPro.AccessTest do
       assert Access.authorize(ctx.member, :"client.drop", operator) == {:error, :forbidden}
       assert Access.authorize(ctx.member, :"client.read", operator) == :ok
     end
-
-    test "its owners and admins send and withdraw policy requests, its members do not", ctx do
-      operator = ctx.operator.organisation
-
-      for action <- [:"policy_request.send", :"policy_request.withdraw"] do
-        assert Access.authorize(ctx.operator.scope, action, operator) == :ok
-        assert Access.authorize(ctx.admin, action, operator) == :ok
-        assert Access.authorize(ctx.member, action, operator) == {:error, :forbidden}
-      end
-    end
   end
 
   # The instance actions never taken on the instance organisation itself.
@@ -644,43 +634,6 @@ defmodule ApiaryPro.AccessTest do
 
       assert Access.authorize(by_itself, :"instance.create_organisation", ctx.other.organisation) ==
                {:error, :not_found}
-    end
-  end
-
-  describe "a client's policy requests" do
-    # Whoever writes the client's policy answers its operator's requests, at every level;
-    # the operator's people, who reach Main alone, do not find them.
-    @describetag needs: :managed_organisations
-
-    setup do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope)
-
-      %{
-        client: client,
-        admin: client_member_fixture(client, :admin).scope,
-        member: client_member_fixture(client, :member).scope,
-        operator_admin:
-          scope_in(
-            member_fixture(operator.scope, :admin).user,
-            client.organisation,
-            client.workspace
-          )
-      }
-    end
-
-    test "every level of the client answers; the operator's people do not", ctx do
-      organisation = ctx.client.organisation
-
-      for action <- [:"policy_request.accept", :"policy_request.decline"] do
-        for scope <- [ctx.client.owner.scope, ctx.admin, ctx.member] do
-          assert Access.authorize(scope, action, organisation) == :ok
-        end
-
-        for scope <- [ctx.client.scope, ctx.operator_admin] do
-          assert Access.authorize(scope, action, organisation) == {:error, :not_found}
-        end
-      end
     end
   end
 

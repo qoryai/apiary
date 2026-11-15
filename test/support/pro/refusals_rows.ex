@@ -31,8 +31,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   The world adds to the core's: the instance organisation with an instance admin, an admin
   and a member; an operator made one by that instance admin, with an admin, a member and a
   client, and the client's owner, whom the operator invited, an admin, a member and a
-  member added to no workspace of the client's own; with the security policy, a second
-  client, and a request of the operator's to both, pending in each.
+  member added to no workspace of the client.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -41,7 +40,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   import Apiary.AccountsFixtures, only: [user_fixture: 0]
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Organisations, Policy, Repo}
+  alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Membership
   alias ApiaryPro.{Operators, WorkspaceAccess}
@@ -268,67 +267,6 @@ defmodule ApiaryProWeb.RefusalsRows do
        "save_client_features",
        %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
        answer: :refused_at_mount},
-
-      # An operator's policy requests: sent and withdrawn by its owners and admins, never
-      # its members; the new request's path refuses as it opens.
-      {:"policy_request.send", :operator_member, "/:operator/clients/requests", "send",
-       %{"request" => %{"note" => "Sneaky", "mode" => "enforce"}},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.send", :operator_member, "/:operator/clients/requests/new", "send",
-       %{"request" => %{"note" => "Sneaky", "mode" => "enforce"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.withdraw", :operator_member, "/:operator/clients/requests", "withdraw",
-       %{"id" => :request_id}, needs: [:managed_organisations, :security]},
-      # Its withdrawal is asked on the request's row, at a path of its own that refuses as
-      # it opens.
-      {:"policy_request.withdraw", :operator_member,
-       "/:operator/clients/requests/:request_id/withdraw", "withdraw", %{"id" => :request_id},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-
-      # Answered in the client by whoever writes its policy: every level of the client has
-      # `security_policy.edit`, so no level of it is refused for want of it. Never by the
-      # operator's people, who find no request of the client's; never another client's
-      # request, which is not found; a locked rule is an owner's at acceptance too; and a
-      # workspace of another organisation is refused, whatever the answer.
-      {:"policy_request.accept", :operator_owner, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :operator_member, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_admin, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_b_answer, "workspaces" => [:client_workspace_id]},
-       answer: :not_found, needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_admin, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_owner, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :operator_admin, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :client_admin, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_b_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :not_found, needs: [:managed_organisations, :security]},
-      # A member of the client added to no workspace of it may write the policy nowhere,
-      # so answers nothing: an answer is the whole client's.
-      {:"policy_request.decline", :client_unplaced, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_unplaced, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      # A decline is asked on the request's row, at a path of its own that refuses as it
-      # opens a person who answers nothing, and is not there for the operator's people.
-      {:"policy_request.decline", :operator_owner,
-       "/:client/policy-requests/:client_answer/decline", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :client_unplaced,
-       "/:client/policy-requests/:client_answer/decline", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
 
       # The organisation's policy: read by its owners, admins and readers, changed by its
       # owners alone. A member does not open the page; an admin, an instance admin and an
@@ -729,7 +667,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       })
 
     operators
-    |> Map.merge(policy_requests(operators))
     |> Map.merge(organisation_policy(owner))
     |> Map.merge(organisation_variable(owner))
     |> Map.merge(organisation_secret(owner))
@@ -850,45 +787,6 @@ defmodule ApiaryProWeb.RefusalsRows do
     }
   end
 
-  # With the security policy and an operator: a second client of the operator, a locked
-  # rule in the first client's workspace, and a request of the operator's to both, which
-  # changes that rule, pending in each.
-  defp policy_requests(%{client: nil}),
-    do: %{client_b: nil, request: nil, client_answer: nil, client_b_answer: nil}
-
-  defp policy_requests(%{client: client, client_owner: owner, operator_owner: operator}) do
-    if :security in Apiary.Features.enabled() do
-      client_b = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Client B")
-      {:ok, _} = Policy.deny(owner.scope, nil, %{host: "locked.example", locked: true})
-
-      {:ok, request} =
-        ApiaryPro.PolicyRequests.send_request(operator.scope, %{
-          "changes" => %{
-            "rules" => [
-              %{"change" => "rule_changed", "action" => "allow", "host" => "locked.example"}
-            ]
-          },
-          "note" => "The harness calls it."
-        })
-
-      answer = fn organisation ->
-        Repo.get_by!(ApiaryPro.PolicyRequests.Answer,
-          request_id: request.id,
-          organisation_id: organisation.id
-        )
-      end
-
-      %{
-        client_b: client_b.organisation,
-        request: request,
-        client_answer: answer.(client),
-        client_b_answer: answer.(client_b.organisation)
-      }
-    else
-      policy_requests(%{client: nil})
-    end
-  end
-
   # A member of the client removed from its one workspace: in it, and in none of its
   # workspaces.
   defp unplaced(owner, workspace) do
@@ -928,10 +826,6 @@ defmodule ApiaryProWeb.RefusalsRows do
   def value(:member_user_id, world), do: {:id, world.member.user.id}
   def value(:client_admin_membership, world), do: {:id, world.client_admin.membership.id}
   def value(:client_member_membership, world), do: {:id, world.client_member.membership.id}
-  def value(:client_workspace_id, world), do: {:id, world.client_workspace.id}
-  def value(:request_id, world), do: {:id, world.request.id}
-  def value(:client_answer, world), do: {:id, world.client_answer.id}
-  def value(:client_b_answer, world), do: {:id, world.client_b_answer.id}
   def value(:org_rule, world), do: {:id, world.org_rule.id}
   def value(:org_variable, world), do: {:id, world.org_variable.id}
   def value(:org_locked_variable, world), do: {:id, world.org_locked_variable.id}
@@ -943,7 +837,7 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   # The operator and its clients, whose features, offers and people a row may reach.
   @impl true
-  def watched(world), do: [world.operator, world.client, world.client_b]
+  def watched(world), do: [world.operator, world.client]
 
   # The organisation offered to the operator by its owner.
   @impl true

@@ -4,12 +4,12 @@ defmodule ApiaryProWeb.ActivityDescriber do
   before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): an operator's clients
   and their parting, the instance's actions, changes of ownership and the instance's
   arbiter, the features granted down the chain, a member's workspace
-  access, policy requests, the organisation's policy and its variables, which are said by
-  name, never by value. It also says the core's invitation revoked for a reason of the edition's:
+  access, the organisation's policy and its variables, which are said by name, never by
+  value. It also says the core's invitation revoked for a reason of the edition's:
   its first owner joined, or its client was deleted; and the entries of an action no
   longer taken, features taken away from a workspace, as they were said.
 
-  A change of ownership and a policy request are said in both organisations' trails,
+  A change of ownership is said in both organisations' trails,
   each naming the other as it is called now, and without its name once it is gone. The
   instance's actions are offered in the Action filter on the instance organisation's
   page, to those who take them; elsewhere their entries show, and the filter does not
@@ -27,7 +27,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   alias Apiary.{Access, Features}
   alias ApiaryPro.Flags
   alias ApiaryProWeb.FeatureComponents
-  alias ApiaryWeb.Format
 
   @impl true
   def label(:"workspace_access.add"), do: gettext("Member added to a workspace")
@@ -95,10 +94,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def label(:"instance.change_sign_up"), do: gettext("Sign-up changed")
   def label(:"instance.adopt"), do: gettext("Adopted at the upgrade")
   def label(:"workspace.narrow_features"), do: gettext("Workspace's features changed")
-  def label(:"policy_request.send"), do: gettext("Policy request sent")
-  def label(:"policy_request.withdraw"), do: gettext("Policy request withdrawn")
-  def label(:"policy_request.accept"), do: gettext("Policy request accepted")
-  def label(:"policy_request.decline"), do: gettext("Policy request declined")
   def label(:"organisation_policy.edit"), do: gettext("Organisation's policy changed")
   def label(:"organisation_policy.set_floor"), do: gettext("Enforce required or not")
   def label(:"organisation_policy.set_switch"), do: gettext("Workspace allows turned on or off")
@@ -139,17 +134,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   # The choice of a client's model providers is offered only while it may be made
   # (`ApiaryPro.Flags.operator_infrastructure?/0`); its entries show all the same.
   def offered?(_scope, :"client.set_model_chain"), do: Flags.operator_infrastructure?()
-
-  # Policy requests are offered only while they may be sent and answered, while the
-  # operator does not own its clients; their entries show all the same.
-  def offered?(_scope, action)
-      when action in [
-             :"policy_request.send",
-             :"policy_request.withdraw",
-             :"policy_request.accept",
-             :"policy_request.decline"
-           ],
-      do: not Flags.operator_infrastructure?()
 
   def offered?(scope, action) do
     not String.starts_with?(Atom.to_string(action), "instance.") or
@@ -217,82 +201,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp named(:"client.drop", %{details: %{"organisation_id" => id}}, names) do
     with name when is_binary(name) <- names.organisations[id],
          do: gettext("Dropped %{organisation} as a client", organisation: name)
-  end
-
-  # A policy request, in the operator's trail naming the client, and in the client's naming
-  # the operator.
-  defp named(:"policy_request.send", %{details: %{"operator_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("%{operator} sent a policy request", operator: name)
-  end
-
-  defp named(:"policy_request.accept", %{details: %{"operator_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Accepted a policy request of %{operator}", operator: name)
-  end
-
-  defp named(:"policy_request.accept", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("%{organisation} accepted a policy request", organisation: name)
-  end
-
-  defp named(:"policy_request.decline", %{details: %{"operator_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Declined a policy request of %{operator}", operator: name)
-  end
-
-  defp named(:"policy_request.decline", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("%{organisation} declined a policy request", organisation: name)
-  end
-
-  defp named(:"policy_request.withdraw", %{details: %{"operator_id" => id} = details}, names) do
-    with name when is_binary(name) <- names.organisations[id] do
-      case details["reason"] do
-        "left" ->
-          gettext("Left %{operator}: its pending policy request was withdrawn", operator: name)
-
-        "dropped" ->
-          gettext("Dropped by %{operator}: its pending policy request was withdrawn",
-            operator: name
-          )
-
-        "deleted" ->
-          gettext("Deleted by %{operator}: its pending policy request was withdrawn",
-            operator: name
-          )
-
-        _withdrawn ->
-          gettext("%{operator} withdrew a policy request", operator: name)
-      end
-    end
-  end
-
-  defp named(
-         :"policy_request.withdraw",
-         %{details: %{"organisation_id" => id} = details},
-         names
-       ) do
-    with name when is_binary(name) <- names.organisations[id] do
-      case details["reason"] do
-        "left" ->
-          gettext("%{organisation} left: a pending policy request to it was withdrawn",
-            organisation: name
-          )
-
-        "dropped" ->
-          gettext(
-            "Dropped %{organisation}: a pending policy request to it was withdrawn",
-            organisation: name
-          )
-
-        _deleted ->
-          gettext(
-            "Deleted %{organisation}: a pending policy request to it was withdrawn",
-            organisation: name
-          )
-      end
-    end
   end
 
   defp named(_action, _entry, _names), do: nil
@@ -447,39 +355,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp said(:"workspace.narrow_features", _details, _actor),
     do: gettext("Changed the workspace's features")
 
-  defp said(:"policy_request.send", %{"clients" => n}, _actor) when is_integer(n),
-    do:
-      ngettext(
-        "Sent a policy request to %{number} client",
-        "Sent a policy request to %{number} clients",
-        n,
-        number: Format.number(n)
-      )
-
-  defp said(:"policy_request.send", _details, _actor),
-    do: gettext("Its operator sent a policy request")
-
-  defp said(:"policy_request.accept", %{"organisation_id" => _}, _actor),
-    do: gettext("A client accepted a policy request")
-
-  defp said(:"policy_request.accept", _details, _actor),
-    do: gettext("Accepted a policy request of its operator")
-
-  defp said(:"policy_request.decline", %{"organisation_id" => _}, _actor),
-    do: gettext("A client declined a policy request")
-
-  defp said(:"policy_request.decline", _details, _actor),
-    do: gettext("Declined a policy request of its operator")
-
-  defp said(:"policy_request.withdraw", %{"organisation_id" => _}, _actor),
-    do: gettext("Withdrew a pending policy request from a client that parted")
-
-  defp said(:"policy_request.withdraw", %{"operator_id" => _}, _actor),
-    do: gettext("A pending policy request of its operator was withdrawn")
-
-  defp said(:"policy_request.withdraw", _details, _actor),
-    do: gettext("Withdrew a policy request")
-
   defp said(:"organisation_policy.edit", %{"change" => "rule_added"}, _actor),
     do: gettext("Added a rule to the organisation's policy, for every workspace")
 
@@ -540,9 +415,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
       "workspace_access" ->
         person(entry, names)
 
-      kind when kind in ["policy_request", "policy_request_answer"] ->
-        text(gettext("A policy request"))
-
       # A variable of the organisation, by the name the entry holds, as the core says a
       # workspace's.
       "organisation_variable" ->
@@ -571,16 +443,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def change(:"instance.purge_organisation", _before, _after, %{"organisation_id" => id})
       when is_binary(id),
       do: [{:m, id}]
-
-  def change(:"policy_request.decline", _before, _after, %{"reason" => reason})
-      when is_binary(reason),
-      do: gettext("Reason: %{reason}", reason: reason)
-
-  def change(:"policy_request.accept", _before, _after, %{"workspace_ids" => [_ | _] = ids}),
-    do:
-      ngettext("In %{number} workspace", "In %{number} workspaces", length(ids),
-        number: Format.number(length(ids))
-      )
 
   # The arbiter's reason, as they wrote it.
   def change(:"instance.transfer", _before, _after, %{"reason" => reason})

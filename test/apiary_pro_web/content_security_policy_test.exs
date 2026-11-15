@@ -26,8 +26,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Features, Policy}
-  alias ApiaryPro.{OrganisationVariables, PolicyRequests, Suspensions, Transfers}
+  alias Apiary.Features
+  alias ApiaryPro.{OrganisationVariables, Suspensions, Transfers}
 
   @moduletag with_features: Features.all()
 
@@ -304,18 +304,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/:org/policy/history"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/new"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/:id/edit"), do: {:owner, :org, :org_rule_id}
-  defp page("/:org/policy-requests"), do: {:client_owner, :client, nil}
-  defp page("/:org/policy-requests/:id"), do: {:client_owner, :client, :answer_id}
-  defp page("/:org/policy-requests/:id/decline"), do: {:client_owner, :client, :answer_id}
   defp page("/:org/clients"), do: {:operator_owner, :operator, nil}
   defp page("/:org/clients/new"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests/new"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests/:id"), do: {:operator_owner, :operator, :request_id}
-
-  defp page("/:org/clients/requests/:id/withdraw"),
-    do: {:operator_owner, :operator, :request_id}
-
   # An owner is invited to a client that has none.
   defp page("/:org/clients/:id/owner"), do: {:operator_owner, :operator, :ownerless_client_id}
   defp page("/:org/clients/:id/admin"), do: {:operator_owner, :operator, :ownerless_client_id}
@@ -395,24 +385,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         "email" => "dana@example.com"
       })
 
-    {:ok, _rule} = Policy.deny(client.owner.scope, nil, %{host: "locked.example", locked: true})
-
-    {:ok, request} =
-      PolicyRequests.send_request(operator.scope, %{
-        "changes" => %{
-          "rules" => [
-            %{"change" => "rule_changed", "action" => "allow", "host" => "locked.example"}
-          ]
-        },
-        "note" => "The build calls it."
-      })
-
-    answer =
-      Apiary.Repo.get_by!(PolicyRequests.Answer,
-        request_id: request.id,
-        organisation_id: client.organisation.id
-      )
-
     offering = sign_up_fixture()
     {:ok, _} = Transfers.offer_to_operator(offering.scope, operator.organisation.slug)
 
@@ -451,9 +423,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         secret_id: secret.public_id,
         values_secret_id: values_secret.public_id,
         value_id: "main-app",
-        org_rule_id: org_rule.id,
-        request_id: request.id,
-        answer_id: answer.id
+        org_rule_id: org_rule.id
       }
     }
   end

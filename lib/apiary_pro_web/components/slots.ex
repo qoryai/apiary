@@ -17,9 +17,6 @@ defmodule ApiaryProWeb.Slots do
   - `member_actions/1`, each member's ⋯ menu on the People page: their Workspaces page
     (`ApiaryProWeb.MemberLive.Workspaces`), where an owner or an admin adds them to a
     workspace or removes them from one.
-  - `policy_notices/1`, a workspace's policy page: the policy requests of a client's
-    operator that wait for an answer, and the way to them
-    (`ApiaryProWeb.PolicyRequestLive.Index`).
 
   A slot reads what it shows when it renders. LiveView renders it again only when what
   the page passes it changes, its scope or its row, so it reads as often as the page
@@ -28,7 +25,7 @@ defmodule ApiaryProWeb.Slots do
   use ApiaryProWeb, :html
 
   alias Apiary.{Access, Organisations}
-  alias ApiaryPro.{Operators, PolicyRequests}
+  alias ApiaryPro.Operators
 
   @doc """
   workspaces_heading/1 renders, for a person `workspace.create` allows in the organisation
@@ -146,33 +143,6 @@ defmodule ApiaryProWeb.Slots do
     >
       {gettext("Workspaces…")}
     </.menu_item>
-    """
-  end
-
-  @doc """
-  policy_notices/1 renders how many policy requests of the operator of the organisation
-  of `scope` wait for its answer, with the way to them; nothing while none waits.
-  """
-  attr :scope, :any, required: true
-
-  @spec policy_notices(map) :: Phoenix.LiveView.Rendered.t()
-  def policy_notices(assigns) do
-    assigns = assign(assigns, :pending, PolicyRequests.pending_count(assigns.scope))
-
-    ~H"""
-    <.notice :if={@pending > 0} class="max-w-[80ch]">
-      <span id="policy-requests-pending">
-        <.rich text={
-          rich_ngettext(
-            "A policy request of the organisation's operator waits for an answer: %{link}.",
-            "%{number} policy requests of the organisation's operator wait for an answer: %{link}.",
-            @pending,
-            number: Format.number(@pending),
-            link: {:link, ~p"/#{@scope.organisation}/policy-requests", gettext("see the requests")}
-          )
-        } />
-      </span>
-    </.notice>
     """
   end
 end

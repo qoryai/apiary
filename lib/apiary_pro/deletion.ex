@@ -22,7 +22,7 @@ defmodule ApiaryPro.Deletion do
   alias Apiary.{Access, Audit, Deletion, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{PolicyRequests, Reach, Tenants}
+  alias ApiaryPro.{Reach, Tenants}
   alias ApiaryPro.Tenants.Tenant
 
   @doc """
@@ -143,8 +143,6 @@ defmodule ApiaryPro.Deletion do
              :ok <- confirm(client.name, confirmation),
              {:ok, marked} <- client |> Deletion.mark_changeset(scope) |> Repo.update(),
              :ok <- delete_invitations(Reach.in_client(scope, marked)),
-             {:ok, _withdrawn} <-
-               PolicyRequests.withdraw_for_client(scope, marked, operator, "deleted"),
              {:ok, _entry} <-
                Audit.record(
                  Repo,

@@ -6,7 +6,7 @@ defmodule ApiaryProWeb.LayoutsTest do
   organisation's pages, and at the foot of the workspace menu. And the Qory Apiary menu's
   button, which names the product Qory Apiary. And the edition's entries in the
   organisation's sidebar of the core's two-level shell: Policy in the first group, an
-  operator's Clients and Policy requests in a group of their own, the settings' sections
+  operator's Clients in a group of its own, the settings' sections
   in the second column. And a workspace an operator operates, which the organisation menu
   lists under the operator for its people, and under its organisation for its members.
   """
@@ -170,7 +170,6 @@ defmodule ApiaryProWeb.LayoutsTest do
     # The operator's group, under its heading, Clients with its number.
     assert has_element?(view, "#sidebar nav#nav-group-operator[aria-label=Operator]")
     assert has_element?(view, "#nav-group-operator #nav-clients[href='/#{org}/clients']", "1")
-    assert has_element?(view, "#nav-group-operator #nav-client_requests")
 
     # Settings' sections are the frame's second column, beside the page, not in it.
     refute has_element?(view, "#main #settings-tabs")

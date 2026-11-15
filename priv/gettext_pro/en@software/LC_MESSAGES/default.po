@@ -259,11 +259,6 @@ msgstr ""
 msgid "%{name} was offered to the operator %{operator} on %{date}. Once an owner of %{operator} accepts, it is a client of %{operator}."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} accepted"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} account matches"
@@ -292,11 +287,6 @@ msgid_plural "%{number} clients match"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} declined"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} in %{workspace}"
@@ -313,14 +303,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} organisation matches"
 msgid_plural "%{number} organisations match"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} request matches"
-msgid_plural "%{number} requests match"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -373,16 +355,6 @@ msgid_plural "%{number} variables match"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} waiting"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} withdrawn"
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} workspace or target override is set aside while the lock holds."
@@ -427,26 +399,6 @@ msgstr ""
 msgid "%{operator} dropped it as a client: it has no operator now"
 msgstr ""
 
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} sent a policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} withdrew a policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} accepted a policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} declined a policy request"
-msgstr ""
-
 #: lib/apiary_pro_web/components/notices.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} is suspended: everything in it can be read, nothing can be changed, and its access keys are refused. %{contact_support}."
@@ -457,19 +409,9 @@ msgstr ""
 msgid "%{organisation} left as a client"
 msgstr ""
 
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} left: a pending policy request to it was withdrawn"
-msgstr ""
-
 #: lib/apiary_pro_web/edition.ex
 #, elixir-autogen, elixir-format
 msgid "%{person} of %{operator}"
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{rule}, in place of the rule there"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -547,21 +489,6 @@ msgstr[1] "%{workspace} observes again, and so do %{number} repositories of it t
 msgid "%{workspace} observes again."
 msgstr ""
 
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "A client accepted a policy request"
-msgstr ""
-
-#: lib/apiary_pro/policy_requests.ex
-#, elixir-autogen, elixir-format
-msgid "A client chosen cannot receive the request any more: it left, or does not have the security policy now. Choose again."
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "A client declined a policy request"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A client is a separate organisation that runs the harness %{operator} provides. It starts with no workspace."
@@ -602,32 +529,10 @@ msgstr ""
 msgid "A deny here holds in every workspace and target, in either mode; an allow reaches every workspace, and a workspace or a target may still deny it. Each workspace whose policy a change changes gets a new version of it."
 msgstr "A deny here holds in every workspace and repository, in either mode; an allow reaches every workspace, and a workspace or a repository may still deny it. Each workspace whose policy a change changes gets a new version of it."
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "A former operator"
-msgstr ""
-
 #: lib/apiary_pro_web/live/member_live/workspaces.ex
 #, elixir-autogen, elixir-format
 msgid "A member reaches the workspaces they are added to, and no other. Removing them from one leaves them in the organisation."
 msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "A pending policy request of its operator was withdrawn"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "A policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/components/slots.ex
-#, elixir-autogen, elixir-format
-msgid "A policy request of the organisation's operator waits for an answer: %{link}."
-msgid_plural "%{number} policy requests of the organisation's operator wait for an answer: %{link}."
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
@@ -692,7 +597,6 @@ msgid "About organisations"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Accept"
 msgstr ""
@@ -712,11 +616,6 @@ msgstr ""
 msgid "Accept ownership"
 msgstr ""
 
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "Accepted"
-msgstr ""
-
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted %{organisation} as a client"
@@ -724,22 +623,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
-msgid "Accepted a policy request of %{operator}"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Accepted a policy request of its operator"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
 msgid "Accepted an organisation as a client"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Accepted by %{person} in %{workspaces}"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -747,15 +631,7 @@ msgstr ""
 msgid "Accepted the organisation's ownership"
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Accepted: the changes are made in %{number} workspace."
-msgid_plural "Accepted: the changes are made in %{number} workspaces."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Accepting"
@@ -810,12 +686,6 @@ msgstr ""
 msgid "Actions for %{value_id} of %{name}"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Actions for “%{request}”"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
@@ -858,11 +728,6 @@ msgstr ""
 msgid "Add %{email} to %{workspace}"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Add a rule"
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "Add a value to %{name}"
@@ -871,11 +736,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "Add another value"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Add to the request"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -929,17 +789,10 @@ msgid "Adopted at the upgrade: its members keep every workspace they reached"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "All"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Allow"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/words.ex
@@ -1047,28 +900,6 @@ msgstr ""
 msgid "An owner or an admin of %{organisation} creates the first workspace."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Answer"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Answer “%{request}”"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Answered"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Answers"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "At most %{count} characters, kept in the organisation's activity. Say why, and write no personal data."
@@ -1089,23 +920,11 @@ msgstr ""
 msgid "Back to the organisations"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Back to the policy requests"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "By"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Change"
@@ -1114,11 +933,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "Change %{value_id} of %{name}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Change a rule"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -1241,12 +1055,6 @@ msgstr ""
 msgid "Changed whose model providers a client uses"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Changes"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Changes to %{name}'s policy"
@@ -1257,24 +1065,12 @@ msgstr ""
 msgid "Choose a kind"
 msgstr ""
 
-#: lib/apiary_pro/policy_requests.ex
-#, elixir-autogen, elixir-format
-msgid "Choose at least one client to send the request to."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Choose at least one workspace to accept it in."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the mode of %{name}'s workspaces"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear filters"
 msgstr ""
@@ -1292,7 +1088,6 @@ msgid "Clear the search and the filters"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Client"
@@ -1361,7 +1156,6 @@ msgstr ""
 #: lib/apiary_pro_web/components/feature_components.ex
 #: lib/apiary_pro_web/edition.ex
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Clients"
@@ -1466,56 +1260,6 @@ msgstr ""
 msgid "Current"
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Decline “%{request}”"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Decline “%{request}”?"
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "Declined"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Declined a policy request of %{operator}"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Declined a policy request of its operator"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by %{person}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Declined by %{person}: %{reason}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Declined: nothing changes in the policy."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Decline…"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Declining"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Delete %{name}"
@@ -1581,22 +1325,12 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
-msgid "Deleted %{organisation}: a pending policy request to it was withdrawn"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
 msgid "Deleted a client nobody had joined yet"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted a client that had no owner yet"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Deleted by %{operator}: its pending policy request was withdrawn"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -1619,16 +1353,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Denies first"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Deny"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Details"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -1654,17 +1378,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
-msgid "Dropped %{organisation}: a pending policy request to it was withdrawn"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
 msgid "Dropped a client"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Dropped by %{operator}: its pending policy request was withdrawn"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -1757,7 +1471,6 @@ msgstr ""
 msgid "Empty"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce"
@@ -1841,12 +1554,6 @@ msgstr ""
 msgid "Every owner of %{organisation} is suspended. Its admins and members keep working and its runs continue; what only an owner does, such as deleting or transferring it and changing locked rules, waits until support acts. %{contact_support}."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Every request is answered."
-msgstr ""
-
 #: lib/apiary_pro_web/components/slots.ex
 #, elixir-autogen, elixir-format
 msgid "Every workspace"
@@ -1899,22 +1606,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a client by name, slug or owner"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Find a request"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Find a request by its note or host"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Find a request by its note, host or client"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -1977,21 +1668,6 @@ msgstr ""
 msgid "Former member"
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "From"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "From %{operator}, on %{date}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "From a former operator, on %{date}"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Has %{feature}"
@@ -2007,23 +1683,10 @@ msgstr ""
 msgid "History · Policy"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Host"
-msgstr ""
-
 #: lib/apiary_pro_web/components/feature_components.ex
 #, elixir-autogen, elixir-format
 msgid "Host rules for every workspace, a mode they all keep, and whether workspaces may allow more hosts."
 msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "In %{number} workspace"
-msgid_plural "In %{number} workspaces"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
@@ -2145,13 +1808,6 @@ msgstr ""
 msgid "It is suspended. Activate it first."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "It is withdrawn from the %{number} client that has not answered it. The answers given stay."
-msgid_plural "It is withdrawn from the %{number} clients that have not answered it. The answers given stay."
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "It leaves %{number} allow out of force: %{counts}."
@@ -2184,11 +1840,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Its operator dropped it as a client: it has no operator now"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Its operator sent a policy request"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -2252,11 +1903,6 @@ msgstr ""
 msgid "Leave %{operator}…"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Leave the mode as it is"
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Leaving"
@@ -2265,11 +1911,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Left %{operator}: it has no operator now"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Left %{operator}: its pending policy request was withdrawn"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -2313,12 +1954,6 @@ msgstr ""
 msgid "Loading the organisations"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Loading the policy requests"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Loading the workspaces"
@@ -2353,11 +1988,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Locked: no workspace or target may override it"
 msgstr "Locked: no workspace or repository may override it"
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Locked: only an owner of the client accepts it"
-msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
@@ -2478,7 +2108,6 @@ msgstr ""
 msgid "Memberships"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Mode"
@@ -2534,16 +2163,6 @@ msgstr ""
 msgid "New organisation"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "New policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "New request"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "New rule"
@@ -2595,19 +2214,9 @@ msgstr ""
 msgid "No admin yet"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "No change yet: add the rules the harness needs, or change the mode below."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "No changes yet"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "No client can receive a request now: a client needs the security policy, and not to be suspended."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -2693,54 +2302,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "No ownership is offered to you here any more: the offer was withdrawn."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No request has that note or host."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "No request has that note, host or client."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No request here"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "No request is answered by every client yet."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No request is answered yet."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No request is withdrawn."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No request matches"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No requests"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "No requests yet"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -2864,22 +2425,11 @@ msgstr ""
 msgid "Not used"
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing changes in the policy. The operator reads the reason you give."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing is removed. You can activate it again at any time."
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing was changed: %{reason}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Observe"
@@ -2951,19 +2501,9 @@ msgstr ""
 msgid "Once accepted, an organisation has what %{operator} grants its clients, which may be fewer features than it has now."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "One a line. None for every path."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "One value"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Only a person who writes the policy here answers a policy request."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
@@ -3032,11 +2572,6 @@ msgstr ""
 msgid "Only owners and admins of %{operator} add a client and invite its first owner; only owners drop one."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of %{operator} send a request or withdraw one."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of %{organisation} change its secrets."
@@ -3087,25 +2622,9 @@ msgstr ""
 msgid "Only owners and admins of an operator revoke the invitations of its clients' owners."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of an operator send its clients a policy request."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of an operator withdraw its policy requests."
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners of %{name} change its policy: these settings and its rules."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Only the 200 newest requests are listed."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
@@ -3309,16 +2828,6 @@ msgstr ""
 msgid "Ownership offered"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Paths"
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "Pending"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "People in %{name} see only the features you show here, of those %{operator} is shown; people of %{operator} see in it what %{operator} sees. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
@@ -3333,38 +2842,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Policy"
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "Policy request"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Policy request accepted"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Policy request declined"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Policy request sent"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Policy request withdrawn"
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Policy requests"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -3413,13 +2890,11 @@ msgid "Reach"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Reason"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #, elixir-autogen, elixir-format
 msgid "Reason: %{reason}"
 msgstr ""
@@ -3440,13 +2915,7 @@ msgstr ""
 msgid "Remove %{email} from %{workspace}"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Remove a rule"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #: lib/apiary_pro_web/live/settings_live/variables.ex
@@ -3499,18 +2968,6 @@ msgstr ""
 msgid "Rendered again"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Request"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Request %{id}"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Require enforce"
@@ -3539,11 +2996,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Revoked an invitation of its first owner, for its operator"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Rule"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -3602,16 +3054,6 @@ msgstr ""
 msgid "Saving"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Say what the harness needs. Each client's people see the changes and the note, and accept them in the workspaces they choose, or decline. Nothing changes in a client until it accepts."
-msgstr ""
-
-#: lib/apiary_pro/policy_requests.ex
-#, elixir-autogen, elixir-format
-msgid "Say why the harness needs these changes."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #: lib/apiary_pro_web/live/settings_live/secrets_and_variables.ex
 #, elixir-autogen, elixir-format
@@ -3646,34 +3088,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Send invitation"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Send request"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Sending"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Sent"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Sent a policy request to %{number} client"
-msgid_plural "Sent a policy request to %{number} clients"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Sent on %{date} by %{person}."
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -3754,7 +3168,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/client_live/index.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Someone changed this at the same moment, so nothing was changed. Try again."
@@ -3855,11 +3268,6 @@ msgstr ""
 msgid "Switch changed."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Take this change out"
-msgstr ""
-
 #: lib/apiary_pro_web/components/feature_components.ex
 #, elixir-autogen, elixir-format
 msgid "Terminal tab"
@@ -3936,32 +3344,6 @@ msgstr ""
 msgid "That organisation is suspended, so it does not become a client until it is activated."
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That request is answered already."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "That request is not there any more."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That request is not there, or is older than the 200 newest."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "That request is withdrawn already."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That request, or a workspace chosen, is not there any more. Nothing was changed."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "That secret is no longer in %{organisation}."
@@ -3992,34 +3374,9 @@ msgstr ""
 msgid "The admin's email address"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The changes the harness of %{operator} needs in its clients' security policy. The policy is each client's: its people accept a request, in the workspaces they choose, or decline it."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The changes the operator of %{organisation} asks for in its security policy, for the harness it provides. The policy is yours: accept a request in the workspaces you choose, or decline it."
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The client has only what %{operator} grants it, of what %{operator} has. A feature a new release adds reaches it once you grant it here."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The client left"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The client was deleted"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The client was dropped"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -4082,19 +3439,9 @@ msgstr ""
 msgid "The mode is set per workspace now."
 msgstr ""
 
-#: lib/apiary_pro/policy_requests.ex
-#, elixir-autogen, elixir-format
-msgid "The note is at most %{max} characters."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "The offer is withdrawn."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The operator withdrew that request meanwhile."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
@@ -4170,34 +3517,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The person you invite becomes its owner when they accept. They set up its first workspace and invite its people."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The policy requests could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
-msgstr ""
-
-#: lib/apiary_pro/policy_requests.ex
-#, elixir-autogen, elixir-format
-msgid "The reason is at most %{max} characters."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The request is sent to %{number} client."
-msgid_plural "The request is sent to %{number} clients."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "The request is withdrawn from the clients that had not answered it. The answers given stay."
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#, elixir-autogen, elixir-format
-msgid "The rule for %{host}"
 msgstr ""
 
 #: lib/apiary_pro_web/components/feature_components.ex
@@ -4295,11 +3614,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "This organisation has no operator any more."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "To %{client}"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
@@ -4426,8 +3740,6 @@ msgid "Version"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Views"
 msgstr ""
@@ -4440,17 +3752,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Views of the organisations"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Waiting"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Waiting for an answer from a person who writes the policy here."
 msgstr ""
 
 #: lib/apiary_pro_web/edition.ex
@@ -4471,16 +3772,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "When"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "When the harness needs a host or a mode a client's policy does not give it, ask the client here. Its people decide."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "When the harness your operator provides needs a change to your policy, its request is here for you to accept or decline."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
@@ -4508,12 +3799,6 @@ msgstr ""
 msgid "Whose harness this organisation runs."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Why the harness needs this"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
 #, elixir-autogen, elixir-format
 msgid "With %{email} suspended, %{organisations} run without an owner who can act: their admins and members work, and what only an owner does waits until you activate the account again or transfer the ownership to one of their admins."
@@ -4529,62 +3814,9 @@ msgstr ""
 msgid "Withdraw the offer?"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Withdraw “%{request}”"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Withdraw “%{request}”?"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrawing"
-msgstr ""
-
-#: lib/apiary_pro_web/components/request_components.ex
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawn"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawn by the operator"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawn: the operator dropped the organisation"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawn: the organisation left its operator"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawn: the organisation was deleted"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Withdraw…"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrew a pending policy request from a client that parted"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrew a policy request"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -4686,7 +3918,6 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/member_live/workspaces.ex
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Workspaces"
 msgstr ""
@@ -4732,19 +3963,9 @@ msgstr ""
 msgid "Workspaces…"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#, elixir-autogen, elixir-format
-msgid "Write the first request"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, accept"
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, decline"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -4784,7 +4005,6 @@ msgstr ""
 msgid "Yes, suspend"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/requests.ex
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, withdraw"
@@ -4891,11 +4111,6 @@ msgstr ""
 msgid "You read %{organisation} as support: everything here can be read, and nothing changed."
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "You read these requests as a person of the operator. The people of %{organisation} answer them."
-msgstr ""
-
 #: lib/apiary_pro_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "You sign in with a link we email you and need no password."
@@ -4931,28 +4146,10 @@ msgstr ""
 msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the sign-in page in a few minutes."
 msgstr ""
 
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Your answer"
-msgstr ""
-
 #: lib/apiary_pro_web/components/organisation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Your organisation"
 msgstr ""
-
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "a deleted workspace"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/requests.ex
-#: lib/apiary_pro_web/live/policy_request_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "and %{number} more"
-msgid_plural "and %{number} more"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
@@ -4978,11 +4175,6 @@ msgstr ""
 #: lib/apiary_pro_web/components/notices.ex
 #, elixir-autogen, elixir-format
 msgid "see the offer"
-msgstr ""
-
-#: lib/apiary_pro_web/components/slots.ex
-#, elixir-autogen, elixir-format
-msgid "see the requests"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex

@@ -15520,7 +15520,7 @@
 }
 
 /* ==== Who may act, where the reader may not: one muted line with a lock, beside the
-   controls they do not have (an operator's Clients, Policy requests). ==== */
+   controls they do not have (an operator's Clients). ==== */
 @layer qory {
   .q-acts-note {
     display: flex;
@@ -15557,20 +15557,6 @@
       font-size: 0.78125rem;
       font-weight: 400;
       line-height: 1.125rem;
-    }
-  }
-}
-
-/* ==== An operator's Policy requests (`ApiaryProWeb.ClientLive.Requests`): below 600 px
-   of table, a request's Answers break between their parts ("2 accepted," / "1 declined,"
-   / "1 waiting"), each part whole with its comma; one line from 600 px. ==== */
-@layer qory {
-  @container (max-width: 599px) {
-    .q-req-tally {
-      white-space: normal;
-    }
-    .q-req-tally > * {
-      white-space: nowrap;
     }
   }
 }

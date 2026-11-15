@@ -509,7 +509,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       # The rail of waiting requests and owner invitations is gone, from every width.
       refute has_element?(lv, "#main aside")
       refute has_element?(lv, ".q-clients, .q-clients-rail")
-      refute has_element?(lv, "#main a[href*='/clients/requests']")
       refute has_element?(lv, "#rail-requests-h")
       refute has_element?(lv, "#rail-invitations-h")
       refute render(lv) =~ "Owner invitations"
@@ -544,17 +543,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       render_async(lv)
       assert Trail.crumbs(lv) == ["Clients", "Features"]
       assert page_title(lv) == "Features · Clients · #{operator.name} · Qory Apiary"
-    end
-
-    test "the operator's policy requests are in the sidebar, where security is on", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.operator.organisation}/clients")
-      render_async(lv)
-
-      assert has_element?(
-               lv,
-               "aside#sidebar a#nav-client_requests[href='#{~p"/#{ctx.operator.organisation}/clients/requests"}']",
-               "Policy requests"
-             )
     end
 
     test "an owner invitation's expiry is in the Owner cell, marked under a day away", ctx do

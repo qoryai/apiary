@@ -1,18 +1,18 @@
 defmodule ApiaryPro.Deletion.Tables do
   @moduledoc """
-  The edition's tables that hold an organisation's rows, in the order the purge
-  deletes them (`c:Apiary.Edition.deletion_tables/0`), walked before the core's
-  (`Apiary.Deletion.Tables`): a policy request's answers before the request; the
-  organisation's policy, its rules and its row; the organisation's variables; the
-  transfers, which name a membership; the feature grants; and the workspace access, which
-  names a workspace or a membership, before the core's memberships and workspaces it
-  points to; an operator's invitations of its clients' first owners before the core's
-  invitations they sit beside; the rows of `operator_harness_assignments`, a table that
-  nothing writes any more, which stays on the list while it has `organisation_id`; the
-  operators of the organisation's workspaces; and the people locks, then the tenants
-  they reference,
-  last. Each is marked `:workspace` when it has `workspace_id`, and `:organisation` when
-  it holds the organisation's rows.
+  The edition's tables that hold an organisation's rows, in the order the purge deletes
+  them (`c:Apiary.Edition.deletion_tables/0`), walked before the core's
+  (`Apiary.Deletion.Tables`): the rows of `policy_request_answers` before those of
+  `policy_requests`; the organisation's policy, its rules and its row; the organisation's
+  variables; the transfers, which name a membership; the feature grants; and the workspace
+  access, which names a workspace or a membership, before the core's memberships and
+  workspaces it points to; an operator's invitations of its clients' first owners before
+  the core's invitations they sit beside; the rows of `operator_harness_assignments`; the
+  operators of the organisation's workspaces; and the people locks, then the tenants they
+  reference, last. Each is marked `:workspace` when it has `workspace_id`, and
+  `:organisation` when it holds the organisation's rows. Nothing writes
+  `policy_request_answers`, `policy_requests` and `operator_harness_assignments` any more;
+  they stay on the list while they have `organisation_id`.
 
   The rows of other organisations that name the one purged go with its row, by their
   keys: an operator's invitations into its former clients, by

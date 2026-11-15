@@ -10,9 +10,8 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
       mix apiary_pro.demo
       mix apiary_pro.demo --owner someone@example.com --clients 20 --scale 0.5
 
-  Run it where the instance has `managed_organisations` and `security`, which
-  `QORY_FEATURES=all` turns on: an operator and its clients need `managed_organisations`,
-  and policy requests `security`. It acts as `--owner`, an instance admin: the instance
+  Run it where the instance has `managed_organisations`, which `QORY_FEATURES=all` turns
+  on: an operator and its clients need it. It acts as `--owner`, an instance admin: the instance
   organisation's first owner when it names none. What it makes goes through the edition's
   contexts, as the console's pages would, so the audit trail has it:
 
@@ -42,10 +41,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
     workspace with runs already is left as it is.
   - **Then**, in this order: Marrowick & Pend narrowed to observability by the instance
     (`ApiaryPro.Grants.set_organisation/3`), and three clients by the operator
-    (`ApiaryPro.Grants.set_client/3`); three policy requests from the operator to clients
-    with the security policy (`ApiaryPro.PolicyRequests`), the first answered by some,
-    accepted or declined, the second withdrawn after a few accepted it, the third
-    unanswered; the account of Marrowick & Pend's only owner suspended
+    (`ApiaryPro.Grants.set_client/3`); the account of Marrowick & Pend's only owner suspended
     (`ApiaryPro.Suspensions`) and its ownership offered by the owner, as the arbiter, to
     its admin; and one client suspended.
 
@@ -60,7 +56,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
 
   Running it again finds what it made, the people by address, the organisations and
   workspaces by name, the memberships by person, and makes only what is missing; the
-  policy requests, the offer, the arbitration and the suspensions are made once.
+  offer, the arbitration and the suspensions are made once.
   """
 
   use Mix.Task
@@ -71,9 +67,8 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Slug, Workspace}
   alias Apiary.Runs.Run
-  alias ApiaryPro.{Grants, Operators, PolicyRequests, SignUp, Suspensions, Tenants}
+  alias ApiaryPro.{Grants, Operators, SignUp, Suspensions, Tenants}
   alias ApiaryPro.{Transfers, WorkspaceAccess}
-  alias ApiaryPro.PolicyRequests.{Answer, Request}
   alias ApiaryPro.Tenants.Tenant
   alias ApiaryPro.Transfers.Transfer
   alias Mix.Tasks.Apiary.Demo.History
@@ -234,31 +229,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   @first_names ~w(maria tomas yuki omar ingrid ravi zoe felix amelia diego nina oskar leila hugo sana piotr)
   @last_names ~w(okafor lindqvist tanaka mbeki berg iyer fischer laurent castillo horvat ahmed kowalski silva brennan duarte wu)
 
-  # What the operator asks its clients for, each a separate host that no client's policy
-  # names yet.
-  @requests [
-    %{
-      host: "api.zentrevo-works.example",
-      note:
-        "The harness now loads its skills and workflows from our API. Allow the host so its agents can reach it."
-    },
-    %{
-      host: "telemetry.zentrevo-works.example",
-      note:
-        "We would like the harness to report its agents' tool timings to us, so we can see where runs slow down."
-    },
-    %{
-      host: "models.zentrevo-works.example",
-      note:
-        "The harness's code review agent moves to a model we host ourselves. Allow its host before the switch next month."
-    }
-  ]
-  @decline_reasons [
-    "Our security review approves every new host first; ask again after it meets.",
-    "We do not use the harness's skills from your API.",
-    nil
-  ]
-
   # The after-steps' subjects.
   @narrowed_organisation "Marrowick & Pend"
   @offered_to_operator "Quistral Studio"
@@ -276,9 +246,11 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
     Logger.configure(level: :warning)
     Mix.Task.run("app.start")
 
-    for feature <- [:managed_organisations, :security], not Apiary.Features.on?(feature) do
-      Mix.raise("the instance does not have #{feature}: run it with QORY_FEATURES=all")
-    end
+    unless Apiary.Features.on?(:managed_organisations),
+      do:
+        Mix.raise(
+          "the instance does not have managed_organisations: run it with QORY_FEATURES=all"
+        )
 
     clients = Keyword.get(opts, :clients, length(@clients))
 
@@ -481,8 +453,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   # invites its first person as its admin, and the clients with an admin get their
   # workspaces, are narrowed and suspended as those with an owner are otherwise. Their
   # workspaces get no runs: `mix apiary.demo.history` fills a workspace in its first owner's
-  # name, and such a client has none. The operator sends no policy requests, as
-  # `ApiaryPro.Access` answers them not found then.
+  # name, and such a client has none.
   defp operator_owns?, do: ApiaryPro.Flags.operator_infrastructure?()
 
   defp client!(world, name, index, accept?) do
@@ -831,7 +802,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   defp settle(world) do
     Mix.shell().info("")
     grants(world)
-    policy_requests(world)
     offer(world)
     arbitration(world)
     suspend_client(world)
@@ -863,106 +833,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   # alone.
   defp narrowed_clients(world) do
     world.clients |> Enum.filter(& &1.person) |> Enum.take_every(14) |> Enum.take(3)
-  end
-
-  # None while the operator owns its clients: `ApiaryPro.Access` answers the policy
-  # requests' actions not found then.
-  defp policy_requests(world) do
-    operator = world.operator.organisation
-
-    cond do
-      operator_owns?() ->
-        Mix.shell().info("Policy requests: none, while the operator owns its clients")
-
-      Repo.exists?(from r in Request, where: r.organisation_id == ^operator.id) ->
-        Mix.shell().info("Policy requests: #{operator.slug} has sent some, left as they are")
-
-      true ->
-        requests!(world, operator)
-    end
-  end
-
-  defp requests!(world, operator) do
-    scope = scope!(world.owner, operator)
-    {:ok, recipients} = PolicyRequests.recipients(scope)
-
-    owners =
-      for %{owner: %User{} = owner} = c <- world.clients,
-          into: %{},
-          do: {c.organisation.id, owner}
-
-    eligible = Enum.filter(recipients, &Map.has_key?(owners, &1.id))
-    send_requests(scope, eligible, owners)
-  end
-
-  defp send_requests(_scope, [], _owners),
-    do: Mix.shell().info("Policy requests: no client with an owner receives one")
-
-  defp send_requests(scope, eligible, owners) do
-    [first, second, third] = @requests
-    count = length(eligible)
-
-    # The first to most of them: some accept it, some decline it, the rest have not
-    # answered yet.
-    to = Enum.take(eligible, div(count * 3 + 4, 5))
-    request = send_request!(scope, first, to)
-    {accepting, rest} = Enum.split(to, div(length(to) * 2 + 4, 5))
-    {declining, _pending} = Enum.split(rest, div(length(to) + 4, 5))
-    for client <- accepting, do: answer!(request, client, owners, :accept)
-
-    for {client, reason} <- Enum.zip(declining, Stream.cycle(@decline_reasons)),
-        do: answer!(request, client, owners, {:decline, reason})
-
-    # The second to the others: a few accept it before the operator withdraws it.
-    to = Enum.take(eligible, -div(count * 2 + 4, 5))
-    withdrawn = send_request!(scope, second, to)
-
-    for client <- Enum.take(to, div(length(to) + 2, 3)),
-        do: answer!(withdrawn, client, owners, :accept)
-
-    ok!(PolicyRequests.withdraw(scope, withdrawn.id), "the second request was not withdrawn")
-
-    # The third to every other client, unanswered.
-    send_request!(scope, third, Enum.take_every(eligible, 2))
-
-    Mix.shell().info(
-      "Policy requests: 3 sent; #{length(accepting)} accepted and #{length(declining)} declined the first, the second withdrawn"
-    )
-  end
-
-  defp send_request!(scope, spec, clients) do
-    changes = %{
-      "rules" => [%{"change" => "rule_added", "action" => "allow", "host" => spec.host}]
-    }
-
-    scope
-    |> PolicyRequests.send_request(%{
-      "changes" => changes,
-      "note" => spec.note,
-      "clients" => Enum.map(clients, & &1.id)
-    })
-    |> ok!("the request for #{spec.host} was not sent")
-  end
-
-  # The client's owner answers, as its policy's writer: accepted in every workspace whose
-  # policy they may write, or declined.
-  defp answer!(request, client, owners, how) do
-    scope = scope!(Map.fetch!(owners, client.id), client)
-    answer = Repo.get_by!(Answer, request_id: request.id, organisation_id: client.id)
-
-    case how do
-      :accept ->
-        ids = scope |> PolicyRequests.answerable_workspaces() |> Enum.map(& &1.id)
-
-        scope
-        |> PolicyRequests.accept(answer.id, ids)
-        |> ok!("#{client.name} did not accept")
-
-      {:decline, reason} ->
-        scope
-        |> PolicyRequests.decline(answer.id, reason)
-        |> ok!("#{client.name} did not decline")
-    end
   end
 
   # Quistral Studio offered to the operator, and not accepted, only where the instance

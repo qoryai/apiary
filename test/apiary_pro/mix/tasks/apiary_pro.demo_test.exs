@@ -21,7 +21,6 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
 
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.Run
-  alias ApiaryPro.PolicyRequests.{Answer, Request}
   alias ApiaryPro.Suspensions.AccountSuspension
   alias ApiaryPro.Tenants.Tenant
   alias ApiaryPro.Transfers.Transfer
@@ -151,7 +150,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert length(Enum.uniq(numbers)) == length(numbers)
   end
 
-  test "features narrowed, requests answered, an offer, an arbitration and suspensions",
+  test "features narrowed, an offer, an arbitration and suspensions",
        %{admin: admin} do
     build(admin, ["--skip-runs"])
     operator = organisation("Zentrevo Works")
@@ -169,20 +168,6 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
              workspace: sandbox
            }) ==
              ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{organisation: vellorin})
-
-    requests = Repo.all(from r in Request, where: r.organisation_id == ^operator.id)
-    assert length(requests) == 3
-    assert [_withdrawn] = Enum.filter(requests, & &1.withdrawn_at)
-
-    states =
-      Repo.all(
-        from a in Answer,
-          where: a.request_id in ^Enum.map(requests, & &1.id),
-          distinct: true,
-          select: a.state
-      )
-
-    assert Enum.sort(states) == Enum.sort([:accepted, :declined, :pending, :withdrawn])
 
     assert %Transfer{kind: :to_operator, operator_id: operator_id} =
              Repo.get_by!(Transfer, organisation_id: organisation("Quistral Studio").id)
@@ -205,7 +190,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
              )
   end
 
-  test "the operator owning its clients: admins first, no runs, no policy requests",
+  test "the operator owning its clients: admins first, no runs",
        %{admin: admin} do
     ApiaryPro.Flags.put_operator_infrastructure(true)
     build(admin)
@@ -234,8 +219,6 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     refute Enum.any?(client_workspaces, &runs?/1)
 
     for workspace <- workspaces(operator), do: assert(runs?(workspace))
-
-    refute Repo.exists?(from r in Request, where: r.organisation_id == ^operator.id)
 
     assert [_narrowed] = Enum.reject(clients, &(:security in ApiaryPro.Features.of(&1)))
 

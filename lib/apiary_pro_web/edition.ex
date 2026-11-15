@@ -5,8 +5,8 @@ defmodule ApiaryProWeb.Edition do
   - The organisation's sidebar: **Policy**, the organisation's policy, in the first group,
     the one without a heading, after the core's entries there, where the feature is on
     (`ApiaryProWeb.PolicyLive.Organisation`), "Organisation policy" in the palette;
-    **Clients**, an operator's clients, with their number beside it, and its policy
-    requests, under Operator. The instance organisation is an
+    **Clients**, an operator's clients, with their number beside it, under Operator. The
+    instance organisation is an
     organisation like any other to those who manage nobody: of the kind `organisation` it
     has no Clients entry, as any organisation has none; made an operator, its Clients
     entry is there once it has clients, and until then its owners reach its clients from
@@ -30,10 +30,8 @@ defmodule ApiaryProWeb.Edition do
     (`ApiaryProWeb.SettingsLive.Ownership`),
     **New workspace** on its Workspaces and on its overview, for an owner, which leads to the
     core's type cards, `/:org/workspaces/new`; the operator of a client on its People page,
-    and each member's workspaces there, with the way to change them; a client's pending
-    policy requests on its policy page (`ApiaryProWeb.Slots`), and its **Policy
-    requests** in its organisation's first group, after Policy, where `security` is on
-    (`ApiaryProWeb.PolicyRequestLive.Index`).
+    and each member's workspaces there, with the way to change them
+    (`ApiaryProWeb.Slots`).
   - The `:notices` slot: that a person of a client's operator reads it and changes
     nothing, and the offer of an organisation's ownership to the admin it names
     (`ApiaryProWeb.Notices`).
@@ -85,27 +83,6 @@ defmodule ApiaryProWeb.Edition do
         action: :"client.read",
         count: :clients,
         filter: &clients_shown?/2
-      },
-      %Entry{
-        section: :operator,
-        key: :client_requests,
-        label: gettext("Policy requests"),
-        icon: "hero-paper-airplane",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/clients/requests" end,
-        place: :organisation,
-        action: :"client.read",
-        filter: &requests_shown?/2
-      },
-      # A client's policy requests from its operator, in its first group, after Policy.
-      %Entry{
-        section: :home,
-        key: :policy_requests,
-        label: gettext("Policy requests"),
-        icon: "hero-inbox-arrow-down",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/policy-requests" end,
-        place: :organisation,
-        action: :"security_policy.read",
-        filter: &inbox_shown?/2
       }
     ]
   end
@@ -133,24 +110,6 @@ defmodule ApiaryProWeb.Edition do
   end
 
   defp clients_shown?(_scope, _counts), do: true
-
-  # An operator's policy requests are `security`'s: with it off the page is not found, and
-  # nothing leads to it. Where Clients is not shown, neither are they. While the operator
-  # owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`) they are not there.
-  defp requests_shown?(scope, counts),
-    do:
-      not ApiaryPro.Flags.operator_infrastructure?() and
-        Apiary.Features.visible?(scope, :security) and clients_shown?(scope, counts)
-
-  # A client's policy requests are `security`'s too, and there while it is a client: an
-  # organisation that left its operator reaches its old requests at their address alone.
-  # While the operator owns its clients they are not there.
-  defp inbox_shown?(%{organisation: organisation} = scope, _counts),
-    do:
-      not ApiaryPro.Flags.operator_infrastructure?() and
-        ApiaryPro.Tenants.client?(organisation) and Apiary.Features.visible?(scope, :security)
-
-  defp inbox_shown?(_scope, _counts), do: false
 
   defp clients_count(%{clients: n}) when is_integer(n), do: n
   defp clients_count(_counts), do: 0
@@ -602,9 +561,9 @@ defmodule ApiaryProWeb.Edition do
   )
 
   # The edition's pages of an organisation, the second segment of `/:org/…`: an operator's
-  # clients, Instance settings' former addresses, which lead to it, a
-  # client's policy requests and the organisation's policy.
-  @organisation_pages ~w(clients instance policy policy-requests)
+  # clients, Instance settings' former addresses, which lead to it, and the organisation's
+  # policy.
+  @organisation_pages ~w(clients instance policy)
 
   # The names no slug may be beyond the core's, which the core adds to its list
   # (`ApiaryWeb.ReservedSlugs`).
@@ -675,13 +634,6 @@ defmodule ApiaryProWeb.Edition do
   def slot(:members_heading, assigns), do: ApiaryProWeb.Slots.members_heading(assigns)
   def slot(:member_access, assigns), do: ApiaryProWeb.Slots.member_access(assigns)
   def slot(:member_actions, assigns), do: ApiaryProWeb.Slots.member_actions(assigns)
-
-  # While the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), its
-  # policy requests are not there, and the policy page says nothing of them.
-  def slot(:policy_notices, assigns) do
-    unless ApiaryPro.Flags.operator_infrastructure?(),
-      do: ApiaryProWeb.Slots.policy_notices(assigns)
-  end
 
   def slot(_name, _assigns), do: nil
 end

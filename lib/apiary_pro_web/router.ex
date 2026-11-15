@@ -117,22 +117,11 @@ defmodule ApiaryProWeb.Router do
       live "/policy/rules/:id/edit", ApiaryProWeb.PolicyLive.Organisation, :edit_rule
       live "/policy/workspaces", ApiaryProWeb.PolicyLive.Organisation, :workspaces
       live "/policy/history", ApiaryProWeb.PolicyLive.Organisation, :history
-      # A client's policy requests from its operator, which whoever writes its policy
-      # accepts or declines.
-      live "/policy-requests", ApiaryProWeb.PolicyRequestLive.Index, :index
-      live "/policy-requests/:id", ApiaryProWeb.PolicyRequestLive.Index, :show
-      live "/policy-requests/:id/decline", ApiaryProWeb.PolicyRequestLive.Index, :decline
       # An operator's clients, and as pages of them the creation of one, the invitation of
       # a client's first owner and its features; its drop and its deletion are confirmed
       # on its row, and the acceptance of an organisation offered to it on the offer's.
       live "/clients", ApiaryProWeb.ClientLive.Index, :index
       live "/clients/new", ApiaryProWeb.ClientLive.Index, :new
-      # The operator's requests for changes to its clients' security policy, and as a page
-      # of them the writing of one.
-      live "/clients/requests", ApiaryProWeb.ClientLive.Requests, :index
-      live "/clients/requests/new", ApiaryProWeb.ClientLive.Requests, :new
-      live "/clients/requests/:id", ApiaryProWeb.ClientLive.Requests, :show
-      live "/clients/requests/:id/withdraw", ApiaryProWeb.ClientLive.Requests, :withdraw
       live "/clients/:id/owner", ApiaryProWeb.ClientLive.Index, :invite_owner
       # Not found while the operator does not own its clients, as /owner is while it does.
       live "/clients/:id/admin", ApiaryProWeb.ClientLive.Index, :invite_admin

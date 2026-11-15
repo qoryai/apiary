@@ -42,12 +42,6 @@ clients: every workspace, the runs and their terminals, the security policy, the
 and the activity. They change nothing there, the policy included; their level in the
 operator matters only inside the operator. Someone who is in the operator and also a member
 of the client changes what their membership in the client allows, and reads the rest.
-<!-- /feature -->
-<!-- feature: managed_organisations, security -->
-What an operator needs of a client's security policy, it asks for with a policy request
-([Policy requests](policy-requests.md)).
-<!-- /feature -->
-<!-- feature: managed_organisations -->
 
 ## Dropping a client
 

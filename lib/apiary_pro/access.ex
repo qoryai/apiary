@@ -223,35 +223,6 @@ defmodule ApiaryPro.Access do
       asked_of: :organisation,
       instance: true
     ),
-    # An operator's requests for changes to its clients' security policy.
-    Action.new(
-      :"policy_request.send",
-      "send an operator's clients a request for changes to their security policy, with a note saying why its harness needs them",
-      feature: :security,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.withdraw",
-      "withdraw an operator's policy request from the clients that have not answered it",
-      feature: :security,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.accept",
-      "accept a policy request of the client's operator: its changes made in the workspaces chosen, as a write of the policy by the person who accepts",
-      feature: :security,
-      roles: @members,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.decline",
-      "decline a policy request of the client's operator, with a reason or none",
-      feature: :security,
-      roles: @members,
-      asked_of: :organisation
-    ),
     # The organisation's policy, above its workspaces' (`ApiaryPro.OrganisationPolicy`).
     Action.new(
       :"organisation_policy.read",
@@ -391,15 +362,7 @@ defmodule ApiaryPro.Access do
   # Not found while `ApiaryPro.Flags.operator_infrastructure?/0` is off, and left out of the
   # table of actions below: the operator's choice of the model providers a client uses.
   @needs_operator_infrastructure [:"client.set_model_chain"]
-  # An operator's policy requests, and its clients' answers to them, are not found while it
-  # is on either.
-  @policy_requests [
-    :"policy_request.send",
-    :"policy_request.withdraw",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
-  @hidden_while_operator_owns [:"client.drop" | @owner_invitations ++ @policy_requests]
+  @hidden_while_operator_owns [:"client.drop" | @owner_invitations]
 
   # The actions over a client's people a client's admin takes on its admins as on its
   # members while the flag is on: nobody in a client is an owner but those who were.
@@ -499,9 +462,8 @@ defmodule ApiaryPro.Access do
        role, in an organisation that does not have the feature `organisation_variables`
        (`ApiaryPro.Features.of/2`);
      - **what kind of organisation it is**: an operator's actions over its clients
-       (`client.*`, `policy_request.send`, `policy_request.withdraw`) are asked in an
-       operator, and not found in an organisation of another kind; answering its policy
-       requests (`policy_request.accept`, `policy_request.decline`) is asked in a client,
+       (`client.*`) are asked in an operator, and not found in an organisation of another
+       kind; leaving its operator (`organisation.leave_operator`) is asked in a client,
        and not found in an organisation with no operator;
      - **the instance organisation**: #{Enum.map_join(@not_on_instance_organisation -- @flagged_transfers, ", ", &"`#{&1}`")}
        are forbidden on it, for every role, the instance's included (`Apiary.Access.refused_on?/2`);
@@ -562,18 +524,12 @@ defmodule ApiaryPro.Access do
     :"client.grant_features",
     :"client.drop",
     :"client.set_model_chain",
-    :"client.delete",
-    :"policy_request.send",
-    :"policy_request.withdraw"
+    :"client.delete"
   ]
 
   # The actions of a client over its place, asked in the client: in an organisation with
   # no operator they are not found.
-  @client_actions [
-    :"organisation.leave_operator",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
+  @client_actions [:"organisation.leave_operator"]
 
   # The instance actions asked of the organisation acted on: a change of kind, and what is
   # never taken on the instance organisation itself, which holds the instance admins, so
@@ -655,8 +611,8 @@ defmodule ApiaryPro.Access do
 
   # hidden?/1 is true when a flag hides `action` now, as a path that does not exist: the
   # actions `ApiaryPro.Flags.transfers?/0` gates while it is off; the first owner's
-  # invitation, a client's drop and the policy requests while
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on; the first admin's invitation and
+  # invitation and a client's drop while `ApiaryPro.Flags.operator_infrastructure?/0` is
+  # on; the first admin's invitation and
   # the operator's choice of a client's model providers while it is off. `check/3` calls
   # `hidden?/2` first, and a page that is not there while a flag hides its action calls
   # `hidden?/1`. Not in the published documentation: what a flag hides is not named there

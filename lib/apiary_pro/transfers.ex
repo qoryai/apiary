@@ -44,7 +44,7 @@ defmodule ApiaryPro.Transfers do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Membership, Organisation}
   alias Apiary.Stacks.Stack
-  alias ApiaryPro.{Grants, PolicyRequests, Suspensions, Tenants}
+  alias ApiaryPro.{Grants, Suspensions, Tenants}
   alias ApiaryPro.Transfers.Transfer
 
   @reason_max 500
@@ -673,8 +673,6 @@ defmodule ApiaryPro.Transfers do
            client |> Tenants.tenant() |> Tenants.operator_changeset(nil) |> Repo.update(),
          parted = Tenants.put_tenant(client, tenant),
          {:ok, _features} <- Grants.written_out(parted, :left),
-         {:ok, _withdrawn} <-
-           PolicyRequests.withdraw_for_client(scope, parted, operator, parting_reason(action)),
          {:ok, _removed} <- remove_operator_harness(operator, parted),
          {:ok, _entry} <-
            Audit.record(Repo, Scope.in_organisation(scope, parted), action, parted, %{
@@ -702,9 +700,6 @@ defmodule ApiaryPro.Transfers do
     {kept, _rows} = Repo.update_all(owned, set: [harness: nil])
     {:ok, deleted + kept}
   end
-
-  defp parting_reason(:"organisation.leave_operator"), do: "left"
-  defp parting_reason(:"client.drop"), do: "dropped"
 
   # The people of both, told once it is written, so their pages load their scope again:
   # the operator's leave the client's pages, and the client's see it has no operator.

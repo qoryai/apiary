@@ -46,9 +46,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
   The list is one column, on the core's pattern of Nodes: its views, its search, its
   Features filter and its order are in the URL, and a status line, always there, says how
   many clients the search and the filters leave, or, where none is left, why, with Clear
-  filters. Nothing beside it repeats a page or a view: the operator's policy requests are
-  a separate page in the sidebar (`ApiaryProWeb.ClientLive.Requests`), and the clients
-  without an owner are a view.
+  filters. Nothing beside it repeats a view: the clients without an owner are a view.
 
   Each client shows its features; an owner of the operator grants them on a page of the
   list, `/:org/clients/:id/features` (`client.grant_features`, `ApiaryPro.Grants`), of the
