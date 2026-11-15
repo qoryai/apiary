@@ -13,6 +13,7 @@ defmodule ApiaryPro.GatewaysTest do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Deletion, Edition, Repo}
+  alias Apiary.Runs.{ProviderCredential, WorkCredential}
   alias ApiaryPro.{Flags, Gateways, Suspensions, Transfers}
   alias ApiaryPro.Tenants.Tenant
 
@@ -133,6 +134,41 @@ defmodule ApiaryPro.GatewaysTest do
 
       assert answers(ctx.first.organisation) == {[], []}
       assert answers(ctx.operator.organisation) == {[], [ctx.second.organisation.id]}
+    end
+  end
+
+  describe "a gateway made in a workspace" do
+    # Organisation O with W1, W2 and W3; operator B operates W2, and B's owner makes a
+    # gateway there while the operator runs the infrastructure of what it operates.
+    setup do
+      Flags.put_operator_infrastructure(true)
+      b = operator_fixture()
+      %{scope: owner, organisation: o} = sign_up_fixture()
+      w1 = owner.workspace
+      w2 = workspace_fixture(o, "W2")
+      w3 = workspace_fixture(o, "W3")
+      operate_fixture(w2, b.organisation)
+      %{b: b, o: o, w1: w1, w2: w2, w3: w3}
+    end
+
+    test "is sealable for a run of that workspace alone, for either chain", ctx do
+      in_w2 = scope_in(ctx.b.user, ctx.o, ctx.w2)
+      assert {:operator, _via} = in_w2.reach
+      gateway = Apiary.NodesFixtures.gateway_fixture(in_w2, name: "edge-b-w2")
+      assert Apiary.Gateways.level(gateway) == {:workspace, ctx.w2.id}
+
+      run_in = &%{organisation_id: ctx.o.id, workspace_id: &1.id}
+      assert WorkCredential.sealable_to?(gateway, run_in.(ctx.w2))
+      assert ProviderCredential.sealable_to?("organisation", gateway, run_in.(ctx.w2))
+
+      for workspace <- [ctx.w1, ctx.w3] do
+        refute WorkCredential.sealable_to?(gateway, run_in.(workspace)), workspace.name
+
+        for chain <- ["organisation", "operator"] do
+          refute ProviderCredential.sealable_to?(chain, gateway, run_in.(workspace)),
+                 "#{workspace.name} #{chain}"
+        end
+      end
     end
   end
 

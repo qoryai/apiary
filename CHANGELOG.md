@@ -1897,6 +1897,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Security
 
+<!-- feature: factory, secrets -->
+- A gateway made in a workspace receives a run's work credential, or a model key of
+  either chain, only for runs of that workspace. Up to this change, a gateway made in one
+  workspace of an organisation was accepted for the runs of any workspace of it.
+<!-- /feature -->
 - Each field for a model provider's key has `autocomplete="new-password"`: **Key** on
   **Add key** and **New model provider**, **New value** on **Edit key**, and the key on
   the set-up's **Model** step. A browser then does not fill it with a saved sign-in

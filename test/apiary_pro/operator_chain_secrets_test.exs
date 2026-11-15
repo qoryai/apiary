@@ -314,9 +314,10 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
       {gateway, _gateway_key} = gateway_of(ctx.operator)
       _provider = operator_chain!(ctx.operator)
       id = ctx.dropped.organisation.id
+      run = %{organisation_id: id, workspace_id: ctx.dropped.workspace.id}
 
       assert Edition.operator_chain_organisation(id) == ctx.operator.organisation.id
-      assert ProviderCredential.sealable_to?("operator", gateway, id)
+      assert ProviderCredential.sealable_to?("operator", gateway, run)
 
       # A drop is not offered while the operator owns its clients: it is done as before.
       Flags.put_operator_infrastructure(false)
@@ -329,7 +330,7 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
       assert ApiaryPro.Tenants.model_chain_of(id) == :organisation
       assert Edition.model_choice_chain(id) == "organisation"
       assert Edition.operator_chain_organisation(id) == nil
-      refute ProviderCredential.sealable_to?("operator", gateway, id)
+      refute ProviderCredential.sealable_to?("operator", gateway, run)
       assert {:ok, []} = Connections.list_providers(ctx.dropped.owner.scope)
     end
   end
@@ -347,7 +348,11 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
 
       assert Edition.model_choice_chain(id) == "organisation"
       assert Edition.operator_chain_organisation(id) == nil
-      refute ProviderCredential.sealable_to?("operator", gateway, id)
+
+      refute ProviderCredential.sealable_to?("operator", gateway, %{
+               organisation_id: id,
+               workspace_id: ctx.on.workspace.id
+             })
 
       {conn, _log} = with_log(fn -> post_secrets(gateway_key, run, digest, provider) end)
       refute conn.status == 200

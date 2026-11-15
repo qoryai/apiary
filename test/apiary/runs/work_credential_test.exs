@@ -49,33 +49,44 @@ defmodule Apiary.Runs.WorkCredentialTest do
 
   describe "sealable_to?/2" do
     @run_organisation Ecto.UUID.generate()
+    @run %{organisation_id: @run_organisation, workspace_id: Ecto.UUID.generate()}
 
-    test "a gateway of the run's organisation, at a workspace or the organisation" do
-      for workspace_id <- [Ecto.UUID.generate(), nil] do
+    test "a gateway of the run's organisation, at the run's workspace or the organisation" do
+      for workspace_id <- [@run.workspace_id, nil] do
         gateway = %Node{
           kind: :gateway,
           organisation_id: @run_organisation,
           workspace_id: workspace_id
         }
 
-        assert WorkCredential.sealable_to?(gateway, @run_organisation)
+        assert WorkCredential.sealable_to?(gateway, @run)
       end
+    end
+
+    test "not a gateway of the run's organisation made in another of its workspaces" do
+      gateway = %Node{
+        kind: :gateway,
+        organisation_id: @run_organisation,
+        workspace_id: Ecto.UUID.generate()
+      }
+
+      refute WorkCredential.sealable_to?(gateway, @run)
     end
 
     test "the instance's gateway" do
       gateway = %Node{kind: :gateway, organisation_id: nil, workspace_id: nil}
-      assert WorkCredential.sealable_to?(gateway, @run_organisation)
+      assert WorkCredential.sealable_to?(gateway, @run)
     end
 
     test "not a gateway of an organisation that does not serve the run's, nor another node" do
       refute WorkCredential.sealable_to?(
                %Node{kind: :gateway, organisation_id: Ecto.UUID.generate()},
-               @run_organisation
+               @run
              )
 
       refute WorkCredential.sealable_to?(
                %Node{kind: :pool, organisation_id: @run_organisation},
-               @run_organisation
+               @run
              )
     end
   end

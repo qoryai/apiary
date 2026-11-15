@@ -179,9 +179,10 @@ defmodule Apiary.Runs.ProviderCredential do
     do: Features.on?(:factory, recorded) and Features.on?(:secrets, recorded)
 
   @doc false
-  # sealable_to?/3 is whether the key of a provider of `chain`, of the run's organisation
-  # `run_organisation_id`, may be sealed for `gateway`, by the level it lives at
-  # (`Apiary.Gateways.level/1`). The instance's gateway serves every organisation, so it
+  # sealable_to?/3 is whether the key of a provider of `chain`, of a run in the workspace
+  # `workspace_id` of the organisation `organisation_id`, may be sealed for `gateway`, by
+  # the level it lives at (`Apiary.Gateways.level/1`). A gateway made in a workspace, of
+  # either chain, only for a run of that workspace. The instance's gateway serves every organisation, so it
   # may receive a key of either chain. A provider of the organisation's chain: only for a
   # gateway of the run's organisation, or the instance's. A provider of an operator's
   # chain: only while the edition returns "operator" for the run's organisation
@@ -191,13 +192,20 @@ defmodule Apiary.Runs.ProviderCredential do
   # (`Apiary.Gateways.serving_organisations/1`), or the instance's. The claim
   # (`Apiary.Dispatches.Handover`) and the secrets request
   # (`Apiary.Runs.SecretsRequest`) both check it.
-  @spec sealable_to?(String.t(), Node.t(), Ecto.UUID.t()) :: boolean
-  def sealable_to?(chain, %Node{kind: :gateway} = gateway, run_organisation_id)
-      when is_binary(run_organisation_id) do
-    sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, run_organisation_id)
+  @spec sealable_to?(String.t(), Node.t(), %{
+          organisation_id: Ecto.UUID.t(),
+          workspace_id: Ecto.UUID.t()
+        }) :: boolean
+  def sealable_to?(_chain, %Node{kind: :gateway} = gateway, %{workspace_id: workspace_id})
+      when is_binary(gateway.workspace_id) and gateway.workspace_id != workspace_id,
+      do: false
+
+  def sealable_to?(chain, %Node{kind: :gateway} = gateway, %{organisation_id: organisation_id})
+      when is_binary(organisation_id) do
+    sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, organisation_id)
   end
 
-  def sealable_to?(_chain, _gateway, _run_organisation_id), do: false
+  def sealable_to?(_chain, _gateway, _run), do: false
 
   defp sealable_at?("organisation", :instance, nil, _run_organisation_id), do: true
 

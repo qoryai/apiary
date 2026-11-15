@@ -400,7 +400,7 @@ defmodule Apiary.Runs.SecretsRequest do
       provider.organisation_id != provider_organisation(provider, run) ->
         refused(run, provider, :organisation)
 
-      not ProviderCredential.sealable_to?(provider.chain, node, run.organisation_id) ->
+      not ProviderCredential.sealable_to?(provider.chain, node, run) ->
         refused(run, provider, :gateway)
 
       true ->
@@ -436,7 +436,7 @@ defmodule Apiary.Runs.SecretsRequest do
   defp work_sealable(_run, nil, _access_key), do: :ok
 
   defp work_sealable(%Run{} = run, %{}, %AccessKey{node: node}) do
-    if WorkCredential.sealable_to?(node, run.organisation_id) do
+    if WorkCredential.sealable_to?(node, run) do
       :ok
     else
       Logger.warning(

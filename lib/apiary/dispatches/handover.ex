@@ -749,13 +749,15 @@ defmodule Apiary.Dispatches.Handover do
   defp model_sealable(
          {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
          %Node{} = gateway,
-         %Workspace{organisation_id: organisation_id},
+         %Workspace{id: workspace_id, organisation_id: organisation_id},
          keys
        ) do
+    run = %{organisation_id: organisation_id, workspace_id: workspace_id}
+
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway, organisation_id) -> ok
+      ProviderCredential.sealable_to?(chain, gateway, run) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end

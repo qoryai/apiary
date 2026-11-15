@@ -384,21 +384,21 @@ defmodule Apiary.Runs.ProviderCredentialTest do
         assert ProviderCredential.sealable_to?(
                  "organisation",
                  ctx.instance_gateway,
-                 scope.organisation.id
+                 run_in(scope)
                )
       end
 
       assert ProviderCredential.sealable_to?(
                "organisation",
                ctx.client_gateway,
-               ctx.client.organisation.id
+               run_in(ctx.client)
              )
 
       for gateway <- [ctx.operator_gateway, ctx.stranger_gateway] do
         refute ProviderCredential.sealable_to?(
                  "organisation",
                  gateway,
-                 ctx.client.organisation.id
+                 run_in(ctx.client)
                )
       end
     end
@@ -407,13 +407,13 @@ defmodule Apiary.Runs.ProviderCredentialTest do
          ctx do
       EditionStubs.ServesAcrossWithChain.chain("operator")
       EditionStubs.ServesAcrossWithChain.operator(ctx.operator.organisation.id)
-      run_organisation = ctx.client.organisation.id
+      run = run_in(ctx.client)
 
-      assert ProviderCredential.sealable_to?("operator", ctx.instance_gateway, run_organisation)
-      assert ProviderCredential.sealable_to?("operator", ctx.operator_gateway, run_organisation)
+      assert ProviderCredential.sealable_to?("operator", ctx.instance_gateway, run)
+      assert ProviderCredential.sealable_to?("operator", ctx.operator_gateway, run)
       # The stranger's gateway serves the client too, but is not the operator's.
-      refute ProviderCredential.sealable_to?("operator", ctx.stranger_gateway, run_organisation)
-      refute ProviderCredential.sealable_to?("operator", ctx.client_gateway, run_organisation)
+      refute ProviderCredential.sealable_to?("operator", ctx.stranger_gateway, run)
+      refute ProviderCredential.sealable_to?("operator", ctx.client_gateway, run)
     end
 
     test "the operator's gateway gets none once it no longer serves the client", ctx do
@@ -424,7 +424,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       refute ProviderCredential.sealable_to?(
                "operator",
                ctx.operator_gateway,
-               ctx.client.organisation.id
+               run_in(ctx.client)
              )
     end
 
@@ -439,7 +439,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
             ctx.stranger_gateway,
             ctx.client_gateway
           ] do
-        refute ProviderCredential.sealable_to?("operator", gateway, ctx.client.organisation.id)
+        refute ProviderCredential.sealable_to?("operator", gateway, run_in(ctx.client))
       end
     end
 
@@ -447,16 +447,36 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       EditionStubs.ServesAcrossWithChain.operator(ctx.operator.organisation.id)
 
       for gateway <- [ctx.instance_gateway, ctx.operator_gateway] do
-        refute ProviderCredential.sealable_to?("operator", gateway, ctx.client.organisation.id)
+        refute ProviderCredential.sealable_to?("operator", gateway, run_in(ctx.client))
       end
+    end
+
+    test "a gateway made in a workspace gets a key of a run of that workspace alone", ctx do
+      other = workspace_fixture(ctx.client.organisation, "Other")
+      assert is_binary(ctx.client_gateway.workspace_id)
+
+      assert ProviderCredential.sealable_to?(
+               "organisation",
+               ctx.client_gateway,
+               run_in(ctx.client)
+             )
+
+      refute ProviderCredential.sealable_to?("organisation", ctx.client_gateway, %{
+               organisation_id: ctx.client.organisation.id,
+               workspace_id: other.id
+             })
     end
 
     test "a node that is not a gateway gets no key", ctx do
       pool = instance_pool_fixture()
 
       for chain <- ["organisation", "operator"] do
-        refute ProviderCredential.sealable_to?(chain, pool, ctx.client.organisation.id)
+        refute ProviderCredential.sealable_to?(chain, pool, run_in(ctx.client))
       end
     end
+
+    # The place of a run in the scope's workspace.
+    defp run_in(scope),
+      do: %{organisation_id: scope.organisation.id, workspace_id: scope.workspace.id}
   end
 end
