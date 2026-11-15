@@ -141,8 +141,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
           assert Access.authorize(as, action, on(ctx, on)) == :ok, "#{action}"
         end
 
-        assert Access.authorize(as, :"harness.save", ctx.operated.workspace) == :ok
-
         for {action, on} <- [
               {:"security_policy.lock", :workspace},
               {:"security_policy.edit", :workspace},
@@ -153,6 +151,7 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
         end
 
         for {action, on} <- [
+              {:"harness.save", :workspace},
               {:"organisation.rename", :organisation},
               {:"connection.write", :organisation},
               {:"provider.write", :organisation},
@@ -423,8 +422,8 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
 
   describe "what the operator sets in an operated workspace" do
     # Each action with what it is asked of: in Main, which the operator operates. The
-    # organisation's model providers and runtimes, and the model choices, are not among
-    # them.
+    # organisation's model providers and runtimes, the model choices and the harness
+    # documents are not among them.
     @operator_held [
       {:"node.create", :workspace},
       {:"node.edit", :workspace},
@@ -436,8 +435,7 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
       {:"access_key.add", :workspace},
       {:"access_key.revoke", :workspace},
       {:"time_limit.edit", :workspace},
-      {:"retention.edit", :workspace},
-      {:"harness.save", :workspace}
+      {:"retention.edit", :workspace}
     ]
 
     test "is held by the operator's owners and admins, and not there for anyone else",

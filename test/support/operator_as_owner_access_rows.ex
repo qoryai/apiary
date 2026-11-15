@@ -20,11 +20,12 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   #
   # The operator operates Main. In Main, the operator's owners and admins act at their
   # level on what the operator changes there (`ApiaryPro.Access`'s `@operator_in_workspace`):
-  # its nodes, a pool's limit and keys, its time limits and retention, the harness saved in
-  # it, its process and artifact types, and its model choices; someone in both at the
-  # higher of their two levels. Everything else in Main they read. Of what the
-  # organisation owns as a whole, a person of the operator with no membership there finds
-  # nothing. What the operator sets in Main is not there for anyone else, the
+  # its nodes, a pool's limit and keys, its time limits and retention, its process and
+  # artifact types, and its model choices; someone in both at the higher of their two
+  # levels. Everything else in Main they read, and the harness documents saved in Main
+  # only the organisation's owners and admins save. Of what the organisation owns as a
+  # whole, a person of the operator with no membership there finds nothing. What the
+  # operator sets in Main is not there for anyone else, the
   # organisation's owners and admins among them. The organisation's people act in it, by
   # their membership, as in any organisation.
 
@@ -74,8 +75,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"access_key.add",
     :"access_key.revoke",
     :"time_limit.edit",
-    :"retention.edit",
-    :"harness.save"
+    :"retention.edit"
   ]
 
   # What the operator changes in Main beside what it sets: the organisation's owners and
@@ -238,7 +238,10 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"gate.approve", yes: @in_client},
       {:"artifact.write", yes: @in_client},
       {:"target.set_further_repositories", yes: @own_admins},
-      {:"target.rebuild_environment", yes: @in_client}
+      {:"target.rebuild_environment", yes: @in_client},
+      # The harness documents saved in Main: the organisation's owners and admins save
+      # them, and a level in the operator counts for nothing there.
+      {:"harness.save", yes: @own_admins}
     ] ++
       Enum.map(@operator_held, &{&1, yes: @operator_owners_admins, on: :workspace}) ++
       Enum.map(

@@ -1,8 +1,8 @@
 defmodule ApiaryPro.OperatorHarnessOwnerTest do
   # Who owns a harness document saved in a workspace an operator operates, and who may save
   # one (the core's answer to `Apiary.Edition.harness_owner/1` and the action
-  # `harness.save`), through the core's `Apiary.Stacks.put_stack/3`, which asks the edition
-  # for the owner and checks no access. The flags are set for this process.
+  # `harness.save`), through the core's `Apiary.Stacks.put_stack/3`, which reads the owner
+  # from the edition and checks no access. The flags are set for this process.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -70,25 +70,40 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
   end
 
   describe "the action harness.save in an operated workspace" do
-    test "is held by the operator's owners and admins", ctx do
-      workspace = ctx.operated.workspace
+    # The operator's people save no harness document there, whatever the flag: the
+    # organisation's owners and admins save them.
+    for on <- [true, false] do
+      test "is the organisation's owners' and admins' with the flag #{on}", ctx do
+        Flags.put_operator_infrastructure(unquote(on))
+        workspace = ctx.operated.workspace
+        organisation_admin = organisation_member_fixture(ctx.operated, :admin)
+        organisation_member = organisation_member_fixture(ctx.operated, :member)
 
-      assert Access.authorize(ctx.operated.scope, :"harness.save", workspace) == :ok
-      assert Access.authorize(in_operated(ctx, ctx.admin), :"harness.save", workspace) == :ok
-    end
+        for scope <- [ctx.operated.owner.scope, organisation_admin.scope] do
+          assert Access.authorize(scope, :"harness.save", workspace) == :ok
+        end
 
-    test "is not there for the operator's members, nor for the organisation's people", ctx do
-      organisation_admin = organisation_member_fixture(ctx.operated, :admin)
-      organisation_member = organisation_member_fixture(ctx.operated, :member)
+        assert Access.authorize(organisation_member.scope, :"harness.save", workspace) ==
+                 {:error, :forbidden}
 
-      for scope <- [
-            in_operated(ctx, ctx.member),
-            ctx.operated.owner.scope,
-            organisation_admin.scope,
-            organisation_member.scope
-          ] do
-        assert Access.authorize(scope, :"harness.save", ctx.operated.workspace) ==
-                 {:error, :not_found}
+        assert {:ok, %Stack{} = stack} = save(ctx.operated.owner.scope, ctx)
+        assert stack.owner_organisation_id == ctx.operated.organisation.id
+      end
+
+      test "is not there for the operator's people with the flag #{on}", ctx do
+        Flags.put_operator_infrastructure(unquote(on))
+
+        for scope <- [
+              ctx.operated.scope,
+              in_operated(ctx, ctx.admin),
+              in_operated(ctx, ctx.member)
+            ] do
+          assert Access.authorize(scope, :"harness.save", ctx.operated.workspace) ==
+                   {:error, :not_found}
+        end
+
+        assert Edition.harness_owner(ctx.operated.scope) == nil
+        assert save(ctx.operated.scope, ctx) == {:error, :forbidden}
       end
     end
   end
@@ -97,23 +112,6 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
     setup do
       Flags.put_operator_infrastructure(false)
       :ok
-    end
-
-    test "the organisation's people own and hold, the operator's people do not", ctx do
-      organisation = ctx.operated.organisation
-      workspace = ctx.operated.workspace
-
-      assert Edition.harness_owner(ctx.operated.owner.scope) == organisation.id
-      assert Edition.harness_owner(ctx.operated.scope) == nil
-      assert save(ctx.operated.scope, ctx) == {:error, :forbidden}
-
-      assert Access.authorize(ctx.operated.owner.scope, :"harness.save", workspace) == :ok
-
-      assert Access.authorize(ctx.operated.scope, :"harness.save", workspace) ==
-               {:error, :forbidden}
-
-      assert {:ok, %Stack{} = stack} = save(ctx.operated.owner.scope, ctx)
-      assert stack.owner_organisation_id == organisation.id
     end
 
     test "an instance admin's save is the instance organisation's", ctx do

@@ -239,11 +239,11 @@ defmodule ApiaryPro.Access do
   # `ApiaryPro.Flags.operator_infrastructure?/0` is on, only the operator's owners and
   # admins hold there: for anyone else in the workspace, the organisation's owners and
   # admins among them, it is not there. They are the workspace's nodes, a pool's instance
-  # limit and the access keys, the time limits of the workspace and its targets, its
-  # retention, and the harness documents saved in it. Reading any of these is not among
-  # them; the organisation reads it. The organisation keeps its integrations, services,
-  # model providers and runtimes, and connects its systems (`connection.write`,
-  # `adapter.connect`).
+  # limit and the access keys, the time limits of the workspace and its targets, and its
+  # retention. Reading any of these is not among them; the organisation reads it. The
+  # organisation keeps its integrations, services, model providers and runtimes, the
+  # harness documents saved in the workspace (`harness.save`), and connects its systems
+  # (`connection.write`, `adapter.connect`).
   @operator_held [
     :"node.create",
     :"node.edit",
@@ -255,16 +255,15 @@ defmodule ApiaryPro.Access do
     :"access_key.add",
     :"access_key.revoke",
     :"time_limit.edit",
-    :"retention.edit",
-    :"harness.save"
+    :"retention.edit"
   ]
 
   # What an operator's person changes in a workspace the operator operates, at the role
   # their level there gives them (`operator_role/2`): the workspace's settings, its time
-  # limits and retention; its harness and its workflows, the process and its artifact
-  # types; its model plan, the model choices; and its node pools, with their access keys.
-  # Nothing else they change there: no person of the organisation, no secret, variable,
-  # connection or security policy. Of what the organisation owns they change nothing.
+  # limits and retention; the process and its artifact types; its model plan, the model
+  # choices; and its node pools, with their access keys. Nothing else they change there:
+  # no person of the organisation, no harness document, secret, variable, connection or
+  # security policy. Of what the organisation owns they change nothing.
   @operator_in_workspace @operator_held ++
                            [:"process.edit", :"artifact_type.edit", :"model_choice.write"]
 
@@ -327,8 +326,8 @@ defmodule ApiaryPro.Access do
        (`reads/0`) but their secrets and variables; nothing the organisation owns as a
        whole is found, its policy, people, connections, secrets and variables among them,
        nor any action asked of the organisation. In such a workspace they
-       change only the workspace's settings, harness, workflows, model plan and node
-       pools with their access keys, at the role their level in the operator maps to
+       change only the workspace's settings, process, model plan and node pools with
+       their access keys, at the role their level in the operator maps to
        there: while the configuration flag `operator_infrastructure` is on, an owner's or an
        admin's for its owners and admins, else `reader`. While it is on, those of
        these that the operator sets are not found for anyone else in the workspace, the
