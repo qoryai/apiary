@@ -186,6 +186,33 @@ defmodule ApiaryWeb.Contract.CancelRunTest do
       assert read(ctx, "/artifacts").status == 200
     end
 
+    test "a cancelled run lost after its attach and not lost for good stays refused", ctx do
+      {:ok, _cancelled} = Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
+      now = DateTime.utc_now()
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [
+            state: "lost",
+            lost_at: DateTime.add(now, -300, :second),
+            backstop_at: DateTime.add(now, 3600, :second)
+          ]
+        )
+
+      # Refused at the controller, before the body is read: a body outside the contract
+      # is 409 too, not 400.
+      for conn <- [
+            write(ctx, "/artifacts", explainer()),
+            write(ctx, "/verdict", %{"verdict" => "passed"}),
+            write(ctx, "/verdict", %{"verdict" => "maybe"}),
+            write(ctx, "/artifacts", "{")
+          ] do
+        assert json_response(conn, 409) == @cancelled
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a push already past the controller's check reads the mark under the lock", ctx do
       {:ok, _cancelled} = Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 

@@ -675,19 +675,85 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert Map.take(run(run_id), [:attached_at, :gateway_instance_id, :updated_at]) == attached
     end
 
-    test "after the run is lost or ended, any instance's attach is 410", ctx do
-      {run_id, run_key} = registered(ctx)
-      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+    # The run, attached, as the lost-run check leaves it 300 seconds after its loss, its
+    # backstop ahead, with whatever else `changes` sets.
+    defp lost(run_id, changes) do
+      set = [
+        state: "lost",
+        lost_at: DateTime.add(now(), -300, :second),
+        backstop_at: DateTime.add(now(), 3600, :second)
+      ]
 
       Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
-        set: [state: "lost", lost_at: now()]
+        set: Keyword.merge(set, changes)
       )
+    end
 
-      for instance <- [instance_id(), @other_instance] do
-        conn = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: instance)
-        assert response(conn, 410) == ""
-        assert signed_answer?(conn)
+    test "a run lost and not lost for good is attached again by its instance, the stored answer",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      first = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert first.status == 200
+      lost(run_id, [])
+      before = Map.take(run(run_id), [:attached_at, :attach_answer_digest, :updated_at])
+
+      again = attach(ctx.gateway_key, run_id, attach_body(run_key, %{"interval_seconds" => 60}))
+      assert again.status == 200
+      assert signed_answer?(again)
+      assert again.resp_body == first.resp_body
+      assert get_resp_header(again, "etag") == get_resp_header(first, "etag")
+
+      assert get_resp_header(again, "x-qory-run-configuration") ==
+               get_resp_header(first, "x-qory-run-configuration")
+
+      run = run(run_id)
+      assert run.state == "lost"
+      assert Map.take(run, [:attached_at, :attach_answer_digest, :updated_at]) == before
+    end
+
+    test "another instance's attach of a run lost and not lost for good is 409 run_attached",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+      lost(run_id, [])
+
+      conn = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: @other_instance)
+      assert json_response(conn, 409) == %{"error" => "run_attached"}
+      assert signed_answer?(conn)
+      assert run(run_id).gateway_instance_id == instance_id()
+    end
+
+    test "once the run is lost for good or has its exit, any instance's attach is 410", ctx do
+      ended = [
+        silenced: [silenced_at: DateTime.add(now(), -60, :second)],
+        past_backstop: [backstop_at: DateTime.add(now(), -1, :second)],
+        exited: [exited_at: DateTime.add(now(), -60, :second)]
+      ]
+
+      for {_case, changes} <- ended do
+        {run_id, run_key} = registered(ctx)
+        assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+        lost(run_id, changes)
+
+        for instance <- [instance_id(), @other_instance] do
+          conn = attach(ctx.gateway_key, run_id, attach_body(run_key), instance_id: instance)
+          assert response(conn, 410) == ""
+          assert signed_answer?(conn)
+        end
       end
+    end
+
+    test "a direct run's gateway attaches it again 2 hours after its loss, with no backstop",
+         ctx do
+      {run_id, run_key} = registered(ctx)
+      first = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert first.status == 200
+      assert run(run_id).backstop_at == nil
+      lost(run_id, lost_at: DateTime.add(now(), -7200, :second), backstop_at: nil)
+
+      again = attach(ctx.gateway_key, run_id, attach_body(run_key))
+      assert again.status == 200
+      assert again.resp_body == first.resp_body
     end
 
     test "a batch or a heartbeat from another instance is 409 wrong_gateway, nothing stored",

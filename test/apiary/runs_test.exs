@@ -40,9 +40,11 @@ defmodule Apiary.RunsTest do
 
       run_fixture(scope, Map.merge(marked, %{state: "lost", backstop_at: later}))
       run_fixture(scope, Map.merge(marked, %{state: "running"}))
-      # Lost for good, and a cancelled run with its exit: neither is alive.
+      # Lost for good, a cancelled run with its exit, and a lost one whose events are
+      # pruned: none is alive.
       run_fixture(scope, Map.merge(marked, %{state: "lost", silenced_at: now}))
       run_fixture(scope, Map.merge(marked, %{state: "cancelled", exit_state: "cancelled"}))
+      run_fixture(scope, Map.merge(marked, %{state: "lost", events_pruned_at: now}))
       run_fixture(scope, %{state: "lost", backstop_at: later})
 
       assert Runs.count_alive(scope) == 2
@@ -62,6 +64,7 @@ defmodule Apiary.RunsTest do
       running = run_fixture(scope, %{state: "running"})
       pending = run_fixture(scope, %{state: "pending"})
       run_fixture(scope, Map.merge(marked, %{state: "lost", silenced_at: now}))
+      run_fixture(scope, Map.merge(marked, %{state: "lost", events_pruned_at: now}))
       run_fixture(scope, %{state: "lost", backstop_at: later})
       run_fixture(scope, %{state: "completed"})
 

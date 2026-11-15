@@ -15,6 +15,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias Apiary.{Policy, Repo, SealedOpen, SigningKey, WorkCredentialStub}
   alias Apiary.Adapters.Collection
   alias Apiary.Audit.Entry
+  alias Apiary.Connections
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelKeys.Copy
@@ -297,6 +298,48 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       conn = post_secrets(ctx, request(ctx))
       assert conn.status == 200
       assert signed_answer?(conn)
+    end
+
+    test "200 for a run lost after its attach and not lost for good", ctx do
+      lost!(ctx, [])
+
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      assert [_entry] = seals()
+    end
+
+    test "410, with no body, for a run lost for good, or lost with its exit or pruned events",
+         ctx do
+      for changes <- ended_lost_cases() do
+        ended_lost!(ctx, changes)
+
+        conn = post_secrets(ctx, request(ctx))
+        assert conn.status == 410
+        assert conn.resp_body == ""
+        assert signed_answer?(conn)
+      end
+
+      assert seals() == []
+    end
+
+    test "a run lost and not lost for good keeps its provider from deletion until lost for good",
+         ctx do
+      {:ok, _choice} = Apiary.ModelChoices.delete_choice(ctx.scope, :workspace)
+      lost!(ctx, [])
+
+      assert Connections.delete_provider(ctx.scope, ctx.provider) ==
+               {:error, {:provider_in_use, %{places: [], runs: [ctx.run.public_id]}}}
+
+      for changes <- ended_lost_cases() do
+        ended_lost!(ctx, changes)
+
+        assert {:error, :deleted} =
+                 Repo.transaction(fn ->
+                   {:ok, _deleted} = Connections.delete_provider(ctx.scope, ctx.provider)
+                   Repo.rollback(:deleted)
+                 end)
+      end
     end
 
     test "410 run_configuration_superseded for a digest the run is not answered now", ctx do
@@ -887,6 +930,22 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       refute sentence =~ "Received"
     end
 
+    test "for a run lost after its attach and not lost for good, is answered its credential",
+         ctx do
+      lost!(ctx, [])
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+      assert %{"value" => @token} = value(plaintext, "work-1")
+      assert [%Entry{details: %{"outcome" => "issued"}}] = issues()
+    end
+
     test "409 credentials_differ for its names out of order, before any call", ctx do
       conn = post_secrets(ctx, request(ctx, credentials: Enum.reverse(names(ctx))))
       assert conn.status == 409
@@ -1140,6 +1199,52 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     {body, _digest} = ApiaryWeb.Contract.Configuration.document(key)
     Map.has_key?(Jason.decode!(body), "secrets")
   end
+
+  # The run, attached, as the lost-run check leaves it 300 seconds after its loss, its
+  # backstop ahead, with whatever else `changes` sets.
+  defp lost!(ctx, changes) do
+    now = DateTime.utc_now()
+
+    # Each call starts again from a lost run with no end, whatever an earlier call set.
+    set = [
+      state: "lost",
+      lost_at: DateTime.add(now, -300, :second),
+      backstop_at: DateTime.add(now, 3600, :second),
+      silenced_at: nil,
+      exited_at: nil,
+      exit_state: nil,
+      events_pruned_at: nil
+    ]
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: Keyword.merge(set, changes)
+      )
+  end
+
+  # The ways a run lost after its attach has ended: lost for good, by its silence or past
+  # its backstop; with its exit, folded (`exited_at`, `exit_state`) or only stored (the
+  # `dev.qory.run.exited` event); or with its events pruned. The stored exit comes last,
+  # as `lost!/2` does not delete events.
+  defp ended_lost_cases do
+    now = DateTime.utc_now()
+
+    [
+      [silenced_at: DateTime.add(now, -60, :second)],
+      [backstop_at: DateTime.add(now, -1, :second)],
+      [exited_at: now],
+      [exit_state: "completed"],
+      [events_pruned_at: now],
+      :stored_exit
+    ]
+  end
+
+  defp ended_lost!(ctx, :stored_exit) do
+    lost!(ctx, [])
+    Apiary.RunEventsFixtures.event_fixture(Repo.get!(Run, ctx.run.id), 99, "run.exited", %{})
+  end
+
+  defp ended_lost!(ctx, changes), do: lost!(ctx, changes)
 
   defp running!(ctx) do
     {1, _rows} =

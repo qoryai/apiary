@@ -22,8 +22,9 @@ defmodule Apiary.Runs.WorkCredential do
   #      exception on the call path, whose message is never read.
   #   3. The answer's check against the entry (`Apiary.Runs.RunCredentialIssue.check/3`),
   #      with its causes.
-  #   4. The run, read again, is still live: pending or running, its sending not ended
-  #      (`:run_not_live`).
+  #   4. The run, read again, is still live (`Apiary.Runs.Sender.live?/2`): pending or
+  #      running, or lost after its attach and not lost for good, with no exit and no
+  #      pruned events (`:run_not_live`).
   #
   # `record_issued/3` asks `Apiary.Access` again, as the credential goes out. After the
   # seal, `keep/1` keeps the answer's apply items on the entry
@@ -289,11 +290,11 @@ defmodule Apiary.Runs.WorkCredential do
     end
   end
 
-  # The run, read again after the call.
+  # The run, read again after the call, on the clock read then.
   defp still_live(%Run{id: id}) do
     case Repo.get(Run, id) do
       %Run{} = run ->
-        if run.state in Run.alive_states() and not Sender.sending_ended?(run),
+        if Sender.live?(run, DateTime.utc_now()),
           do: :ok,
           else: {:error, :run_not_live, nil}
 
