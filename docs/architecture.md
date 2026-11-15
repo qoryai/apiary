@@ -402,9 +402,10 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   of the edition at a core path (`except:`), and is the one the endpoint dispatches to
   (`ApiaryWeb.Edition.router/0`); navigation entries, their groups and their counts
   (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the entries of the breadcrumb's
-  organisation menu and workspace menu, and the heading the organisation menu lists a
-  place the edition gives under (`switcher_entries/1`, `workspace_switcher_entries/1`,
-  `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
+  organisation menu and workspace menu, and which workspaces of a place the edition gives
+  the organisation menu lists under it and which under another organisation
+  (`switcher_entries/1`, `workspace_switcher_entries/1`, `switcher_place/1`;
+  `place_scope/2`, which the core no longer asks); what a page says to
   a person it lets in without a membership, of a refusal the edition makes, and, where the pages
   `who_may_sentence/2` lists call it, of who may take an action, which changes only the words,
   since `Apiary.Access` decides (`reader_sentence/2`,
@@ -680,8 +681,8 @@ schemas beside it:
   through its operator or as an instance admin, and which workspaces a member reaches:
   the edition's `reach/1`, `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`,
   `reaches_workspace?/3` and `reached_workspaces/2`. `ApiaryPro.Places` is every
-  organisation a person reaches from the switcher, their memberships and the clients of
-  each operator they belong to, each an `ApiaryPro.ClientReach`.
+  organisation a person reaches from the switcher, their memberships and the organisations
+  whose workspaces an operator they belong to operates, each an `ApiaryPro.ClientReach`.
 - `ApiaryPro.WorkspaceAccess`: which workspaces a member reaches, one row per person and
   workspace, adding a member to a workspace and removing them from one (Workspace
   access, below).

@@ -1212,6 +1212,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   is not deleted or made an organisation, while a link stands. A client that leaves its
   operator, or that the operator drops, ends that operator's links in it.
 <!-- /feature -->
+<!-- feature: managed_organisations -->
+- The organisation menu lists a workspace an operator operates under the operator, after
+  the operator's workspaces, as "workspace · organisation", for a person who reaches it
+  through the operator alone. The group "Clients of" an operator, with its folded heading
+  and count, is gone; an organisation is listed only for its members.
+<!-- /feature -->
 
 <!-- feature: factory, secrets -->
 - A model provider follows the catalogue entry of its kind in the Qory Apiary release it

@@ -1245,13 +1245,13 @@ holds none; `Apiary.Access.reader/1` says how a person without a membership ther
 it, `:operator` or `:instance`, or nil, and the edition's pages say so to them
 (`ApiaryProWeb.Readers`). The path scope (`Apiary.Organisations.resolve_scope/4`) opens an
 operated workspace for the operator's people and any organisation for an instance admin,
-with no membership there; the organisation menu lists each organisation a person reaches
-through the operators they belong to, with the workspaces those operators operate there
-(`Apiary.Organisations.list_places/1`, `ApiaryPro.Places`, each an
-`ApiaryPro.ClientReach`), under the name of the operator of its first such workspace
-by name
-(`ApiaryProWeb.Edition.place_group/1`); the instance admins open another organisation from the instance
-page.
+with no membership there. For the organisation menu, `Apiary.Organisations.list_places/1`
+(`ApiaryPro.Places`) returns each organisation a person reaches through the operators they
+belong to, with the workspaces those operators operate there, each an
+`ApiaryPro.ClientReach`. The menu lists each such workspace under the operator, as
+"workspace · organisation", unless the person reaches it through the organisation too,
+and lists the organisation only for its members (`ApiaryProWeb.Edition.switcher_place/1`).
+The instance admins open another organisation from the instance page.
 
 `can?/3` answers from the reach in the scope. `authorize/3` reads each source again
 (`ApiaryPro.Reach.reload/2`): the membership there, the memberships in the operators of

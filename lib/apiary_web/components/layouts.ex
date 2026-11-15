@@ -1431,20 +1431,21 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The organisation menu, two panels under a search. On the left the organisations the
-  # person reaches, by name: their own first, then the places of the edition's groups
-  # (`c:ApiaryWeb.Edition.place_group/1`) under their own headings, each folded behind its
-  # heading and its count unless the page's organisation is in it, and opened by a search
-  # that finds a place in it. Each is a link to the organisation, which lands in the
-  # workspace the person last used there (`switch_organisation_path/2`), and a `›` button
-  # that shows its workspaces. On the right the workspaces of the organisation pointed at,
-  # by name, each a link to that workspace (`switch_workspace_path/3`); the `Switcher`
-  # hook points at the page's organisation when the menu opens, then at the one under the
-  # pointer or with focus. Every place is in the markup. A link loads the page afresh, so
-  # the session remembers the workspace for `/`. Last, Your organisations and the
-  # edition's entries (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
+  # person reaches, by name, under Your organisations. Each is a link to the organisation,
+  # which lands in the workspace the person last used there (`switch_organisation_path/2`),
+  # and a `›` button that shows its workspaces. On the right the workspaces of the
+  # organisation pointed at, by name, then those of other organisations the edition lists
+  # under it (`c:ApiaryWeb.Edition.switcher_place/1`) as "workspace · organisation", each a
+  # link to that workspace (`switch_workspace_path/3`). The menu opens on the page's
+  # organisation where it lists the page's workspace, else on the place that lists it
+  # (`open_place/3`); the `Switcher` hook points at it, then at the one under the pointer
+  # or with focus. Every place is in the markup. A link loads the page afresh, so the
+  # session remembers the workspace for `/`. Last, Your organisations and the edition's
+  # entries (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
   # An id made of slugs, which hold only a-z, 0-9 and hyphens, has its fixed words before
   # the slug, never after, and joins an organisation's slug to a workspace's with `_`, so
-  # no two are the same (`switch-acme_prod` is never `switch-acme-prod`'s).
+  # no two are the same (`switch-acme_prod` is never `switch-acme-prod`'s); a workspace
+  # listed under another organisation has both slugs (`switch-ops_acme_prod`).
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
   attr :places, :list, required: true
@@ -1452,12 +1453,12 @@ defmodule ApiaryWeb.Layouts do
   attr :switcher_entries, :list, required: true
 
   defp organisation_menu(assigns) do
-    groups = place_groups(assigns.places)
+    listed = switcher_places(assigns.places)
 
     assigns =
       assigns
-      |> assign(:groups, groups)
-      |> assign(:listed, Enum.flat_map(groups, &elem(&1, 1)))
+      |> assign(:listed, listed)
+      |> assign(:open, open_place(listed, assigns.organisation, assigns.workspace))
 
     ~H"""
     <div
@@ -1482,38 +1483,13 @@ defmodule ApiaryWeb.Layouts do
       </div>
       <div class="q-switcher-cols">
         <div id="organisation-menu-places" class="q-switcher-list q-switcher-main" data-panel>
-          <section
-            :for={{{heading, places}, g} <- Enum.with_index(@groups)}
-            class="q-switcher-group"
-            data-group
-          >
-            <h3 id={"organisation-menu-group-#{g}"} class="q-switcher-heading">
-              <%= if heading do %>
-                <button
-                  type="button"
-                  class="q-switcher-fold"
-                  aria-expanded={to_string(group_open?(places, @organisation))}
-                  aria-controls={"organisation-menu-group-#{g}-places"}
-                  phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-                  data-fold
-                >
-                  <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
-                  <span class="truncate" title={heading}>{heading}</span>
-                  <span class="q-switcher-n">{Format.number(length(places))}</span>
-                </button>
-              <% else %>
-                {gettext("Your organisations")}
-              <% end %>
+          <section class="q-switcher-group" data-group>
+            <h3 id="organisation-menu-group" class="q-switcher-heading">
+              {gettext("Your organisations")}
             </h3>
-            <ul
-              id={"organisation-menu-group-#{g}-places"}
-              aria-labelledby={"organisation-menu-group-#{g}"}
-              hidden={heading && !group_open?(places, @organisation)}
-              phx-mounted={JS.ignore_attributes(["hidden"])}
-              data-fold-list={heading && "true"}
-            >
+            <ul aria-labelledby="organisation-menu-group">
               <li
-                :for={{place, _workspaces} <- places}
+                :for={{place, _workspaces} <- @listed}
                 class="q-switcher-org"
                 data-org={place.organisation.slug}
                 data-search={search_text([place.organisation.name, place.organisation.slug])}
@@ -1522,7 +1498,7 @@ defmodule ApiaryWeb.Layouts do
                   id={"switch-#{place.organisation.slug}"}
                   href={switch_organisation_path(@nav, place.organisation)}
                   class="q-switcher-place"
-                  aria-current={current_organisation?(place, @organisation) && "true"}
+                  aria-current={open?(place, @open) && "true"}
                   data-switch
                 >
                   <.avatar name={place.organisation.name} kind="organisation" size="xs" />
@@ -1530,7 +1506,7 @@ defmodule ApiaryWeb.Layouts do
                     {place.organisation.name}
                   </span>
                   <.icon
-                    :if={current_organisation?(place, @organisation)}
+                    :if={open?(place, @open)}
                     name="hero-check-micro"
                     class="ml-auto size-4 flex-none text-accent"
                   />
@@ -1542,7 +1518,7 @@ defmodule ApiaryWeb.Layouts do
                     gettext("Show the workspaces of %{name}", name: place.organisation.name)
                   }
                   aria-controls="organisation-menu-workspaces"
-                  aria-expanded={to_string(current_organisation?(place, @organisation))}
+                  aria-expanded={to_string(open?(place, @open))}
                   phx-mounted={JS.ignore_attributes(["aria-expanded"])}
                   data-show
                 >
@@ -1575,7 +1551,7 @@ defmodule ApiaryWeb.Layouts do
             :for={{place, workspaces} <- @listed}
             id={"organisation-menu-of-#{place.organisation.slug}"}
             data-workspaces={place.organisation.slug}
-            hidden={!current_organisation?(place, @organisation)}
+            hidden={!open?(place, @open)}
             phx-mounted={JS.ignore_attributes(["hidden"])}
           >
             <h3
@@ -1585,17 +1561,19 @@ defmodule ApiaryWeb.Layouts do
               {gettext("Workspaces of %{name}", name: place.organisation.name)}
             </h3>
             <ul aria-labelledby={"organisation-menu-heading-#{place.organisation.slug}"}>
-              <li :for={w <- workspaces}>
+              <li :for={{in_organisation, w} <- workspaces}>
                 <.link
                   :if={w}
-                  id={"switch-#{place.organisation.slug}_#{w.slug}"}
-                  href={switch_workspace_path(@nav, place.organisation, w)}
+                  id={switch_id(place, in_organisation, w)}
+                  href={switch_workspace_path(@nav, in_organisation, w)}
                   class="q-switcher-place"
                   aria-current={current_workspace?(w, @workspace) && "true"}
                   data-switch
-                  data-search={search_text([w.name, w.slug])}
+                  data-search={search_text(switch_words(place, in_organisation, w))}
                 >
-                  <span class="truncate" title={w.name}>{w.name}</span>
+                  <span class="truncate" title={switch_label(place, in_organisation, w)}>
+                    {switch_label(place, in_organisation, w)}
+                  </span>
                   <.icon
                     :if={current_workspace?(w, @workspace)}
                     name="hero-check-micro"
@@ -1746,26 +1724,81 @@ defmodule ApiaryWeb.Layouts do
     }
   end
 
-  # The places by the organisation menu's groups: the person's own organisations first,
-  # then each group the edition names (`c:ApiaryWeb.Edition.place_group/1`), in the order
-  # its first place came; within each, the organisations by name, each with its
-  # workspaces by name, `[nil]` for one that reaches none yet.
-  defp place_groups(places) do
-    grouped =
+  # The places by name, each with `{organisation, workspace}` items: its workspaces by name,
+  # then those of other organisations `c:ApiaryWeb.Edition.switcher_place/1` puts under it;
+  # `{organisation, nil}` for none.
+  defp switcher_places(places) do
+    listed =
       places
       |> Enum.map(&elem(&1, 0))
       |> Enum.uniq_by(& &1.organisation_id)
-      |> Enum.map(&{ApiaryWeb.Edition.place_group(&1), &1})
+      |> Enum.map(&{&1, ApiaryWeb.Edition.switcher_place(&1)})
 
-    headings = grouped |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.sort_by(&(!is_nil(&1)))
+    moved =
+      for {place, {_workspaces, elsewhere}} <- listed,
+          {organisation_id, workspace} <- elsewhere,
+          reduce: %{} do
+        moved ->
+          item = {place.organisation, workspace}
+          Map.update(moved, organisation_id, [item], &[item | &1])
+      end
 
-    for heading <- headings do
-      {heading,
-       for {^heading, place} <- by_name(grouped, fn {_heading, place} -> place.organisation end) do
-         {place, if(place.workspaces == [], do: [nil], else: by_name(place.workspaces))}
-       end}
-    end
+    shown =
+      for {place, {workspaces, _elsewhere}} <- listed, workspaces != nil do
+        own = by_name(Enum.map(workspaces, &{place.organisation, &1}), &elem(&1, 1))
+        others = moved |> Map.get(place.organisation_id, []) |> Enum.sort_by(&elsewhere_order/1)
+        items = if(own ++ others == [], do: [{place.organisation, nil}], else: own ++ others)
+        {place, items}
+      end
+
+    by_name(shown, fn {place, _items} -> place.organisation end)
   end
+
+  defp elsewhere_order({organisation, workspace}),
+    do:
+      {String.downcase(organisation.name), organisation.slug, String.downcase(workspace.name),
+       workspace.slug}
+
+  # The place the menu opens on: the page's organisation where it lists the page's
+  # workspace, else the place that lists that workspace, else the page's organisation.
+  defp open_place(listed, organisation, workspace) do
+    here = Enum.find(listed, fn {place, _items} -> place.organisation_id == organisation.id end)
+    host = workspace && Enum.find(listed, &lists?(&1, workspace))
+
+    chosen =
+      cond do
+        here && (workspace == nil or lists?(here, workspace)) -> here
+        host -> host
+        true -> here
+      end
+
+    with {place, _items} <- chosen, do: place.organisation_id
+  end
+
+  defp lists?({_place, items}, workspace),
+    do: Enum.any?(items, fn {_organisation, w} -> w && w.id == workspace.id end)
+
+  # A workspace of the place's organisation is named alone; one of another organisation
+  # is named with it, and its id and search words have its organisation's slug too.
+  defp switch_id(place, %{id: id}, w) when id == place.organisation_id,
+    do: "switch-#{place.organisation.slug}_#{w.slug}"
+
+  defp switch_id(place, organisation, w),
+    do: "switch-#{place.organisation.slug}_#{organisation.slug}_#{w.slug}"
+
+  defp switch_label(place, %{id: id}, w) when id == place.organisation_id, do: w.name
+
+  defp switch_label(_place, organisation, w),
+    do:
+      gettext("%{workspace} · %{organisation}",
+        workspace: w.name,
+        organisation: organisation.name
+      )
+
+  defp switch_words(place, %{id: id}, w) when id == place.organisation_id, do: [w.name, w.slug]
+
+  defp switch_words(_place, organisation, w),
+    do: [w.name, w.slug, organisation.name, organisation.slug]
 
   # The workspaces of the organisation the person reaches, by name; the page's own
   # workspace for a reader with no place of it, as the organisation's overview lists them.
@@ -1779,12 +1812,7 @@ defmodule ApiaryWeb.Layouts do
   defp by_name(list, named \\ & &1),
     do: Enum.sort_by(list, &{String.downcase(named.(&1).name), named.(&1).slug})
 
-  # An edition's group opens folded, unless the page's organisation is in it.
-  defp group_open?(places, organisation),
-    do:
-      Enum.any?(places, fn {place, _workspaces} -> current_organisation?(place, organisation) end)
-
-  defp current_organisation?(place, organisation), do: place.organisation_id == organisation.id
+  defp open?(place, open), do: place.organisation_id == open
 
   defp current_workspace?(_workspace, nil), do: false
   defp current_workspace?(workspace, current), do: workspace.id == current.id

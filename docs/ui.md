@@ -53,29 +53,35 @@ page and an Instance page, the one the person came from (Two levels, below).
   organisation and one workspace shows neither, and the segments are links and nothing
   more.
   The organisation menu has a search, then two panels that each scroll separately: on the
-  left the organisations the person reaches, by name, the ones they are a member of first
-  and the edition's groups of places under their headings
-  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
-  group's count, unless the page's organisation is in it; on the right, under a heading that
-  names it, the workspaces of the organisation pointed at, by name. On opening, the page's
-  organisation is pointed at and scrolled to; then the one with focus, or the one under the
-  mouse once it has rested there for 100 ms, so a pointer crossing others on its way to the
-  right panel changes nothing. Each organisation's `›` shows its workspaces. An
-  organisation's link lands in the workspace the person last used there; a workspace's lands
-  in that workspace. At its foot are Your organisations and the edition's entries.
+  left, under Your organisations, the organisations the person reaches, by name; on the
+  right, under a heading that names it, the workspaces of the organisation pointed at, by
+  name. After an operator's workspaces come the workspaces it operates in other
+  organisations, as "workspace · organisation", by organisation and then by name
+  (`ApiaryWeb.Edition.switcher_place/1`), for a person who reaches them through the
+  operator alone. A person who reaches such a workspace through its organisation finds it
+  under the organisation only, and an organisation is listed only for its members. The menu
+  opens on the page's organisation where that organisation lists the page's workspace, else
+  on the organisation that lists it, else on the page's organisation, and marks that
+  organisation and the page's workspace current. That organisation is pointed at and
+  scrolled to; then the one with focus, or the one under the mouse once it has rested there
+  for 100 ms, so a pointer crossing others on its way to the right panel changes nothing.
+  Each organisation's `›` shows its workspaces. An organisation's link lands in the
+  workspace the person last used there; a workspace's lands in that workspace. At its foot
+  are Your organisations and the edition's entries.
   The workspace menu has a search, then this organisation's workspaces by name, and no
   other organisation's; at its foot, the edition's entries for it.
   Every link goes through `/:org/:workspace/switch/:section` or `/:org/-/switch/:section`
   (`ApiaryWeb.SwitchController`), which asks the destination's scope when it is
   followed and lands on the reader's page there, its list page where the page names one
   thing by its id, else the section, else the overview; from an organisation's
-  page, on the overview. The search filters as the reader types: the organisation menu by an
-  organisation's name and slug, keeping one with a matching workspace with only those
-  workspaces, and opening every group it finds one in; the workspace menu by a
-  workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓ move within
-  a panel, → and ← between an organisation and its workspaces, Enter in the search follows
-  the first match, Escape closes and gives focus back. On a phone a menu is a sheet under
-  the bar showing one panel at a time: `›` shows an organisation's workspaces in place of
+  page, on the overview. The search filters as the reader types: the organisation menu by
+  an organisation's name and slug, keeping one with a matching workspace with only those
+  workspaces, a workspace listed with its organisation matching by that organisation's
+  name and slug too; the workspace menu by a workspace's name and slug. ↓ from the search
+  goes to the first row, ↑ and ↓ move within a panel, → and ← between an organisation and
+  its workspaces, Enter in the search follows the first match, Escape closes and gives
+  focus back. On a phone a menu is a sheet under the bar showing one panel at a time: `›`
+  shows an organisation's workspaces in place of
   the organisations, under a button back to them, Organisations. A phone's bar names the
   page alone, so there the drawer's head holds, where either has a menu, the organisation
   and, on a workspace's page, the workspace (`#drawer-place`), each a button that opens

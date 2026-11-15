@@ -99,8 +99,7 @@ defmodule ApiaryPro.ReachTest do
   test "the switcher's places give no scope", ctx do
     place = %ClientReach{
       organisation: ctx.client.organisation,
-      organisation_id: ctx.client.organisation.id,
-      operator_membership: %{ctx.operator.scope.membership | user_id: ctx.operator.user.id}
+      organisation_id: ctx.client.organisation.id
     }
 
     assert ApiaryProWeb.Edition.place_scope(place, ctx.client.workspace) == nil

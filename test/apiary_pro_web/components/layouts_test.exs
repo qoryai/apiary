@@ -7,7 +7,8 @@ defmodule ApiaryProWeb.LayoutsTest do
   button, which names the product Qory Apiary. And the edition's entries in the
   organisation's sidebar of the core's two-level shell: Policy in the first group, an
   operator's Clients and Policy requests in a group of their own, the settings' sections
-  in the second column.
+  in the second column. And a workspace an operator operates, which the organisation menu
+  lists under the operator for its people, and under its organisation for its members.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -181,5 +182,217 @@ defmodule ApiaryProWeb.LayoutsTest do
 
     # Nothing to say about this organisation: no notices at all.
     refute has_element?(view, "#organisation-notices")
+  end
+
+  describe "an operated workspace in the organisation menu" do
+    @describetag with_features: Apiary.Features.all()
+
+    # Operator A operates Main of Acme (O); Platform of Acme has no operator.
+    setup do
+      operator = ApiaryPro.OperatorsFixtures.operator_fixture()
+      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Acme")
+      platform = workspace_fixture(client.organisation, "Platform")
+      %{operator: operator, client: client, platform: platform}
+    end
+
+    test "a person of the operator finds it under the operator, after its workspaces, and no other part of the organisation",
+         %{operator: operator, client: client, platform: platform} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+      conn = log_in_user(build_conn(), operator.user)
+
+      {:ok, view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")
+
+      operated = "#organisation-menu-of-#{a} a#switch-#{a}_#{o}_#{main}"
+      assert has_element?(view, operated <> ":not([aria-current])[href^='/#{o}/#{main}/switch/']")
+      assert has_element?(view, operated <> " .truncate[title='Main · Acme']", "Main · Acme")
+      assert has_element?(view, "#organisation-menu-of-#{a}:not([hidden])")
+
+      # Below the operator's workspaces.
+      {own, _} = :binary.match(html, ~s(id="switch-#{a}_#{operator.workspace.slug}"))
+      {listed, _} = :binary.match(html, ~s(id="switch-#{a}_#{o}_#{main}"))
+      assert own < listed
+
+      # Acme is not listed as an organisation, and neither is its other workspace.
+      refute has_element?(view, "#organisation-menu li[data-org='#{o}']")
+      refute has_element?(view, "#organisation-menu-of-#{o}")
+      refute has_element?(view, "#organisation-menu a[href^='/#{o}/#{platform.slug}/']")
+      refute html =~ "Clients of"
+    end
+
+    test "in the operated workspace, its entry under the operator is the current one",
+         %{operator: operator, client: client} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+      conn = log_in_user(build_conn(), operator.user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{a}:not([hidden]) a#switch-#{a}_#{o}_#{main}[aria-current='true']"
+             )
+
+      assert has_element?(view, "#organisation-menu-places a#switch-#{a}[aria-current='true']")
+
+      assert has_element?(
+               view,
+               "li[data-org='#{a}'] button[data-show][aria-expanded='true']"
+             )
+
+      refute has_element?(view, "#organisation-menu li[data-org='#{o}']")
+    end
+
+    test "a person of the operator who is a member of the organisation too finds the organisation and the operated workspace",
+         %{operator: operator, client: client, platform: platform} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+
+      # Acme's owner adds them to Platform alone.
+      in_platform =
+        ApiaryPro.OperatorsFixtures.scope_in(client.owner.user, client.organisation, platform)
+
+      %{token: token} = invitation_fixture(in_platform, %{"email" => operator.user.email})
+      {:ok, _membership} = Organisations.accept_invitation(operator.user, token)
+      conn = log_in_user(build_conn(), operator.user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{a}/#{operator.workspace}")
+
+      # Under Acme, as for any member: the workspace their membership reaches.
+      assert has_element?(view, "#organisation-menu-places a#switch-#{o}:not([aria-current])")
+      assert has_element?(view, "#organisation-menu-of-#{o} a#switch-#{o}_#{platform.slug}")
+      refute has_element?(view, "#organisation-menu-of-#{o} a#switch-#{o}_#{main}")
+      # Under the operator, the workspace it operates.
+      assert has_element?(view, "#organisation-menu-of-#{a} a#switch-#{a}_#{o}_#{main}")
+
+      # In the operated workspace, which Acme does not list for them, the menu opens on
+      # the operator, the workspace marked.
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
+
+      assert has_element?(view, "#organisation-menu-places a#switch-#{a}[aria-current='true']")
+      assert has_element?(view, "#organisation-menu-places a#switch-#{o}:not([aria-current])")
+      assert has_element?(view, "#organisation-menu-of-#{o}[hidden]")
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{a}:not([hidden]) a#switch-#{a}_#{o}_#{main}[aria-current='true']"
+             )
+
+      # In Platform, Acme is the current place.
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{platform}")
+
+      assert has_element?(view, "#organisation-menu-places a#switch-#{o}[aria-current='true']")
+      assert has_element?(view, "#organisation-menu-of-#{o}:not([hidden])")
+      assert has_element?(view, "#organisation-menu-of-#{a}[hidden]")
+    end
+
+    test "a person who reaches the operated workspace through the organisation finds it there alone",
+         %{operator: operator, client: client} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+
+      # Acme's owner, who reaches every workspace of Acme, joins the operator too.
+      %{token: token} = invitation_fixture(operator.scope, %{"email" => client.owner.user.email})
+      {:ok, _membership} = Organisations.accept_invitation(client.owner.user, token)
+      conn = log_in_user(build_conn(), client.owner.user)
+
+      {:ok, view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")
+
+      assert has_element?(view, "#organisation-menu-of-#{o} a#switch-#{o}_#{main}")
+      refute has_element?(view, "#organisation-menu a#switch-#{a}_#{o}_#{main}")
+      assert length(Regex.scan(~r/href="\/#{o}\/#{main}\/switch\//, html)) == 1
+
+      # In Main, Acme is the current place.
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{o}:not([hidden]) a#switch-#{o}_#{main}[aria-current='true']"
+             )
+
+      assert has_element?(view, "#organisation-menu-of-#{a}[hidden]")
+    end
+
+    test "the operator's workspaces of several organisations come by organisation name",
+         %{operator: operator, client: client} do
+      a = operator.organisation.slug
+      beta = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Beta")
+      conn = log_in_user(build_conn(), operator.user)
+
+      {:ok, _view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")
+
+      ids =
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#organisation-menu-of-#{a} a[data-switch]")
+        |> LazyHTML.attribute("id")
+
+      assert ids == [
+               "switch-#{a}_#{operator.workspace.slug}",
+               "switch-#{a}_#{client.organisation.slug}_#{client.workspace.slug}",
+               "switch-#{a}_#{beta.organisation.slug}_#{beta.workspace.slug}"
+             ]
+    end
+
+    test "a workspace of a suspended operator is not listed",
+         %{operator: operator, client: client, platform: platform} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+
+      # A member of Acme in Platform, so a page of Acme has the menu.
+      in_platform =
+        ApiaryPro.OperatorsFixtures.scope_in(client.owner.user, client.organisation, platform)
+
+      %{token: token} = invitation_fixture(in_platform, %{"email" => operator.user.email})
+      {:ok, _membership} = Organisations.accept_invitation(operator.user, token)
+
+      admin = ApiaryPro.OperatorsFixtures.suite_instance_admin().instance_scope
+      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(admin, operator.organisation.id)
+      conn = log_in_user(build_conn(), operator.user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{platform}")
+
+      assert has_element?(view, "#organisation-menu-of-#{o} a#switch-#{o}_#{platform.slug}")
+      refute has_element?(view, "#organisation-menu a#switch-#{a}_#{o}_#{main}")
+      refute has_element?(view, "#organisation-menu a[href^='/#{o}/#{main}/']")
+    end
+
+    test "the organisation's owner finds every workspace under the organisation, as before",
+         %{operator: operator, client: client, platform: platform} do
+      a = operator.organisation.slug
+      o = client.organisation.slug
+      main = client.workspace.slug
+      conn = log_in_user(build_conn(), client.owner.user)
+
+      {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{o}:not([hidden]) a#switch-#{o}_#{main}[aria-current='true'] .truncate[title='Main']"
+             )
+
+      assert has_element?(view, "#organisation-menu-of-#{o} a#switch-#{o}_#{platform.slug}")
+      refute has_element?(view, "#organisation-menu li[data-org='#{a}']")
+      refute has_element?(view, "#organisation-menu .truncate[title='Main · Acme']")
+    end
+
+    test "an instance admin finds none of it", %{client: client} do
+      admin = ApiaryPro.OperatorsFixtures.suite_instance_admin()
+      here = admin.instance_scope.organisation
+      o = client.organisation.slug
+      [workspace | _] = Organisations.list_workspaces(admin.instance_scope)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), admin.user), ~p"/#{here}/#{workspace}")
+
+      assert has_element?(view, "#organisation-menu a#switch-#{here.slug}")
+      refute has_element?(view, "#organisation-menu li[data-org='#{o}']")
+      refute has_element?(view, "#organisation-menu a[href^='/#{o}/']")
+    end
   end
 end

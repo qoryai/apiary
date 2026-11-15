@@ -1367,7 +1367,6 @@ msgstr ""
 msgid "Clients"
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Clients of %{operator}"

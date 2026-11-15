@@ -1287,7 +1287,11 @@ defmodule ApiaryPro.OperatorsTest do
       assert Enum.map(client.workspaces, & &1.id) == [ctx.client.workspace.id]
       refute second.id in Enum.map(client.workspaces, & &1.id)
 
-      assert client.operator_membership.id == ctx.member.membership.id
+      assert [{operator_id, workspace}] = client.operated
+
+      assert {operator_id, workspace.id} ==
+               {ctx.operator.organisation.id, ctx.client.workspace.id}
+
       assert client.membership == nil
     end
 

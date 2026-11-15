@@ -3892,6 +3892,11 @@ msgstr ""
 msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} · %{organisation}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does."

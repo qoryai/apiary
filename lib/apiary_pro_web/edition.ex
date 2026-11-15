@@ -260,13 +260,21 @@ defmodule ApiaryProWeb.Edition do
     end
   end
 
-  # The switcher lists the clients a person reaches through an operator under the
-  # operator's name, after the organisations the person is a member of.
+  # The organisation menu lists an organisation where the person is a member of it, with
+  # the workspaces the membership reaches. Under an operator the person belongs to, it lists
+  # each workspace they reach only through that operator.
   @impl true
-  def place_group(%ClientReach{operator_membership: %{organisation: %{name: name}}}),
-    do: gettext("Clients of %{operator}", operator: name)
+  def switcher_place(%ClientReach{membership: membership, operated: operated}) do
+    workspaces = member_workspaces(membership)
+    reached = MapSet.new(workspaces || [], & &1.id)
+    {workspaces, Enum.reject(operated, fn {_id, w} -> MapSet.member?(reached, w.id) end)}
+  end
 
-  def place_group(_place), do: nil
+  def switcher_place(place), do: {place.workspaces, []}
+
+  defp member_workspaces(nil), do: nil
+  defp member_workspaces(%{workspaces: workspaces}) when is_list(workspaces), do: workspaces
+  defp member_workspaces(_membership), do: []
 
   # The core no longer asks for a place's scope: a workspace a menu links is opened
   # through `ApiaryWeb.SwitchController`, which reads the destination's scope when it is

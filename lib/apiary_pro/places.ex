@@ -21,27 +21,24 @@ defmodule ApiaryPro.Places do
   suspended, as a `ApiaryPro.ClientReach` with those workspaces, the ones they reach
   through their operators. An organisation they are also a member of is one
   `ClientReach`, which has that membership too, and the workspaces it reaches besides.
-  Such an organisation sits under the operator of its first such workspace by name. These
-  come after the memberships, by name. None marked for deletion. Each organisation
-  has its tenant (`ApiaryPro.Tenants`) and the links of its workspaces
-  (`ApiaryPro.WorkspaceOperators`).
+  Its `operated` is the workspaces reached through the operators, each with its
+  operator's id, by name. These come after the memberships, by name. None marked for
+  deletion. Each organisation has its tenant (`ApiaryPro.Tenants`) and the links of its
+  workspaces (`ApiaryPro.WorkspaceOperators`).
   """
   @spec places(%User{}) :: [%Membership{} | ClientReach.t()]
   def places(%User{} = user) do
     memberships = put_tenants(Organisations.list_memberships(user))
 
-    operators =
+    operator_ids =
       for %Membership{organisation: %Organisation{} = organisation} = membership <- memberships,
           Tenants.operator?(organisation) and not Tenants.suspended?(organisation),
-          into: %{},
-          do: {membership.organisation_id, membership}
+          do: membership.organisation_id
 
     operated =
-      if operators == %{} do
+      if operator_ids == [] do
         []
       else
-        operator_ids = Map.keys(operators)
-
         Repo.all(
           from l in WorkspaceOperator,
             join: w in Workspace,
@@ -60,17 +57,18 @@ defmodule ApiaryPro.Places do
     reached =
       operated
       |> Enum.chunk_by(fn {organisation, _workspace, _operator_id} -> organisation.id end)
-      |> Enum.map(fn [{organisation, _workspace, first_operator_id} | _rest] = rows ->
+      |> Enum.map(fn [{organisation, _workspace, _operator_id} | _rest] = rows ->
         organisation = organisation |> Tenants.put() |> WorkspaceOperators.put()
         membership = own[organisation.id]
         through = Enum.map(rows, fn {_organisation, workspace, _operator_id} -> workspace end)
+        operated = Enum.map(rows, fn {_organisation, workspace, id} -> {id, workspace} end)
 
         %ClientReach{
           organisation: organisation,
           organisation_id: organisation.id,
-          operator_membership: Map.fetch!(operators, first_operator_id),
           membership: membership,
-          workspaces: merge_workspaces(through, membership)
+          workspaces: merge_workspaces(through, membership),
+          operated: operated
         }
       end)
 

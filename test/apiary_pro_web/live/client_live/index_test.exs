@@ -91,23 +91,38 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert has_element?(lv, "#client-#{acme.organisation.id}-features.truncate[title]")
     end
 
-    test "the switcher lists the clients folded under the operator's name, open on a client's page",
+    test "the switcher lists the workspaces the operator operates under the operator, the current one marked",
          ctx do
       acme = client_fixture(ctx.operator.scope, "Acme")
-      client_fixture(ctx.operator.scope, "Beta")
+      beta = client_fixture(ctx.operator.scope, "Beta")
+      op = ctx.operator.organisation.slug
+      [a, b] = [acme.organisation.slug, beta.organisation.slug]
+      main = acme.workspace.slug
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.operator.organisation}/clients")
       render_async(lv)
 
-      fold = "#organisation-menu-places section[data-group] button[data-fold]"
-      assert has_element?(lv, fold, "Clients of #{ctx.operator.organisation.name}")
-      assert has_element?(lv, fold <> "[aria-expanded=false]", "2")
-      assert has_element?(lv, "[data-fold-list][hidden] a[data-switch]", "Acme")
+      refute has_element?(lv, "#organisation-menu li[data-org='#{a}']")
 
-      # On a client's own page its group is open, its place the current one.
+      assert has_element?(
+               lv,
+               "#organisation-menu-of-#{op} a#switch-#{op}_#{a}_#{main}",
+               "Main · Acme"
+             )
+
+      assert has_element?(
+               lv,
+               "#organisation-menu-of-#{op} a#switch-#{op}_#{b}_#{beta.workspace.slug}",
+               "Main · Beta"
+             )
+
+      # In a client's workspace, its entry under the operator is the current one.
       {:ok, lv, _html} = live(ctx.conn, ~p"/#{acme.organisation}/#{acme.workspace}")
-      assert has_element?(lv, fold <> "[aria-expanded=true]")
-      refute has_element?(lv, "[data-fold-list][hidden]")
+
+      assert has_element?(
+               lv,
+               "#organisation-menu-of-#{op}:not([hidden]) a#switch-#{op}_#{a}_#{main}[aria-current='true']"
+             )
     end
 
     test "an operator's owner creates a client, whose owner the person invited is", ctx do
@@ -446,16 +461,16 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/#{organisation}/clients") end
     end
 
-    test "the switcher shows the clients the person reads through their operator", ctx do
+    test "the switcher shows the workspace the person reads through their operator", ctx do
       client = client_fixture(ctx.operator.scope, "Acme")
+      op = ctx.operator.organisation.slug
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.operator.organisation}/settings/people")
 
-      assert has_element?(lv, "#organisation-menu a#switch-#{client.organisation.slug}", "Acme")
-
       assert has_element?(
                lv,
-               "#organisation-menu-of-#{client.organisation.slug} #switch-#{client.organisation.slug}_#{client.workspace.slug}"
+               "#organisation-menu-of-#{op} #switch-#{op}_#{client.organisation.slug}_#{client.workspace.slug}",
+               "Main · Acme"
              )
 
       # It opens there, read-only, and says so.
