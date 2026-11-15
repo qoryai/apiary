@@ -434,7 +434,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     |> render_submit()
 
     assert_patch(lv, ~p"/instance/organisations")
-    assert render(lv) =~ "That is no longer possible."
+    assert render(lv) =~ "An operator that operates a workspace cannot be deleted."
     assert Repo.get(Organisation, operator.organisation.id)
   end
 

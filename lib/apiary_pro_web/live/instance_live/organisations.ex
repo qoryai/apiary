@@ -949,6 +949,13 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       {:error, :confirmation} ->
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
 
+      {:error, :has_operated_workspaces} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, ApiaryProWeb.Edition.refusal_sentence(:has_operated_workspaces))
+         |> load()
+         |> back()}
+
       {:error, _reason} ->
         {:noreply, refused(socket)}
     end
