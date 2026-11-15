@@ -1216,17 +1216,16 @@ address under `/machines`, with what followed `/nodes` and the query.
   (`NodeComponents.in_use_words/3`).
 - **A workspace's Machines and an organisation's gateways.** Machines lists the
   organisation's gateways under the heading Gateways, after the workspace's, each with
-  "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway the workspace's default resolves to. A
-  machine's or pool's Gateway select groups the gateways by level where there is more than one, "This
-  workspace" first, then its organisation, then the instance, in the order their
-  defaults resolve (`Apiary.Gateways.levels/1`), and its hint shows whose default it is:
-  the organisation's name, or Qory Apiary for the instance's. Where a machine or pool uses a gateway of another organisation, its About,
-  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
-  to its page under that organisation's Gateways only where the reader reads it there
-  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the machines is the core's sentence unless
-  the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
-  machine limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
-  `node.set_limit`, "You can't change the machine limit." when it gives none.
+  "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway
+  the workspace's default resolves to. A machine's or pool's Gateway select groups the
+  gateways by level where there is more than one, "This workspace" first, then its
+  organisation, then the instance, in the order their defaults resolve
+  (`Apiary.Gateways.levels/1`), and its hint shows whose default it is: "this workspace's
+  default", the organisation's name, or Qory Apiary for the instance's. Who manages the
+  machines is the core's sentence unless the edition gives one
+  (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the machine limit's refusal and
+  hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for `node.set_limit`, "You can't
+  change the machine limit." when it gives none.
 - **Access key**, a tab of a machine, pool or gateway. A machine or a pool whose choice
   leads to a gateway (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the
   command's page, Key for a machine and a key's Forager file, an info notice: "Runs of build-01 go through the
