@@ -585,8 +585,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                ).status == 201
       end
 
-      # Another run of the work item, which a claim registered and no member cancelled,
-      # and a person store a version each.
+      # A person, and another run of the work item that a claim registered and no
+      # member cancelled, store a version each.
       other =
         Repo.insert!(%DispatchRun{
           organisation_id: ctx.dispatch_run.organisation_id,
