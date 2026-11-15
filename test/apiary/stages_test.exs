@@ -1100,6 +1100,19 @@ defmodule Apiary.StagesTest do
       refute escalation(work_item)
     end
 
+    test "changes-requested with run_again points goes on as changes-requested does", %{
+      scope: scope
+    } do
+      save!(scope, [
+        stage(@explore, "Explore", [%{"workflow" => "write"}, %{"workflow" => "check"}])
+      ])
+
+      points = [%{"text" => "The demo has no second card.", "action" => "run_again"}]
+      work_item = take_in!(scope) |> end_run!(verdict("changes-requested", points))
+      assert %WorkItem{stage_state: :running, stage_entry: 1} = work_item
+      refute escalation(work_item)
+    end
+
     test "in a loop, a run with no verdict starts the next round", %{scope: scope} do
       save!(scope, [
         explore_stage(%{

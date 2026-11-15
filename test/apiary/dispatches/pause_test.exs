@@ -15,6 +15,7 @@ defmodule Apiary.Dispatches.PauseTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
+  import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
 
   alias Apiary.Connections
   alias Apiary.Dispatches.{DispatchRun, Pause}
@@ -93,6 +94,31 @@ defmodule Apiary.Dispatches.PauseTest do
 
   defp registered(%DispatchRun{id: id}),
     do: Repo.one!(from r in Run, where: r.dispatch_run_id == ^id)
+
+  # `count` runs of the queue like `base`, each at another take in after `take_in` more
+  # than base's, and each continuing the one before it, oldest first; the first continues
+  # nothing.
+  defp chain_of(%DispatchRun{} = base, count, take_in \\ 0) do
+    fields = Map.take(base, DispatchRun.__schema__(:fields) -- [:id, :run_id, :continues_id])
+
+    {entries, _previous} =
+      Enum.map_reduce(1..count, nil, fn i, previous ->
+        id = Ecto.UUID.generate()
+
+        entry =
+          Map.merge(fields, %{
+            id: id,
+            run_id: Ecto.UUID.generate(),
+            continues_id: previous,
+            take_in: base.take_in + take_in + i
+          })
+
+        {entry, id}
+      end)
+
+    {^count, nil} = Repo.insert_all(DispatchRun, entries)
+    Enum.map(entries, &Map.take(&1, [:id, :run_id]))
+  end
 
   test "pauses the run and queues the run that continues it at its place", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
@@ -536,7 +562,14 @@ defmodule Apiary.Dispatches.PauseTest do
       # Only the chunks the check covered are sent, and signed.
       assert run.id |> Transcript.stream(@path, 3) |> Enum.join() == "{\"a\":1}\n"
 
-      resume = %{"run_id" => run.node_run_id, "session_id" => "5f2c9a1e", "path" => @path}
+      # One link: the paused run alone.
+      resume = %{
+        "run_id" => run.node_run_id,
+        "session_id" => "5f2c9a1e",
+        "path" => @path,
+        "runs" => [run.node_run_id]
+      }
+
       queued = run_of(dispatch_run.work_item_id, 2)
       assert Transcript.resume_at_claim(queued) == resume
 
@@ -550,9 +583,70 @@ defmodule Apiary.Dispatches.PauseTest do
       {:ok, _run} = Projector.project(run)
       assert Transcript.resume(Repo.get!(Run, continuation.id)) == resume
 
+      # A link added to the chain after the claim changes no run configuration of the run.
+      [earlier] = chain_of(dispatch_run, 1)
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [continues_id: earlier.id]
+      )
+
+      assert Transcript.continued_runs(queued) == [earlier.run_id, run.node_run_id]
+      assert Repo.get!(Run, continuation.id).resume == resume
+      assert Transcript.resume(Repo.get!(Run, continuation.id)) == resume
+
       # The paused run itself, and a run that continues nothing, resume nothing.
       assert Transcript.resume(Repo.get!(Run, run.id)) == nil
       assert Transcript.resume_at_claim(dispatch_run) == nil
+    end
+
+    test "lists the paused runs a continuation continues, oldest first", ctx do
+      %{dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      # Runs 1 <- 2 <- 3, and run 4 continues run 3.
+      [one, two, three] = chain_of(dispatch_run, 3)
+      four = %{dispatch_run | continues_id: three.id}
+
+      assert Transcript.continued_runs(four) == [one.run_id, two.run_id, three.run_id]
+      assert Transcript.continued_runs(%{four | continues_id: one.id}) == [one.run_id]
+      assert Transcript.continued_runs(%{four | continues_id: nil}) == []
+
+      # A run of another workspace is not followed.
+      other = workspace_fixture(ctx.scope.organisation)
+      assert Transcript.continued_runs(%{four | workspace_id: other.id}) == []
+    end
+
+    test "stops at a link of another workspace or organisation in the chain", ctx do
+      %{dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+      other_workspace = %{ctx.scope | workspace: workspace_fixture(ctx.scope.organisation)}
+      %{scope: other_organisation} = sign_up_fixture()
+
+      for {there, take_in} <- [{other_workspace, 0}, {other_organisation, 10}] do
+        # Runs 1 <- 2 <- 3, with run 2 moved there, and run 4 continues run 3.
+        [_one, two, three] = chain_of(dispatch_run, 3, take_in)
+
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^two.id),
+          set: [
+            organisation_id: there.organisation.id,
+            workspace_id: there.workspace.id,
+            work_item_id: work_item_fixture(there).id
+          ]
+        )
+
+        four = %{dispatch_run | continues_id: three.id}
+        assert Transcript.continued_runs(four) == [three.run_id]
+      end
+    end
+
+    test "lists the newest 256 paused runs of a longer chain", ctx do
+      %{dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      chain = chain_of(dispatch_run, 300)
+      continuation = %{dispatch_run | continues_id: List.last(chain).id}
+      runs = Transcript.continued_runs(continuation)
+
+      assert length(runs) == 256
+      assert runs == chain |> Enum.take(-256) |> Enum.map(& &1.run_id)
+      assert List.last(runs) == List.last(chain).run_id
     end
 
     test "is read only for a continuation of the same workspace", ctx do
@@ -652,7 +746,7 @@ defmodule Apiary.Dispatches.PauseTest do
                [2, 3, 4]
     end
 
-    test "a resume has its three members, each a string, and no other", ctx do
+    test "a resume has its three strings and its runs, and no other member", ctx do
       %{run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 
       set = fn resume ->
@@ -670,6 +764,11 @@ defmodule Apiary.Dispatches.PauseTest do
       whole = %{"run_id" => "r", "session_id" => "s", "path" => "p"}
       assert set.(whole) == :ok
       assert set.(nil) == :ok
+      assert set.(Map.put(whole, "runs", ["r0", "r"])) == :ok
+      assert set.(Map.put(whole, "runs", Enum.map(1..256, &"r#{&1}"))) == :ok
+
+      for runs <- [[], "r", ["r", 1], [["r"]], ["r", ["r0"]], Enum.map(1..257, &"r#{&1}")],
+          do: assert(set.(Map.put(whole, "runs", runs)) == "runs_resume_check")
 
       for missing <- Map.keys(whole),
           do: assert(set.(Map.delete(whole, missing)) == "runs_resume_check")

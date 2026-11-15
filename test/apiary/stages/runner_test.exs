@@ -339,6 +339,20 @@ defmodule Apiary.Stages.RunnerTest do
       assert queued(outcome) == {"fix-demo-findings", 1, 1, 1}
     end
 
+    test "changes-requested with run_again points steps as changes-requested without them" do
+      with_points = {:run, {:verdict, :changes_requested, [again("The demo has no card.")]}}
+      without = {:run, {:verdict, :changes_requested, nil}}
+
+      for {seq, position} <- [
+            {build(), pos(1, 0, 1)},
+            {build(), pos(1, 1, 3)},
+            {explore(), pos(0, 0, 1)},
+            {build(), pos(0, nil, 1)}
+          ] do
+        assert Runner.step(seq, position, with_points) == Runner.step(seq, position, without)
+      end
+    end
+
     test "after the last workflow the ring starts the next round from the first" do
       outcome = Runner.step(build(), pos(1, 1, 1), {:run, {:verdict, nil, nil}})
       assert queued(outcome) == {"capture-demo", 1, 0, 2}

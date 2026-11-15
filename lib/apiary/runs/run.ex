@@ -171,9 +171,11 @@ defmodule Apiary.Runs.Run do
 
     # The `resume` member of the run configuration of a run of the queue that continues a
     # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
-    # run's id, and `"session_id"` and `"path"` of its transcript. Written once with the
-    # registration and never changed, so every run configuration of the run has the same
-    # one; nil for every other run, which starts a new session. Not folded.
+    # run's id, `"session_id"` and `"path"` of its transcript, and `"runs"`, the paused
+    # runs it continues, oldest first (absent for a run claimed before `"runs"` was
+    # kept). Written once with the registration and never changed, so every run
+    # configuration of the run has the same one; nil for every other run, which starts a
+    # new session. Not folded.
     field :resume, :map
 
     # Whether the run of the queue that registered the run pushed its questions or a

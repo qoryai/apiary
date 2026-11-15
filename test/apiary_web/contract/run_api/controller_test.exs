@@ -1551,6 +1551,14 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "a changes-requested verdict with run_again points is stored with them", ctx do
+      points = [%{"text" => "The ticket has no steps.", "action" => "run_again"}]
+      body = %{"verdict" => "changes-requested", "points" => points}
+      assert write(ctx, "/verdict", body).status == 201
+      assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == body
+    end
+
     test "a verdict without points is stored without the member, as its schema takes it",
          ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
@@ -1623,7 +1631,11 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             },
             %{"verdict" => "escalate", "points" => [%{run_again | "action" => "answer"}]},
             %{"verdict" => "escalate", "points" => [Map.put(run_again, "question", "q1")]},
-            %{"verdict" => "escalate", "points" => [Map.put(run_again, "note", "x")]}
+            %{"verdict" => "escalate", "points" => [Map.put(run_again, "note", "x")]},
+            %{
+              "verdict" => "changes-requested",
+              "points" => [%{"text" => "Which basket?", "action" => "answer", "question" => "q1"}]
+            }
           ] do
         conn = write(ctx, "/verdict", body)
         assert json_response(conn, 422)["error"] == "invalid_artifact", inspect(body)

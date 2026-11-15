@@ -12,6 +12,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A changes-requested verdict may list run_again points for the next round, and a
+  continuation's run configuration lists the paused runs it continues in `resume.runs`.
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
   Qory Apiary accepts requests for it from the gateway that started it, on the same node
   and instance. A run of a workspace's queue still ends 600 seconds after its last

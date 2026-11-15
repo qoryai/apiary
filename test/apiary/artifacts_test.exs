@@ -1479,12 +1479,28 @@ defmodule Apiary.ArtifactsTest do
                  ]
                })
 
-      # Points come only with escalate, escalate needs them, and each point is one line of
-      # 1 to 500 characters with its question only for answer.
+      # changes-requested may have run_again points, for the next round.
       run_again = %{"text" => "The demo has no second card.", "action" => "run_again"}
+
+      assert {:ok, _version} =
+               push.("verdict", %{"verdict" => "changes-requested", "points" => [run_again]})
+
+      # Points never come with passed, escalate needs them, an answer point comes only with
+      # escalate, and each point is one line of 1 to 500 characters with its question only
+      # for answer.
+      answer = %{
+        "text" => "Which basket gets the sale?",
+        "action" => "answer",
+        "question" => "q2"
+      }
 
       for document <- [
             %{"verdict" => "passed", "points" => [run_again]},
+            %{"verdict" => "changes-requested", "points" => [answer]},
+            %{"verdict" => "changes-requested", "points" => [run_again, answer]},
+            %{"verdict" => "changes-requested", "points" => []},
+            %{"verdict" => "changes-requested", "points" => List.duplicate(run_again, 21)},
+            %{"verdict" => "changes-requested", "points" => [%{run_again | "text" => ""}]},
             %{"verdict" => "escalate"},
             %{"verdict" => "escalate", "points" => []},
             %{"verdict" => "escalate", "points" => List.duplicate(run_again, 21)},
