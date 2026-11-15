@@ -1455,8 +1455,9 @@ defmodule Apiary.Connections do
 
   defp placed(_scope, attrs, :organisation), do: attrs
 
-  # A provider added for one workspace is of the organisation's chain: an operator's chain
-  # serves the operator's clients, never one workspace.
+  # A provider added for one workspace is of the organisation's chain: the chain
+  # "operator" is read at the organisation's default alone (`Apiary.ModelChoices`), never
+  # for one workspace.
   defp placed_chain(:workspace, "organisation"), do: :ok
   defp placed_chain(:workspace, _chain), do: {:error, :forbidden}
   defp placed_chain(:organisation, _chain), do: :ok

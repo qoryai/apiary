@@ -259,12 +259,12 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  # With the `factory` feature: the chain of model
-  # choices that resolves for the runs of the organisation `organisation_id`
-  # (`Apiary.ModelChoices`): "organisation", the choices the organisation sets, or
-  # "operator", the choices an operator sets for it as its client, which are then the
-  # whole chain, while the organisation's are kept and unused. Asked without a lock, once
-  # per resolution. The core answers "organisation".
+  # With the `factory` feature: the chain of model choices that resolves for the runs of
+  # the organisation `organisation_id` (`Apiary.ModelChoices`): "organisation", the
+  # choices the organisation sets, or "operator", the choices of the organisation that
+  # `c:operator_chain_organisation/1` returns, which are then the whole chain, while the
+  # organisation's are kept and unused. Called without a lock, once per resolution. The
+  # core returns "organisation".
   @doc false
   @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
 
@@ -279,10 +279,9 @@ defmodule Apiary.Edition do
   @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
               Ecto.UUID.t() | nil
 
-  # With the `factory` feature: whether the person of
-  # `scope` writes the operator's chain of model providers and choices in the scope's
-  # organisation, the organisation whose rows are the chain of the clients it runs work for
-  # (`c:operator_chain_organisation/1`). When true, the scope's organisation's providers
+  # With the `factory` feature: whether the person of `scope` writes the chain "operator"
+  # of model providers and choices in the scope's organisation, whose rows are the chain
+  # of each organisation for which `c:operator_chain_organisation/1` returns it. When true, the scope's organisation's providers
   # and choices of the chain "operator" are read, created, changed and deleted by that
   # person, under the access check of `provider.write`; their audit entries go to the
   # organisation's trail. Asked inside the write, with the scope read again. The core
@@ -290,11 +289,9 @@ defmodule Apiary.Edition do
   @doc false
   @callback operator_chain_writer?(Scope.t()) :: boolean
 
-  # With the `factory` feature: whether `organisation`
-  # is a client that an operator runs work for. A run of such an organisation hides the
-  # text of its stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`).
-  # Asked without a lock, once per claim of an explore run. The core has no operator and
-  # answers false.
+  # With the `factory` feature: whether a run of `organisation` hides the text of its
+  # stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`). Called without
+  # a lock, once per claim of an explore run. The core returns false.
   @doc false
   @callback operated?(%Organisation{}) :: boolean
 
@@ -361,8 +358,9 @@ defmodule Apiary.Edition do
 
   # With the `factory` feature: what a person of
   # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
-  # the edition, so that a client of an operator is not shown the operator's model
-  # provider: its credential, its connections and its events. `kind` is what is read, and
+  # the edition: an edition may leave out what a model provider of another organisation's
+  # chain (`c:operator_chain_organisation/1`) records in a run, its credential, its
+  # connections and its events. `kind` is what is read, and
   # `subject` the query or value the core would read, returned narrowed or as it is:
   #
   # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);

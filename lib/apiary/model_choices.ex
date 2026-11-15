@@ -73,8 +73,9 @@ defmodule Apiary.ModelChoices do
   # (`c:Apiary.Edition.model_choice_chain/1`) is written only at the organisation's
   # default, and only by a scope that the edition says writes it
   # (`c:Apiary.Edition.operator_chain_writer?/1`), with the same access check. The rows of
-  # the operator's chain are read from the operator's organisation by the runs of its
-  # clients, at that level alone (`choices_for/3`).
+  # the operator's chain are read from the organisation that
+  # `c:Apiary.Edition.operator_chain_organisation/1` returns, by the runs of each
+  # organisation it is returned for, at that level alone (`choices_for/3`).
   #
   # ## Locks
   #
