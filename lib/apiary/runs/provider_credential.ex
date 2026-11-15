@@ -182,20 +182,22 @@ defmodule Apiary.Runs.ProviderCredential do
   # the level it lives at (`Apiary.Gateways.level/1`). Only a key of the organisation's
   # chain: for a gateway of the run's organisation, and a gateway made in a workspace
   # only for a run of that workspace; or for the instance's gateway, which serves every
-  # organisation. A key of any other chain is never sealed. The claim
+  # organisation. A key of any other chain is never sealed, and neither is a key for a run
+  # map without both `organisation_id` and `workspace_id`. The claim
   # (`Apiary.Dispatches.Handover`) and the secrets request
   # (`Apiary.Runs.SecretsRequest`) both check it.
   @spec sealable_to?(String.t(), Node.t(), %{
           organisation_id: Ecto.UUID.t(),
           workspace_id: Ecto.UUID.t()
         }) :: boolean
-  def sealable_to?(_chain, %Node{kind: :gateway} = gateway, %{workspace_id: workspace_id})
-      when is_binary(gateway.workspace_id) and gateway.workspace_id != workspace_id,
-      do: false
-
-  def sealable_to?(chain, %Node{kind: :gateway} = gateway, %{organisation_id: organisation_id})
+  def sealable_to?(
+        chain,
+        %Node{kind: :gateway} = gateway,
+        %{organisation_id: organisation_id, workspace_id: workspace_id}
+      )
       when is_binary(organisation_id) do
-    sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, organisation_id)
+    (is_nil(gateway.workspace_id) or gateway.workspace_id == workspace_id) and
+      sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, organisation_id)
   end
 
   def sealable_to?(_chain, _gateway, _run), do: false

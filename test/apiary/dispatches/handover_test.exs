@@ -1881,4 +1881,34 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Slots.held(ctx.pool.id) == 0
     end
   end
+
+  describe "the seal of a model key at the claim" do
+    @describetag needs: [:factory, :secrets]
+
+    # `Handover.model_sealable/4` checks the seal for the organisation and the workspace of
+    # the run of the queue, read under lock at the claim.
+    test "is checked for the organisation and the workspace of the run of the queue" do
+      organisation_id = Ecto.UUID.generate()
+      workspace_id = Ecto.UUID.generate()
+      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      keys = [%AccessKey{allow_secrets: true}]
+      run = %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
+
+      gateway = %Node{
+        kind: :gateway,
+        organisation_id: organisation_id,
+        workspace_id: workspace_id
+      }
+
+      assert Apiary.Dispatches.Handover.model_sealable(formed, gateway, run, keys) == formed
+
+      for other <- [
+            %{run | workspace_id: Ecto.UUID.generate()},
+            %{run | organisation_id: Ecto.UUID.generate()}
+          ] do
+        assert Apiary.Dispatches.Handover.model_sealable(formed, gateway, other, keys) ==
+                 {:end, :secrets_not_allowed}
+      end
+    end
+  end
 end

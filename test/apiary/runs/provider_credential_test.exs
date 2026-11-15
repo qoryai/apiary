@@ -430,6 +430,14 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       end
     end
 
+    test "no gateway gets a key for a run without a workspace id", ctx do
+      without = %{organisation_id: ctx.scope.organisation.id}
+
+      for gateway <- [ctx.instance_gateway, ctx.organisation_gateway, ctx.workspace_gateway] do
+        refute ProviderCredential.sealable_to?("organisation", gateway, without)
+      end
+    end
+
     # The place of a run in the scope's workspace.
     defp run_in(scope),
       do: %{organisation_id: scope.organisation.id, workspace_id: scope.workspace.id}

@@ -104,16 +104,17 @@ defmodule Apiary.Runs.WorkCredential do
   # sealable_to?/2 is whether a work credential of a run in the workspace `workspace_id`
   # of the organisation `organisation_id` may be sealed for `gateway`: a gateway of the
   # run's organisation, or the instance's gateway. A gateway made in a workspace
-  # (`Apiary.Gateways.level/1`) only for a run of that workspace, whoever made it.
+  # (`Apiary.Gateways.level/1`) only for a run of that workspace, whoever made it. False
+  # for a run map without both `organisation_id` and `workspace_id`.
   @spec sealable_to?(Node.t(), %{organisation_id: Ecto.UUID.t(), workspace_id: Ecto.UUID.t()}) ::
           boolean
-  def sealable_to?(%Node{kind: :gateway} = gateway, %{workspace_id: workspace_id})
-      when is_binary(gateway.workspace_id) and gateway.workspace_id != workspace_id,
-      do: false
-
-  def sealable_to?(%Node{kind: :gateway} = gateway, %{organisation_id: organisation_id})
+  def sealable_to?(
+        %Node{kind: :gateway} = gateway,
+        %{organisation_id: organisation_id, workspace_id: workspace_id}
+      )
       when is_binary(organisation_id) do
-    Gateways.level(gateway) == :instance or gateway.organisation_id == organisation_id
+    (is_nil(gateway.workspace_id) or gateway.workspace_id == workspace_id) and
+      (Gateways.level(gateway) == :instance or gateway.organisation_id == organisation_id)
   end
 
   def sealable_to?(_gateway, _run), do: false

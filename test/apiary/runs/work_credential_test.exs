@@ -89,5 +89,16 @@ defmodule Apiary.Runs.WorkCredentialTest do
                @run
              )
     end
+
+    test "no gateway for a run without a workspace id" do
+      without = %{organisation_id: @run_organisation}
+
+      for gateway <- [
+            %Node{kind: :gateway, organisation_id: nil, workspace_id: nil},
+            %Node{kind: :gateway, organisation_id: @run_organisation, workspace_id: nil}
+          ] do
+        refute WorkCredential.sealable_to?(gateway, without)
+      end
+    end
   end
 end
