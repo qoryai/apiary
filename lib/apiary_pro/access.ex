@@ -8,7 +8,6 @@ defmodule ApiaryPro.Access do
 
   @owners [:owner]
   @admins [:owner, :admin]
-  @members [:owner, :admin, :member]
   @read "a read changes nothing"
 
   # Every action the edition adds, named once, as `Apiary.Access` names the core's actions: the
@@ -36,79 +35,10 @@ defmodule ApiaryPro.Access do
       "accept the ownership the instance admins offered you, an admin of the organisation: the offer allows it, and no role",
       asked_of: :organisation
     ),
-    # An operator's clients.
-    Action.new(:"client.read", "list an operator's clients, with their status: its Clients page",
-      feature: :managed_organisations,
-      roles: @members ++ [:reader],
-      asked_of: :organisation,
-      audited: {:not, @read}
-    ),
-    Action.new(
-      :"client.create",
-      "create a client organisation of the operator, with no workspace, and invite its first owner to it",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.invite_owner",
-      "invite the first owner of a client of the operator that has no owner yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.revoke_owner_invitation",
-      "revoke a pending invitation of the first owner of a client of the operator that has no owner yet",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.renew_owner_invitation",
-      "make a new link for a pending invitation of the first owner of a client of the operator that has no owner yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.invite_admin",
-      "invite the first admin of a client of the operator that has no owner or admin yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.revoke_admin_invitation",
-      "revoke a pending invitation of the first admin of a client of the operator that has no owner or admin yet",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.renew_admin_invitation",
-      "make a new link for a pending invitation of the first admin of a client of the operator that has no owner or admin yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
+    # An operator's grant of features to a client.
     Action.new(
       :"client.grant_features",
       "show or hide features for a client of the operator, of those the operator is shown",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.set_model_chain",
-      "set whether the runs of a client of the operator use the operator's model providers or the client's",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.delete",
-      "delete a client of the operator that has no owner yet: mark it for purging after the grace period",
       feature: :managed_organisations,
       roles: @owners,
       asked_of: :organisation
@@ -298,7 +228,6 @@ defmodule ApiaryPro.Access do
     :"connection.read",
     :"audit.read",
     :"node.read",
-    :"client.read",
     :"organisation_policy.read",
     :"organisation_variable.read",
     :"organisation_secret.read",
@@ -313,25 +242,6 @@ defmodule ApiaryPro.Access do
   # The action hidden while `ApiaryPro.Flags.transfers?/0` is off: not found for everyone,
   # and left out of the table of actions below.
   @flagged_transfers [:"organisation.withdraw_transfer"]
-
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a client's first person is
-  # invited as its admin, and the actions of the first owner's invitation are not found;
-  # while it is off, the first admin's are, and they are left out of the table of actions
-  # below.
-  @owner_invitations [
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation"
-  ]
-  @admin_invitations [
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation"
-  ]
-  # Not found while `ApiaryPro.Flags.operator_infrastructure?/0` is off, and left out of the
-  # table of actions below: the operator's choice of the model providers a client uses.
-  @needs_operator_infrastructure [:"client.set_model_chain"]
-  @hidden_while_operator_owns @owner_invitations
 
   # The actions over a client's people a client's admin takes on its admins as on its
   # members while the flag is on: nobody in a client is an owner but those who were.
@@ -429,9 +339,6 @@ defmodule ApiaryPro.Access do
        `organisation_secret.write` and `organisation_secret.use` are not found, for every
        role, in an organisation that does not have the feature `organisation_variables`
        (`ApiaryPro.Features.of/2`);
-     - **what kind of organisation it is**: an operator's actions over its clients
-       (`client.*`) are asked in an operator, and not found in an organisation of another
-       kind;
      - **the instance organisation**: #{Enum.map_join(@not_on_instance_organisation -- @flagged_transfers, ", ", &"`#{&1}`")}
        are forbidden on it, for every role, the instance's included (`Apiary.Access.refused_on?/2`);
      - **suspension**: a suspended organisation (`suspended?/1`) is read-only, every
@@ -462,7 +369,7 @@ defmodule ApiaryPro.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{@actions |> Enum.reject(&(&1.name in (@flagged_transfers ++ @admin_invitations ++ @needs_operator_infrastructure))) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
+  #{@actions |> Enum.reject(&(&1.name in @flagged_transfers)) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
 
   ## Roles
 
@@ -475,22 +382,6 @@ defmodule ApiaryPro.Access do
   `organisation.create`, which `check/3` answers for them. The edition's actions are held by the
   core's levels too, as each one's `roles` say.
   """
-
-  # The actions of an operator over its clients, asked in the operator: in an organisation
-  # of another kind they are not found, as a page that is not there.
-  @operator_actions [
-    :"client.read",
-    :"client.create",
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation",
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation",
-    :"client.grant_features",
-    :"client.set_model_chain",
-    :"client.delete"
-  ]
 
   # The instance actions asked of the organisation acted on: a change of kind, and what is
   # never taken on the instance organisation itself, which holds the instance admins, so
@@ -557,38 +448,26 @@ defmodule ApiaryPro.Access do
   """
   @spec check(Scope.t() | nil, Access.action(), Access.subject() | nil) ::
           :continue | :ok | {:error, Access.reason()}
-  # Before all of it, what a flag hides is not found, for everyone (`hidden?/2`).
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is read once here and passed to `hidden?/2`
-  # and the steps of `answer/4`. It is read again elsewhere for the same question: by
+  # Before all of it, what a flag hides is not found, for everyone (`hidden?/1`).
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is read once here and passed to the steps
+  # of `answer/4`. It is read again elsewhere for the same question: by
   # `role/1`, which the core calls after `:continue`, and by the check the core runs again
   # when someone in both acts at their level in the operator.
   def check(scope, action, subject) do
     on? = Flags.operator_infrastructure?()
 
-    if hidden?(action, on?),
+    if hidden?(action),
       do: {:error, :not_found},
       else: answer(scope, action, subject, on?)
   end
 
   # hidden?/1 is true when a flag hides `action` now, as a path that does not exist: the
-  # action `ApiaryPro.Flags.transfers?/0` gates while it is off; the first owner's
-  # invitation while `ApiaryPro.Flags.operator_infrastructure?/0` is on; the first admin's
-  # invitation and the operator's choice of a client's model providers while it is off.
-  # `check/3` calls `hidden?/2` first, and a page that is not there while a flag hides its
-  # action calls `hidden?/1`. Not in the published documentation: what a flag hides is not
-  # named there (`ApiaryPro.Flags`).
+  # action `ApiaryPro.Flags.transfers?/0` gates while it is off. `check/3` calls it first,
+  # and a page that is not there while a flag hides its action calls it too. Not in the
+  # published documentation: what a flag hides is not named there (`ApiaryPro.Flags`).
   @doc false
   @spec hidden?(Access.action()) :: boolean
-  def hidden?(action), do: hidden?(action, Flags.operator_infrastructure?())
-
-  defp hidden?(action, on?) do
-    cond do
-      action in @flagged_transfers -> not Flags.transfers?()
-      action in @hidden_while_operator_owns -> on?
-      action in @admin_invitations or action in @needs_operator_infrastructure -> not on?
-      true -> false
-    end
-  end
+  def hidden?(action), do: action in @flagged_transfers and not Flags.transfers?()
 
   defp answer(nil, action, subject, _on?) do
     if action in @not_on_instance_organisation and instance_organisation?(subject),
@@ -702,9 +581,6 @@ defmodule ApiaryPro.Access do
 
     cond do
       action in @organisation_secrets and not has_organisation_secrets?(subject) ->
-        {:error, :not_found}
-
-      action in @operator_actions and not operator?(scope) ->
         {:error, :not_found}
 
       action in @not_on_instance_organisation and instance_organisation?(subject) ->
@@ -937,11 +813,6 @@ defmodule ApiaryPro.Access do
         operator_role(via, Flags.operator_infrastructure?())
     end
   end
-
-  defp operator?(%Scope{organisation: %Organisation{} = organisation}),
-    do: Tenants.operator?(organisation)
-
-  defp operator?(_scope), do: false
 
   defp client?(%Scope{organisation: %Organisation{} = organisation}),
     do: Tenants.client?(organisation)

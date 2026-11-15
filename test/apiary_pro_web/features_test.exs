@@ -52,15 +52,4 @@ defmodule ApiaryProWeb.FeaturesRoutesTest do
 
     assert :secrets in Apiary.Features.needs(:organisation_variables)
   end
-
-  test "an operator's clients belong to managed_organisations" do
-    routes = RoutesFeaturesCase.routes(ApiaryProWeb.Router)
-
-    clients = for {_verb, "/:org/clients" <> _rest, module} <- routes, do: module
-    assert clients != []
-
-    for module <- clients do
-      assert module.__feature__() == :managed_organisations
-    end
-  end
 end

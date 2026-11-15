@@ -35,7 +35,7 @@ defmodule ApiaryPro.GatewayRacesTest do
   alias Apiary.Organisations.{Membership, Organisation}
   alias Apiary.Policy.Rule
   alias Apiary.Runs.{Attach, Run}
-  alias ApiaryPro.{Flags, Grants, Operators}
+  alias ApiaryPro.{Flags, Grants}
   alias ApiaryPro.Tenants.Tenant
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -369,21 +369,6 @@ defmodule ApiaryPro.GatewayRacesTest do
       assert {:ok, %Node{}} = made
     end
 
-    test "first, a new client waits for it", ctx do
-      {made, created} = race(fn -> new_gateway(ctx) end, fn -> new_client(ctx) end)
-      assert {:ok, %Node{}} = made
-      assert {:ok, %{organisation: %Organisation{} = client}} = created
-      remember(client)
-    end
-
-    test "after a new client, waits for it, and the new client holds no node", ctx do
-      {created, made} = race(fn -> new_client(ctx) end, fn -> new_gateway(ctx) end)
-      assert {:ok, %{organisation: %Organisation{id: id} = client}} = created
-      remember(client)
-      assert {:ok, %Node{}} = made
-      refute Repo.exists?(from n in Node, where: n.organisation_id == ^id)
-    end
-
     @tag needs: [:managed_organisations, :security]
     test "first, a policy write in the client waits for it", ctx do
       {made, written} = race(fn -> new_gateway(ctx) end, fn -> allow(ctx.client.owner.scope) end)
@@ -498,24 +483,6 @@ defmodule ApiaryPro.GatewayRacesTest do
   defp form(organisation) do
     offered = Apiary.Features.built() -- ApiaryPro.Features.instance_switched()
     Enum.filter(ApiaryPro.Features.of(organisation), &(&1 in offered))
-  end
-
-  defp new_client(ctx) do
-    email = email()
-
-    Operators.create_client(
-      ctx.in_operator,
-      %{"name" => name("client"), "email" => email},
-      &"http://localhost/invitations/#{&1}"
-    )
-  end
-
-  # A client the race made, whose first owner has not joined: deleted with the race's
-  # organisations, before its operator.
-  defp remember(%Organisation{id: id}) do
-    Agent.update(Process.get(Apiary.Races), fn created ->
-      %{created | organisations: [id | created.organisations]}
-    end)
   end
 
   defp allow(scope), do: Policy.allow(scope, nil, %{host: "race.example"})

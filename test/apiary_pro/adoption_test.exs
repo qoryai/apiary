@@ -224,18 +224,15 @@ defmodule ApiaryPro.AdoptionTest do
       assert Access.can?(scope, :"instance.read", scope.organisation)
       refute Tenants.operator?(scope.organisation)
 
-      # No Clients page: an operator's actions are not found in an organisation.
-      assert Access.check(scope, :"client.read", scope.organisation) == {:error, :not_found}
-
       # With `managed_organisations`, which the suite's instance has, an instance admin
-      # makes it an operator on Instance settings › Organisations, and it has a Clients page then.
+      # makes it an operator on Instance settings › Organisations.
       assert {:ok, operator} = Operators.change_kind(scope, instance.id, :operator)
 
       assert %Tenant{kind: :operator, instance_organisation: true} =
                Repo.get!(Tenant, operator.id)
 
       assert {:ok, scope} = scope_in(owner_id, organisation)
-      assert Access.can?(scope, :"client.read", scope.organisation)
+      assert Tenants.operator?(scope.organisation)
     end
 
     test "leaves the kind as it is of one that had its tenant already" do

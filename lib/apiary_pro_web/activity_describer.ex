@@ -1,17 +1,13 @@
 defmodule ApiaryProWeb.ActivityDescriber do
   @moduledoc """
   The edition's words for the audit log (`ApiaryWeb.Activity.Describer`), which the page asks
-  before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): an operator's clients,
-  the instance's actions, changes of ownership and the instance's
-  arbiter, the features granted down the chain, a member's workspace
-  access, the organisation's policy and its variables, which are said by name, never by
-  value. It also says the core's invitation revoked for a reason of the edition's:
-  its first owner joined, or its client was deleted; and the entries of an action no
-  longer taken, features taken away from a workspace, as they were said.
+  before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): the instance's actions,
+  changes of ownership and the instance's arbiter, the features granted down the chain, a
+  member's workspace access, the organisation's policy and its variables, which are said
+  by name, never by value. It also says the entries of an action no longer taken, features
+  taken away from a workspace, as they were said.
 
-  An operator's entry of a client's deletion names the client as it is called now, and
-  says it without its name once it is gone. The
-  instance's actions are offered in the Action filter on the instance organisation's
+  The instance's actions are offered in the Action filter on the instance organisation's
   page, to those who take them; elsewhere their entries show, and the filter does not
   name them. A change of the organisation's variables is offered in the filter only where
   the organisation has them (`organisation_variables`); its entries show everywhere.
@@ -31,25 +27,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   @impl true
   def label(:"workspace_access.add"), do: gettext("Member added to a workspace")
   def label(:"workspace_access.remove"), do: gettext("Member removed from a workspace")
-  def label(:"client.create"), do: gettext("Client created")
-  def label(:"client.invite_owner"), do: gettext("Client's owner invited")
-
-  def label(:"client.revoke_owner_invitation"),
-    do: gettext("Client's owner invitation revoked")
-
-  def label(:"client.renew_owner_invitation"),
-    do: gettext("Client's owner invitation renewed")
-
-  def label(:"client.invite_admin"), do: gettext("Client's first admin invited")
-
-  def label(:"client.revoke_admin_invitation"),
-    do: gettext("Client's admin invitation revoked")
-
-  def label(:"client.renew_admin_invitation"),
-    do: gettext("Client's admin invitation renewed")
-
-  def label(:"client.delete"), do: gettext("Client deleted")
-  def label(:"client.set_model_chain"), do: gettext("Client's model providers changed")
 
   def label(:"instance.create_organisation"),
     do: gettext("Organisation created")
@@ -106,20 +83,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def offered?(scope, :"organisation_variable.edit"),
     do: Features.visible?(scope, :organisation_variables)
 
-  # The first admin's invitation is offered only while it may be made
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`); its entries show all the same.
-  def offered?(_scope, action)
-      when action in [
-             :"client.invite_admin",
-             :"client.revoke_admin_invitation",
-             :"client.renew_admin_invitation"
-           ],
-      do: Flags.operator_infrastructure?()
-
-  # The choice of a client's model providers is offered only while it may be made
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`); its entries show all the same.
-  def offered?(_scope, :"client.set_model_chain"), do: Flags.operator_infrastructure?()
-
   def offered?(scope, action) do
     not String.starts_with?(Atom.to_string(action), "instance.") or
       Access.can?(scope, :"instance.read", scope.organisation)
@@ -135,26 +98,8 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def sentence(nil, %{action: name} = entry, names) when is_map_key(@retired, name),
     do: sentence(Map.fetch!(@retired, name), entry, names)
 
-  def sentence(action, entry, names),
-    do: named(action, entry, names) || said(action, entry.details || %{}, entry.actor_kind)
-
-  # A client's deletion in words that name the client, as it is called now; nil where it is
-  # gone, for the sentence without its name.
-  defp named(
-         :"client.delete",
-         %{details: %{"organisation_id" => id, "guard" => "no_people"}},
-         names
-       ) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Deleted %{organisation}, which nobody had joined yet", organisation: name)
-  end
-
-  defp named(:"client.delete", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Deleted %{organisation}, which had no owner yet", organisation: name)
-  end
-
-  defp named(_action, _entry, _names), do: nil
+  def sentence(action, entry, _names),
+    do: said(action, entry.details || %{}, entry.actor_kind)
 
   # What was done, one whole sentence an action, and one a kind of change where an action
   # takes several.
@@ -166,18 +111,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   defp said(:"workspace_access.remove", _details, _actor),
     do: gettext("Removed a member from a workspace")
-
-  defp said(:"invitation.revoke", %{"reason" => "owner_joined"}, _actor),
-    do: gettext("Withdrew another invitation of an owner: the first owner joined")
-
-  defp said(:"invitation.revoke", %{"reason" => "admin_joined"}, _actor),
-    do: gettext("Withdrew another invitation of an admin: the first admin joined")
-
-  defp said(:"invitation.revoke", %{"reason" => "client_deleted"}, _actor),
-    do: gettext("Withdrew an invitation: its organisation was deleted")
-
-  defp said(:"client.create", _details, _actor),
-    do: gettext("Created the organisation as a client of its operator")
 
   defp said(:"instance.create_organisation", _details, _actor),
     do: gettext("Created the organisation")
@@ -211,33 +144,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   defp said(:"client.grant_features", _details, _actor),
     do: gettext("Changed the features its operator grants it")
-
-  defp said(:"client.invite_owner", _details, _actor),
-    do: gettext("Invited its first owner, for its operator")
-
-  defp said(:"client.invite_admin", _details, _actor),
-    do: gettext("Invited its first admin, for its operator")
-
-  defp said(:"client.revoke_admin_invitation", _details, _actor),
-    do: gettext("Revoked an invitation of its first admin, for its operator")
-
-  defp said(:"client.renew_admin_invitation", _details, _actor),
-    do: gettext("Made a new link for an invitation of its first admin, for its operator")
-
-  defp said(:"client.revoke_owner_invitation", _details, _actor),
-    do: gettext("Revoked an invitation of its first owner, for its operator")
-
-  defp said(:"client.renew_owner_invitation", _details, _actor),
-    do: gettext("Made a new link for an invitation of its first owner, for its operator")
-
-  defp said(:"client.delete", %{"guard" => "no_people"}, _actor),
-    do: gettext("Deleted a client nobody had joined yet")
-
-  defp said(:"client.delete", _details, _actor),
-    do: gettext("Deleted a client that had no owner yet")
-
-  defp said(:"client.set_model_chain", _details, _actor),
-    do: gettext("Changed whose model providers a client uses")
 
   defp said(:"instance.suspend_account", _details, _actor),
     do: gettext("Suspended an account")

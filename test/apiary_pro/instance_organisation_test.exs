@@ -3,8 +3,8 @@ defmodule ApiaryPro.InstanceOrganisationTest do
   The instance organisation on an instance without `managed_organisations`: the instance's
   first sign-up makes it an organisation like any other
   (`ApiaryPro.Tenants.first_sign_up_kind/0`), whose owners are the instance admins, who
-  read every other organisation and take every instance action the instance has from it,
-  and in which no operator's action is found; once the instance has the feature, an
+  read every other organisation and take every instance action the instance has from it;
+  once the instance has the feature, an
   instance admin makes it an operator, and an organisation again while it has no clients.
   """
   # Not async: the features are the node's, and each test takes the flag off the suite's
@@ -31,15 +31,6 @@ defmodule ApiaryPro.InstanceOrganisationTest do
   alias ApiaryPro.Transfers.Transfer
 
   @moduletag with_features: Features.all() -- [:managed_organisations]
-
-  # What an operator does, found in an operator alone.
-  @operator_actions [
-    :"client.read",
-    :"client.create",
-    :"client.invite_owner",
-    :"client.grant_features",
-    :"client.delete"
-  ]
 
   setup do
     Apiary.EditionKit.hide_instance_organisation()
@@ -69,28 +60,6 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     # No organisation is shown the switch of the whole instance.
     assert ApiaryPro.Features.of(scope.organisation) ==
              Features.enabled() -- [:feature_visibility]
-  end
-
-  test "no operator's action is found in it, whatever the instance has", %{
-    first: first,
-    scope: scope
-  } do
-    for action <- @operator_actions do
-      assert Access.check(scope, action, scope.organisation) == {:error, :not_found}
-    end
-
-    assert {:error, :not_found} = Operators.list_clients(scope)
-    assert Operators.count_clients(scope) == 0
-
-    # The feature on, the kind still answers: an organisation has no clients.
-    features_on!(Features.all())
-    scope = scope_in(first.user, first.organisation)
-
-    for action <- @operator_actions do
-      assert Access.check(scope, action, scope.organisation) == {:error, :not_found}
-    end
-
-    assert Access.can?(scope, :"instance.change_kind", scope.organisation)
   end
 
   test "its owners read every other organisation as the instance admins", %{first: first} do
@@ -184,12 +153,11 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     assert {:ok, operator} = Operators.change_kind(scope, here, :operator)
     assert %Tenant{kind: :operator, instance_organisation: true} = tenant_of(operator)
 
-    # Its Clients page and its clients, as any operator's.
+    # Its clients, as any operator's.
     scope = scope_in(first.user, operator)
-    assert Access.can?(scope, :"client.read", scope.organisation)
     assert Access.can?(scope, :"instance.read", scope.organisation)
     client = client_fixture(scope)
-    assert {:ok, [_row]} = Operators.list_clients(scope)
+    assert Tenants.operator_id(client.organisation) == here
     assert client.scope.reach |> elem(0) == :operator
 
     # An organisation again once it has no clients, the rule of every operator.

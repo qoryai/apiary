@@ -12,7 +12,7 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{Access, Organisations}
-  alias ApiaryPro.{Flags, Operators}
+  alias ApiaryPro.Flags
 
   @moduletag with_features: Apiary.Features.all()
 
@@ -369,140 +369,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
     end
   end
 
-  describe "a client's first person" do
-    test "is invited as its first admin, who joins as one, and the other invitations go",
-         ctx do
-      email = Apiary.AccountsFixtures.unique_user_email()
-
-      {%{organisation: client}, token} =
-        create_client_fixture(ctx.operator.scope, %{"name" => "Acme", "email" => email})
-
-      assert [%{action: "client.invite_admin"}] =
-               entries(client) |> Enum.filter(&(&1.action =~ "client.invite"))
-
-      {:ok, second} =
-        Operators.invite_admin(
-          ctx.operator.scope,
-          client.id,
-          %{"email" => Apiary.AccountsFixtures.unique_user_email()},
-          &"http://localhost/invitations/#{&1}"
-        )
-
-      {:ok, rows} = Operators.list_clients(ctx.operator.scope)
-      row = Enum.find(rows, &(&1.organisation.id == client.id))
-      assert row.owners == [] and row.admins == []
-      assert length(row.owner_invitations) == 2
-
-      first = sign_up_fixture(%{email: email, invitation_token: token})
-      assert first.membership.level == :admin
-
-      revoked = Enum.find(entries(client), &(&1.action == "invitation.revoke"))
-      assert revoked.subject_id == second.id
-      assert revoked.details == %{"reason" => "admin_joined"}
-
-      {:ok, rows} = Operators.list_clients(ctx.operator.scope)
-      row = Enum.find(rows, &(&1.organisation.id == client.id))
-      assert Enum.map(row.admins, & &1.id) == [first.user.id]
-      assert row.owner_invitations == []
-
-      # The client has an admin now, who invites its people.
-      assert Operators.invite_admin(
-               ctx.operator.scope,
-               client.id,
-               %{"email" => Apiary.AccountsFixtures.unique_user_email()},
-               &"http://localhost/invitations/#{&1}"
-             ) == {:error, :has_admin}
-    end
-
-    test "a pending invitation of a first owner makes an admin once the flag is on", ctx do
-      Flags.put_operator_infrastructure(false)
-      email = Apiary.AccountsFixtures.unique_user_email()
-
-      {%{organisation: _client}, token} =
-        create_client_fixture(ctx.operator.scope, %{"name" => "Acme", "email" => email})
-
-      Flags.put_operator_infrastructure(true)
-      assert sign_up_fixture(%{email: email, invitation_token: token}).membership.level == :admin
-    end
-
-    test "is refused while the client has a legacy owner", ctx do
-      {:ok, rows} = Operators.list_clients(ctx.operator.scope)
-      assert Enum.find(rows, &(&1.organisation.id == ctx.client.organisation.id)).admins != []
-
-      assert Operators.invite_admin(
-               ctx.operator.scope,
-               ctx.client.organisation.id,
-               %{"email" => Apiary.AccountsFixtures.unique_user_email()},
-               &"http://localhost/invitations/#{&1}"
-             ) == {:error, :has_admin}
-    end
-
-    test "its invitation is revoked and renewed by the operator's owners and admins", ctx do
-      {%{organisation: client}, _token} =
-        create_client_fixture(ctx.operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
-
-      [invitation] = pending(ctx, client)
-      Apiary.Mail.put_test_source(:none)
-
-      assert {:ok, _, {:link, _}} =
-               Operators.renew_admin_invitation(
-                 ctx.operator_admin.scope,
-                 client.id,
-                 invitation.id,
-                 &"http://localhost/invitations/#{&1}"
-               )
-
-      assert Operators.revoke_admin_invitation(
-               ctx.operator_member.scope,
-               client.id,
-               invitation.id
-             ) == {:error, :forbidden}
-
-      assert {:ok, _} =
-               Operators.revoke_admin_invitation(ctx.operator.scope, client.id, invitation.id)
-
-      actions = Enum.map(entries(client), & &1.action)
-      assert "client.renew_admin_invitation" in actions
-      assert "client.revoke_admin_invitation" in actions
-    end
-
-    test "the first owner's actions are not found while the flag is on, and the first admin's while it is off",
-         ctx do
-      {%{organisation: client}, _token} =
-        create_client_fixture(ctx.operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
-
-      [invitation] = pending(ctx, client)
-      url = &"http://localhost/invitations/#{&1}"
-      attrs = %{"email" => Apiary.AccountsFixtures.unique_user_email()}
-
-      assert Operators.invite_owner(ctx.operator.scope, client.id, attrs, url) ==
-               {:error, :not_found}
-
-      assert Operators.revoke_owner_invitation(ctx.operator.scope, client.id, invitation.id) ==
-               {:error, :not_found}
-
-      assert Operators.renew_owner_invitation(ctx.operator.scope, client.id, invitation.id, url) ==
-               {:error, :not_found}
-
-      Flags.put_operator_infrastructure(false)
-
-      assert Operators.invite_admin(ctx.operator.scope, client.id, attrs, url) ==
-               {:error, :not_found}
-
-      assert Operators.revoke_admin_invitation(ctx.operator.scope, client.id, invitation.id) ==
-               {:error, :not_found}
-
-      assert Operators.renew_admin_invitation(ctx.operator.scope, client.id, invitation.id, url) ==
-               {:error, :not_found}
-    end
-  end
-
   describe "a client's admins" do
     test "invite, remove admins and members, and never act on an owner", ctx do
       admin = ctx.client_admin.scope
@@ -569,47 +435,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
 
       assert {:ok, %{level: :owner}} =
                Organisations.set_member_level(ctx.operator.scope, member.id, :owner)
-    end
-  end
-
-  describe "a client nobody has joined" do
-    test "is deleted while only invitations are pending, its entry saying so", ctx do
-      {%{organisation: client}, _token} =
-        create_client_fixture(ctx.operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
-
-      assert {:ok, _} = ApiaryPro.Deletion.delete_client(ctx.operator.scope, client.id, "Acme")
-
-      entry = Enum.find(entries(ctx.operator.organisation), &(&1.action == "client.delete"))
-      assert entry.details["guard"] == "no_people"
-      assert entry.details["organisation_id"] == client.id
-    end
-
-    test "is not deleted once anyone has joined, a legacy owner or a first admin", ctx do
-      email = Apiary.AccountsFixtures.unique_user_email()
-
-      {%{organisation: client}, token} =
-        create_client_fixture(ctx.operator.scope, %{"name" => "Acme", "email" => email})
-
-      sign_up_fixture(%{email: email, invitation_token: token})
-
-      assert ApiaryPro.Deletion.delete_client(ctx.operator.scope, client.id, "Acme") ==
-               {:error, :has_people}
-
-      legacy = ctx.client.organisation
-
-      assert ApiaryPro.Deletion.delete_client(ctx.operator.scope, legacy.id, legacy.name) ==
-               {:error, :has_people}
-
-      # With the flag off, an admin of its own is no owner, and the client is deleted.
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, _} = ApiaryPro.Deletion.delete_client(ctx.operator.scope, client.id, "Acme")
-
-      entry = Enum.find(entries(ctx.operator.organisation), &(&1.action == "client.delete"))
-      refute Map.has_key?(entry.details, "guard")
     end
   end
 
@@ -774,10 +599,5 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
         where: e.organisation_id == ^organisation.id,
         order_by: [asc: e.inserted_at, asc: e.id]
     )
-  end
-
-  defp pending(ctx, client) do
-    {:ok, rows} = Operators.list_clients(ctx.operator.scope)
-    Enum.find(rows, &(&1.organisation.id == client.id)).owner_invitations
   end
 end

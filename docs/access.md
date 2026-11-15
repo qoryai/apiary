@@ -1074,12 +1074,8 @@ part of that check (`c:Apiary.Edition.check/3`).
 The core's sections of this file list what stays outside `Apiary.Access`: authentication,
 data rules, the last-owner rule, wording and lists on a page, feature gates, and the 4
 callbacks below. The edition adds one more: the **operator parts**, its code for an
-operator and its clients, also check beside `Apiary.Access`. `ApiaryPro.Operators`
-compares a client's operator with the operator that acts, and
-`ApiaryProWeb.ClientLive.Index` reads the flag
-`ApiaryPro.Flags.operator_infrastructure?/0`. While the flag is on, the page of a
-client's first owner's invitation is not found; while it is off, the page of the first
-admin's invitation is not found.
+operator and its clients, also check beside `Apiary.Access`: `ApiaryPro.Grants.set_client/3`
+compares a client's operator with the operator that acts.
 
 #### The 4 callbacks beside `Apiary.Access`
 
@@ -1133,8 +1129,8 @@ answer; the list is not complete:
 - `test/apiary_pro_web/live/transfers_flag_test.exs`: the action that is not found while
   `ApiaryPro.Flags.transfers?/0` is off;
 - `test/apiary_pro_web/live/operator_infrastructure_flag_test.exs` and
-  `test/apiary_pro/model_chain_test.exs`: the first admin's invitation and the choice of
-  model providers, not found while the operator does not own its clients;
+  `test/apiary_pro/model_chain_test.exs`: the choice of model providers, not found while
+  the operator does not own its clients;
 - `test/apiary_pro/operator_as_owner_access_test.exs`: the rules while the operator owns
   its clients.
 
@@ -1143,9 +1139,8 @@ The edition's roles, beside the core's levels, the access key and the instance:
 - **`reader`**: a person who reaches an organisation with no membership there, through
   its operator or as an instance admin (Reach, below). It holds every read, `member.read`,
   `run.read`, `run.read_log`, `security_policy.read`, `secret.read`, `variable.read`,
-  `connection.read`, `audit.read`, `node.read`, `client.read`,
-  `organisation_policy.read`, `organisation_variable.read` and
-  `organisation_secret.read`.
+  `connection.read`, `audit.read`, `node.read`, `organisation_policy.read`,
+  `organisation_variable.read` and `organisation_secret.read`.
 - **`person`**: anyone signed in, whose account is neither deleted nor suspended, in any
   organisation or none: it holds `organisation.create`, for a kind of organisation the
   instance opens (A person's action, asked of no place, below).
@@ -1193,9 +1188,7 @@ Adding a member to a workspace and removing them from one are actions over peopl
 the core's are (`Apiary.Access.acts_on?/2`): an owner takes them on anyone, an admin on a
 member. An invitation grants the workspace it was sent from, none for one sent to an
 organisation that had no workspace, and makes a member, whatever the organisation's
-state, with one exception: an operator's invitation of its client's first owner, which
-is marked so (its row of `operator_invitations`), and whose person joins as the owner
-(An operator's actions, below).
+state.
 
 ### Reach: a membership, an operator, the instance
 
@@ -1272,68 +1265,18 @@ to the client: the operator's people read it and do not change it.
 
 ### An operator's actions
 
-An organisation of the kind `operator` has clients. Its actions over them are asked in
-the operator, and are not found in an organisation of another kind; they belong to the
+An organisation of the kind `operator` has clients. Its action over them belongs to the
 feature `managed_organisations`:
 
-- `client.read`: its Clients page, which lists them with their status, their owners and
-  since when each is its client; its people at every level.
-- `client.create`: a new client, on the Clients page, with its name, no workspace and the
-  email address of its first owner, whom it invites to the organisation; an owner's or an
-  admin's of the operator.
-- `client.invite_owner`: the invitation of a client's first owner, sent to the
-  organisation alone while the client has no workspace, and to its first workspace once
-  it has one; an owner's or an admin's of the operator. Creating a client sends it, and
-  while the client has no owner the Clients page sends one again
-  (`ApiaryPro.Operators.invite_owner/4`): emailed with mail, and without it
-  (`Apiary.Mail.configured?/0`) kept, its link shown once on the page for the operator's
-  person to copy and send themselves. It counts against the operator's allowance of
-  invitations, not the client's, emailed or copied, so creating clients does not multiply
-  what an operator may invite. The invitation is marked as the operator's (a row of `operator_invitations`,
-  written with it), and its person joins as the client's owner. It stands only while the
-  client has no owner and is still that operator's client: accepted after, it is refused
-  as an expired one is. When the first owner joins, the operator's other pending
-  invitations of an owner there are deleted in the same transaction, each an
-  `invitation.revoke`, the reason `owner_joined` (`ApiaryPro.Invitations`). From then on
-  the client's owners and admins invite and manage its people, as anywhere. The person who
-  accepts opens the client's overview, `/:org`, where the kind cards create its first
-  workspace; a client's admins create it as its owners do, with `operator_infrastructure`
-  on or off, and no line says that the operator does. The invitation's page and the
-  sign-up page with `?invitation=` list Invitation alone before the person joins, while
-  the client has no workspace (`ApiaryPro.SetUp`).
-- `client.revoke_owner_invitation`: a pending invitation of a client's first owner
-  revoked, on the Clients page, while the client has no owner; an owner's or an admin's
-  of the operator. In a client with an owner, its owners and admins revoke its
-  invitations, as in any organisation (`invitation.revoke`).
-- `client.renew_owner_invitation`: a new link for a pending invitation of a client's
-  first owner, on the Clients page, while the client has no owner and is not suspended;
-  an owner's or an admin's of the operator (`ApiaryPro.Operators.renew_owner_invitation/4`,
-  which passes the action to the core's `Apiary.Organisations.renew_invitation/4` as
-  `action:`, so the core's `invitation.renew` is not asked). The same invitation, its row
-  of `operator_invitations` kept, with a new token: the old link stops working at once,
-  and the new one is shown once without mail, emailed with it. It counts against the
-  operator's allowance, as the invitation did, and its entry names it. In a client with
-  an owner, its owners and admins make new links for its invitations, as in any
-  organisation (`invitation.renew`).
-- `client.grant_features`: the features of a client, out of the operator's features, on
-  its Clients page; an owner's of the operator (Features, below).
-- `client.delete`: a client with no owner yet marked for deletion, on the Clients page,
-  its name typed to confirm (`ApiaryPro.Deletion.delete_client/3`); an owner's of the
-  operator. Nobody else is in it. It is purged after the grace period, as any
-  organisation, and its pending invitations are deleted at once, each an
-  `invitation.revoke`, the reason `client_deleted`; the entry of `client.delete` is the
-  operator's, which outlives the client's trail. A client with an owner is not deleted,
-  `{:error, :has_owner}`.
+- `client.grant_features`: the features of a client, out of the operator's features; an
+  owner's of the operator (Features, below).
 
 Each organisation has a separate allowance of invitations, a client as any other:
-`Apiary.Instance.invitations_per_day/0` a day, and three times as many attempts. The
-invitation of a client's first owner is the one counted against another organisation's
-allowance, its operator's (`Apiary.Organisations.insert_invitation/3` with `allowance:`).
-Each invitation's entry (`member.invite`, `client.invite_owner`), and each new link's
-(`invitation.renew`, `client.renew_owner_invitation`), names the allowance it counted
-against, `details.allowance_id`. An invitation withdrawn because it could not be
-delivered does not count against the day's invitations, and does count against the
-attempts.
+`Apiary.Instance.invitations_per_day/0` a day, and three times as many attempts.
+Each invitation's entry (`member.invite`), and each new link's (`invitation.renew`),
+names the allowance it counted against, `details.allowance_id`. An invitation withdrawn
+because it could not be delivered does not count against the day's invitations, and does
+count against the attempts.
 
 Deleting an operator waits until it has no clients: each is deleted or purged first.
 
@@ -1654,9 +1597,7 @@ actions, above).
 
 ### A client and its operator
 
-Nothing changes a client's operator, and a suspension leaves it as it is. Each side sees
-the other. The operator's Clients page names each client, its owners and
-since when it is the operator's client (its tenant's `operator_since`). A client names
+Nothing changes a client's operator, and a suspension leaves it as it is. A client names
 its operator to all of its people: in an Operator part of the Ownership section of its
 settings, which every reader of a client's settings has in the list, and which says that the operator's people read everything in it to support its
 harness and change nothing, and in a line under the title of its People page,
@@ -1678,8 +1619,8 @@ is served, follow the instance's features alone. Who changes them (`ApiaryPro.Gr
   organisation acted on: what an operator is granted, or what an organisation with no
   operator keeps. Never a client, whose operator grants it, nor the instance organisation,
   which has what the instance has.
-- `client.grant_features`: an owner's of the operator, on its Clients page: what a client
-  is granted, out of the operator's features.
+- `client.grant_features`: an owner's of the operator: what a client is granted, out of
+  the operator's features.
 
 A suspended organisation or client is granted nothing. An operator's
 `managed_organisations` is not a grant's to take away: it goes when it is made an
@@ -1855,29 +1796,11 @@ The modes keep a row that only names another out of it:
   `FOR KEY SHARE` of its tenant.
 - An invitation locks the row of the organisation whose allowance it counts against
   `FOR NO KEY UPDATE` while it is counted and written: the inviting organisation's for
-  `member.invite`, the operator's for `client.invite_owner`; a new link for a pending
-  invitation (`invitation.renew`, the core's, and `client.renew_owner_invitation`) the
-  one it was counted against, then the invitation.
-  `ApiaryPro.Operators.create_client/3` locks the operator's row `FOR NO KEY UPDATE`
-  first; `ApiaryPro.Operators.invite_owner/4` holds the client `FOR SHARE`, then locks the
-  operator `FOR NO KEY UPDATE`; `revoke_owner_invitation/3` holds the client
-  `FOR SHARE`, then locks the invitation; `renew_owner_invitation/4` reads the
-  organisation the invitation was counted against first
-  (`Apiary.Organisations.allowance_of/1`), the operator, or the client itself where the
-  client's trail no longer names it, then holds the client `FOR SHARE` and locks that one
-  `FOR NO KEY UPDATE`, or the client alone `FOR NO KEY UPDATE` where it is the one, and
-  the core's renewal, in the same transaction, then locks that row again, in the same
-  mode, and the invitation `FOR UPDATE`. Where it finds no such invitation, or no
-  organisation it was counted against, it holds the client alone `FOR SHARE`, and the
-  renewal is refused.
+  `member.invite`; a new link for a pending invitation (`invitation.renew`, the core's)
+  the one it was counted against, then the invitation.
 - An invitation's acceptance, and a sign-up with an invitation, hold its organisation
   `FOR SHARE` first, before the account and the invitation, so the organisation's
-  suspension and marking wait for it, or came first and refuse it. An operator's
-  invitation of its client's first owner locks the client `FOR NO KEY UPDATE` instead
-  (`ApiaryPro.Invitations`, the edition's `accepting/3`, before the core holds it
-  `FOR SHARE`), so two such acceptances, and the client's deletion, are one after the
-  other. `ApiaryPro.Deletion.delete_client/3` locks the client `FOR NO KEY UPDATE`, then
-  holds the operator `FOR SHARE`.
+  suspension and marking wait for it, or came first and refuse it.
 - The organisation's policy (`ApiaryPro.OrganisationPolicy`). A write holds the
   organisation and its operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then takes
   every workspace of the organisation in use in the order of their ids
@@ -1929,10 +1852,6 @@ and the rest `FOR KEY SHARE`, then locks the people locks of those organisations
 its memberships; its suspension holds them the same way, with the instance organisation
 `FOR SHARE`, then the same people locks, then the instance organisation's owners, then
 the account.
-
-A policy write in a client holds its operator `FOR SHARE`, so an operator's invitation of
-a client's first owner, and the operator's creation of a client, wait for a policy write
-in any of its clients; both are short.
 
 A change that asks `authorize/3` without holding the organisation, such as a rename or an
 access key, reads the membership and the suspensions without a lock, and can commit just

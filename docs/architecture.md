@@ -686,8 +686,7 @@ schemas beside it:
   workspace, adding a member to a workspace and removing them from one (Workspace
   access, below).
 - `ApiaryPro.Invitations`: what the edition adds to an invitation's acceptance: the
-  workspace it was sent from, none for an invitation sent to the organisation alone, and
-  an operator's invitation of its client's first owner, which makes that person the owner.
+  workspace it was sent from, and none for an invitation sent to the organisation alone.
 - `ApiaryPro.Tenants`: what the edition says of an organisation beyond the core's, its
   kind, its operator and its suspension, one row of `tenants` each (Tenants and the
   instance organisation, below).
@@ -699,8 +698,7 @@ schemas beside it:
   `SIGNUP_OPERATORS`, which the edition's `boot!/0` checks; and the kinds a sign-up
   offers.
 - `ApiaryPro.Operators`: operators and their clients, and the instance actions of the
-  instance organisation's owners: creating a client and inviting its first owner, listing
-  an operator's clients, listing the organisations of the instance, creating an
+  instance organisation's owners: listing the organisations of the instance, creating an
   organisation or an operator there, and changing a kind (Operators and clients, below).
 - `ApiaryPro.OrganisationPolicy`: the organisation's policy, the level above its
   workspaces' security policy: its host rules, the mode floor and the switch, and the
@@ -732,7 +730,7 @@ The edition's web side is under `lib/apiary_pro_web/`, `ApiaryProWeb.*`: its rou
 (`ApiaryProWeb.Router`), which calls the core's route macros (`ApiaryWeb.Routes`) with
 the edition's pages in the core's `live_session`s and serves the edition's sign-up page at
 the core's path, since it offers kinds; its web edition (`ApiaryProWeb.Edition`); the
-edition's pages under `live/` (an operator's clients, Instance settings' Organisations
+edition's pages under `live/` (Instance settings' Organisations
 and Accounts, the organisation's policy, the organisation's Ownership section, a member's workspaces, a new organisation
 and the sign-up page with kinds); and what it renders in the core's pages: its notices
 (`ApiaryProWeb.Notices`), its slots (`ApiaryProWeb.Slots`), its words for a reader
@@ -786,8 +784,7 @@ organisation, and removing the member removes their rows.
   owner's page carries, so the change does not lock them out, with a separate entry
   (`ApiaryPro.WorkspaceAccess`, told by the edition's `membership_changed/5`). The
   invitations a person sent stay when their level changes and when they leave or are
-  removed, as the organisation's: none grants more than member, but an operator's
-  invitation of its client's first owner.
+  removed, as the organisation's: none grants more than member.
 - The scope carries the workspace the path names and the person's row for it, in its
   `edition` map (`ApiaryPro.WorkspaceAccess.of/1`). `Apiary.Access` checks the reach from
   that scope in `can?/3`, and reads both the membership and the row again in
@@ -828,9 +825,7 @@ for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`
   and its next set-up would make another; nor is it purged, suspended or transferred.
   Its people see an organisation like any other; the words "operator" and "instance" are
   on no page of theirs but its settings, which say why it cannot be deleted, and, for its
-  owners, Instance settings' pages; made an operator, it has a Clients page, which its
-  sidebar lists once it has clients; until then its owners reach it from its
-  row under Instance settings › Organisations.
+  owners, Instance settings' pages.
 - **The first sign-up** is the instance's set-up, by the set-up link the instance logs
   until it is used, or a release command (`Apiary.Setup`, through
   `Apiary.Organisations.sign_up_user/3`). It creates the instance's first organisation,
@@ -840,9 +835,8 @@ for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`
   edition's `organisation_created/2`, `:first_sign_up`,
   `ApiaryPro.Tenants.organisation_created/2`), of the kind
   `ApiaryPro.Tenants.first_sign_up_kind/0` gives: `operator` where the instance has
-  `managed_organisations` (`QORY_FEATURES`, `Apiary.Features`), so its owners may take
-  clients at once, and `organisation` otherwise, an organisation like any other, with no
-  Clients page. The set-up page's line says which it makes (the edition's
+  `managed_organisations` (`QORY_FEATURES`, `Apiary.Features`), and `organisation`
+  otherwise, an organisation like any other. The set-up page's line says which it makes (the edition's
   `first_sign_up_line/0`, `ApiaryPro.SignUp.first_sign_up_line/0`). The unique index
   answers for anything the core's first-sign-up lock misses.
 - **A later sign-up** without an invitation is the core's where the edition opens one
@@ -877,8 +871,8 @@ for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`
   organisation's overview, `/:org`, as after a sign-up. The organisation's address is
   made from its name, and a name whose address another organisation has is refused, with
   the core's words, not numbered (`taken: :refuse` of
-  `Apiary.Organisations.build_organisation/2`); the same holds for a client and for an
-  instance admin's New organisation.
+  `Apiary.Organisations.build_organisation/2`); the same holds for an instance admin's
+  New organisation.
 - **An owner adds a workspace** from Workspaces in the organisation's settings, or from
   New on its pages, which lead to the core's type cards, `/:org/workspaces/new`
   (`ApiaryWeb.WorkspaceSetupLive`), through the core's one way,
@@ -894,12 +888,9 @@ for the edition to lock at a change's one point (`ApiaryPro.Tenants.lock_rows/1`
   core stores the reach and fixes it at the add; the edition stores none. A connection to
   an adapter reaches every workspace and has no setting.
 - **Invitations, bounded.** Each organisation has a separate allowance of invitations, a
-  client as any other; the one exception is the invitation of a client's first owner
-  (`client.invite_owner`), which is in the client's trail and counts against its
-  operator's allowance (`Apiary.Organisations.insert_invitation/3` with `allowance:`), so
-  creating clients does not multiply what an operator may send. Its entry names the
-  allowance it was counted against, `details.allowance_id`, as `member.invite`'s does,
-  and the row locked while it is counted is the operator's.
+  client as any other. Each invitation's entry (`member.invite`) names the allowance it
+  was counted against, `details.allowance_id`, and the row locked while it is counted is
+  that organisation's.
 - **Release commands.** The core's `Apiary.Release.grant_instance_admin/2` and
   `revoke_instance_admin/1` make an account an owner of the instance organisation, and one
   a member of it. `ApiaryPro.Release.purge_now/2` takes the address of the instance admin
@@ -951,8 +942,7 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   an organisation nor is deleted while one references it. A check keeps `operator_id` on
   an organisation of the kind `organisation`: an operator is never a client, and a client
   never becomes an operator. The relationship is set when the client is created, with
-  `operator_since`, the time it was set, which the operator's Clients page shows; nothing
-  changes it, and a suspension leaves it as it is. The instance organisation, made an
+  `operator_since`, the time it was set; nothing changes it, and a suspension leaves it as it is. The instance organisation, made an
   operator, may be the operator of clients, and is never a client itself, which a check
   keeps.
 - **A client owns its people.** It has its owners, admins and members, its
@@ -969,32 +959,12 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   Reach). The scope carries how (`Apiary.Accounts.Scope`'s `reach`);
   `Apiary.Organisations.resolve_scope/4` finds it through the edition's `reach/1`, and
   `Apiary.Access.reload/2` reads it again.
-- **Creating a client.** An owner or an admin of the operator creates it on the
-  operator's Clients page (`ApiaryPro.Operators.create_client/3`), with a name and the
-  email address of its first owner: an organisation with a slug, no workspace, the
-  operator as its operator, no membership, and the invitation of its first owner
-  (`client.invite_owner`), sent to the organisation alone and counted against the
-  operator's allowance. The person who accepts lands on the client's overview, `/:org`,
-  where the kind cards create its first workspace
-  (`Apiary.Organisations.create_workspace_of_kind/3`). While operators run their
-  clients, that person is the client's admin. A client's admins create workspaces as its
+- **A client's workspaces and invitations.** A client's admins create workspaces as its
   owners do, with `operator_infrastructure` on or off (`workspace.create`,
-  `ApiaryPro.Access`); an owner of the operator may too while the flag is on, from Set up
-  in the client's row on the Clients page while the client has no workspace, which opens
-  the client's overview. No line says that the operator makes the first workspace. A
-  client's invitation read signed out, on its page and on the sign-up with
-  `?invitation=`, lists Invitation alone while the client has no workspace
-  (`ApiaryPro.SetUp`), with Invitation current and no Your account.
-  That invitation is marked as the operator's by a row of `operator_invitations` beside
-  it, written in the same transaction (`ApiaryPro.Operators.OperatorInvitation`), and its
-  person joins as the owner, while the client has none and is still the operator's; every
-  other invitation makes a member. While a client has no owner, an owner or an admin of
-  the operator invites one again, makes a new link for a pending invitation of one, or
-  revokes one, from the Clients page (`ApiaryPro.Operators.invite_owner/4`,
-  `renew_owner_invitation/4`, `revoke_owner_invitation/3`), and an
-  owner of the operator deletes it (`ApiaryPro.Deletion.delete_client/3`); the first
-  owner's joining deletes the other pending invitations of an owner.
-  From then on the client's owners and admins invite and manage its people.
+  `ApiaryPro.Access`). A client's invitation read signed out, on its page and on the
+  sign-up with `?invitation=`, lists Invitation alone while the client has no workspace
+  (`ApiaryPro.SetUp`), with Invitation current and no Your account. Every invitation
+  makes a member; the client's owners and admins invite and manage its people.
 - **The instance actions.** The instance organisation's owners list every organisation on
   Instance settings' Organisations, `/instance/organisations`, create an organisation or an
   operator there, whose first owner is the one who creates it, make an organisation that
@@ -1005,8 +975,7 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   features (Features below the instance, below), and offer the ownership of an
   organisation whose owners are all suspended to one of its admins as the arbiter
   (Transfers, below). Of these, the instance organisation is offered a change of kind
-  alone, as any organisation that is no client: made an operator, it takes clients, and
-  made an organisation again once it has none. The rest it is not offered, and refuses:
+  alone, as any organisation that is no client. The rest it is not offered, and refuses:
   it is never purged, suspended or transferred, and has what the instance has.
 - **Deleting an operator** waits until it has no clients: `Apiary.Deletion` refuses to
   mark or purge one that still has a client, deleted or not (the edition's refusal,
@@ -1296,10 +1265,9 @@ is shown.
   is not shown is absent for its people there, and in its workspaces, as a feature the
   instance lacks is. Its machines and runs are served in full, as the instance's features
   say.
-- **Pages.** Instance settings › Organisations grants operators and organisations with no operator their
-  features; an operator's Clients page its clients. They offer only the
-  features built (`Apiary.Features.built/0`); one not built yet keeps what its grants
-  say.
+- **Pages.** Instance settings › Organisations grants operators and organisations with no
+  operator their features. It offers only the features built (`Apiary.Features.built/0`);
+  one not built yet keeps what its grants say.
 - **Race safety.** A write locks what it narrows `FOR NO KEY UPDATE`, an operator's
   clients and then the operator, in the lock order of
   [access.md](access.md) (The lock order); a change that asked `Apiary.Access` holds them
@@ -1316,9 +1284,7 @@ What the edition adds:
   (`organisation.create`, `details.sign_up` false); adding a member to a workspace and
   removing them from one (`workspace_access.add`, `workspace_access.remove`), and the
   workspace a person made a member is kept in, a `workspace_access.add` with the reason
-  `demoted`; creating a client (`client.create`, the first entry of the client's trail)
-  and inviting its first owner (`client.invite_owner`, in the client's trail); the
-  instance actions that change something (`instance.create_organisation`,
+  `demoted`; the instance actions that change something (`instance.create_organisation`,
   `instance.create_operator` and `instance.change_kind`, each in the trail of the
   organisation created or changed, and `instance.purge_organisation`, in the instance
   organisation's, since the purged organisation's trail goes with it); who may sign up
@@ -1356,10 +1322,6 @@ core's `Apiary.Deletion`.
 - **Whom it tells** (`ApiaryPro.Deletion.changed/4`, the edition's `deletion_changed/4`):
   a client's operator reads it through the operator, so the operator's people hear of its
   marking and its cancelling, and of its workspaces', as the client's members do.
-- **An operator's deleting of a client** it created and nobody else is in
-  (`ApiaryPro.Deletion.delete_client/3`, `client.delete`): marked and purged as any
-  organisation, its pending invitations deleted at once, its entry in the operator's
-  trail.
 - **A purge at once.** `ApiaryPro.Release.purge_now/2`, and an instance admin on
   Instance settings › Organisations (`ApiaryPro.Deletion.purge_on_request/3`), purge an organisation at once,
   for an erasure request an instance admin received, over the core's erasure steps
@@ -1369,8 +1331,9 @@ core's `Apiary.Deletion`.
 - **The edition's tables in the walk** (`ApiaryPro.Deletion.Tables`), purged before the
   core's: the rows of `policy_request_answers` before those of `policy_requests`, tables
   that nothing writes any more; the transfers, the feature grants
-  and the workspace access before the core's memberships and workspaces they point to; an
-  operator's invitations of its clients' first owners before the core's invitations; and
+  and the workspace access before the core's memberships and workspaces they point to; the
+  rows of `operator_invitations`, which nothing writes any more, before the core's
+  invitations; and
   the people locks, then the tenants, last. The rows of other organisations that name the
   one purged go with its row by their keys: an operator's invitations into its former
   clients, by `operator_invitations.operator_id`.

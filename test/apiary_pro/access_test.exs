@@ -45,20 +45,17 @@ defmodule ApiaryPro.AccessTest do
 
     transfers = [:"organisation.withdraw_transfer"]
 
-    while_on = [:"client.invite_owner"]
-    while_off = [:"client.invite_admin", :"client.set_model_chain"]
-
     Flags.put_transfers(false)
     hides.(transfers, [:"organisation.rename"])
 
     Flags.put_transfers(true)
     hides.([], transfers)
 
-    Flags.put_operator_infrastructure(true)
-    hides.(while_on, while_off)
-
-    Flags.put_operator_infrastructure(false)
-    hides.(while_off, while_on)
+    # The operator's flag hides nothing, on or off.
+    for on? <- [true, false] do
+      Flags.put_operator_infrastructure(on?)
+      hides.([], transfers ++ [:"client.grant_features"])
+    end
   end
 
   describe "an operator's reach" do
@@ -129,10 +126,6 @@ defmodule ApiaryPro.AccessTest do
                  {:error, if(subject == client.workspace, do: :forbidden, else: :not_found)},
                "#{action}"
       end
-
-      # An operator's actions over its clients are not there in a client.
-      assert Access.authorize(owner, :"client.create", client.organisation) ==
-               {:error, :not_found}
     end
   end
 
@@ -474,42 +467,6 @@ defmodule ApiaryPro.AccessTest do
     defp on(ctx, :client_member), do: ctx.client_member.membership
   end
 
-  describe "an operator's actions over its clients" do
-    setup do
-      operator = operator_fixture()
-
-      %{
-        operator: operator,
-        admin: member_fixture(operator.scope, :admin).scope,
-        member: member_fixture(operator.scope, :member).scope
-      }
-    end
-
-    test "its owners and admins create clients and invite, renew and revoke their first owners' invitations; its owners delete them",
-         ctx do
-      operator = ctx.operator.organisation
-
-      for action <- [:"client.delete"] do
-        assert Access.authorize(ctx.operator.scope, action, operator) == :ok
-        assert Access.authorize(ctx.admin, action, operator) == {:error, :forbidden}
-        assert Access.authorize(ctx.member, action, operator) == {:error, :forbidden}
-      end
-
-      for action <- [
-            :"client.create",
-            :"client.invite_owner",
-            :"client.renew_owner_invitation",
-            :"client.revoke_owner_invitation"
-          ] do
-        assert Access.authorize(ctx.operator.scope, action, operator) == :ok
-        assert Access.authorize(ctx.admin, action, operator) == :ok
-        assert Access.authorize(ctx.member, action, operator) == {:error, :forbidden}
-      end
-
-      assert Access.authorize(ctx.member, :"client.read", operator) == :ok
-    end
-  end
-
   # The instance actions never taken on the instance organisation itself.
   @not_on_itself [
     :"instance.purge_organisation",
@@ -780,29 +737,23 @@ defmodule ApiaryPro.AccessTest do
         :"instance.change_sign_up"
       ]
 
-      # So are granting a client its features and deleting one, asked in an operator.
-      placed = [
-        :"client.grant_features",
-        :"client.delete" | instance
-      ]
-
       assert Enum.sort(owner_only) ==
                Enum.sort(
                  [
+                   :"client.grant_features",
                    :"organisation.withdraw_transfer",
                    :"organisation_policy.edit",
                    :"organisation_policy.set_floor",
                    :"organisation_policy.set_switch"
-                 ] ++ placed
+                 ] ++ instance
                )
 
-      for action <- owner_only -- placed do
+      for action <- owner_only -- instance do
         assert Access.authorize(ctx.admin, action, ctx.admin.workspace) == {:error, :forbidden}
       end
 
-      # Asked in an organisation that is neither the instance organisation nor an
-      # operator, they are not there.
-      for action <- placed do
+      # Asked in an organisation that is not the instance organisation, they are not there.
+      for action <- instance do
         assert Access.authorize(ctx.admin, action, ctx.admin.organisation) == {:error, :not_found}
       end
     end

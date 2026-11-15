@@ -47,25 +47,19 @@ defmodule ApiaryPro.Flags do
     :ok
   end
 
-  # operator_infrastructure?/0 says whether an operator owns its clients: its owners act
-  # as owners in each client and its admins as admins, its members read; a client's first
-  # person is invited as its admin, and nobody in a client is made an owner. The operator
-  # makes and removes a client's nodes and access keys, and removes its workspaces. The
-  # client's owners and admins still make workspaces. Only the operator's owners lock and
-  # unlock a client's workspace rules, change or remove a locked one, and change the
-  # client's organisation policy, refused to its owners made before the switch, and the
-  # refusals name the operator. Off by default:
-  # `config :apiary_pro, :operator_infrastructure, true` turns it on. While it is off,
-  # everything is as it was: the operator's people read its clients and change nothing
-  # there, the first person of a client is its owner, and the actions of the first
-  # admin's invitation are not found, for everyone (`ApiaryPro.Access`).
+  # operator_infrastructure?/0 says whether an operator's people change what the operator
+  # sets in the workspaces it operates. While it is on, the operator's owners and admins
+  # act there as owners and admins for the workspace's settings, harness, workflows, model
+  # plan and node pools, and nobody else in the workspace changes its nodes, access keys,
+  # time limits, retention or saved harness documents (`ApiaryPro.Access`). While it is
+  # off, the operator's people read those workspaces and change nothing there. Off by
+  # default: `config :apiary_pro, :operator_infrastructure, true` turns it on.
   #
   # The override works as `transfers?/0`'s: for the process that puts it and the
   # processes whose `$callers` name it. What wins: the override the process put, then its
   # callers', then the config. `ApiaryPro.Access.check/3` reads it once and passes it to the
-  # steps of its answer; `ApiaryPro.Access.hidden?/1` reads it for a page;
-  # `ApiaryPro.Access.role/1` reads it again where the core calls for the role, and so does
-  # the check run again for someone in both.
+  # steps of its answer; `ApiaryPro.Access.role/1` reads it again where the core calls for
+  # the role, and so does the check run again for someone in both.
   @doc false
   @spec operator_infrastructure?() :: boolean
   def operator_infrastructure? do

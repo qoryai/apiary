@@ -577,15 +577,14 @@ defmodule ApiaryPro.Tenants do
     are open, and `is not open for sign-up on this instance` for a closed one;
   - `{:kind, kind}`, of `kind`, which the caller asked `Apiary.Access` for: a signed-in
     person's new organisation (`ApiaryPro.Organisations.create_organisation/2`), or one an
-    instance admin creates (`ApiaryPro.Operators.create_organisation/2`);
-  - `{:client, operator}`, a client of `operator` (`ApiaryPro.Operators.create_client/3`).
+    instance admin creates (`ApiaryPro.Operators.create_organisation/2`).
 
   The step `:tenant` is the new organisation carrying its tenant. A new operator that is
-  not the instance organisation is granted what the instance has, and a client what its
-  operator has (`ApiaryPro.Grants.written_out/3`); an organisation follows the instance,
-  and the instance organisation has what the instance has, whatever its kind
+  not the instance organisation is granted what the instance has
+  (`ApiaryPro.Grants.written_out/3`); an organisation follows the instance, and the
+  instance organisation has what the instance has, whatever its kind
   (`ApiaryPro.Features`). The organisation's entry records its kind, and whether it is the
-  instance organisation or the operator of a client.
+  instance organisation.
   """
   @spec organisation_created(Ecto.Multi.t(), term) :: Ecto.Multi.t()
   def organisation_created(multi, :first_sign_up) do
@@ -609,18 +608,6 @@ defmodule ApiaryPro.Tenants do
     multi
     |> Ecto.Multi.put(:kind, kind)
     |> kind_steps()
-  end
-
-  def organisation_created(multi, {:client, %Organisation{} = operator}) do
-    multi
-    |> insert_tenant(fn organisation, _changes -> new_client(organisation, operator) end)
-    |> Ecto.Multi.run(:grants, fn _repo, %{tenant: client} ->
-      Grants.written_out(client, {:client, operator})
-    end)
-    |> Ecto.Multi.put(:organisation_entry, %{
-      after: %{kind: :organisation},
-      details: %{operator_id: operator.id}
-    })
   end
 
   # The kind the `:kind` step gives, and what it is granted: a new operator what the
@@ -663,13 +650,6 @@ defmodule ApiaryPro.Tenants do
       name: :tenants_one_instance_organisation_index,
       message: dgettext_noop("errors", "could not be signed up just now; please try again")
     )
-  end
-
-  # A new client's tenant, of `operator`, from now on.
-  defp new_client(%Organisation{id: id}, %Organisation{id: operator_id}) do
-    %Tenant{organisation_id: id}
-    |> change(kind: :organisation, operator_id: operator_id, operator_since: DateTime.utc_now())
-    |> operator_constraints()
   end
 
   # The kind a later sign-up creates, of those the instance's settings open, read inside

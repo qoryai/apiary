@@ -1,7 +1,7 @@
 # Operators and their clients
 
 This guide covers operators and their clients, with the `managed_organisations` feature:
-what an operator is, how it creates and reaches its clients, and which features each has.
+what an operator is, how it reaches its clients, and which features each has.
 
 <!-- feature: managed_organisations -->
 ## The feature
@@ -18,20 +18,12 @@ makes an operator without clients an organisation again.
 
 ## Clients
 
-An owner or an admin of the operator creates its clients on its **Clients** page, each
-with a name and the email address of its first owner: each is a separate organisation,
-with no workspace yet, and the person who accepts that invitation becomes its owner and
-creates its first workspace from the kind cards on its overview; any other invitation
-there, as anywhere, makes a member. The invitation is emailed. While a client has no
-owner, the Clients page invites one again, revokes an invitation of its owner, and deletes
-the client, which nobody else is in. Once it has an owner, the client's owners and admins
-invite and manage its people, its settings and its security policy, as in any
-organisation. An operator with clients is not deleted until each client is purged.
+A client's owners and admins invite and manage its people, its settings and its
+security policy, as in any organisation. An operator with clients is not deleted until
+each client is purged.
 
 Each organisation has a separate daily allowance of invitations, an operator's client as
-any other. The one exception is the invitation of a client's first owner: it counts
-against the operator's allowance, so creating clients does not multiply what an operator
-may invite.
+any other.
 
 ## What the operator's people read
 
@@ -43,8 +35,7 @@ of the client changes what their membership in the client allows, and reads the 
 
 ## Each side sees the other
 
-The Clients page names each client, its owners and since when it is a client. A client's
-people see its operator on Ownership in its settings, and
+A client's people see its operator on Ownership in its settings, and
 "Operated by" it in its Organisation settings › People.
 
 A suspended operator is read-only and its people no longer read its clients, which keep
@@ -53,9 +44,9 @@ running, with their runs, access keys, owners, admins and members, until it is a
 ## Features granted down the chain
 
 Of the features a grant can name, an operator has only those support grants it, and a
-client only those its operator grants it, with **Features** on the Clients page, within
-the operator's features. A feature a grant can name, added to Qory Apiary later, reaches
-no operator and no client until it is granted. A client never has `managed_organisations`:
+client only those its operator grants it, within the operator's features. A feature a
+grant can name, added to Qory Apiary later, reaches no operator and no client until it is
+granted. A client never has `managed_organisations`:
 it manages no one.
 
 An organisation made an operator is granted what it had, and a new client what its

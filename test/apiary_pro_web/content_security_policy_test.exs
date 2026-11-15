@@ -51,7 +51,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
            "the edition's routes this test does not open; fill them in page/1, or list them under " <>
              "@exceptions with the reason:\n" <> Enum.map_join(unknown, "\n", & &1.path)
 
-    answers = for route <- known, do: flagged(route, fn -> check(route, world) end)
+    answers = for route <- known, do: check(route, world)
 
     problems = Enum.flat_map(answers, &elem(&1, 1))
 
@@ -85,22 +85,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
       assert violations(LazyHTML.from_fragment(markup), "n") == [], markup
     end
   end
-
-  # The pages there are only while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`) are opened with it on, and only they.
-  @operator_owns ["/:org/clients/:id/admin"]
-
-  defp flagged(%{path: path}, fun) when path in @operator_owns do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-
-    try do
-      fun.()
-    after
-      ApiaryPro.Flags.put_operator_infrastructure(false)
-    end
-  end
-
-  defp flagged(_route, fun), do: fun.()
 
   # Requests the route's page as the person it is for, and returns the answer's nonce and
   # what is wrong with it.
@@ -297,13 +281,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/:org/policy/history"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/new"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/:id/edit"), do: {:owner, :org, :org_rule_id}
-  defp page("/:org/clients"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/new"), do: {:operator_owner, :operator, nil}
-  # An owner is invited to a client that has none.
-  defp page("/:org/clients/:id/owner"), do: {:operator_owner, :operator, :ownerless_client_id}
-  defp page("/:org/clients/:id/admin"), do: {:operator_owner, :operator, :ownerless_client_id}
-  defp page("/:org/clients/:id/features"), do: {:operator_owner, :operator, :client_id}
-  defp page("/:org/clients/:id/delete"), do: {:operator_owner, :operator, :client_id}
   defp page(_path), do: nil
 
   # The route's address, its parameters filled from the world, and who opens it.
@@ -329,7 +306,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   # The people each page is for, logged in, and the records the pages are about, in the
   # states they open in: an owner's organisation with a member, a second workspace, its
   # variables, its secrets and its policy; the operator, with a client whose owner signed
-  # up and one with no owner yet; an organisation suspended; and one whose owner's account
+  # up; an organisation suspended; and one whose owner's account
   # is, with an admin.
   defp world do
     admin = suite_instance_admin()
@@ -368,12 +345,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     operator = operator_fixture(%{organisation_name: "Hive Ops"})
     client = client_fixture(operator.scope, "Acme")
 
-    {%{organisation: ownerless}, _token} =
-      create_client_fixture(operator.scope, %{
-        "name" => "Shop",
-        "email" => "dana@example.com"
-      })
-
     suspended = sign_up_fixture()
     {:ok, _} = Suspensions.suspend_organisation(admin.instance_scope, suspended.organisation.id)
 
@@ -393,8 +364,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         org: owner.organisation.slug,
         org_id: owner.organisation.id,
         client: client.organisation.slug,
-        client_id: client.organisation.id,
-        ownerless_client_id: ownerless.id,
         operator: operator.organisation.slug,
         suspended_id: suspended.organisation.id,
         arbitrated_id: arbitrated.organisation.id,

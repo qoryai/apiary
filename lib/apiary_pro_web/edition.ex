@@ -4,13 +4,7 @@ defmodule ApiaryProWeb.Edition do
 
   - The organisation's sidebar: **Policy**, the organisation's policy, in the first group,
     the one without a heading, after the core's entries there, where the feature is on
-    (`ApiaryProWeb.PolicyLive.Organisation`), "Organisation policy" in the palette;
-    **Clients**, an operator's clients, with their number beside it, under Operator. The
-    instance organisation is an
-    organisation like any other to those who manage nobody: of the kind `organisation` it
-    has no Clients entry, as any organisation has none; made an operator, its Clients
-    entry is there once it has clients, and until then its owners reach its clients from
-    Instance settings' Organisations.
+    (`ApiaryProWeb.PolicyLive.Organisation`), "Organisation policy" in the palette.
   - The Instance level's sections after the core's General and before its Mail and
     Configuration (`instance_sections/1`): **Organisations** and **Accounts**, for the
     instance admins (`ApiaryWeb.Access.on_mount/4`, `:instance`). The Qory Apiary menu's
@@ -72,23 +66,9 @@ defmodule ApiaryProWeb.Edition do
         path: fn organisation, _workspace -> ~p"/#{organisation}/policy" end,
         place: :organisation,
         action: :"organisation_policy.read"
-      },
-      %Entry{
-        section: :operator,
-        key: :clients,
-        label: gettext("Clients"),
-        icon: "hero-building-storefront",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/clients" end,
-        place: :organisation,
-        action: :"client.read",
-        count: :clients,
-        filter: &clients_shown?/2
       }
     ]
   end
-
-  @impl true
-  def nav_sections, do: [operator: gettext("Operator")]
 
   # Instance settings' Organisations and Accounts, for the instance admins: the second column
   # of the Instance level, before the core's Configuration.
@@ -99,35 +79,14 @@ defmodule ApiaryProWeb.Edition do
   @impl true
   def configuration_parts(_scope), do: [ApiaryProWeb.InstanceLive.SignUpPart]
 
-  # The instance organisation's Clients, once it is an operator, is there once it has
-  # clients: an empty group means nothing in the sidebar, and its owners reach its clients
-  # from Instance settings › Organisations. Any other organisation's is there wherever
-  # `client.read` is allowed, which it is in an operator alone.
-  defp clients_shown?(%{organisation: organisation}, counts) do
-    if ApiaryPro.Tenants.instance_organisation?(organisation),
-      do: clients_count(counts) > 0,
-      else: true
-  end
-
-  defp clients_shown?(_scope, _counts), do: true
-
-  defp clients_count(%{clients: n}) when is_integer(n), do: n
-  defp clients_count(_counts), do: 0
-
-  # How many clients an operator has, beside Clients, for a reader who may list them; and
-  # whether the instance's admins offer the reader the organisation's ownership, which the
+  # Whether the instance's admins offer the reader the organisation's ownership, which the
   # notices say on every page (`ApiaryProWeb.Notices`). Such an offer is made while no
   # owner may act, so the offer is read only then.
   @impl true
   def nav_counts(scope) do
-    clients =
-      if Access.can?(scope, :"client.read", scope.organisation),
-        do: %{clients: ApiaryPro.Operators.count_clients(scope)},
-        else: %{}
-
     if ownership_offered?(scope),
-      do: Map.put(clients, :ownership_offer, true),
-      else: clients
+      do: %{ownership_offer: true},
+      else: %{}
   end
 
   defp ownership_offered?(%{organisation: organisation} = scope) do
@@ -266,15 +225,11 @@ defmodule ApiaryProWeb.Edition do
 
   def above_policy_link(_scope), do: nil
 
-  # An operator is deleted once it has no clients (`ApiaryPro.Deletion.refusal/2`): its
-  # owners delete each client that has no owner, on Clients; a deleted client is still its
-  # client until it is purged.
+  # An operator is deleted once it has no clients (`ApiaryPro.Deletion.refusal/2`); a
+  # deleted client is still its client until it is purged.
   @impl true
   def refusal_sentence(:has_clients),
-    do:
-      gettext(
-        "An operator with clients cannot be deleted. On Clients, delete each client that has no owner; a deleted client counts until it is purged."
-      )
+    do: gettext("An operator with clients cannot be deleted.")
 
   # An operator is deleted once it operates no workspace, and a workspace once it has no
   # operator (`ApiaryPro.Deletion.refusal/2`).
@@ -560,10 +515,9 @@ defmodule ApiaryProWeb.Edition do
     register signin signout signup static status support workspaces www
   )
 
-  # The edition's pages of an organisation, the second segment of `/:org/…`: an operator's
-  # clients, Instance settings' former addresses, which lead to it, and the organisation's
-  # policy.
-  @organisation_pages ~w(clients instance policy)
+  # The edition's pages of an organisation, the second segment of `/:org/…`: Instance
+  # settings' former addresses, which lead to it, and the organisation's policy.
+  @organisation_pages ~w(instance policy)
 
   # The names no slug may be beyond the core's, which the core adds to its list
   # (`ApiaryWeb.ReservedSlugs`).

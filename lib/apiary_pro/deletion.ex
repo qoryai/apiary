@@ -2,9 +2,8 @@ defmodule ApiaryPro.Deletion do
   @moduledoc """
   The edition's part in deleting and purging organisations (`Apiary.Deletion`): what
   it refuses (`refusal/2`, the edition's `c:Apiary.Edition.deletion_refusal/2`), whom it
-  tells of a change (`changed/4`, the edition's `c:Apiary.Edition.deletion_changed/4`), an
-  operator's deleting of a client it created and nobody else is in (`delete_client/3`),
-  and an instance admin's purge on an erasure request (`purge_on_request/3`).
+  tells of a change (`changed/4`, the edition's `c:Apiary.Edition.deletion_changed/4`), and
+  an instance admin's purge on an erasure request (`purge_on_request/3`).
 
   The instance organisation holds the instance admins, and an instance without it would
   give its next sign-up the instance: it is never marked nor purged,
@@ -21,8 +20,8 @@ defmodule ApiaryPro.Deletion do
 
   alias Apiary.{Access, Audit, Deletion, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{Reach, Tenants}
+  alias Apiary.Organisations.{Membership, Organisation, Workspace}
+  alias ApiaryPro.Tenants
   alias ApiaryPro.Tenants.Tenant
 
   @doc """
@@ -99,110 +98,6 @@ defmodule ApiaryPro.Deletion do
   end
 
   @doc """
-  delete_client/3 marks the client `client_id` of the scope's organisation, an operator,
-  for deletion (`client.delete`, an owner's of the operator), while the client has no
-  owner yet, when `confirmation` is its name: nobody else is in it, so its operator, which
-  created it, deletes it. It is purged after the grace period, as an
-  organisation its owner deletes; its pending invitations are deleted at once, each an
-  entry of `invitation.revoke` in its trail, the reason `client_deleted`. An entry of
-  `client.delete` in the operator's trail, which outlives the client's, names it.
-
-  `{:ok, client}`, marked; `{:error, :has_owner}` for a client that has an owner;
-  `{:error, :confirmation}` for a
-  confirmation that is not its name; `{:error, :not_found}` for an organisation that is
-  no client of the operator, or one marked already, and `Apiary.Access`'s answer.
-  """
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, the client must have no
-  # membership at all, else `{:error, :has_people}`, and the entry's details say
-  # so (`"guard" => "no_people"`).
-  @spec delete_client(Scope.t(), Ecto.UUID.t(), String.t() | nil) ::
-          {:ok, %Organisation{}} | {:error, :has_owner | :has_people | Deletion.refusal()}
-  def delete_client(
-        %Scope{organisation: %Organisation{id: operator_id}} = scope,
-        client_id,
-        confirmation
-      ) do
-    owns? = ApiaryPro.Flags.operator_infrastructure?()
-
-    with {:ok, id} <- cast(client_id) do
-      Repo.transact(fn ->
-        # The lock order (docs/access.md): the client's row `FOR NO KEY UPDATE`, which an
-        # acceptance of its first owner's invitation holds too, and the operator's
-        # `FOR SHARE`, at one point, in the lock order.
-        held =
-          Tenants.lock_organisations!([id, operator_id], fn
-            ^id -> :no_key_update
-            _operator -> :share
-          end)
-
-        with %Organisation{deletion_marked_at: nil} = client <- held[id] || not_found(),
-             true <- Tenants.operator_id(client) == operator_id || not_found(),
-             %Organisation{} = operator <- held[operator_id] || not_found(),
-             :ok <- Access.authorize(scope, :"client.delete", operator),
-             :ok <- ensure_nobody(client, owns?),
-             :ok <- confirm(client.name, confirmation),
-             {:ok, marked} <- client |> Deletion.mark_changeset(scope) |> Repo.update(),
-             :ok <- delete_invitations(Reach.in_client(scope, marked)),
-             {:ok, _entry} <-
-               Audit.record(
-                 Repo,
-                 Scope.in_organisation(scope, operator),
-                 :"client.delete",
-                 operator,
-                 %{details: deleted_details(marked, owns?)}
-               ) do
-          {:ok, marked}
-        else
-          %Organisation{} -> not_found()
-          {:error, _reason} = error -> error
-        end
-      end)
-      |> announce()
-    end
-  end
-
-  def delete_client(_scope, _client_id, _confirmation), do: not_found()
-
-  # No owner yet; while the operator owns its clients, no membership at all.
-  defp ensure_nobody(%Organisation{id: id}, false) do
-    if Repo.exists?(from m in Membership, where: m.organisation_id == ^id and m.level == :owner),
-      do: {:error, :has_owner},
-      else: :ok
-  end
-
-  defp ensure_nobody(%Organisation{id: id}, true) do
-    if Repo.exists?(from m in Membership, where: m.organisation_id == ^id),
-      do: {:error, :has_people},
-      else: :ok
-  end
-
-  defp deleted_details(marked, false),
-    do: %{organisation_id: marked.id, purge_after: marked.purge_after}
-
-  defp deleted_details(marked, true),
-    do: %{organisation_id: marked.id, purge_after: marked.purge_after, guard: "no_people"}
-
-  # The pending invitations of the scope's organisation, deleted with its deletion, each
-  # with a separate entry.
-  defp delete_invitations(%Scope{organisation: %Organisation{id: id}} = scope) do
-    {_count, deleted} =
-      Repo.delete_all(
-        from i in Invitation,
-          where: i.organisation_id == ^id and is_nil(i.accepted_at),
-          select: i
-      )
-
-    Enum.reduce_while(deleted, :ok, fn invitation, :ok ->
-      case Audit.record(Repo, scope, :"invitation.revoke", invitation, %{
-             details: %{reason: "client_deleted"}
-           }) do
-        {:ok, _entry} -> {:cont, :ok}
-        {:error, _changeset} = error -> {:halt, error}
-      end
-    end)
-  end
-
-  @doc """
   purge_on_request/3 purges the organisation `organisation_id` at once, on an erasure
   request, for an instance admin on Instance settings › Organisations
   (`instance.purge_organisation`, an owner's of the instance organisation, asked in it),
@@ -269,14 +164,6 @@ defmodule ApiaryPro.Deletion do
   defp cast(_id), do: not_found()
 
   defp not_found, do: {:error, :not_found}
-
-  # A client marked: the client's members and its operator's hear of it, once it commits.
-  defp announce({:ok, %Organisation{id: id}} = result) do
-    Organisations.broadcast_membership_changes(told_of(id))
-    result
-  end
-
-  defp announce(result), do: result
 
   # The memberships whose people hear of a change to the organisation: the organisation's,
   # and its operator's for a client.

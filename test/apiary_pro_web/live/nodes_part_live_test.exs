@@ -2,11 +2,10 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
   # The nodes, a part of no feature (`:nodes`), hidden from a client's people by its
   # operator (`ApiaryPro.Features.hidden/1`): while the operator owns its clients
   # (`ApiaryPro.Flags.operator_infrastructure?/0`) and features are shown by who asks
-  # (`ApiaryPro.Flags.feature_visibility?/0`), the client's Features page shows them as
-  # one box after the features, and a client's owner, admin or member they are hidden from
-  # finds no page of the nodes, the access keys or the gateways, and no link to them,
+  # (`ApiaryPro.Flags.feature_visibility?/0`), a client's owner, admin or member they are
+  # hidden from finds no page of the nodes, the access keys or the gateways, and no link to them,
   # while the client's nodes keep working and the operator's people keep reading them.
-  # With either switch off no page offers them and nothing hides them.
+  # With either switch off nothing hides them.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -23,7 +22,6 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Event, Run}
   alias ApiaryPro.{Flags, Grants}
-  alias ApiaryPro.Grants.Grant
 
   @moduletag with_features: Features.all()
 
@@ -85,8 +83,8 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     ctx
   end
 
-  # What the client's Features page sends: what it has checked now, but the nodes where
-  # `shown?` is false, and with them where it is true.
+  # The operator's grant to the client (`ApiaryPro.Grants.set_client/3`): what the client
+  # has now, but the nodes where `shown?` is false, and with them where it is true.
   defp set_nodes(ctx, shown?) do
     client = Repo.reload!(ctx.client.organisation)
     shown = Grants.shown(client)
@@ -115,14 +113,6 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
       "/#{org}/gateways/#{ctx.organisation_gateway.public_id}",
       "/#{org}/gateways/#{ctx.organisation_gateway.public_id}/access-key"
     ]
-  end
-
-  defp rows(organisation_id) do
-    Repo.all(
-      from g in Grant,
-        where: g.organisation_id == ^organisation_id,
-        select: {g.feature, g.granted}
-    )
   end
 
   describe "the nodes hidden from the client's people" do
@@ -361,43 +351,7 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     end
   end
 
-  describe "the box on the client's Features page" do
-    defp features_path(ctx),
-      do: "/#{ctx.operator.organisation.slug}/clients/#{ctx.client.organisation.id}/features"
-
-    test "is checked, last and not indented, and left unticked hides them", ctx do
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, features_path(ctx))
-      render_async(lv)
-
-      assert has_element?(lv, "#client-features-nodes:checked")
-      assert has_element?(lv, "label[for=client-features-nodes]", @label)
-
-      assert has_element?(
-               lv,
-               "#client-features-nodes-description",
-               "The machines, pools, access keys and gateways #{ctx.operator_name} runs in this client's workspaces, which its people read only."
-             )
-
-      assert ["observability", "observability-terminal" | _] = ids = box_ids(lv)
-      assert List.last(ids) == "nodes"
-      refute has_element?(lv, "div.pl-6 #client-features-nodes")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{"observability" => "true", "nodes" => "false"}
-      })
-      |> render_submit()
-
-      assert_patch(lv, "/#{ctx.operator.organisation.slug}/clients")
-      assert {:nodes, false} in rows(ctx.client.organisation.id)
-
-      {:ok, lv, _html} = live(conn, features_path(ctx))
-      render_async(lv)
-      assert has_element?(lv, "#client-features-nodes")
-      refute has_element?(lv, "#client-features-nodes:checked")
-    end
-
+  describe "the nodes' box" do
     test "is not on Instance settings › Organisations › Features", ctx do
       conn = log_in_user(build_conn(), ctx.admin.user)
 
@@ -416,16 +370,9 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
         ] do
       @put put
 
-      test "is not there with #{flag} off, and the client's row hides nothing", ctx do
+      test "with #{flag} off, the client's row hides nothing", ctx do
         set_nodes(ctx, false)
         apply(Flags, @put, [false])
-
-        conn = log_in_user(build_conn(), ctx.operator.user)
-        {:ok, lv, _html} = live(conn, features_path(ctx))
-        render_async(lv)
-        assert has_element?(lv, "#client-features-observability")
-        refute has_element?(lv, "#client-features-nodes")
-        refute render(lv) =~ @label
 
         conn = log_in_user(build_conn(), ctx.client.owner.user)
 
@@ -456,19 +403,5 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     |> put_req_header("content-type", "application/json")
     |> put_req_header("x-qory-contract-version", "1")
     |> post("/.well-known/qory-enrolment", body)
-  end
-
-  # The ids of the client's Features boxes, in order, without the group's prefix.
-  defp box_ids(lv) do
-    lv
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#client-features input[type=checkbox]")
-    |> Enum.map(
-      &(&1
-        |> LazyHTML.attribute("id")
-        |> List.first()
-        |> String.trim_leading("client-features-"))
-    )
   end
 end

@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.FeaturePartsLiveTest do
   # A part of a feature hidden from a person, the run's Terminal,
   # `:"observability.terminal"` (`ApiaryPro.Features.hidden/1`): while
-  # `ApiaryPro.Flags.feature_visibility?/0` is on, the Features pages show or hide it
-  # under Runs, and a person it is hidden from finds the run's log nowhere, as the core
+  # `ApiaryPro.Flags.feature_visibility?/0` is on, Instance settings › Organisations ›
+  # Features shows or hides it under Runs, and a person it is hidden from finds the run's log nowhere, as the core
   # gates it, while the organisation's nodes still record it. With the switch off no page
   # offers it and no row hides it.
   use ApiaryWeb.ConnCase, async: true
@@ -204,7 +204,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     end
   end
 
-  describe "the Terminal tab on the Features pages" do
+  describe "the Terminal tab on the Features page" do
     setup do
       admin = suite_instance_admin()
       operator = operator_fixture()
@@ -263,46 +263,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute has_element?(lv, "#organisation-features-observability-terminal:checked")
     end
 
-    test "is a checkbox under Runs on a client's Features page, with the switch on", ctx do
-      Flags.put_feature_visibility(true)
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      path = ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-      {:ok, lv, _html} = live(conn, path)
-      render_async(lv)
-
-      assert has_element?(lv, "#client-features-observability-terminal:checked")
-      assert has_element?(lv, "label[for=client-features-observability-terminal]", "Terminal tab")
-      assert has_element?(lv, "#client-features-observability-terminal-description", @description)
-      assert ["observability", "observability-terminal" | _] = box_ids(lv, "#client-features")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{"observability.terminal" => "false"}
-      })
-      |> render_submit()
-
-      assert_patch(lv, ~p"/#{ctx.operator.organisation}/clients")
-      assert @terminal in ApiaryPro.Features.hidden_parts([ctx.client.organisation.id])
-    end
-
-    test "is not on a client's page where the operator is not shown it", ctx do
-      Flags.put_feature_visibility(true)
-
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin.instance_scope, ctx.operator.organisation.id, [
-                 "observability"
-               ])
-
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      path = ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-      {:ok, lv, _html} = live(conn, path)
-      render_async(lv)
-
-      assert has_element?(lv, "#client-features-observability")
-      refute has_element?(lv, "#client-features-observability-terminal")
-    end
-
-    test "is on neither page with the switch off", ctx do
+    test "is not on Instance settings › Organisations with the switch off", ctx do
       Flags.put_feature_visibility(false)
 
       conn = log_in_user(build_conn(), ctx.admin.user)
@@ -315,19 +276,6 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute has_element?(lv, "#organisation-features-observability-terminal")
       refute render(lv) =~ "Terminal tab"
       refute html =~ "Terminal tab"
-
-      conn = log_in_user(build_conn(), ctx.operator.user)
-
-      {:ok, lv, _html} =
-        live(
-          conn,
-          ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-        )
-
-      render_async(lv)
-      assert has_element?(lv, "#client-features-observability")
-      refute has_element?(lv, "#client-features-observability-terminal")
-      refute render(lv) =~ "Terminal tab"
     end
   end
 

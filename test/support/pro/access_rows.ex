@@ -28,10 +28,8 @@ defmodule ApiaryPro.AccessRows do
   people read everything in the workspaces it operates at every level, and change nothing
   there; of what the client owns as a whole they read its policy alone, and find nothing
   else. An instance admin reads every organisation they reach neither way, and changes it
-  only by the instance actions. Both are the role `reader`. An operator's actions over its
-  clients are asked in an operator, the instance organisation among them, which the
-  world makes one as the first sign-up of an instance with `managed_organisations` does;
-  the instance actions in the instance organisation alone. Creating an
+  only by the instance actions. Both are the role `reader`. The instance actions are asked
+  in the instance organisation alone. Creating an
   organisation is a person's own, asked of the new organisation, of a kind the suite's
   configuration opens: everyone signed in may, wherever they ask from.
   """
@@ -66,30 +64,6 @@ defmodule ApiaryPro.AccessRows do
   @operator_admins [:instance_owner, :instance_admin, :instance_org_admin]
   # Who asks in the instance organisation.
   @in_instance_organisation @operator_admins ++ [:feature_off, :hidden]
-
-  # The actions an operator takes over its clients: asked where they are not, in an
-  # organisation of another kind, they are not found.
-  @placed [
-    :"client.read",
-    :"client.create",
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation",
-    :"client.grant_features",
-    :"client.delete"
-  ]
-
-  # The first admin's invitation, not found for everyone while the operator does not own
-  # its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), as in this table.
-  @admin_invitations [
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation"
-  ]
-
-  # The operator's choice of the model providers a client uses, not found for everyone
-  # while the operator does not own its clients, as in this table.
-  @needs_operator_infrastructure [:"client.set_model_chain"]
 
   # The instance actions asked of another organisation than the instance organisation.
   @on_another [
@@ -252,17 +226,8 @@ defmodule ApiaryPro.AccessRows do
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
       {:"organisation.withdraw_transfer", yes: [:owner, :client_owner, :feature_off, :hidden]},
       {:"organisation.accept_transfer", yes: []},
-      {:"client.read", yes: @operator_admins},
-      {:"client.create", yes: @operator_admins},
-      {:"client.invite_owner", yes: @operator_admins},
-      {:"client.revoke_owner_invitation", yes: @operator_admins},
-      {:"client.renew_owner_invitation", yes: @operator_admins},
-      {:"client.invite_admin", yes: []},
-      {:"client.revoke_admin_invitation", yes: []},
-      {:"client.renew_admin_invitation", yes: []},
-      {:"client.grant_features", yes: [:instance_owner, :instance_admin]},
-      {:"client.set_model_chain", yes: []},
-      {:"client.delete", yes: [:instance_owner, :instance_admin]},
+      # An owner's, of the organisation they ask in, whatever its kind.
+      {:"client.grant_features", yes: [:owner] ++ @owners},
       {:"instance.read", yes: [:instance_owner]},
       {:"instance.create_organisation", yes: @instance_itself},
       {:"instance.create_operator", yes: @instance_itself_of_feature},
@@ -368,9 +333,8 @@ defmodule ApiaryPro.AccessRows do
 
   @doc """
   refusal/3 is why the edition's answer is no where it is not the role: an organisation the
-  operator does not manage, a workspace the member was not added to, an operator's
-  action where there is no operator, a client's where there is no client, an instance
-  action outside the instance organisation, all not found; an action of a person, with no
+  operator does not manage, a workspace the member was not added to, an instance action
+  outside the instance organisation, all not found; an action of a person, with no
   place, forbidden; an instance action in the instance organisation, without the role or
   of what is not taken on the instance organisation itself, forbidden. On the mail
   settings, `instance_owner`, who did not save them, is `:not_saver`, and the instance's
@@ -381,9 +345,6 @@ defmodule ApiaryPro.AccessRows do
     cond do
       action == :"organisation.create" ->
         :forbidden
-
-      action in @admin_invitations or action in @needs_operator_infrastructure ->
-        :not_found
 
       # An instance action, in the core's order: its feature, then the instance step, then
       # the role and the edition's rules. `feature_off` and `hidden` ask as the core's
@@ -407,9 +368,6 @@ defmodule ApiaryPro.AccessRows do
       actor == :unreached_member and
           (match?(%Apiary.Organisations.Workspace{}, subject) or
              match?(%Apiary.Runs.Run{}, subject)) ->
-        :not_found
-
-      action in @placed and actor not in @operator_admins ->
         :not_found
 
       actor in @operators and action in [:"secret.read", :"variable.read"] ->

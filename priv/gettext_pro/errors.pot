@@ -116,11 +116,6 @@ msgstr ""
 msgid "is not open for sign-up"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "is not the name"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "is not the slug"

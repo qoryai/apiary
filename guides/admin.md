@@ -33,10 +33,9 @@ say, as the Install guide describes
 the sign-up and log-in pages say "This Qory Apiary is not set up yet: use the set-up link
 from its install."
 <!-- feature: managed_organisations -->
-On an instance with `managed_organisations` it is an operator from the start, so its
-owners may create clients at once; without the feature it is an organisation like any
-other. An instance admin changes its kind under Instance settings › Organisations as any other
-organisation's.
+On an instance with `managed_organisations` it is an operator from the start; without
+the feature it is an organisation like any other. An instance admin changes its kind
+under Instance settings › Organisations as any other organisation's.
 <!-- /feature -->
 
 After set-up, both settings are `closed` unless you open them on Instance settings ›
@@ -68,10 +67,6 @@ kind, or of the kind they choose when both are, and is its first owner. As after
 the organisation has no workspace yet: the person is taken to its overview, where
 the kind cards create its first workspace. With both closed the entry is not there, and nobody
 but the instance admins, under Instance settings › Organisations, creates an organisation.
-<!-- feature: managed_organisations -->
-The one exception is an operator's clients, which its owners and admins create on its
-**Clients** page ([Operators and their clients](operators.md)).
-<!-- /feature -->
 Opening sign-up of organisations on an instance you host for your colleagues
 therefore lets them start organisations too.
 
@@ -198,17 +193,6 @@ its variables above its workspaces' variables
 `secrets`, and is granted like the others.
 <!-- /feature -->
 
-<!-- feature: managed_organisations -->
-## Operators: a client's first invitation without mail
-
-This section is for operators and their clients ([Operators and their
-clients](operators.md)). Until the instance has mail, nothing is emailed when an operator
-creates a client: the Clients page shows the invitation's link once, to copy and send
-yourself, and while it is pending, **Make a new link** in the client's row menu replaces a
-lost one, and the old link stops working. Once the instance has mail, the invitation is
-emailed. The invitation of a client's first owner, emailed or copied, and each new link
-made for it, count against the operator's allowance of invitations a day.
-<!-- /feature -->
 <!-- feature: organisation_policy -->
 
 ## Rendering the organisations' policies again

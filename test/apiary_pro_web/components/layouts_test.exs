@@ -148,7 +148,7 @@ defmodule ApiaryProWeb.LayoutsTest do
   end
 
   @tag with_features: Apiary.Features.all()
-  test "an operator's sidebar: Policy after Overview, its own group, and the settings beside" do
+  test "an operator's sidebar: Policy after Overview, no Operator group, and the settings beside" do
     operator = ApiaryPro.OperatorsFixtures.operator_fixture()
     ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
     org = operator.organisation.slug
@@ -167,9 +167,9 @@ defmodule ApiaryProWeb.LayoutsTest do
     assert List.last(ids) == "nav-organisation_policy"
     refute has_element?(view, "#nav-group-guard")
 
-    # The operator's group, under its heading, Clients with its number.
-    assert has_element?(view, "#sidebar nav#nav-group-operator[aria-label=Operator]")
-    assert has_element?(view, "#nav-group-operator #nav-clients[href='/#{org}/clients']", "1")
+    # No group of the operator's, and no Clients entry, though it has a client.
+    refute has_element?(view, "#nav-group-operator")
+    refute has_element?(view, "#nav-clients")
 
     # Settings' sections are the frame's second column, beside the page, not in it.
     refute has_element?(view, "#main #settings-tabs")

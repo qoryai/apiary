@@ -1,7 +1,7 @@
 defmodule ApiaryPro.OperatorChainSecretsTest do
   # A run's model key through the edition (`Apiary.Runs.ProviderCredential`,
   # `Apiary.Runs.SecretsRequest`): a client whose switch is the operator's
-  # (`ApiaryPro.Operators.set_model_chain/3`) resolves the operator's providers and
+  # (`ApiaryPro.Tenants.model_chain/1`) resolves the operator's providers and
   # choices, and the key is sealed for a gateway of the operator, in the operator's trail;
   # a client on the default and a client of another operator get none. Not async: an operator is made by an instance admin, an owner of the suite's
   # one instance organisation, the flag is set per test process, and the features are the
@@ -227,13 +227,9 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
     end
   end
 
-  # The client `ctx.on` set to `chain` by its operator's owner.
-  defp set_switch(ctx, chain) do
-    {:ok, client} =
-      ApiaryPro.Operators.set_model_chain(ctx.operator.scope, ctx.on.organisation.id, chain)
-
-    client
-  end
+  # The client `ctx.on` with its switch set to `chain`, written to its tenant row
+  # (`model_chain_fixture/3`).
+  defp set_switch(ctx, chain), do: model_chain_fixture(ctx.operator.scope, ctx.on, chain)
 
   describe "a client whose switch is the organisation's" do
     test "gets no operator provider at the claim, and no key is sealed", ctx do

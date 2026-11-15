@@ -72,10 +72,6 @@ defmodule ApiaryPro.Edition do
     do: ApiaryPro.Gateways.served_organisations(organisation_id)
 
   @impl true
-  def accepting(repo, invitation, user),
-    do: ApiaryPro.Invitations.accepting(repo, invitation, user)
-
-  @impl true
   def accepted(repo, scope, invitation, membership),
     do: ApiaryPro.Invitations.accepted(repo, scope, invitation, membership)
 
@@ -156,7 +152,7 @@ defmodule ApiaryPro.Edition do
 
   # The chain of model choices that resolves for a client's runs: "operator" while
   # `ApiaryPro.Flags.operator_infrastructure?/0` is on and the client's switch is
-  # `:operator` (`ApiaryPro.Operators.set_model_chain/3`), "organisation" for every other
+  # `:operator` (`ApiaryPro.Tenants.model_chain/1`), "organisation" for every other
   # organisation. Asked without a lock, once per resolution: one statement reads the
   # switch of the organisation's tenant, only while the flag is on.
   @impl true
@@ -169,7 +165,7 @@ defmodule ApiaryPro.Edition do
 
   # The operator whose model providers and choices resolve for a client's runs: the
   # client's `operator_id` while `ApiaryPro.Flags.operator_infrastructure?/0` is on and the
-  # client's switch is `:operator` (`ApiaryPro.Operators.set_model_chain/3`), nil for every
+  # client's switch is `:operator` (`ApiaryPro.Tenants.model_chain/1`), nil for every
   # other organisation. Asked without a lock: one statement reads the tenant, only while
   # the flag is on.
   @impl true

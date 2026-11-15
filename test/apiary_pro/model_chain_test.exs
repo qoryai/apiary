@@ -1,18 +1,16 @@
 defmodule ApiaryPro.ModelChainTest do
   # Which model providers the runs of a client use: its switch, `model_chain` on its
-  # tenant, set by its operator's owners and admins (`ApiaryPro.Operators.set_model_chain/3`)
-  # while the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), and
-  # read by `ApiaryPro.Edition.model_choice_chain/1` and by the access check.
+  # tenant, read while the operator owns its clients
+  # (`ApiaryPro.Flags.operator_infrastructure?/0`) by `ApiaryPro.Edition.model_choice_chain/1`
+  # and by the access check. No code in the product sets the switch any more: the tests
+  # write it to the tenant row (`model_chain_fixture/3`).
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  import Ecto.Query, only: [from: 2]
-
   alias Apiary.Access
-  alias Apiary.Audit.Entry
-  alias ApiaryPro.{Edition, Flags, Operators, Tenants}
+  alias ApiaryPro.{Edition, Flags, Tenants}
   alias ApiaryPro.Tenants.Tenant
 
   @moduletag with_features: Apiary.Features.all()
@@ -46,12 +44,10 @@ defmodule ApiaryPro.ModelChainTest do
 
   defp chain(client), do: Tenants.model_chain_of(client.organisation.id)
 
-  defp set(ctx, chain), do: Operators.set_model_chain(ctx.operator.scope, id(ctx), chain)
+  # The client's switch set to `chain`, written to its tenant row.
+  defp set(ctx, chain), do: model_chain_fixture(ctx.operator.scope, ctx.client, chain)
 
   defp id(ctx), do: ctx.client.organisation.id
-
-  defp entries(action),
-    do: Repo.all(from e in Entry, where: e.action == ^action, order_by: [asc: e.inserted_at])
 
   describe "the switch" do
     test "is the organisation's by default, and so is the chain", ctx do
@@ -61,105 +57,32 @@ defmodule ApiaryPro.ModelChainTest do
       assert Edition.model_choice_chain(sign_up_fixture().organisation.id) == "organisation"
     end
 
-    test "is set to the operator's by an owner of the operator, and the chain follows", ctx do
-      assert {:ok, client} = set(ctx, :operator)
-      assert Tenants.model_chain(client) == :operator
-      assert Repo.get!(Tenant, id(ctx)).model_chain == :operator
+    test "set to the operator's, the chain follows", ctx do
+      client = set(ctx, :operator)
+      assert Tenants.model_chain(client.organisation) == :operator
       assert Edition.model_choice_chain(id(ctx)) == "operator"
 
-      assert {:ok, _client} = set(ctx, "organisation")
+      set(ctx, :organisation)
       assert Edition.model_choice_chain(id(ctx)) == "organisation"
     end
 
-    test "is set by an admin of the operator", ctx do
-      assert {:ok, _client} =
-               Operators.set_model_chain(ctx.operator_admin.scope, id(ctx), "operator")
-
-      assert Edition.model_choice_chain(id(ctx)) == "operator"
-    end
-
-    test "is not set to a value that is neither", ctx do
-      assert {:error, :not_found} = set(ctx, "everyone")
-      assert chain(ctx.client) == :organisation
-    end
-
-    test "leaves the other clients of the operator and of others as they are", ctx do
-      {:ok, _client} = set(ctx, :operator)
+    test "of one client leaves the other clients of the operator and of others as they are",
+         ctx do
+      set(ctx, :operator)
 
       assert Edition.model_choice_chain(ctx.other_client.organisation.id) == "organisation"
       assert Edition.model_choice_chain(ctx.operator.organisation.id) == "organisation"
     end
 
-    test "answers the organisation's with the flag off, and is not set", ctx do
-      {:ok, _client} = set(ctx, :operator)
+    test "answers the organisation's with the flag off", ctx do
+      set(ctx, :operator)
       Flags.put_operator_infrastructure(false)
 
       assert Edition.model_choice_chain(id(ctx)) == "organisation"
-      assert {:error, :not_found} = set(ctx, :organisation)
       assert chain(ctx.client) == :operator
 
       Flags.put_operator_infrastructure(true)
       assert Edition.model_choice_chain(id(ctx)) == "operator"
-    end
-
-    test "is not set with the flag off", ctx do
-      Flags.put_operator_infrastructure(false)
-
-      assert {:error, :not_found} = set(ctx, :operator)
-
-      assert {:error, :not_found} =
-               Operators.set_model_chain(ctx.operator_admin.scope, id(ctx), :operator)
-
-      assert chain(ctx.client) == :organisation
-      assert entries("client.set_model_chain") == []
-    end
-
-    test "is not set by the client's people", ctx do
-      for scope <- [ctx.client.owner.scope, ctx.client_admin.scope] do
-        assert {:error, :not_found} = Operators.set_model_chain(scope, id(ctx), :operator)
-      end
-
-      assert chain(ctx.client) == :organisation
-    end
-
-    test "is not set by a member of the operator", ctx do
-      assert {:error, :forbidden} =
-               Operators.set_model_chain(ctx.operator_member.scope, id(ctx), :operator)
-
-      assert chain(ctx.client) == :organisation
-    end
-
-    test "is not set by the people of another operator", ctx do
-      assert {:error, :not_found} =
-               Operators.set_model_chain(ctx.elsewhere.scope, id(ctx), :operator)
-
-      assert {:error, :not_found} = Operators.set_model_chain(ctx.operator.scope, "x", :operator)
-
-      assert {:error, :not_found} =
-               Operators.set_model_chain(
-                 ctx.operator.scope,
-                 ctx.other_client.organisation.id,
-                 :operator
-               )
-
-      assert chain(ctx.client) == :organisation
-      assert chain(ctx.other_client) == :organisation
-    end
-
-    test "is not set for an organisation that is no client", ctx do
-      assert {:error, :not_found} =
-               Operators.set_model_chain(
-                 ctx.operator.scope,
-                 sign_up_fixture().organisation.id,
-                 :operator
-               )
-
-      assert {:error, :not_found} =
-               Operators.set_model_chain(
-                 ctx.operator.scope,
-                 ctx.operator.organisation.id,
-                 :operator
-               )
     end
 
     test "is refused by the database for an organisation that has no operator", _ctx do
@@ -171,37 +94,6 @@ defmodule ApiaryPro.ModelChainTest do
 
       assert %{model_chain: [_message]} = errors_on(changeset)
       assert Repo.get!(Tenant, organisation.id).model_chain == :organisation
-    end
-
-    test "is written in the operator's trail, by the person who set it", ctx do
-      {:ok, _client} = Operators.set_model_chain(ctx.operator_admin.scope, id(ctx), :operator)
-
-      assert [entry] = entries("client.set_model_chain")
-      assert entry.organisation_id == ctx.operator.organisation.id
-      assert {entry.actor_kind, entry.actor_id} == {:person, ctx.operator_admin.user.id}
-      assert entry.details == %{"organisation_id" => id(ctx)}
-      assert entry.before == %{"model_chain" => "organisation"}
-      assert entry.after == %{"model_chain" => "operator"}
-    end
-
-    test "writes no entry for the value it has", ctx do
-      assert {:ok, _client} = set(ctx, :organisation)
-      assert entries("client.set_model_chain") == []
-
-      {:ok, _client} = set(ctx, :operator)
-      {:ok, _client} = set(ctx, :operator)
-      assert [_one] = entries("client.set_model_chain")
-    end
-
-    test "is not set for a suspended client", ctx do
-      {:ok, _tenant} =
-        ctx.client.organisation
-        |> Tenants.tenant()
-        |> Tenants.suspension_changeset(:suspend, nil)
-        |> Repo.update()
-
-      assert {:error, :suspended} = set(ctx, :operator)
-      assert chain(ctx.client) == :organisation
     end
   end
 
@@ -342,18 +234,6 @@ defmodule ApiaryPro.ModelChainTest do
       for {action, on} <- @chain_held do
         assert Access.authorize(scope, action, subject(client, on)) == :ok, "#{action}"
       end
-    end
-
-    test "the action is the operator's, found in the operator alone", ctx do
-      action = :"client.set_model_chain"
-
-      assert Access.can?(ctx.operator.scope, action, ctx.operator.organisation)
-      assert Access.can?(ctx.operator_admin.scope, action, ctx.operator.organisation)
-      refute Access.can?(ctx.operator_member.scope, action, ctx.operator.organisation)
-      refute Access.can?(ctx.client.owner.scope, action, ctx.client.organisation)
-
-      Flags.put_operator_infrastructure(false)
-      refute Access.can?(ctx.operator.scope, action, ctx.operator.organisation)
     end
   end
 end

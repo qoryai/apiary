@@ -1,6 +1,6 @@
 defmodule ApiaryPro.OperatorsTest do
   @moduledoc """
-  Operators and their clients: the managing relationship, a client's own people, the
+  Operators and their clients: the managing relationship, a client's people, the
   operator's people reading its clients and changing nothing there, an instance admin's
   reading every organisation, the instance actions, and the last-owner rule across kinds.
   """
@@ -14,7 +14,6 @@ defmodule ApiaryPro.OperatorsTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  import Apiary.AccountsFixtures, only: [user_fixture: 0]
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
@@ -22,9 +21,8 @@ defmodule ApiaryPro.OperatorsTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
   alias Apiary.Deletion.PurgedOrganisation
-  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{ClientReach, Operators, Tenants, WorkspaceAccess}
-  alias ApiaryPro.Operators.OperatorInvitation
+  alias Apiary.Organisations.{Membership, Organisation, Workspace}
+  alias ApiaryPro.{ClientReach, Operators, Tenants}
   alias ApiaryPro.Tenants.Tenant
 
   @moduletag with_features: Features.all()
@@ -48,26 +46,6 @@ defmodule ApiaryPro.OperatorsTest do
   # The organisation as the database has it now, carrying its tenant.
   defp reload_organisation(%Organisation{id: id}),
     do: Organisation |> Repo.get!(id) |> Tenants.put()
-
-  # The invitation's URL, its token sent to the test's process for `tokens/0`.
-  defp url(token) do
-    send(self(), {:invitation_token, token})
-    "http://localhost/invitations/#{token}"
-  end
-
-  # The tokens of the invitations sent since, oldest first.
-  defp tokens(acc \\ []) do
-    receive do
-      {:invitation_token, token} -> tokens([token | acc])
-    after
-      0 -> Enum.reverse(acc)
-    end
-  end
-
-  defp memberships(organisation_id),
-    do: Repo.all(from m in Membership, where: m.organisation_id == ^organisation_id)
-
-  defp email, do: Apiary.AccountsFixtures.unique_user_email()
 
   # An operator with a client, and a person of each level in the operator, each with their
   # scope in the client.
@@ -292,182 +270,6 @@ defmodule ApiaryPro.OperatorsTest do
   end
 
   describe "clients" do
-    test "an owner or an admin of an operator creates one, named, with a slug and no workspace, and invites its first owner to the organisation" do
-      operator = operator_fixture()
-      %{scope: admin} = member_fixture(operator.scope, :admin)
-
-      clients = [
-        {operator.scope, "Acme Client", "acme-client"},
-        {admin, "Acme Client Two", "acme-client-two"}
-      ]
-
-      for {scope, name, slug} <- clients do
-        email = Apiary.AccountsFixtures.unique_user_email()
-
-        {%{organisation: client} = created, token} =
-          create_client_fixture(scope, %{"name" => name, "email" => email})
-
-        refute Map.has_key?(created, :workspace)
-
-        client = reload_organisation(client)
-        assert Tenants.kind(client) == :organisation
-        assert Tenants.operator_id(client) == operator.organisation.id
-        refute Tenants.instance_organisation?(client)
-        assert client.slug == slug
-        refute Organisations.has_workspace?(client)
-        refute Repo.exists?(from w in Workspace, where: w.organisation_id == ^client.id)
-        refute Repo.exists?(from m in Membership, where: m.organisation_id == ^client.id)
-
-        [entry] = entries(client.id, "client.create")
-        assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
-        assert {entry.subject_kind, entry.subject_id} == {"organisation", client.id}
-        assert entry.details["operator_id"] == operator.organisation.id
-
-        # The invitation of its first owner, counted against the operator's invitations.
-        [invited] = entries(client.id, "client.invite_owner")
-        assert {invited.actor_kind, invited.actor_id} == {:person, scope.user.id}
-        assert is_nil(invited.workspace_id)
-        assert invited.details["allowance_id"] == operator.organisation.id
-
-        assert [%Invitation{workspace_id: nil}] =
-                 Repo.all(from i in Invitation, where: i.organisation_id == ^client.id)
-
-        # Who accepts is its owner, with no workspace and no workspace access.
-        %{membership: owner} = sign_up_fixture(%{email: email, invitation_token: token})
-        assert {owner.organisation_id, owner.level} == {client.id, :owner}
-        refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^owner.user_id)
-        refute Organisations.has_workspace?(client)
-      end
-    end
-
-    test "an address the invitation refuses creates nothing" do
-      operator = operator_fixture()
-
-      assert {:error, %Ecto.Changeset{} = form} =
-               Operators.create_client(
-                 operator.scope,
-                 %{"name" => "Acme", "email" => "not an address"},
-                 &url/1
-               )
-
-      assert %{email: [_ | _]} = errors_on(form)
-      assert {:ok, []} = Operators.list_clients(operator.scope)
-    end
-
-    test "a name whose address another organisation has is refused, never numbered" do
-      operator = operator_fixture()
-      attrs = fn email -> %{"name" => "Acme", "email" => email} end
-
-      assert {:ok, %{organisation: %Organisation{slug: "acme"}}} =
-               Operators.create_client(operator.scope, attrs.("first@example.com"), &url/1)
-
-      assert {:error, %Ecto.Changeset{} = form} =
-               Operators.create_client(operator.scope, attrs.("second@example.com"), &url/1)
-
-      assert %{name: ["Choose another name. Another organisation has the address /acme."]} =
-               errors_on(form)
-
-      assert {:ok, [_one]} = Operators.list_clients(operator.scope)
-    end
-
-    test "no client is created for an operator marked for deletion" do
-      operator = operator_fixture()
-      stale = operator.scope
-      {:ok, _} = Deletion.delete_organisation(operator.scope, operator.organisation.slug)
-
-      assert {:error, :not_found} =
-               Operators.create_client(
-                 stale,
-                 %{"name" => "Acme", "email" => "owner@example.com"},
-                 &url/1
-               )
-
-      refute Repo.exists?(from t in Tenant, where: t.operator_id == ^operator.organisation.id)
-    end
-
-    test "creating a client locks its operator FOR NO KEY UPDATE, which a deletion waits for, and counts its invitations under it" do
-      operator = operator_fixture()
-      handler = "operator-lock-#{System.unique_integer()}"
-      parent = self()
-
-      :telemetry.attach(
-        handler,
-        [:apiary, :repo, :query],
-        fn _event, _measurements, %{query: query}, _config ->
-          if self() == parent, do: send(parent, {:query, query})
-        end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(handler) end)
-
-      create_client_fixture(operator.scope, %{
-        "name" => "Acme",
-        "email" => Apiary.AccountsFixtures.unique_user_email()
-      })
-
-      [first | _] = Enum.filter(collect_queries(), &(&1 =~ ~s(FROM "organisations")))
-      assert first =~ "FOR NO KEY UPDATE"
-    end
-
-    test "a member of the operator creates none, and an organisation that is no operator has none" do
-      operator = operator_fixture()
-      %{scope: member} = member_fixture(operator.scope, :member)
-      %{scope: plain} = sign_up_fixture()
-      attrs = %{"name" => "Acme", "email" => "owner@example.com"}
-
-      assert {:error, :forbidden} = Operators.create_client(member, attrs, &url/1)
-      assert {:error, :not_found} = Operators.create_client(plain, attrs, &url/1)
-      assert {:error, :not_found} = Operators.list_clients(plain)
-      assert {:ok, []} = Operators.list_clients(member)
-    end
-
-    test "the creation of a client asks Access first, and creates nothing when refused" do
-      operator = operator_fixture()
-      %{scope: member} = member_fixture(operator.scope, :member)
-      attrs = %{"name" => "Acme", "email" => "owner@example.com"}
-      organisations = Repo.aggregate(Organisation, :count)
-
-      assert {:error, :forbidden} = Operators.create_client(member, attrs, &url/1)
-      assert Repo.aggregate(Organisation, :count) == organisations
-
-      assert {:ok, %{organisation: %Organisation{name: "Acme"} = client}} =
-               Operators.create_client(operator.scope, attrs, &url/1)
-
-      assert tenant_of(client).operator_id == operator.organisation.id
-    end
-
-    test "a name the organisation's changeset refuses is an error on the form" do
-      operator = operator_fixture()
-
-      assert {:error, %Ecto.Changeset{} = form} =
-               Operators.create_client(
-                 operator.scope,
-                 %{"name" => "", "email" => "owner@example.com"},
-                 &url/1
-               )
-
-      assert %{name: [_ | _]} = errors_on(form)
-      assert {:ok, []} = Operators.list_clients(operator.scope)
-    end
-
-    test "list_clients/1 names each client's owners, says since when it is a client, and which are deleted" do
-      operator = operator_fixture()
-      acme = client_fixture(operator.scope, "Acme")
-      beta = client_fixture(operator.scope, "Beta")
-      member_fixture(acme.owner.scope, :admin)
-      member_fixture(acme.owner.scope, :member)
-      {:ok, _} = Deletion.delete_organisation(beta.owner.scope, beta.organisation.slug)
-
-      assert {:ok, [first, second]} = Operators.list_clients(operator.scope)
-      assert {first.organisation.id, first.people} == {acme.organisation.id, 3}
-      assert Enum.map(first.owners, & &1.id) == [acme.owner.user.id]
-      assert %DateTime{} = Tenants.operator_since(first.organisation)
-      assert second.organisation.id == beta.organisation.id
-      assert %DateTime{} = second.organisation.deletion_marked_at
-      assert Operators.count_clients(operator.scope) == 1
-    end
-
     test "a client owns its people: its owner invites them and makes owners, as anywhere" do
       operator = operator_fixture()
       client = client_fixture(operator.scope)
@@ -486,144 +288,6 @@ defmodule ApiaryPro.OperatorsTest do
                Organisations.set_member_level(client.owner.scope, third.id, :owner)
 
       assert {:error, :forbidden} = Organisations.set_member_level(admin, second.id, :owner)
-
-      # The operator invites no one there any more: the client has an owner.
-      assert {:error, :has_owner} =
-               Operators.invite_owner(
-                 operator.scope,
-                 client.organisation.id,
-                 %{"email" => "another@example.com"},
-                 &url/1
-               )
-    end
-
-    test "while a client has no owner, its operator invites one again, against its own invitations" do
-      operator = operator_fixture()
-      %{scope: member} = member_fixture(operator.scope, :member)
-      %{scope: plain} = sign_up_fixture()
-      first = Apiary.AccountsFixtures.unique_user_email()
-
-      {%{organisation: client}, first_token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => first})
-
-      second = Apiary.AccountsFixtures.unique_user_email()
-
-      assert {:ok, %{email: ^second}} =
-               Operators.invite_owner(
-                 operator.scope,
-                 client.id,
-                 %{"email" => second},
-                 &url/1
-               )
-
-      assert [_, invited] = entries(client.id, "client.invite_owner")
-      assert invited.details["allowance_id"] == operator.organisation.id
-
-      assert {:error, :forbidden} =
-               Operators.invite_owner(member, client.id, %{"email" => second}, &url/1)
-
-      assert {:error, :not_found} =
-               Operators.invite_owner(plain, client.id, %{"email" => second}, &url/1)
-
-      # The first to accept is its owner; the operator's other invitation of an owner goes
-      # with it, and accepted after it, is refused.
-      %{membership: owner} = sign_up_fixture(%{email: first, invitation_token: first_token})
-      assert owner.level == :owner
-      [second_token] = tokens()
-      assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), second_token)
-      assert [%Membership{level: :owner}] = memberships(client.id)
-    end
-
-    test "the second invitation of a first owner is to the organisation alone while the client has no workspace, and to its workspace once it has one" do
-      operator = operator_fixture()
-
-      first = email()
-
-      {%{organisation: client}, first_token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => first})
-
-      refute Organisations.has_workspace?(client)
-
-      # No workspace: the invitation has none, and the operator's allowance counts it.
-      assert {:ok, %Invitation{workspace_id: nil}} =
-               Operators.invite_owner(operator.scope, client.id, %{"email" => email()}, &url/1)
-
-      assert [_, %{workspace_id: nil, details: %{"allowance_id" => allowance_id}}] =
-               entries(client.id, "client.invite_owner")
-
-      assert allowance_id == operator.organisation.id
-
-      # The client gets its first workspace.
-      workspace = workspace_fixture(client, "Main")
-
-      # A workspace in use: the invitation is sent from it, as before.
-      assert {:ok, %Invitation{workspace_id: workspace_id}} =
-               Operators.invite_owner(operator.scope, client.id, %{"email" => email()}, &url/1)
-
-      assert workspace_id == workspace.id
-
-      # The first invitation, sent without a workspace, still makes its person the owner,
-      # who is added to no workspace: an owner reaches every workspace.
-      %{membership: owner} = sign_up_fixture(%{email: first, invitation_token: first_token})
-      assert owner.level == :owner
-      refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^owner.user_id)
-    end
-
-    test "an operator's person who invited their own address joins nothing once the owner has" do
-      operator = operator_fixture()
-      first = Apiary.AccountsFixtures.unique_user_email()
-
-      {%{organisation: client}, first_token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => first})
-
-      assert {:ok, _} =
-               Operators.invite_owner(
-                 operator.scope,
-                 client.id,
-                 %{"email" => operator.user.email},
-                 &url/1
-               )
-
-      [own_token] = tokens()
-      %{membership: owner} = sign_up_fixture(%{email: first, invitation_token: first_token})
-      assert owner.level == :owner
-
-      assert {:error, :invalid} = Organisations.accept_invitation(operator.user, own_token)
-      assert [%Membership{user_id: owner_id}] = memberships(client.id)
-      assert owner_id == owner.user_id
-
-      assert [%{details: %{"reason" => "owner_joined"}, actor_id: actor_id}] =
-               entries(client.id, "invitation.revoke")
-
-      assert actor_id == owner.user_id
-    end
-
-    test "an owner's invitation is refused once the client has an owner, or is no longer the operator's" do
-      operator = operator_fixture()
-
-      {%{organisation: client}, token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => email()})
-
-      # An owner there however they came, the invitation stands no more.
-      %{user: someone} = sign_up_fixture()
-
-      Repo.insert!(%Membership{organisation_id: client.id, user_id: someone.id, level: :owner})
-
-      assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), token)
-
-      {%{organisation: other}, token} =
-        create_client_fixture(operator.scope, %{"name" => "Beta", "email" => email()})
-
-      Repo.update_all(from(t in Tenant, where: t.organisation_id == ^other.id),
-        set: [operator_id: nil, operator_since: nil, model_chain: :organisation]
-      )
-
-      assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), token)
-
-      assert {:error, %Ecto.Changeset{}} =
-               Organisations.sign_up_user(%{email: email()}, token)
-
-      assert memberships(other.id) == []
     end
 
     test "an ordinary invitation makes a member, whatever the organisation" do
@@ -631,84 +295,6 @@ defmodule ApiaryPro.OperatorsTest do
       client = client_fixture(operator.scope)
       %{membership: joined} = member_fixture(client.owner.scope)
       assert joined.level == :member
-    end
-
-    test "while a client has no owner, its operator's owners and admins revoke an invitation of its owner" do
-      operator = operator_fixture()
-      %{scope: admin} = member_fixture(operator.scope, :admin)
-      %{scope: member} = member_fixture(operator.scope, :member)
-
-      {%{organisation: client}, token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => email()})
-
-      [invitation] = Repo.all(from i in Invitation, where: i.organisation_id == ^client.id)
-
-      assert %OperatorInvitation{organisation_id: client_id, operator_id: operator_id} =
-               Repo.get!(OperatorInvitation, invitation.id)
-
-      assert {client_id, operator_id} == {client.id, operator.organisation.id}
-
-      assert {:ok, [%{owner_invitations: [%Invitation{id: id}]}]} =
-               Operators.list_clients(operator.scope)
-
-      assert id == invitation.id
-
-      assert {:error, :forbidden} =
-               Operators.revoke_owner_invitation(member, client.id, invitation.id)
-
-      assert {:ok, _} = Operators.revoke_owner_invitation(admin, client.id, invitation.id)
-
-      assert {:error, :not_found} =
-               Operators.revoke_owner_invitation(admin, client.id, invitation.id)
-
-      assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), token)
-
-      assert [entry] = entries(client.id, "client.revoke_owner_invitation")
-      assert {entry.subject_kind, entry.subject_id} == {"invitation", invitation.id}
-
-      # Once it has an owner, its owners revoke its invitations.
-      owned = client_fixture(operator.scope)
-
-      assert {:error, :has_owner} =
-               Operators.revoke_owner_invitation(
-                 operator.scope,
-                 owned.organisation.id,
-                 Ecto.UUID.generate()
-               )
-    end
-
-    test "a client with no owner yet is deleted by its operator's owners" do
-      operator = operator_fixture()
-      %{scope: admin} = member_fixture(operator.scope, :admin)
-
-      {%{organisation: client}, token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => email()})
-
-      assert {:error, :forbidden} = ApiaryPro.Deletion.delete_client(admin, client.id, "Acme")
-
-      assert {:error, :confirmation} =
-               ApiaryPro.Deletion.delete_client(operator.scope, client.id, "Not it")
-
-      assert {:ok, %Organisation{deletion_marked_at: %DateTime{}, purge_after: %DateTime{}}} =
-               ApiaryPro.Deletion.delete_client(operator.scope, client.id, "Acme")
-
-      assert Repo.all(from i in Invitation, where: i.organisation_id == ^client.id) == []
-      assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), token)
-
-      assert [%{details: %{"reason" => "client_deleted"}}] =
-               entries(client.id, "invitation.revoke")
-
-      assert [entry] = entries(operator.organisation.id, "client.delete")
-      assert entry.details["organisation_id"] == client.id
-
-      assert {:error, :not_found} =
-               ApiaryPro.Deletion.delete_client(operator.scope, client.id, "Acme")
-
-      # A client with an owner is not deleted.
-      owned = client_fixture(operator.scope, "Beta")
-
-      assert {:error, :has_owner} =
-               ApiaryPro.Deletion.delete_client(operator.scope, owned.organisation.id, "Beta")
     end
 
     test "the database keeps the relationship one level deep" do
@@ -745,27 +331,6 @@ defmodule ApiaryPro.OperatorsTest do
           set: [operator_id: plain.id]
         )
       end
-    end
-
-    @tag with_features: [:observability, :security]
-    test "without managed_organisations there are no clients to list or create" do
-      # An operator from before the feature was switched off.
-      %{organisation: organisation, user: user} = sign_up_fixture()
-
-      Repo.update_all(from(t in Tenant, where: t.organisation_id == ^organisation.id),
-        set: [kind: :operator]
-      )
-
-      scope = scope_in(user, organisation)
-
-      assert {:error, :not_found} =
-               Operators.create_client(
-                 scope,
-                 %{"name" => "Acme", "email" => "owner@example.com"},
-                 &url/1
-               )
-
-      assert {:error, :not_found} = Operators.list_clients(scope)
     end
   end
 
@@ -883,7 +448,6 @@ defmodule ApiaryPro.OperatorsTest do
 
       assert Tenants.operator?(operator)
       admin_scope = scope_in(admin.user, operator)
-      assert Access.can?(admin_scope, :"client.read", operator)
       client = client_fixture(admin_scope)
 
       assert {:error, :has_clients} =
@@ -907,7 +471,6 @@ defmodule ApiaryPro.OperatorsTest do
       refute Tenants.operator?(organisation)
 
       admin_scope = scope_in(admin.user, organisation)
-      assert Access.check(admin_scope, :"client.read", organisation) == {:error, :not_found}
       assert Access.can?(admin_scope, :"instance.read", organisation)
     end
 

@@ -32,7 +32,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     %{conn: log_in_user(conn, admin.user), admin: admin, here: here}
   end
 
-  test "an instance admin sees every organisation, with its kind and its operator", ctx do
+  test "an instance admin sees every organisation, with its kind", ctx do
     operator = operator_fixture(%{organisation_name: "Hive Ops"})
     client = client_fixture(operator.scope, "Acme")
 
@@ -42,10 +42,12 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     assert has_element?(lv, "#instance-tabs #instance-tab-organisations[aria-current=page]")
     assert has_element?(lv, "#organisation-#{ctx.here.id}-kind", "The instance owner")
     assert has_element?(lv, "#organisation-#{operator.organisation.id}-kind", "Operator")
-    assert has_element?(lv, "#organisation-#{operator.organisation.id}-operator", "1 client")
-    assert has_element?(lv, "#organisation-#{client.organisation.id}-operator", "Hive Ops")
-    # The organisation's name, the operator's name and the slug beside the name are cut
-    # to the cell, whole in their titles.
+    # No Operator column, and no kind word for an organisation an operator manages.
+    refute has_element?(lv, "#organisation-#{operator.organisation.id}-operator")
+    refute has_element?(lv, "#organisation-#{client.organisation.id}-operator")
+    refute has_element?(lv, "#organisation-#{client.organisation.id}-kind", "Client")
+    # The organisation's name and the slug beside it are cut to the cell, whole in their
+    # titles.
     assert has_element?(
              lv,
              "#organisation-#{operator.organisation.id}-link.q-title.q-org-name[title='Hive Ops']",
@@ -53,13 +55,6 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
            )
 
     refute has_element?(lv, "#organisation-#{operator.organisation.id}-link.q-cut")
-
-    assert has_element?(
-             lv,
-             "#organisation-#{client.organisation.id}-operator > .q-cut[class*='max-w-[24ch]'][title='Hive Ops']"
-           )
-
-    refute has_element?(lv, "#organisation-#{client.organisation.id}-operator .truncate")
 
     assert has_element?(
              lv,
@@ -292,7 +287,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
              "#organisation-form input[name='organisation[kind]'][value=operator]"
            )
 
-    assert has_element?(lv, "#organisation-form", "Creates and runs organisations for clients.")
+    assert has_element?(lv, "#organisation-form", "Operates workspaces of other organisations.")
 
     assert has_element?(lv, "#organisation-form input#organisation_name[phx-mounted]")
     assert has_element?(lv, "#organisation-save a#organisation-save-cancel", "Cancel")
@@ -366,6 +361,13 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     render_async(lv)
     # The organisation's row is the confirmation, in place of its cells.
     assert has_element?(lv, "#organisation-#{organisation.id}.q-confirming #kind", "Make ")
+
+    assert has_element?(
+             lv,
+             "#kind",
+             "#{organisation.name} becomes an operator. Nothing it holds changes."
+           )
+
     assert has_element?(lv, "#kind-confirm", "Yes, make operator")
     lv |> element("#kind-confirm") |> render_click()
     assert_patch(lv, ~p"/instance/organisations")
@@ -374,6 +376,13 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
 
     render_async(lv)
     lv |> element("#organisation-#{organisation.id}-kind-button") |> render_click()
+
+    assert has_element?(
+             lv,
+             "#kind",
+             "#{organisation.name} becomes an organisation again. Nothing it holds changes."
+           )
+
     lv |> element("#kind-confirm") |> render_click()
     assert Repo.get!(Tenant, organisation.id).kind == :organisation
   end
@@ -419,8 +428,15 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       live(ctx.conn, ~p"/instance/organisations/#{operator.organisation.id}/purge")
 
     render_async(lv)
-    assert has_element?(lv, "#organisation-#{operator.organisation.id} #purge-has-clients")
-    refute has_element?(lv, "#purge-confirm")
+    refute has_element?(lv, "#purge-has-clients")
+
+    lv
+    |> form("#purge-form", confirm: %{slug: operator.organisation.slug})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/instance/organisations")
+    assert render(lv) =~ "An operator with clients is not purged"
+    assert Repo.get(Organisation, operator.organisation.id)
   end
 
   test "the page is not there for the instance organisation's admins, nor anyone else", ctx do
@@ -505,27 +521,23 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     refute has_element?(lv, "#instance-reader")
   end
 
-  test "a person who manages nobody sees no Clients or Instance entry", ctx do
+  test "a person who is no instance admin sees no Instance entry", ctx do
     # The instance organisation an operator, as the first sign-up of an instance with
     # `managed_organisations` makes it.
     make_instance_organisation_an_operator(ctx.admin)
     %{user: user, organisation: organisation} = sign_up_fixture()
     {:ok, lv, _html} = live(log_in_user(build_conn(), user), ~p"/#{organisation}")
     assert has_element?(lv, "aside#sidebar[aria-label='Organisation']")
-    refute has_element?(lv, "#nav-clients")
     refute has_element?(lv, "#brand-menu-instance")
 
-    # An admin of the instance organisation, which has no clients of its own: neither.
+    # An admin of the instance organisation: neither.
     %{user: admin} = member_fixture(ctx.admin.instance_scope, :admin)
     {:ok, lv, _html} = live(log_in_user(build_conn(), admin), ~p"/#{ctx.here}")
-    refute has_element?(lv, "#nav-clients")
     refute has_element?(lv, "#brand-menu-instance")
 
     # Its owners, the instance admins, find the Instance in the Qory Apiary menu, wherever
-    # they are, and no entry of it in the sidebar; no Clients while it has none, which
-    # the Instance's Organisations lead to.
+    # they are, and no entry of it in the sidebar, nor a group of the operator's.
     {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.here}")
-    refute has_element?(lv, "#nav-clients")
     refute has_element?(lv, "#nav-group-operator")
     refute has_element?(lv, "#nav-instance")
     assert has_element?(lv, ~s(#brand-menu-instance[href="/instance/general"]))
@@ -533,14 +545,10 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.admin.organisation}")
     assert has_element?(lv, ~s(#brand-menu-instance[href="/instance/general"]))
 
+    # Its row on the Instance's Organisations has no link to clients.
     {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations")
     render_async(lv)
-
-    assert has_element?(
-             lv,
-             "#organisation-#{ctx.here.id}-clients[href='/#{ctx.here.slug}/clients']",
-             "0 clients"
-           )
+    refute has_element?(lv, "#organisation-#{ctx.here.id}-clients")
   end
 
   test "an instance admin made a member moves to / without a click", ctx do
@@ -602,7 +610,12 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
              )
 
       assert has_element?(lv, "#suspend-organisation-question", "Suspend Hive Ops?")
-      assert has_element?(lv, "#suspend-operator-clients", "keep running")
+
+      assert has_element?(
+               lv,
+               "#suspend-operator-workspaces",
+               "Its people lose their reach into the workspaces it operates, which keep running for their organisations."
+             )
 
       # Cancel gives the row back; its path asks again.
       lv |> element("#suspend-organisation-cancel") |> render_click()
@@ -626,13 +639,13 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       assert has_element?(lv, "#organisation-#{id}-status", "In use")
     end
 
-    test "an organisation that is no operator is told nothing of clients", ctx do
+    test "an organisation that is no operator is told nothing of operated workspaces", ctx do
       %{organisation: organisation} = sign_up_fixture()
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations/#{organisation.id}/suspend")
       render_async(lv)
       assert has_element?(lv, "#organisation-#{organisation.id} #suspend-organisation")
-      refute has_element?(lv, "#suspend-operator-clients")
+      refute has_element?(lv, "#suspend-operator-workspaces")
     end
   end
 
@@ -824,7 +837,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       id = client.organisation.id
       {:ok, _} = Suspensions.suspend_account(ctx.admin.instance_scope, client.owner.user.id)
 
-      {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations?view=clients&q=acme")
+      {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations?q=acme&sort=created")
       render_async(lv)
 
       lv |> element("#organisation-#{id}-transfer-button") |> render_click()
@@ -832,8 +845,8 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       assert has_element?(lv, "#transfer-no-admin")
 
       lv |> element("#transfer-back") |> render_click()
-      assert_patch(lv, "/instance/organisations?view=clients&q=acme")
-      assert has_element?(lv, "#organisations-view-clients[aria-current=page]")
+      assert_patch(lv, "/instance/organisations?q=acme&sort=created")
+      assert has_element?(lv, "#organisation-#{id}")
     end
 
     test "is offered for an organisation only while its owners are suspended", ctx do
@@ -879,19 +892,16 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       %{first: first, first_conn: log_in_user(build_conn(), first.user)}
     end
 
-    test "its owners see the Instance's Organisations, and no Clients entry",
+    test "its owners see the Instance's Organisations",
          %{first: first} = ctx do
       {:ok, lv, _html} = live(ctx.first_conn, ~p"/instance/organisations")
       render_async(lv)
 
       assert has_element?(lv, "#instance-tab-organisations")
-      refute has_element?(lv, "#nav-clients")
       assert has_element?(lv, "#organisation-#{first.organisation.id}-kind", "Organisation")
       assert has_element?(lv, "#organisation-#{first.organisation.id}-kind", "The instance owner")
       # No operator without the feature: no change of kind, and no operator to create.
       refute has_element?(lv, "#organisation-#{first.organisation.id}-kind-button")
-
-      assert ctx.first_conn |> get(~p"/#{first.organisation}/clients") |> response(404)
     end
 
     test "they create an organisation and read another, as the instance admins", ctx do
@@ -919,7 +929,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
       assert has_element?(lv, "#organisation-notices #instance-reader")
     end
 
-    test "once the instance has managed_organisations, an instance admin makes it an operator, and its Clients entry comes",
+    test "once the instance has managed_organisations, an instance admin makes it an operator",
          %{first: first} = ctx do
       features_on!(Features.all())
 
@@ -938,7 +948,6 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
 
       {:ok, lv, _html} = live(ctx.first_conn, ~p"/instance/organisations")
       render_async(lv)
-      refute has_element?(lv, "#nav-clients")
 
       # The item is named by its words alone, in the menu named for the organisation.
       assert has_element?(
@@ -958,12 +967,8 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
 
       assert %Tenant{kind: :operator, instance_organisation: true} = tenant_of(first.organisation)
 
-      # Its Clients entry comes with its first client; until then the Instance's
-      # Organisations lead to its clients.
       {:ok, lv, _html} = live(ctx.first_conn, ~p"/#{first.organisation}")
-      refute has_element?(lv, "#nav-clients")
       assert has_element?(lv, "#brand-menu-instance")
-      {:ok, _lv, _html} = live(ctx.first_conn, ~p"/#{first.organisation}/clients")
     end
   end
 

@@ -33,10 +33,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
     by default. `SIGNUP_ORGANISATIONS` and `SIGNUP_OPERATORS`, set to `open` or
     `closed`, override the page.
 <!-- feature: managed_organisations -->
-  - Operators and their **Clients**, with the feature `managed_organisations`: an
-    operator creates client organisations and reads them, and asks them for changes to
-    their security policy. Where the feature is on, the organisation that a new
-    instance is set up with is an operator.
+  - Operators, with the feature `managed_organisations`: an operator's people reach the
+    workspaces it operates. Where the feature is on, the organisation that a new instance
+    is set up with is an operator.
 <!-- /feature -->
 <!-- feature: organisation_policy -->
   - The organisation's **Policy**, with the feature `organisation_policy`: rules that

@@ -1,9 +1,8 @@
 defmodule ApiaryPro.FirstWorkspaceTest do
   @moduledoc """
-  The first workspace of an organisation the edition creates. A person's New organisation, an
-  instance admin's New organisation and an operator's New client create it with no
-  workspace, for the kind cards of its overview to make; a client's first invitation is to
-  the organisation alone. The line about who waits for the first workspace
+  The first workspace of an organisation the edition creates. A person's New organisation and
+  an instance admin's New organisation create it with no workspace, for the kind cards of its
+  overview to make. The line about who waits for the first workspace
   (`c:Apiary.Edition.first_workspace_waiting_line/1`) names a client's owners and admins.
   """
   # Not async: the sign-up settings and the features are the node's.
@@ -13,17 +12,36 @@ defmodule ApiaryPro.FirstWorkspaceTest do
   import ApiaryPro.OperatorsFixtures
   import ApiaryPro.SignUpFixtures, only: [open!: 1]
 
-  alias Apiary.Audit.Entry
   alias Apiary.Organisations
-  alias Apiary.Organisations.{Invitation, Membership}
+  alias Apiary.Organisations.Membership
   alias ApiaryPro.{Flags, Operators, WorkspaceAccess}
 
   @moduletag with_features: Apiary.Features.all()
 
   setup do: Flags.put_operator_infrastructure(false)
 
-  defp entries(client, action),
-    do: Repo.all(from e in Entry, where: e.organisation_id == ^client.id and e.action == ^action)
+  # An organisation with no workspace, created by a person's New organisation, made a client
+  # of `operator` by writing its tenant row, and its first person at `level`: the client, as
+  # the tenant has it, and that person's account.
+  defp client_without_workspace(operator, level) do
+    open!([:organisation])
+    %{scope: scope} = sign_up_fixture()
+
+    {:ok, %{organisation: organisation, membership: membership}} =
+      ApiaryPro.Organisations.create_organisation(scope, %{"name" => "Acme"})
+
+    {1, _} =
+      Repo.update_all(
+        from(t in ApiaryPro.Tenants.Tenant, where: t.organisation_id == ^organisation.id),
+        set: [operator_id: operator.organisation.id, operator_since: DateTime.utc_now()]
+      )
+
+    {1, _} =
+      Repo.update_all(from(m in Membership, where: m.id == ^membership.id), set: [level: level])
+
+    client = ApiaryPro.Tenants.put(Repo.get!(Apiary.Organisations.Organisation, organisation.id))
+    %{organisation: client, user: scope.user}
+  end
 
   describe "the organisations the edition creates" do
     test "a person's New organisation has no workspace, and an owner" do
@@ -51,57 +69,16 @@ defmodule ApiaryPro.FirstWorkspaceTest do
       refute Organisations.has_workspace?(organisation)
     end
 
-    test "an operator's New client has no workspace, and its first owner's invitation is to the organisation alone" do
-      operator = operator_fixture()
-      address = Apiary.AccountsFixtures.unique_user_email()
-
-      {created, token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => address})
-
-      assert %{organisation: client, sent: {:ok, %Invitation{}}} = created
-      refute Map.has_key?(created, :workspace)
-      refute Organisations.has_workspace?(client)
-
-      assert [%Invitation{email: ^address, workspace_id: nil}] =
-               Repo.all(from i in Invitation, where: i.organisation_id == ^client.id)
-
-      assert [%Entry{workspace_id: nil}] = entries(client, "client.invite_owner")
-
-      # With the flag off, the person who accepts is the owner, and no workspace is theirs.
-      first = sign_up_fixture(%{email: address, invitation_token: token})
-      assert first.membership.level == :owner
-      assert is_nil(first.workspace)
-      refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^first.user.id)
-      refute Organisations.has_workspace?(client)
-
-      # They make the first workspace, as the set-up page does.
-      assert {:ok, workspace} =
-               Organisations.create_first_workspace(scope_in(first.user, client), %{
-                 "domain" => "software"
-               })
-
-      assert workspace.name == "Main"
-    end
-
-    test "with the flag on, the first person is the client's admin, who makes the first workspace as an owner does" do
+    test "with the flag on, a client's admin makes the first workspace as an owner does" do
       Flags.put_operator_infrastructure(true)
       operator = operator_fixture()
-      address = Apiary.AccountsFixtures.unique_user_email()
-
-      {created, token} =
-        create_client_fixture(operator.scope, %{"name" => "Acme", "email" => address})
-
-      assert %{organisation: client, sent: {:ok, %Invitation{workspace_id: nil}}} = created
-      refute Organisations.has_workspace?(client)
-
-      first = sign_up_fixture(%{email: address, invitation_token: token})
-      assert first.membership.level == :admin
-      refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^first.user.id)
+      %{organisation: client, user: first} = client_without_workspace(operator, :admin)
+      refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^first.id)
 
       # The client's admin makes it from the kind card, named after the kind.
       assert {:ok, workspace} =
                Organisations.create_workspace_of_kind(
-                 scope_in(first.user, client),
+                 scope_in(first, client),
                  Apiary.Lingo.Domain.default(),
                  :first
                )
@@ -117,38 +94,11 @@ defmodule ApiaryPro.FirstWorkspaceTest do
       Flags.put_operator_infrastructure(true)
       operator = operator_fixture()
       admin = member_fixture(operator.scope, :admin)
-
-      {%{organisation: client}, _token} =
-        create_client_fixture(operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
+      %{organisation: client} = client_without_workspace(operator, :owner)
 
       for user <- [operator.user, admin.user], do: assert(scope_in(user, client) == nil)
 
       refute Organisations.has_workspace?(client)
-    end
-  end
-
-  describe "accepting an invitation sent without a workspace" do
-    test "grants no workspace access, does not raise, and the entry has no workspace" do
-      operator = operator_fixture()
-
-      {%{organisation: client}, token} =
-        create_client_fixture(operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
-
-      user = Apiary.AccountsFixtures.user_fixture()
-
-      assert {:ok, %Membership{level: :owner, organisation_id: organisation_id}} =
-               Organisations.accept_invitation(user, token)
-
-      assert organisation_id == client.id
-      refute Repo.exists?(from a in WorkspaceAccess.Row, where: a.user_id == ^user.id)
-
-      assert [%Entry{workspace_id: nil}] = entries(client, "invitation.accept")
     end
   end
 

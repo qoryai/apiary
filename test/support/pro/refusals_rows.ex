@@ -10,13 +10,11 @@ defmodule ApiaryProWeb.RefusalsRows do
       elsewhere      a member added to another workspace of the organisation only, on that
                      workspace's pages, sending ids of this one
       operator_owner, operator_admin, operator_member
-                     an owner, an admin and a member of an operator: on its Clients page,
-                     and in its client, which they read and change nothing in
-      client_owner   the owner of that client, on the operator's pages, which their
-                     membership in the client does not reach
+                     an owner, an admin and a member of an operator, in its client, which
+                     they read and change nothing in
+      client_owner   the owner of that client
       client_admin, client_member
-                     an admin and a member of that client, in it, and on the operator's
-                     pages
+                     an admin and a member of that client, in it
       client_unplaced
                      a member of that client added to no workspace of it
       instance_admin an owner of the instance organisation: on the Instance settings pages, and
@@ -30,8 +28,8 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   The world adds to the core's: the instance organisation with an instance admin, an admin
   and a member; an operator made one by that instance admin, with an admin, a member and a
-  client, and the client's owner, whom the operator invited, an admin, a member and a
-  member added to no workspace of the client.
+  client, and the client's owner, an admin, a member and a member added to no workspace of
+  the client.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -120,22 +118,6 @@ defmodule ApiaryProWeb.RefusalsRows do
        "/:org/:workspace_b/machines/:node/instances/:instance/clear", "clear_instance", %{},
        answer: :not_found_at_mount},
 
-      # An operator's clients.
-      {:"client.create", :operator_member, "/:operator/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}}},
-      # The page's path refuses as it opens; the row above is the event's refusal.
-      {:"client.create", :operator_member, "/:operator/clients/new", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :refused_at_mount},
-      # A person of a client, on its operator's page and on the client's own: neither is
-      # theirs to open.
-      {:"client.create", :client_admin, "/:operator/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :not_found_at_mount},
-      {:"client.create", :client_admin, "/:client/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :not_found_at_mount},
-
       # A new organisation of a person's own, from the switcher's entry: of a kind whose
       # sign-up setting is closed, the suite's operators, whatever the form says. With both
       # settings closed the entry, the button and the page are not there, and the event is
@@ -147,72 +129,6 @@ defmodule ApiaryProWeb.RefusalsRows do
        %{"organisation" => %{"name" => "Sneaky", "kind" => "operator"}}},
       {:"organisation.create", :instance_admin, "/users/organisations/new", "create",
        %{"organisation" => %{"name" => "Sneaky", "kind" => "instance_organisation"}}},
-
-      # The first owner of a client: invited by the operator's owners and admins while the
-      # client has none; this one has an owner, who invites its people.
-      {:"client.invite_owner", :operator_member, "/:operator/clients", "invite_owner",
-       %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}},
-      {:"client.invite_owner", :operator_member, "/:operator/clients/:client_id/owner",
-       "invite_owner", %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}},
-       answer: :refused_at_mount},
-      {:"client.invite_owner", :operator_owner, "/:operator/clients/:client_id/owner",
-       "invite_owner",
-       %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}},
-
-      # The first admin's invitation, not found while the operator does not own its
-      # clients: its page, and each event, as for a client that is not there.
-      {:"client.invite_admin", :operator_owner, "/:operator/clients/:client_id/admin",
-       "invite_admin", %{"client_id" => :client_id, "owner" => %{"email" => "admin@example.com"}},
-       answer: :not_found_at_mount},
-      {:"client.invite_admin", :operator_owner, "/:operator/clients", "invite_admin",
-       %{"client_id" => :client_id, "owner" => %{"email" => "admin@example.com"}},
-       answer: :not_found},
-      {:"client.revoke_admin_invitation", :operator_owner, "/:operator/clients",
-       "revoke_admin_invitation", %{"client" => :client_id, "id" => :client_id},
-       answer: :not_found},
-      {:"client.renew_admin_invitation", :operator_owner, "/:operator/clients",
-       "renew_admin_invitation", %{"client" => :client_id, "id" => :client_id},
-       answer: :not_found},
-
-      # A client's first owner's invitation, revoked while it has no owner: the operator's
-      # owners' and admins'; the world's client has an owner, whose invitations are its
-      # own.
-      {:"client.revoke_owner_invitation", :operator_member, "/:operator/clients",
-       "revoke_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-      {:"client.revoke_owner_invitation", :operator_owner, "/:operator/clients",
-       "revoke_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-
-      # A new link for a client's first owner's invitation, while it has no owner: the
-      # operator's owners' and admins'; the world's client has an owner, whose invitations
-      # are its own.
-      {:"client.renew_owner_invitation", :operator_member, "/:operator/clients",
-       "renew_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-      {:"client.renew_owner_invitation", :operator_owner, "/:operator/clients",
-       "renew_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-
-      # A client with no owner yet is deleted by the operator's owners, never by its
-      # admins or members; the world's client has an owner, so it is not deleted.
-      {:"client.delete", :operator_admin, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.delete", :operator_member, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.delete", :operator_admin, "/:operator/clients/:client_id/delete", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :refused_at_mount},
-      {:"client.delete", :operator_owner, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-
-      # A client's features: an owner's of the operator.
-      # A suspended client is granted nothing, by its operator's owner either.
-      {:"client.grant_features", :operator_owner, "/:operator/clients", "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
-       setup: :client_suspended},
-      {:"client.grant_features", :operator_member, "/:operator/clients", "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}}},
-      {:"client.grant_features", :operator_member, "/:operator/clients/:client_id/features",
-       "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
-       answer: :refused_at_mount},
 
       # The organisation's policy: read by its owners, admins and readers, changed by its
       # owners alone. A member does not open the page; an admin, an instance admin and an
@@ -560,18 +476,17 @@ defmodule ApiaryProWeb.RefusalsRows do
     ]
   end
 
-  # An operator's Clients page and the Instance's pages are reads, `client.read` and
-  # `instance.read`: their refusals are the Access hook's
-  # (`test/apiary_pro_web/live/client_live/`, `test/apiary_pro_web/live/instance_live/`).
+  # The Instance's pages are reads, `instance.read`: their refusals are the Access hook's
+  # (`test/apiary_pro_web/live/instance_live/`).
   # The adoption of the core's organisations is the instance's, after the migrations,
   # never offered by a page (`test/apiary_pro/adoption_test.exs`). The organisation's
   # variables are read on their page, which the Access hook refuses as it mounts
   # (`test/apiary_pro_web/live/settings_live/variables_test.exs`), and so are its secrets
   # (`test/apiary_pro_web/live/settings_live/secrets_test.exs`). No page makes a link to
   # one of its secrets yet: the edition's answer for `:use` is asked directly
-  # (`test/apiary_pro/organisation_secrets_test.exs`). No page sets the model providers of
-  # a client either: `ApiaryPro.Operators.set_model_chain/3` refuses an operator's member,
-  # another operator's owner and a client's people (`test/apiary_pro/model_chain_test.exs`).
+  # (`test/apiary_pro/organisation_secrets_test.exs`). No page grants features to a client
+  # either: `ApiaryPro.Grants.set_client/3` refuses an operator's admin
+  # (`test/apiary_pro/feature_grants_test.exs`).
   # No page starts or ends a workspace's operator yet: `ApiaryPro.WorkspaceOperators`
   # refuses a member, an admin who ends one, and the operator's admin
   # (`test/apiary_pro/workspace_operators_test.exs`). No page withdraws an offer of
@@ -581,7 +496,6 @@ defmodule ApiaryProWeb.RefusalsRows do
   def exempt,
     do: %{
       reads: [
-        :"client.read",
         :"instance.read",
         :"organisation_policy.read",
         :"organisation_variable.read",
@@ -590,7 +504,7 @@ defmodule ApiaryProWeb.RefusalsRows do
       after_migrate: [:"instance.adopt"],
       no_page: [
         :"organisation_secret.use",
-        :"client.set_model_chain",
+        :"client.grant_features",
         :"organisation.withdraw_transfer"
       ]
     }
@@ -694,7 +608,7 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   # The instance organisation with an instance admin, an admin and a member; an operator
   # made one by that instance admin, with an admin, a member and a client, and the
-  # client's owner, whom the operator invited, an admin and a member of the client's own.
+  # client's owner, and an admin and a member of the client.
   # The people of the instance organisation are inserted as they are, without the locks
   # the product takes on its row and its owners, which every row of this test shares.
   defp operators do

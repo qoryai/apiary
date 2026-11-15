@@ -140,19 +140,8 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"dispatch.machine_end"
   ]
 
-  # Not found in a client: an operator's actions and the instance's.
+  # Not found in a client: the instance's actions.
   @not_here [
-    :"client.read",
-    :"client.create",
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation",
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation",
-    :"client.grant_features",
-    :"client.set_model_chain",
-    :"client.delete",
     :"instance.read",
     :"instance.create_organisation",
     :"instance.create_operator",
@@ -223,6 +212,8 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"workspace_access.remove", yes: @own_admins},
       {:"organisation.withdraw_transfer", yes: @own_owners},
       {:"organisation.accept_transfer", yes: []},
+      # An owner's, of the organisation they ask in, whatever its kind.
+      {:"client.grant_features", yes: @own_owners},
       {:"organisation_policy.read", yes: @own_admins},
       {:"organisation_policy.edit", yes: @own_owners},
       {:"organisation_policy.set_floor", yes: @own_owners},

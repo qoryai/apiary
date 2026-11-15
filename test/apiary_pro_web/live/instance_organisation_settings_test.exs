@@ -78,14 +78,6 @@ defmodule ApiaryProWeb.InstanceOrganisationSettingsTest do
 
     assert has_element?(lv, "#flash-error", "An operator with clients cannot be deleted.")
 
-    assert has_element?(
-             lv,
-             "#flash-error",
-             "On Clients, delete each client that has no owner;"
-           )
-
-    assert has_element?(lv, "#flash-error", "a deleted client counts until it is purged.")
-
     assert Apiary.Repo.get!(Apiary.Organisations.Organisation, organisation.id).deletion_marked_at ==
              nil
   end

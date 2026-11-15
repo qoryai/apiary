@@ -44,11 +44,10 @@ defmodule ApiaryPro.Gateways do
   # organisation-level gateway holds the organisations it serves, an operator's clients,
   # `FOR SHARE`, and a change at a workspace holds those that serve it, a client's
   # operator, `FOR SHARE` (`Apiary.Gateways.lock/1`). So a change of an operator's gateway
-  # and a node written in one of its clients take turns on the operator's row. A client's
-  # creation (`ApiaryPro.Operators.create_client/3`) and the operator's suspension lock
-  # the operator `FOR NO KEY UPDATE`, and a grant of the operator's features
-  # (`ApiaryPro.Grants.set_organisation/3`) its clients and then the operator: each waits
-  # for a change of the operator's gateways or is waited for. A grant to a client
+  # and a node written in one of its clients take turns on the operator's row. The
+  # operator's suspension locks the operator `FOR NO KEY UPDATE`, and a grant of the
+  # operator's features (`ApiaryPro.Grants.set_organisation/3`) its clients and then the
+  # operator: each waits for a change of the operator's gateways or is waited for. A grant to a client
   # (`ApiaryPro.Grants.set_client/3`) locks the client `FOR NO KEY UPDATE` and waits for a
   # node written in it, or is waited for. A policy write in a client holds the client and
   # its operator `FOR SHARE`, as a node written there does, so the two go together and

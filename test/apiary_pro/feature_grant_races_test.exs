@@ -350,8 +350,7 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
       refused = Task.await(grant.task)
       assert deadlocks() == before
 
-      # Refused as a grant asked after the suspension is, which the Clients page says in
-      # its words for a refusal.
+      # Refused as a grant asked after the suspension is.
       assert {:error, :forbidden} = refused
       assert give_client(ctx) == refused
 
@@ -360,77 +359,6 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
       refute :security in had
       assert grants_recorded(ctx) == recorded
     end
-
-    @tag :feature_sets
-    test "a client created between the read of the clients and their lock is taken too", ctx do
-      before = deadlocks()
-
-      # A new client, made while the operator's row is held as a creation holds it.
-      {creation, creation_pid} = hold(fn -> new_client(ctx) end)
-      newcomer = creation.result
-      created(%{organisation: newcomer, user: ctx.operator_user})
-
-      # The narrowing reads the operator's clients, which do not hold the newcomer yet,
-      # then waits for the operator's row; it stops once written, before its commit.
-      narrowing = start_held(fn -> narrow(ctx) end)
-      await_blocked(narrowing.backend, creation_pid)
-      commit(creation)
-      assert {:ok, _} = narrowed(narrowing)
-
-      # It read the clients again once it held them, and holds the newcomer's row too:
-      # a third connection may not take it `FOR SHARE`.
-      assert %Postgrex.Error{postgres: %{code: :lock_not_available}} =
-               Repo.query(
-                 "SELECT id FROM organisations WHERE id = $1 FOR SHARE NOWAIT",
-                 [Ecto.UUID.dump!(newcomer.id)]
-               )
-               |> elem(1)
-
-      commit_held(narrowing)
-      assert deadlocks() == before
-      refute :security in ApiaryPro.Features.of(Repo.get!(Organisation, newcomer.id))
-    end
-  end
-
-  # `fun` in a transaction on a connection of its own, its backend known before `fun`
-  # starts, held open once `fun` answers until `commit_held/1`: for a side that waits on
-  # another and must stop before its commit.
-  defp start_held(fun) do
-    parent = self()
-
-    task =
-      Task.async(fn ->
-        :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-        %{rows: [[backend]]} = Repo.query!("SELECT pg_backend_pid()")
-        send(parent, {:backend, self(), backend})
-
-        Repo.transaction(fn ->
-          send(parent, {:answered, self(), fun.()})
-
-          receive do
-            :commit -> :ok
-          end
-        end)
-      end)
-
-    receive do
-      {:backend, pid, backend} -> %{task: task, pid: pid, backend: backend}
-    after
-      15_000 -> flunk("the second side did not start")
-    end
-  end
-
-  defp narrowed(%{pid: pid}) do
-    receive do
-      {:answered, ^pid, result} -> result
-    after
-      15_000 -> flunk("the second side did not finish its change")
-    end
-  end
-
-  defp commit_held(%{task: task, pid: pid}) do
-    send(pid, :commit)
-    assert {:ok, :ok} = Task.await(task, 15_000)
   end
 
   # The operator narrowed to `observability`: its clients lose the security policy.
@@ -466,18 +394,6 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
 
   defp suspend_operator(ctx),
     do: Suspensions.suspend_organisation(ctx.instance_admin, ctx.operator.id)
-
-  # A client of the operator created as the product creates one.
-  defp new_client(ctx) do
-    {:ok, %{organisation: newcomer}} =
-      Operators.create_client(
-        ctx.in_operator,
-        %{"name" => Apiary.Races.name("client"), "email" => email()},
-        fn token -> "http://localhost/invitations/#{token}" end
-      )
-
-    newcomer
-  end
 
   # A grant to the client's first half, as `ApiaryPro.Grants` takes its locks: the client
   # `FOR NO KEY UPDATE`, its operator `FOR SHARE`, at one point.

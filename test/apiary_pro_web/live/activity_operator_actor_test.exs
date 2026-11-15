@@ -11,7 +11,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Features, Nodes, Organisations, Repo}
-  alias ApiaryPro.{Flags, Grants, Operators, Reach}
+  alias ApiaryPro.{Flags, Grants, Reach}
 
   @moduletag with_features: Features.all()
 
@@ -49,19 +49,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   defp tagged(organisation) do
     Repo.all(from e in Apiary.Audit.Entry, where: e.organisation_id == ^organisation.id)
     |> Enum.filter(&Map.has_key?(&1.details || %{}, "via_operator_id"))
-  end
-
-  defp url, do: &"http://localhost/invitations/#{&1}"
-
-  # A client made with the flag as it is, with its first admin's invitation pending.
-  defp fresh_client(ctx, name) do
-    {%{organisation: client}, _token} =
-      create_client_fixture(ctx.operator.scope, %{
-        "name" => name,
-        "email" => Apiary.AccountsFixtures.unique_user_email()
-      })
-
-    client
   end
 
   # `user` in the operator at `operator_level` and in the client at `client_level`, joined
@@ -118,47 +105,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   end
 
   describe "while the operator owns its clients, from the operator's pages" do
-    test "a client's creation, and its first admin's invitation, its renewal and its revocation",
-         ctx do
-      client = fresh_client(ctx, "Beta")
-      operator_admin = member_fixture(ctx.operator.scope, :admin)
-
-      reader = Apiary.AccountsFixtures.user_fixture(%{})
-      [invitation] = Operators.list_clients(ctx.operator.scope) |> elem(1) |> pending_of(client)
-
-      Apiary.Mail.put_test_source(:none)
-
-      {:ok, _, {:link, _}} =
-        Operators.renew_admin_invitation(operator_admin.scope, client.id, invitation.id, url())
-
-      [renewed] = Operators.list_clients(ctx.operator.scope) |> elem(1) |> pending_of(client)
-      {:ok, _} = Operators.revoke_admin_invitation(ctx.operator.scope, client.id, renewed.id)
-
-      # Read by an owner of the client: the operator's people reach none of its trail.
-      Repo.insert!(%Apiary.Organisations.Membership{
-        organisation_id: client.id,
-        user_id: reader.id,
-        level: :owner
-      })
-
-      owner = "#{ctx.operator.user.email} of #{ctx.operator_name}"
-      admin = "#{operator_admin.user.email} of #{ctx.operator_name}"
-
-      for {action, words} <- [
-            {:"client.create", owner},
-            {:"client.invite_admin", owner},
-            {:"client.renew_admin_invitation", admin},
-            {:"client.revoke_admin_invitation", owner}
-          ] do
-        made = entry(client, action)
-        assert made.details["via_operator_id"] == ctx.operator.organisation.id, "#{action}"
-        assert actor(reader, client, made) == words, "#{action}"
-      end
-
-      # The operator's trail is as it was.
-      assert tagged(ctx.operator.organisation) == []
-    end
-
     test "a client's features granted", ctx do
       {:ok, _} =
         Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [:observability])
@@ -169,19 +115,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       assert actor(ctx.client.owner.user, ctx.client.organisation, made) ==
                "#{ctx.operator.user.email} of #{ctx.operator_name}"
 
-      assert tagged(ctx.operator.organisation) == []
-    end
-
-    test "a client deleted by the operator: its invitations, not the operator's entry", ctx do
-      Flags.put_operator_infrastructure(false)
-      client = fresh_client(ctx, "Cato")
-
-      {:ok, _} = ApiaryPro.Deletion.delete_client(ctx.operator.scope, client.id, "Cato")
-
-      assert entry(client, :"invitation.revoke").details["via_operator_id"] ==
-               ctx.operator.organisation.id
-
-      assert entry(ctx.operator.organisation, :"client.delete")
       assert tagged(ctx.operator.organisation) == []
     end
 
@@ -284,14 +217,11 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
     test "an operator's entries in a client name nobody beside its person", ctx do
       Flags.put_operator_infrastructure(false)
 
-      client = fresh_client(ctx, "Delta")
-
       {:ok, _} =
         Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [:observability])
 
       granted = entry(ctx.client.organisation, :"client.grant_features")
 
-      assert tagged(client) == []
       assert tagged(ctx.client.organisation) == []
       assert tagged(ctx.operator.organisation) == []
 
@@ -312,7 +242,4 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
                %{}
     end
   end
-
-  defp pending_of(rows, client),
-    do: Enum.find(rows, &(&1.organisation.id == client.id)).owner_invitations
 end

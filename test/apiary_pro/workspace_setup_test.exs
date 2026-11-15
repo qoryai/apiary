@@ -210,14 +210,8 @@ defmodule ApiaryPro.WorkspaceSetupTest do
       %{operator: operator, client: client}
     end
 
-    defp switch(ctx, chain),
-      do:
-        {:ok, _} =
-          ApiaryPro.Operators.set_model_chain(
-            ctx.operator.scope,
-            ctx.client.organisation.id,
-            chain
-          )
+    # The client's switch set to `chain`, written to its tenant row.
+    defp switch(ctx, chain), do: model_chain_fixture(ctx.operator.scope, ctx.client, chain)
 
     # A provider with a key on `chain`, written by `scope`.
     defp provider_on(scope, chain) do
@@ -348,16 +342,10 @@ defmodule ApiaryPro.WorkspaceSetupTest do
       provider
     end
 
-    defp set_chain(ctx, chain) do
-      {:ok, organisation} =
-        ApiaryPro.Operators.set_model_chain(
-          ctx.operator.scope,
-          ctx.client.organisation.id,
-          chain
-        )
-
-      organisation
-    end
+    # The client's switch set to `chain`, written to its tenant row: the client's
+    # organisation after.
+    defp set_chain(ctx, chain),
+      do: model_chain_fixture(ctx.operator.scope, ctx.client, chain).organisation
 
     test "on the operator's chain, is done with the operator's provider and default", ctx do
       organisation = set_chain(ctx, :operator)
