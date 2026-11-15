@@ -2028,7 +2028,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: managed_organisations -->
-- `workspace_operators` (20261115100000), a table of the operator of a workspace: at
+- `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
