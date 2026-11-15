@@ -1155,10 +1155,6 @@ defmodule Apiary.Runs.PreparationTest do
       assert cause.(preparation) ==
                what <> " Read the cause in the log of build-pool on its host."
 
-      # A pool of another organisation, which an edition may let serve the workspace, is
-      # in `ApiaryWeb.RunListTest`: a dispatch's pool is of its workspace or the
-      # instance's here (`pool_place_matches`).
-
       # The instance's pool: support, with the run.
       change_dispatch!(ctx.dispatch, pool_id: instance_pool_fixture(%{name: "qory-pool"}).id)
       preparation = Preparation.read(ctx.scope, run)

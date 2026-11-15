@@ -1219,8 +1219,8 @@ address under `/machines`, with what followed `/nodes` and the query.
   "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway the workspace's default resolves to. A
   gateway of another organisation that serves the workspace is no row of it. A machine's or pool's
   Gateway select groups the gateways by level where there is more than one, "This
-  workspace" first, then its organisation, then each organisation that serves it,
-  named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
+  workspace" first, then its organisation, then the instance, in the order their
+  defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
   whose default it is. Where a machine or pool uses a gateway of another organisation, its About,
   its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
   to its page under that organisation's Gateways only where the reader reads it there
@@ -2126,7 +2126,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   it ended; any other run has its timeline alone. The list is not drawn when it has no
   row. The whole list shows even when the loaded events start later in the run, such as
   for a `?seq=` link to a late event. Every reader sees the same list, on every pool: the
-  workspace's pool, the Qory Pool and another organisation's pool.
+  workspace's pool and the Qory Pool.
 
   The heading is "Run on" and the pool's name, then the run's state in the word of the
   run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled,

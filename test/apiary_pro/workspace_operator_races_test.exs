@@ -96,8 +96,8 @@ defmodule ApiaryPro.WorkspaceOperatorRacesTest do
       await_blocked(write.backend, suspension_pid)
       commit(suspension)
 
-      # Ann reaches Main through the operator no more, and has no membership in its
-      # organisation: the role refuses her.
+      # Ann no longer reaches Main through the operator and has no membership in its
+      # organisation, so the check returns :forbidden.
       assert {:error, :forbidden} = Task.await(write.task)
       assert suspended?(ctx)
       assert linked?(ctx)

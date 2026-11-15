@@ -12,11 +12,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       operator_owner, operator_admin, operator_member
                      an owner, an admin and a member of an operator, in the organisation
                      whose workspace it operates, which they read and change nothing in
-      operated_owner the owner of that organisation
-      operated_admin, operated_member
-                     an admin and a member of that organisation, in it
-      operated_unplaced
-                     a member of that organisation added to no workspace of it
       instance_admin an owner of the instance organisation: on the Instance settings pages, and
                      reading the organisation, which they reach only as one, read-only
       revoked_instance_admin
@@ -52,10 +47,6 @@ defmodule ApiaryProWeb.RefusalsRows do
       :operator_owner,
       :operator_admin,
       :operator_member,
-      :operated_owner,
-      :operated_admin,
-      :operated_member,
-      :operated_unplaced,
       :instance_admin,
       :revoked_instance_admin,
       :io_admin,
@@ -635,22 +626,12 @@ defmodule ApiaryProWeb.RefusalsRows do
       operator: operator,
       operator_member: RefusalsCase.person(operator_owner, :member),
       operated: operated && operated.organisation,
-      operated_owner: operated && operated.owner,
       operated_admin: operated && RefusalsCase.person(operated.owner.scope, :admin),
       operated_member: operated && RefusalsCase.person(operated.owner.scope, :member),
-      operated_unplaced: operated && unplaced(operated.owner.scope, operated.workspace),
       operated_workspace: operated && operated.workspace,
       operator_admin: RefusalsCase.person(operator_owner, :admin),
       operator_owner: %{user: operator_owner.user, scope: operator_owner}
     }
-  end
-
-  # A member of the operated organisation removed from its one workspace: in it, and in
-  # none of its workspaces.
-  defp unplaced(owner, workspace) do
-    %{membership: membership} = unplaced = RefusalsCase.person(owner, :member)
-    {:ok, _} = WorkspaceAccess.remove(owner, membership.id, workspace.id)
-    unplaced
   end
 
   defp instance_person(instance_organisation, level) do
