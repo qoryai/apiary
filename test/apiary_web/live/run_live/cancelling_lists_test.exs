@@ -235,6 +235,24 @@ defmodule ApiaryWeb.RunLive.CancellingListsTest do
     assert [%{last: %{state: "lost", cancelling: false}}] = Targets.page(scope, %{}).rows
   end
 
+  test "the targets list reads a lost run that may still attach as Lost once its events are pruned",
+       %{scope: scope} do
+    run = scope |> started_run(shop()) |> marked!(scope)
+    now = DateTime.utc_now()
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", backstop_at: DateTime.add(now, 3600, :second), silenced_at: nil]
+      )
+
+    assert [%{last: %{state: "lost", cancelling: true}}] = Targets.page(scope, %{}).rows
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [events_pruned_at: now])
+
+    assert [%{last: %{state: "lost", cancelling: false}}] = Targets.page(scope, %{}).rows
+  end
+
   test "the runs that reached a destination read Cancelling", %{conn: conn, scope: scope} do
     run =
       scope

@@ -1,6 +1,7 @@
 defmodule Apiary.Runs.Cancel do
-  # A member's cancel of a running run (`Apiary.Runs.cancel/2`): from the press, the run
-  # changes nothing more.
+  # A member's cancel of a running run, or of a lost run that may still attach again
+  # (`Apiary.Runs.cancel/2`, `cancellable?/1`): from the press, the run changes nothing
+  # more.
   #
   # The cancel writes the mark on the run, `cancel_requested_at` and
   # `cancel_requested_by_id` (`Apiary.Runs.Run.cancel_requested?/1`), and the audit entry
@@ -45,9 +46,9 @@ defmodule Apiary.Runs.Cancel do
   mark set, also for a run a member cancelled before, which keeps its first mark and
   writes no second entry. `{:error, :forbidden}` for a person who may not
   (`run.cancel`); `{:error, :not_found}` for a run the workspace does not have;
-  `{:error, :not_running}` for a run that is not running (`cancellable?/1`): queued,
-  claimed and not started, ended, with its exit or its starter's outcome; or whose run of
-  the queue ended.
+  `{:error, :not_running}` for a run that is neither running nor lost and not ended
+  (`cancellable?/1`): queued, claimed and not started, ended, lost for good, with its exit
+  or its starter's outcome; or whose run of the queue ended.
   """
   @spec cancel(Scope.t(), Run.t()) :: {:ok, Run.t()} | {:error, refusal}
   def cancel(%Scope{} = scope, %Run{} = run) do
@@ -80,22 +81,29 @@ defmodule Apiary.Runs.Cancel do
     end
   end
 
-  # Running, as a member can cancel it (`cancellable?/1`), and its run of the queue, where
-  # it has one, not ended.
+  # Running, or lost and not ended, as a member can cancel it (`cancellable?/1`), and its
+  # run of the queue, where it has one, not ended.
   defp running?(%Run{} = run, dispatch_run),
     do: cancellable?(run) and not match?(%DispatchRun{state: :ended}, dispatch_run)
 
   @doc """
-  Whether a member can cancel `run`, as the pages read it: running, with no exit, no
-  outcome and no mark. A run that waits in the queue, or that a claim registered and that
-  has not started, is not running. `cancel/2` also reads its run of the queue, under the
-  lock.
+  Whether a member can cancel `run`, as the pages read it: running, or lost and not ended
+  (`ended?/2`), so that its gateway may still attach it again; with no exit, no outcome
+  and no mark. A run that waits in the queue, or that a claim registered and that has not
+  started, is not running; a lost run that is lost for good has ended. `cancel/2` also
+  reads its run of the queue, under the lock: the lost-run check ends that row `lost`
+  only once the run is lost for good (`Apiary.Dispatches.RunEnd`), so a lost run that
+  has not ended has its row still handed over.
   """
   @spec cancellable?(Run.t()) :: boolean
   def cancellable?(%Run{} = run) do
-    not Run.queued?(run) and run.state == "running" and is_nil(run.exited_at) and
+    not Run.queued?(run) and alive?(run) and is_nil(run.exited_at) and
       is_nil(run.exit_state) and is_nil(run.outcome_state) and not Run.cancel_requested?(run)
   end
+
+  defp alive?(%Run{state: "running"}), do: true
+  defp alive?(%Run{state: "lost"} = run), do: not ended?(run)
+  defp alive?(%Run{}), do: false
 
   @doc """
   Whether `run` is cancelling at `at`: a member cancelled it (`Run.cancel_requested?/1`)
@@ -110,28 +118,31 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   `cancelling?/2` as a query's condition on the run, bound as `:run` and as the query's
-  first binding, at `at`: the mark is set, no exit arrived, and the run has not ended
-  (`Apiary.Runs.Run.not_ended/1`). Keep the two together: a test compares them on the
-  same runs. The states a run that has not ended can have (pending, running or lost) are
-  named too, so that the query can read an index on the state.
+  first binding, at `at`: the mark is set, no exit arrived, its events are not pruned,
+  and the run has not ended (`Apiary.Runs.Run.not_ended/1`). Keep the two together: a
+  test compares them on the same runs. The states a run that has not ended can have
+  (pending, running or lost) are named too, so that the query can read an index on the
+  state.
   """
   @spec cancelling_condition(DateTime.t()) :: Ecto.Query.dynamic_expr()
   def cancelling_condition(%DateTime{} = at) do
     Ecto.Query.dynamic(
       [run: r],
       r.state in ~w(pending running lost) and not is_nil(r.cancel_requested_at) and
-        is_nil(r.exit_state) and ^Run.not_ended(at)
+        is_nil(r.exit_state) and is_nil(r.events_pruned_at) and ^Run.not_ended(at)
     )
   end
 
   @doc """
-  Whether a run has ended at `at`, as a cancel reads it: its exit arrived, or it ended by
-  `Apiary.Runs.Run.ended?/2`, a lost run only once it is lost for good. A lost run that
-  may still attach again has not ended.
+  Whether a run has ended at `at`, as a cancel reads it: its exit arrived, its events
+  are pruned (`events_pruned_at`), so that no route serves it any more
+  (`Apiary.Runs.Sender.live?/2`), or it ended by `Apiary.Runs.Run.ended?/2`, a lost run
+  only once it is lost for good. A lost run that may still attach again has not ended.
   """
   @spec ended?(map, DateTime.t()) :: boolean
   def ended?(run, at \\ DateTime.utc_now())
   def ended?(%{exit_state: exit}, _at) when is_binary(exit), do: true
+  def ended?(%{events_pruned_at: %DateTime{}}, _at), do: true
   def ended?(run, at), do: Run.ended?(run, at)
 
   @doc """

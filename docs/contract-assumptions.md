@@ -976,8 +976,8 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | a repeat, as below, while the gateway may no longer serve the run's workspace (`Apiary.Access.may_serve?/2`) | `{"error":"workspace_not_served"}` |
-| `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
-| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue before such a release was refused (A run of the queue, under The run endpoint), lost after its attach, or its events pruned; or its record is gone; or it is a prebuild whose run of the queue ended `prebuilt`, as a report of the image it built ended one before that report left the provisioner contract | empty |
+| `200` | a repeat: the gateway node and the instance id that attached the run, under any of the node's active keys, while the run is live, whatever the body: a run lost after its attach is live until it is lost for good (`Apiary.Runs.Run.lost_for_good?/2`) | the answer it was given, by its stored digest |
+| `410` | the run has ended: an exit, an outcome, a release after its handover for a run of a workspace's queue before such a release was refused (A run of the queue, under The run endpoint), lost after its attach and lost for good, or its events pruned; or its record is gone; or it is a prebuild whose run of the queue ended `prebuilt`, as a report of the image it built ended one before that report left the provisioner contract | empty |
 | `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Access.may_serve?/2`) | `{"error":"workspace_not_served"}` |
@@ -990,9 +990,18 @@ attaches of one run take turns. The run key names the gateway the run was regist
 so another gateway node is refused `wrong_gateway` before `run_attached`; `run_attached`
 is reached by another instance of the gateway that attached the run, the instance id its
 `X-Qory-Instance-Id` names. A gateway that restarts keeps its instance id, so it takes its
-run on again. A run attached before the instance was kept has none, and the first instance
-of its gateway that attaches it again is given the answer and holds it from then on. The
-answer is the run configuration in force for the run's labels, read under the run's
+run on again, a lost run included until it is lost for good: its `silenced_at` is set,
+when the lost-run check ended a run of a workspace's queue after 600 seconds with no
+heartbeat, or the clock read once the run's row is locked is past its `backstop_at`. The
+same rule (`Apiary.Runs.Sender.live?/2`) applies to the run's secrets request and the work
+entry it issues, its registry credential, its model keys report, the run API and the
+transcript: each serves a run that is pending or running, or lost after its attach and
+not lost for good, with no exit and no pruned events. A run with no `backstop_at`, one
+that is not of a workspace's queue, stays live while lost until its exit arrives or its
+events are pruned. A provider's deletion is refused while such a lost run uses it, as
+while a pending or running run does. A run attached before the instance was kept has
+none, and the first instance of its gateway that attaches it again is given the answer
+and holds it from then on. The answer is the run configuration in force for the run's labels, read under the run's
 workspace and organisation, its bytes with `,"labels":…` and `,"about":…` added before the
 closing brace, each only when the registration had some, with `X-Qory-Run-Configuration`
 and `ETag` of the configuration's digest, not the body's, so that a reload and the run's
@@ -1078,8 +1087,9 @@ without the features `factory` and `secrets`, and for any run but one that goes 
 the key's gateway, whose run key lists the key, that the key and the request's instance
 may reload, of a workspace the gateway may still serve, and whose events `Apiary.Access`
 lets the key post, `404 {"error":"not_found"}`. A run that
-has ended is `410`, empty, but a report that arrives at most 60 seconds after the run
-ended is recorded first. The run ended, by this server's clock, at the first of: when
+has ended, a lost run once it is lost for good (`Apiary.Runs.Sender.live?/2`), is `410`,
+empty, but a report that arrives at most 60 seconds after the run ended is recorded
+first. The run ended, by this server's clock, at the first of: when
 this server received the run's first `dev.qory.run.exited` or `dev.qory.run.refused`,
 and when it ended the run by another path, such as the lost-run check. The times the
 gateway gives those events are not read, and an event that arrives later does not move
@@ -1104,9 +1114,9 @@ transcript before its runtime starts (`ApiaryWeb.Contract.TranscriptController`,
 endpoint's, with its feature `observability`, and finds the run as the run API does
 ([contract/run-api.md](contract/run-api.md), Signing and the order of checks, check 3).
 Each of these is `404 {"error":"not_found"}`: a run the run API would not find, a run
-that ended, a run with no `resume`, a paused run that is no longer the one the run
-continues (of the same organisation, workspace, work item and stage, registered, and
-ended with `model_key_limit`), and a transcript that is gone, has a gap in its offsets,
+that ended, a lost run once it is lost for good, a run with no `resume`, a paused run
+that is no longer the one the run continues (of the same organisation, workspace, work
+item and stage, registered, and ended with `model_key_limit`), and a transcript that is gone, has a gap in its offsets,
 is over 64 MiB, or has 100,000 chunks or more. Else the answer is `200`,
 `application/x-ndjson`, the paused run's
 chunks of the path in the run's `resume`, in sequence order, sent in chunks and signed

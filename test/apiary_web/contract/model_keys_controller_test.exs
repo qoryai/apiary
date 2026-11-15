@@ -514,6 +514,43 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert rows() == []
     end
 
+    test "a report for a run lost after its attach and not lost for good is stored", ctx do
+      now = DateTime.utc_now()
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [
+            state: "lost",
+            lost_at: DateTime.add(now, -300, :second),
+            backstop_at: DateTime.add(now, 3600, :second)
+          ]
+        )
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 200
+      assert signed_answer?(conn)
+      assert [%State{window: "five_hour", status: "rejected"}] = rows()
+    end
+
+    test "410 for a run lost 900 s ago and lost for good 300 s ago, nothing stored", ctx do
+      now = DateTime.utc_now()
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [
+            state: "lost",
+            lost_at: DateTime.add(now, -900, :second),
+            silenced_at: DateTime.add(now, -300, :second),
+            backstop_at: DateTime.add(now, 3600, :second)
+          ]
+        )
+
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert signed_answer?(conn)
+      assert rows() == []
+    end
+
     test "410 that stores a report up to 60 s after the run's exit, and none later", ctx do
       exited = fn seconds_ago ->
         Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
@@ -541,29 +578,48 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
     test "410 that stores a report up to 60 s after the server ended the run, before its exit",
          ctx do
-      lost = fn seconds_ago ->
+      # Lost 600 seconds ago, as the lost-run check found it, and lost for good by
+      # `changes`: no `dev.qory.run.exited` has come.
+      lost = fn changes ->
         Repo.delete_all(State)
+        now = DateTime.utc_now()
+
+        set = [
+          state: "lost",
+          lost_at: DateTime.add(now, -600, :second),
+          silenced_at: nil,
+          backstop_at: DateTime.add(now, 3600, :second)
+        ]
 
         {1, _} =
           Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
-            set: [
-              state: "lost",
-              lost_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
-            ]
+            set: Keyword.merge(set, changes)
           )
       end
 
-      # No `dev.qory.run.exited` has come: the lost-run check ended the run.
-      lost.(61)
-      conn = post_report(ctx, report(ctx, [state(ctx)]))
-      assert conn.status == 410
-      assert rows() == []
+      ago = &DateTime.add(DateTime.utc_now(), -&1, :second)
 
-      lost.(59)
+      # The lost-run check ended it for its silence 30 seconds ago: the window starts
+      # then, not at its loss.
+      lost.(silenced_at: ago.(30))
       conn = post_report(ctx, report(ctx, [state(ctx)]))
       assert conn.status == 410
       assert signed_answer?(conn)
       assert [%State{window: "five_hour"}] = rows()
+
+      lost.(silenced_at: ago.(61))
+      conn = post_report(ctx, report(ctx, [state(ctx)]))
+      assert conn.status == 410
+      assert rows() == []
+
+      # Past its backstop 30 seconds ago, and 61.
+      lost.(backstop_at: ago.(30))
+      assert post_report(ctx, report(ctx, [state(ctx)])).status == 410
+      assert [%State{window: "five_hour"}] = rows()
+
+      lost.(backstop_at: ago.(61))
+      assert post_report(ctx, report(ctx, [state(ctx)])).status == 410
+      assert rows() == []
     end
 
     test "410 that reads a refusal's arrival, not the time the gateway gave it", ctx do

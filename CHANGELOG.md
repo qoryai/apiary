@@ -12,11 +12,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
-- **Cancel run** on a running run's page and on its work item stops the run: the agent
-  stops at its next report to Qory Apiary. What the run already sent stays, is marked as
-  from a cancelled run, and does not count for its stage. In a software workspace, a
-  cancelled run's page says which repositories the run pushed, or that no push to them was
-  recorded.
+- After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
+  Qory Apiary accepts requests for it from the gateway that started it, on the same node
+  and instance. A run of a workspace's queue still ends 600 seconds after its last
+  heartbeat.
+- **Cancel run** on the page of a running run, or of a lost run that may still reconnect,
+  and on its work item, stops the run: the agent stops at its next report to Qory Apiary.
+  What the run already sent stays, is marked as from a cancelled run, and does not count
+  for its stage. In a software workspace, a cancelled run's page says which repositories
+  the run pushed, or that no push to them was recorded.
 - Qory Apiary is one product, under the Apache License 2.0: every instance has what
   was available only under a separate licence before.
   - An instance has any number of organisations, and an organisation any number of

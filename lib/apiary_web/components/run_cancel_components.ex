@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.RunCancelComponents do
   @moduledoc """
-  A member's cancel of a running run (`Apiary.Runs.cancel/2`), as the run page and the work
-  item page show it: the **Cancel run** button, its inline confirm, "Cancelling" in the
-  place of the run's state until its exit, and the line after the exit.
+  A member's cancel of a running run, or of a lost run that may still attach again
+  (`Apiary.Runs.cancel/2`), as the run page and the work item page show it: the **Cancel
+  run** button, its inline confirm, "Cancelling" in the place of the run's state until its
+  exit, and the line after the exit.
   """
 
   use ApiaryWeb, :html
@@ -36,7 +37,7 @@ defmodule ApiaryWeb.RunCancelComponents do
   @doc """
   The inline confirm of the cancel of run `number`: its question, what happens, and for a
   run that writes changes its end pushes (`write`), that they are not pushed. **Cancel
-  run** sends `event` with `values`; **Keep running** runs `keep`.
+  run** sends `event` with `values`; **Don't cancel** runs `keep`.
   """
   attr :id, :string, required: true
   attr :number, :integer, required: true
@@ -53,7 +54,7 @@ defmodule ApiaryWeb.RunCancelComponents do
       class={@class}
       question={gettext("Cancel run %{number}?", number: @number)}
       cancel={@keep}
-      cancel_label={gettext("Keep running")}
+      cancel_label={gettext("Don't cancel")}
     >
       {gettext(
         "The agent stops at its next report to Qory Apiary, and the run changes nothing more. What it already sent stays, marked as from a cancelled run."
@@ -93,9 +94,10 @@ defmodule ApiaryWeb.RunCancelComponents do
   end
 
   @doc """
-  Whether a run a member cancelled has ended, as its line reads it: its exit arrived, or
-  it ended by `Apiary.Runs.Run.ended?/2`, a lost run only once it is lost for good. A lost
-  run that may still attach again reads as a running one, "Cancelling".
+  Whether a run a member cancelled has ended, as its line reads it: its exit arrived, its
+  events are pruned, or it ended by `Apiary.Runs.Run.ended?/2`, a lost run only once it is
+  lost for good. A lost run that may still attach again reads as a running one,
+  "Cancelling".
   """
   @spec ended?(map) :: boolean
   defdelegate ended?(run), to: Apiary.Runs.Cancel

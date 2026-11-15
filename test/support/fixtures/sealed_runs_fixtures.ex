@@ -41,6 +41,10 @@ defmodule Apiary.SealedRunsFixtures do
   the one key; with `choice: attrs`, the workspace's model choice has `attrs` beside the
   provider; and with `before_claim: fun`, `fun` is called with the provider before the
   claim, to write the states of its keys, say.
+
+  With `attach: false`, the gateway does not attach the run: the map has `run` as the
+  claim registered it, `run_key`, the run key its run code was redeemed for, and no
+  `attached`, for a test that sends the attach.
   """
   def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
@@ -72,21 +76,28 @@ defmodule Apiary.SealedRunsFixtures do
     {:ok, claimed} = Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now())
     run_key = Apiary.DispatchedRunsFixtures.redeemed_run_key!(claimed.run_code)
 
-    {:ok, attach} = Attach.parse(Apiary.ContractFixtures.attach_body(run_key))
+    attached =
+      if Keyword.get(opts, :attach, true) do
+        {:ok, attach} = Attach.parse(Apiary.ContractFixtures.attach_body(run_key))
 
-    {:ok, attached} =
-      Attach.attach(key, claimed.registered.node_run_id, attach, %{
-        forager_version: "0.7.0",
-        instance_id: Apiary.ContractFixtures.instance_id()
-      })
+        {:ok, attached} =
+          Attach.attach(key, claimed.registered.node_run_id, attach, %{
+            forager_version: "0.7.0",
+            instance_id: Apiary.ContractFixtures.instance_id()
+          })
+
+        %{attached: attached}
+      else
+        %{run_key: run_key}
+      end
 
     place
     |> Map.merge(%{
       provider: provider,
       run: Repo.get!(Run, claimed.registered.id),
-      attached: attached,
       secrets_key: {key, seed}
     })
+    |> Map.merge(attached)
     |> Map.merge(adapter || %{})
   end
 

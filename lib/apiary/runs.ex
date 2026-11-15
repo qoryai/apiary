@@ -94,10 +94,11 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  Cancels a running run of the scope's workspace for the scope's person (`run.cancel`), so
-  it changes nothing more: it writes the mark (`Apiary.Runs.Run.cancel_requested?/1`).
-  `{:error, :forbidden}` for a person who may not, `{:error, :not_found}` for a run the
-  workspace does not have, `{:error, :not_running}` for a run that is not running.
+  Cancels a running run of the scope's workspace, or a lost one that may still attach
+  again, for the scope's person (`run.cancel`), so it changes nothing more: it writes the
+  mark (`Apiary.Runs.Run.cancel_requested?/1`). `{:error, :forbidden}` for a person who
+  may not, `{:error, :not_found}` for a run the workspace does not have,
+  `{:error, :not_running}` for a run that is neither.
   """
   @spec cancel(Scope.t(), Run.t()) ::
           {:ok, Run.t()} | {:error, :forbidden | :not_found | :not_running}

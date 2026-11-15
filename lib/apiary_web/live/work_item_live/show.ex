@@ -830,9 +830,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # Cancel run on the running run's line: its inline confirm opens, and Keep running
-  # closes it. The cancel, then the page read again; a refusal closes the confirm too, and
-  # the run's line shows why there is nothing to cancel.
+  # Cancel run on the line of a running run, or of a lost run that may still attach again:
+  # its inline confirm opens, and Don't cancel closes it. The cancel, then the page read
+  # again; a refusal closes the confirm too, and the run's line shows why there is nothing
+  # to cancel.
   def handle_event("ask_cancel_run", %{"run" => id}, socket) when is_binary(id) do
     scope = scope(socket)
 

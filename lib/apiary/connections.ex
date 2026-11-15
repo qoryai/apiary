@@ -1743,17 +1743,19 @@ defmodule Apiary.Connections do
   its keys' secret: `{:ok, provider}`, the provider as it was, or
   `{:error, refusal}`: `{:model_in_use, places}` while a model choice uses it, with the
   places of those choices; `{:provider_in_use, %{places: places, runs: run_public_ids}}`
-  while a run that is pending or running uses it, with the public ids of those runs, and
-  the places of the choices that use it, if any. It leaves one `provider.write` entry.
+  while a run that is pending or running uses it, or one lost after its attach that its
+  gateway may still attach again (`Apiary.Runs.Sender.live?/2`), with the public ids of
+  those runs, and the places of the choices that use it, if any. It leaves one `provider.write` entry.
   """
   @spec delete_provider(Scope.t(), Connection.t()) :: {:ok, Connection.t()} | {:error, refusal}
   def delete_provider(%Scope{} = scope, %Connection{provider_kind: kind} = provider)
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
-      # The model choices and the pending or running runs that use the provider, read
-      # without a lock under the provider's row lock. A claim holds the row `FOR SHARE`
-      # until it commits (`Apiary.Dispatches.RunSettings`), so a run it registers is read
-      # here, and a claim that comes after reads the provider as deleted.
+      # The model choices and the runs that use the provider and may still read its keys
+      # (`live_runs/1`), read without a lock under the provider's row lock. A claim holds
+      # the row `FOR SHARE` until it commits (`Apiary.Dispatches.RunSettings`), so a run
+      # it registers is read here, and a claim that comes after reads the provider as
+      # deleted.
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
@@ -1796,11 +1798,17 @@ defmodule Apiary.Connections do
   defp not_used(places, []), do: {:error, {:model_in_use, places}}
   defp not_used(places, runs), do: {:error, {:provider_in_use, %{places: places, runs: runs}}}
 
-  # The public ids of the pending or running runs that use `provider`, oldest first.
+  # The public ids of the runs that use `provider` and may still read its keys, oldest
+  # first: pending or running, or lost after their attach and not lost for good, which
+  # their gateway may attach again (`Apiary.Runs.Sender.live?/2`).
   defp live_runs(%Connection{id: id}) do
+    alive = dynamic([run: r], r.state in ^Run.alive_states())
+
     Repo.all(
       from r in Run,
-        where: r.provider_connection_id == ^id and r.state in ^Run.alive_states(),
+        as: :run,
+        where: r.provider_connection_id == ^id,
+        where: ^dynamic(^alive or ^Apiary.Runs.Sender.revivable(DateTime.utc_now())),
         order_by: [asc: r.inserted_at, asc: r.id],
         select: r.public_id
     )

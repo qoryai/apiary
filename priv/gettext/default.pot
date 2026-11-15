@@ -9055,6 +9055,11 @@ msgstr ""
 msgid "Domains"
 msgstr ""
 
+#: lib/apiary_web/components/run_cancel_components.ex
+#, elixir-autogen, elixir-format
+msgid "Don't cancel"
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/artifact_live/markdown.ex
 #: lib/apiary_web/live/instance_live/diagnostics_keys.ex
@@ -12061,11 +12066,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Keep one template of this workspace's type in the harness, or choose another harness. At this commit the harness has more than one."
-msgstr ""
-
-#: lib/apiary_web/components/run_cancel_components.ex
-#, elixir-autogen, elixir-format
-msgid "Keep running"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

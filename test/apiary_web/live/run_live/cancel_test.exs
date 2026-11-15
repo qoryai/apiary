@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.RunLive.CancelTest do
   # Cancel run on a run's page (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.RunCancelComponents`):
-  # the button beside the state of a running run, its inline confirm, "Cancelling" until
-  # the exit, and the line after it, for each way the run ended.
+  # the button beside the state of a running run, or of a lost run that may still attach
+  # again, its inline confirm, "Cancelling" until the exit, and the line after it, for
+  # each way the run ended.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -34,6 +35,15 @@ defmodule ApiaryWeb.RunLive.CancelTest do
     at
   end
 
+  defp lost!(run, changes) do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now(), silenced_at: nil] ++ changes
+      )
+
+    :ok
+  end
+
   defp exited!(run, data) do
     event_fixture(run, 60, "run.exited", data)
     {:ok, run} = Projector.project(Repo.get!(Run, run.id))
@@ -55,7 +65,7 @@ defmodule ApiaryWeb.RunLive.CancelTest do
 
   defp squish(text), do: text |> String.split() |> Enum.join(" ")
 
-  test "Cancel run opens its confirm; Keep running closes it; Cancel run cancels", %{
+  test "Cancel run opens its confirm; Don't cancel closes it; Cancel run cancels", %{
     conn: conn,
     scope: scope
   } do
@@ -68,7 +78,7 @@ defmodule ApiaryWeb.RunLive.CancelTest do
     lv |> element("#run-cancel") |> render_click()
     assert text(lv, "#run-cancel-confirm-question") == "Cancel run #{run.number}?"
     assert text(lv, "#run-cancel-confirm-sub") == @question_sub
-    assert has_element?(lv, "#run-cancel-confirm-cancel", "Keep running")
+    assert has_element?(lv, "#run-cancel-confirm-cancel", "Don't cancel")
     refute has_element?(lv, "#run-cancel")
 
     lv |> element("#run-cancel-confirm-cancel") |> render_click()
@@ -171,6 +181,58 @@ defmodule ApiaryWeb.RunLive.CancelTest do
 
     assert text(lv, "#run-meta #run-state") == "Cancelling"
     refute render(lv) =~ "before it stopped"
+  end
+
+  test "a lost run that may still attach again has Cancel run until it is lost for good", %{
+    conn: conn,
+    scope: scope
+  } do
+    run = started_run(scope)
+    later = DateTime.add(DateTime.utc_now(), 3600, :second)
+    lost!(run, backstop_at: later)
+
+    {:ok, lv, _html} = page(conn, scope, run)
+    assert has_element?(lv, "#run-meta #run-cancel", "Cancel run")
+
+    lv |> element("#run-cancel") |> render_click()
+    assert text(lv, "#run-cancel-confirm-question") == "Cancel run #{run.number}?"
+    lv |> element("#run-cancel-confirm-yes") |> render_click()
+
+    cancelled = Repo.get!(Run, run.id)
+    assert Run.cancel_requested?(cancelled)
+    assert cancelled.state == "lost"
+    assert text(lv, "#run-meta #run-state") == "Cancelling"
+    refute has_element?(lv, "#run-cancel")
+
+    assert [_entry] =
+             Repo.all(
+               from e in Apiary.Audit.Entry,
+                 where: e.subject_id == ^run.id and e.action == "run.cancel"
+             )
+
+    # Past its backstop, a lost run that nobody cancelled has ended: no Cancel run.
+    other = started_run(scope)
+    lost!(other, backstop_at: DateTime.add(DateTime.utc_now(), -1, :second))
+
+    {:ok, lv, _html} = page(conn, scope, other)
+    refute has_element?(lv, "#run-cancel")
+  end
+
+  test "an open page drops Cancel run once its lost run's backstop passes", %{
+    conn: conn,
+    scope: scope
+  } do
+    run = started_run(scope)
+    backstop = DateTime.add(DateTime.utc_now(), 2, :second)
+    lost!(run, backstop_at: backstop)
+
+    {:ok, lv, _html} = page(conn, scope, run)
+    assert has_element?(lv, "#run-cancel")
+
+    # The backstop passes, which changes no row; the page's timer checks the run again.
+    Process.sleep(max(DateTime.diff(backstop, DateTime.utc_now(), :millisecond) + 50, 0))
+    send(lv.pid, :quiet_tick)
+    refute has_element?(lv, "#run-cancel")
   end
 
   @tag needs: [:observability, :factory]

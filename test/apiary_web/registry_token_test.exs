@@ -67,6 +67,28 @@ defmodule ApiaryWeb.RegistryTokenTest do
     })
   end
 
+  # The run, attached, as the lost-run check leaves it 300 seconds after its loss, its
+  # backstop ahead, with whatever else `changes` sets.
+  defp lost!(ctx, changes) do
+    now = DateTime.utc_now()
+
+    # Each call starts again from a lost run with no end, whatever an earlier call set.
+    set = [
+      state: "lost",
+      lost_at: DateTime.add(now, -300, :second),
+      backstop_at: DateTime.add(now, 3600, :second),
+      silenced_at: nil,
+      exited_at: nil,
+      exit_state: nil,
+      events_pruned_at: nil
+    ]
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: Keyword.merge(set, changes)
+      )
+  end
+
   # A registry credential for `run`, as a seal stores it.
   defp issue(run) do
     secret = Credential.new_secret()
@@ -743,6 +765,27 @@ defmodule ApiaryWeb.RegistryTokenTest do
                {401, "UNAUTHORIZED",
                 "Start a new run to pull or push images. The run #{ctx.run.public_id} has " <>
                   "ended, and its registry credential ended with it."}
+    end
+
+    test "200 for a run lost after its attach and not lost for good", ctx do
+      lost!(ctx, [])
+      conn = token_for(ctx, scopes(["repository:#{ctx.target}:pull"]))
+      assert conn.status == 200
+      assert %{"token" => _token} = Jason.decode!(conn.resp_body)
+    end
+
+    test "401 for a run lost for good, by its silence or past its backstop", ctx do
+      for changes <- [
+            [silenced_at: DateTime.add(DateTime.utc_now(), -60, :second)],
+            [backstop_at: DateTime.add(DateTime.utc_now(), -1, :second)]
+          ] do
+        lost!(ctx, changes)
+
+        assert error(token_for(ctx, scopes(["repository:#{ctx.target}:pull"]))) ==
+                 {401, "UNAUTHORIZED",
+                  "Start a new run to pull or push images. The run #{ctx.run.public_id} has " <>
+                    "ended, and its registry credential ended with it."}
+      end
     end
 
     test "400 for no service, or another one", ctx do

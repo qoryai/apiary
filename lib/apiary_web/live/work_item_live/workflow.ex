@@ -237,7 +237,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
                  silenced_at: r.silenced_at,
                  backstop_at: r.backstop_at,
                  attached_at: r.attached_at,
-                 attach_by: r.attach_by
+                 attach_by: r.attach_by,
+                 events_pruned_at: r.events_pruned_at
                }}
         )
         |> Enum.filter(fn {_id, run} -> Cancel.cancelling?(run) end)
