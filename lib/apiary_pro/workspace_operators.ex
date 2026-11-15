@@ -9,7 +9,7 @@ defmodule ApiaryPro.WorkspaceOperators do
   **On the organisation.** The links of an organisation's workspaces are in its
   `edition` map under `:operated`, a map of each operated workspace's id to its
   operator's id: `put/1` reads them into it, and the functions after it (`operated/1`,
-  `operator_id/2`, `operated?/2`, `operator_ids/1`) return them from that map, or read
+  `operator_id/2`, `operator_ids/1`) return them from that map, or read
   them from the database when the organisation has no such map.
 
   **Locks.** A write that holds the organisation `FOR SHARE`
@@ -68,10 +68,6 @@ defmodule ApiaryPro.WorkspaceOperators do
   def operator_id(_organisation, nil), do: nil
   def operator_id(organisation, %Workspace{id: id}), do: operator_id(organisation, id)
   def operator_id(organisation, workspace_id), do: Map.get(operated(organisation), workspace_id)
-
-  @doc "operated?/2 says whether the workspace `workspace` of `organisation` has an operator."
-  @spec operated?(%Organisation{}, %Workspace{} | Ecto.UUID.t() | nil) :: boolean
-  def operated?(organisation, workspace), do: is_binary(operator_id(organisation, workspace))
 
   @doc """
   operator_ids/1 is the ids of the operators of `organisation`'s workspaces, each once, in

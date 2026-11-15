@@ -30,7 +30,6 @@ defmodule ApiaryPro.WorkspaceOperatorsTest do
       assert ctx.link.operator_id == ctx.operator.organisation.id
       assert ctx.link.organisation_id == ctx.organisation.id
 
-      assert WorkspaceOperators.operated?(ctx.organisation, ctx.owner.workspace.id)
       assert WorkspaceOperators.operator_ids_of(ctx.organisation.id) == [ctx.link.operator_id]
       assert WorkspaceOperators.operates_workspaces?(ctx.operator.organisation)
       assert WorkspaceOperators.has_operated_workspaces?(ctx.organisation)
@@ -78,7 +77,9 @@ defmodule ApiaryPro.WorkspaceOperatorsTest do
 
       assert {:error, _refused} = Access.authorize(scope, :"run.read", ctx.owner.workspace)
       assert scope_in(ctx.operator.user, ctx.organisation, ctx.owner.workspace) == nil
-      assert WorkspaceOperators.operated?(ctx.organisation, ctx.owner.workspace.id)
+
+      assert WorkspaceOperators.operator_id(ctx.organisation, ctx.owner.workspace.id) ==
+               ctx.operator.organisation.id
     end
   end
 
