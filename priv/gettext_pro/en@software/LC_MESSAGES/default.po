@@ -640,11 +640,6 @@ msgstr ""
 msgid "An owner of it can act again, so the offer no longer stands."
 msgstr ""
 
-#: lib/apiary_pro/edition.ex
-#, elixir-autogen, elixir-format
-msgid "An owner or an admin of %{organisation} creates the first workspace."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "At most %{count} characters, kept in the organisation's activity. Say why, and write no personal data."
@@ -1375,30 +1370,6 @@ msgstr ""
 msgid "Lowercase letters, digits, ., _ and -."
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Machines and pools in %{organisation}'s workspaces can use the gateways of %{operator}, its operator, whose owners and admins also add gateways here."
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Machines and pools in any workspace of %{organisation} and of its %{number} client can use it."
-msgid_plural "Machines and pools in any workspace of %{organisation} and of its %{number} clients can use it."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Machines and pools in any workspace of %{organisation} and of its %{number} client can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
-msgid_plural "Machines and pools in any workspace of %{organisation} and of its %{number} clients can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Machines and pools in any workspace of %{organisation} can use the gateways listed here and the gateways of %{operator}. Owners and admins of %{operator}, its operator, manage them."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Make %{name} an operator?"
@@ -1929,19 +1900,9 @@ msgstr ""
 msgid "Owner suspended"
 msgstr ""
 
-#: lib/apiary_pro/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Owners and admins of %{operator} finish the set-up."
-msgstr ""
-
 #: lib/apiary_pro_web/edition.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins of %{operator}, its operator, manage the machines, pools and access keys here."
-msgstr ""
-
-#: lib/apiary_pro/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Owners and admins of %{organisation} and of %{operator} finish the set-up."
 msgstr ""
 
 #: lib/apiary_pro_web/components/slots.ex
@@ -2403,11 +2364,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "The admin you choose is offered the ownership of %{name}, and becomes its owner only when they accept it. The offer replaces any pending one."
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "The default gateway for workspaces in %{organisation}, and in its clients where neither the workspace nor the client sets one."
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex

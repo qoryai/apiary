@@ -175,34 +175,6 @@ defmodule ApiaryPro.Tenants do
   @spec model_chain(%Organisation{}) :: Tenant.model_chain()
   def model_chain(%Organisation{} = organisation), do: tenant(organisation).model_chain
 
-  # model_chain_of/1 is `model_chain/1` of the organisation `organisation_id`, read now with
-  # one statement and no lock: `:operator` only for a client with that switch, `:organisation`
-  # for any other, an organisation that is not there included.
-  @doc false
-  @spec model_chain_of(Ecto.UUID.t()) :: Tenant.model_chain()
-  def model_chain_of(organisation_id) do
-    Repo.one(
-      from t in Tenant,
-        where: t.organisation_id == ^organisation_id and not is_nil(t.operator_id),
-        select: t.model_chain
-    ) || :organisation
-  end
-
-  # operator_on_chain_of/1 is the operator of the organisation `organisation_id`, read now
-  # with one statement and no lock, when it is a client whose switch is `:operator`
-  # (`model_chain_of/1`); nil for any other, an organisation that is not there included.
-  @doc false
-  @spec operator_on_chain_of(Ecto.UUID.t()) :: Ecto.UUID.t() | nil
-  def operator_on_chain_of(organisation_id) do
-    Repo.one(
-      from t in Tenant,
-        where:
-          t.organisation_id == ^organisation_id and not is_nil(t.operator_id) and
-            t.model_chain == :operator,
-        select: t.operator_id
-    )
-  end
-
   @doc """
   suspended?/1 says whether `organisation` is suspended (`ApiaryPro.Suspensions`), as it
   carries its tenant. False for anything but an organisation.

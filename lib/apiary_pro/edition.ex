@@ -64,14 +64,6 @@ defmodule ApiaryPro.Edition do
   def places(user), do: ApiaryPro.Places.places(user)
 
   @impl true
-  def serving_organisations(organisation_id),
-    do: ApiaryPro.Gateways.serving_organisations(organisation_id)
-
-  @impl true
-  def served_organisations(organisation_id),
-    do: ApiaryPro.Gateways.served_organisations(organisation_id)
-
-  @impl true
   def accepted(repo, scope, invitation, membership),
     do: ApiaryPro.Invitations.accepted(repo, scope, invitation, membership)
 
@@ -150,119 +142,6 @@ defmodule ApiaryPro.Edition do
       else: ApiaryPro.Tenants.client?(organisation)
   end
 
-  # The chain of model choices that resolves for a client's runs: "operator" while
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on and the client's switch is
-  # `:operator` (`ApiaryPro.Tenants.model_chain/1`), "organisation" for every other
-  # organisation. Asked without a lock, once per resolution: one statement reads the
-  # switch of the organisation's tenant, only while the flag is on.
-  @impl true
-  def model_choice_chain(organisation_id) do
-    if ApiaryPro.Flags.operator_infrastructure?() and
-         ApiaryPro.Tenants.model_chain_of(organisation_id) == :operator,
-       do: "operator",
-       else: "organisation"
-  end
-
-  # The operator whose model providers and choices resolve for a client's runs: the
-  # client's `operator_id` while `ApiaryPro.Flags.operator_infrastructure?/0` is on and the
-  # client's switch is `:operator` (`ApiaryPro.Tenants.model_chain/1`), nil for every
-  # other organisation. Asked without a lock: one statement reads the tenant, only while
-  # the flag is on.
-  @impl true
-  def operator_chain_organisation(organisation_id) do
-    if ApiaryPro.Flags.operator_infrastructure?(),
-      do: ApiaryPro.Tenants.operator_on_chain_of(organisation_id)
-  end
-
-  # Whether the person of `scope` writes the operator's chain in the scope's organisation:
-  # while `ApiaryPro.Flags.operator_infrastructure?/0` is on, an owner or an admin of an
-  # operator through their membership there. Not a person who reaches it another way (an
-  # instance admin, or a person of its operator), not an access key, and not a member.
-  # The organisation and the membership are those the scope carries.
-  @impl true
-  def operator_chain_writer?(%Apiary.Accounts.Scope{
-        user: %Apiary.Accounts.User{id: user_id},
-        access_key: nil,
-        reach: reach,
-        organisation: %Apiary.Organisations.Organisation{id: organisation_id} = organisation,
-        membership: %Apiary.Organisations.Membership{
-          user_id: user_id,
-          organisation_id: organisation_id,
-          suspended_at: nil,
-          level: level
-        }
-      })
-      when reach in [nil, :membership] and level in [:owner, :admin] do
-    ApiaryPro.Flags.operator_infrastructure?() and ApiaryPro.Tenants.operator?(organisation)
-  end
-
-  def operator_chain_writer?(_scope), do: false
-
-  # Who creates a client's first workspace: its owners and admins (`ApiaryPro.Access`). The
-  # core's line for an organisation that is no client. The overview and the dead end of New
-  # workspace show it.
-  @impl true
-  def first_workspace_waiting_line(%Apiary.Organisations.Organisation{} = organisation) do
-    if ApiaryPro.Tenants.client?(organisation) do
-      gettext("An owner or an admin of %{organisation} creates the first workspace.",
-        organisation: organisation.name
-      )
-    else
-      Apiary.Edition.Core.first_workspace_waiting_line(organisation)
-    end
-  end
-
-  # Who finishes the set-up, for a person who may not take the next step's action. While the
-  # operator owns its clients, only its owners and admins hold Machines and Harness in a
-  # client (`@operator_held` in `ApiaryPro.Access`), and Model while the client's model switch
-  # is `:operator` (`@chain_held`); they also reach every other step. On `:organisation` the
-  # Model step follows the usual rules, so the core's line is true. The core's line too for
-  # any organisation that is no client of an operator.
-  @impl true
-  def set_up_finishers_line(
-        %Apiary.Accounts.Scope{organisation: %Apiary.Organisations.Organisation{} = organisation} =
-          scope,
-        step_id
-      ) do
-    with %Apiary.Organisations.Organisation{name: operator} <- operator_owning(organisation),
-         who when who != :core <- finishers(organisation, step_id) do
-      case who do
-        :operator ->
-          gettext("Owners and admins of %{operator} finish the set-up.", operator: operator)
-
-        :both ->
-          gettext("Owners and admins of %{organisation} and of %{operator} finish the set-up.",
-            organisation: organisation.name,
-            operator: operator
-          )
-      end
-    else
-      _core -> Apiary.Edition.Core.set_up_finishers_line(scope, step_id)
-    end
-  end
-
-  def set_up_finishers_line(scope, step_id),
-    do: Apiary.Edition.Core.set_up_finishers_line(scope, step_id)
-
-  defp finishers(_organisation, step_id) when step_id in [:machines, :harness], do: :operator
-
-  defp finishers(organisation, :model) do
-    if ApiaryPro.Tenants.model_chain(organisation) == :operator, do: :operator, else: :core
-  end
-
-  defp finishers(_organisation, _step_id), do: :both
-
-  # The operator of the client `organisation` while the operator owns its clients.
-  defp operator_owning(organisation) do
-    if ApiaryPro.Flags.operator_infrastructure?(),
-      do: ApiaryPro.Operators.operator_of(%Apiary.Accounts.Scope{organisation: organisation})
-  end
-
-  # A client's systems are connected by its owners and admins, as any organisation's
-  # (`adapter.connect` in `ApiaryPro.Access`): the core's sentence.
-  @impl true
-  def connects_line(_organisation, _step), do: nil
-
   @impl true
   def set_up_steps(scope, steps), do: ApiaryPro.SetUp.steps(scope, steps)
 
@@ -271,19 +150,6 @@ defmodule ApiaryPro.Edition do
 
   @impl true
   def set_up_context(scope, step_id), do: Apiary.Edition.Core.set_up_context(scope, step_id)
-
-  # A client is operated whether or not `operator_infrastructure` is on: its runs hide the
-  # text of their stack's harness (`Apiary.Stacks.Resolution`).
-  @impl true
-  def operated?(%Apiary.Organisations.Organisation{} = organisation),
-    do: ApiaryPro.Tenants.client?(organisation)
-
-  # While `operator_infrastructure` is on, a person of a client who does not reach it
-  # through its operator is not shown the operator's model provider in a run's records
-  # (`ApiaryPro.ClientReads`).
-  @impl true
-  def client_reads(scope, kind, run, subject),
-    do: ApiaryPro.ClientReads.client_reads(scope, kind, run, subject)
 
   # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a harness document that a
   # person of an operator saves in one of its clients is owned by the operator
