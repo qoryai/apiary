@@ -11,7 +11,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Features, Nodes, Organisations, Repo}
+  alias Apiary.{Features, Nodes, Organisations, Repo, Retention}
   alias ApiaryPro.Flags
 
   @moduletag with_features: Features.all()
@@ -59,15 +59,16 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
     user
   end
 
-  # A node made in the operated workspace by the scope's person, and its entry.
-  defp made_node(ctx, scope, name) do
-    {:ok, _node} = Nodes.create_node(scope, %{kind: "node", name: name})
-    entry(ctx.operated.organisation, :"node.create")
+  # The retention of the operated workspace set to `days` by the scope's person, and its
+  # entry.
+  defp set_retention(ctx, scope, days) do
+    {:ok, _workspace} = Retention.update_retention(scope, %{events_retention_days: days})
+    entry(ctx.operated.organisation, :"retention.edit")
   end
 
   describe "while the flag is on" do
     test "an operator person's entry names the operator beside them", ctx do
-      made = made_node(ctx, ctx.operated.scope, "build-1")
+      made = set_retention(ctx, ctx.operated.scope, 7)
       assert made.details["via_operator_id"] == ctx.operator.organisation.id
 
       email = ctx.operator.user.email
@@ -99,16 +100,16 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   end
 
   describe "someone in both organisations" do
-    # Their entry in the operated workspace: a node, which the operator's owners and admins
-    # make there, for an admin of the operator; a new name of the workspace, which the
+    # Their entry in the operated workspace: its retention, which the operator's owners and
+    # admins set there, for an admin of the operator; a new name of the workspace, which the
     # operator does not change, for anyone else.
     defp made_in_workspace(ctx, user, made \\ :rename) do
       scope = scope_in(user, ctx.operated.organisation, ctx.operated.workspace)
 
       made =
         case made do
-          :node ->
-            made_node(ctx, scope, "both-#{System.unique_integer([:positive])}")
+          :retention ->
+            set_retention(ctx, scope, 14)
 
           :rename ->
             {:ok, _} =
@@ -127,7 +128,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       user = in_both(ctx, :admin, :member)
       operator_id = ctx.operator.organisation.id
 
-      assert %{"via_operator_id" => ^operator_id} = made_in_workspace(ctx, user, :node)
+      assert %{"via_operator_id" => ^operator_id} = made_in_workspace(ctx, user, :retention)
     end
 
     test "equal levels in both: not named with the operator", ctx do
@@ -144,7 +145,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
 
   describe "with the flag off" do
     test "an entry made while it was on reads as the core shows it", ctx do
-      made = made_node(ctx, ctx.operated.scope, "build-2")
+      made = set_retention(ctx, ctx.operated.scope, 21)
       Flags.put_operator_infrastructure(false)
 
       assert actor(ctx.operated.owner.user, ctx.operated.organisation, made) ==

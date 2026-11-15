@@ -25,22 +25,22 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       {:"organisation.delete", :operator_owner, "/:client/settings", "delete_organisation",
        %{"confirm" => %{"slug" => :client}}},
 
-      # The nodes of the workspace the operator operates are the operator's: not there for
-      # the client's people.
-      {:"node.create", :client_owner, "/:client/:client_ws/machines", "create",
+      # The nodes of the workspace the operator operates: the organisation's owners and
+      # admins change them, and the operator's owner and admin are refused.
+      {:"node.create", :operator_owner, "/:client/:client_ws/machines", "create",
        %{"node" => %{"name" => "sneaky"}}},
-      {:"node.create", :client_admin, "/:client/:client_ws/machines/new", "create",
+      {:"node.create", :operator_admin, "/:client/:client_ws/machines/new", "create",
        %{"node" => %{"name" => "sneaky"}}, answer: :refused_at_mount},
 
-      # Its gateways at the organisation are the client's: their pages are not found for
-      # the operator's people, who reach the workspace it operates alone.
+      # The organisation's gateways: their pages are not found for the operator's people,
+      # who reach the workspace the operator operates alone.
       {:"node.create", :operator_owner, "/:client/gateways", "create", @sneaky_gateway,
        answer: :not_found_at_mount},
       {:"node.edit", :operator_admin, "/:client/gateways/:client_gateway/settings", "save",
        %{"node" => %{"name" => "sneaky"}}, answer: :not_found_at_mount},
 
-      # The operator's gateways are not there for the client's people, and its members
-      # read them.
+      # The operator's gateways are not found for the organisation's people, and the
+      # operator's members read them.
       {:"node.create", :client_admin, "/:operator/gateways/new", "create", @sneaky_gateway,
        answer: :not_found_at_mount},
       {:"node.edit", :client_owner, "/:operator/gateways/:operator_gateway/settings", "save",
@@ -49,17 +49,18 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       {:"node.edit", :operator_member, "/:operator/gateways/:operator_gateway/settings", "save",
        %{"node" => %{"name" => "sneaky"}}},
 
-      # A pool's limit and a workspace's retention are the operator's: the client's owner
-      # and admin are refused them.
-      {:"node.set_limit", :client_admin, "/:client/:client_ws/machines/:client_pool/settings",
+      # A pool's limit: the operator's owner and admin are refused it. The workspace's
+      # retention: the operator's member is refused it; the operator's owners and admins
+      # set it.
+      {:"node.set_limit", :operator_owner, "/:client/:client_ws/machines/:client_pool/settings",
        "save", %{"node" => %{"instance_limit" => "3"}}},
-      {:"retention.edit", :client_owner, "/:client/:client_ws/settings", "save_retention",
-       %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}}},
-      {:"retention.edit", :client_admin, "/:client/:client_ws/settings", "save_retention",
+      {:"node.set_limit", :operator_admin, "/:client/:client_ws/machines/:client_pool/settings",
+       "save", %{"node" => %{"instance_limit" => "3"}}},
+      {:"retention.edit", :operator_member, "/:client/:client_ws/settings", "save_retention",
        %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}}},
 
-      # A workspace's policy and the organisation's are the client's: the operator's people
-      # neither lock a rule nor change the organisation's policy.
+      # A workspace's policy and the organisation's: the operator's people neither lock a
+      # rule nor change the organisation's policy.
       {:"security_policy.lock", :operator_owner, "/:client/:client_ws/policy", "lock_toggle",
        %{"id" => :client_rule_open}},
       {:"security_policy.lock", :operator_admin, "/:client/:client_ws/policy", "lock_toggle",
@@ -79,13 +80,14 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   def setup(%{client_owner: owner, operator: operator} = world) do
     pool = Apiary.NodesFixtures.pool_fixture(owner.scope, instance_limit: 5)
 
-    # A rule of the client's workspace, and a locked one, made by its owner.
+    # A rule of the organisation's workspace, and a locked one, made by its owner.
     {:ok, open} = Apiary.Policy.allow(owner.scope, nil, %{host: "cdn.example"})
     {:ok, locked} = Apiary.Policy.deny(owner.scope, nil, %{host: "vault.example", locked: true})
 
     ApiaryPro.Flags.put_operator_infrastructure(true)
 
-    # A gateway of the operator's, and one the client's owner added at the client.
+    # A gateway of the operator, and one the organisation's owner added at the
+    # organisation.
     operator_owner = world.operator_owner.user
 
     operator_gateway =

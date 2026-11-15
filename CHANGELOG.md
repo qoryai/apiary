@@ -1203,9 +1203,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   (`workspace_operators`), and no longer every workspace of an organisation the operator
   had. No screen starts or ends such a link. In an operated workspace they read everything
   but its secrets and variables, and, with `operator_infrastructure` on, its owners and
-  admins change its time limits, retention, process, artifact types, model choices, nodes
-  and access keys. Its harness documents are saved by the organisation's owners and
-  admins alone. Of the organisation they reach nothing: its people, policy, trail,
+  admins change its time limits, retention, process, artifact types and model choices.
+  Its nodes, access keys and harness documents are changed by the organisation's owners
+  and admins alone, who keep every action in the workspace. Of the organisation they reach nothing: its people, policy, trail,
   connections, secrets, variables and settings are not found for them. The owners and
   admins of an organisation that has an operator connect its systems, add its gateways,
   lock its workspaces' rules, change its policy and make its first workspace, as in any

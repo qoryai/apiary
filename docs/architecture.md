@@ -964,11 +964,10 @@ nothing starts or ends a link.
   `reader`) while the configuration flag `operator_infrastructure` is off
   (`ApiaryPro.Flags.operator_infrastructure?/0`). While it is on, the operator's owners
   and admins act there at that level (`operator_role/2` in `ApiaryPro.Access`), and its
-  members read. At that level they change only the workspace's settings, process, model
-  plan, and node pools with their access keys (`@operator_in_workspace`), and no harness
-  document. Of these, what the operator sets (`@operator_held`: the nodes, a pool's
-  instance limit, the access keys, the time limits and the retention) is not found
-  for anyone else in the workspace, the organisation's owners and admins among them. A
+  members read. At that level they change only the workspace's time limits, retention,
+  process, artifact types and model choices (`@operator_in_workspace`): no node, access
+  key or harness document. The organisation's owners and admins keep every action in the
+  workspace, these included. A
   person of the operator who holds a membership in the organisation too acts there at
   that membership's level, and, while the flag is on, at the higher of the two levels for
   what the operator changes in an operated workspace; they read its secrets and variables

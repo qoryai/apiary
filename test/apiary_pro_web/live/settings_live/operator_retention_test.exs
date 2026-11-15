@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.SettingsLive.OperatorRetentionTest do
   @moduledoc """
   The retention of an operated workspace while `ApiaryPro.Flags.operator_infrastructure?/0`
-  is on: the operator's owners and admins set it, and a save by the organisation's owner or
-  admin is refused and changes nothing.
+  is on: the operator's owners and admins set it, and so do the organisation's owner and
+  admins. With the flag off, a save by the operator's admin is refused and changes nothing.
   """
   # The flag is set for this process.
   use ApiaryWeb.ConnCase, async: true
@@ -16,7 +16,8 @@ defmodule ApiaryProWeb.SettingsLive.OperatorRetentionTest do
 
   @moduletag with_features: Features.all()
 
-  @params %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}}
+  defp params(days),
+    do: %{"retention" => %{"events_retention_days" => "#{days}", "log_retention_days" => "7"}}
 
   # The operator Hive Ops operates the workspace Main of Acme, and the flag is on.
   setup do
@@ -36,31 +37,32 @@ defmodule ApiaryProWeb.SettingsLive.OperatorRetentionTest do
 
   defp days(ctx), do: Repo.reload!(ctx.operated.workspace).events_retention_days
 
-  test "a save by the organisation's owner or admin is refused", ctx do
-    before = days(ctx)
-
-    for user <- [ctx.admin.user, ctx.operated.owner.user] do
+  test "the organisation's owner and admin save it", ctx do
+    for {user, days} <- [{ctx.admin.user, 7}, {ctx.operated.owner.user, 14}] do
       lv = settings(ctx, user)
-      render_hook(lv, "save_retention", @params)
+      render_hook(lv, "save_retention", params(days))
 
-      assert has_element?(lv, "#flash-error")
-      assert days(ctx) == before
+      refute has_element?(lv, "#flash-error")
+      assert days(ctx) == days
     end
   end
 
   test "the operator's admin saves it", ctx do
     admin = member_fixture(ctx.operator.scope, :admin)
     lv = settings(ctx, admin.user)
-    render_hook(lv, "save_retention", @params)
+    render_hook(lv, "save_retention", params(7))
 
     assert days(ctx) == 7
   end
 
-  test "with the flag off, the organisation's admin saves it", ctx do
+  test "with the flag off, a save by the operator's admin is refused", ctx do
+    admin = member_fixture(ctx.operator.scope, :admin)
     Flags.put_operator_infrastructure(false)
-    lv = settings(ctx, ctx.admin.user)
-    render_hook(lv, "save_retention", @params)
+    before = days(ctx)
+    lv = settings(ctx, admin.user)
+    render_hook(lv, "save_retention", params(7))
 
-    assert days(ctx) == 7
+    assert has_element?(lv, "#flash-error")
+    assert days(ctx) == before
   end
 end

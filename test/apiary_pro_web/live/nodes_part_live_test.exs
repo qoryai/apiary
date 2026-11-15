@@ -2,7 +2,7 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
   # The nodes, a part of no feature (`:nodes`): no Features page offers them, and a row of
   # them hides nothing (`ApiaryPro.Features.hidden/1`), so the people of an organisation
   # whose workspace an operator operates open every page of the nodes, the access keys and
-  # the gateways while the operator owns the workspaces it operates
+  # the gateways while the operator's owners and admins act in the workspaces it operates
   # (`ApiaryPro.Flags.operator_infrastructure?/0`) and features are shown by who asks
   # (`ApiaryPro.Flags.feature_visibility?/0`).
   use ApiaryWeb.ConnCase, async: true

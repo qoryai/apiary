@@ -133,7 +133,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
         for {action, on} <- [
               {:"retention.edit", :workspace},
               {:"time_limit.edit", :workspace},
-              {:"node.create", :workspace},
               {:"process.edit", :workspace},
               {:"artifact_type.edit", :workspace},
               {:"model_choice.write", :workspace}
@@ -142,6 +141,8 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
         end
 
         for {action, on} <- [
+              {:"node.create", :workspace},
+              {:"access_key.add", :workspace},
               {:"security_policy.lock", :workspace},
               {:"security_policy.edit", :workspace},
               {:"secret.write", :workspace},
@@ -169,12 +170,14 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
 
     test "authorize/3 fails closed once they are removed from the operator", ctx do
       scope = ctx.as_admin
-      assert Access.can?(scope, :"node.create", ctx.operated.workspace)
+      assert Access.can?(scope, :"retention.edit", ctx.operated.workspace)
 
       {:ok, _} = Organisations.remove_member(ctx.operator.scope, ctx.operator_admin.membership.id)
 
-      assert Access.can?(scope, :"node.create", ctx.operated.workspace)
-      assert {:error, _refused} = Access.authorize(scope, :"node.create", ctx.operated.workspace)
+      assert Access.can?(scope, :"retention.edit", ctx.operated.workspace)
+
+      assert {:error, _refused} =
+               Access.authorize(scope, :"retention.edit", ctx.operated.workspace)
     end
 
     test "authorize/3 fails closed once they are made a member of the operator", ctx do
@@ -187,11 +190,11 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
           :member
         )
 
-      assert Access.can?(scope, :"node.create", ctx.operated.workspace)
+      assert Access.can?(scope, :"retention.edit", ctx.operated.workspace)
 
-      # What the operator sets is not there for its members.
-      assert Access.authorize(scope, :"node.create", ctx.operated.workspace) ==
-               {:error, :not_found}
+      # Its members change nothing there.
+      assert Access.authorize(scope, :"retention.edit", ctx.operated.workspace) ==
+               {:error, :forbidden}
 
       assert Access.authorize(scope, :"run.read", ctx.operated.workspace) == :ok
     end
@@ -207,7 +210,7 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
 
       for scope <- [ctx.as_owner, ctx.as_admin] do
         assert {:error, _refused} =
-                 Access.authorize(scope, :"node.create", ctx.operated.workspace)
+                 Access.authorize(scope, :"retention.edit", ctx.operated.workspace)
       end
     end
   end
@@ -223,11 +226,14 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
       in_main = scope_in(user, ctx.operated.organisation, ctx.operated.workspace)
       assert Access.level(in_main) == :member
 
-      assert Access.authorize(in_main, :"node.create", ctx.operated.workspace) == :ok
+      assert Access.authorize(in_main, :"retention.edit", ctx.operated.workspace) == :ok
 
-      # Anything else at their level in the organisation.
-      assert Access.authorize(in_main, :"security_policy.lock", ctx.operated.workspace) ==
-               {:error, :forbidden}
+      # Anything else at their level in the organisation, the nodes and access keys among
+      # it.
+      for action <- [:"node.create", :"access_key.add", :"security_policy.lock"] do
+        assert Access.authorize(in_main, action, ctx.operated.workspace) == {:error, :forbidden},
+               "#{action}"
+      end
 
       admin = ctx.organisation_admin.membership
 
@@ -236,7 +242,7 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
       # With the flag off, their membership decides.
       Flags.put_operator_infrastructure(false)
 
-      assert Access.authorize(in_main, :"node.create", ctx.operated.workspace) ==
+      assert Access.authorize(in_main, :"retention.edit", ctx.operated.workspace) ==
                {:error, :forbidden}
     end
 
@@ -268,10 +274,13 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
       admin = ctx.organisation_admin.membership
       assert Access.authorize(scope, :"member.change_level", admin) == :ok
 
-      # A rule's lock and the organisation's policy too: they are the organisation's owners'.
+      # A rule's lock, the organisation's policy, and the nodes and access keys of Main too:
+      # they are the organisation's owners'.
       for {action, on} <- [
             {:"security_policy.lock", ctx.operated.workspace},
-            {:"organisation_policy.edit", ctx.operated.organisation}
+            {:"organisation_policy.edit", ctx.operated.organisation},
+            {:"node.create", ctx.operated.workspace},
+            {:"access_key.add", ctx.operated.workspace}
           ] do
         assert Access.authorize(scope, action, on) == :ok, "#{action}"
       end
@@ -420,61 +429,96 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
     end
   end
 
-  describe "what the operator sets in an operated workspace" do
-    # Each action with what it is asked of: in Main, which the operator operates. The
-    # organisation's model providers and runtimes, the model choices and the harness
-    # documents are not among them.
-    @operator_held [
-      {:"node.create", :workspace},
-      {:"node.edit", :workspace},
-      {:"node.set_limit", :workspace},
-      {:"node.delete", :workspace},
-      {:"node.clear_instance", :workspace},
-      {:"access_key.create_code", :workspace},
-      {:"access_key.cancel_code", :workspace},
-      {:"access_key.add", :workspace},
-      {:"access_key.revoke", :workspace},
-      {:"time_limit.edit", :workspace},
-      {:"retention.edit", :workspace}
+  describe "the nodes and access keys of an operated workspace" do
+    @nodes_and_keys [
+      :"node.create",
+      :"node.edit",
+      :"node.set_limit",
+      :"node.delete",
+      :"node.clear_instance",
+      :"access_key.create_code",
+      :"access_key.cancel_code",
+      :"access_key.add",
+      :"access_key.revoke"
     ]
 
-    test "is held by the operator's owners and admins, and not there for anyone else",
+    test "are changed by the organisation's owners and admins, and forbidden to the operator's people, with the flag on or off",
          ctx do
-      for as <- [ctx.as_owner, ctx.as_admin], {action, on} <- @operator_held do
-        assert Access.authorize(as, action, on(ctx, on)) == :ok, "#{action}"
-      end
+      for on? <- [true, false] do
+        Flags.put_operator_infrastructure(on?)
 
-      for as <- [
-            ctx.as_member,
-            ctx.operated.owner.scope,
-            ctx.organisation_admin.scope,
-            ctx.organisation_member.scope
-          ],
-          {action, on} <- @operator_held do
-        assert Access.authorize(as, action, on(ctx, on)) == {:error, :not_found}, "#{action}"
+        for as <- [ctx.operated.owner.scope, ctx.organisation_admin.scope],
+            action <- @nodes_and_keys do
+          assert Access.authorize(as, action, ctx.operated.workspace) == :ok,
+                 "#{action}, flag #{on?}"
+        end
+
+        for as <- [
+              ctx.as_owner,
+              ctx.as_admin,
+              ctx.as_member,
+              ctx.organisation_member.scope
+            ],
+            action <- @nodes_and_keys do
+          assert Access.authorize(as, action, ctx.operated.workspace) == {:error, :forbidden},
+                 "#{action}, flag #{on?}"
+        end
       end
     end
 
-    test "is the organisation's with the flag off, and the operator's people read", ctx do
+    test "are read by everyone in the workspace, the operator's people among them", ctx do
+      for as <- [
+            ctx.as_owner,
+            ctx.as_member,
+            ctx.operated.owner.scope,
+            ctx.organisation_member.scope
+          ],
+          do: assert(Access.authorize(as, :"node.read", ctx.operated.workspace) == :ok)
+    end
+
+    test "are changed by the operator's owner in the operator itself, as before", ctx do
+      assert Access.authorize(ctx.operator.scope, :"node.create", ctx.operator.workspace) == :ok
+    end
+  end
+
+  describe "the time limits and retention of an operated workspace" do
+    @limits_and_retention [:"time_limit.edit", :"retention.edit"]
+
+    test "are set by the organisation's owners and admins, and by the operator's owners and admins while the flag is on",
+         ctx do
+      for as <- [
+            ctx.as_owner,
+            ctx.as_admin,
+            ctx.operated.owner.scope,
+            ctx.organisation_admin.scope
+          ],
+          action <- @limits_and_retention do
+        assert Access.authorize(as, action, ctx.operated.workspace) == :ok, "#{action}"
+      end
+
+      for as <- [ctx.as_member, ctx.organisation_member.scope], action <- @limits_and_retention do
+        assert Access.authorize(as, action, ctx.operated.workspace) == {:error, :forbidden},
+               "#{action}"
+      end
+    end
+
+    test "are the organisation's alone with the flag off", ctx do
       Flags.put_operator_infrastructure(false)
 
       for as <- [ctx.operated.owner.scope, ctx.organisation_admin.scope],
-          {action, on} <- @operator_held do
-        assert Access.authorize(as, action, on(ctx, on)) == :ok, "#{action}"
+          action <- @limits_and_retention do
+        assert Access.authorize(as, action, ctx.operated.workspace) == :ok, "#{action}"
       end
 
-      for as <- [ctx.as_owner, ctx.as_admin], {action, on} <- @operator_held do
-        assert Access.authorize(as, action, on(ctx, on)) == {:error, :forbidden}, "#{action}"
+      for as <- [ctx.as_owner, ctx.as_admin], action <- @limits_and_retention do
+        assert Access.authorize(as, action, ctx.operated.workspace) == {:error, :forbidden},
+               "#{action}"
       end
     end
+  end
 
-    test "leaves reading, and the organisation's policy, variables, secrets and work, with it",
-         ctx do
-      workspace = ctx.operated.workspace
-
-      for as <- [ctx.as_member, ctx.operated.owner.scope, ctx.organisation_member.scope],
-          do: assert(Access.authorize(as, :"node.read", workspace) == :ok)
-
+  describe "the organisation's policy, variables, secrets and work in an operated workspace" do
+    test "stay with the organisation's owners and admins", ctx do
       for as <- [ctx.operated.owner.scope, ctx.organisation_admin.scope],
           {action, on} <- [
             {:"connection.write", :organisation},
@@ -487,10 +531,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
           ] do
         assert Access.authorize(as, action, on(ctx, on)) == :ok, "#{action}"
       end
-    end
-
-    test "is the operator's in the operator itself, as before", ctx do
-      assert Access.authorize(ctx.operator.scope, :"node.create", ctx.operator.workspace) == :ok
     end
   end
 

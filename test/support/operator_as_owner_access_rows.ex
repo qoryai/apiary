@@ -20,14 +20,13 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   #
   # The operator operates Main. In Main, the operator's owners and admins act at their
   # level on what the operator changes there (`ApiaryPro.Access`'s `@operator_in_workspace`):
-  # its nodes, a pool's limit and keys, its time limits and retention, its process and
-  # artifact types, and its model choices; someone in both at the higher of their two
-  # levels. Everything else in Main they read, and the harness documents saved in Main
-  # only the organisation's owners and admins save. Of what the organisation owns as a
-  # whole, a person of the operator with no membership there finds nothing. What the
-  # operator sets in Main is not there for anyone else, the
-  # organisation's owners and admins among them. The organisation's people act in it, by
-  # their membership, as in any organisation.
+  # its time limits and retention, its process and artifact types, and its model choices;
+  # someone in both at the higher of their two levels. Everything else in Main they read,
+  # and change no node, access key or harness document there: the organisation's owners
+  # and admins change those. Of what the organisation has as a whole, a person of the
+  # operator with no membership there finds nothing. The organisation's people act in
+  # Main, by their membership, as in any organisation, on everything the operator changes
+  # there too.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -62,9 +61,10 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :admin_and_client_owner
   ]
 
-  # What the operator sets in Main, whatever the switch: the operator's owners and admins
-  # hold each, and it is not there for anyone else.
-  @operator_held [
+  # The nodes and access keys of Main: the organisation's owners and admins change them,
+  # at their level there, and a level in the operator counts for nothing there. A person
+  # of the operator with no membership in the organisation is forbidden them.
+  @nodes_and_keys [
     :"node.create",
     :"node.edit",
     :"node.set_limit",
@@ -73,14 +73,17 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"access_key.create_code",
     :"access_key.cancel_code",
     :"access_key.add",
-    :"access_key.revoke",
-    :"time_limit.edit",
-    :"retention.edit"
+    :"access_key.revoke"
   ]
 
-  # What the operator changes in Main beside what it sets: the organisation's owners and
-  # admins change it too.
-  @operator_changes [:"process.edit", :"artifact_type.edit", :"model_choice.write"]
+  # What the operator changes in Main: the organisation's owners and admins change it too.
+  @operator_changes [
+    :"time_limit.edit",
+    :"retention.edit",
+    :"process.edit",
+    :"artifact_type.edit",
+    :"model_choice.write"
+  ]
 
   # The organisation's model providers and runtimes, which it owns as a whole: its owners
   # and admins change them, and a level in the operator counts for nothing there.
@@ -243,7 +246,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       # them, and a level in the operator counts for nothing there.
       {:"harness.save", yes: @own_admins}
     ] ++
-      Enum.map(@operator_held, &{&1, yes: @operator_owners_admins, on: :workspace}) ++
+      Enum.map(@nodes_and_keys, &{&1, yes: @own_admins, on: :workspace}) ++
       Enum.map(
         @operator_changes,
         &{&1, yes: Enum.uniq(@own_admins ++ @operator_owners_admins)}
@@ -253,12 +256,6 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       Enum.map(@pool_keys, &{&1, yes: []}) ++
       Enum.map(@instance_only ++ @not_here, &{&1, yes: []})
   end
-
-  @doc false
-  def operator_held, do: @operator_held
-
-  @doc false
-  def operator_owners_admins, do: @operator_owners_admins
 
   @doc false
   # The organisation made while the flag is off, with its owner, then the flag on: the
@@ -329,15 +326,12 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       action in (@not_here ++ @adapter_keys ++ @instance_only) ->
         :not_found
 
-      # The operator's people find nothing the organisation owns as a whole, and no
+      # The operator's people find nothing the organisation has as a whole, and no
       # action asked of it, but what the operator changes in the workspace.
       actor in @operator_only and
           (match?(%Apiary.Organisations.Organisation{id: id} when is_binary(id), subject) or
              (Apiary.Access.action(action).asked_of == :organisation and
-                action not in @operator_held)) ->
-        :not_found
-
-      action in @operator_held and actor not in @operator_owners_admins ->
+                action not in @operator_changes)) ->
         :not_found
 
       # The workspace's secrets and variables are not there for the operator's people.
@@ -352,26 +346,26 @@ end
 
 defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   @moduledoc false
-  # The rows of the access test for the organisation-level gateways while the operator
-  # owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`): the nodes' and the
-  # access keys' actions, asked at an organisation's place, of the operator and of its
-  # client, where those gateways live with no workspace (`Apiary.Gateways`). Asked by
-  # `ApiaryPro.OperatorAsOwnerAccessTest` beside `ApiaryPro.OperatorAsOwnerAccessRows`,
-  # whose actors ask in the client, at its organisation's place. The operator's own
-  # actors:
+  # The rows of the access test for the organisation-level gateways while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on: the nodes' and the access keys'
+  # actions, asked at the place of the operator and at the place of the organisation whose
+  # workspace Main it operates, where those gateways are, in no workspace
+  # (`Apiary.Gateways`). Asked by `ApiaryPro.OperatorAsOwnerAccessTest` beside
+  # `ApiaryPro.OperatorAsOwnerAccessRows`, whose actors ask at the organisation's place.
+  # The actors this module adds:
   #
   #     at_operator_owner          an owner of the operator, asking there
   #     at_operator_admin          an admin of the operator, likewise
   #     at_operator_member         a member of the operator, likewise: reads
-  #     client_owner_at_operator   an owner of the client, whose scope is the client's,
-  #     client_admin_at_operator   an admin, and a member of the client, asking of the
+  #     client_owner_at_operator   an owner, an admin and a member of the organisation,
+  #     client_admin_at_operator   each with the organisation's scope, asking of the
   #     client_member_at_operator  operator's place, which they do not reach: not found
   #
   # At the operator's place its owners and admins make, change and delete its gateways
-  # and their keys, and its members read them. At the client's place, where the operator
-  # operates a workspace and not the client, the client's owners and admins do, and its
-  # members read them; a person of the operator with no membership in the client finds
-  # nothing there, and one in both acts at their level in the client.
+  # and their keys, and its members read them. At the organisation's place the
+  # organisation's owners and admins do, and its members read them; a person of the
+  # operator with no membership in the organisation finds nothing there, and one in both
+  # acts at their level in the organisation.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -425,9 +419,9 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   end
 
   @doc false
-  # The operator's people, and the client's, the client made while the flag is off, with
-  # its owner, then the flag on, as `ApiaryPro.OperatorAsOwnerAccessRows` makes them; the
-  # operator a place of its own.
+  # The operator's people and the organisation's, the organisation made while the flag is
+  # off, with its owner, then the flag on, as `ApiaryPro.OperatorAsOwnerAccessRows` makes
+  # them; the operator is the place `:operator`.
   def setup(%{places: %{client: client}, scopes: scopes}) do
     ApiaryPro.Flags.put_operator_infrastructure(false)
     operator = client.operator

@@ -3,7 +3,7 @@ defmodule ApiaryPro.Access do
   alias Apiary.Access.Action
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
-  alias ApiaryPro.{Flags, Reach, Tenants, WorkspaceOperators}
+  alias ApiaryPro.{Flags, Reach, Tenants}
   alias ApiaryPro.Transfers.Transfer
 
   @owners [:owner]
@@ -235,37 +235,21 @@ defmodule ApiaryPro.Access do
   # and left out of the table of actions below.
   @flagged_transfers [:"organisation.withdraw_transfer"]
 
-  # What the operator sets in a workspace it operates, which, while
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, only the operator's owners and
-  # admins hold there: for anyone else in the workspace, the organisation's owners and
-  # admins among them, it is not there. They are the workspace's nodes, a pool's instance
-  # limit and the access keys, the time limits of the workspace and its targets, and its
-  # retention. Reading any of these is not among them; the organisation reads it. The
-  # organisation keeps its integrations, services, model providers and runtimes, the
-  # harness documents saved in the workspace (`harness.save`), and connects its systems
-  # (`connection.write`, `adapter.connect`).
-  @operator_held [
-    :"node.create",
-    :"node.edit",
-    :"node.set_limit",
-    :"node.delete",
-    :"node.clear_instance",
-    :"access_key.create_code",
-    :"access_key.cancel_code",
-    :"access_key.add",
-    :"access_key.revoke",
+  # What an operator's person changes in a workspace the operator operates, while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, at the role their level there gives
+  # them (`operator_role/2`): the time limits of the workspace and its targets, its
+  # retention, the process and its artifact types, and the model choices. Nothing else they
+  # change there: no node or access key, no person of the organisation, no harness
+  # document, secret, variable, connection or security policy. Of what the organisation has
+  # as a whole they change nothing. The organisation's owners and admins keep every action
+  # in the workspace, these included.
+  @operator_in_workspace [
     :"time_limit.edit",
-    :"retention.edit"
+    :"retention.edit",
+    :"process.edit",
+    :"artifact_type.edit",
+    :"model_choice.write"
   ]
-
-  # What an operator's person changes in a workspace the operator operates, at the role
-  # their level there gives them (`operator_role/2`): the workspace's settings, its time
-  # limits and retention; the process and its artifact types; its model plan, the model
-  # choices; and its node pools, with their access keys. Nothing else they change there:
-  # no person of the organisation, no harness document, secret, variable, connection or
-  # security policy. Of what the organisation owns they change nothing.
-  @operator_in_workspace @operator_held ++
-                           [:"process.edit", :"artifact_type.edit", :"model_choice.write"]
 
   # The reads of a workspace that its operator's people do not make: its secrets, with
   # their names, notes and value ids, and its variables with their values.
@@ -326,12 +310,11 @@ defmodule ApiaryPro.Access do
        (`reads/0`) but their secrets and variables; nothing the organisation owns as a
        whole is found, its policy, people, connections, secrets and variables among them,
        nor any action asked of the organisation. In such a workspace they
-       change only the workspace's settings, process, model plan and node pools with
-       their access keys, at the role their level in the operator maps to
+       change only the time limits, the retention, the process, its artifact types and
+       the model choices, at the role their level in the operator maps to
        there: while the configuration flag `operator_infrastructure` is on, an owner's or an
-       admin's for its owners and admins, else `reader`. While it is on, those of
-       these that the operator sets are not found for anyone else in the workspace, the
-       organisation's owners and admins among them. A person of the operator who holds a
+       admin's for its owners and admins, else `reader`. The organisation's owners and
+       admins keep every action in the workspace. A person of the operator who holds a
        membership in the organisation too acts there at that membership's level, and in
        such a workspace at the higher of the two for what the operator changes there;
      - **the reader**: an instance admin reads everything in every workspace
@@ -590,13 +573,6 @@ defmodule ApiaryPro.Access do
       action in @reads and (role == :reader or via != nil) ->
         :ok
 
-      # While the flag is on, what the operator sets in a workspace it operates is held by
-      # the operator's owners and admins: for anyone else, the organisation's owners and
-      # admins among them, it is not there.
-      on? and action in @operator_held and operated?(scope, workspace_id) and
-          via not in [:owner, :admin] ->
-        {:error, :not_found}
-
       # A person of the operator of the workspace changes there only what the operator
       # changes: anything else is forbidden to one with no membership in the organisation.
       via != nil and is_nil(Access.level(scope)) and action not in @operator_in_workspace ->
@@ -640,14 +616,6 @@ defmodule ApiaryPro.Access do
        do: Access.place(subject) == {id, nil}
 
   defp organisation_level?(_scope, _subject), do: false
-
-  # Whether the workspace `workspace_id` of the scope's organisation has an operator, as
-  # the organisation has its links.
-  defp operated?(%Scope{organisation: %Organisation{} = organisation}, workspace_id)
-       when is_binary(workspace_id),
-       do: WorkspaceOperators.operated?(organisation, workspace_id)
-
-  defp operated?(_scope, _workspace_id), do: false
 
   # Whether the organisation acted on has the feature of its secrets. Any other subject is
   # false, so it is not found: every caller passes the organisation.

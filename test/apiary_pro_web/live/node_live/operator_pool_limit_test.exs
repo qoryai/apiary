@@ -1,10 +1,10 @@
 defmodule ApiaryProWeb.NodeLive.OperatorPoolLimitTest do
   # A pool's instance limit in a workspace an operator operates while its owners and admins
-  # act there (`ApiaryPro.Flags.operator_infrastructure?/0`): set by the operator's owners
-  # and admins, an admin of the operator who is an owner of the organisation among them,
-  # and not there for the organisation's people; with the flag off, the organisation's
-  # owner and admins set it and the operator's people read. The flag is set for this
-  # process.
+  # act there (`ApiaryPro.Flags.operator_infrastructure?/0`): set by the organisation's
+  # owner and admins, an admin of the operator who is an owner of the organisation among
+  # them, and forbidden to the operator's owners and admins, an owner of the operator who
+  # is a member of the organisation among them; with the flag off, likewise. The flag is
+  # set for this process.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -46,12 +46,7 @@ defmodule ApiaryProWeb.NodeLive.OperatorPoolLimitTest do
       operated: operated,
       pool: pool,
       organisation_admin: organisation_admin,
-      users: %{
-        operator_owner: operator.user,
-        operator_admin: operator_admin,
-        owner_and_organisation_member: owner_and_member,
-        admin_and_organisation_owner: admin_and_owner
-      },
+      users: %{admin_and_organisation_owner: admin_and_owner},
       scopes: %{
         operator_owner: operated.scope,
         operator_admin: in_main.(operator_admin),
@@ -74,19 +69,21 @@ defmodule ApiaryProWeb.NodeLive.OperatorPoolLimitTest do
   defp limit(ctx), do: Repo.reload!(ctx.pool).instance_limit
 
   describe "while the operator's owners and admins act in the workspace" do
-    test "an operator admin sets the limit, as an owner of the operator does", ctx do
-      scope = ctx.scopes.operator_admin
-      assert Access.authorize(scope, :"node.set_limit", ctx.pool) == :ok
-      assert Access.authorize(scope, :"node.set_limit", ctx.operated.workspace) == :ok
+    test "the organisation's admin sets the limit, as its owner does", ctx do
+      for scope <- [ctx.operated.owner.scope, ctx.organisation_admin.scope] do
+        assert Access.authorize(scope, :"node.set_limit", ctx.pool) == :ok
+        assert Access.authorize(scope, :"node.set_limit", ctx.operated.workspace) == :ok
+      end
 
-      lv = settings(ctx, ctx.users.operator_admin)
+      lv = settings(ctx, ctx.organisation_admin.user)
       refute has_element?(lv, "#node-form input[name='node[instance_limit]'][disabled]")
 
       save_limit(lv, "3")
       assert limit(ctx) == 3
     end
 
-    test "an operator admin who is an owner of the organisation sets it too", ctx do
+    test "an operator admin who is an owner of the organisation sets it, at their level there",
+         ctx do
       scope = ctx.scopes.admin_and_organisation_owner
       assert Access.level(scope) == :owner
       assert Access.authorize(scope, :"node.set_limit", ctx.pool) == :ok
@@ -98,35 +95,20 @@ defmodule ApiaryProWeb.NodeLive.OperatorPoolLimitTest do
       assert limit(ctx) == 4
     end
 
-    test "an operator admin makes a pool with a limit", ctx do
-      scope = ctx.scopes.operator_admin
-
-      assert {:ok, made} =
-               Apiary.Nodes.create_node(scope, %{
-                 kind: "pool",
-                 name: "spot-1",
-                 instance_limit: 3
-               })
-
-      assert made.instance_limit == 3
-    end
-
-    test "the operator's owner, and an owner of it who is a member of the organisation, set it",
-         ctx do
-      for {actor, limit} <- [operator_owner: 3, owner_and_organisation_member: 7] do
-        assert Access.authorize(ctx.scopes[actor], :"node.set_limit", ctx.pool) == :ok
-
-        lv = settings(ctx, ctx.users[actor])
-        refute has_element?(lv, "#node-form input[name='node[instance_limit]'][disabled]")
-        save_limit(lv, "#{limit}")
-        assert limit(ctx) == limit, "#{actor}"
+    test "the operator's owners and admins are forbidden it, and make no pool", ctx do
+      for actor <- [:operator_owner, :operator_admin, :owner_and_organisation_member] do
+        assert Access.authorize(ctx.scopes[actor], :"node.set_limit", ctx.pool) ==
+                 {:error, :forbidden},
+               "#{actor}"
       end
-    end
 
-    test "the people of the organisation find no node to change", ctx do
-      for scope <- [ctx.operated.owner.scope, ctx.organisation_admin.scope] do
-        assert Access.authorize(scope, :"node.set_limit", ctx.pool) == {:error, :not_found}
-      end
+      assert Apiary.Nodes.create_node(ctx.scopes.operator_admin, %{
+               kind: "pool",
+               name: "spot-1",
+               instance_limit: 3
+             }) == {:error, :forbidden}
+
+      assert limit(ctx) == 5
     end
   end
 

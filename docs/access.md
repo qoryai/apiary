@@ -1210,9 +1210,9 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
    organisation's people, at their levels, as in any organisation. While
    `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator's owners and admins
    act in such a workspace at their level there, on the workspace's time limits and
-   retention, its process and artifact types, its model choices, and its node pools with
-   their access keys, and save no harness document there; the ones of these the operator sets are not found for
-   anyone else in the workspace. A person of the operator who also holds a membership in
+   retention, its process and artifact types, and its model choices. They change no node
+   or access key there and save no harness document; the organisation's owners and
+   admins keep every action in the workspace. A person of the operator who also holds a membership in
    the organisation acts at that membership's level, and in an operated workspace at the
    higher of their two levels on what the operator changes there. A workspace with an
    operator is not deleted (`:operated`), and an operator is neither
