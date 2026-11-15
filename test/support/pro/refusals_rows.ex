@@ -12,6 +12,9 @@ defmodule ApiaryProWeb.RefusalsRows do
       operator_owner, operator_admin, operator_member
                      an owner, an admin and a member of an operator, in the organisation
                      whose workspace it operates, which they read and change nothing in
+      operated_owner, operated_admin
+                     the owner and an admin of that organisation, for the rows of
+                     `ApiaryProWeb.OperatorAsOwnerRefusalsRows`
       instance_admin an owner of the instance organisation: on the Instance settings pages, and
                      reading the organisation, which they reach only as one, read-only
       revoked_instance_admin
@@ -47,6 +50,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       :operator_owner,
       :operator_admin,
       :operator_member,
+      :operated_owner,
+      :operated_admin,
       :instance_admin,
       :revoked_instance_admin,
       :io_admin,
