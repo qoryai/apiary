@@ -200,6 +200,34 @@ defmodule Apiary.Runs.WaitingTest do
     assert DateTime.compare(until, first) == :eq
   end
 
+  # A provider of another organisation than the run's, left from before migration
+  # 20261115110000.
+  @tag needs: [:factory, :secrets]
+  test "while every key of another organisation's provider is in cooldown, the first end alone",
+       %{scope: scope} do
+    {_pool, _key} = ready_pool!(scope)
+    %{scope: other} = sign_up_fixture()
+
+    {:ok, theirs} =
+      Apiary.Connections.create_provider(other, %{
+        provider: "anthropic",
+        name: "Other keys",
+        keys: [%{value_id: "main", value: "sk-ant-waiting-other"}]
+      })
+
+    run = queue!(scope)
+
+    {1, _rows} =
+      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
+        set: [model_provider_ids: [theirs.id]]
+      )
+
+    first = in_seconds(1800)
+    cooling!(theirs, first)
+    assert {:cooldown, nil, until} = reason(run)
+    assert DateTime.compare(until, first) == :eq
+  end
+
   describe "the instance's pool" do
     setup do
       gateway = instance_gateway_fixture()

@@ -14,7 +14,9 @@ defmodule Apiary.Runs.Waiting do
   #   * `{:cooldown, provider, until}`, every key of each of its model providers
   #     (`dispatch_runs.model_provider_ids`) is in cooldown, while runs are given model
   #     keys (`Apiary.ModelKeys.first_to_leave/2`): `provider` is the name of the one whose
-  #     key leaves its cooldown first, and `until` when that key leaves it;
+  #     key leaves its cooldown first, nil for a provider of another organisation than
+  #     the run's, left from before migration 20261115110000, and `until` when that key
+  #     leaves it;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -44,7 +46,7 @@ defmodule Apiary.Runs.Waiting do
           :harness
           | :no_pool
           | {:no_fit, String.t(), String.t() | :instance}
-          | {:cooldown, String.t(), DateTime.t()}
+          | {:cooldown, String.t() | nil, DateTime.t()}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -92,11 +94,14 @@ defmodule Apiary.Runs.Waiting do
 
   # Every key of each of the run's model providers in cooldown at `now`: the name of the
   # provider whose key leaves its cooldown first, and when.
-  defp cooldown(%DispatchRun{model_provider_ids: [_ | _] = ids}, now) do
+  defp cooldown(%DispatchRun{model_provider_ids: [_ | _] = ids} = queued, now) do
     with true <- ProviderCredential.applies?(),
          {id, until} <- ModelKeys.first_to_leave(ids, now),
          %Connection{} = provider <- Repo.get(Connection, id) do
-      {:cooldown, provider.name, until}
+      # No name for a provider of another organisation than the run's, left from before
+      # migration 20261115110000: the run's organisation's people do not read it.
+      name = if provider.organisation_id == queued.organisation_id, do: provider.name
+      {:cooldown, name, until}
     else
       _not_cooling -> nil
     end
