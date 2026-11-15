@@ -1,9 +1,9 @@
 defmodule ApiaryPro.Grants.Grant do
   @moduledoc """
   What one link below the instance says of one feature (`Apiary.Features`): an
-  organisation's row says a feature is granted (`granted: true`, to an operator or a
-  client, which have only what they are granted) or taken away (`granted: false`, from an
-  organisation with no operator, which follows the instance otherwise). One row per
+  organisation's row says a feature is granted (`granted: true`, to an operator, which has
+  only what it is granted) or taken away (`granted: false`, from any other organisation,
+  which follows the instance otherwise). One row per
   organisation and feature. Written only by `ApiaryPro.Grants`, never cast from a form.
   """
   use Ecto.Schema
@@ -18,10 +18,8 @@ defmodule ApiaryPro.Grants.Grant do
     # (`ApiaryPro.Flags.feature_visibility?/0`), and read only then
     # (`ApiaryPro.Features.hidden/1`).
     #
-    # It may name the nodes too, `:nodes`, a part of no feature: the nodes, the node
-    # pools, their access keys and the gateways. Only a client's row hides them, written
-    # by its operator, and only while the operator owns its clients
-    # (`ApiaryPro.Flags.operator_infrastructure?/0`) and features are shown by who asks.
+    # A row written before this release may name `:nodes`, a part of no feature. Such a
+    # row hides nothing (`ApiaryPro.Features.hidden/1` skips it), and no page writes one.
     field :feature, Ecto.Enum,
       values: [
         :observability,

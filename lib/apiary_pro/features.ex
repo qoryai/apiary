@@ -155,9 +155,7 @@ defmodule ApiaryPro.Features do
   # written only while its row is held `FOR NO KEY UPDATE` or `FOR UPDATE`
   # (`ApiaryPro.Grants`, `ApiaryPro.Operators`), or, for an organisation being created,
   # before anyone reaches it; so a grant or a change of kind waits for the read, or came
-  # first and is read. The membership in the
-  # operator that `parts_hidden_from/2` reads for the nodes is covered by the operator's
-  # people lock.
+  # first and is read.
   #
   # An open page reads this again only when its person is told of a change of their
   # memberships (`Apiary.Organisations.broadcast_membership_changes/1`), so each change of

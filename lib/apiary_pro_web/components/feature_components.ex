@@ -1,8 +1,7 @@
 defmodule ApiaryProWeb.FeatureComponents do
   @moduledoc """
   The features a page grants or takes away (`ApiaryPro.Grants`): on Instance settings ›
-  Organisations for an operator or an organisation with no operator, and on an operator's
-  Clients page for a client. Each page asks
+  Organisations, for any organisation. The page asks
   `Apiary.Access.can?/3` for the action behind it, and passes the features it may offer,
   which are only the ones built (`Apiary.Features.built/0`) and never one the granter
   lacks: a feature that is off is not shown here either.
