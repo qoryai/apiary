@@ -57,7 +57,7 @@ msgid "%{name} becomes an operator. Nothing it holds changes."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{name} becomes an organisation again. Nothing it holds changes."
 msgstr ""
 
@@ -581,7 +581,7 @@ msgid "An offer of ownership"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "An operator has only what you grant it. A feature a new release adds reaches it once you grant it here."
 msgstr ""
 
@@ -596,7 +596,7 @@ msgid "An operator that operates a workspace cannot be made an organisation."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "An organisation has what this instance has, but for what you take away here. A feature a new release adds reaches it."
 msgstr ""
 
@@ -1229,7 +1229,7 @@ msgid "Its people see every feature this instance has, but those you hide here. 
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Its people see only the features you show here. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
 msgstr ""
 
@@ -2443,7 +2443,7 @@ msgid "There is nothing about the ownership of %{name} for you to do here."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "This organisation's features can't be changed."
 msgstr ""
 
@@ -2580,7 +2580,7 @@ msgid "When"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Whether someone without an invitation may sign up and create an operator, and whether someone signed in may create one from the organisation menu."
 msgstr ""
 
