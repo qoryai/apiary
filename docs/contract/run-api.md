@@ -164,6 +164,7 @@ Returns `200` with the index:
           "id": "av_...",
           "number": 2,
           "writer": {"kind": "run", "run_id": "..."},
+          "cancelled": false,
           "stage_id": "st_...",
           "note": null,
           "at": "2026-10-31T09:00:00Z",
@@ -182,7 +183,9 @@ true when the newest version is newer than the approved one and was made in a st
 other than the work item's stage. A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
-by a person has `"writer": {"kind": "person", "name": "dana"}`. An approval is
+by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
+a member cancelled the run that wrote the version, and false for a version of any other
+run or of a person. An approval is
 `{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
 file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
