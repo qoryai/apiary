@@ -24,8 +24,7 @@ defmodule Apiary.Connections.Connection do
       never holds a host, a path or an auth itself.
 
   `chain` is `organisation` for a connection the organisation sets up, or `operator` for a
-  provider of an operator's chain of model providers, which an edition writes
-  (`Apiary.ModelChoices`).
+  provider of an operator's chain of model providers, which an edition writes.
 
   The row holds no secret: a provider links its keys' secret by its id. The row carries an integrity code over
   everything above (`Apiary.Kinds.Coded`), which `Apiary.Connections` checks where it reads
