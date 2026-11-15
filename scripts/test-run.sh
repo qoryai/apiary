@@ -8,7 +8,9 @@
 #
 # Each run sets MIX_TEST_PARTITION to run<start>p<pid>: the start time in seconds since
 # 1970 and the script's process id. The run's database is apiary_test followed by that
-# value (config/test.exs), for example apiary_testrun1763200000p4242.
+# value (config/test.exs), for example apiary_testrun1763200000p4242. Each run also gets a
+# new TMPDIR under the current one, removed when the run ends: two runs that share a
+# TMPDIR collide in test/support/public_git_server.ex.
 #
 # The suite drops the database as the VM exits, whether it passed or failed
 # (Apiary.TestDatabase). This script drops it again, if it is still there, when mix test
@@ -16,18 +18,20 @@
 # it to stop (then sends KILL), drops the database, and exits with 128 plus the signal's
 # number. Otherwise it exits with mix test's exit code.
 #
-# SIGKILL cannot be trapped. A script killed so leaves mix test running, and the suite
-# drops the database when it ends; a mix test killed so leaves its database behind. At
+# SIGKILL cannot be trapped. If SIGKILL stops the script, mix test keeps running and the
+# suite drops the database at its end. If SIGKILL stops mix test, its database stays. At
 # start the script drops each database left so: a name of the form
 # apiary_testrun<digits>p<digits> whose start time is more than 24 hours old and which has
 # no connection in pg_stat_activity. The script drops no database with another name.
 #
 # Limits, so that a test run leaves the machine usable for other work:
 #   - mix test runs with --max-cases 4, and ERL_FLAGS gets "+S 4" (4 schedulers) and
-#     "+Bi" (INT goes to the script, which stops mix test with TERM).
+#     "+Bi" (INT goes to the script, which stops mix test with TERM). The script refuses
+#     --max-cases and --listen-on-stdin.
 #   - A run with no test file is a full suite. Full suites run one at a time: a run waits
-#     until it can create the lock directory APIARY_TEST_LOCK (default
-#     $TMPDIR/apiary-test-full-suite.lock), and removes it when it ends.
+#     until it can create the lock directory APIARY_TEST_LOCK, and removes it when it
+#     ends. The default is apiary-test-full-suite.lock in the Git directory that every
+#     worktree of the checkout shares. A lock whose process no longer runs is removed.
 #   - --repeat-until-failure takes test files and at most 20 repeats.
 #   - Run the script in the foreground, one run at a time.
 #
@@ -63,6 +67,10 @@ for arg in "$@"; do
 		say "leave out --max-cases: the script runs mix test with --max-cases 4"
 		exit 2
 		;;
+	--listen-on-stdin)
+		say "leave out --listen-on-stdin: the script runs mix test once, with no input"
+		exit 2
+		;;
 	--repeat-until-failure=*) repeat=${arg#*=} ;;
 	esac
 	[ "$previous" = "--repeat-until-failure" ] && repeat=$arg
@@ -77,6 +85,10 @@ if [ -n "$repeat" ]; then
 	fi
 	case "$repeat" in
 	*[!0-9]*) ;;
+	???*)
+		say "repeat at most 20 times: --repeat-until-failure is $repeat"
+		exit 2
+		;;
 	*)
 		if [ "$repeat" -gt 20 ]; then
 			say "repeat at most 20 times: --repeat-until-failure is $repeat"
@@ -86,10 +98,16 @@ if [ -n "$repeat" ]; then
 	esac
 fi
 
-partition="run$(date +%s)p$$"
-database="apiary_test$partition"
+# Computed before TMPDIR changes, so that every run finds the same lock.
+git_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || git_dir=""
+lock_dir=${APIARY_TEST_LOCK:-${git_dir:-${TMPDIR:-/tmp}}/apiary-test-full-suite.lock}
+tmp_base=${TMPDIR:-/tmp}
+tmp_base=${tmp_base%/}
+
+database=""
 child=""
 lock=""
+run_tmp=""
 
 # Drops this run's database if it is still there. A failed drop writes one warning line.
 drop_database() {
@@ -101,6 +119,9 @@ drop_database() {
 
 cleanup() {
 	drop_database
+	if [ -n "$run_tmp" ]; then
+		rm -rf "$run_tmp"
+	fi
 	if [ -n "$lock" ]; then
 		rm -f "$lock/owner"
 		rmdir "$lock" 2>/dev/null
@@ -139,24 +160,45 @@ stale=$(sql "SELECT d.datname FROM pg_database d
 	say "warning: the list of test databases older than 24 hours failed; none dropped"
 for name in $stale; do
 	[[ "$name" =~ $pattern ]] || continue
-	if sql "DROP DATABASE \"$name\"" >/dev/null; then
+	if sql "DROP DATABASE IF EXISTS \"$name\"" >/dev/null; then
 		say "dropped $name, left by a run that started more than 24 hours ago"
 	else
 		say "warning: $name, left by a run that started more than 24 hours ago, was not dropped"
 	fi
 done
 
+# The first line of the lock's owner file is the process id of the run that took it.
+lock_pid() { head -n 1 "$lock_dir/owner" 2>/dev/null; }
+
 if [ "$targeted" -eq 0 ]; then
-	lock_dir=${APIARY_TEST_LOCK:-${TMPDIR:-/tmp}/apiary-test-full-suite.lock}
 	until mkdir "$lock_dir" 2>/dev/null; do
-		say "waiting for the full-suite lock $lock_dir, taken by: $(cat "$lock_dir/owner" 2>/dev/null)"
-		sleep 30
+		pid=$(lock_pid)
+		# A run stopped by SIGKILL leaves the lock: remove it once its process is gone. The
+		# second read skips a lock that another run took again in the meantime.
+		if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null && [ "$(lock_pid)" = "$pid" ]; then
+			say "removing the full-suite lock $lock_dir of process $pid, which no longer runs"
+			rm -f "$lock_dir/owner"
+			rmdir "$lock_dir" 2>/dev/null
+			continue
+		fi
+		say "waiting for the full-suite lock $lock_dir, taken by: $(tail -n +2 "$lock_dir/owner" 2>/dev/null)"
+		# In the background, so that a signal reaches the trap at once.
+		sleep 30 &
+		wait $!
 	done
 	lock=$lock_dir
-	echo "scripts/test-run.sh, pid $$, in $(pwd), since $(date '+%Y-%m-%d %H:%M:%S')" >"$lock/owner"
+	printf '%s\nscripts/test-run.sh, pid %s, in %s, since %s\n' "$$" "$$" "$(pwd)" \
+		"$(date '+%Y-%m-%d %H:%M:%S')" >"$lock/owner"
 fi
 
-export MIX_ENV=test MIX_TEST_PARTITION="$partition"
+partition="run$(date +%s)p$$"
+database="apiary_test$partition"
+run_tmp=$(mktemp -d "$tmp_base/apiary-test-run.XXXXXX") || {
+	say "create a writable TMPDIR: mktemp -d under $tmp_base failed"
+	exit 2
+}
+
+export MIX_ENV=test MIX_TEST_PARTITION="$partition" TMPDIR="$run_tmp/"
 export ERL_FLAGS="${ERL_FLAGS:+$ERL_FLAGS }+S 4 +Bi"
 say "database $database"
 

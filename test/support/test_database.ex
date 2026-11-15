@@ -8,22 +8,36 @@ defmodule Apiary.TestDatabase do
   reuses: it is kept.
 
   `drop_at_exit/0` registers a hook that runs as the VM exits, after the suite has passed
-  or failed, and after its last repeat under `mix test --repeat-until-failure`. The hook
-  stops the application, which closes the repository's connections, then drops the
-  database with `WITH (FORCE)` (Postgres 13 or later), which closes any connection left.
-  A failed drop writes one warning line to stderr and leaves the run's exit code as it is.
+  or failed, and after its last repeat under `mix test --repeat-until-failure`. The `test`
+  alias registers the same hook before `ecto.create` (mix.exs), so the database is also
+  dropped after a failed migration or a test helper that raises before
+  `Apiary.TestSetup.start!/1`. The key `{Apiary.TestDatabase, :drop_at_exit}` in
+  `:persistent_term` marks the hook as registered, so it is registered once per VM.
 
-  A run stopped by a signal ends without the hook, and so does one stopped by SIGKILL.
-  `scripts/test-run.sh` drops the database after a signal too.
+  The hook stops the application, which closes the repository's connections, then drops
+  the database with `WITH (FORCE)` (Postgres 13 or later), which closes any connection
+  left. A failed drop writes one warning line to stderr and leaves the run's exit code as
+  it is.
+
+  A run stopped by a signal ends without the hook, and so does one stopped by SIGKILL or
+  a break of the VM, and one under `iex -S mix test`, where the VM does not halt.
+  `scripts/test-run.sh` drops the database after INT, TERM or HUP too.
   """
 
+  @registered {__MODULE__, :drop_at_exit}
+
   @doc """
-  drop_at_exit/0 registers the drop for the end of the run (the moduledoc). Call it once,
-  before the suite starts. `:ok`.
+  drop_at_exit/0 registers the drop for the end of the run (the moduledoc), unless the
+  `test` alias or an earlier call registered it. `:ok`.
   """
   @spec drop_at_exit() :: :ok
   def drop_at_exit do
-    System.at_exit(fn _status -> drop() end)
+    if not :persistent_term.get(@registered, false) do
+      :persistent_term.put(@registered, true)
+      System.at_exit(fn _status -> drop() end)
+    end
+
+    :ok
   end
 
   @doc """
@@ -39,6 +53,8 @@ defmodule Apiary.TestDatabase do
       :keep -> :kept
       {:drop, database} -> drop(database, config)
     end
+  rescue
+    error -> warn(nil, error)
   end
 
   defp drop(database, config) do
@@ -57,7 +73,8 @@ defmodule Apiary.TestDatabase do
   end
 
   defp warn(database, reason) do
-    partition = String.replace_prefix(database, "apiary_test", "")
+    partition = System.get_env("MIX_TEST_PARTITION")
+    database = database || "apiary_test#{partition}"
 
     IO.puts(
       :stderr,
@@ -77,15 +94,18 @@ defmodule Apiary.TestDatabase do
   defp first_line(text), do: text |> String.split("\n", trim: true) |> List.first("")
 
   @doc """
-  to_drop/2 is what the end of a run does with its database, given the value of
-  MIX_TEST_PARTITION and the database the repository is configured with:
-  `{:drop, database}` when the partition is set and not empty and the database is
-  `apiary_test` followed by it, and `:keep` otherwise.
+  to_drop/2 decides whether the end of a run drops its database. Its arguments are the
+  value of MIX_TEST_PARTITION and the configured database. It returns `{:drop, database}`
+  when the partition contains only letters, digits and underscores and the database is
+  `apiary_test` followed by the partition, and `:keep` in every other case. Ecto puts the
+  name into `DROP DATABASE` without escaping it, so no other character is allowed.
   """
   @spec to_drop(String.t() | nil, String.t() | nil) :: {:drop, String.t()} | :keep
-  def to_drop(partition, database)
-      when is_binary(partition) and partition != "" and database == "apiary_test" <> partition,
-      do: {:drop, database}
+  def to_drop(partition, database) when is_binary(partition) and is_binary(database) do
+    if partition =~ ~r/\A[A-Za-z0-9_]+\z/ and database == "apiary_test" <> partition,
+      do: {:drop, database},
+      else: :keep
+  end
 
   def to_drop(_partition, _database), do: :keep
 end

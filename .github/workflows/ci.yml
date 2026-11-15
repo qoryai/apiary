@@ -122,7 +122,9 @@ jobs:
     # The steps use the databases apiary_test, apiary_test2, apiary_test3 and apiary_test4,
     # one each (MIX_TEST_PARTITION, config/test.exs), so no suite finds rows an earlier step
     # committed outside the sandbox. Once the dependencies are fetched, each step runs
-    # whether or not the one before it failed, so one run shows every failure.
+    # whether or not the one before it failed, so one run shows every failure. A step with
+    # a partition drops its database as its suite ends (test/support/test_database.ex), and
+    # the last step fails if apiary_test2, apiary_test3 or apiary_test4 is still there.
     #
     # The weekly run, and a run started by hand, run the whole suite under the same three
     # sets, in place of the four steps, to find a test that reads the features and lacks
@@ -257,6 +259,15 @@ jobs:
           QORY_FEATURES: observability
           MIX_TEST_PARTITION: "3"
         run: mix test
+
+      - name: Check that the partitioned test databases were dropped
+        if: always()
+        run: |
+          left=$(psql -h localhost -U postgres -d postgres -XAtc "select count(*) from pg_database where datname in ('apiary_test2','apiary_test3','apiary_test4')")
+          if [ "$left" != 0 ]; then
+            echo "Find why mix test kept $left of apiary_test2, apiary_test3 and apiary_test4: each step with MIX_TEST_PARTITION drops its database as its suite ends (test/support/test_database.ex)." >&2
+            exit 1
+          fi
 
       - name: Save dependencies and build
         if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'

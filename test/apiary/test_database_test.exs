@@ -22,4 +22,12 @@ defmodule Apiary.TestDatabaseTest do
     assert TestDatabase.to_drop("2", "apiary_test3") == :keep
     assert TestDatabase.to_drop("2", nil) == :keep
   end
+
+  test "a partition with a character other than a letter, digit or underscore is kept" do
+    for partition <- [~s(x"y), "x y", "x-y", "x;y", "x\ny", "é"] do
+      assert TestDatabase.to_drop(partition, "apiary_test" <> partition) == :keep
+    end
+
+    assert TestDatabase.to_drop("run_1", "apiary_testrun_1") == {:drop, "apiary_testrun_1"}
+  end
 end
