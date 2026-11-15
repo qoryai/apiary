@@ -31,17 +31,14 @@ defmodule ApiaryProWeb.ClientLive.Index do
   alone, wrapped in a function so no inspection of the process's state prints it, until
   the reader leaves: any path starts without it, and no path, flash or title carries it.
 
-  An owner of the operator drops a client that has an owner, confirmed in place on the
-  client's row, never in a dialog, `/:org/clients/:id/drop` (`client.drop`), where the
-  client's name is typed: it is an organisation with no operator at once. A client with no
-  owner yet is deleted instead, by an owner of the operator, confirmed on its row the same
-  way, `/:org/clients/:id/delete` (`client.delete`); while it has none, its Owner cell
+  A client with no owner yet is deleted by an owner of the operator, confirmed in place on
+  the client's row, never in a dialog, `/:org/clients/:id/delete` (`client.delete`), where
+  the client's name is typed; while it has none, its Owner cell
   names each pending invitation of its first owner and when it expires, and its owners and
   admins revoke one from its row (`client.revoke_owner_invitation`). Without mail they
   make a new link for one from its row too (`client.renew_owner_invitation`): the old link
   stops working, and the new one is shown once, in place on the client's row, with Done,
-  held as the pages' links are; with mail it is emailed. The list follows the membership
-  changes a parting tells the operator's people of.
+  held as the pages' links are; with mail it is emailed.
 
   The list is one column, on the core's pattern of Nodes: its views, its search, its
   Features filter and its order are in the URL, and a status line, always there, says how
@@ -55,19 +52,13 @@ defmodule ApiaryProWeb.ClientLive.Index do
   because the other features need Runs stays on the page, the boxes as they were sent and
   why under them.
   """
-  # Hidden (`ApiaryPro.Flags.transfers?/0`), so not in the published documentation: the
-  # organisations their owners offered to the operator (`ApiaryPro.Transfers`) are listed
-  # above the clients, where an owner of the operator accepts one (`client.accept`), after
-  # the offer's row asks in place, `/:org/clients/offers/:id/accept`, its button not red:
-  # it becomes a client, its people keeping their levels. The list follows the membership
-  # changes an offer and an acceptance tell the operator's people of too.
   use ApiaryProWeb, :live_view
   use ApiaryWeb.Features, :managed_organisations
   on_mount {ApiaryWeb.Access, :"client.read"}
 
   alias Apiary.{Access, Deletion, Features, Mail}
-  alias ApiaryPro.{Flags, Grants, Operators, Reach, Transfers}
-  alias ApiaryProWeb.{ConfirmComponents, FeatureComponents}
+  alias ApiaryPro.{Flags, Grants, Operators, Reach}
+  alias ApiaryProWeb.FeatureComponents
   alias ApiaryWeb.{People, SettingsComponents, UserAuth}
   alias Phoenix.LiveView.AsyncResult
 
@@ -181,107 +172,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
         </:actions>
       </.page_header>
 
-      <%!-- The organisations offered to the operator are shown only while they may be
-           offered and accepted (`ApiaryPro.Flags.transfers?/0`): an offer made before is
-           not listed either. --%>
-      <.async_result :let={offers} :if={@transfers?} assign={@offers}>
-        <:failed>
-          <.notice kind={:error} class="max-w-[80ch]">
-            <span id="offers-error">
-              {gettext(
-                "The organisations offered to %{operator} could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason.",
-                operator: @current_scope.organisation.name
-              )}
-            </span>
-          </.notice>
-        </:failed>
-
-        <section :if={offers != []} id="offers" class="grid gap-3">
-          <div>
-            <h2 class="flex items-baseline gap-2 text-[14px]/5 font-semibold">
-              {gettext("Offered to %{operator}", operator: @current_scope.organisation.name)}
-              <span class="text-[12.5px] font-normal tabular-nums text-faint">
-                {Format.number(length(offers))}
-              </span>
-            </h2>
-            <p class="mt-0.5 max-w-[72ch] text-[12.5px]/[18px] text-muted">
-              {if Access.can?(@current_scope, :"client.accept", @current_scope.organisation),
-                do:
-                  gettext(
-                    "Their owners offer these organisations to %{operator}. When you accept one, it is a client: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it.",
-                    operator: @current_scope.organisation.name
-                  ),
-                else:
-                  gettext(
-                    "Their owners offer these organisations to %{operator}. An owner of %{operator} accepts one; it is a client then: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it.",
-                    operator: @current_scope.organisation.name
-                  )}
-              <span id="offers-features">
-                {gettext(
-                  "Once accepted, an organisation has what %{operator} grants its clients, which may be fewer features than it has now.",
-                  operator: @current_scope.organisation.name
-                )}
-              </span>
-            </p>
-          </div>
-          <.table
-            id="offers-list"
-            label={gettext("Offered to %{operator}", operator: @current_scope.organisation.name)}
-            rows={offers}
-            row_id={&"offer-#{&1.organisation.id}"}
-            confirming={offer_confirming(@live_action, offers, @offer_id)}
-          >
-            <:col :let={o} label={gettext("Organisation")} kind="title">
-              <span class="q-nm">
-                <.avatar name={o.organisation.name} kind="organisation" />
-                <span class="q-title">{o.organisation.name}</span>
-                <span class="q-side q-mono">{o.organisation.slug}</span>
-              </span>
-            </:col>
-            <:col :let={o} label={gettext("Offered")} from="sm">
-              <span class="tabular-nums">{Format.day(o.transfer.inserted_at)}</span>
-            </:col>
-            <:confirm :let={o}>
-              <.inline_confirm
-                id={"offer-#{o.organisation.id}-confirm"}
-                question={gettext("Accept %{name} as a client?", name: o.organisation.name)}
-                cancel={clients_path(@current_scope)}
-              >
-                {gettext(
-                  "It becomes a client of %{operator} at once: its people keep their levels, the people of %{operator} read everything in it, and it has only the features %{operator} grants its clients.",
-                  operator: @current_scope.organisation.name
-                )}
-                <:action>
-                  <%!-- Not red: nothing is lost that cannot be had again, so the row
-                       keeps the neutral tint. --%>
-                  <.button
-                    id={"offer-#{o.organisation.id}-confirm-button"}
-                    variant="primary"
-                    size="xs"
-                    phx-click="accept_client"
-                    phx-value-id={o.organisation.id}
-                    loading_text={gettext("Accepting")}
-                  >
-                    {gettext("Yes, accept")}
-                  </.button>
-                </:action>
-              </.inline_confirm>
-            </:confirm>
-            <:action :let={o}>
-              <.button
-                :if={may?(@current_scope, :"client.accept")}
-                id={"offer-#{o.organisation.id}-accept"}
-                variant="link"
-                patch={~p"/#{@current_scope.organisation}/clients/offers/#{o.organisation.id}/accept"}
-                aria-label={gettext("Accept %{name} as a client", name: o.organisation.name)}
-              >
-                {gettext("Accept")}
-              </.button>
-            </:action>
-          </.table>
-        </section>
-      </.async_result>
-
       <.async_result :let={clients} assign={@clients}>
         <:loading>
           <div
@@ -331,7 +221,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
                 )}
               <% else %>
                 {gettext(
-                  "Only owners and admins of %{operator} add a client and invite its first owner; only owners drop one.",
+                  "Only owners and admins of %{operator} add a client and invite its first owner.",
                   operator: @current_scope.organisation.name
                 )}
               <% end %>
@@ -564,7 +454,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
                 :if={!@renewed}
                 act={@live_action}
                 client={c}
-                form={@drop_form}
+                form={@name_form}
                 scope={@current_scope}
                 owns?={@owns?}
               />
@@ -640,14 +530,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
                   aria-label={gettext("Delete %{name}", name: c.organisation.name)}
                 >
                   {gettext("Delete…")}
-                </.menu_item>
-                <.menu_item
-                  :if={c.owners != [] && may?(@current_scope, :"client.drop")}
-                  id={"client-#{c.organisation.id}-drop"}
-                  patch={~p"/#{@current_scope.organisation}/clients/#{c.organisation.id}/drop"}
-                  aria-label={gettext("Drop %{name}", name: c.organisation.name)}
-                >
-                  {gettext("Drop…")}
                 </.menu_item>
               </.row_menu>
             </:action>
@@ -924,48 +806,13 @@ defmodule ApiaryProWeb.ClientLive.Index do
     """
   end
 
-  # A drop or a deletion, confirmed in place on the client's row, at a separate path, the
-  # client's name typed; Cancel and Escape go back to the list.
+  # A deletion, confirmed in place on the client's row, at a separate path, the client's
+  # name typed; Cancel and Escape go back to the list.
   attr :act, :atom, required: true
   attr :client, :map, required: true
   attr :form, :any, required: true
   attr :scope, :any, required: true
   attr :owns?, :boolean, default: false
-
-  defp client_confirm(%{act: :drop} = assigns) do
-    ~H"""
-    <ConfirmComponents.typed_confirm
-      id="drop-client"
-      question={gettext("Drop %{name}?", name: @client.organisation.name)}
-      form={@form}
-      change="confirm_drop"
-      submit="drop_client"
-      ready={@form[:name].value == @client.organisation.name}
-      button={gettext("Yes, drop")}
-      loading_text={gettext("Dropping")}
-      cancel={clients_path(@scope)}
-    >
-      <:lost>
-        {gettext(
-          "%{name} leaves %{operator} at once.",
-          name: @client.organisation.name,
-          operator: @scope.organisation.name
-        )}
-      </:lost>
-      <:field>
-        <input type="hidden" name="client_id" value={@client.organisation.id} />
-        <.input
-          field={@form[:name]}
-          type="text"
-          label={gettext("Type the name of %{name} to confirm", name: @client.organisation.name)}
-          autocomplete="off"
-          spellcheck="false"
-          debounce="0"
-        />
-      </:field>
-    </ConfirmComponents.typed_confirm>
-    """
-  end
 
   defp client_confirm(%{act: :delete} = assigns) do
     ~H"""
@@ -973,7 +820,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
       id="delete-client"
       question={gettext("Delete %{name}?", name: @client.organisation.name)}
       form={@form}
-      change="confirm_drop"
+      change="confirm_name"
       submit="delete_client"
       ready={@form[:name].value == @client.organisation.name}
       cancel={clients_path(@scope)}
@@ -1008,9 +855,9 @@ defmodule ApiaryProWeb.ClientLive.Index do
     """
   end
 
-  # The row that asks to confirm its drop or its deletion: the client's, at the act's
-  # path, once the rows have arrived and while it is in use.
-  defp confirming(act, clients, id) when act in [:drop, :delete] do
+  # The row that asks to confirm its deletion: the client's, at the act's path, once the
+  # rows have arrived and while it is in use.
+  defp confirming(:delete, clients, id) do
     case chosen(clients, id) do
       [client] -> "client-#{client.organisation.id}"
       _none -> nil
@@ -1018,13 +865,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
   end
 
   defp confirming(_act, _clients, _id), do: nil
-
-  # The offer's row that asks to accept it, at its path, while it is offered.
-  defp offer_confirming(:accept_offer, offers, id) do
-    if Enum.any?(offers, &(&1.organisation.id == id)), do: "offer-#{id}"
-  end
-
-  defp offer_confirming(_act, _offers, _id), do: nil
 
   defp clients_path(scope), do: ~p"/#{scope.organisation}/clients"
 
@@ -1035,10 +875,9 @@ defmodule ApiaryProWeb.ClientLive.Index do
      |> assign(
        page_title: gettext("Clients"),
        form: to_form(Operators.change_new_client()),
-       offer_id: nil,
        refused_features: nil,
        owner_form: to_form(%{}, as: :owner),
-       drop_form: to_form(%{}, as: :confirm),
+       name_form: to_form(%{}, as: :confirm),
        client_id: nil,
        clients: AsyncResult.loading(),
        list: list_params(%{}),
@@ -1046,14 +885,11 @@ defmodule ApiaryProWeb.ClientLive.Index do
        renewed: nil,
        mail?: Mail.configured?(),
        # Whether the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`):
-       # the page's words, the first person's invitation and Drop follow it.
-       owns?: Flags.operator_infrastructure?(),
-       # Whether the organisations offered to the operator are shown
-       # (`ApiaryPro.Flags.transfers?/0`).
-       transfers?: Flags.transfers?()
+       # the page's words and the first person's invitation follow it.
+       owns?: Flags.operator_infrastructure?()
      )
      |> load()
-     |> follow_offers()}
+     |> follow_memberships()}
   end
 
   @impl true
@@ -1092,34 +928,13 @@ defmodule ApiaryProWeb.ClientLive.Index do
     end
   end
 
-  # An offer's row asks before it is accepted, at a separate path. Where `Apiary.Access`
-  # does not find the action, the path is not found either, as a page that is not there,
-  # with nothing said; refused, it goes back to the list and says why.
-  defp apply_action(socket, :accept_offer, %{"id" => id}) do
-    scope = socket.assigns.current_scope
-
-    case Access.check(scope, :"client.accept", scope.organisation) do
-      :ok ->
-        assign(socket, client_id: nil, offer_id: id)
-
-      {:error, :not_found} ->
-        raise ApiaryWeb.NotFound
-
-      {:error, _forbidden} ->
-        socket
-        |> put_flash(:error, refusal(:"client.accept", scope))
-        |> push_patch(to: ~p"/#{scope.organisation}/clients")
-    end
-  end
-
   defp apply_action(socket, action, %{"id" => id})
-       when action in [:invite_owner, :invite_admin, :drop, :delete] do
+       when action in [:invite_owner, :invite_admin, :delete] do
     scope = socket.assigns.current_scope
     hidden!(action, socket.assigns.owns?)
 
     needed =
       case action do
-        :drop -> :"client.drop"
         :delete -> :"client.delete"
         :invite_owner -> :"client.invite_owner"
         :invite_admin -> :"client.invite_admin"
@@ -1130,7 +945,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
       |> assign(
         client_id: id,
         owner_form: to_form(%{}, as: :owner),
-        drop_form: to_form(%{}, as: :confirm)
+        name_form: to_form(%{}, as: :confirm)
       )
       |> refuse_undeletable()
     else
@@ -1141,12 +956,11 @@ defmodule ApiaryProWeb.ClientLive.Index do
   end
 
   defp apply_action(socket, action, _params),
-    do: apply_action(assign(socket, client_id: nil, offer_id: nil), action)
+    do: apply_action(assign(socket, :client_id, nil), action)
 
-  # While the operator owns its clients, the first owner's invitation and the drop are
-  # not found, as pages that are not there; while it does not, the first admin's
-  # invitation is.
-  defp hidden!(action, true) when action in [:invite_owner, :drop], do: raise(ApiaryWeb.NotFound)
+  # While the operator owns its clients, the first owner's invitation is not found, as a
+  # page that is not there; while it does not, the first admin's invitation is.
+  defp hidden!(:invite_owner, true), do: raise(ApiaryWeb.NotFound)
   defp hidden!(:invite_admin, false), do: raise(ApiaryWeb.NotFound)
   defp hidden!(_action, _owns?), do: :ok
 
@@ -1326,8 +1140,8 @@ defmodule ApiaryProWeb.ClientLive.Index do
   def handle_event("invite_owner", params, socket), do: invite_first(params, socket, :owner)
   def handle_event("invite_admin", params, socket), do: invite_first(params, socket, :admin)
 
-  def handle_event("confirm_drop", %{"confirm" => params}, socket) do
-    {:noreply, assign(socket, :drop_form, to_form(params, as: :confirm))}
+  def handle_event("confirm_name", %{"confirm" => params}, socket) do
+    {:noreply, assign(socket, :name_form, to_form(params, as: :confirm))}
   end
 
   def handle_event("delete_client", %{"client_id" => id} = params, socket) do
@@ -1352,7 +1166,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
         errors = [name: {dgettext_noop("errors", "is not the name"), []}]
 
         {:noreply,
-         assign(socket, :drop_form, to_form(%{"name" => typed}, as: :confirm, errors: errors))}
+         assign(socket, :name_form, to_form(%{"name" => typed}, as: :confirm, errors: errors))}
 
       {:error, :has_owner} ->
         {:noreply,
@@ -1398,68 +1212,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
 
   def handle_event("link_done", _params, socket),
     do: {:noreply, assign(socket, :renewed, nil)}
-
-  def handle_event("drop_client", %{"client_id" => id} = params, socket) do
-    scope = socket.assigns.current_scope
-    typed = get_in(params, ["confirm", "name"])
-
-    case Transfers.drop(scope, id, typed) do
-      {:ok, client} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           gettext("%{name} is no client of %{operator} any more.",
-             name: client.name,
-             operator: scope.organisation.name
-           )
-         )
-         |> load()
-         |> push_patch(to: ~p"/#{scope.organisation}/clients")}
-
-      {:error, :busy} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           gettext("Someone changed this at the same moment, so nothing was changed. Try again.")
-         )}
-
-      {:error, :confirmation} ->
-        errors = [name: {dgettext_noop("errors", "is not the name"), []}]
-
-        {:noreply,
-         assign(socket, :drop_form, to_form(%{"name" => typed}, as: :confirm, errors: errors))}
-
-      {:error, :no_owner} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext(
-             "That client has no owner yet, so nobody would be left in it: delete it instead."
-           )
-         )
-         |> load()
-         |> push_patch(to: ~p"/#{scope.organisation}/clients")}
-
-      {:error, :not_found} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("That client is not there any more."))
-         |> load()
-         |> push_patch(to: ~p"/#{scope.organisation}/clients")}
-
-      {:error, _forbidden} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, refusal(:"client.drop", scope))
-         |> UserAuth.reload_scope()
-         |> push_patch(to: ~p"/#{scope.organisation}/clients")}
-    end
-  end
-
-  def handle_event("accept_client", %{"id" => id}, socket), do: accept_client(id, socket)
 
   # The invitation of a client's first person: its first owner, or, while the operator
   # owns its clients, its first admin.
@@ -1689,78 +1441,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
     end
   end
 
-  defp accept_client(id, socket) do
-    scope = socket.assigns.current_scope
-    operator = scope.organisation.name
-
-    case Transfers.accept_client(scope, id) do
-      {:ok, client} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           gettext(
-             "%{name} is a client of %{operator} now: it runs its harness, and its people keep their levels.",
-             name: client.name,
-             operator: operator
-           )
-         )
-         |> load()
-         |> to_list()}
-
-      {:error, :changed} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext(
-             "That organisation became an operator or a client meanwhile, so it cannot be accepted."
-           )
-         )
-         |> load()
-         |> to_list()}
-
-      {:error, :busy} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext("Someone changed this at the same moment, so nothing was changed. Try again.")
-         )
-         |> to_list()}
-
-      {:error, :suspended} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext(
-             "That organisation is suspended, so it does not become a client until it is activated."
-           )
-         )
-         |> load()
-         |> to_list()}
-
-      {:error, :forbidden} ->
-        socket =
-          socket
-          |> put_flash(:error, refusal(:"client.accept", scope))
-          |> UserAuth.reload_scope()
-
-        {:noreply, if(socket.redirected, do: socket, else: socket |> load() |> to_list())}
-
-      {:error, _not_found} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext("That offer is no longer pending: it was withdrawn or accepted meanwhile.")
-         )
-         |> load()
-         |> to_list()}
-    end
-  end
-
   defp invite_fun(:owner), do: &Operators.invite_owner/4
   defp invite_fun(:admin), do: &Operators.invite_admin/4
 
@@ -1799,7 +1479,7 @@ defmodule ApiaryProWeb.ClientLive.Index do
   # Why a client is not deleted, as `ApiaryPro.Deletion.delete_client/3` answers: it has
   # an owner, or, while the operator owns its clients, someone has joined it.
   defp undeletable(:has_owner),
-    do: gettext("That client has an owner now: drop it instead, and its owner keeps it.")
+    do: gettext("That client has an owner now, so it can't be deleted.")
 
   defp undeletable(:has_people),
     do: gettext("Someone has joined that client now, so it can't be deleted.")
@@ -1840,12 +1520,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
         {:ok, Enum.map(rows, &Map.put(&1, :features, Map.fetch!(features, &1.organisation.id)))}
       end
     end)
-    |> assign_async(:offers, fn ->
-      case Transfers.list_offers(scope) do
-        {:ok, rows} -> {:ok, %{offers: rows}}
-        {:error, reason} -> {:error, reason}
-      end
-    end)
   end
 
   @impl true
@@ -1866,10 +1540,9 @@ defmodule ApiaryProWeb.ClientLive.Index do
       {:noreply,
        assign(socket, :clients, AsyncResult.failed(socket.assigns.clients, {:exit, reason}))}
 
-  # An organisation offered to the operator, or an offer withdrawn, tells the operator's
-  # people (`ApiaryPro.Transfers`): `ApiaryWeb.UserAuth` loads the scope again on that, and
-  # here the offers and the clients with it (`ApiaryWeb.UserAuth.on_membership_change/2`).
-  defp follow_offers(socket) do
+  # A change of membership the operator's people are told of loads their scope again
+  # (`ApiaryWeb.UserAuth.on_membership_change/2`), and here the clients with it.
+  defp follow_memberships(socket) do
     UserAuth.on_membership_change(socket, &load/1)
   end
 
@@ -1982,22 +1655,6 @@ defmodule ApiaryProWeb.ClientLive.Index do
   defp refusal(:"client.delete", scope),
     do:
       gettext("Only an owner of %{operator} deletes a client.", operator: scope.organisation.name)
-
-  defp refusal(:"client.drop", scope),
-    do: gettext("Only an owner of %{operator} drops a client.", operator: scope.organisation.name)
-
-  defp refusal(:"client.accept", scope),
-    do:
-      gettext("Only an owner of %{operator} accepts an organisation offered to it.",
-        operator: scope.organisation.name
-      )
-
-  # Back to the list from an offer's row that asked; the list is where the event came
-  # from otherwise.
-  defp to_list(%{assigns: %{live_action: :accept_offer, current_scope: scope}} = socket),
-    do: push_patch(socket, to: ~p"/#{scope.organisation}/clients")
-
-  defp to_list(socket), do: socket
 
   # A new link refused over the day's invitations, said of the invitation's address; the
   # operator's allowance is the one counted, and the operator is the organisation the page

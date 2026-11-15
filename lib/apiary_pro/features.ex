@@ -175,9 +175,9 @@ defmodule ApiaryPro.Features do
   # (`ApiaryPro.Tenants.lock_rows/1`, `{:places, scope}`), before `hidden/1` is asked.
   # What is read here is covered by them: an organisation's tenant and its grant rows are
   # written only while its row is held `FOR NO KEY UPDATE` or `FOR UPDATE`
-  # (`ApiaryPro.Grants`, `ApiaryPro.Transfers`, `ApiaryPro.Operators`), or, for an
-  # organisation being created, before anyone reaches it; so a grant, a change of kind or
-  # a parting waits for the read, or came first and is read. The membership in the
+  # (`ApiaryPro.Grants`, `ApiaryPro.Operators`), or, for an organisation being created,
+  # before anyone reaches it; so a grant or a change of kind waits for the read, or came
+  # first and is read. The membership in the
   # operator that `parts_hidden_from/2` reads for the nodes is covered by the operator's
   # people lock.
   #
@@ -185,11 +185,10 @@ defmodule ApiaryPro.Features do
   # memberships (`Apiary.Organisations.broadcast_membership_changes/1`), so each change of
   # what is read here tells the people whose answer it changes: a grant, the people of the
   # organisation, of its clients and of its operator (`ApiaryPro.Grants`); a change of
-  # kind, the organisation's people (`ApiaryPro.Operators.change_kind/3`); a drop, a leave
-  # and an accepted offer, the people of the client and of the operator
-  # (`ApiaryPro.Transfers`); a membership, the core. An instance admin who reaches an
-  # organisation through the instance is told none of these: with the switch on they are
-  # shown everything, and with it off they are as before.
+  # kind, the organisation's people (`ApiaryPro.Operators.change_kind/3`); an accepted
+  # offer, the organisation's people (`ApiaryPro.Transfers`); a membership, the core. An
+  # instance admin who reaches an organisation through the instance is told none of these:
+  # with the switch on they are shown everything, and with it off they are as before.
   #
   # The parts of a feature (`Apiary.Features.parts/0`), the run's Terminal first, are
   # hidden only while the switch is on (`parts_hidden_from/2`), and a person is shown a

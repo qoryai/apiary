@@ -91,49 +91,13 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"member.activate", :instance_admin, "/:org/settings/people", "activate",
        %{"id" => :other_member}},
 
-      # The ownership, a tab of the organisation's settings: an owner offers and
-      # withdraws, and only the admin an offer names accepts it. A reader for whom the
-      # section is not listed is sent to General as the page opens.
-      {:"organisation.transfer", :admin, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.transfer", :demoted_owner, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}}, needs: :managed_organisations},
-      # A client is offered to no other operator: it leaves its own first.
-      {:"organisation.transfer", :client_owner, "/:client/settings/ownership",
-       "offer_to_operator", %{"transfer" => %{"operator_slug" => :operator}},
-       needs: :managed_organisations},
-      {:"organisation.transfer", :instance_admin, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      # With an offer pending: the organisation's to the operator, and the arbiter's of
-      # the client to an admin of it other than the one who tries.
-      {:"organisation.withdraw_transfer", :admin, "/:org/settings/ownership", "withdraw_transfer",
-       %{},
-       setup: :offered_to_operator, answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
-       %{},
-       setup: :offered_to_operator, answer: :refused_at_mount, needs: :managed_organisations},
-      # The arbiter's offer, made to another admin of the organisation.
+      # The ownership, a tab of the organisation's settings: only the admin an offer is
+      # for accepts it. A reader for whom the section is not listed is sent to General as
+      # the page opens. The arbiter's offer, made to another admin of the organisation.
       {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
        %{}, setup: :arbitrated_to_another_admin, answer: :refused_at_mount},
       {:"organisation.accept_transfer", :client_admin, "/:client/settings/ownership",
        "accept_transfer", %{}, setup: :client_arbitrated, needs: :managed_organisations},
-
-      # Leaving an operator: the client's owners', neither its admins' and members' nor the
-      # operator's people's, the operator's name typed all the same.
-      {:"organisation.leave_operator", :client_admin, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
-      {:"organisation.leave_operator", :client_member, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
-      {:"organisation.leave_operator", :client_admin, "/:client/settings/ownership/leave",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.leave_operator", :operator_owner, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
 
       # A member who no longer reaches the workspace, and one of another workspace
       # carrying the ids of this one.
@@ -210,20 +174,6 @@ defmodule ApiaryProWeb.RefusalsRows do
        "renew_admin_invitation", %{"client" => :client_id, "id" => :client_id},
        answer: :not_found},
 
-      # Dropping a client: the operator's owners', neither its admins' nor its members',
-      # the client's name typed all the same; the client's owner does not reach the
-      # operator.
-      {:"client.drop", :operator_admin, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.drop", :operator_member, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.drop", :operator_admin, "/:operator/clients/:client_id/drop", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :refused_at_mount},
-      {:"client.drop", :client_owner, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :not_found_at_mount},
-
       # A client's first owner's invitation, revoked while it has no owner: the operator's
       # owners' and admins'; the world's client has an owner, whose invitations are its
       # own.
@@ -241,7 +191,7 @@ defmodule ApiaryProWeb.RefusalsRows do
        "renew_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
 
       # A client with no owner yet is deleted by the operator's owners, never by its
-      # admins or members; the world's client has an owner, so it is dropped, not deleted.
+      # admins or members; the world's client has an owner, so it is not deleted.
       {:"client.delete", :operator_admin, "/:operator/clients", "delete_client",
        %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
       {:"client.delete", :operator_member, "/:operator/clients", "delete_client",
@@ -252,11 +202,7 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"client.delete", :operator_owner, "/:operator/clients", "delete_client",
        %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
 
-      # An organisation offered to the operator, and a client's features: an owner's of it.
-      {:"client.accept", :operator_member, "/:operator/clients", "accept_client",
-       %{"id" => :organisation_id}},
-      {:"client.accept", :operator_member, "/:operator/clients/offers/:organisation_id/accept",
-       "accept_client", %{"id" => :organisation_id}, answer: :refused_at_mount},
+      # A client's features: an owner's of the operator.
       # A suspended client is granted nothing, by its operator's owner either.
       {:"client.grant_features", :operator_owner, "/:operator/clients", "save_client_features",
        %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
@@ -628,7 +574,9 @@ defmodule ApiaryProWeb.RefusalsRows do
   # another operator's owner and a client's people (`test/apiary_pro/model_chain_test.exs`).
   # No page starts or ends a workspace's operator yet: `ApiaryPro.WorkspaceOperators`
   # refuses a member, an admin who ends one, and the operator's admin
-  # (`test/apiary_pro/workspace_operators_test.exs`).
+  # (`test/apiary_pro/workspace_operators_test.exs`). No page withdraws an offer of
+  # ownership: the arbiter's offer lapses once an owner may act again
+  # (`ApiaryPro.Transfers.withdraw_overruled/2`, `test/apiary_pro/suspensions_test.exs`).
   @impl true
   def exempt,
     do: %{
@@ -642,7 +590,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       after_migrate: [:"instance.adopt"],
       no_page: [
         :"organisation_secret.use",
-        :"client.set_model_chain"
+        :"client.set_model_chain",
+        :"organisation.withdraw_transfer"
       ]
     }
 
@@ -818,7 +767,6 @@ defmodule ApiaryProWeb.RefusalsRows do
   def value(:operator, world), do: world.operator.slug
   def value(:client, world), do: world.client.slug
   def value(:client_ws, world), do: world.client_workspace.slug
-  def value(:operator_name, world), do: world.operator.name
   def value(:client_name, world), do: world.client.name
   def value(:instance_org_id, world), do: {:id, world.instance_organisation.id}
   def value(:client_id, world), do: {:id, world.client.id}
@@ -835,21 +783,13 @@ defmodule ApiaryProWeb.RefusalsRows do
   def value(:target_page_b, world), do: world.target_b.public_id
   def value(_name, _world), do: nil
 
-  # The operator and its clients, whose features, offers and people a row may reach.
+  # The operator and its clients, whose features and people a row may reach.
   @impl true
   def watched(world), do: [world.operator, world.client]
 
-  # The organisation offered to the operator by its owner.
-  @impl true
-  def before_page(:offered_to_operator, world) do
-    if is_nil(ApiaryPro.Transfers.pending(world.owner)),
-      do: {:ok, _} = ApiaryPro.Transfers.offer_to_operator(world.owner, world.operator.slug)
-
-    :ok
-  end
-
   # The client's ownership offered by the instance's arbiter to a second admin of it:
   # seeded as the offer's row, since its owner may act.
+  @impl true
   def before_page(:client_arbitrated, world) do
     if is_nil(Repo.get_by(ApiaryPro.Transfers.Transfer, organisation_id: world.client.id)) do
       %{user: second} = RefusalsCase.person(world.client_owner.scope, :admin)

@@ -23,9 +23,7 @@ defmodule ApiaryPro.Operators do
   owner, the operator invites one again (`invite_owner/4`), makes a new link for a
   pending invitation of one (`renew_owner_invitation/4`), revokes an invitation of one
   (`revoke_owner_invitation/3`), and deletes it (`ApiaryPro.Deletion.delete_client/3`),
-  since nobody else is in it; it drops a client that has an owner. `list_clients/1` is the
-  operator's Clients page. An operator drops a client at once, the client's name typed to
-  confirm (`ApiaryPro.Transfers`).
+  since nobody else is in it. `list_clients/1` is the operator's Clients page.
 
   ## The instance
 
@@ -58,7 +56,7 @@ defmodule ApiaryPro.Operators do
   alias Apiary.{Access, Audit, Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{Grants, Reach, Tenants, Transfers, WorkspaceOperators}
+  alias ApiaryPro.{Grants, Reach, Tenants, WorkspaceOperators}
   alias ApiaryPro.Operators.OperatorInvitation
   alias ApiaryPro.Tenants.Tenant
 
@@ -407,7 +405,7 @@ defmodule ApiaryPro.Operators do
     with {:ok, id} <- cast(client_id) do
       Repo.transact(fn ->
         # The lock order (docs/access.md): the client's row `FOR SHARE`, which its
-        # leaving and its drop wait for, and the operator's `FOR NO KEY UPDATE`, which the
+        # deletion waits for, and the operator's `FOR NO KEY UPDATE`, which the
         # count of its invitations needs, at one point, in the lock order; the core's
         # invitation takes the operator's again, in the same mode.
         held = lock_client_and_allowance(id, operator_id)
@@ -602,7 +600,7 @@ defmodule ApiaryPro.Operators do
          {:ok, invitation_id} <- cast(invitation_id) do
       Repo.transact(fn ->
         # The lock order (docs/access.md): the client's row `FOR SHARE`, which its
-        # leaving, its drop and the acceptance of its first owner's invitation wait for,
+        # deletion and the acceptance of its first owner's invitation wait for,
         # and the organisation the invitation was counted against `FOR NO KEY UPDATE`,
         # the operator's as `invite_owner/4` takes it, or the client's where its trail
         # names none (`Apiary.Organisations.allowance_of/1`), read before any lock; both
@@ -927,7 +925,6 @@ defmodule ApiaryPro.Operators do
                      |> Repo.insert_or_update(),
                    changed = Tenants.put_tenant(organisation, tenant),
                    {:ok, _features} <- Grants.written_out(changed, kind, features: had),
-                   {:ok, _withdrawn} <- withdraw_offers(changed, scope),
                    {:ok, _entry} <-
                      Audit.record(
                        Repo,
@@ -956,7 +953,7 @@ defmodule ApiaryPro.Operators do
   # scope's organisation, an operator, use (`client.set_model_chain`, an owner's or an
   # admin's of the operator): `:organisation`, the client's, or `:operator`, the operator's
   # (`ApiaryPro.Tenants.model_chain/1`). The client's row is locked `FOR NO KEY UPDATE`
-  # and the operator's `FOR SHARE`, as a drop locks them, at one point, in the lock order.
+  # and the operator's `FOR SHARE`, at one point, in the lock order.
   # An entry of `client.set_model_chain` in the operator's trail, by the person who set it,
   # with the client's id and the switch before and after; nothing changes, and nothing is
   # recorded, for the value it has already. The client's and the operator's people are told
@@ -1038,13 +1035,6 @@ defmodule ApiaryPro.Operators do
     do: Repo.exists?(from t in Tenant, where: t.operator_id == ^id)
 
   ## Helpers
-
-  # An operator made an organisation takes on no client: the offers to it are withdrawn.
-  defp withdraw_offers(%Organisation{} = organisation, scope) do
-    if Tenants.operator?(organisation),
-      do: {:ok, 0},
-      else: Transfers.withdraw_offers_to(organisation, "operator_made_organisation", scope)
-  end
 
   # The client's row `FOR SHARE` and the allowance's `FOR NO KEY UPDATE`, or the client's
   # alone `FOR NO KEY UPDATE` where it is the allowance, at one point, in the lock order:

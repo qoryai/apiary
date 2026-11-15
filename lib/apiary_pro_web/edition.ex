@@ -267,13 +267,13 @@ defmodule ApiaryProWeb.Edition do
   def above_policy_link(_scope), do: nil
 
   # An operator is deleted once it has no clients (`ApiaryPro.Deletion.refusal/2`): its
-  # owners delete each client that has no owner and drop each that has one, on Clients;
-  # a deleted client is still its client until it is purged.
+  # owners delete each client that has no owner, on Clients; a deleted client is still its
+  # client until it is purged.
   @impl true
   def refusal_sentence(:has_clients),
     do:
       gettext(
-        "An operator with clients cannot be deleted. On Clients, delete each client that has no owner and drop each one that has; a deleted client counts until it is purged."
+        "An operator with clients cannot be deleted. On Clients, delete each client that has no owner; a deleted client counts until it is purged."
       )
 
   # An operator is deleted once it operates no workspace, and a workspace once it has no

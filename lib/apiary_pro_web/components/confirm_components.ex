@@ -1,9 +1,8 @@
 defmodule ApiaryProWeb.ConfirmComponents do
   @moduledoc """
-  The edition's confirmations of an act that asks for a name typed first: purging an
-  organisation, dropping or deleting a client. Each is in place where the act was asked
-  for, a row of a list or a part of a page, never a dialog (the core's `docs/ui.md`, No
-  modals).
+  The edition's confirmation of an act that asks for a name typed first: purging an
+  organisation. It is in place where the act was asked for, a row of a list, never a
+  dialog (the core's `docs/ui.md`, No modals).
 
   `typed_confirm/1` is the core's `ApiaryWeb.SettingsComponents.deletion_confirm/1` with
   the act's words on its button, since not every such act is a deletion: what is lost,

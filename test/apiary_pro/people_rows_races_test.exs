@@ -588,14 +588,11 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  describe "a write that asks for its people locks twice in one change, against the client's drop" do
-    setup do: Flags.put_transfers(true)
-
-    test "the write first: it holds the operator's people lock in one mode, and the drop waits",
-         ctx do
+  describe "a write that asks for its people locks twice in one change" do
+    test "the write holds the operator's people lock in one mode", ctx do
       before = deadlocks()
 
-      {write, write_pid} =
+      {write, _write_pid} =
         hold(fn ->
           :ok = Access.lock_places(ctx.person_in_client)
           first = people_lock_held(ctx.operator.id)
@@ -609,30 +606,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       # Asked again by the locked reload, the same row is held in the same mode.
       assert people_lock_held(ctx.operator.id) == :share
 
-      drop = start(fn -> Transfers.drop(ctx.in_operator, ctx.client.id, ctx.client.name) end)
-      await_blocked(drop.backend, write_pid)
       commit(write)
-
-      assert {:ok, %Organisation{edition: %{tenant: %Tenant{operator_id: nil}}}} =
-               Task.await(drop.task)
-
-      assert deadlocks() == before
-    end
-
-    test "the drop first: the write waits, and reaches the client no more", ctx do
-      before = deadlocks()
-
-      {drop, drop_pid} =
-        hold(fn -> Transfers.drop(ctx.in_operator, ctx.client.id, ctx.client.name) end)
-
-      assert {:ok, %Organisation{}} = drop.result
-
-      write = start(fn -> locked_reload(ctx.person_in_client) end)
-      await_blocked(write.backend, drop_pid)
-      commit(drop)
-
-      assert {:ok, scope} = Task.await(write.task)
-      assert scope.reach == nil
       assert deadlocks() == before
     end
   end

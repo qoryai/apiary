@@ -3,8 +3,7 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
   # `Apiary.Runs.SecretsRequest`): a client whose switch is the operator's
   # (`ApiaryPro.Operators.set_model_chain/3`) resolves the operator's providers and
   # choices, and the key is sealed for a gateway of the operator, in the operator's trail;
-  # a client on the default, a client of another operator and a client that was dropped
-  # get none. Not async: an operator is made by an instance admin, an owner of the suite's
+  # a client on the default and a client of another operator get none. Not async: an operator is made by an instance admin, an owner of the suite's
   # one instance organisation, the flag is set per test process, and the features are the
   # whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -22,7 +21,7 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
   alias Apiary.{AccessKeys, Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Audit.Entry
   alias Apiary.Runs.{Attach, ProviderCredential, Registration, Run}
-  alias ApiaryPro.{Edition, Flags, Transfers}
+  alias ApiaryPro.{Edition, Flags}
   alias ApiaryWeb.Contract.SignedRequest
 
   @moduletag with_features: Apiary.Features.all()
@@ -36,18 +35,16 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
     "auth" => %{"scheme" => "header", "header" => "x-api-key"}
   }
 
-  # An operator with three clients (the first on its switch, the second on the default,
-  # the third dropped later), and another operator with a client whose switch is its
+  # An operator with two clients (the first on its switch, the second on the default),
+  # and another operator with a client whose switch is its
   # operator's, all made while the flag is off, then the flag on. Each operator has an
   # organisation-level gateway with one key allowed stored secrets.
   setup do
-    Flags.put_transfers(true)
     Flags.put_operator_infrastructure(false)
 
     operator = operator_fixture()
     on = client_fixture(operator.scope)
     off = client_fixture(operator.scope)
-    dropped = client_fixture(operator.scope)
 
     elsewhere = operator_fixture()
     other_client = client_fixture(elsewhere.scope)
@@ -55,14 +52,12 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
     Flags.put_operator_infrastructure(true)
 
     on = model_chain_fixture(operator.scope, on, :operator)
-    dropped = model_chain_fixture(operator.scope, dropped, :operator)
     other_client = model_chain_fixture(elsewhere.scope, other_client, :operator)
 
     %{
       operator: operator,
       on: on,
       off: off,
-      dropped: dropped,
       elsewhere: elsewhere,
       other_client: other_client
     }
@@ -306,32 +301,6 @@ defmodule ApiaryPro.OperatorChainSecretsTest do
       assert [%Entry{organisation_id: organisation_id}] = seals()
       assert organisation_id == ctx.elsewhere.organisation.id
       assert seals_in(ctx.operator) == []
-    end
-  end
-
-  describe "a client that was dropped" do
-    test "gets no operator provider, and its switch reads the organisation's", ctx do
-      {gateway, _gateway_key} = gateway_of(ctx.operator)
-      _provider = operator_chain!(ctx.operator)
-      id = ctx.dropped.organisation.id
-      run = %{organisation_id: id, workspace_id: ctx.dropped.workspace.id}
-
-      assert Edition.operator_chain_organisation(id) == ctx.operator.organisation.id
-      assert ProviderCredential.sealable_to?("operator", gateway, run)
-
-      # A drop is not offered while the operator owns its clients: it is done as before.
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, _client} =
-               Transfers.drop(ctx.operator.scope, id, ctx.dropped.organisation.name)
-
-      Flags.put_operator_infrastructure(true)
-
-      assert ApiaryPro.Tenants.model_chain_of(id) == :organisation
-      assert Edition.model_choice_chain(id) == "organisation"
-      assert Edition.operator_chain_organisation(id) == nil
-      refute ProviderCredential.sealable_to?("operator", gateway, run)
-      assert {:ok, []} = Connections.list_providers(ctx.dropped.owner.scope)
     end
   end
 

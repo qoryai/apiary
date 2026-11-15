@@ -9,8 +9,8 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Phoenix.LiveViewTest
@@ -923,14 +923,13 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
          %{first: first} = ctx do
       features_on!(Features.all())
 
-      # Never offered to an operator: no Ownership section, where another organisation has
-      # one.
+      # No Ownership section, where a client has one.
       {:ok, lv, _html} = live(ctx.first_conn, ~p"/#{first.organisation}/settings")
       refute has_element?(lv, "#settings-tab-ownership")
-      home = sign_up_fixture()
+      client = client_fixture(operator_fixture().scope)
 
       {:ok, lv, html} =
-        live(log_in_user(build_conn(), home.user), ~p"/#{home.organisation}/settings")
+        live(log_in_user(build_conn(), client.owner.user), ~p"/#{client.organisation}/settings")
 
       assert has_element?(lv, "#settings-tabs #settings-tab-ownership")
       # The edition's section joins the organisation's after the core's; no danger zone is listed.

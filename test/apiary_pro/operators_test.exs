@@ -23,7 +23,7 @@ defmodule ApiaryPro.OperatorsTest do
   alias Apiary.Audit.Entry
   alias Apiary.Deletion.PurgedOrganisation
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{ClientReach, Operators, Tenants, Transfers, WorkspaceAccess}
+  alias ApiaryPro.{ClientReach, Operators, Tenants, WorkspaceAccess}
   alias ApiaryPro.Operators.OperatorInvitation
   alias ApiaryPro.Tenants.Tenant
 
@@ -260,8 +260,8 @@ defmodule ApiaryPro.OperatorsTest do
       queries = collect_queries()
       # The client and its operator FOR SHARE, in one statement
       # (`Apiary.Organisations.lock_organisations/2`), the membership FOR SHARE, the rows
-      # it names FOR KEY SHARE: a change of the owner's level, a suspension, the client's
-      # leaving or its drop wait for the write.
+      # it names FOR KEY SHARE: a change of the owner's level or a suspension waits for the
+      # write.
       assert Enum.any?(queries, &(&1 =~ "FROM organisations o" and &1 =~ "FOR SHARE"))
       assert Enum.any?(queries, &(&1 =~ ~s(FROM "memberships") and &1 =~ "FOR SHARE OF"))
 
@@ -615,7 +615,7 @@ defmodule ApiaryPro.OperatorsTest do
         create_client_fixture(operator.scope, %{"name" => "Beta", "email" => email()})
 
       Repo.update_all(from(t in Tenant, where: t.organisation_id == ^other.id),
-        set: [operator_id: nil, operator_since: nil]
+        set: [operator_id: nil, operator_since: nil, model_chain: :organisation]
       )
 
       assert {:error, :invalid} = Organisations.accept_invitation(user_fixture(), token)
@@ -677,14 +677,13 @@ defmodule ApiaryPro.OperatorsTest do
                )
     end
 
-    test "a client with no owner yet is deleted by its operator's owners, never dropped" do
+    test "a client with no owner yet is deleted by its operator's owners" do
       operator = operator_fixture()
       %{scope: admin} = member_fixture(operator.scope, :admin)
 
       {%{organisation: client}, token} =
         create_client_fixture(operator.scope, %{"name" => "Acme", "email" => email()})
 
-      assert {:error, :no_owner} = Transfers.drop(operator.scope, client.id, "Acme")
       assert {:error, :forbidden} = ApiaryPro.Deletion.delete_client(admin, client.id, "Acme")
 
       assert {:error, :confirmation} =
@@ -705,7 +704,7 @@ defmodule ApiaryPro.OperatorsTest do
       assert {:error, :not_found} =
                ApiaryPro.Deletion.delete_client(operator.scope, client.id, "Acme")
 
-      # A client with an owner is dropped, and its owner keeps it.
+      # A client with an owner is not deleted.
       owned = client_fixture(operator.scope, "Beta")
 
       assert {:error, :has_owner} =
@@ -890,9 +889,18 @@ defmodule ApiaryPro.OperatorsTest do
       assert {:error, :has_clients} =
                Operators.change_kind(admin.instance_scope, here.id, :organisation)
 
-      {:ok, _} = Transfers.drop(admin_scope, client.organisation.id, client.organisation.name)
+      # Nothing in the product ends the relation or the link to Main any more: the test ends
+      # both in the database.
+      id = client.organisation.id
 
-      # The drop ended the link to Main too.
+      Repo.delete_all(
+        from l in ApiaryPro.Operators.WorkspaceOperator, where: l.organisation_id == ^id
+      )
+
+      Repo.update_all(from(t in Tenant, where: t.organisation_id == ^id),
+        set: [operator_id: nil, operator_since: nil, model_chain: :organisation]
+      )
+
       assert {:ok, organisation} =
                Operators.change_kind(admin.instance_scope, here.id, :organisation)
 

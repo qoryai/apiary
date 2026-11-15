@@ -63,13 +63,9 @@ defmodule ApiaryProWeb.Router do
       # them from.
       live "/settings/people/:id/workspaces", ApiaryProWeb.MemberLive.Workspaces, :index
 
-      # The organisation's ownership, a section of its settings: its operator, and offers of
-      # its ownership. Offering it to an operator is a page of it; withdrawing the offer, and
-      # a client's leaving its operator, are confirmed in place on it.
+      # The organisation's ownership, a section of its settings: its operator, and the
+      # arbiter's offer of its ownership.
       live "/settings/ownership", ApiaryProWeb.SettingsLive.Ownership, :index
-      live "/settings/ownership/transfer", ApiaryProWeb.SettingsLive.Ownership, :transfer
-      live "/settings/ownership/withdraw", ApiaryProWeb.SettingsLive.Ownership, :withdraw
-      live "/settings/ownership/leave", ApiaryProWeb.SettingsLive.Ownership, :leave
 
       # The organisation's secrets, the Secrets tab of its settings' Secrets and
       # variables, as a workspace's are: each form a page and each deletion confirmed on
@@ -118,17 +114,14 @@ defmodule ApiaryProWeb.Router do
       live "/policy/workspaces", ApiaryProWeb.PolicyLive.Organisation, :workspaces
       live "/policy/history", ApiaryProWeb.PolicyLive.Organisation, :history
       # An operator's clients, and as pages of them the creation of one, the invitation of
-      # a client's first owner and its features; its drop and its deletion are confirmed
-      # on its row, and the acceptance of an organisation offered to it on the offer's.
+      # a client's first owner and its features; its deletion is confirmed on its row.
       live "/clients", ApiaryProWeb.ClientLive.Index, :index
       live "/clients/new", ApiaryProWeb.ClientLive.Index, :new
       live "/clients/:id/owner", ApiaryProWeb.ClientLive.Index, :invite_owner
       # Not found while the operator does not own its clients, as /owner is while it does.
       live "/clients/:id/admin", ApiaryProWeb.ClientLive.Index, :invite_admin
       live "/clients/:id/features", ApiaryProWeb.ClientLive.Index, :features
-      live "/clients/:id/drop", ApiaryProWeb.ClientLive.Index, :drop
       live "/clients/:id/delete", ApiaryProWeb.ClientLive.Index, :delete
-      live "/clients/offers/:id/accept", ApiaryProWeb.ClientLive.Index, :accept_offer
       # The Instance's former addresses, under the instance organisation, which lead
       # to where the Instance is now.
       get "/instance", ApiaryProWeb.InstanceRedirectController, :show

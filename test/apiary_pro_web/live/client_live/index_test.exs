@@ -9,10 +9,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
-  setup do: ApiaryPro.Flags.put_transfers(true)
-
   # A workspace's set-up is finished, so a link to it leads to the Overview.
   setup do: Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetUpFinished)
 
@@ -25,7 +21,7 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
   alias Apiary.{Features, Repo}
   alias Apiary.Organisations.Organisation
   alias Apiary.Organisations.Invitation
-  alias ApiaryPro.{Operators, Transfers}
+  alias ApiaryPro.Operators
   alias ApiaryPro.Tenants.Tenant
   alias ApiaryProWeb.Trail
 
@@ -66,16 +62,13 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert has_element?(lv, "#client-#{acme.organisation.id}-owners", acme.owner.user.email)
       assert has_element?(lv, "#client-#{acme.organisation.id}-joined")
       refute has_element?(lv, "#client-#{acme.organisation.id}-invite-owner")
-      assert has_element?(lv, "#client-#{acme.organisation.id}-drop")
       assert has_element?(lv, "#client-#{gamma.id}-owners", "No owner yet")
       assert has_element?(lv, "#client-#{gamma.id}-invite-owner")
-      # With no owner yet it is deleted, not dropped.
+      # With no owner yet it is deleted.
       assert has_element?(lv, "#client-#{gamma.id}-delete")
-      refute has_element?(lv, "#client-#{gamma.id}-drop")
       refute has_element?(lv, "#client-#{acme.organisation.id}-delete")
       assert has_element?(lv, "#client-#{beta.organisation.id}-status", "Deleted")
       refute has_element?(lv, "#client-#{beta.organisation.id}-link")
-      refute has_element?(lv, "#client-#{beta.organisation.id}-drop")
       assert has_element?(lv, "#nav-clients")
 
       # Where a cell is cut to keep the row inside the column, its title holds it whole:
@@ -292,54 +285,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert invited.() == before
     end
 
-    test "an operator's owner drops a client, after typing its name", ctx do
-      client = client_fixture(ctx.operator.scope, "Acme")
-      id = client.organisation.id
-
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.operator.organisation}/clients")
-      render_async(lv)
-
-      lv |> element("#client-#{id}-drop") |> render_click()
-      assert_patch(lv, ~p"/#{ctx.operator.organisation}/clients/#{id}/drop")
-
-      # The client's row is the confirmation, in place of its cells, never a dialog.
-      assert has_element?(
-               lv,
-               "#client-#{id}.q-confirming #drop-client-form",
-               "Acme leaves #{ctx.operator.organisation.name} at once."
-             )
-
-      refute has_element?(lv, "#drop-client-form", "lose access")
-
-      refute has_element?(lv, "#client-#{id}-link")
-      assert has_element?(lv, "#drop-client-confirming", "Drop Acme?")
-      assert has_element?(lv, "#drop-client-confirm[disabled]", "Yes, drop")
-      assert has_element?(lv, "#drop-client-confirming-cancel")
-
-      # Cancel gives the row back.
-      lv |> element("#drop-client-confirming-cancel") |> render_click()
-      assert_patch(lv, ~p"/#{ctx.operator.organisation}/clients")
-      assert has_element?(lv, "#client-#{id}-link")
-      lv |> element("#client-#{id}-drop") |> render_click()
-
-      # Sent without the client's name, it is refused by the server too.
-      html =
-        render_submit(lv, "drop_client", %{"client_id" => id, "confirm" => %{"name" => "Not it"}})
-
-      assert html =~ "is not the name"
-      assert Repo.get!(Tenant, id).operator_id == ctx.operator.organisation.id
-
-      html =
-        lv
-        |> form("#drop-client-form", confirm: %{name: "Acme"})
-        |> render_submit()
-
-      assert html =~ "Acme is no client of #{ctx.operator.organisation.name} any more."
-      render_async(lv)
-      refute has_element?(lv, "#client-#{client.organisation.id}-link")
-      assert Repo.get!(Tenant, client.organisation.id).operator_id == nil
-    end
-
     test "while a client has no owner, its operator's owner revokes an invitation of its owner, and deletes it",
          ctx do
       address = email()
@@ -392,7 +337,7 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       %{operator: %{organisation: operator}} = ctx
       owned = client_fixture(ctx.operator.scope, "Acme")
       path = ~p"/#{operator}/clients/#{owned.organisation.id}/delete"
-      refused = "That client has an owner now: drop it instead, and its owner keeps it."
+      refused = "That client has an owner now, so it can't be deleted."
 
       # Opened by its path: the rows arrive after it, and the page leaves when they do.
       {:ok, lv, _html} = live(ctx.conn, path)
@@ -400,7 +345,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert_patch(lv, ~p"/#{operator}/clients")
       assert has_element?(lv, "#flash-error", refused)
       refute has_element?(lv, "#delete-client-form")
-      assert has_element?(lv, "#client-#{owned.organisation.id}-drop")
       refute has_element?(lv, "#client-#{owned.organisation.id}-delete")
 
       # Patched to from the list, the rows already there: it leaves at once.
@@ -430,7 +374,7 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       refute has_element?(lv, "#flash-error")
     end
 
-    test "a member of the operator lists the clients, and creates, invites and drops none",
+    test "a member of the operator lists the clients, and creates and invites none",
          ctx do
       client = client_fixture(ctx.operator.scope, "Acme")
       %{user: member} = member_fixture(ctx.operator.scope, :member)
@@ -440,13 +384,11 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       render_async(lv)
       assert has_element?(lv, "#clients a", "Acme")
       refute has_element?(lv, "#new-client")
-      refute has_element?(lv, "#client-#{client.organisation.id}-drop")
       # Who adds one is said where the list is empty, not above a list.
       refute has_element?(lv, "#clients-who")
 
       for path <- [
             ~p"/#{ctx.operator.organisation}/clients/new",
-            ~p"/#{ctx.operator.organisation}/clients/#{client.organisation.id}/drop",
             ~p"/#{ctx.operator.organisation}/clients/#{client.organisation.id}/owner"
           ] do
         assert {:error, {:live_redirect, %{to: to}}} = live(conn, path)
@@ -672,103 +614,6 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       render_async(lv)
       assert has_element?(lv, "#clients-empty")
       refute has_element?(lv, "#clients-who")
-    end
-  end
-
-  describe "an organisation offered to the operator" do
-    setup :operator
-
-    setup ctx do
-      offered = sign_up_fixture()
-      {:ok, _} = Transfers.offer_to_operator(offered.scope, ctx.operator.organisation.slug)
-      %{offered: offered}
-    end
-
-    test "its owner's Accept asks in place, not in red, and Cancel accepts nothing", ctx do
-      %{operator: %{organisation: operator}, offered: %{organisation: org}} = ctx
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{operator}/clients")
-      render_async(lv)
-
-      assert has_element?(lv, "#offers #offer-#{org.id}", org.name)
-
-      assert has_element?(
-               lv,
-               "#offer-#{org.id}-accept[aria-label='Accept #{org.name} as a client']"
-             )
-
-      # Asking acts on nothing by itself.
-      lv |> element("#offer-#{org.id}-accept") |> render_click()
-      assert_patch(lv, ~p"/#{operator}/clients/offers/#{org.id}/accept")
-      assert Repo.get!(Tenant, org.id).operator_id == nil
-
-      # The offer's row is the question, in place of its cells, never a dialog.
-      refute has_element?(lv, "#main dialog, #main [role=dialog]")
-      confirm = "#offer-#{org.id}.q-confirming #offer-#{org.id}-confirm"
-      assert has_element?(lv, confirm <> "[role=group]")
-      assert has_element?(lv, confirm, "Accept #{org.name} as a client?")
-
-      assert has_element?(
-               lv,
-               confirm,
-               "It becomes a client of #{operator.name} at once: its people keep their levels"
-             )
-
-      # Nothing is lost that cannot be had again: the button is not red.
-      assert has_element?(lv, "#offer-#{org.id}-confirm-button.btn-primary", "Yes, accept")
-      refute has_element?(lv, "#offer-#{org.id}-confirm .btn-error")
-      refute has_element?(lv, "#offer-#{org.id}-accept")
-
-      lv |> element("#offer-#{org.id}-confirm-cancel") |> render_click()
-      assert_patch(lv, ~p"/#{operator}/clients")
-      refute has_element?(lv, "#offer-#{org.id}-confirm")
-      assert has_element?(lv, "#offer-#{org.id}-accept")
-      assert Repo.get!(Tenant, org.id).operator_id == nil
-
-      # Asked again, and answered.
-      lv |> element("#offer-#{org.id}-accept") |> render_click()
-      html = lv |> element("#offer-#{org.id}-confirm-button") |> render_click()
-      assert html =~ "#{org.name} is a client of #{operator.name} now"
-      assert_patch(lv, ~p"/#{operator}/clients")
-      render_async(lv)
-      refute has_element?(lv, "#offers")
-      assert has_element?(lv, "#client-#{org.id}-link")
-      assert Repo.get!(Tenant, org.id).operator_id == operator.id
-    end
-
-    test "an offer withdrawn while its row asks is refused, and the list comes back", ctx do
-      %{operator: %{organisation: operator}, offered: offered} = ctx
-      org = offered.organisation
-
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{operator}/clients/offers/#{org.id}/accept")
-      render_async(lv)
-      assert has_element?(lv, "#offer-#{org.id}-confirm")
-
-      {:ok, _} = Transfers.withdraw(offered.scope)
-
-      html = lv |> element("#offer-#{org.id}-confirm-button") |> render_click()
-      assert html =~ "That offer is no longer pending"
-      assert_patch(lv, ~p"/#{operator}/clients")
-      render_async(lv)
-      refute has_element?(lv, "#offers")
-      assert Repo.get!(Tenant, org.id).operator_id == nil
-    end
-
-    test "an admin of the operator lists the offer; its path refuses them as it opens", ctx do
-      %{operator: %{organisation: operator}, offered: %{organisation: org}} = ctx
-      %{user: admin} = member_fixture(ctx.operator.scope, :admin)
-      conn = log_in_user(build_conn(), admin)
-
-      {:ok, lv, _html} = live(conn, ~p"/#{operator}/clients")
-      render_async(lv)
-      assert has_element?(lv, "#offer-#{org.id}", org.name)
-      refute has_element?(lv, "#offer-#{org.id}-accept")
-
-      assert {:error, {:live_redirect, %{to: to, flash: %{"error" => error}}}} =
-               live(conn, ~p"/#{operator}/clients/offers/#{org.id}/accept")
-
-      assert to == ~p"/#{operator}/clients"
-      assert error == "Only an owner of #{operator.name} accepts an organisation offered to it."
-      assert Repo.get!(Tenant, org.id).operator_id == nil
     end
   end
 

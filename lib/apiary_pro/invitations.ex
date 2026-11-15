@@ -11,7 +11,7 @@ defmodule ApiaryPro.Invitations do
   An operator's invitation stands only while the client has no owner and is still a
   client of the operator that sent it: `accepting/3` locks the client
   `FOR NO KEY UPDATE`, before the core holds it `FOR SHARE`, so two such acceptances, and a
-  drop or a deletion of the client, are one after the other; otherwise it is
+  deletion of the client, are one after the other; otherwise it is
   `{:error, :invalid}`, as an expired one is. Once its person has joined, the operator's
   other pending invitations of an owner there go (`accepted/4`), each an entry of
   `invitation.revoke` by the person who joined, the reason `owner_joined`.
@@ -46,7 +46,7 @@ defmodule ApiaryPro.Invitations do
   end
 
   # The client's row locked `FOR NO KEY UPDATE`, then its tenant read under the lock: a
-  # drop or a suspension, which lock the same row, came first and are seen, or wait.
+  # deletion or a suspension, which lock the same row, came first and are seen, or wait.
   defp accepting_owner(repo, id, operator_id) do
     repo.one(from o in Organisation, where: o.id == ^id, select: o.id, lock: "FOR NO KEY UPDATE")
 

@@ -1,16 +1,16 @@
 defmodule ApiaryProWeb.ActivityDescriber do
   @moduledoc """
   The edition's words for the audit log (`ApiaryWeb.Activity.Describer`), which the page asks
-  before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): an operator's clients
-  and their parting, the instance's actions, changes of ownership and the instance's
+  before the core's (`c:ApiaryWeb.Edition.activity_describer/0`): an operator's clients,
+  the instance's actions, changes of ownership and the instance's
   arbiter, the features granted down the chain, a member's workspace
   access, the organisation's policy and its variables, which are said by name, never by
   value. It also says the core's invitation revoked for a reason of the edition's:
   its first owner joined, or its client was deleted; and the entries of an action no
   longer taken, features taken away from a workspace, as they were said.
 
-  A change of ownership is said in both organisations' trails,
-  each naming the other as it is called now, and without its name once it is gone. The
+  An operator's entry of a client's deletion names the client as it is called now, and
+  says it without its name once it is gone. The
   instance's actions are offered in the Action filter on the instance organisation's
   page, to those who take them; elsewhere their entries show, and the filter does not
   name them. A change of the organisation's variables is offered in the filter only where
@@ -33,7 +33,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def label(:"workspace_access.remove"), do: gettext("Member removed from a workspace")
   def label(:"client.create"), do: gettext("Client created")
   def label(:"client.invite_owner"), do: gettext("Client's owner invited")
-  def label(:"client.drop"), do: gettext("Client dropped")
 
   def label(:"client.revoke_owner_invitation"),
     do: gettext("Client's owner invitation revoked")
@@ -51,7 +50,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   def label(:"client.delete"), do: gettext("Client deleted")
   def label(:"client.set_model_chain"), do: gettext("Client's model providers changed")
-  def label(:"organisation.leave_operator"), do: gettext("Operator left")
 
   def label(:"instance.create_organisation"),
     do: gettext("Organisation created")
@@ -62,10 +60,8 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def label(:"instance.purge_organisation"),
     do: gettext("Organisation purged on an erasure request")
 
-  def label(:"organisation.transfer"), do: gettext("Offered to an operator")
   def label(:"organisation.withdraw_transfer"), do: gettext("Offer withdrawn")
   def label(:"organisation.accept_transfer"), do: gettext("Ownership accepted")
-  def label(:"client.accept"), do: gettext("Organisation accepted as a client")
   # While features are shown by who asks (`ApiaryPro.Flags.feature_visibility?/0`), a
   # change of features is said as a change of what is shown.
   def label(:"client.grant_features") do
@@ -110,17 +106,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def offered?(scope, :"organisation_variable.edit"),
     do: Features.visible?(scope, :organisation_variables)
 
-  # An offer to an operator, its acceptance and a client's leaving are offered only while
-  # they may be made (`ApiaryPro.Flags.transfers?/0`); their entries show all the same. A
-  # withdrawal is offered always: the instance withdraws offers whatever the flag says.
-  def offered?(_scope, action)
-      when action in [
-             :"organisation.transfer",
-             :"client.accept",
-             :"organisation.leave_operator"
-           ],
-      do: Flags.transfers?()
-
   # The first admin's invitation is offered only while it may be made
   # (`ApiaryPro.Flags.operator_infrastructure?/0`); its entries show all the same.
   def offered?(_scope, action)
@@ -153,37 +138,8 @@ defmodule ApiaryProWeb.ActivityDescriber do
   def sentence(action, entry, names),
     do: named(action, entry, names) || said(action, entry.details || %{}, entry.actor_kind)
 
-  # A change of ownership in words that name the other organisation, as it is called now;
-  # nil where it is gone, for the sentence without its name.
-  defp named(:"client.accept", %{after: %{"operator_id" => id}}, names) when is_binary(id) do
-    with name when is_binary(name) <- names.organisations[id],
-         do:
-           gettext("%{operator} became its operator, accepted by an owner of %{operator}",
-             operator: name
-           )
-  end
-
-  defp named(:"client.accept", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Accepted %{organisation} as a client", organisation: name)
-  end
-
-  defp named(:"organisation.leave_operator", %{before: %{"operator_id" => id}}, names)
-       when is_binary(id) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Left %{operator}: it has no operator now", operator: name)
-  end
-
-  defp named(:"organisation.leave_operator", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("%{organisation} left as a client", organisation: name)
-  end
-
-  defp named(:"client.drop", %{before: %{"operator_id" => id}}, names) when is_binary(id) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("%{operator} dropped it as a client: it has no operator now", operator: name)
-  end
-
+  # A client's deletion in words that name the client, as it is called now; nil where it is
+  # gone, for the sentence without its name.
   defp named(
          :"client.delete",
          %{details: %{"organisation_id" => id, "guard" => "no_people"}},
@@ -196,11 +152,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp named(:"client.delete", %{details: %{"organisation_id" => id}}, names) do
     with name when is_binary(name) <- names.organisations[id],
          do: gettext("Deleted %{organisation}, which had no owner yet", organisation: name)
-  end
-
-  defp named(:"client.drop", %{details: %{"organisation_id" => id}}, names) do
-    with name when is_binary(name) <- names.organisations[id],
-         do: gettext("Dropped %{organisation} as a client", organisation: name)
   end
 
   defp named(_action, _entry, _names), do: nil
@@ -240,19 +191,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
   defp said(:"instance.purge_organisation", _details, _actor),
     do: gettext("Purged an organisation at once, on an erasure request")
 
-  defp said(:"organisation.transfer", _details, _actor),
-    do: gettext("Offered the organisation to an operator")
-
-  defp said(:"organisation.withdraw_transfer", %{"reason" => "operator_suspended"}, _actor),
-    do: gettext("Withdrew an offer of ownership: the operator is suspended")
-
-  defp said(
-         :"organisation.withdraw_transfer",
-         %{"reason" => "operator_made_organisation"},
-         _actor
-       ),
-       do: gettext("Withdrew an offer of ownership: the operator is no operator any more")
-
   defp said(:"organisation.withdraw_transfer", %{"reason" => "owner_activated"}, _actor),
     do: gettext("Withdrew an offer of ownership: an owner can act again")
 
@@ -261,12 +199,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   defp said(:"organisation.accept_transfer", _details, _actor),
     do: gettext("Accepted the organisation's ownership")
-
-  defp said(:"client.accept", %{"organisation_id" => _}, _actor),
-    do: gettext("Accepted an organisation as a client")
-
-  defp said(:"client.accept", _details, _actor),
-    do: gettext("An operator became its operator, accepted by an owner of it")
 
   # An entry of a change of what is shown (`shown: true`, `ApiaryPro.Grants`) is said in
   # those words while features are shown by who asks; any other in the words it was
@@ -306,18 +238,6 @@ defmodule ApiaryProWeb.ActivityDescriber do
 
   defp said(:"client.set_model_chain", _details, _actor),
     do: gettext("Changed whose model providers a client uses")
-
-  defp said(:"client.drop", %{"organisation_id" => _}, _actor),
-    do: gettext("Dropped a client")
-
-  defp said(:"client.drop", _details, _actor),
-    do: gettext("Its operator dropped it as a client: it has no operator now")
-
-  defp said(:"organisation.leave_operator", %{"organisation_id" => _}, _actor),
-    do: gettext("A client left")
-
-  defp said(:"organisation.leave_operator", _details, _actor),
-    do: gettext("Left its operator: it has no operator now")
 
   defp said(:"instance.suspend_account", _details, _actor),
     do: gettext("Suspended an account")
@@ -406,10 +326,9 @@ defmodule ApiaryProWeb.ActivityDescriber do
       "transfer" ->
         details = entry.details || %{}
 
-        case {names.users[details["user_id"]], details["kind"]} do
-          {nil, "to_operator"} -> text(gettext("An operator"))
-          {nil, _kind} -> text(gettext("An offer of ownership"))
-          {email, _kind} -> text(email)
+        case names.users[details["user_id"]] do
+          nil -> text(gettext("An offer of ownership"))
+          email -> text(email)
         end
 
       "workspace_access" ->

@@ -16,7 +16,7 @@ defmodule ApiaryProWeb.Contract.OperatorGatewayServingTest do
 
   alias Apiary.{Features, Repo}
   alias Apiary.Runs.Run
-  alias ApiaryPro.{Flags, Transfers}
+  alias ApiaryPro.Flags
 
   @moduletag with_features: Features.all()
 
@@ -125,16 +125,6 @@ defmodule ApiaryProWeb.Contract.OperatorGatewayServingTest do
 
   test "with the flag off, the gateway's key is refused for the client's runs", ctx do
     Flags.put_operator_infrastructure(false)
-    refused_for_the_client(ctx)
-  end
-
-  test "once the client has parted, the gateway's key is refused for its runs", ctx do
-    Flags.put_operator_infrastructure(false)
-
-    {:ok, _} =
-      Transfers.drop(ctx.operator.scope, ctx.client.organisation.id, ctx.client.organisation.name)
-
-    Flags.put_operator_infrastructure(true)
     refused_for_the_client(ctx)
   end
 end

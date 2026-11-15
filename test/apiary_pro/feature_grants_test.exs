@@ -5,10 +5,6 @@ defmodule ApiaryPro.FeatureGrantsTest do
   # one only the instance switches is no grant's.
   use Apiary.DataCase, async: false
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
-  setup do: ApiaryPro.Flags.put_transfers(true)
-
   # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
   # these tests read it off, and a test that needs it turns it on (`ApiaryPro.Flags`).
   setup do
@@ -20,7 +16,7 @@ defmodule ApiaryPro.FeatureGrantsTest do
 
   alias Apiary.{Access, Features, Repo}
   alias Apiary.Audit.Entry
-  alias ApiaryPro.{Grants, Operators, Suspensions, Transfers}
+  alias ApiaryPro.{Grants, Operators, Suspensions}
   alias ApiaryPro.Grants.Grant
 
   @moduletag with_features: Features.all()
@@ -413,43 +409,6 @@ defmodule ApiaryPro.FeatureGrantsTest do
       # `workflow_model`, which no grant names.
       assert ApiaryPro.Features.of(operator_fixture().organisation) -- @built ==
                [:secrets, :path_rules, :factory, :registry, :workflow_model]
-    end
-
-    test "a client that leaves its operator, or is dropped, loses its grants and follows the instance" do
-      operator = operator_fixture()
-
-      for part <- [
-            fn client -> Transfers.leave(client.owner.scope, operator.organisation.name) end,
-            fn client ->
-              Transfers.drop(operator.scope, client.organisation.id, client.organisation.name)
-            end
-          ] do
-        client = client_fixture(operator.scope)
-        {:ok, _} = Grants.set_client(operator.scope, client.organisation.id, ["observability"])
-        assert ApiaryPro.Features.of(client.organisation) == [:observability]
-
-        {:ok, organisation} = part.(client)
-
-        assert ApiaryPro.Features.of(organisation) == instance_features()
-      end
-    end
-
-    test "an organisation accepted by an operator has what the operator has, as a new client" do
-      operator = operator_fixture()
-      admin = instance_admin_fixture()
-
-      {:ok, _} =
-        Grants.set_organisation(admin.instance_scope, operator.organisation.id, [
-          "observability"
-        ])
-
-      %{scope: owner, organisation: organisation} = sign_up_fixture()
-      {:ok, _} = Transfers.offer_to_operator(owner, operator.organisation.slug)
-
-      {:ok, client} =
-        Transfers.accept_client(scope_in(operator.user, operator.organisation), organisation.id)
-
-      assert of(client) == [:observability]
     end
   end
 

@@ -1,8 +1,7 @@
 # Operators and their clients
 
 This guide covers operators and their clients, with the `managed_organisations` feature:
-what an operator is, how it creates and reaches its clients, how an organisation becomes a
-client and stops being one, and which features each has.
+what an operator is, how it creates and reaches its clients, and which features each has.
 
 <!-- feature: managed_organisations -->
 ## The feature
@@ -25,10 +24,9 @@ with no workspace yet, and the person who accepts that invitation becomes its ow
 creates its first workspace from the kind cards on its overview; any other invitation
 there, as anywhere, makes a member. The invitation is emailed. While a client has no
 owner, the Clients page invites one again, revokes an invitation of its owner, and deletes
-the client, which nobody else is in; once it has an owner, it is dropped instead. From
-then on the client's owners and admins invite and manage its people, its settings and its
-security policy, as in any organisation. An operator with clients is not deleted until
-each client is purged or dropped.
+the client, which nobody else is in. Once it has an owner, the client's owners and admins
+invite and manage its people, its settings and its security policy, as in any
+organisation. An operator with clients is not deleted until each client is purged.
 
 Each organisation has a separate daily allowance of invitations, an operator's client as
 any other. The one exception is the invitation of a client's first owner: it counts
@@ -43,15 +41,10 @@ and the activity. They change nothing there, the policy included; their level in
 operator matters only inside the operator. Someone who is in the operator and also a member
 of the client changes what their membership in the client allows, and reads the rest.
 
-## Dropping a client
+## Each side sees the other
 
-An owner of the operator drops a client from the Clients page, typing the client's name to
-confirm. It happens at once: the client is an organisation with no operator from then on,
-which the operator's people no longer read, with its people, workspaces and policy as they
-were.
-
-Each side sees the other: the Clients page names each client, its owners and since when it
-is a client; a client's people see its operator on Ownership in its settings, and
+The Clients page names each client, its owners and since when it is a client. A client's
+people see its operator on Ownership in its settings, and
 "Operated by" it in its Organisation settings › People.
 
 A suspended operator is read-only and its people no longer read its clients, which keep
@@ -66,8 +59,7 @@ no operator and no client until it is granted. A client never has `managed_organ
 it manages no one.
 
 An organisation made an operator is granted what it had, and a new client what its
-operator has; a client that is dropped loses what the operator granted it and has what any
-organisation with no operator has. An operator keeps `managed_organisations` until it is
+operator has. An operator keeps `managed_organisations` until it is
 made an organisation again, which it is only once it has no clients; its features page
 does not take it away.
 <!-- /feature -->

@@ -50,8 +50,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
   @changes_in_client [
     {:"organisation.rename", :organisation},
     {:"organisation.delete", :organisation},
-    {:"organisation.transfer", :organisation},
-    {:"organisation.leave_operator", :organisation},
     {:"workspace.rename", :workspace},
     {:"workspace.delete", :organisation},
     {:"retention.edit", :workspace},
@@ -286,8 +284,6 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
 
   describe "what is the client's own to decide" do
     @own_to_decide [
-      :"organisation.leave_operator",
-      :"organisation.transfer",
       :"organisation.withdraw_transfer",
       :"organisation.delete"
     ]

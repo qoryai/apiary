@@ -71,7 +71,7 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
     assert has_element?(lv, "#client-#{fresh}-owners", "No admin yet")
     assert has_element?(lv, "#client-#{fresh}-owners[title^='No admin yet · expires ']")
 
-    # Invite the first admin and delete on the one nobody has joined; Drop nowhere.
+    # Invite the first admin and delete on the one nobody has joined.
     assert has_element?(lv, "#client-#{fresh}-invite-admin", "Invite the first admin…")
 
     assert has_element?(
@@ -83,8 +83,6 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
     refute has_element?(lv, "#client-#{fresh}-invite-owner")
     refute has_element?(lv, "#client-#{legacy}-invite-admin")
     refute has_element?(lv, "#client-#{legacy}-delete")
-    refute has_element?(lv, "[id$='-drop']")
-    refute render(lv) =~ "Drop…"
 
     # A search by an admin's address finds the client.
     admin = client_member_fixture(ctx.legacy, :admin)
@@ -200,14 +198,11 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
              Apiary.Repo.all(from o in Apiary.Organisations.Organisation, where: o.slug == "acme")
   end
 
-  test "the first owner's page and the drop's are not found", ctx do
+  test "the first owner's page is not found", ctx do
     operator = ctx.operator.organisation
 
-    for path <- [
-          ~p"/#{operator}/clients/#{ctx.fresh.id}/owner",
-          ~p"/#{operator}/clients/#{ctx.legacy.organisation.id}/drop"
-        ] do
-      assert_raise ApiaryWeb.NotFound, fn -> live(ctx.conn, path) end
+    assert_raise ApiaryWeb.NotFound, fn ->
+      live(ctx.conn, ~p"/#{operator}/clients/#{ctx.fresh.id}/owner")
     end
   end
 
@@ -277,7 +272,7 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
     assert has_element?(
              lv,
              "#flash-error",
-             "That client has an owner now: drop it instead, and its owner keeps it."
+             "That client has an owner now, so it can't be deleted."
            )
 
     refute has_element?(lv, "#delete-client-form")

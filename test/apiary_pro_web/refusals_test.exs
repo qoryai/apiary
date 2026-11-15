@@ -12,8 +12,8 @@ defmodule ApiaryProWeb.RefusalsTest do
     rows: [ApiaryWeb.RefusalsRows, ApiaryProWeb.RefusalsRows],
     cast: :module
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:

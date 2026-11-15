@@ -11,7 +11,7 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
   alias Apiary.Access
   alias Apiary.Stacks
   alias Apiary.Stacks.Stack
-  alias ApiaryPro.{Edition, Flags, Transfers}
+  alias ApiaryPro.{Edition, Flags}
 
   @moduletag with_features: Apiary.Features.all()
 
@@ -20,7 +20,6 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
   # An operator with a client and an admin, a second operator, and an instance admin, made
   # while the flag is off, then the flag on.
   setup do
-    Flags.put_transfers(true)
     Flags.put_operator_infrastructure(false)
 
     operator = operator_fixture()
@@ -120,31 +119,6 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
         assert Access.authorize(scope, :"harness.save", ctx.client.workspace) ==
                  {:error, :not_found}
       end
-    end
-
-    test "is the client's people's again after a drop", ctx do
-      id = ctx.client.organisation.id
-      client_admin = client_member_fixture(ctx.client, :admin)
-
-      assert Access.authorize(ctx.client.owner.scope, :"harness.save", ctx.client.workspace) ==
-               {:error, :not_found}
-
-      # A drop is not offered while the operator owns its clients: it is done as before.
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, dropped} =
-               Transfers.drop(ctx.operator.scope, id, ctx.client.organisation.name)
-
-      Flags.put_operator_infrastructure(true)
-
-      for person <- [ctx.client.owner, client_admin] do
-        scope = scope_in(person.user, dropped, ctx.client.workspace)
-        assert Access.authorize(scope, :"harness.save", ctx.client.workspace) == :ok
-      end
-
-      owner = scope_in(ctx.client.owner.user, dropped, ctx.client.workspace)
-      assert {:ok, %Stack{} = stack} = save(owner, ctx)
-      assert stack.owner_organisation_id == id
     end
   end
 

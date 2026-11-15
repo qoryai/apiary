@@ -21,7 +21,7 @@ defmodule ApiaryPro.Grants do
   that change (`written_out/2`): made an operator, it is granted what it had, and from then
   only a grant changes it; made an organisation again, it keeps what it had, opt-out; a new
   operator is granted what the instance has; a new client is granted what its operator
-  has; a client its operator drops follows the instance.
+  has.
 
   **Race safety.** A write asks `Apiary.Access` first, then locks the rows it narrows
   `FOR NO KEY UPDATE`, in the lock order of docs/access.md, at one point
@@ -259,11 +259,11 @@ defmodule ApiaryPro.Grants do
   and `managed_organisations` always, so a feature the instance gains reaches it once
   granted; `:organisation`, made an organisation again, keeps what it had and has the rest
   taken away; `{:client, operator}`, a new client, is granted what its operator has;
-  `:left`, a client its operator dropped, follows the instance. Only the features a grant
-  can name are written (`ApiaryPro.Grants.Grant`). The organisation's rows are replaced.
-  `{:ok, features}`: what its rows grant, for an operator, a new client and a client its
-  operator dropped; the instance's features but what its rows take away, for an
-  organisation made one again; either without a feature whose needs are not among them
+  `:left`, an organisation that has no operator any more, follows the instance. Only the
+  features a grant can name are written (`ApiaryPro.Grants.Grant`). The organisation's
+  rows are replaced. `{:ok, features}`: what its rows grant, for an operator, a new client
+  and `:left`; the instance's features but what its rows take away, for an organisation
+  made one again; either without a feature whose needs are not among them
   (`Apiary.Features.closed/1`). Not what it is shown, which `ApiaryPro.Features.of/2`
   answers.
   """
@@ -336,9 +336,8 @@ defmodule ApiaryPro.Grants do
   #
   # The rows that hide a part, of a feature or the nodes (`ApiaryPro.Features.hidden/1`),
   # stay where it changes kind, `:keep_parts`, as it keeps what it had: its people are
-  # hidden the same parts. A new client, or a client its operator drops, has them deleted
-  # with the rest: it is shown every part of what it is shown, as the level above shows
-  # them.
+  # hidden the same parts. A new client, or `:left`, has them deleted with the rest: it is
+  # shown every part of what it is shown, as the level above shows them.
   defp replace(%Organisation{id: id}, features, granted, parts \\ :delete_parts) do
     names = Ecto.Enum.values(Grant, :feature)
     features = Enum.filter(features, &(&1 in names))
@@ -477,14 +476,12 @@ defmodule ApiaryPro.Grants do
   # (`ApiaryPro.Tenants.lock_organisations/2`): the clients first, then the operator. A
   # change in a client that holds the client alone while it reads the client's features,
   # as a new workspace in it does, waits for the grant, or is waited for, and the two
-  # never wait on each other. A client stays the operator's while its row is held: a
-  # client's drop locks it `FOR NO KEY UPDATE` first, and a new client locks the operator
-  # first. The clients are read again once the rows are held: a client that came between
-  # the read and the lock means a set taken stale, which is let go of, rolling back to a
-  # savepoint, and taken afresh, `attempts` times in all, and `{:error, :busy}` after, as
-  # for a deadlock that outlived the core's one retry. `{:ok, held, clients}`, the
-  # organisations held by their ids and the clients the operator has now, in the order of
-  # their ids.
+  # never wait on each other. A new client locks the operator first. The clients are read
+  # again once the rows are held: a client that came between the read and the lock means a
+  # set taken stale, which is let go of, rolling back to a savepoint, and taken afresh,
+  # `attempts` times in all, and `{:error, :busy}` after, as for a deadlock that outlived
+  # the core's one retry. `{:ok, held, clients}`, the organisations held by their ids and
+  # the clients the operator has now, in the order of their ids.
   defp lock_with_clients(id, attempts) do
     clients = clients_of(id)
     Repo.query!("SAVEPOINT pro_grants_lock_with_clients")

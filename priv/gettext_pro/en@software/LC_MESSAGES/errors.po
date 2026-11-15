@@ -26,19 +26,9 @@ msgstr ""
 msgid "A host takes at most %{max} paths."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Enter the operator's address."
-msgstr ""
-
 #: lib/apiary_pro/organisation_policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "No operator has that address."
 msgstr ""
 
 #: lib/apiary_pro/organisation_policy/rule.ex
@@ -127,7 +117,6 @@ msgid "is not open for sign-up"
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "is not the name"
 msgstr ""

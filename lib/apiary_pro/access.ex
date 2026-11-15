@@ -24,28 +24,16 @@ defmodule ApiaryPro.Access do
       roles: @admins,
       asked_of: :organisation
     ),
-    # The organisation's operator.
-    Action.new(
-      :"organisation.transfer",
-      "offer the organisation to an operator, whose client it becomes once an owner of the operator accepts",
-      roles: @owners,
-      asked_of: :organisation
-    ),
+    # The ownership of the organisation.
     Action.new(
       :"organisation.withdraw_transfer",
-      "withdraw the pending offer of the organisation's ownership",
+      "read the pending offer of the organisation's ownership; the lapse of an offer is recorded under this action",
       roles: @owners,
       asked_of: :organisation
     ),
     Action.new(
       :"organisation.accept_transfer",
       "accept the ownership the instance admins offered you, an admin of the organisation: the offer allows it, and no role",
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"organisation.leave_operator",
-      "leave the organisation's operator at once: it is an organisation with no operator from then on",
-      roles: @owners,
       asked_of: :organisation
     ),
     # An operator's clients.
@@ -105,22 +93,8 @@ defmodule ApiaryPro.Access do
       asked_of: :organisation
     ),
     Action.new(
-      :"client.accept",
-      "accept an organisation offered to the operator, which becomes its client",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
       :"client.grant_features",
       "show or hide features for a client of the operator, of those the operator is shown",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.drop",
-      "drop a client of the operator at once: it is an organisation with no operator from then on",
       feature: :managed_organisations,
       roles: @owners,
       asked_of: :organisation
@@ -336,19 +310,14 @@ defmodule ApiaryPro.Access do
   # differ by, which no doc names.
   @documented_reads @reads -- [:"adapter.read", :"work_item.read"]
 
-  # The actions hidden while `ApiaryPro.Flags.transfers?/0` is off: not found for everyone,
+  # The action hidden while `ApiaryPro.Flags.transfers?/0` is off: not found for everyone,
   # and left out of the table of actions below.
-  @flagged_transfers [
-    :"organisation.transfer",
-    :"organisation.withdraw_transfer",
-    :"organisation.leave_operator",
-    :"client.accept"
-  ]
+  @flagged_transfers [:"organisation.withdraw_transfer"]
 
   # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a client's first person is
-  # invited as its admin, and the actions of the first owner's invitation, and a client's
-  # drop, are not found; while it is off, the first admin's are, and they are left out of
-  # the table of actions below.
+  # invited as its admin, and the actions of the first owner's invitation are not found;
+  # while it is off, the first admin's are, and they are left out of the table of actions
+  # below.
   @owner_invitations [
     :"client.invite_owner",
     :"client.revoke_owner_invitation",
@@ -362,7 +331,7 @@ defmodule ApiaryPro.Access do
   # Not found while `ApiaryPro.Flags.operator_infrastructure?/0` is off, and left out of the
   # table of actions below: the operator's choice of the model providers a client uses.
   @needs_operator_infrastructure [:"client.set_model_chain"]
-  @hidden_while_operator_owns [:"client.drop" | @owner_invitations]
+  @hidden_while_operator_owns @owner_invitations
 
   # The actions over a client's people a client's admin takes on its admins as on its
   # members while the flag is on: nobody in a client is an owner but those who were.
@@ -422,7 +391,6 @@ defmodule ApiaryPro.Access do
   @not_on_instance_organisation [
     :"organisation.delete",
     :"organisation.purge",
-    :"organisation.transfer",
     :"organisation.withdraw_transfer"
   ]
 
@@ -463,8 +431,7 @@ defmodule ApiaryPro.Access do
        (`ApiaryPro.Features.of/2`);
      - **what kind of organisation it is**: an operator's actions over its clients
        (`client.*`) are asked in an operator, and not found in an organisation of another
-       kind; leaving its operator (`organisation.leave_operator`) is asked in a client,
-       and not found in an organisation with no operator;
+       kind;
      - **the instance organisation**: #{Enum.map_join(@not_on_instance_organisation -- @flagged_transfers, ", ", &"`#{&1}`")}
        are forbidden on it, for every role, the instance's included (`Apiary.Access.refused_on?/2`);
      - **suspension**: a suspended organisation (`suspended?/1`) is read-only, every
@@ -520,16 +487,10 @@ defmodule ApiaryPro.Access do
     :"client.invite_admin",
     :"client.revoke_admin_invitation",
     :"client.renew_admin_invitation",
-    :"client.accept",
     :"client.grant_features",
-    :"client.drop",
     :"client.set_model_chain",
     :"client.delete"
   ]
-
-  # The actions of a client over its place, asked in the client: in an organisation with
-  # no operator they are not found.
-  @client_actions [:"organisation.leave_operator"]
 
   # The instance actions asked of the organisation acted on: a change of kind, and what is
   # never taken on the instance organisation itself, which holds the instance admins, so
@@ -610,13 +571,12 @@ defmodule ApiaryPro.Access do
   end
 
   # hidden?/1 is true when a flag hides `action` now, as a path that does not exist: the
-  # actions `ApiaryPro.Flags.transfers?/0` gates while it is off; the first owner's
-  # invitation and a client's drop while `ApiaryPro.Flags.operator_infrastructure?/0` is
-  # on; the first admin's invitation and
-  # the operator's choice of a client's model providers while it is off. `check/3` calls
-  # `hidden?/2` first, and a page that is not there while a flag hides its action calls
-  # `hidden?/1`. Not in the published documentation: what a flag hides is not named there
-  # (`ApiaryPro.Flags`).
+  # action `ApiaryPro.Flags.transfers?/0` gates while it is off; the first owner's
+  # invitation while `ApiaryPro.Flags.operator_infrastructure?/0` is on; the first admin's
+  # invitation and the operator's choice of a client's model providers while it is off.
+  # `check/3` calls `hidden?/2` first, and a page that is not there while a flag hides its
+  # action calls `hidden?/1`. Not in the published documentation: what a flag hides is not
+  # named there (`ApiaryPro.Flags`).
   @doc false
   @spec hidden?(Access.action()) :: boolean
   def hidden?(action), do: hidden?(action, Flags.operator_infrastructure?())
@@ -745,9 +705,6 @@ defmodule ApiaryPro.Access do
         {:error, :not_found}
 
       action in @operator_actions and not operator?(scope) ->
-        {:error, :not_found}
-
-      action in @client_actions and not client?(scope) ->
         {:error, :not_found}
 
       action in @not_on_instance_organisation and instance_organisation?(subject) ->

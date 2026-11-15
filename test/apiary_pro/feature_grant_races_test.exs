@@ -13,8 +13,8 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
   # absent. A write never commits on a feature a withdrawal committed before it took away.
   #
   # A grant takes organisation rows only, in the lock order of docs/access.md, and renders
-  # nothing: a grant and a write of the organisation's policy, a client's drop, a change
-  # of its operator's kind or the operator's suspension wait for each other on those rows,
+  # nothing: a grant and a write of the organisation's policy, a change of its
+  # operator's kind or the operator's suspension wait for each other on those rows,
   # and Postgres breaks no deadlock between them (`deadlocks/0`).
   use ExUnit.Case, async: false
 
@@ -34,7 +34,7 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Membership, Organisation}
   alias Apiary.Policy.{Error, Rule}
-  alias ApiaryPro.{Grants, Operators, OrganisationPolicy, Suspensions, Tenants, Transfers}
+  alias ApiaryPro.{Grants, Operators, OrganisationPolicy, Suspensions, Tenants}
   alias ApiaryPro.Tenants.Tenant
 
   @moduletag needs: :security
@@ -244,8 +244,8 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
   describe "a grant to a client, and its operator's changes" do
     # An operator, made one as the product makes one, and a client of it. A grant to the
     # client locks it `FOR NO KEY UPDATE` and holds its operator `FOR SHARE`, at one point;
-    # a drop takes the same rows the same way, a change of the operator's kind locks the
-    # operator `FOR UPDATE` first and alone, and its suspension locks it too.
+    # a change of the operator's kind locks the operator `FOR UPDATE` first and alone, and
+    # its suspension locks it too.
     @describetag needs: [:managed_organisations, :security]
 
     setup ctx do
@@ -268,37 +268,6 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
         in_operator: in_operator,
         client: client.organisation
       })
-    end
-
-    test "the client given a feature first: its drop waits for it", ctx do
-      {:ok, _} = take_from_client(ctx)
-      before = deadlocks()
-
-      {grant, grant_pid} = hold(fn -> client_first_half(ctx) end)
-
-      drop = start(fn -> drop(ctx) end)
-      await_blocked(drop.backend, grant_pid)
-      assert {:ok, _} = continue(grant, fn -> give_client(ctx) end)
-      commit(grant)
-
-      assert {:ok, _} = Task.await(drop.task)
-      assert deadlocks() == before
-      assert Tenants.operator_id(Repo.get!(Organisation, ctx.client.id)) == nil
-    end
-
-    test "the client dropped first: its grant waits, and finds it no client", ctx do
-      {:ok, _} = take_from_client(ctx)
-      before = deadlocks()
-
-      {drop, drop_pid} = hold(fn -> client_first_half(ctx) end)
-
-      grant = start(fn -> give_client(ctx) end)
-      await_blocked(grant.backend, drop_pid)
-      assert {:ok, _} = continue(drop, fn -> drop(ctx) end)
-      commit(drop)
-
-      assert {:error, :not_found} = Task.await(grant.task)
-      assert deadlocks() == before
     end
 
     @tag :feature_sets
@@ -495,8 +464,6 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
   defp give_client(ctx),
     do: Grants.set_client(ctx.in_operator, ctx.client.id, [:observability, :security])
 
-  defp drop(ctx), do: Transfers.drop(ctx.in_operator, ctx.client.id, ctx.client.name)
-
   defp suspend_operator(ctx),
     do: Suspensions.suspend_organisation(ctx.instance_admin, ctx.operator.id)
 
@@ -512,9 +479,8 @@ defmodule ApiaryPro.FeatureGrantRacesTest do
     newcomer
   end
 
-  # A grant to the client's and its drop's first half, as `ApiaryPro.Grants` and
-  # `ApiaryPro.Transfers` take their locks: the client `FOR NO KEY UPDATE`, its operator
-  # `FOR SHARE`, at one point.
+  # A grant to the client's first half, as `ApiaryPro.Grants` takes its locks: the client
+  # `FOR NO KEY UPDATE`, its operator `FOR SHARE`, at one point.
   defp client_first_half(ctx) do
     client_id = ctx.client.id
 

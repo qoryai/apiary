@@ -56,10 +56,8 @@ defmodule ApiaryPro.Gateways do
   # gateways locks are read before the lock, and not read again: every change of the
   # relation takes a row the change of gateways takes too, in a mode that conflicts with
   # it. A client's creation locks the operator, against the operator's row a change of its
-  # gateways locks or holds; a client's drop locks the client `FOR NO KEY UPDATE`, against
-  # the client's row a node written there holds `FOR SHARE`. So a client created between
-  # the read and the lock holds no node yet, and one dropped waits for the node written in
-  # it (`test/apiary_pro/gateway_races_test.exs`).
+  # gateways locks or holds. So a client created between the read and the lock holds no
+  # node yet (`test/apiary_pro/gateway_races_test.exs`).
   #
   # Both come from one relation, the client's operator (`ApiaryPro.Tenants`,
   # `operator_id`), so each is the reverse of the other: X is among

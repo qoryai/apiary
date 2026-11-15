@@ -88,11 +88,6 @@ msgstr ""
 msgid "%{name} becomes read-only: its people can sign in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} has left %{operator}. It has no operator now."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} has no admin who can act, so there is nobody to offer its ownership to."
@@ -116,11 +111,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} has one value, which goes only with the secret: delete the secret instead."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} is a client of %{operator} now: it runs its harness, and its people keep their levels."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -195,16 +185,6 @@ msgstr ""
 msgid "%{name} is locked."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} is no client of %{operator} any more."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} is offered to %{operator}. It is its client once an owner of %{operator} accepts."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
@@ -238,12 +218,6 @@ msgstr ""
 msgid "%{name} is used by %{uses}: unlink it there first."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} leaves %{operator} at once."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} runs the harness %{operator} provides. %{operator} owns it: its owners and admins run its workspaces, machines and keys, and its members read everything in it."
@@ -252,11 +226,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} runs the harness %{operator} provides. The people of %{operator} read everything in %{name} to support its harness, and change nothing."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} was offered to the operator %{operator} on %{date}. Once an owner of %{operator} accepts, it is a client of %{operator}."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
@@ -369,24 +338,9 @@ msgid_plural "%{number} workspaces override it"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} became its operator, accepted by an owner of %{operator}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} can end this at any time."
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{operator} can grant only what it has itself."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} can no longer accept %{name}. You can offer it again later."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -394,19 +348,9 @@ msgstr ""
 msgid "%{operator} can show only what it is shown."
 msgstr ""
 
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{operator} dropped it as a client: it has no operator now"
-msgstr ""
-
 #: lib/apiary_pro_web/components/notices.ex
 #, elixir-autogen, elixir-format
 msgid "%{organisation} is suspended: everything in it can be read, nothing can be changed, and its access keys are refused. %{contact_support}."
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "%{organisation} left as a client"
 msgstr ""
 
 #: lib/apiary_pro_web/edition.ex
@@ -499,16 +443,6 @@ msgstr ""
 msgid "A client is a separate organisation, with its workspaces, people and activity, that runs the harness %{operator} provides."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "A client is not offered to another operator: it leaves its operator first."
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "A client left"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "A client of an operator cannot be made an operator."
@@ -596,21 +530,6 @@ msgstr ""
 msgid "About organisations"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Accept"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Accept %{name} as a client"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Accept %{name} as a client?"
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Accept ownership"
@@ -618,20 +537,9 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
-msgid "Accepted %{organisation} as a client"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Accepted an organisation as a client"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
 msgid "Accepted the organisation's ownership"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Accepting"
@@ -815,26 +723,6 @@ msgstr ""
 msgid "An offer of ownership"
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "An offer of the ownership is pending already. Withdraw it first."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "An offer stays pending until it is accepted or withdrawn."
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "An operator"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "An operator became its operator, accepted by an owner of it"
-msgstr ""
-
 #: lib/apiary_pro_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "An operator creates clients. Each client is a separate organisation; its people belong to it, not to the operator."
@@ -843,11 +731,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "An operator has only what you grant it, and grants its clients within that. A feature a new release adds reaches it once you grant it here."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "An operator is not offered to another operator."
 msgstr ""
 
 #: lib/apiary_pro_web/edition.ex
@@ -861,8 +744,8 @@ msgid "An operator that operates a workspace cannot be made an organisation."
 msgstr ""
 
 #: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "An operator with clients cannot be deleted. On Clients, delete each client that has no owner and drop each one that has; a deleted client counts until it is purged."
+#, elixir-autogen, elixir-format, fuzzy
+msgid "An operator with clients cannot be deleted. On Clients, delete each client that has no owner; a deleted client counts until it is purged."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -888,11 +771,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "An owner of it can act again, so the offer no longer stands."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "An owner of the operator accepts the offer. Then %{name} is its client: its people keep their levels, you included, and the operator's people read everything in it and change nothing. Until then you can withdraw the offer."
 msgstr ""
 
 #: lib/apiary_pro/edition.ex
@@ -1101,11 +979,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Client deleted"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Client dropped"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -1361,36 +1234,6 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Drop %{name}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Drop %{name}?"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Dropped %{organisation} as a client"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Dropped a client"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Dropping"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Drop…"
-msgstr ""
-
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Each workspace chooses"
@@ -1454,11 +1297,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Edit the rule for %{host}"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Either side can end this at any time."
 msgstr ""
 
 #: lib/apiary_pro_web/live/user_live/registration.ex
@@ -1783,11 +1621,6 @@ msgstr ""
 msgid "Inviting"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "It becomes a client of %{operator} at once: its people keep their levels, the people of %{operator} read everything in it, and it has only the features %{operator} grants its clients."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "It has an owner who can act; the instance does not overrule them."
@@ -1825,21 +1658,6 @@ msgstr[1] ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Its clients"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Its features become what the operator grants its clients, which may be fewer than it has now: what the operator does not grant is gone from %{name} until it does."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Its features then become what the operator grants it, which may be fewer than it has now."
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Its operator dropped it as a client: it has no operator now"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -1891,31 +1709,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "Last 14 days, every workspace"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Leave %{operator}?"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Leave %{operator}…"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Leaving"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Left %{operator}: it has no operator now"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Left its operator: it has no operator now"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -2264,11 +2057,6 @@ msgstr ""
 msgid "No new link for %{email} now: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "No offer is pending any more: it was accepted or withdrawn meanwhile."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "No organisation is a client"
@@ -2435,19 +2223,9 @@ msgstr ""
 msgid "Observe"
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Offer %{name} to an operator, whose harness it then runs. Once an owner of the operator accepts, %{name} is its client: its people keep their levels, you included, and the operator's people read everything in it and change nothing."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Offer it to"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Offer ownership"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -2460,33 +2238,12 @@ msgstr ""
 msgid "Offer withdrawn"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Offered"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Offered the organisation to an operator"
-msgstr ""
-
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Offered the organisation's ownership to an admin, as support"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Offered to %{operator}"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Offered to an operator"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Offering"
 msgstr ""
@@ -2494,11 +2251,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Offers of the ownership of this organisation."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Once accepted, an organisation has what %{operator} grants its clients, which may be fewer features than it has now."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -2519,11 +2271,6 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Only an owner of %{operator} accepts an organisation offered to it."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "Only an owner of %{operator} chooses what its clients are shown."
 msgstr ""
 
@@ -2534,22 +2281,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Only an owner of %{operator} drops a client."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "Only an owner of %{operator} grants its clients their features."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Only an owner of this organisation takes it away from %{operator}."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Only an owner offers the organisation to an operator or withdraws the offer."
 msgstr ""
 
 #: lib/apiary_pro/organisation_policy.ex
@@ -2568,8 +2300,8 @@ msgid "Only owners and admins of %{operator} add a client and invite its first a
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of %{operator} add a client and invite its first owner; only owners drop one."
+#, elixir-autogen, elixir-format, fuzzy
+msgid "Only owners and admins of %{operator} add a client and invite its first owner."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -2683,11 +2415,6 @@ msgid "Operator created"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Operator left"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #: lib/apiary_pro_web/live/instance_live/sign_up_part.ex
 #, elixir-autogen, elixir-format
@@ -2696,15 +2423,9 @@ msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
 #: lib/apiary_pro_web/components/organisation_components.ex
-#: lib/apiary_pro_web/live/client_live/index.ex
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Organisation accepted as a client"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -3284,18 +3005,13 @@ msgid "That client has an admin now, who invites its people."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
+#, elixir-autogen, elixir-format, fuzzy
+msgid "That client has an owner now, so it can't be deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That client has an owner now, who invites its people."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That client has an owner now: drop it instead, and its owner keeps it."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That client has no owner yet, so nobody would be left in it: delete it instead."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -3324,24 +3040,9 @@ msgstr ""
 msgid "That member is no longer in the organisation."
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That offer is no longer pending: it was withdrawn or accepted meanwhile."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That organisation became an operator or a client meanwhile, so it cannot be accepted."
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "That organisation is not there any more."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "That organisation is suspended, so it does not become a client until it is activated."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -3439,16 +3140,6 @@ msgstr ""
 msgid "The mode is set per workspace now."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "The offer is withdrawn."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "The operator's address"
-msgstr ""
-
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "The organisation is purged."
@@ -3472,11 +3163,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "The organisations could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The organisations offered to %{operator} could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/index.ex
@@ -3586,16 +3272,6 @@ msgstr ""
 msgid "The workspaces they reach"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Their owners offer these organisations to %{operator}. An owner of %{operator} accepts one; it is a client then: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it."
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Their owners offer these organisations to %{operator}. When you accept one, it is a client: it runs the harness of %{operator}, its people keep their levels, and the people of %{operator} read everything in it."
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Their reason: %{reason}"
@@ -3609,16 +3285,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "There is nothing about the ownership of %{name} for you to do here."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "This organisation has no operator any more."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Transfer %{name} to an operator"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -3641,13 +3307,7 @@ msgstr ""
 msgid "Transfer the ownership of %{name}"
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Transfer to an operator"
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
 #, elixir-autogen, elixir-format
 msgid "Type the name of %{name} to confirm"
 msgstr ""
@@ -3804,21 +3464,6 @@ msgstr ""
 msgid "With %{email} suspended, %{organisations} run without an owner who can act: their admins and members work, and what only an owner does waits until you activate the account again or transfer the ownership to one of their admins."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Withdraw offer…"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Withdraw the offer?"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrawing"
-msgstr ""
-
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrew an invitation: its organisation was deleted"
@@ -3832,16 +3477,6 @@ msgstr ""
 #: lib/apiary_pro_web/activity_describer.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrew an offer of ownership: an owner can act again"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrew an offer of ownership: the operator is no operator any more"
-msgstr ""
-
-#: lib/apiary_pro_web/activity_describer.ex
-#, elixir-autogen, elixir-format
-msgid "Withdrew an offer of ownership: the operator is suspended"
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -3963,25 +3598,10 @@ msgstr ""
 msgid "Workspaces…"
 msgstr ""
 
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, accept"
-msgstr ""
-
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, delete"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, drop"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, leave"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -4003,11 +3623,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, suspend"
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, withdraw"
 msgstr ""
 
 #: lib/apiary_pro_web/live/user_live/registration.ex

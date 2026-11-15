@@ -81,7 +81,7 @@ defmodule ApiaryProWeb.InstanceOrganisationSettingsTest do
     assert has_element?(
              lv,
              "#flash-error",
-             "On Clients, delete each client that has no owner and drop each one that has"
+             "On Clients, delete each client that has no owner;"
            )
 
     assert has_element?(lv, "#flash-error", "a deleted client counts until it is purged.")

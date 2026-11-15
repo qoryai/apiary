@@ -18,16 +18,12 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
-  setup do: ApiaryPro.Flags.put_transfers(true)
-
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.Features
-  alias ApiaryPro.{OrganisationVariables, Suspensions, Transfers}
+  alias ApiaryPro.{OrganisationVariables, Suspensions}
 
   @moduletag with_features: Features.all()
 
@@ -277,11 +273,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/instance/accounts/:id/suspend"), do: {:instance_admin, nil, :member_user_id}
 
   defp page("/:org/settings/people/:id/workspaces"), do: {:owner, :org, :membership_id}
-  defp page("/:org/settings/ownership"), do: {:owner, :org, nil}
-  defp page("/:org/settings/ownership/transfer"), do: {:owner, :org, nil}
-  # The withdrawal of a pending offer, and the leaving of an operator, by a client.
-  defp page("/:org/settings/ownership/withdraw"), do: {:offering_owner, :offering, nil}
-  defp page("/:org/settings/ownership/leave"), do: {:client_owner, :client, nil}
+  # Ownership is listed for a person who reads a client's settings.
+  defp page("/:org/settings/ownership"), do: {:client_owner, :client, nil}
   defp page("/:org/settings/variables"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/new"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/:id/change"), do: {:owner, :org, :variable_id}
@@ -310,10 +303,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/:org/clients/:id/owner"), do: {:operator_owner, :operator, :ownerless_client_id}
   defp page("/:org/clients/:id/admin"), do: {:operator_owner, :operator, :ownerless_client_id}
   defp page("/:org/clients/:id/features"), do: {:operator_owner, :operator, :client_id}
-  defp page("/:org/clients/:id/drop"), do: {:operator_owner, :operator, :client_id}
   defp page("/:org/clients/:id/delete"), do: {:operator_owner, :operator, :client_id}
-  # The organisation offered to the operator.
-  defp page("/:org/clients/offers/:id/accept"), do: {:operator_owner, :operator, :offering_id}
   defp page(_path), do: nil
 
   # The route's address, its parameters filled from the world, and who opens it.
@@ -338,10 +328,9 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
 
   # The people each page is for, logged in, and the records the pages are about, in the
   # states they open in: an owner's organisation with a member, a second workspace, its
-  # variables, its secrets and its policy; an organisation offered to an operator; the
-  # operator, with a client whose owner signed up, one with no owner yet, and a request of
-  # the operator's to the client, pending; an organisation suspended; and one whose
-  # owner's account is, with an admin.
+  # variables, its secrets and its policy; the operator, with a client whose owner signed
+  # up and one with no owner yet; an organisation suspended; and one whose owner's account
+  # is, with an admin.
   defp world do
     admin = suite_instance_admin()
 
@@ -385,9 +374,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         "email" => "dana@example.com"
       })
 
-    offering = sign_up_fixture()
-    {:ok, _} = Transfers.offer_to_operator(offering.scope, operator.organisation.slug)
-
     suspended = sign_up_fixture()
     {:ok, _} = Suspensions.suspend_organisation(admin.instance_scope, suspended.organisation.id)
 
@@ -400,15 +386,12 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         owner: log_in_user(build_conn(), owner.user),
         signed_out: build_conn(),
         instance_admin: log_in_user(build_conn(), admin.user),
-        offering_owner: log_in_user(build_conn(), offering.user),
         client_owner: log_in_user(build_conn(), client.owner.user),
         operator_owner: log_in_user(build_conn(), operator.user)
       },
       values: %{
         org: owner.organisation.slug,
         org_id: owner.organisation.id,
-        offering: offering.organisation.slug,
-        offering_id: offering.organisation.id,
         client: client.organisation.slug,
         client_id: client.organisation.id,
         ownerless_client_id: ownerless.id,

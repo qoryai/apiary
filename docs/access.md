@@ -1077,9 +1077,9 @@ callbacks below. The edition adds one more: the **operator parts**, its code for
 operator and its clients, also check beside `Apiary.Access`. `ApiaryPro.Operators`
 compares a client's operator with the operator that acts, and
 `ApiaryProWeb.ClientLive.Index` reads the flag
-`ApiaryPro.Flags.operator_infrastructure?/0`. While the flag is on, the pages of a
-client's first owner's invitation and of a drop are not found; while it is off, the page
-of the first admin's invitation is not found.
+`ApiaryPro.Flags.operator_infrastructure?/0`. While the flag is on, the page of a
+client's first owner's invitation is not found; while it is off, the page of the first
+admin's invitation is not found.
 
 #### The 4 callbacks beside `Apiary.Access`
 
@@ -1125,11 +1125,12 @@ answer; the list is not complete:
   a flag hides and the creation of an organisation;
 - `test/apiary_pro/instance_organisation_test.exs`: an instance admin changes nothing in
   an organisation they read;
-- `test/apiary_pro/instance_admin_test.exs` and `test/apiary_pro/transfers_test.exs`: the
-  instance organisation is never deleted, purged or transferred;
+- `test/apiary_pro/instance_admin_test.exs` and
+  `test/apiary_pro/transfers_instance_organisation_test.exs`: the instance organisation is
+  never deleted, purged or transferred;
 - `test/apiary_pro/suspensions_test.exs`: an instance admin suspends neither the account
   they are signed in with nor the instance organisation;
-- `test/apiary_pro_web/live/transfers_flag_test.exs`: the actions that are not found while
+- `test/apiary_pro_web/live/transfers_flag_test.exs`: the action that is not found while
   `ApiaryPro.Flags.transfers?/0` is off;
 - `test/apiary_pro_web/live/operator_infrastructure_flag_test.exs` and
   `test/apiary_pro/model_chain_test.exs`: the first admin's invitation and the choice of
@@ -1182,7 +1183,6 @@ the organisation and is told so at the organisation's address, `/:org`.
 Beside the core's exceptions, and the instance actions of the instance organisation's
 owners, these are an owner's alone:
 
-- in an operator, dropping a client (`client.drop`; A client's drop, below);
 - the features of its clients, in an operator (`client.grant_features`; Features,
   below);
 - the organisation's policy: its rules (`organisation_policy.edit`), the floor
@@ -1208,8 +1208,7 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
 2. **Their membership in the operator of a workspace there** (`{:operator, operated}` in
    the scope, each operated workspace's id with that membership;
    `ApiaryPro.WorkspaceOperators`). A workspace has at most one operator, a row of
-   `workspace_operators`. No screen starts such a link; an organisation that leaves its
-   operator, or that the operator drops, ends that operator's links in it. Every person of
+   `workspace_operators`. Nothing starts or ends such a link. Every person of
    the operator, owner, admin or member, reaches the workspaces it operates there, and no
    other workspace of the organisation, and reads everything in them but the workspaces'
    secrets and variables (`secret.read`, `variable.read`): the role `reader`. Nothing the
@@ -1318,16 +1317,13 @@ feature `managed_organisations`:
   organisation (`invitation.renew`).
 - `client.grant_features`: the features of a client, out of the operator's features, on
   its Clients page; an owner's of the operator (Features, below).
-- `client.drop`: a client dropped, at once, on the Clients page; an owner's of the
-  operator (A client's drop, below). A client with no owner yet is not dropped, which
-  would leave nobody in it: `{:error, :no_owner}`.
 - `client.delete`: a client with no owner yet marked for deletion, on the Clients page,
   its name typed to confirm (`ApiaryPro.Deletion.delete_client/3`); an owner's of the
   operator. Nobody else is in it. It is purged after the grace period, as any
   organisation, and its pending invitations are deleted at once, each an
   `invitation.revoke`, the reason `client_deleted`; the entry of `client.delete` is the
-  operator's, which outlives the client's trail. A client with an owner is dropped
-  instead, `{:error, :has_owner}`.
+  operator's, which outlives the client's trail. A client with an owner is not deleted,
+  `{:error, :has_owner}`.
 
 Each organisation has a separate allowance of invitations, a client as any other:
 `Apiary.Instance.invitations_per_day/0` a day, and three times as many attempts. The
@@ -1539,8 +1535,7 @@ one of its admins, with a reason (`instance.transfer`), replacing any offer pend
 admin accepts it on the Ownership section of the organisation's settings, which every page
 of the organisation leads them to while the offer stands
 (`organisation.accept_transfer`), and becomes an owner; a client stays its operator's.
-The offer names no operator: a client's is in its entry alone, so the purge of an
-operator that dropped a client takes no offer of it with it. A suspended organisation is
+The offer names no operator: a client's is in its entry alone. A suspended organisation is
 activated first. The offer lapses once one of its owners may act again, their membership
 or account activated, and an acceptance then is refused: the instance does not overrule
 an owner.
@@ -1657,27 +1652,10 @@ continue, what only an owner does waits, and its people see a notice, until an i
 admin activates the owner again or offers the ownership to one of its admins (The instance
 actions, above).
 
-### A client's drop
+### A client and its operator
 
-A client parts from its operator when the operator drops it (`ApiaryPro.Transfers`).
-Nothing else changes a client's operator, and a suspension leaves it as it is.
-
-- **Dropping a client.** An owner of the operator drops a client that has an owner at
-  any time, on the Clients page (`client.drop`). One with no owner yet is deleted instead
-  (`client.delete`, An operator's actions, above), so no client is left with nobody in
-  it. It takes the whole client out of its operator, and nobody's membership changes.
-
-A drop takes effect at once and is an entry in the client's trail and one in the
-operator's. It is confirmed by typing the client's name, which
-`ApiaryPro.Transfers.drop/3` checks too, `{:error, :confirmation}` otherwise, so an event
-sent without the confirmation changes nothing. The confirmation is in place on the
-client's row of Clients, never a dialog.
-The client is an organisation with no operator from then on: the operator's people read
-it no more, and the grants the operator made it go, so it has what an organisation with
-no operator has and follows the instance (Features, below). Its people, its workspaces
-and its policy stay as they are.
-
-Each side sees the other. The operator's Clients page names each client, its owners and
+Nothing changes a client's operator, and a suspension leaves it as it is. Each side sees
+the other. The operator's Clients page names each client, its owners and
 since when it is the operator's client (its tenant's `operator_since`). A client names
 its operator to all of its people: in an Operator part of the Ownership section of its
 settings, which every reader of a client's settings has in the list, and which says that the operator's people read everything in it to support its
@@ -1702,9 +1680,6 @@ is served, follow the instance's features alone. Who changes them (`ApiaryPro.Gr
   which has what the instance has.
 - `client.grant_features`: an owner's of the operator, on its Clients page: what a client
   is granted, out of the operator's features.
-
-A client that is dropped loses what its operator granted it: from then on it follows the
-instance, as any organisation with no operator does.
 
 A suspended organisation or client is granted nothing. An operator's
 `managed_organisations` is not a grant's to take away: it goes when it is made an
@@ -1747,8 +1722,7 @@ The edition's part of the answer (`ApiaryPro.Access.check/3`, the edition's `che
 adds to the core's:
 
 - `{:error, :not_found}` for an operator's action in an organisation that is no operator,
-  a client's action (leaving its operator) in an organisation with no operator, and an
-  instance action anywhere but in the instance organisation;
+  and an instance action anywhere but in the instance organisation;
 - `{:error, :forbidden}` for any action but a read in a suspended organisation, for
   anything but a read by a reader, and for what is refused on the instance organisation
   itself.
@@ -1758,7 +1732,7 @@ loaded earlier cannot act in a workspace the person was removed from. A write of
 security policy holds the organisation rows, the client and its operator
 (`Apiary.Access.lock_places/1`), then takes the workspace's lock, then reads the
 membership, the workspace access and the account `FOR SHARE`, so a change of the level,
-a removal from the workspace, a suspension, a transfer, a client's drop and a grant wait
+a removal from the workspace, a suspension, a transfer and a grant wait
 for it, and none committed before it is missed.
 
 ### The lock order
@@ -1853,10 +1827,6 @@ The modes keep a row that only names another out of it:
   takes that people lock.
   An operator with clients is never purged, and a change of an organisation's kind and
   its suspension take no people lock.
-- A client's drop (`ApiaryPro.Transfers.drop/3`) locks the client's row
-  `FOR NO KEY UPDATE`, then holds the operator's `FOR SHARE`. So a policy write in the
-  client, which holds the client `FOR SHARE`, and a drop wait for each other, and a
-  locked reload of an operator's person in the client waits for a drop or sees it.
 - The acceptance of the arbiter's offer (`ApiaryPro.Transfers.accept/1`) changes no
   operator: it holds the organisation `FOR SHARE`, locks its people lock `FOR UPDATE`
   where it is an operator, and its owners (`Apiary.Organisations.lock_owners/1`), then
@@ -1905,9 +1875,9 @@ The modes keep a row that only names another out of it:
   suspension and marking wait for it, or came first and refuse it. An operator's
   invitation of its client's first owner locks the client `FOR NO KEY UPDATE` instead
   (`ApiaryPro.Invitations`, the edition's `accepting/3`, before the core holds it
-  `FOR SHARE`), so two such acceptances, and the client's drop and deletion, are one
-  after the other. `ApiaryPro.Deletion.delete_client/3` locks the client
-  `FOR NO KEY UPDATE`, then holds the operator `FOR SHARE`, as a drop does.
+  `FOR SHARE`), so two such acceptances, and the client's deletion, are one after the
+  other. `ApiaryPro.Deletion.delete_client/3` locks the client `FOR NO KEY UPDATE`, then
+  holds the operator `FOR SHARE`.
 - The organisation's policy (`ApiaryPro.OrganisationPolicy`). A write holds the
   organisation and its operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then takes
   every workspace of the organisation in use in the order of their ids
@@ -1949,8 +1919,8 @@ The modes keep a row that only names another out of it:
 
 A deadlock Postgres breaks all the same in a transfer is taken again, twice at most, and
 answers `{:error, :busy}` after, which a page says as "try again"
-(`ApiaryPro.Transfers`). `test/apiary_pro/lock_order_races_test.exs` pauses each kind of change
-half way against an acceptance and finds no deadlock.
+(`ApiaryPro.Transfers`). `test/apiary_pro/lock_order_races_test.exs` pauses a change of
+a level half way against an acceptance and finds no deadlock.
 
 A workspace's deletion locks the workspace without the organisation's row first, and
 then takes no organisation `FOR UPDATE`, so it cannot close a cycle. An account's
@@ -1975,5 +1945,4 @@ core's helpers, in `test/apiary_pro/`: `access_races_test.exs`,
 `feature_grant_races_test.exs`, `gateway_races_test.exs`, `lock_order_races_test.exs`,
 `operators_races_test.exs`, `organisation_policy_races_test.exs`,
 `organisation_variables_races_test.exs`, `people_lock_races_test.exs`,
-`people_rows_races_test.exs`, `suspension_races_test.exs`
-and `transfer_races_test.exs`.
+`people_rows_races_test.exs` and `suspension_races_test.exs`.

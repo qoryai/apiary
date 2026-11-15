@@ -12,7 +12,7 @@ defmodule ApiaryPro.ModelChainTest do
 
   alias Apiary.Access
   alias Apiary.Audit.Entry
-  alias ApiaryPro.{Edition, Flags, Operators, Tenants, Transfers}
+  alias ApiaryPro.{Edition, Flags, Operators, Tenants}
   alias ApiaryPro.Tenants.Tenant
 
   @moduletag with_features: Apiary.Features.all()
@@ -20,7 +20,6 @@ defmodule ApiaryPro.ModelChainTest do
   # An operator and its client, made while the flag is off, then the flag on; and another
   # operator with a client.
   setup do
-    Flags.put_transfers(true)
     Flags.put_operator_infrastructure(false)
 
     operator = operator_fixture()
@@ -203,43 +202,6 @@ defmodule ApiaryPro.ModelChainTest do
 
       assert {:error, :suspended} = set(ctx, :operator)
       assert chain(ctx.client) == :organisation
-    end
-  end
-
-  describe "a drop" do
-    test "sets the switch back to the organisation's", ctx do
-      {:ok, _client} = set(ctx, :operator)
-      assert chain(ctx.client) == :operator
-
-      # A drop is not offered while the operator owns its clients: it is done as before.
-      Flags.put_operator_infrastructure(false)
-      id = id(ctx)
-
-      assert {:ok, _client} =
-               Transfers.drop(ctx.operator.scope, id, ctx.client.organisation.name)
-
-      assert Repo.get!(Tenant, id).operator_id == nil
-      assert Repo.get!(Tenant, id).model_chain == :organisation
-      Flags.put_operator_infrastructure(true)
-      assert Edition.model_choice_chain(id) == "organisation"
-    end
-
-    test "is refused with the switch unchanged when it fails", ctx do
-      {:ok, _client} = set(ctx, :operator)
-      Flags.put_operator_infrastructure(false)
-
-      assert {:error, :confirmation} = Transfers.drop(ctx.operator.scope, id(ctx), "Not it")
-      assert Repo.get!(Tenant, id(ctx)).model_chain == :operator
-    end
-
-    test "is also what a client's leaving does", ctx do
-      {:ok, _client} = set(ctx, :operator)
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, _client} =
-               Transfers.leave(ctx.client.owner.scope, ctx.operator.organisation.name)
-
-      assert Repo.get!(Tenant, id(ctx)).model_chain == :organisation
     end
   end
 

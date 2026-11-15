@@ -10,8 +10,8 @@ defmodule ApiaryPro.AccessTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Apiary.AccessKeysFixtures
@@ -43,14 +43,9 @@ defmodule ApiaryPro.AccessTest do
       for action <- off, do: refute(ApiaryPro.Access.hidden?(action), "#{action}")
     end
 
-    transfers = [
-      :"organisation.transfer",
-      :"organisation.withdraw_transfer",
-      :"organisation.leave_operator",
-      :"client.accept"
-    ]
+    transfers = [:"organisation.withdraw_transfer"]
 
-    while_on = [:"client.drop", :"client.invite_owner"]
+    while_on = [:"client.invite_owner"]
     while_off = [:"client.invite_admin", :"client.set_model_chain"]
 
     Flags.put_transfers(false)
@@ -113,7 +108,7 @@ defmodule ApiaryPro.AccessTest do
   end
 
   describe "an operated client's owner" do
-    test "acts there as an owner anywhere, and leaves the operator; the operator's people do not" do
+    test "acts there as an owner anywhere; the operator's people do not" do
       # The operator's people change nothing in Main, which the operator operates, and find
       # nothing the client owns as a whole.
       operator = operator_fixture()
@@ -126,8 +121,7 @@ defmodule ApiaryPro.AccessTest do
 
       for {action, subject} <- [
             {:"node.create", client.workspace},
-            {:"organisation.rename", client.organisation},
-            {:"organisation.leave_operator", client.organisation}
+            {:"organisation.rename", client.organisation}
           ] do
         assert Access.authorize(owner, action, subject) == :ok, "#{action}"
 
@@ -380,8 +374,6 @@ defmodule ApiaryPro.AccessTest do
     @changes_in_client [
       {:"organisation.rename", :organisation},
       {:"organisation.delete", :organisation},
-      {:"organisation.transfer", :organisation},
-      {:"organisation.leave_operator", :organisation},
       {:"workspace.rename", :workspace},
       {:"workspace.delete", :organisation},
       {:"retention.edit", :workspace},
@@ -440,12 +432,6 @@ defmodule ApiaryPro.AccessTest do
       assert Access.authorize(admin, :"member.invite", ctx.invitation) == :ok
       assert Access.authorize(owner, :"member.change_level", ctx.client_admin.membership) == :ok
       assert Access.authorize(owner, :"security_policy.lock", ctx.client.workspace) == :ok
-
-      assert Access.authorize(owner, :"organisation.leave_operator", ctx.client.organisation) ==
-               :ok
-
-      assert Access.authorize(admin, :"organisation.leave_operator", ctx.client.organisation) ==
-               {:error, :forbidden}
     end
 
     test "with a membership in the client too, it decides what they change, and the operator's reach adds the workspace it operates",
@@ -499,7 +485,7 @@ defmodule ApiaryPro.AccessTest do
       }
     end
 
-    test "its owners and admins create clients and invite, renew and revoke their first owners' invitations; its owners drop and delete them",
+    test "its owners and admins create clients and invite, renew and revoke their first owners' invitations; its owners delete them",
          ctx do
       operator = ctx.operator.organisation
 
@@ -520,9 +506,6 @@ defmodule ApiaryPro.AccessTest do
         assert Access.authorize(ctx.member, action, operator) == {:error, :forbidden}
       end
 
-      assert Access.authorize(ctx.operator.scope, :"client.drop", operator) == :ok
-      assert Access.authorize(ctx.admin, :"client.drop", operator) == {:error, :forbidden}
-      assert Access.authorize(ctx.member, :"client.drop", operator) == {:error, :forbidden}
       assert Access.authorize(ctx.member, :"client.read", operator) == :ok
     end
   end
@@ -797,21 +780,15 @@ defmodule ApiaryPro.AccessTest do
         :"instance.change_sign_up"
       ]
 
-      # So are accepting an organisation offered to an operator, granting a client its
-      # features and dropping one, asked in an operator, and leaving an operator, asked in
-      # a client.
+      # So are granting a client its features and deleting one, asked in an operator.
       placed = [
-        :"client.accept",
         :"client.grant_features",
-        :"client.drop",
-        :"client.delete",
-        :"organisation.leave_operator" | instance
+        :"client.delete" | instance
       ]
 
       assert Enum.sort(owner_only) ==
                Enum.sort(
                  [
-                   :"organisation.transfer",
                    :"organisation.withdraw_transfer",
                    :"organisation_policy.edit",
                    :"organisation_policy.set_floor",

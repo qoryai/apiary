@@ -17,8 +17,8 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Apiary.OrganisationsFixtures
@@ -37,9 +37,7 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     :"client.read",
     :"client.create",
     :"client.invite_owner",
-    :"client.accept",
     :"client.grant_features",
-    :"client.drop",
     :"client.delete"
   ]
 
@@ -183,13 +181,6 @@ defmodule ApiaryPro.InstanceOrganisationTest do
     here = first.organisation.id
     scope = scope_in(first.user, first.organisation)
 
-    # An organisation of no operator, which is never offered to one: it stays the
-    # instance's.
-    assert {:ok, %{organisation: opco}} =
-             Operators.create_organisation(scope, %{"name" => "Opco", "kind" => "operator"})
-
-    assert {:error, :forbidden} = Transfers.offer_to_operator(scope, opco.slug)
-
     assert {:ok, operator} = Operators.change_kind(scope, here, :operator)
     assert %Tenant{kind: :operator, instance_organisation: true} = tenant_of(operator)
 
@@ -203,7 +194,18 @@ defmodule ApiaryPro.InstanceOrganisationTest do
 
     # An organisation again once it has no clients, the rule of every operator.
     assert {:error, :has_clients} = Operators.change_kind(scope, here, :organisation)
-    {:ok, _} = Transfers.drop(scope, client.organisation.id, client.organisation.name)
+    # Nothing in the product ends the relation or the link to the client's workspace any
+    # more: the test ends both in the database.
+    id = client.organisation.id
+
+    Repo.delete_all(
+      from l in ApiaryPro.Operators.WorkspaceOperator, where: l.organisation_id == ^id
+    )
+
+    Repo.update_all(from(t in Tenant, where: t.organisation_id == ^id),
+      set: [operator_id: nil, operator_since: nil, model_chain: :organisation]
+    )
+
     assert {:ok, organisation} = Operators.change_kind(scope, here, :organisation)
     assert %Tenant{kind: :organisation, instance_organisation: true} = tenant_of(organisation)
   end

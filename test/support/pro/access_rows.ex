@@ -6,7 +6,7 @@ defmodule ApiaryPro.AccessRows do
 
       unreached_member    a member of the organisation, not added to the workspace
       client_owner        an owner of a client of an operator, in the client: an owner as
-                          anywhere, who may also leave the operator
+                          anywhere
       operator_owner      an owner of an operator, in the workspace Main of a client of
                           it, which the operator operates, through the operator:
                           read-only
@@ -31,8 +31,7 @@ defmodule ApiaryPro.AccessRows do
   only by the instance actions. Both are the role `reader`. An operator's actions over its
   clients are asked in an operator, the instance organisation among them, which the
   world makes one as the first sign-up of an instance with `managed_organisations` does;
-  leaving an operator in a client; the instance actions in the instance organisation
-  alone. Creating an
+  the instance actions in the instance organisation alone. Creating an
   organisation is a person's own, asked of the new organisation, of a kind the suite's
   configuration opens: everyone signed in may, wherever they ask from.
   """
@@ -76,9 +75,7 @@ defmodule ApiaryPro.AccessRows do
     :"client.invite_owner",
     :"client.revoke_owner_invitation",
     :"client.renew_owner_invitation",
-    :"client.accept",
     :"client.grant_features",
-    :"client.drop",
     :"client.delete"
   ]
 
@@ -93,10 +90,6 @@ defmodule ApiaryPro.AccessRows do
   # The operator's choice of the model providers a client uses, not found for everyone
   # while the operator does not own its clients, as in this table.
   @needs_operator_infrastructure [:"client.set_model_chain"]
-
-  # The actions of a client over its place: asked in an organisation with no operator,
-  # they are not found.
-  @in_clients [:"organisation.leave_operator"]
 
   # The instance actions asked of another organisation than the instance organisation.
   @on_another [
@@ -257,10 +250,8 @@ defmodule ApiaryPro.AccessRows do
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
       {:"workspace_access.remove",
        yes: [:owner, :admin, :instance_org_admin, :feature_off, :hidden] ++ @owners},
-      {:"organisation.transfer", yes: [:owner, :client_owner, :feature_off, :hidden]},
       {:"organisation.withdraw_transfer", yes: [:owner, :client_owner, :feature_off, :hidden]},
       {:"organisation.accept_transfer", yes: []},
-      {:"organisation.leave_operator", yes: [:client_owner]},
       {:"client.read", yes: @operator_admins},
       {:"client.create", yes: @operator_admins},
       {:"client.invite_owner", yes: @operator_admins},
@@ -269,9 +260,7 @@ defmodule ApiaryPro.AccessRows do
       {:"client.invite_admin", yes: []},
       {:"client.revoke_admin_invitation", yes: []},
       {:"client.renew_admin_invitation", yes: []},
-      {:"client.accept", yes: [:instance_owner, :instance_admin]},
       {:"client.grant_features", yes: [:instance_owner, :instance_admin]},
-      {:"client.drop", yes: [:instance_owner, :instance_admin]},
       {:"client.set_model_chain", yes: []},
       {:"client.delete", yes: [:instance_owner, :instance_admin]},
       {:"instance.read", yes: [:instance_owner]},
@@ -421,9 +410,6 @@ defmodule ApiaryPro.AccessRows do
         :not_found
 
       action in @placed and actor not in @operator_admins ->
-        :not_found
-
-      action in @in_clients and actor not in [:client_owner | @operators] ->
         :not_found
 
       actor in @operators and action in [:"secret.read", :"variable.read"] ->

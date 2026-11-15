@@ -9,7 +9,7 @@ defmodule ApiaryPro.Deletion do
   The instance organisation holds the instance admins, and an instance without it would
   give its next sign-up the instance: it is never marked nor purged,
   `:instance_organisation`. An operator is deleted once it has no clients, `:has_clients`:
-  each is deleted or dropped first, and the database keeps the reference until then; and
+  each is deleted first, and the database keeps the reference until then; and
   once it operates no workspace, `:has_operated_workspaces`: each link ends first
   (`ApiaryPro.WorkspaceOperators`), and the database keeps the reference until then. A
   workspace with an operator is not deleted, `:operated`, until its link ends. The people of the operators of an organisation's
@@ -102,13 +102,13 @@ defmodule ApiaryPro.Deletion do
   delete_client/3 marks the client `client_id` of the scope's organisation, an operator,
   for deletion (`client.delete`, an owner's of the operator), while the client has no
   owner yet, when `confirmation` is its name: nobody else is in it, so its operator, which
-  created it, deletes it rather than drops it. It is purged after the grace period, as an
+  created it, deletes it. It is purged after the grace period, as an
   organisation its owner deletes; its pending invitations are deleted at once, each an
   entry of `invitation.revoke` in its trail, the reason `client_deleted`. An entry of
   `client.delete` in the operator's trail, which outlives the client's, names it.
 
-  `{:ok, client}`, marked; `{:error, :has_owner}` for a client that has an owner, which
-  its operator drops instead (`ApiaryPro.Transfers.drop/3`); `{:error, :confirmation}` for a
+  `{:ok, client}`, marked; `{:error, :has_owner}` for a client that has an owner;
+  `{:error, :confirmation}` for a
   confirmation that is not its name; `{:error, :not_found}` for an organisation that is
   no client of the operator, or one marked already, and `Apiary.Access`'s answer.
   """

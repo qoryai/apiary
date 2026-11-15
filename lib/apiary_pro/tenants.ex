@@ -25,8 +25,7 @@ defmodule ApiaryPro.Tenants do
   one references it. The instance organisation, made an operator, may be the operator
   of clients too, and is never a client itself, which a check keeps. A client owns its
   people as any organisation, and its operator's people read it (`ApiaryPro.Reach`). Set
-  at creation; emptied when the client is dropped (`ApiaryPro.Transfers`). Nothing here is ever cast from a
-  form.
+  at creation. Nothing here is ever cast from a form.
 
   **On the organisation.** The tenant travels on the organisation it describes, in its
   `edition` map under `:tenant` (`Apiary.Organisations.Organisation`): `put/1` reads the

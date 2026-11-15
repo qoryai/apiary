@@ -1,7 +1,7 @@
 defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
   # The demo world (`Mix.Tasks.ApiaryPro.Demo`): organisations the owner owns and joins, an
-  # operator and its clients, runs in every workspace with an owner, and the requests,
-  # offers and suspensions after. Not async: it fills workspaces from several processes at
+  # operator and its clients, runs in every workspace with an owner, and the arbitration
+  # and suspensions after. Not async: it fills workspaces from several processes at
   # once, so the sandbox is shared, and it writes through the suite's instance
   # organisation, committed once outside the sandbox (docs/conventions.md, Tests). The
   # instance has every feature while it runs.
@@ -13,8 +13,8 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import ApiaryPro.OperatorsFixtures
@@ -150,7 +150,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert length(Enum.uniq(numbers)) == length(numbers)
   end
 
-  test "features narrowed, an offer, an arbitration and suspensions",
+  test "features narrowed, an arbitration and suspensions",
        %{admin: admin} do
     build(admin, ["--skip-runs"])
     operator = organisation("Zentrevo Works")
@@ -169,10 +169,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
            }) ==
              ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{organisation: vellorin})
 
-    assert %Transfer{kind: :to_operator, operator_id: operator_id} =
-             Repo.get_by!(Transfer, organisation_id: organisation("Quistral Studio").id)
-
-    assert operator_id == operator.id
+    refute Repo.get_by(Transfer, organisation_id: organisation("Quistral Studio").id)
 
     ines = Apiary.Accounts.get_user_by_email("ines.moreau@example.com")
     kofi = Apiary.Accounts.get_user_by_email("kofi.mensah@example.com")

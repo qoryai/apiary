@@ -310,7 +310,6 @@ defmodule ApiaryPro.Suspensions do
             changeset ->
               with {:ok, tenant} <- Repo.insert_or_update(changeset),
                    changed = Tenants.put_tenant(organisation, tenant),
-                   {:ok, _withdrawn} <- withdraw_offers(changed, action, scope),
                    {:ok, _entry} <-
                      Audit.record(
                        Repo,
@@ -333,16 +332,6 @@ defmodule ApiaryPro.Suspensions do
       end)
     end
   end
-
-  # A suspended operator takes on no client: the offers to it are withdrawn, and the
-  # organisations that made them may offer themselves elsewhere.
-  defp withdraw_offers(%Organisation{} = organisation, :"instance.suspend_organisation", scope) do
-    if Tenants.operator?(organisation),
-      do: ApiaryPro.Transfers.withdraw_offers_to(organisation, "operator_suspended", scope),
-      else: {:ok, 0}
-  end
-
-  defp withdraw_offers(_organisation, _action, _scope), do: {:ok, 0}
 
   # An organisation marked for deletion is gone but for its purge: it is not suspended;
   # one suspended before its marking may still be activated.

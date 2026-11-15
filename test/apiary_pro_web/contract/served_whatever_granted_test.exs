@@ -4,7 +4,7 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   # Runs are taken away still has its runs registered, attached, their events and their
   # outcome stored; an organisation whose security policy is taken away is still served
   # its policy and the organisation's, at registration, reload and with each batch; and a
-  # client without the security policy, narrowed or dropped, is served the same document.
+  # client without the security policy is served the same document.
   # Not async: an operator is made by an instance admin, and the instance's features are
   # the node's.
   use ApiaryWeb.ConnCase, async: false
@@ -26,7 +26,7 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   alias Apiary.Organisations.Organisation
   alias Apiary.Policy.Serving
   alias Apiary.Runs.{Event, Run}
-  alias ApiaryPro.{Grants, OrganisationPolicy, Transfers}
+  alias ApiaryPro.{Grants, OrganisationPolicy}
 
   @moduletag with_features: Features.all()
 
@@ -220,14 +220,10 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
       assert digest(ctx.key) == ctx.served
     end
 
-    test "keeps the same digest, and keeps it once dropped", ctx do
+    test "keeps the same digest", ctx do
       client = ctx.client.organisation
       assert {:ok, _} = Grants.set_client(ctx.operator.scope, client.id, [:observability])
       refute has?(client, :security)
-      assert digest(ctx.key) == ctx.served
-
-      assert {:ok, _} = Transfers.drop(ctx.operator.scope, client.id, client.name)
-      assert has?(client, :security)
       assert digest(ctx.key) == ctx.served
     end
   end

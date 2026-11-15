@@ -2,8 +2,8 @@ defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
   @moduledoc """
   An operator's people and its clients while `ApiaryPro.Flags.operator_infrastructure?/0`
   is off: everything as it was. The operator's people read its clients and change nothing
-  there, a client's first person is its owner, the actions of the first admin's invitation
-  are not found, and Drop is offered.
+  there, a client's first person is its owner, and the actions of the first admin's
+  invitation are not found.
   """
   # The flag is set for this process (`ApiaryPro.Flags.put_operator_infrastructure/1`).
   use ApiaryWeb.ConnCase, async: true
@@ -92,7 +92,7 @@ defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
       assert has_element?(lv, "#client-#{client.id}-owners", "No owner yet")
     end
 
-    test "a client's first person is its owner, and Drop is offered once it has one",
+    test "a client's first person is its owner",
          %{conn: conn} do
       operator = operator_fixture()
       client = client_fixture(operator.scope, "Acme")
@@ -102,7 +102,6 @@ defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
         live(log_in_user(conn, operator.user), ~p"/#{operator.organisation}/clients")
 
       render_async(lv)
-      assert has_element?(lv, "#client-#{client.organisation.id}-drop")
       assert has_element?(lv, "th", "Owner")
     end
 

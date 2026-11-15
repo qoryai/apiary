@@ -310,24 +310,6 @@ defmodule ApiaryPro.NodesPartTest do
       :ok
     end
 
-    test "are deleted when its operator drops it", ctx do
-      # A drop is not found while the operator owns its clients.
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, _} =
-               ApiaryPro.Transfers.drop(ctx.operator.scope, ctx.client.organisation.id, "Acme")
-
-      assert rows(ctx.client.organisation.id) == []
-    end
-
-    test "are deleted when it leaves its operator", ctx do
-      Flags.put_transfers(true)
-      owner = fresh(ctx.client.owner.user, ctx.client.organisation)
-
-      assert {:ok, _} = ApiaryPro.Transfers.leave(owner, ctx.operator.organisation.name)
-      assert rows(ctx.client.organisation.id) == []
-    end
-
     test "are deleted when it becomes a new client", ctx do
       client = Repo.reload!(ctx.client.organisation)
       assert {:ok, _} = Grants.written_out(client, {:client, ctx.operator.organisation})

@@ -13,7 +13,6 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   @behaviour ApiaryWeb.RefusalsCase
 
   @client_owner_email %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}
-  @dropped %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}
   @sneaky_gateway %{"node" => %{"name" => "sneaky", "url" => "https://sneaky.example"}}
 
   @impl true
@@ -42,8 +41,6 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       # What is the client's own to decide: refused to the operator's owner.
       {:"organisation.delete", :operator_owner, "/:client/settings", "delete_organisation",
        %{"confirm" => %{"slug" => :client}}},
-      {:"organisation.leave_operator", :operator_owner, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}}},
 
       # The nodes of the workspace the operator operates are the operator's: not there for
       # the client's people.
@@ -90,16 +87,12 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       {:"organisation_policy.edit", :operator_admin, "/:client/policy", "rule_save", %{},
        answer: :not_found_at_mount, needs: :organisation_policy},
 
-      # The first owner's invitation and the drop are not there; the first admin's is
-      # refused where the client has someone already.
+      # The first owner's invitation is not there; the first admin's is refused where the
+      # client has someone already.
       {:"client.invite_owner", :operator_owner, "/:operator/clients", "invite_owner",
        @client_owner_email, answer: :not_found},
       {:"client.invite_owner", :operator_owner, "/:operator/clients/:client_id/owner",
        "invite_owner", @client_owner_email, answer: :not_found_at_mount},
-      {:"client.drop", :operator_owner, "/:operator/clients", "drop_client", @dropped,
-       answer: :not_found},
-      {:"client.drop", :operator_owner, "/:operator/clients/:client_id/drop", "drop_client",
-       @dropped, answer: :not_found_at_mount},
       {:"client.invite_admin", :operator_owner, "/:operator/clients", "invite_admin",
        @client_owner_email},
       {:"client.invite_admin", :operator_member, "/:operator/clients", "invite_admin",

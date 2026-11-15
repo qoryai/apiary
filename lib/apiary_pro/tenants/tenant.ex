@@ -28,8 +28,7 @@ defmodule ApiaryPro.Tenants.Tenant do
     field :operator_since, :utc_datetime_usec
     # `tenants.model_chain` is `organisation`, the default, or `operator`. The database keeps
     # it one of the two, `:operator` only with an operator: a check allows `operator` only on
-    # a row that has an operator, and a drop or a leaving sets the column back to
-    # `organisation` in the same change.
+    # a row that has an operator.
     field :model_chain, Ecto.Enum, values: @model_chains, default: :organisation
     field :suspended_at, :utc_datetime_usec
     field :suspended_by_id, :binary_id

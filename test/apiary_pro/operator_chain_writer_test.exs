@@ -11,14 +11,13 @@ defmodule ApiaryPro.OperatorChainWriterTest do
 
   alias Apiary.{Connections, ModelChoices}
   alias Apiary.Accounts.Scope
-  alias ApiaryPro.{Edition, Flags, Tenants, Transfers}
+  alias ApiaryPro.{Edition, Flags, Tenants}
 
   @moduletag with_features: Apiary.Features.all()
 
   # Two operators, each with clients, made while the flag is off, then the flag on: the
   # first operator has a client on its switch (`on`) and one on the default (`off`).
   setup do
-    Flags.put_transfers(true)
     Flags.put_operator_infrastructure(false)
 
     operator = operator_fixture()
@@ -268,25 +267,7 @@ defmodule ApiaryPro.OperatorChainWriterTest do
     end
   end
 
-  describe "a drop" do
-    test "sets the switch back to the organisation's, and the client resolves no operator",
-         ctx do
-      assert Tenants.model_chain_of(id(ctx.on)) == :operator
-      assert Edition.operator_chain_organisation(id(ctx.on)) == ctx.operator.organisation.id
-
-      # A drop is not offered while the operator owns its clients: it is done as before.
-      Flags.put_operator_infrastructure(false)
-
-      assert {:ok, _client} =
-               Transfers.drop(ctx.operator.scope, id(ctx.on), ctx.on.organisation.name)
-
-      Flags.put_operator_infrastructure(true)
-
-      assert Tenants.model_chain_of(id(ctx.on)) == :organisation
-      assert Edition.model_choice_chain(id(ctx.on)) == "organisation"
-      assert Edition.operator_chain_organisation(id(ctx.on)) == nil
-    end
-
+  describe "an organisation that is no client" do
     test "reads the organisation's switch for an organisation that is no client", ctx do
       assert Tenants.model_chain_of(ctx.operator.organisation.id) == :organisation
       assert Tenants.model_chain_of(sign_up_fixture().organisation.id) == :organisation

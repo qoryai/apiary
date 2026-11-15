@@ -14,7 +14,7 @@ defmodule ApiaryPro.GatewaysTest do
 
   alias Apiary.{Deletion, Edition, Repo}
   alias Apiary.Runs.{ProviderCredential, WorkCredential}
-  alias ApiaryPro.{Flags, Gateways, Suspensions, Transfers}
+  alias ApiaryPro.{Flags, Gateways, Suspensions}
   alias ApiaryPro.Tenants.Tenant
 
   @moduletag with_features: Apiary.Features.all()
@@ -118,22 +118,6 @@ defmodule ApiaryPro.GatewaysTest do
       Flags.put_operator_infrastructure(true)
 
       assert Enum.map([ctx.operator.organisation, ctx.first.organisation], &answers/1) == before
-    end
-
-    test "a dropped client is served by nobody, and its operator serves it no more", ctx do
-      Flags.put_operator_infrastructure(false)
-
-      {:ok, _} =
-        Transfers.drop(
-          ctx.operator.scope,
-          ctx.first.organisation.id,
-          ctx.first.organisation.name
-        )
-
-      Flags.put_operator_infrastructure(true)
-
-      assert answers(ctx.first.organisation) == {[], []}
-      assert answers(ctx.operator.organisation) == {[], [ctx.second.organisation.id]}
     end
   end
 

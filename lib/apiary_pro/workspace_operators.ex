@@ -4,8 +4,7 @@ defmodule ApiaryPro.WorkspaceOperators do
   one row per operated workspace (`ApiaryPro.Operators.WorkspaceOperator`): at most one
   operator per workspace, and an organisation may have a different operator on each of
   its workspaces. A workspace without a row has no operator. No code in the product
-  starts a link; an organisation that leaves its operator, or that the operator drops,
-  ends that operator's links in it (`ApiaryPro.Transfers`).
+  starts or ends a link.
 
   **On the organisation.** The links of an organisation's workspaces are in its
   `edition` map under `:operated`, a map of each operated workspace's id to its

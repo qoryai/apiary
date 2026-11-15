@@ -714,9 +714,9 @@ schemas beside it:
 - `ApiaryPro.Suspensions`: suspending and activating a person's account, and an
   organisation or an operator, instance actions of the instance admins, and the accounts
   Instance settings › Accounts lists (Suspension of accounts and organisations, below).
-- `ApiaryPro.Transfers`: a client's drop by its operator, and an organisation's ownership
-  when its owners cannot act: the arbiter's offers pending in `transfers`, their lapse
-  and their acceptance (Transfers, below).
+- `ApiaryPro.Transfers`: an organisation's ownership when its owners cannot act: the
+  arbiter's offers pending in `transfers`, their lapse and their acceptance (Transfers,
+  below).
 - `ApiaryPro.Features` and `ApiaryPro.Grants`: the edition's feature,
   `managed_organisations`, what an organisation or a workspace has of the instance's, and
   the grants that say so (Features below the instance, below).
@@ -951,10 +951,10 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   an organisation nor is deleted while one references it. A check keeps `operator_id` on
   an organisation of the kind `organisation`: an operator is never a client, and a client
   never becomes an operator. The relationship is set when the client is created, with
-  `operator_since`, the time it was set, which the operator's Clients page shows; it ends
-  when the operator drops it (Transfers, below); nothing else changes it, and a
-  suspension leaves it as it is. The instance organisation, made an operator, may be the
-  operator of clients, and is never a client itself, which a check keeps.
+  `operator_since`, the time it was set, which the operator's Clients page shows; nothing
+  changes it, and a suspension leaves it as it is. The instance organisation, made an
+  operator, may be the operator of clients, and is never a client itself, which a check
+  keeps.
 - **A client owns its people.** It has its owners, admins and members, its
   invitations, its settings and its security policy, as any organisation. The last-owner
   rule holds in it as anywhere, and `Apiary.Organisations.sole_owned_organisations/2`
@@ -992,8 +992,8 @@ manage the client's people. The relationship is `tenants.operator_id`, one level
   the operator invites one again, makes a new link for a pending invitation of one, or
   revokes one, from the Clients page (`ApiaryPro.Operators.invite_owner/4`,
   `renew_owner_invitation/4`, `revoke_owner_invitation/3`), and an
-  owner of the operator deletes it (`ApiaryPro.Deletion.delete_client/3`) rather than
-  drops it; the first owner's joining deletes the other pending invitations of an owner.
+  owner of the operator deletes it (`ApiaryPro.Deletion.delete_client/3`); the first
+  owner's joining deletes the other pending invitations of an owner.
   From then on the client's owners and admins invite and manage its people.
 - **The instance actions.** The instance organisation's owners list every organisation on
   Instance settings' Organisations, `/instance/organisations`, create an organisation or an
@@ -1226,23 +1226,17 @@ instance admins (`ApiaryPro.Suspensions`).
 
 ### Transfers
 
-An operator parts from a client by dropping it; an organisation whose owners are all
-suspended gets an owner again by the arbiter's offer and its acceptance
-(`ApiaryPro.Transfers`; [access.md](access.md), A client's drop and The instance
-actions).
+An organisation whose owners are all suspended gets an owner again by the arbiter's offer
+and its acceptance (`ApiaryPro.Transfers`; [access.md](access.md), The instance actions).
 
 - **`transfers`** holds the pending offers, organisation-keyed by `organisation_id`,
   which is unique: one pending offer per organisation, deleted when it is accepted or
   withdrawn, so the trail keeps what happened. The arbiter's is of the kind `to_admin`,
   always `arbitrated` and with its `reason`, and `recipient_id`, the admin, under a
   composite key against their membership, so their removal takes the offer with it.
+  Nothing writes or reads rows of the kind `to_operator` any more.
   Checks keep the fields of each kind together. The table is in the edition's deletion
   tables (`ApiaryPro.Deletion.Tables`).
-- **Dropping.** An owner of the operator drops a client (`client.drop`), at once and
-  with no offer, the client's name typed to confirm, which `ApiaryPro.Transfers` checks:
-  its tenant's `operator_id` and `operator_since` are set to nil, the operator's grants
-  to it are written out so it follows the instance, and one entry goes into the client's
-  trail and one into the operator's. Its people, workspaces and policy stay as they are.
 - **The arbiter.** An instance admin's offer of the ownership of an organisation whose
   owners are all suspended, a client as any other, replaces the one pending, which its
   entry names. Accepting it makes the admin an owner and changes no operator: a client
@@ -1251,8 +1245,7 @@ actions).
   then too. An owner who may act again takes back what the arbiter offered (the edition's
   `membership_changed/5`, `ApiaryPro.Transfers.membership_activated/1`).
 - **Race safety.** Every write takes its locks in the lock order of
-  [access.md](access.md) (The lock order). A drop locks the client `FOR NO KEY UPDATE`,
-  then its operator `FOR SHARE`; the arbiter's acceptance holds the organisation
+  [access.md](access.md) (The lock order). The arbiter's acceptance holds the organisation
   `FOR SHARE`, locks its owners, then the membership and account of the person who
   accepts, then the offer; a person the offer is not for, and an organisation with no
   offer, get not found from a read without a lock and take none of these. So a write in
@@ -1297,8 +1290,7 @@ is shown.
 - **Where an organisation sits.** Its grants are written out in the transaction that
   moves it: made an operator, it is granted what it had, and from then only a grant
   changes it; made an organisation again, it keeps what it had, opt-out; a new operator
-  is granted what the instance has; a new client what the operator has; a client that
-  is dropped follows the instance.
+  is granted what the instance has; a new client what the operator has.
 - **Absent, as off on the instance.** Every surface a person meets asks
   `Apiary.Features.visible?/2` with their scope, as in the core, so what an organisation
   is not shown is absent for its people there, and in its workspaces, as a feature the
@@ -1338,9 +1330,8 @@ What the edition adds:
   trail of the organisation suspended, with no address or client); the arbiter's offer of
   an organisation's ownership (`instance.transfer`, in the organisation offered, with its
   reason), its lapse and its acceptance (`organisation.withdraw_transfer` and
-  `organisation.accept_transfer`, in it); a client's drop (`client.drop`, in the client
-  and in the operator); the grants of features (`instance.grant_features`,
-  `client.grant_features`); the organisation's policy
+  `organisation.accept_transfer`, in it); the grants of features
+  (`instance.grant_features`, `client.grant_features`); the organisation's policy
   (`organisation_policy.edit`, `set_floor`, `set_switch`, on the organisation), its
   variables (`organisation_variable.edit`, on the variable, by name and never by value)
   and its secrets, which the core writes as a workspace's (`secret.write`, on the secret,
@@ -1360,7 +1351,7 @@ core's `Apiary.Deletion`.
 - **What it refuses** (`ApiaryPro.Deletion.refusal/2`, the edition's
   `deletion_refusal/2`), asked on the locked row after the core's refusals: the
   instance organisation (`:instance_organisation`), which holds the instance admins, and
-  an operator that still has clients (`:has_clients`): each is deleted or dropped first,
+  an operator that still has clients (`:has_clients`): each is deleted first,
   and the database keeps the reference until then.
 - **Whom it tells** (`ApiaryPro.Deletion.changed/4`, the edition's `deletion_changed/4`):
   a client's operator reads it through the operator, so the operator's people hear of its

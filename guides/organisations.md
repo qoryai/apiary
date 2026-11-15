@@ -57,7 +57,7 @@ cancel the deletion on their organisations page, and everything comes back; rete
 not prune its workspace meanwhile. An organisation's only workspace is not deleted by
 itself: the organisation is.
 <!-- feature: managed_organisations -->
-An operator with clients is not deleted until each client is purged or dropped ([Operators
+An operator with clients is not deleted until each client is purged ([Operators
 and their clients](operators.md)).
 <!-- /feature -->
 

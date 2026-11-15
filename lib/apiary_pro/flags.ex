@@ -18,14 +18,11 @@ defmodule ApiaryPro.Flags do
   @operator_infrastructure :operator_infrastructure
   @feature_visibility :feature_visibility
 
-  # transfers?/0 says whether an organisation's owners may offer it to an operator and
-  # withdraw that offer, an operator's owners may accept an organisation offered to it,
-  # and a client's owners may leave its operator (`organisation.transfer`,
-  # `organisation.withdraw_transfer`, `client.accept`, `organisation.leave_operator`). Off
-  # by default: `config :apiary_pro, :transfers, true` turns it on. While it is off,
-  # `ApiaryPro.Access` answers each of these actions not found, for everyone, so no page,
-  # item or path offers them, an offer made before included; their audit entries still
-  # read as they did.
+  # transfers?/0 says whether an organisation's owners read its pending offer of
+  # ownership on Settings › Ownership (`organisation.withdraw_transfer`). Off by default:
+  # `config :apiary_pro, :transfers, true` turns it on. While it is off,
+  # `ApiaryPro.Access` answers that action not found, for everyone; its audit entries
+  # still read as they did.
   #
   # A process may override the config for itself and the processes it starts
   # (`put_transfers/1`): the override is read from the process's dictionary, then from that
@@ -57,7 +54,7 @@ defmodule ApiaryPro.Flags do
   # client's owners and admins still make workspaces. Only the operator's owners lock and
   # unlock a client's workspace rules, change or remove a locked one, and change the
   # client's organisation policy, refused to its owners made before the switch, and the
-  # refusals name the operator; and Drop is hidden. Off by default:
+  # refusals name the operator. Off by default:
   # `config :apiary_pro, :operator_infrastructure, true` turns it on. While it is off,
   # everything is as it was: the operator's people read its clients and change nothing
   # there, the first person of a client is its owner, and the actions of the first

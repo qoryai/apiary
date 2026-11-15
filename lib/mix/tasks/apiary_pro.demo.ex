@@ -56,7 +56,7 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
 
   Running it again finds what it made, the people by address, the organisations and
   workspaces by name, the memberships by person, and makes only what is missing; the
-  offer, the arbitration and the suspensions are made once.
+  arbitration and the suspensions are made once.
   """
 
   use Mix.Task
@@ -231,7 +231,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
 
   # The after-steps' subjects.
   @narrowed_organisation "Marrowick & Pend"
-  @offered_to_operator "Quistral Studio"
   @suspended_account "ines.moreau"
   @arbitrated_to "kofi.mensah"
 
@@ -802,7 +801,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   defp settle(world) do
     Mix.shell().info("")
     grants(world)
-    offer(world)
     arbitration(world)
     suspend_client(world)
   end
@@ -833,30 +831,6 @@ defmodule Mix.Tasks.ApiaryPro.Demo do
   # alone.
   defp narrowed_clients(world) do
     world.clients |> Enum.filter(& &1.person) |> Enum.take_every(14) |> Enum.take(3)
-  end
-
-  # Quistral Studio offered to the operator, and not accepted, only where the instance
-  # shows offers (`ApiaryPro.Flags.transfers?/0`).
-  defp offer(world) do
-    if ApiaryPro.Flags.transfers?(), do: make_offer(world), else: :ok
-  end
-
-  defp make_offer(world) do
-    organisation = Map.fetch!(world.organisations, @offered_to_operator).organisation
-    operator = world.operator.organisation
-
-    case world.owner
-         |> scope!(organisation)
-         |> Transfers.offer_to_operator(operator.slug) do
-      {:ok, _transfer} ->
-        Mix.shell().info("#{@offered_to_operator} offered to #{operator.name}")
-
-      {:error, reason} when reason in [:pending, :client] ->
-        Mix.shell().info("#{@offered_to_operator}: offered already, left as it is")
-
-      refused ->
-        Mix.raise("#{@offered_to_operator} was not offered: #{inspect(refused)}")
-    end
   end
 
   # The only owner of the organisation they created suspended, and its ownership offered by
