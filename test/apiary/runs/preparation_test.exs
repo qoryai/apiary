@@ -1343,6 +1343,31 @@ defmodule Apiary.Runs.PreparationTest do
                  "#{ctx.scope.workspace.name} checks that build-pool is running."
     end
 
+    # A dispatch left from before migration 20261115110000 can have a pool of another
+    # organisation than the run's: support is given the run, as for the instance's pool.
+    test "a lapsed lease on a pool of another organisation", ctx do
+      %{dispatch: dispatch, registered: registered} = claimed!(ctx)
+      lapse!(dispatch)
+
+      assert Dispatches.dispatched(ctx.key, dispatch.public_id, %{external: nil}) ==
+               {:error, :lease_expired}
+
+      %{scope: other} = sign_up_fixture()
+      theirs = pool_fixture(other, %{name: "other-pool"})
+      change_dispatch!(dispatch, pool_id: theirs.id)
+
+      run = Repo.get!(Run, registered.id)
+      assert %{machine: machine, stopped: stopped} = Preparation.read(ctx.scope, run)
+      assert machine.pool == %{id: theirs.public_id, name: "other-pool", place: :other}
+      assert stopped.fixer == :support
+
+      assert stopped.text ==
+               "other-pool did not start a machine within 10 minutes. " <>
+                 "Contact support with run #{run.public_id}."
+
+      refute stopped.text =~ ctx.scope.workspace.name
+    end
+
     test "a code not redeemed within 15 minutes, on the instance's pool", ctx do
       fixture = handed_over_fixture(ctx.scope, ctx.key)
       instance_pool = instance_pool_fixture(%{name: "qory-pool"})
