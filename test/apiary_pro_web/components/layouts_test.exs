@@ -167,9 +167,8 @@ defmodule ApiaryProWeb.LayoutsTest do
     assert List.last(ids) == "nav-organisation_policy"
     refute has_element?(view, "#nav-group-guard")
 
-    # No group of the operator's and no Clients entry, though it operates a workspace.
+    # No group of the operator's, though it operates a workspace.
     refute has_element?(view, "#nav-group-operator")
-    refute has_element?(view, "#nav-clients")
 
     # Settings' sections are the frame's second column, beside the page, not in it.
     refute has_element?(view, "#main #settings-tabs")
@@ -189,23 +188,23 @@ defmodule ApiaryProWeb.LayoutsTest do
     # Operator A operates Main of Acme (O); Platform of Acme has no operator.
     setup do
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-      client = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Acme")
-      platform = workspace_fixture(client.organisation, "Platform")
-      %{operator: operator, client: client, platform: platform}
+      operated = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Acme")
+      platform = workspace_fixture(operated.organisation, "Platform")
+      %{operator: operator, operated: operated, platform: platform}
     end
 
     test "a person of the operator finds it under the operator, after its workspaces, and no other part of the organisation",
-         %{operator: operator, client: client, platform: platform} do
+         %{operator: operator, operated: operated, platform: platform} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
+      o = operated.organisation.slug
+      main = operated.workspace.slug
       conn = log_in_user(build_conn(), operator.user)
 
       {:ok, view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")
 
-      operated = "#organisation-menu-of-#{a} a#switch-#{a}_#{o}_#{main}"
-      assert has_element?(view, operated <> ":not([aria-current])[href^='/#{o}/#{main}/switch/']")
-      assert has_element?(view, operated <> " .truncate[title='Main · Acme']", "Main · Acme")
+      entry = "#organisation-menu-of-#{a} a#switch-#{a}_#{o}_#{main}"
+      assert has_element?(view, entry <> ":not([aria-current])[href^='/#{o}/#{main}/switch/']")
+      assert has_element?(view, entry <> " .truncate[title='Main · Acme']", "Main · Acme")
       assert has_element?(view, "#organisation-menu-of-#{a}:not([hidden])")
 
       # Below the operator's workspaces.
@@ -221,10 +220,10 @@ defmodule ApiaryProWeb.LayoutsTest do
     end
 
     test "in the operated workspace, its entry under the operator is the current one",
-         %{operator: operator, client: client} do
+         %{operator: operator, operated: operated} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
+      o = operated.organisation.slug
+      main = operated.workspace.slug
       conn = log_in_user(build_conn(), operator.user)
 
       {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
@@ -245,14 +244,14 @@ defmodule ApiaryProWeb.LayoutsTest do
     end
 
     test "a person of the operator who is a member of the organisation too finds the organisation and the operated workspace",
-         %{operator: operator, client: client, platform: platform} do
+         %{operator: operator, operated: operated, platform: platform} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
+      o = operated.organisation.slug
+      main = operated.workspace.slug
 
       # Acme's owner adds them to Platform alone.
       in_platform =
-        ApiaryPro.OperatorsFixtures.scope_in(client.owner.user, client.organisation, platform)
+        ApiaryPro.OperatorsFixtures.scope_in(operated.owner.user, operated.organisation, platform)
 
       %{token: token} = invitation_fixture(in_platform, %{"email" => operator.user.email})
       {:ok, _membership} = Organisations.accept_invitation(operator.user, token)
@@ -289,15 +288,17 @@ defmodule ApiaryProWeb.LayoutsTest do
     end
 
     test "a person who reaches the operated workspace through the organisation finds it there alone",
-         %{operator: operator, client: client} do
+         %{operator: operator, operated: operated} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
+      o = operated.organisation.slug
+      main = operated.workspace.slug
 
       # Acme's owner, who reaches every workspace of Acme, joins the operator too.
-      %{token: token} = invitation_fixture(operator.scope, %{"email" => client.owner.user.email})
-      {:ok, _membership} = Organisations.accept_invitation(client.owner.user, token)
-      conn = log_in_user(build_conn(), client.owner.user)
+      %{token: token} =
+        invitation_fixture(operator.scope, %{"email" => operated.owner.user.email})
+
+      {:ok, _membership} = Organisations.accept_invitation(operated.owner.user, token)
+      conn = log_in_user(build_conn(), operated.owner.user)
 
       {:ok, view, html} = live(conn, ~p"/#{a}/#{operator.workspace}")
 
@@ -317,7 +318,7 @@ defmodule ApiaryProWeb.LayoutsTest do
     end
 
     test "the operator's workspaces of several organisations come by organisation name",
-         %{operator: operator, client: client} do
+         %{operator: operator, operated: operated} do
       a = operator.organisation.slug
       beta = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Beta")
       conn = log_in_user(build_conn(), operator.user)
@@ -332,20 +333,20 @@ defmodule ApiaryProWeb.LayoutsTest do
 
       assert ids == [
                "switch-#{a}_#{operator.workspace.slug}",
-               "switch-#{a}_#{client.organisation.slug}_#{client.workspace.slug}",
+               "switch-#{a}_#{operated.organisation.slug}_#{operated.workspace.slug}",
                "switch-#{a}_#{beta.organisation.slug}_#{beta.workspace.slug}"
              ]
     end
 
     test "a workspace of a suspended operator is not listed",
-         %{operator: operator, client: client, platform: platform} do
+         %{operator: operator, operated: operated, platform: platform} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
+      o = operated.organisation.slug
+      main = operated.workspace.slug
 
       # A member of Acme in Platform, so a page of Acme has the menu.
       in_platform =
-        ApiaryPro.OperatorsFixtures.scope_in(client.owner.user, client.organisation, platform)
+        ApiaryPro.OperatorsFixtures.scope_in(operated.owner.user, operated.organisation, platform)
 
       %{token: token} = invitation_fixture(in_platform, %{"email" => operator.user.email})
       {:ok, _membership} = Organisations.accept_invitation(operator.user, token)
@@ -362,11 +363,11 @@ defmodule ApiaryProWeb.LayoutsTest do
     end
 
     test "the organisation's owner finds every workspace under the organisation, as before",
-         %{operator: operator, client: client, platform: platform} do
+         %{operator: operator, operated: operated, platform: platform} do
       a = operator.organisation.slug
-      o = client.organisation.slug
-      main = client.workspace.slug
-      conn = log_in_user(build_conn(), client.owner.user)
+      o = operated.organisation.slug
+      main = operated.workspace.slug
+      conn = log_in_user(build_conn(), operated.owner.user)
 
       {:ok, view, _html} = live(conn, ~p"/#{o}/#{main}")
 
@@ -380,10 +381,10 @@ defmodule ApiaryProWeb.LayoutsTest do
       refute has_element?(view, "#organisation-menu .truncate[title='Main · Acme']")
     end
 
-    test "an instance admin finds none of it", %{client: client} do
+    test "an instance admin finds none of it", %{operated: operated} do
       admin = ApiaryPro.OperatorsFixtures.suite_instance_admin()
       here = admin.instance_scope.organisation
-      o = client.organisation.slug
+      o = operated.organisation.slug
       [workspace | _] = Organisations.list_workspaces(admin.instance_scope)
 
       {:ok, view, _html} =
