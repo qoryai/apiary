@@ -244,8 +244,8 @@ defmodule Apiary.Dispatches.PauseTest do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @paused)
 
-    # A run that took a key of another organisation's provider, left from before migration
-    # 20261115110000.
+    # A run that took a key of another organisation's provider, left from when an
+    # operator managed whole organisations.
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^run.id),
         set: [

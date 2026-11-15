@@ -8,8 +8,8 @@ defmodule Apiary.Dispatches.Pause do
   # `of/1` is, for each paused run of `run_ids` (`runs.id`), `%{provider: name | nil,
   # other_organisation: boolean, until: time | nil, number: n | nil, workspace_id: id |
   # nil}`: the name of the run's model provider, nil once the provider is deleted, and nil
-  # for a provider of another organisation than the run's, left from before migration
-  # 20261115110000, whose name the run's organisation's people do not read
+  # for a provider of another organisation than the run's, left from when an operator
+  # managed whole organisations, whose name the run's organisation's people do not read
   # (`other_organisation: true`); when every key of that provider was in cooldown as the
   # run ended, the earliest end of those cooldowns (`dispatch_runs.paused_until`), else
   # nil; and the run number and workspace of the run that continues it, nil for a paused

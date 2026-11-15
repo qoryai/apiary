@@ -312,8 +312,8 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
                  "#{ApiaryWeb.Format.week_time(until, now)}."
     end
 
-    # A provider of another organisation than the run's, left from before migration
-    # 20261115110000.
+    # A provider of another organisation than the run's, left from when an operator
+    # managed whole organisations.
     @tag needs: [:factory, :secrets]
     test "says a run waits for a model key, without the name of another organisation's provider",
          %{conn: conn, scope: scope} do
