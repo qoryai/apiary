@@ -117,7 +117,6 @@ defmodule Apiary.Dispatches.PauseTest do
     # The run's organisation's provider is named, and is not the instance admin's.
     assert Pause.of_run(paused) == %{
              provider: ctx.provider.name,
-             operator: false,
              until: nil,
              number: continuation.number,
              workspace_id: ctx.scope.workspace.id
@@ -207,19 +206,8 @@ defmodule Apiary.Dispatches.PauseTest do
              "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
   end
 
-  test "an instance admin's provider has no name in the line", ctx do
-    %{scope: operator} = sign_up_fixture()
-    keys = [%{value_id: "main", value: "sk-ant-operator-main-0123456789"}]
-    {:ok, theirs} = Connections.create_provider(operator, %{provider: "anthropic", keys: keys})
-
-    given = %{
-      ctx.given
-      | provider_connection_id: theirs.id,
-        provider_secret_id: theirs.secret_id,
-        provider_chain: "operator"
-    }
-
-    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, given)
+  test "a provider deleted since has no name in the line", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @paused)
 
     until = DateTime.add(DateTime.utc_now(), 3_600, :second)
@@ -230,26 +218,21 @@ defmodule Apiary.Dispatches.PauseTest do
       )
 
     number = registered(run_of(dispatch_run.work_item_id, 2)).number
-    assert %{provider: nil, operator: true} = pause = Pause.of_run(Repo.get!(Run, run.id))
+    # The pause as `Pause.of/1` reads it once the provider is deleted.
+    pause = %{Pause.of_run(Repo.get!(Run, run.id)) | provider: nil}
 
     line = fn pause ->
       pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text()
     end
 
+    # With no provider, the line has no cooldown end, while that time is to come too.
     assert line.(pause) ==
-             "Paused: every model key is in cooldown until " <>
-               "#{ApiaryWeb.PreparationComponents.cooldown_time(until)}. It continues in run #{number}."
-
-    # Once the cooldown has ended, and with no run that continues it.
-    past = DateTime.add(DateTime.utc_now(), -60, :second)
-
-    assert line.(%{pause | until: past}) ==
              "Paused: a model key reached its limit or its Use up to percentage. It continues in run #{number}."
 
     assert line.(%{pause | number: nil}) ==
              "Paused: a model key reached its limit or its Use up to percentage."
 
-    refute line.(pause) =~ theirs.name
+    refute line.(pause) =~ ctx.provider.name
   end
 
   test "an outcome before the exit is refused, and the exit pauses the run", ctx do

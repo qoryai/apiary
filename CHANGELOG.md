@@ -1145,13 +1145,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Paused: a key of Northwind Claude reached its limit. It continues in run 15.” A
   paused run that no run continues shows “Paused: a key of Northwind Claude reached its
   limit.” Where the provider was deleted since, the line starts “Paused: a model key
-  reached its limit.” A provider that the instance admin set up is not named: the line
-  is “Paused: every model key is in cooldown until Fri 14:00. It continues in run 15.”
-  while that time is to come, else it starts “Paused: a model key reached its limit.”,
-  and a waiting run shows “Waiting for a model key: every model key is in cooldown until
-  14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
-  between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
-  that finds no run shows “No runs paused.”
+  reached its limit.” The runs list's Filter menu has the family Paused, with the state
+  Paused, between Cancelled and Ended badly, and `state:paused`; a filter of that family
+  alone that finds no run shows “No runs paused.”
 - A run of Explore that pushed its questions or a proposal, and then reached its keys'
   limit, ends **Completed** with its result: no run continues it, its stage goes on as
   after any completed run, and it shows no Paused line. A result that an earlier run
