@@ -292,8 +292,9 @@ defmodule ApiaryPro.OrganisationSecretsTest do
       grant!(operator.organisation)
       grant!(client.organisation, false)
 
+      # The operator's people are hidden what the operated organisation is.
       scope = scope_in(operator.user, client.organisation)
-      refute :organisation_variables in scope.hidden
+      assert :organisation_variables in scope.hidden
       assert checks(scope, client.organisation) == @not_found
 
       grant!(client.organisation)
