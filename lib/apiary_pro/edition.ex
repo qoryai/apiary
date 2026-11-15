@@ -315,23 +315,6 @@ defmodule ApiaryPro.Edition do
 
   def harness_owner(scope), do: Apiary.Edition.Core.harness_owner(scope)
 
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a run of a client may use the
-  # links of its operator for a harness source (`harness_source_allowed?/3`, hidden from
-  # the documentation) that an assignment of the operator to the client covers exactly, or
-  # that a harness document the operator owns in the client lists exactly
-  # (`ApiaryPro.HarnessAssignments`). The client is read now, from its tenant, which must
-  # name `owner_organisation_id` as its operator. Any other run, and every run while the
-  # flag is off, gets the core's answer, false. The core asks only after the core's checks
-  # refuse, so this never shadows the instance's assignments.
-  @impl true
-  def harness_source_allowed?(run_organisation_id, owner_organisation_id, source),
-    do:
-      ApiaryPro.HarnessAssignments.source_allowed?(
-        run_organisation_id,
-        owner_organisation_id,
-        source
-      )
-
   # The instance's organisation is the instance organisation, whose owners are the
   # instance admins (`Apiary.Access.instance_admin?/1`).
   @impl true

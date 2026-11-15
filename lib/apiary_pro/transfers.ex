@@ -44,7 +44,7 @@ defmodule ApiaryPro.Transfers do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Membership, Organisation}
   alias Apiary.Stacks.Stack
-  alias ApiaryPro.{Grants, HarnessAssignments, PolicyRequests, Suspensions, Tenants}
+  alias ApiaryPro.{Grants, PolicyRequests, Suspensions, Tenants}
   alias ApiaryPro.Transfers.Transfer
 
   @reason_max 500
@@ -689,23 +689,18 @@ defmodule ApiaryPro.Transfers do
     end
   end
 
-  # The harness documents the operator owns in the client and its assignments of harness
-  # sources to it go in the same transaction; the documents the client's people saved stay.
-  #
-  # What the operator set in the client for its runs' harness goes with the operator: the
-  # harness documents it owns there, and its assignments of harness sources. A row that
-  # sets a workflow too stays, without its document. The documents the client's people
-  # saved stay, and so does every workflow.
+  # The harness documents the operator owns in the client go in the same transaction. A
+  # row that sets a workflow too stays, without its document. The documents the client's
+  # people saved stay, and so does every workflow.
   defp remove_operator_harness(operator, client) do
     owned =
       from s in Stack,
         where: s.organisation_id == ^client.id and s.owner_organisation_id == ^operator.id,
         where: not is_nil(s.harness)
 
-    {_deleted, _rows} = Repo.delete_all(from s in owned, where: is_nil(s.workflow))
-    {_kept, _rows} = Repo.update_all(owned, set: [harness: nil])
-
-    HarnessAssignments.delete_all(operator.id, client.id)
+    {deleted, _rows} = Repo.delete_all(from s in owned, where: is_nil(s.workflow))
+    {kept, _rows} = Repo.update_all(owned, set: [harness: nil])
+    {:ok, deleted + kept}
   end
 
   defp parting_reason(:"organisation.leave_operator"), do: "left"

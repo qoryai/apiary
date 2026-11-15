@@ -7,15 +7,16 @@ defmodule ApiaryPro.Deletion.Tables do
   transfers, which name a membership; the feature grants; and the workspace access, which
   names a workspace or a membership, before the core's memberships and workspaces it
   points to; an operator's invitations of its clients' first owners before the core's
-  invitations they sit beside; an operator's assignments of harness sources to a client;
-  the operators of the organisation's workspaces; and the people locks, then the tenants
+  invitations they sit beside; the rows of `operator_harness_assignments`, a table that
+  nothing writes any more, which stays on the list while it has `organisation_id`; the
+  operators of the organisation's workspaces; and the people locks, then the tenants
   they reference,
   last. Each is marked `:workspace` when it has `workspace_id`, and `:organisation` when
   it holds the organisation's rows.
 
   The rows of other organisations that name the one purged go with its row, by their
   keys: an operator's invitations into its former clients, by
-  `operator_invitations.operator_id`, and its assignments of harness sources to them, by
+  `operator_invitations.operator_id`, and its rows of `operator_harness_assignments`, by
   `operator_harness_assignments.operator_id`.
   A client's tenant names its operator's with a key that takes no action, so an operator
   is purged only once it has no clients (`ApiaryPro.Deletion`, `:has_clients`). A row
