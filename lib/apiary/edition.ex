@@ -261,8 +261,7 @@ defmodule Apiary.Edition do
   # `machines_ready/1` and `test_run_passed?/1`, and the work item page reads
   # `machines_ready/1` while a run waits in the queue (`ApiaryWeb.WorkItemLive.Show`); no
   # code of the core reads the other two.
-  # An edition may count what serves the workspace from another organisation; the core
-  # counts the workspace's and its organisation's alone, and the instance's pool and
+  # The core counts the workspace's and its organisation's, and the instance's pool and
   # gateway:
   #
   # - `work_source_ready/1`: the adapters whose live collections are assigned to the

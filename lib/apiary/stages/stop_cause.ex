@@ -424,6 +424,9 @@ defmodule Apiary.Stages.StopCause do
       Gateways.level(gateway) == :instance ->
         secrets(n, %{})
 
+      # A gateway serves only its organisation's runs, so no claim ends a run here; the
+      # stage sweep does, when the keys it reads again (`Apiary.Stages.claim_context/1`)
+      # all allow stored secrets though those of the claim did not.
       Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) ->
         {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
          "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}

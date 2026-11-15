@@ -27,8 +27,8 @@ defmodule Apiary.WorkspaceSetup do
   #
   # The edition has four rules of the set-up: `c:Apiary.Edition.work_source_ready/1`,
   # `c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1` and
-  # `c:Apiary.Edition.test_run_passed?/1`, which may count what serves the workspace from
-  # another organisation. The core's edition answers with the functions here:
+  # `c:Apiary.Edition.test_run_passed?/1`. The core's edition answers with the functions
+  # here:
   #
   #   * `work_source/1`: the live collections assigned to the workspace, of a connection
   #     of its organisation that is connected and that an adapter's listing has named
