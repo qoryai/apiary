@@ -488,9 +488,9 @@ stored document or the Qory harness is the documents' `harness`, as `{"harness":
 document is the organisation of the person who saved it, when that person saved it as a
 member acting in that organisation; for an instance admin who saved it with no such
 membership, it is the instance's organisation; it is unknown once the owner organisation
-is deleted. `harness_hidden` is `true` when the run's organisation is a client of an
-operator (`Apiary.Edition.operated?/1`, which the core edition, `Apiary.Edition.Core`,
-answers `false`), or when a stored document applies and its owner is not the run's
+is deleted. `harness_hidden` is `true` when `Apiary.Edition.operated?/1` returns `true`
+for the run's organisation (the core edition, `Apiary.Edition.Core`, returns `false`, and
+no edition overrides it), or when a stored document applies and its owner is not the run's
 organisation. A document the instance's organisation owns is hidden from the runs of
 every other organisation, whether the instance has one organisation or several, and an
 unknown owner is never the run's organisation. Workspace settings › Harness and the

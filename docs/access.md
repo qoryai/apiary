@@ -224,9 +224,9 @@ These callbacks of `Apiary.Edition` decide something about access outside `Apiar
   The core keeps no secret at an organisation and has no action for them: it returns
   `{:error, :not_found}` for every verb. An edition's implementation may call
   `Apiary.Access` with actions it adds.
-- `c:Apiary.Edition.operator_chain_writer?/1` decides whether the person writes the chain
-  of model providers and choices an operator keeps for its clients. `Apiary.Connections`
-  and `Apiary.ModelChoices` call it beside `provider.write`. The core has no operator and
+- `c:Apiary.Edition.operator_chain_writer?/1` decides whether the person writes an
+  operator's chain of model providers and choices. `Apiary.Connections` and
+  `Apiary.ModelChoices` call it beside `provider.write`. The core has no operator and
   returns false.
 - `c:Apiary.Edition.harness_owner/1` returns the organisation that owns a harness document
   the person saves (`Apiary.Stacks.put_stack/4`): an id, not a yes or no. With nil, the save
@@ -1045,16 +1045,16 @@ The races are tested outside the sandbox, on connections that commit
   too, where the page sends them to `/users/organisations`, so the address does not show
   which organisation the work item is in.
 
-## Who may do what: operators, clients and the instance
+## Who may do what: operators and the instance
 
 The code under `lib/apiary_pro` and `lib/apiary_pro_web` is the edition that the
 configuration names (`Apiary.Edition`, `ApiaryWeb.Edition`). In this section, the core
 means the rest of the code, and the sections before this one are the core's.
 
 What the edition adds to the core's rules: the roles `reader` and `person`;
-reach into an organisation through its operator and as an instance admin; a member's
-access to the workspaces they were added to;
-gateways at the organisation level; the instance organisation and the instance actions; the suspension of accounts and organisations;
+reach into the workspaces an operator operates, and into an organisation as an instance
+admin; a member's access to the workspaces they were added to; the instance
+organisation and the instance actions; the suspension of accounts and organisations;
 features below the instance; a person's new organisation; the organisation's policy, its
 variables and its secrets; and the lock order as the edition takes it. Everything the
 core's sections say holds here, and the sections below say what the edition adds to it or
@@ -1085,18 +1085,18 @@ states what the callback is and why it stays.
   (`ApiaryPro.OrganisationSecrets.may/2`). Reading, changing and linking call
   `Apiary.Access.check/3` alone. It stays because sealing has no person to check: the
   result comes from the instance's feature alone (The organisation's secrets, below).
-- `c:Apiary.Edition.operator_chain_writer?/1` is whether the person writes the chain of
-  model providers an operator keeps for its clients. While `operator_infrastructure` is on,
-  `ApiaryPro.Edition` returns true for an owner or an admin of an operator through their
-  membership there, and reads that level by hand. The core's `Apiary.Connections` and
-  `Apiary.ModelChoices` call it beside `provider.write`. It stays for the operator-managed
-  organisation model, until operator-managed workspaces replace that model.
+- `c:Apiary.Edition.operator_chain_writer?/1` is whether the person writes an operator's
+  chain of model providers. `ApiaryPro.Edition` does not implement it, so the core's
+  answer applies: false, for everyone. The core's `Apiary.Connections` and
+  `Apiary.ModelChoices` call it beside `provider.write`. It stays because the core calls
+  it.
 - `c:Apiary.Edition.harness_owner/1` is the organisation that owns a harness document the
-  person saves: an id, not a yes or no. While `operator_infrastructure` is on,
-  `ApiaryPro.Edition` returns the operator for a person of the operator who saves in its
-  client. It returns the core's result for everyone else. It stays because it returns an
-  id, and `Apiary.Access` returns only a yes or a reason. Its operator branch serves the
-  same operator-managed organisation model.
+  person saves: an id, not a yes or no. `ApiaryPro.Edition` does not implement it, so the
+  core's answer applies: the scope's organisation for a person who reaches it through
+  their membership alone, the instance organisation for an instance admin, and nil, which
+  stops the save, for anyone else, a person whose scope reaches the organisation through
+  the operator of a workspace among them. It stays because it returns an id, and
+  `Apiary.Access` returns only a yes or a reason.
 - `c:Apiary.Edition.scope_setting?/1` is whether a form shows the setting that makes what
   it adds available to every workspace. It stays because `ApiaryPro.Edition` returns true
   for everyone, so it stops no action.
@@ -1126,19 +1126,20 @@ answer; the list is not complete:
   they are signed in with nor the instance organisation;
 - `test/apiary_pro_web/live/transfers_flag_test.exs`: the action that is not found while
   `ApiaryPro.Flags.transfers?/0` is off;
-- `test/apiary_pro_web/live/operator_infrastructure_flag_test.exs` and
-  `test/apiary_pro/model_chain_test.exs`: the choice of model providers, not found while
-  the operator does not own its clients;
-- `test/apiary_pro/operator_as_owner_access_test.exs`: the rules while the operator owns
-  its clients.
+- `test/apiary_pro_web/live/operator_infrastructure_flag_test.exs`: the operator's people
+  read a workspace it operates and change nothing there while `operator_infrastructure`
+  is off;
+- `test/apiary_pro/operator_as_owner_access_test.exs`: the rules in an organisation whose
+  workspace an operator operates, while `operator_infrastructure` is on.
 
 The edition's roles, beside the core's levels, the access key and the instance:
 
 - **`reader`**: a person who reaches an organisation with no membership there, through
-  its operator or as an instance admin (Reach, below). It holds every read, `member.read`,
-  `run.read`, `run.read_log`, `security_policy.read`, `secret.read`, `variable.read`,
-  `connection.read`, `audit.read`, `node.read`, `organisation_policy.read`,
-  `organisation_variable.read` and `organisation_secret.read`.
+  the operator of some of its workspaces or as an instance admin (Reach, below). It holds
+  every read, `member.read`, `run.read`, `run.read_log`, `security_policy.read`,
+  `secret.read`, `variable.read`, `connection.read`, `audit.read`, `node.read`,
+  `organisation_policy.read`, `organisation_variable.read` and
+  `organisation_secret.read`.
 - **`person`**: anyone signed in, whose account is neither deleted nor suspended, in any
   organisation or none: it holds `organisation.create`, for a kind of organisation the
   instance opens (A person's action, asked of no place, below).
@@ -1148,9 +1149,9 @@ The edition's actions are held by the core's levels too, as each one's `roles` s
 ### Levels, and the workspaces a person reaches
 
 The level is the organisation's, as in the core, and the rule that an organisation keeps
-an owner counts the organisation's owners who may act (Suspension, below). A client of an
-operator is no exception: its owners, admins and members are the people with a membership
-in the client, as in any organisation (Reach, below).
+an owner counts the organisation's owners who may act (Suspension, below). An
+organisation whose workspace has an operator is no exception: its owners, admins and
+members are the people with a membership in it, as in any organisation (Reach, below).
 
 In the edition an owner and an admin reach every workspace of the organisation, and a
 member reaches the workspaces they were added to, and no other. Which workspaces a member
@@ -1214,7 +1215,7 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
    anyone else in the workspace. A person of the operator who also holds a membership in
    the organisation acts at that membership's level, and in an operated workspace at the
    higher of their two levels on what the operator changes there. A workspace with an
-   operator is not deleted until the link ends (`:operated`), and an operator is neither
+   operator is not deleted (`:operated`), and an operator is neither
    deleted nor made an organisation while it operates a workspace
    (`:has_operated_workspaces`). A suspended operator's workspaces keep running; its
    people reach nothing. An instance admin who is a person of the operator, with no
@@ -1222,11 +1223,10 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
    every workspace there.
 3. **As an instance admin**, an owner of the instance organisation, in an organisation
    they reach neither way (`:instance` in the scope): the role `reader` too. They read
-   every other organisation, an operator or another operator's client included, and change
-   one only by the instance actions (below). The instance organisation's admins and
-   members reach the instance organisation, at their level, and, once it is an operator,
-   read the instance organisation's clients as any operator's people read theirs, and
-   nothing beyond.
+   every other organisation, an operator included, and change one only by the instance
+   actions (below). The instance organisation's admins and members reach the instance
+   organisation, at their level, and, once it is an operator, the workspaces it
+   operates, as any operator's people reach them, and nothing beyond.
 
 `Apiary.Access.level/1` is the level of a membership there, and nil for a reader, who
 holds none; `Apiary.Access.reader/1` says how a person without a membership there reads
@@ -1236,7 +1236,7 @@ operated workspace for the operator's people and any organisation for an instanc
 with no membership there. For the organisation menu, `Apiary.Organisations.list_places/1`
 (`ApiaryPro.Places`) returns each organisation a person reaches through the operators they
 belong to, with the workspaces those operators operate there, each an
-`ApiaryPro.ClientReach`. The menu lists each such workspace under the operator, as
+`ApiaryPro.OperatedPlace`. The menu lists each such workspace under the operator, as
 "workspace · organisation", unless the person reaches it through the organisation too,
 and lists the organisation only for its members (`ApiaryProWeb.Edition.switcher_place/1`).
 The instance admins open another organisation from the instance page.
@@ -1254,39 +1254,37 @@ workspaces `FOR SHARE` (`Apiary.Access.lock_places/1`, with the edition's
 lock the organisation's row `FOR NO KEY UPDATE` first, so that such a write reads links
 that nobody changes until it commits.
 
-A client owns its people as any organisation does: its owners, admins and members, its
-invitations, its settings and its security policy. Its owners and admins invite and
-manage its people, the last-owner rule holds there as anywhere, and its policy belongs
-to the client: the operator's people read it and do not change it.
+An organisation whose workspaces have an operator keeps its people as any organisation
+does: its owners, admins and members, its invitations, its settings and its security
+policies. Its owners and admins invite and manage its people, and the last-owner rule
+holds there as anywhere. The operator's people read the security policy of each
+workspace the operator operates, and change none of these.
 
 ### Invitations, and deleting an operator
 
-Each organisation has a separate allowance of invitations, a client as any other:
+Each organisation has a separate allowance of invitations:
 `Apiary.Instance.invitations_per_day/0` a day, and three times as many attempts.
 Each invitation's entry (`member.invite`), and each new link's (`invitation.renew`),
 names the allowance it counted against, `details.allowance_id`. An invitation withdrawn
 because it could not be delivered does not count against the day's invitations, and does
 count against the attempts.
 
-Deleting an operator waits until it has no clients: each is deleted or purged first.
+Deleting or purging an operator is refused while it operates a workspace
+(`:has_operated_workspaces`, `ApiaryPro.Deletion.refusal/2`).
 
 ### Gateways at the organisation level
 
 A gateway lives at a workspace or at an organisation (the core's `Apiary.Gateways`). The
-core asks the edition two questions about the organisation level, which the edition
-answers in `ApiaryPro.Gateways`:
+core asks the edition two questions about the organisation level:
 
-- `serving_organisations/1`: the other organisations whose organisation-level gateways
-  may serve an organisation's workspaces, in the order its workspaces resolve their
-  default through them;
-- `served_organisations/1`: the other organisations whose workspaces an organisation's
-  organisation-level gateways may serve.
+- `c:Apiary.Edition.serving_organisations/1`: the other organisations whose
+  organisation-level gateways may serve an organisation's workspaces, in the order its
+  workspaces resolve their default through them;
+- `c:Apiary.Edition.served_organisations/1`: the other organisations whose workspaces an
+  organisation's organisation-level gateways may serve.
 
-While an operator runs its clients' infrastructure (the flag
-`ApiaryPro.Flags.operator_infrastructure?/0`), a client's workspaces are served by its
-operator's organisation-level gateways, and an operator's serve its clients' workspaces.
-Otherwise the edition answers none to both: an organisation's gateways serve its
-workspaces alone.
+`ApiaryPro.Edition` implements neither, so the core's answer applies to both, none: an
+organisation's gateways serve its workspaces alone, an operator's included.
 
 ### The organisation's policy
 
@@ -1297,8 +1295,9 @@ policy). Its four actions belong to the feature `organisation_policy`, which nee
 
 - `organisation_policy.read`: the rules every workspace follows, the floor and the
   switch, the workspaces under them and the history; an owner's, an admin's and the
-  reader's, so the people of a client's operator and an instance admin read it and
-  change nothing. A member has no page of it.
+  reader's, so an instance admin reads it and changes nothing. It is asked of the
+  organisation, so an operator's people do not find it (Reach, above). A member has no
+  page of it.
 - `organisation_policy.edit`: adding, changing and removing the organisation's rules, an
   owner's alone.
 - `organisation_policy.set_floor`: requiring `enforce` in every workspace, or no longer;
@@ -1368,10 +1367,9 @@ features `factory` and `secrets` are shown. With the feature `organisation_varia
 whoever reads the organisation's secrets sees them, and whoever changes them under
 `provider.write` changes them. Without it, nobody reads the organisation's secrets, and the
 page is the keys alone for whoever changes them under `provider.write`, an owner's and an
-admin's, or the operator's while it holds a client's model chain. A member does not open
-the page. The keys are not organisation secrets: the three actions above do not apply to
-them, and nobody reaches a secret or a variable of the organisation through that page
-without the feature.
+admin's. A member does not open the page. The keys are not organisation secrets: the
+three actions above do not apply to them, and nobody reaches a secret or a variable of
+the organisation through that page without the feature.
 
 A change is the core's entry on the secret (`secret.write`), by name and value IDs and
 never by value, with the organisation's level. A suspended organisation is read-only here
@@ -1390,8 +1388,8 @@ operator where the instance has `managed_organisations`, an organisation otherwi
 as in any organisation, and what the kind decides holds there as anywhere.
 
 The instance's admins are the owners of the instance organisation; its other people reach
-it at their level, read its clients once it is an operator, as any operator's people read
-theirs, and reach nothing beyond.
+it at their level, and, once it is an operator, the workspaces it operates, as any
+operator's people reach them, and reach nothing beyond.
 `Apiary.Access.instance_admin?/1` answers whether a scope's person is one, by their
 membership as the database has it now, neither it nor their account suspended. It is for
 the checks with no action: `ApiaryPro.Reach` calls it for an instance admin's reach, and
@@ -1422,13 +1420,15 @@ the one-person rules. `instance.read` is the core's, beside `instance.read_facto
 `ApiaryPro.Operators.list_organisations/1` and `ApiaryPro.Suspensions.list_accounts/1`
 call it.
 
-- `instance.read`: every organisation on the instance, with its kind and its operator;
+- `instance.read`: every organisation on the instance, with its kind and whether it is
+  marked for deletion;
 - `instance.create_organisation` and `instance.create_operator` (the latter with
   `managed_organisations`): a new organisation or operator, whose first owner is the
   instance admin who creates it;
-- `instance.change_kind` (with `managed_organisations`): an organisation that is no client
-  made an operator, or an operator without clients made an organisation, the instance
-  organisation as any other;
+- `instance.change_kind` (with `managed_organisations`): an organisation made an
+  operator, or an operator made an organisation, while no workspace of it has an operator
+  and it operates none, the instance organisation as any other
+  (`{:error, :has_operated_workspaces}` otherwise);
 - `instance.purge_organisation`: an organisation purged at once, on an erasure request,
   its slug typed to confirm (`ApiaryPro.Deletion.purge_on_request/3`);
 - `instance.suspend_account` and `instance.activate_account`: a person's account
@@ -1437,10 +1437,9 @@ call it.
 - `instance.suspend_organisation` and `instance.activate_organisation`: an organisation
   or an operator suspended and activated again;
 - `instance.transfer`: the arbiter's offer of the ownership of an organisation whose
-  owners are all suspended, a client as any other, to one of its admins, with a reason
-  (The arbiter, below);
-- `instance.grant_features`: what an operator is granted, or what an organisation with no
-  operator keeps (Features, below);
+  owners are all suspended to one of its admins, with a reason (The arbiter, below);
+- `instance.grant_features`: what an operator is granted, or what any other organisation
+  keeps (Features, below);
 - `instance.change_sign_up`: whether someone without an invitation may sign up and create
   an organisation, and an operator, saved on Instance settings › Configuration after a
   recent sign-in (`ApiaryPro.SignUp.save/2`).
@@ -1462,15 +1461,13 @@ to `/`. A write from a page that has not yet received that change fails, because
 `Apiary.Access.authorize/3` reads the membership again.
 
 **The arbiter** is for recovery only. An instance admin, under Instance settings › Organisations, offers the
-ownership of an organisation whose owners are all suspended, a client as any other, to
-one of its admins, with a reason (`instance.transfer`), replacing any offer pending. The
-admin accepts it on the Ownership section of the organisation's settings, which every page
-of the organisation leads them to while the offer stands
-(`organisation.accept_transfer`), and becomes an owner; a client stays its operator's.
-The offer names no operator: a client's is in its entry alone. A suspended organisation is
-activated first. The offer lapses once one of its owners may act again, their membership
-or account activated, and an acceptance then is refused: the instance does not overrule
-an owner.
+ownership of an organisation whose owners are all suspended to one of its admins, with a
+reason (`instance.transfer`), replacing any offer pending. The admin accepts it on the
+Ownership section of the organisation's settings, which every page of the organisation
+leads them to while the offer stands (`organisation.accept_transfer`), and becomes an
+owner. A suspended organisation is activated first. The offer lapses once one of its
+owners may act again, their membership or account activated, and an acceptance then is
+refused: the instance does not overrule an owner.
 
 Accepting the arbiter's offer is taken on the strength of the offer, and no role has
 `organisation.accept_transfer`. `ApiaryPro.Access.check/3` checks it, with the offer as the
@@ -1499,7 +1496,7 @@ tenant).
 Instance settings › Accounts also offers the core's password links while no mail is set
 (`Apiary.Accounts.build_password_link/3`, Make a password link in an account's menu): a
 link that sets the account's password, for any account on the instance but the account of
-the admin who acts and a suspended one, a client's owner as a member of any organisation.
+the admin who acts and a suspended one.
 It is the core's instance action `account.password_link`, asked of the account, and the
 edition adds no exception to it. The page calls `Apiary.Access.can?/3` for each account,
 beside its checks that no mail is set and that the account is not suspended. For the
@@ -1519,12 +1516,13 @@ A suspension pauses and removes nothing (`ApiaryPro.Suspensions`): a membership 
 tenant (`ApiaryPro.Tenants.Tenant`), which activating empties again; an account's
 suspension is its row of `account_suspensions` (`ApiaryPro.Suspensions.AccountSuspension`),
 which activating deletes. Memberships, workspace access, history, access keys and the
-managing relationship all stay.
+operators of workspaces all stay.
 
 - **A membership** (`member.suspend`, `member.activate`,
   `Apiary.Organisations.suspend_member/2` and `activate_member/2`), the core's, in
   Organisation settings › People. An owner who must not act is the instance admins' to stop, by suspending
-  their account. A suspended membership in an operator reaches none of its clients.
+  their account. A suspended membership in an operator reaches none of the workspaces it
+  operates.
 - **An account** (`instance.suspend_account`, `instance.activate_account`), by an
   instance admin under Instance settings › Accounts, never the account of the admin who
   acts. It signs in nowhere, its sessions are deleted and its open pages disconnected,
@@ -1545,20 +1543,23 @@ managing relationship all stay.
   refused at verification (`Apiary.AccessKeys.fetch_for_verification/1`), as a revoked key
   is, and a gateway's key acts for no run of its workspaces, so no run starts or reports
   there. The workspaces of a suspended operator are suspended with it, and its people
-  read its clients no more; the clients keep running, their runs, their access keys and
-  the clients' owners, admins and members working as before.
+  reach the workspaces it operates no more; those workspaces keep running, their runs,
+  their access keys and their organisations' owners, admins and members working as
+  before.
 
 Each suspension and activation is an audit entry, written in its transaction: a
 membership's in its organisation's trail; an account's in the instance organisation's,
 which names the account by id; an organisation's in the trail of the organisation
-suspended, with no address or client, since the instance admin acts from outside it.
+suspended, with no request address or HTTP client (`remote_ip`, `user_agent`), since the
+instance admin acts from outside it.
 
 **Enforced in `Apiary.Access`.** `reload/2` reads the suspension of the membership, of
-the person's account, of the organisation and of a client's operator with the level, and
-fails closed: a scope loaded before a suspension acts on nothing after it. The edition
-narrows the core's queries to the accounts and organisations in use
-(`ApiaryPro.Suspensions.active_accounts/2`, `active_organisations/2`, the edition's).
-Under `lock: :share` it holds the organisation, its operator and the account `FOR SHARE`,
+the person's account, of the organisation and of the operator of each workspace the
+person reaches through it, with the level, and fails closed: a scope loaded before a
+suspension acts on nothing after it. The edition narrows the core's queries to the
+accounts and organisations in use (`ApiaryPro.Suspensions.active_accounts/2`,
+`active_organisations/2`, the edition's). Under `lock: :share` it holds the
+organisation, the operators of its workspaces and the account `FOR SHARE`,
 and reads their suspensions again in a statement after its locks; a suspension locks the
 row of what it suspends, the organisation's or the account's, `FOR NO KEY UPDATE`, in the
 lock order below, and writes the tenant or the account's suspension under that lock, since
@@ -1576,21 +1577,13 @@ removed, `{:error, :last_owner}`, nor does their account's deletion leave the or
 without them. Nor is the account of the instance organisation's last owner who may act
 suspended, `{:error, :last_owner}`; the release command
 (`Apiary.Release.grant_instance_admin/2`) is the recovery. Only the instance admins leave
-an organisation without an owner who may act, a client as any other, by suspending the
-account of its only owner. It then runs below the owner level
-(`ApiaryPro.Suspensions.owner_suspended?/1`, which asks of the organisation's owners
-alone: a client's operator has no part in it): its admins and members work, its runs
-continue, what only an owner does waits, and its people see a notice, until an instance
-admin activates the owner again or offers the ownership to one of its admins (The instance
-actions, above).
-
-### A client and its operator
-
-Nothing changes a client's operator, and a suspension leaves it as it is. A client names
-its operator to all of its people: in an Operator part of the Ownership section of its
-settings, which every reader of a client's settings has in the list, and which says that the operator's people read everything in it to support its
-harness and change nothing, and in a line under the title of its People page,
-"Operated by" the operator.
+an organisation without an owner who may act, by suspending the account of its only
+owner. It then runs below the owner level
+(`ApiaryPro.Suspensions.owner_suspended?/1`, which reads the organisation's owners
+alone: the operators of its workspaces have no part in it): its admins and members work,
+its runs continue, what only an owner does waits, and its people see a notice, until an
+instance admin activates the owner again or offers the ownership to one of its admins
+(The instance actions, above).
 
 ### Features
 
@@ -1627,8 +1620,8 @@ saves it on Instance settings › Configuration, applied at once, unless
 `SIGNUP_ORGANISATIONS` for an organisation or `SIGNUP_OPERATORS` for an operator overrides
 it (`ApiaryPro.SignUp.kinds/0`), the same settings a sign-up follows. A kind whose setting
 is closed is `forbidden`, whatever the form says, and so is anything but a new
-organisation of no operator; with both closed the entry is not there. A scope without a
-person, and an account that is deleted or suspended, may not. The context function asks
+organisation; with both closed the entry is not there. A scope without a person, and an
+account that is deleted or suspended, may not. The context function asks
 again inside its transaction, which reads the settings again, and holds the account
 `FOR SHARE` there, so its deletion waits or is seen.
 
@@ -1648,19 +1641,20 @@ role `person` (A person's action, asked of no place, above); a sign-up still ask
 The edition's part of the answer (`ApiaryPro.Access.check/3`, the edition's `check/3`)
 adds to the core's:
 
-- `{:error, :not_found}` for an operator's action in an organisation that is no operator,
-  and an instance action anywhere but in the instance organisation;
+- `{:error, :not_found}` for an instance action anywhere but in the instance
+  organisation, and, for a person who reaches the organisation through the operators of
+  some of its workspaces alone, for what the organisation has as a whole (Reach, above);
 - `{:error, :forbidden}` for any action but a read in a suspended organisation, for
   anything but a read by a reader, and for what is refused on the instance organisation
   itself.
 
 `authorize/3` reads the workspace access too where the level needs one, so a scope
 loaded earlier cannot act in a workspace the person was removed from. A write of the
-security policy holds the organisation rows, the client and its operator
-(`Apiary.Access.lock_places/1`), then takes the workspace's lock, then reads the
-membership, the workspace access and the account `FOR SHARE`, so a change of the level,
-a removal from the workspace, a suspension, a transfer and a grant wait
-for it, and none committed before it is missed.
+security policy holds the organisation rows, the organisation and the operators of its
+workspaces (`Apiary.Access.lock_places/1`), then takes the workspace's lock, then reads
+the membership, the workspace access and the account `FOR SHARE`, so a change of the
+level, a removal from the workspace, a suspension, a transfer and a grant wait for it,
+and none committed before it is missed.
 
 ### The lock order
 
@@ -1668,21 +1662,22 @@ Every change that can wait on another takes its rows in one order, so two change
 for each other and never on each other at once. This is the core's order with the
 edition's rows in it:
 
-1. **Organisation rows**, a client before its operator. A write that must stay allowed
-   holds the organisation and its operator (`ApiaryPro.Reach.places_to_lock/1`, which
-   reads the organisation's tenant and locks nothing). It names a client's operator
-   besides the client, and for any other organisation that organisation alone, so an
-   operator named besides its client brings no third organisation. Several organisations,
+1. **Organisation rows**, an organisation before the operators of its workspaces. A
+   write that must stay allowed holds the organisation and the operators of its
+   workspaces (`ApiaryPro.Reach.places_to_lock/1`, which reads the links of its
+   workspaces, `ApiaryPro.WorkspaceOperators`, and locks nothing); for an organisation
+   with no operated workspace it returns that organisation alone. Several organisations,
    as an account's deletion and its suspension hold every organisation the account is a
    member of (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), and
    its activation the organisations it owns, are locked in the order of
-   `Apiary.Organisations.lock_order/1`: the clients first, then the rest, each in the
-   order of their ids, so a client always comes before its operator. Every change that
+   `Apiary.Organisations.lock_order/1`: first those with an operated workspace, then the
+   rest, each in the order of their ids, so an organisation comes before the operators
+   of its workspaces. Every change that
    locks more than one organisation row in one transaction, in any mode, the core's and
    the edition's, takes them through the core's
    `Apiary.Organisations.lock_organisations/2`, so what it holds in the end was taken in
    one statement, in that order. A write that must stay allowed and a change of people
-   hold the organisation and its operator `FOR SHARE` so
+   hold the organisation and the operators of its workspaces `FOR SHARE` so
    (`Apiary.Access.lock_organisations/1`, which `Apiary.Access.lock_places/1` and
    `reload/2` with `lock: :share` take first): should `places_to_lock/1`, asked again of
    the organisation held, name one it did not take, it lets go of what it took and takes
@@ -1697,12 +1692,14 @@ edition's rows in it:
    otherwise. Where the modes conflict with `FOR SHARE`, the rows are only those whose
    place in the order cannot change while they are held. One change takes several so: the
    adoption of the organisations the core created (`ApiaryPro.Adoption`) locks those
-   without a tenant, which are no clients, and the one it makes the instance organisation.
+   without a tenant, which hold no other organisation, and the one it makes the instance
+   organisation.
 2. **People locks** (`people_locks`, one per organisation, `ApiaryPro.Tenants.lock_rows/1`),
    after the organisation rows, in the order of their ids: all of a change's at one point,
-   before its first write, in the strongest mode it needs, and none later. A write in a
-   client that must stay allowed for its person holds its operator's `FOR SHARE`
-   (`Apiary.Access.lock_places/1`). A change of an operator's people locks its row
+   before its first write, in the strongest mode it needs, and none later. A write that
+   must stay allowed for its person holds the people locks of the operators of the
+   organisation's workspaces `FOR SHARE` (`Apiary.Access.lock_places/1`,
+   `ApiaryPro.Tenants.lock_rows/1`). A change of an operator's people locks its row
    `FOR UPDATE`, with the rows a write by the same person would hold: a change of a
    level, a removal or leaving, a membership's suspension and activation, and the grant
    and revoke of an instance admin, once the organisation is held
@@ -1722,28 +1719,31 @@ edition's rows in it:
 
 The modes keep a row that only names another out of it:
 
-- A write that must stay allowed while it is written holds the organisation and a
-  client's operator `FOR SHARE` (`Apiary.Access.lock_places/1`), the workspace
+- A write that must stay allowed while it is written holds the organisation and the
+  operators of its workspaces `FOR SHARE` (`Apiary.Access.lock_places/1`), the workspace
   `FOR KEY SHARE`, the membership and the workspace access `FOR SHARE`, then the account
-  `FOR SHARE` (`reload/2` with `lock: :share`). The membership in a client's operator is
-  read without a lock, once the operator's people lock is held: a change of the
-  operator's people waits for the write, or came first and is seen. A change that may
-  make an owner, or counts the owners who remain, holds the organisation and a client's
-  operator `FOR SHARE` too, then the people locks, a client's change its operator's
-  first, then locks the memberships of the organisation's owners
-  (`Apiary.Organisations.lock_owners/1`); the operator's owners are no part of it.
+  `FOR SHARE` (`reload/2` with `lock: :share`). The membership in the operator of a
+  workspace is read without a lock, once the operator's people lock is held: a change of
+  the operator's people waits for the write, or came first and is seen. A change that
+  may make an owner, or counts the owners who remain, holds the organisation and the
+  operators of its workspaces `FOR SHARE` too, then the people locks, the operators'
+  `FOR SHARE` and, where the organisation is an operator, the organisation's
+  `FOR UPDATE`, in the order of their ids (`ApiaryPro.Tenants.lock_rows/1`), then locks
+  the memberships of the organisation's owners (`Apiary.Organisations.lock_owners/1`);
+  the operators' owners are no part of it.
 - A write may ask for its people locks more than once in one change, at
   `Apiary.Access.lock_places/1`, once for each workspace a policy write takes, and again
   at `reload/2` with `lock: :share`, and each time it takes the same row in the same
-  mode: a client's operator does not change while the write holds the client
-  `FOR SHARE`, since every change of a client's operator locks the client's row
-  `FOR NO KEY UPDATE` first.
-- A change in a client may take its operator's people lock without holding the
-  operator's organisation row, as an invitation's acceptance does: no change that holds
-  an operator's organisation row or its tenant's row `FOR UPDATE` or `FOR NO KEY UPDATE`
-  takes that people lock.
-  An operator with clients is never purged, and a change of an organisation's kind and
-  its suspension take no people lock.
+  mode: the operators of the organisation's workspaces do not change while the write
+  holds the organisation `FOR SHARE`, since code that writes a link must lock the
+  organisation's row `FOR NO KEY UPDATE` first, and no code in the product writes one
+  (`ApiaryPro.WorkspaceOperators`).
+- A change in an organisation may take the people locks of the operators of its
+  workspaces without holding the operators' organisation rows, as an invitation's
+  acceptance does: no change that holds an operator's organisation row or its tenant's
+  row `FOR UPDATE` or `FOR NO KEY UPDATE` takes that people lock.
+  An operator that operates a workspace is never purged, and a change of an
+  organisation's kind and its suspension take no people lock.
 - The acceptance of the arbiter's offer (`ApiaryPro.Transfers.accept/1`) changes no
   operator: it holds the organisation `FOR SHARE`, locks its people lock `FOR UPDATE`
   where it is an operator, and its owners (`Apiary.Organisations.lock_owners/1`), then
@@ -1751,12 +1751,13 @@ The modes keep a row that only names another out of it:
   offer without a lock first, so a person it is not offered to, and an organisation with
   no offer, get not found and take no lock.
 - A change of gateways (`Apiary.Gateways.lock/1`), the core's, takes organisation rows
-  first, in one statement in the lock order, and the edition takes no other row for it: a
-  change of an organisation-level gateway (its creation, a new default mark, its
-  deletion) holds the organisations it serves `FOR SHARE` and its organisation
+  first, in one statement in the lock order, and the edition takes no other row for it.
+  With the core's answer to `serving_organisations/1` and `served_organisations/1`,
+  none (Gateways at the organisation level, above), a change of an organisation-level
+  gateway (its creation, a new default mark, its deletion) holds its organisation
   `FOR NO KEY UPDATE`; a change at a workspace (a node's or a pool's, or a
-  workspace-level gateway's) holds the organisation and those that serve it `FOR SHARE`,
-  then the workspace `FOR NO KEY UPDATE`; then the node rows `FOR UPDATE`.
+  workspace-level gateway's) holds the organisation `FOR SHARE`, then the workspace
+  `FOR NO KEY UPDATE`; then the node rows `FOR UPDATE`.
 - An organisation's suspension, its grants and its marking for deletion lock its row
   `FOR NO KEY UPDATE`, and a suspension of an account locks it the same way: they wait
   for a write in flight, and one asked after them waits and then sees them. What the
@@ -1764,9 +1765,9 @@ The modes keep a row that only names another out of it:
   `account_suspensions`, is written under that lock, and read by a change that holds the
   row in a statement after its lock (`ApiaryPro.Tenants`, Locks): the `organisations` and
   `users` rows stay the ones to lock. A tenant's row is locked only by a write of the
-  tenant, under its organisation's lock, and by the key a client's tenant holds on its
-  operator's (`FOR KEY SHARE`), taken after the operator's organisation row, which a
-  change of the operator's kind locks `FOR UPDATE` first. A people lock is not a tenant's
+  tenant, under its organisation's lock, and `FOR KEY SHARE` by the write of a row whose
+  key refers to it: a link of `workspace_operators` refers to its operator's tenant, and
+  no code in the product writes one. A people lock is not a tenant's
   row: it is locked only as its place in the order says, and writing one takes
   `FOR KEY SHARE` of its tenant.
 - An invitation locks the row of the organisation whose allowance it counts against
@@ -1777,24 +1778,26 @@ The modes keep a row that only names another out of it:
   `FOR SHARE` first, before the account and the invitation, so the organisation's
   suspension and marking wait for it, or came first and refuse it.
 - The organisation's policy (`ApiaryPro.OrganisationPolicy`). A write holds the
-  organisation and its operator `FOR SHARE` (`Apiary.Access.lock_places/1`), then takes
-  every workspace of the organisation in use in the order of their ids
-  `FOR NO KEY UPDATE` (`Apiary.Policy.lock_workspaces/2`), as a write of one workspace's
-  policy takes that workspace, then the membership and the account `FOR SHARE`, then the
-  row of the organisation's policy `FOR NO KEY UPDATE`; each workspace is rendered under
-  the rows it holds. So a write of a workspace's policy and a write of the organisation's
-  wait for each other, and the second resolves against what the first wrote
+  organisation and the operators of its workspaces `FOR SHARE`
+  (`Apiary.Access.lock_places/1`), then takes every workspace of the organisation in use
+  in the order of their ids `FOR NO KEY UPDATE` (`Apiary.Policy.lock_workspaces/2`), as
+  a write of one workspace's policy takes that workspace, then the membership and the
+  account `FOR SHARE`, then the row of the organisation's policy `FOR NO KEY UPDATE`;
+  each workspace is rendered under the rows it holds. So a write of a workspace's policy
+  and a write of the organisation's wait for each other, and the second resolves against
+  what the first wrote
   (`test/apiary_pro/organisation_policy_races_test.exs`).
 - A change of what an organisation is shown (`ApiaryPro.Grants`) takes organisation rows
   only.
 - The organisation's variables (`ApiaryPro.OrganisationVariables`). A write takes the
   rows a write of the organisation's policy takes, in the same order: the organisation
-  and its operator `FOR SHARE`, then every workspace of the organisation in use in the
-  order of their ids `FOR NO KEY UPDATE`, as `Apiary.Policy.lock_workspaces/2` takes them
-  and as a write of one workspace's variables takes that workspace, and with them, in the
-  same order of ids, every workspace marked for deletion that may still be restored, whose
-  restore (`Apiary.Deletion.restore_workspace/2`) takes its row `FOR NO KEY UPDATE` and
-  checks nothing of its variables; then the membership and the account `FOR SHARE`; then
+  and the operators of its workspaces `FOR SHARE`, then every workspace of the
+  organisation in use in the order of their ids `FOR NO KEY UPDATE`, as
+  `Apiary.Policy.lock_workspaces/2` takes them and as a write of one workspace's
+  variables takes that workspace, and with them, in the same order of ids, every
+  workspace marked for deletion that may still be restored, whose restore
+  (`Apiary.Deletion.restore_workspace/2`) takes its row `FOR NO KEY UPDATE` and checks
+  nothing of its variables; then the membership and the account `FOR SHARE`; then
   a transaction's advisory lock of the organisation's variables, last, so two of their
   writes take turns even with no workspace in use; then the variable changed
   `FOR UPDATE`. So a write of a workspace's variables and a write of the organisation's
@@ -1836,7 +1839,7 @@ organisation.
 
 The edition's races are tested outside the sandbox, with `ApiaryPro.Races` beside the
 core's helpers, in `test/apiary_pro/`: `access_races_test.exs`,
-`feature_grant_races_test.exs`, `gateway_races_test.exs`, `lock_order_races_test.exs`,
-`operators_races_test.exs`, `organisation_policy_races_test.exs`,
+`feature_grant_races_test.exs`, `lock_order_races_test.exs`,
+`organisation_policy_races_test.exs`,
 `organisation_variables_races_test.exs`, `people_lock_races_test.exs`,
 `people_rows_races_test.exs` and `suspension_races_test.exs`.

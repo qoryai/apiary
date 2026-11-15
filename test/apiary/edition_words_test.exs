@@ -27,7 +27,7 @@ defmodule Apiary.EditionWordsTest do
 
   # The line that starts the edition's part of a file: the file is held up to it.
   @edition_parts [
-    {~r{^docs/access\.md$}, "## Who may do what: operators, clients and the instance"},
+    {~r{^docs/access\.md$}, "## Who may do what: operators and the instance"},
     {~r{^docs/architecture\.md$}, "## Tenants, operators and the organisation's level"},
     {~r{^docs/conventions\.md$}, "## Conventions of the edition"},
     {~r{^assets/css/app\.css$}, "/* ======== The edition's rules"}

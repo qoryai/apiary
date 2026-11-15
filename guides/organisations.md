@@ -6,11 +6,6 @@ workspace, and what happens when they delete the organisation.
 ## Adding a workspace
 
 An owner adds a workspace to the organisation.
-<!-- feature: managed_organisations -->
-In a client of an operator, the client's admins add one too, with or without
-`operator_infrastructure`; while operators run their clients, the operator's owners may as
-well.
-<!-- /feature -->
 An organisation with no workspace shows the kind cards on its overview, `/:org`, under
 **What will your first workspace do?**. Once it has one, an owner adds another with **New
 workspace** on **Workspaces** in the organisation's settings, `/:org/settings/workspaces`,
@@ -57,8 +52,8 @@ cancel the deletion on their organisations page, and everything comes back; rete
 not prune its workspace meanwhile. An organisation's only workspace is not deleted by
 itself: the organisation is.
 <!-- feature: managed_organisations -->
-An operator with clients is not deleted until each client is purged ([Operators
-and their clients](operators.md)).
+An organisation with a workspace that has an operator, and an operator that operates a
+workspace, are not deleted ([Operators](operators.md)).
 <!-- /feature -->
 
 Once a day, at 03:20 UTC, a job purges what is past its grace period: every row the

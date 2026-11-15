@@ -1,7 +1,7 @@
-# Operators and their clients
+# Operators
 
-This guide covers operators and their clients, with the `managed_organisations` feature:
-what an operator is, how it reaches its clients, and which features each has.
+This guide covers operators, with the `managed_organisations` feature: what an operator is,
+what its people reach, and which features it has.
 
 <!-- feature: managed_organisations -->
 ## The feature
@@ -12,35 +12,33 @@ of other organisations they operate. Support turns it on for an organisation. It
 
 ## Operators
 
-An operator provides a ready harness, its agents, skills and workflows. Its clients run
-the harness of the operator; the operator keeps it working and debugs it, and does not
-manage its clients' people. Support makes an organisation an operator, or creates one, and
-makes an operator without clients an organisation again.
+An operator is an organisation whose people reach the workspaces it operates in other
+organisations. A workspace has one operator at most. Everything else an operator does, it
+does as any organisation.
 
-## Clients
+Support makes an organisation an operator, or creates one, and makes an operator an
+organisation again. An organisation with a workspace that has an operator is not made an
+operator, and an operator that operates a workspace is not made an organisation. Neither
+an operator that operates a workspace nor a workspace with an operator is deleted.
 
-A client's owners and admins invite and manage its people, its settings and its
-security policy, as in any organisation. An operator with clients is not deleted until
-each client is purged.
+## What the operator's people reach
 
-Each organisation has a separate daily allowance of invitations, an operator's client as
-any other.
+Every person of the operator, owner, admin or member, reads everything in each workspace
+it operates, the runs and their terminals and the security policy among them, except the
+workspace's secrets and variables. They change nothing there. They reach nothing the
+organisation has as a whole: its people, its policy, its secrets and variables, its
+connections and its other workspaces. Their level in the operator matters only inside the
+operator.
 
-## What the operator's people read
+Someone who is in the operator and also a member of the organisation changes what their
+membership in the organisation allows, and reads the rest of the workspace.
 
-Every person of the operator, owner, admin or member, reads everything in each of its
-clients: every workspace, the runs and their terminals, the security policy, the members
-and the activity. They change nothing there, the policy included; their level in the
-operator matters only inside the operator. Someone who is in the operator and also a member
-of the client changes what their membership in the client allows, and reads the rest.
+The organisation menu of the operator's people lists each workspace the operator operates,
+under its organisation.
 
-## Each side sees the other
-
-A client's people see its operator on Ownership in its settings, and
-"Operated by" it in its Organisation settings › People.
-
-A suspended operator is read-only and its people no longer read its clients, which keep
-running, with their runs, access keys, owners, admins and members, until it is activated.
+A suspended operator is read-only, and its people no longer reach the workspaces it
+operates. Those workspaces keep running, with their runs, access keys and people, until
+the operator is activated.
 
 ## Features of an operator
 
@@ -51,5 +49,5 @@ workspace shows the features of its organisation, to the people of its operator 
 
 An organisation made an operator is granted what it had. An operator keeps
 `managed_organisations` until it is made an organisation again, which it is only once it
-has no clients; its features page does not take it away.
+operates no workspace; its features page does not take it away.
 <!-- /feature -->

@@ -563,7 +563,7 @@ feature the instance has. The instance owner, the organisation created with the 
 ([Sign-up and invitations](#sign-up-and-invitations)), has every feature the instance has.
 <!-- feature: managed_organisations -->
 Of the features that can be granted, an operator other than the instance owner has only
-those granted to it ([Operators and their clients](operators.md)).
+those granted to it ([Operators](operators.md)).
 <!-- /feature -->
 
 An instance with the record alone:

@@ -206,16 +206,16 @@ account; a workspace is never a team, a project or a hive; an access key is neve
 key or a token; a secret is never a password. The edition adds these:
 
 - **Tenant** is a row of `tenants` (`ApiaryPro.Tenants.Tenant`): an organisation's place
-  on the instance, its kind, its operator, whether it is the instance organisation, and
-  its suspension. It is never a synonym for organisation. "The tenant's kind" is right; "a
+  on the instance, its kind, whether it is the instance organisation, and its
+  suspension. It is never a synonym for organisation. "The tenant's kind" is right; "a
   tenant signs up" is wrong: an organisation signs up and gets a tenant row, written in
   the transaction that creates it.
 - **Kind** is what a tenant says an organisation is: an ordinary `organisation` or an
   `operator`.
-- **Operator** is an organisation of the kind `operator`, which provides a harness its
-  clients run. **Client** is an organisation whose tenant names an operator. In the
-  edition's prose a client is always this; the program that sends a request is "the
-  request's client" or the browser.
+- **Operator** is an organisation of the kind `operator`, whose people reach the
+  workspaces it operates (`workspace_operators`). In the edition's prose "client" is
+  never an organisation; the program that sends a request is "the request's client" or
+  the browser.
 - **Instance organisation** is the organisation the instance's first sign-up, its set-up,
   creates, as the core names it too: of the kind `operator` where the instance has
   `managed_organisations`, `organisation` otherwise, and of either afterwards, as the
@@ -223,7 +223,8 @@ key or a token; a secret is never a password. The edition adds these:
 - **Workspace access** is a member's reach into one workspace of their organisation, a row
   of `workspace_access`. An owner and an admin need none.
 - **Reader** is the role of a person who reads an organisation without a membership
-  there: the operator's people in its clients, and the instance admins anywhere.
+  there: the operator's people in the workspaces it operates, and the instance admins
+  anywhere.
 
 The organisation keys are the core's: every edition table with `organisation_id` carries
 it first, with `workspace_id` beside it and the composite key against `workspaces` for a
