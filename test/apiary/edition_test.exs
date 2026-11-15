@@ -2,7 +2,7 @@ defmodule Apiary.EditionTest do
   use ExUnit.Case, async: true
 
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Organisations.{Membership, Organisation, Workspace}
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   setup do
     organisation = %Organisation{id: Ecto.UUID.generate()}
@@ -59,64 +59,6 @@ defmodule Apiary.EditionTest do
         assert edition.machines_who_may(scope, scope.workspace) ==
                  "Only owners and admins add a pool and join a machine to it."
       end
-    end
-  end
-
-  describe "model_choice_chain/1" do
-    test "the core answers the organisation's chain", %{scope: scope} do
-      assert Apiary.Edition.Core.model_choice_chain(scope.organisation.id) == "organisation"
-      assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "organisation"
-    end
-
-    test "a test's stub answers the operator's chain", %{scope: scope} do
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OperatorChain)
-      assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "operator"
-    end
-  end
-
-  describe "operated?/1" do
-    # The configured edition's answer reads the organisation's tenant:
-    # test/apiary_pro/operated_test.exs.
-    test "the core answers false", %{scope: scope} do
-      refute Apiary.Edition.Core.operated?(scope.organisation)
-    end
-
-    test "a test's stub answers true", %{scope: scope} do
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.Operated)
-      assert Apiary.Edition.operated?(scope.organisation)
-    end
-  end
-
-  # The core's answers for an instance admin and for a scope with no owner read the
-  # database: `test/apiary/stacks_test.exs`.
-  describe "harness_owner/1" do
-    test "the core answers a member's organisation", %{scope: scope} do
-      member = %{scope | membership: %Membership{organisation_id: scope.organisation.id}}
-
-      assert Apiary.Edition.Core.harness_owner(member) == scope.organisation.id
-      assert Apiary.Edition.harness_owner(member) == scope.organisation.id
-    end
-
-    test "a test's stub answers nil", %{scope: scope} do
-      member = %{scope | membership: %Membership{organisation_id: scope.organisation.id}}
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoHarnessOwner)
-      assert Apiary.Edition.harness_owner(member) == nil
-    end
-  end
-
-  describe "harness_source_allowed?/3" do
-    @source %{"git" => "https://code.example.com/team/stacks", "ref" => "v1"}
-
-    test "the core answers false", %{scope: scope} do
-      owner = Ecto.UUID.generate()
-      refute Apiary.Edition.Core.harness_source_allowed?(scope.organisation.id, owner, @source)
-      refute Apiary.Edition.harness_source_allowed?(scope.organisation.id, owner, @source)
-    end
-
-    test "a test's stub answers true", %{scope: scope} do
-      owner = Ecto.UUID.generate()
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
-      assert Apiary.Edition.harness_source_allowed?(scope.organisation.id, owner, @source)
     end
   end
 end

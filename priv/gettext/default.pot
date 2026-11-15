@@ -5727,11 +5727,6 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "An admin of %{operator}"
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
 msgid "An admin of %{workspace}"
 msgstr ""
 
@@ -6068,11 +6063,6 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask %{names} to install one."
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an admin of %{operator} for the cause in the log of %{pool}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex

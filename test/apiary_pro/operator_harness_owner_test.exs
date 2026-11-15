@@ -1,8 +1,7 @@
 defmodule ApiaryPro.OperatorHarnessOwnerTest do
-  # Who owns a harness document saved in a workspace an operator operates, and who may save
-  # one (the core's answer to `Apiary.Edition.harness_owner/1` and the action
-  # `harness.save`), through the core's `Apiary.Stacks.put_stack/3`, which reads the owner
-  # from the edition and checks no access. The flags are set for this process.
+  # Who owns a harness document saved in a workspace an operator operates (the owner rule
+  # of the core's `Apiary.Stacks.put_stack/4`, which checks no access), and who may save one
+  # (the action `harness.save`). The flags are set for this process.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -11,7 +10,7 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
   alias Apiary.Access
   alias Apiary.Stacks
   alias Apiary.Stacks.Stack
-  alias ApiaryPro.{Edition, Flags}
+  alias ApiaryPro.Flags
 
   @moduletag with_features: Apiary.Features.all()
 
@@ -45,27 +44,27 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
   defp save(scope, ctx),
     do: Stacks.put_stack(scope, {:workspace, ctx.operated.workspace}, @document)
 
-  describe "the owner of a save, as the core answers" do
+  describe "the owner of a save" do
     test "by an instance admin is the instance organisation", ctx do
       %{user: user} = ctx.instance_admin
       scope = scope_in(user, ctx.operated.organisation, ctx.operated.workspace)
 
       assert scope.reach == :instance
-      assert Edition.harness_owner(scope) == instance_organisation().id
 
       assert {:ok, %Stack{} = stack} = save(scope, ctx)
       assert stack.owner_organisation_id == instance_organisation().id
     end
 
     test "by a person of the organisation is the organisation", ctx do
-      assert Edition.harness_owner(ctx.operated.owner.scope) == ctx.operated.organisation.id
-
       assert {:ok, %Stack{} = stack} = save(ctx.operated.owner.scope, ctx)
       assert stack.owner_organisation_id == ctx.operated.organisation.id
     end
 
     test "in the operator is the operator", ctx do
-      assert Edition.harness_owner(ctx.operator.scope) == ctx.operator.organisation.id
+      place = {:workspace, ctx.operator.workspace}
+      assert {:ok, %Stack{} = stack} = Stacks.put_stack(ctx.operator.scope, place, @document)
+
+      assert stack.owner_organisation_id == ctx.operator.organisation.id
     end
   end
 
@@ -102,7 +101,6 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
                    {:error, :not_found}
         end
 
-        assert Edition.harness_owner(ctx.operated.scope) == nil
         assert save(ctx.operated.scope, ctx) == {:error, :forbidden}
       end
     end
@@ -118,7 +116,8 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
       %{user: user} = ctx.instance_admin
       scope = scope_in(user, ctx.operated.organisation, ctx.operated.workspace)
 
-      assert Edition.harness_owner(scope) == instance_organisation().id
+      assert {:ok, %Stack{} = stack} = save(scope, ctx)
+      assert stack.owner_organisation_id == instance_organisation().id
     end
   end
 end

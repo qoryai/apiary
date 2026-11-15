@@ -39,9 +39,6 @@ defmodule Apiary.Edition do
   - **In use**, refinements of the queries that must leave out what the edition holds out
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
-  - **Gateways** (`Apiary.Gateways`): `serving_organisations/1` and
-    `served_organisations/1`, the other organisations whose organisation-level gateways
-    may serve an organisation's workspaces, and the reverse.
   - **Invitations**: `accepting/3`, `accepted/4`.
   - **Members**: `membership_changed/5`, `level_refusal/4`.
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
@@ -259,67 +256,6 @@ defmodule Apiary.Edition do
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
-  # With the `factory` feature: the chain of model choices that resolves for the runs of
-  # the organisation `organisation_id` (`Apiary.ModelChoices`): "organisation", the
-  # choices the organisation sets, or "operator", the choices of the organisation that
-  # `c:operator_chain_organisation/1` returns, which are then the whole chain, while the
-  # organisation's are kept and unused. Called without a lock, once per resolution. The
-  # core returns "organisation".
-  @doc false
-  @callback model_choice_chain(organisation_id :: Ecto.UUID.t()) :: String.t()
-
-  # With the `factory` feature: the organisation whose
-  # model choices are the chain of the organisation `organisation_id` while its chain is
-  # "operator" (`c:model_choice_chain/1`): the operator that runs work for it, or nil.
-  # A model key of the operator's chain is sealed only for that organisation's gateway or
-  # the instance's (`Apiary.Runs.ProviderCredential.sealable_to?/3`), and its seal is
-  # recorded in that organisation's trail. Asked without a lock. The core has no operator
-  # and answers nil.
-  @doc false
-  @callback operator_chain_organisation(organisation_id :: Ecto.UUID.t()) ::
-              Ecto.UUID.t() | nil
-
-  # With the `factory` feature: whether the person of `scope` writes the chain "operator"
-  # of model providers and choices in the scope's organisation, whose rows are the chain
-  # of each organisation for which `c:operator_chain_organisation/1` returns it. When true, the scope's organisation's providers
-  # and choices of the chain "operator" are read, created, changed and deleted by that
-  # person, under the access check of `provider.write`; their audit entries go to the
-  # organisation's trail. Asked inside the write, with the scope read again. The core
-  # has no operator and answers false.
-  @doc false
-  @callback operator_chain_writer?(Scope.t()) :: boolean
-
-  # With the `factory` feature: whether a run of `organisation` hides the text of its
-  # stack's harness, whoever owns the stack (`Apiary.Stacks.Resolution`). Called without
-  # a lock, once per claim of an explore run. The core returns false.
-  @doc false
-  @callback operated?(%Organisation{}) :: boolean
-
-  # With the `factory` feature: the organisation that
-  # owns a harness document the person of `scope` saves (`Apiary.Stacks.put_stack/3`), or
-  # nil, which refuses the save. A run of another organisation hides the document's text
-  # (`Apiary.Stacks.Resolution`). Asked once per save, before its transaction. The core
-  # answers the scope's organisation for a member who reaches it through that membership
-  # (`Apiary.Stacks.saved_by/1`); else the instance's organisation
-  # (`c:instance_organisation_id/0`) for an instance admin
-  # (`Apiary.Access.instance_admin?/1`); else nil.
-  @doc false
-  @callback harness_owner(Scope.t()) :: Ecto.UUID.t() | nil
-
-  # With the `factory` feature: whether a run of the
-  # organisation `run_organisation_id` may use a link of the organisation
-  # `owner_organisation_id` for `source`, a harness source as it is in a harness document
-  # (`Apiary.Harnesses.allowed?/3`). Asked only after the core's checks refuse it: the
-  # link is not the run's organisation's, and the link is not the instance's
-  # organisation's under an instance assignment that covers the source for the run's
-  # organisation. Asked without a lock. The core has no operator and answers false.
-  @doc false
-  @callback harness_source_allowed?(
-              run_organisation_id :: Ecto.UUID.t(),
-              owner_organisation_id :: Ecto.UUID.t(),
-              source :: Apiary.Harnesses.source()
-            ) :: boolean
-
   # With the `factory` feature: four rules of the set-up for `workspace`
   # (`Apiary.WorkspaceSetup`), each asked without a lock. The set-up page reads
   # `machines_ready/1` and `test_run_passed?/1`, and the work item page reads
@@ -327,7 +263,7 @@ defmodule Apiary.Edition do
   # code of the core reads the other two.
   # An edition may count what serves the workspace from another organisation; the core
   # counts the workspace's and its organisation's alone, and the instance's pool and
-  # gateway, but for the model key, which it reads on the chain the edition names:
+  # gateway:
   #
   # - `work_source_ready/1`: the adapters whose live collections are assigned to the
   #   workspace, through a connection that is connected and listed, each with how many,
@@ -335,10 +271,8 @@ defmodule Apiary.Edition do
   # - `machines_ready/1`: a node pool that serves the workspace's runs and the gateway its
   #   choice resolves to, both with an active key; nil while the step is not done
   #   (`Apiary.WorkspaceSetup.machines/1`);
-  # - `model_key_ready?/1`: whether the chain of model choices that resolves for the
-  #   workspace's runs, the organisation's or an operator's (`c:model_choice_chain/1`,
-  #   `c:operator_chain_organisation/1`), has a model provider with a key and a choice a
-  #   run reads (`Apiary.WorkspaceSetup.model_key?/1`);
+  # - `model_key_ready?/1`: whether the organisation's chain of model choices has a model
+  #   provider with a key and a choice a run reads (`Apiary.WorkspaceSetup.model_key?/1`);
   # - `test_run_passed?/1`: whether a test run of the workspace passed
   #   (`Apiary.WorkspaceSetup.test_passed?/1`).
   @doc false
@@ -355,46 +289,6 @@ defmodule Apiary.Edition do
 
   @doc false
   @callback test_run_passed?(%Workspace{}) :: boolean
-
-  # With the `factory` feature: what a person of
-  # `scope` reads of the runs and the policy activity of the scope's workspace, narrowed by
-  # the edition: an edition may leave out what a model provider of another organisation's
-  # chain (`c:operator_chain_organisation/1`) records in a run, its credential, its
-  # connections and its events. `kind` is what is read, and
-  # `subject` the query or value the core would read, returned narrowed or as it is:
-  #
-  # - `:run_events`, the query of a run's events (`Apiary.Runs.Record`);
-  # - `:run_connections`, the query of a run's connections (`Apiary.Runs.Record`);
-  # - `:run_policy`, the policy a run's last `policy.applied` event reported, a map or nil
-  #   (`Apiary.Runs.Record.policy/2`), and the policy of each `policy.applied` line of the
-  #   run's timeline, and of the line before it, in the same shape
-  #   (`Apiary.Runs.Record.Timeline.build/3`), whose counts and delta are of the narrowed
-  #   lists;
-  # - `:workspace_connections`, the query of the workspace's connections, joined to their
-  #   runs, the connection the first binding and the run the second: the policy activity
-  #   (`Apiary.Policy.Activity`), the attempts beside the declared hosts
-  #   (`Apiary.Policy.Suggestions`), a target's denied destinations (`Apiary.Targets`),
-  #   and the workspace's connections and one connection by its id (`Apiary.Runs`);
-  # - `:workspace_events`, the query of the workspace's events, joined to their runs, the
-  #   event the first binding and the run the second: the hosts the runs declared
-  #   (`Apiary.Policy.Suggestions`).
-  #
-  # `run` is the run read, nil for `:workspace_connections` and `:workspace_events`.
-  # Called once per read, and for `:run_policy` once for each policy line of a timeline and
-  # once for the line before it. The core returns `subject` as it is.
-  @doc false
-  @callback client_reads(
-              Scope.t(),
-              kind ::
-                :run_events
-                | :run_connections
-                | :run_policy
-                | :workspace_connections
-                | :workspace_events,
-              run :: struct | nil,
-              subject
-            ) :: subject
-            when subject: Ecto.Query.t() | map | nil
 
   @doc """
   Whether the stored secrets of an organisation, those without a workspace
@@ -595,52 +489,6 @@ defmodule Apiary.Edition do
 
   @doc "The organisations a person reaches, for the switcher and their organisations page."
   @callback places(%User{}) :: [place]
-
-  # Gateways
-
-  @doc """
-  The other organisations whose organisation-level gateways may serve the workspaces of
-  the organisation `organisation_id`, in the order its workspaces resolve their defaults
-  through them (`Apiary.Gateways.levels/1`): after the workspace's default and its
-  organisation's, the default of each of these in turn. The core's answer is `[]`: an
-  organisation's gateways serve its workspaces alone.
-
-  `Apiary.Gateways` asks it wherever a workspace's gateways are in question: whether a
-  gateway may serve a workspace (`Apiary.Access.may_serve?/2`), the gateways a node of
-  the workspace may choose (`Apiary.Gateways.gateway_choices/1`) and the default it
-  resolves (`Apiary.Gateways.default_gateway_for/1`). So the registration of a run, the
-  attach and the batches through a gateway follow it.
-
-  The rules, which `served_organisations/1` keeps too:
-
-  - it reads, and locks nothing: a change of gateways takes the organisation rows it
-    names in the gateways' lock order (`Apiary.Gateways.lock/1`), at the change's one point;
-  - it answers the relation alone, and never the organisation itself. It may name an
-    organisation out of use: the core never skips a level for that, so the defaults, the
-    choices, the automatic default and the default after a deletion keep it, and taking an
-    organisation out of use never moves a node on Default to another gateway. Use is checked
-    where it matters, at the server contract: the key of an organisation's gateway is verified
-    while its organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
-    run's place is checked at its attach, its batches and its reload
-    (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the
-    other organisations it serves and none of its organisation's;
-  - it is the reverse of `served_organisations/1`: X is among
-    `serving_organisations(Y)` exactly when Y is among `served_organisations(X)`.
-  """
-  @callback serving_organisations(organisation_id :: Ecto.UUID.t()) :: [Ecto.UUID.t()]
-
-  @doc """
-  The other organisations whose workspaces the organisation-level gateways of the
-  organisation `organisation_id` may serve, the reverse of `serving_organisations/1`, in
-  any order. The core's answer is `[]`.
-
-  `Apiary.Gateways` asks it wherever a gateway's workspaces are in question: the
-  workspaces an organisation-level gateway may serve (`Apiary.Gateways.serves/1`), what
-  stops its deletion (`Apiary.Gateways.delete_blockers/1`), whether it becomes its
-  organisation's default as it is made, and the default after a deletion
-  (`Apiary.Nodes.delete_node/2`). The rules are `serving_organisations/1`'s.
-  """
-  @callback served_organisations(organisation_id :: Ecto.UUID.t()) :: [Ecto.UUID.t()]
 
   # Invitations
 
@@ -845,17 +693,10 @@ defmodule Apiary.Edition do
     set_up_context: 2,
     machines_who_may: 2,
     above_workspace: 1,
-    model_choice_chain: 1,
-    operator_chain_organisation: 1,
-    operator_chain_writer?: 1,
-    operated?: 1,
-    harness_owner: 1,
-    harness_source_allowed?: 3,
     work_source_ready: 1,
     machines_ready: 1,
     model_key_ready?: 1,
     test_run_passed?: 1,
-    client_reads: 4,
     organisation_secrets: 2,
     audit_retention_max_days: 0,
     attribution?: 0,
@@ -876,8 +717,6 @@ defmodule Apiary.Edition do
     active_organisations: 2,
     account_refusal: 1,
     places: 1,
-    serving_organisations: 1,
-    served_organisations: 1,
     accepting: 3,
     accepted: 4,
     membership_changed: 5,

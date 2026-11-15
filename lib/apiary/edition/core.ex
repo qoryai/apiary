@@ -95,37 +95,6 @@ defmodule Apiary.Edition.Core do
   @impl true
   def above_workspace(_workspace), do: nil
 
-  # The core has no operator: an organisation's runs take its own chain of model choices.
-  @impl true
-  def model_choice_chain(_organisation_id), do: "organisation"
-
-  # The core has no operator: no organisation's chain is an operator's.
-  @impl true
-  def operator_chain_organisation(_organisation_id), do: nil
-
-  # The core has no operator: no person writes an operator's chain.
-  @impl true
-  def operator_chain_writer?(_scope), do: false
-
-  # The core has no operator: no run hides the text of its harness.
-  @impl true
-  def operated?(_organisation), do: false
-
-  # The core has no operator: a member owns what they save in their organisation, and an
-  # instance admin who saves any other way saves for the instance's organisation.
-  @impl true
-  def harness_owner(scope) do
-    with nil <- Apiary.Stacks.saved_by(scope) do
-      if Apiary.Access.instance_admin?(scope), do: Apiary.Edition.instance_organisation_id()
-    end
-  end
-
-  # The core has no operator: a run uses another organisation's links for its harness only
-  # under an instance assignment.
-  @impl true
-  def harness_source_allowed?(_run_organisation_id, _owner_organisation_id, _source),
-    do: false
-
   # The set-up's rules count what the workspace and its organisation have, and the
   # instance's pool and gateway.
   @impl true
@@ -139,9 +108,6 @@ defmodule Apiary.Edition.Core do
 
   @impl true
   def test_run_passed?(workspace), do: Apiary.WorkspaceSetup.test_passed?(workspace)
-
-  @impl true
-  def client_reads(_scope, _kind, _run, subject), do: subject
 
   # The core keeps no secret at an organisation.
   @impl true
@@ -204,12 +170,6 @@ defmodule Apiary.Edition.Core do
 
   @impl true
   def places(user), do: Organisations.list_memberships(user)
-
-  @impl true
-  def serving_organisations(_organisation_id), do: []
-
-  @impl true
-  def served_organisations(_organisation_id), do: []
 
   @impl true
   def accepting(_repo, _invitation, _user), do: {:ok, :member}

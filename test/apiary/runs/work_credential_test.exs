@@ -78,7 +78,7 @@ defmodule Apiary.Runs.WorkCredentialTest do
       assert WorkCredential.sealable_to?(gateway, @run)
     end
 
-    test "not a gateway of an organisation that does not serve the run's, nor another node" do
+    test "not a gateway of another organisation, nor another node" do
       refute WorkCredential.sealable_to?(
                %Node{kind: :gateway, organisation_id: Ecto.UUID.generate()},
                @run

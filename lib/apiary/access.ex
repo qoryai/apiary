@@ -1915,7 +1915,7 @@ defmodule Apiary.Access do
         id == workspace_id and gateway.organisation_id == organisation_id
 
       {:organisation, id} ->
-        id == organisation_id or id in Gateways.serving_organisations(organisation_id)
+        id == organisation_id
 
       :instance ->
         is_binary(workspace_id) and is_binary(organisation_id)

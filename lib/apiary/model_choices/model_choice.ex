@@ -18,9 +18,9 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # | 5 | the workspace | `workspace_id` |
   # | 6 | the organisation's default | none of them |
   #
-  # `chain` is `organisation`, or `operator` for a row of an operator's chain
-  # (`c:Apiary.Edition.model_choice_chain/1`), which an edition writes. Only a row of
-  # levels 4 and 5 is `locked`.
+  # `chain` is `organisation`. The column also takes `operator`, from an earlier model in
+  # which an operator's chain served other organisations; no code writes or resolves a row
+  # of that chain. Only a row of levels 4 and 5 is `locked`.
   #
   # A tier map has one to three of the tiers `light`, `fast` and `thinking`, each an object
   # of a `model` id and, when it sets one, an `effort` value.

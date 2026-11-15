@@ -224,19 +224,9 @@ These callbacks of `Apiary.Edition` decide something about access outside `Apiar
   The core keeps no secret at an organisation and has no action for them: it returns
   `{:error, :not_found}` for every verb. An edition's implementation may call
   `Apiary.Access` with actions it adds.
-- `c:Apiary.Edition.operator_chain_writer?/1` decides whether the person writes an
-  operator's chain of model providers and choices. `Apiary.Connections` and
-  `Apiary.ModelChoices` call it beside `provider.write`. The core has no operator and
-  returns false.
-- `c:Apiary.Edition.harness_owner/1` returns the organisation that owns a harness document
-  the person saves (`Apiary.Stacks.put_stack/4`): an id, not a yes or no. With nil, the save
-  stops, `{:error, :forbidden}`.
 - `c:Apiary.Edition.scope_setting?/1` decides whether a form shows the setting
   `Available to every workspace in %{organisation}`. It stops no action. The core returns
   false.
-
-`c:Apiary.Edition.client_reads/4` is a data rule. It narrows the query or the row of a read
-to what the scope's person reads of a run, and the core returns it unchanged.
 
 ## The instance's admins
 
@@ -350,7 +340,8 @@ id too: `Apiary.Organisations.put_reach/2`, and so `Apiary.Organisations.resolve
 
 `Apiary.Access.instance_admin?/1` is true where `instance.read` passes in that scope, by the
 membership as the database has it now. It is for what takes no action: a page's wording, the
-set-up steps a page lists, and the core's `c:Apiary.Edition.harness_owner/1`. An edition may
+set-up steps a page lists, and the owner of a harness document an instance admin saves
+(`Apiary.Stacks.put_stack/4`). An edition may
 call it too. The release commands call `Apiary.Access.instance_admin_membership?/1`.
 
 ### The one-person rules
@@ -932,17 +923,12 @@ The modes keep a row that only names another out of it:
 - A change of the gateways, of their default marks or of a node's or a pool's choice of
   gateway (`Apiary.Gateways.lock/1`) takes its organisation rows first, at one point,
   through `Apiary.Organisations.lock_organisations/2`. A change at a workspace holds its
-  organisation and the organisations whose organisation-level gateways may serve it
-  (`c:Apiary.Edition.serving_organisations/1`) `FOR SHARE`, then the workspace's row
-  `FOR NO KEY UPDATE`. A change of an organisation-level gateway holds its organisation
-  `FOR NO KEY UPDATE` and the organisations whose workspaces it may serve
-  (`c:Apiary.Edition.served_organisations/1`) `FOR SHARE`. So a change at an organisation
-  takes turns with every change at a workspace it may serve. Then the node's row
+  organisation `FOR SHARE`, then the workspace's row `FOR NO KEY UPDATE`. A change of an
+  organisation-level gateway holds its organisation `FOR NO KEY UPDATE`. So a change at an
+  organisation takes turns with every change at a workspace of it. Then the node's row
   `FOR UPDATE`. A deletion holds the gateway's row `FOR UPDATE` while it reads the runs
   that hold it, and a registration through the gateway and an attach by it read that row
-  `FOR SHARE`. The seams read and lock nothing, and are read once, not again under the
-  lock: an edition's change of the relation they answer takes a row these writes take
-  too, in a mode that conflicts with theirs.
+  `FOR SHARE`.
 - A write of the security policy holds the organisation
   `FOR SHARE` (`Apiary.Access.lock_places/1`),
   then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
@@ -1075,9 +1061,9 @@ The core's sections of this file list what stays outside `Apiary.Access`: authen
 data rules, the last-owner rule, wording and lists on a page, feature gates, and the 4
 callbacks below.
 
-#### The 4 callbacks beside `Apiary.Access`
+#### The 2 callbacks beside `Apiary.Access`
 
-Four callbacks of `Apiary.Edition` affect access outside `Apiary.Access`. Each entry here
+Two callbacks of `Apiary.Edition` affect access outside `Apiary.Access`. Each entry here
 states what the callback is and why it stays.
 
 - `c:Apiary.Edition.organisation_secrets/2` is whether the scope's person reads, changes or
@@ -1085,18 +1071,6 @@ states what the callback is and why it stays.
   (`ApiaryPro.OrganisationSecrets.may/2`). Reading, changing and linking call
   `Apiary.Access.check/3` alone. It stays because sealing has no person to check: the
   result comes from the instance's feature alone (The organisation's secrets, below).
-- `c:Apiary.Edition.operator_chain_writer?/1` is whether the person writes an operator's
-  chain of model providers. `ApiaryPro.Edition` does not implement it, so the core's
-  answer applies: false, for everyone. The core's `Apiary.Connections` and
-  `Apiary.ModelChoices` call it beside `provider.write`. It stays because the core calls
-  it.
-- `c:Apiary.Edition.harness_owner/1` is the organisation that owns a harness document the
-  person saves: an id, not a yes or no. `ApiaryPro.Edition` does not implement it, so the
-  core's answer applies: the scope's organisation for a person who reaches it through
-  their membership alone, the instance organisation for an instance admin, and nil, which
-  stops the save, for anyone else, a person whose scope reaches the organisation through
-  the operator of a workspace among them. It stays because it returns an id, and
-  `Apiary.Access` returns only a yes or a reason.
 - `c:Apiary.Edition.scope_setting?/1` is whether a form shows the setting that makes what
   it adds available to every workspace. It stays because `ApiaryPro.Edition` returns true
   for everyone, so it stops no action.
@@ -1274,16 +1248,7 @@ Deleting or purging an operator is refused while it operates a workspace
 
 ### Gateways at the organisation level
 
-A gateway lives at a workspace or at an organisation (the core's `Apiary.Gateways`). The
-core asks the edition two questions about the organisation level:
-
-- `c:Apiary.Edition.serving_organisations/1`: the other organisations whose
-  organisation-level gateways may serve an organisation's workspaces, in the order its
-  workspaces resolve their default through them;
-- `c:Apiary.Edition.served_organisations/1`: the other organisations whose workspaces an
-  organisation's organisation-level gateways may serve.
-
-`ApiaryPro.Edition` implements neither, so the core's answer applies to both, none: an
+A gateway lives at a workspace or at an organisation (the core's `Apiary.Gateways`). An
 organisation's gateways serve its workspaces alone, an operator's included.
 
 ### The organisation's policy
@@ -1336,7 +1301,7 @@ one.
 The organisation's secrets sit beside its workspaces' secrets
 (`ApiaryPro.OrganisationSecrets`, [architecture.md](architecture.md), The organisation's
 secrets). The core keeps them and asks the edition who may
-(`c:Apiary.Edition.organisation_secrets/2`, The 4 callbacks beside `Apiary.Access`, above).
+(`c:Apiary.Edition.organisation_secrets/2`, The 2 callbacks beside `Apiary.Access`, above).
 `ApiaryPro.OrganisationSecrets.may/2` calls `Apiary.Access.check/3` for each action and
 checks nothing else.
 
@@ -1752,12 +1717,10 @@ The modes keep a row that only names another out of it:
   no offer, get not found and take no lock.
 - A change of gateways (`Apiary.Gateways.lock/1`), the core's, takes organisation rows
   first, in one statement in the lock order, and the edition takes no other row for it.
-  With the core's answer to `serving_organisations/1` and `served_organisations/1`,
-  none (Gateways at the organisation level, above), a change of an organisation-level
-  gateway (its creation, a new default mark, its deletion) holds its organisation
-  `FOR NO KEY UPDATE`; a change at a workspace (a node's or a pool's, or a
-  workspace-level gateway's) holds the organisation `FOR SHARE`, then the workspace
-  `FOR NO KEY UPDATE`; then the node rows `FOR UPDATE`.
+  A change of an organisation-level gateway (its creation, a new default mark, its
+  deletion) holds its organisation `FOR NO KEY UPDATE`; a change at a workspace (a node's
+  or a pool's, or a workspace-level gateway's) holds the organisation `FOR SHARE`, then
+  the workspace `FOR NO KEY UPDATE`; then the node rows `FOR UPDATE`.
 - An organisation's suspension, its grants and its marking for deletion lock its row
   `FOR NO KEY UPDATE`, and a suspension of an account locks it the same way: they wait
   for a write in flight, and one asked after them waits and then sees them. What the

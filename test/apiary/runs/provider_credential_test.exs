@@ -13,7 +13,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
-  alias Apiary.{Connections, EditionStubs, Policy, Repo}
+  alias Apiary.{Connections, Policy, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Policy.{ComposedConfiguration, Render, Rule}
   alias Apiary.Runs.{ProviderCredential, Registration, Run}
@@ -353,116 +353,71 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   end
 
   describe "which gateway a model key may be sealed for" do
-    # `sealable_to?/3` by the gateway's level: the instance's gateway, an operator's gateway
-    # that serves the client, and a gateway of another organisation that serves the client.
+    # `sealable_to?/3` by the gateway's level: the instance's gateway and a gateway of the
+    # run's organisation get a key of the organisation's chain; nothing else does.
     setup do
-      %{scope: client} = sign_up_fixture()
-      %{scope: operator} = sign_up_fixture()
+      %{scope: scope} = sign_up_fixture()
       %{scope: stranger} = sign_up_fixture()
-      %{scope: other_client} = sign_up_fixture()
-      :ok = Apiary.Edition.put_test_stub(EditionStubs.ServesAcrossWithChain)
-
-      EditionStubs.ServesAcross.put([
-        {operator.organisation.id, client.organisation.id},
-        {stranger.organisation.id, client.organisation.id}
-      ])
 
       %{
-        client: client,
-        other_client: other_client,
-        operator: operator,
+        scope: scope,
         instance_gateway: instance_gateway_fixture(),
-        operator_gateway: organisation_gateway_fixture(operator),
-        stranger_gateway: organisation_gateway_fixture(stranger),
-        client_gateway: gateway_fixture(client)
+        organisation_gateway: organisation_gateway_fixture(scope),
+        workspace_gateway: gateway_fixture(scope),
+        stranger_gateway: organisation_gateway_fixture(stranger)
       }
     end
 
     test "the instance's gateway gets a key of the organisation's chain of any organisation",
          ctx do
-      for scope <- [ctx.client, ctx.other_client] do
+      %{scope: other} = sign_up_fixture()
+
+      for scope <- [ctx.scope, other] do
         assert ProviderCredential.sealable_to?(
                  "organisation",
                  ctx.instance_gateway,
                  run_in(scope)
                )
       end
+    end
 
-      assert ProviderCredential.sealable_to?(
-               "organisation",
-               ctx.client_gateway,
-               run_in(ctx.client)
-             )
-
-      for gateway <- [ctx.operator_gateway, ctx.stranger_gateway] do
-        refute ProviderCredential.sealable_to?(
-                 "organisation",
-                 gateway,
-                 run_in(ctx.client)
-               )
+    test "a gateway of the run's organisation gets a key of the organisation's chain", ctx do
+      for gateway <- [ctx.organisation_gateway, ctx.workspace_gateway] do
+        assert ProviderCredential.sealable_to?("organisation", gateway, run_in(ctx.scope))
       end
     end
 
-    test "under an operator's chain, the instance's and the operator's gateway get its key",
-         ctx do
-      EditionStubs.ServesAcrossWithChain.chain("operator")
-      EditionStubs.ServesAcrossWithChain.operator(ctx.operator.organisation.id)
-      run = run_in(ctx.client)
-
-      assert ProviderCredential.sealable_to?("operator", ctx.instance_gateway, run)
-      assert ProviderCredential.sealable_to?("operator", ctx.operator_gateway, run)
-      # The stranger's gateway serves the client too, but is not the operator's.
-      refute ProviderCredential.sealable_to?("operator", ctx.stranger_gateway, run)
-      refute ProviderCredential.sealable_to?("operator", ctx.client_gateway, run)
-    end
-
-    test "the operator's gateway gets none once it no longer serves the client", ctx do
-      EditionStubs.ServesAcrossWithChain.chain("operator")
-      EditionStubs.ServesAcrossWithChain.operator(ctx.operator.organisation.id)
-      EditionStubs.ServesAcross.switch(:off)
-
+    test "a gateway of another organisation gets no key", ctx do
       refute ProviderCredential.sealable_to?(
-               "operator",
-               ctx.operator_gateway,
-               run_in(ctx.client)
+               "organisation",
+               ctx.stranger_gateway,
+               run_in(ctx.scope)
              )
     end
 
-    test "with no operator's organisation, no gateway gets a key of the operator's chain",
-         ctx do
-      EditionStubs.ServesAcrossWithChain.chain("operator")
-      EditionStubs.ServesAcrossWithChain.operator(nil)
-
+    test "no gateway gets a key of a chain other than the organisation's", ctx do
       for gateway <- [
             ctx.instance_gateway,
-            ctx.operator_gateway,
-            ctx.stranger_gateway,
-            ctx.client_gateway
+            ctx.organisation_gateway,
+            ctx.workspace_gateway,
+            ctx.stranger_gateway
           ] do
-        refute ProviderCredential.sealable_to?("operator", gateway, run_in(ctx.client))
-      end
-    end
-
-    test "under the organisation's chain, no gateway gets a key of an operator's chain", ctx do
-      EditionStubs.ServesAcrossWithChain.operator(ctx.operator.organisation.id)
-
-      for gateway <- [ctx.instance_gateway, ctx.operator_gateway] do
-        refute ProviderCredential.sealable_to?("operator", gateway, run_in(ctx.client))
+        refute ProviderCredential.sealable_to?("operator", gateway, run_in(ctx.scope))
       end
     end
 
     test "a gateway made in a workspace gets a key of a run of that workspace alone", ctx do
-      other = workspace_fixture(ctx.client.organisation, "Other")
-      assert is_binary(ctx.client_gateway.workspace_id)
+      other = workspace_fixture(ctx.scope.organisation, "Other")
+      assert is_binary(ctx.workspace_gateway.workspace_id)
 
       assert ProviderCredential.sealable_to?(
                "organisation",
-               ctx.client_gateway,
-               run_in(ctx.client)
+               ctx.workspace_gateway,
+               run_in(ctx.scope)
              )
 
-      refute ProviderCredential.sealable_to?("organisation", ctx.client_gateway, %{
-               organisation_id: ctx.client.organisation.id,
+      refute ProviderCredential.sealable_to?("organisation", ctx.workspace_gateway, %{
+               organisation_id: ctx.scope.organisation.id,
                workspace_id: other.id
              })
     end
@@ -471,7 +426,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       pool = instance_pool_fixture()
 
       for chain <- ["organisation", "operator"] do
-        refute ProviderCredential.sealable_to?(chain, pool, run_in(ctx.client))
+        refute ProviderCredential.sealable_to?(chain, pool, run_in(ctx.scope))
       end
     end
 

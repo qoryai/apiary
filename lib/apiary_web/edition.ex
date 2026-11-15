@@ -236,14 +236,12 @@ defmodule ApiaryWeb.Edition do
     default;
   - `:empty`, the body of the Gateways page's empty state, under No gateways yet.
 
-  The core's sentences name the workspaces of `organisation` alone, as the core's
-  gateways serve no other organisation's: "Machines and pools in any workspace of Acme
-  can use the gateways added here. A workspace can also add gateways that only its
-  machines and pools use.", "Machines and pools in any workspace of Acme can use it." and
-  "The default gateway for workspaces in Acme that don't set one.", and for `:empty`,
-  "Add one so the machines and pools in Acme's workspaces can send runs through it.". An edition whose organisation-level gateways also serve the
-  workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
-  in its answer.
+  The core's sentences name the workspaces of `organisation` alone: "Machines and pools
+  in any workspace of Acme can use the gateways added here. A workspace can also add
+  gateways that only its machines and pools use.", "Machines and pools in any workspace
+  of Acme can use it." and "The default gateway for workspaces in Acme that don't set
+  one.", and for `:empty`, "Add one so the machines and pools in Acme's workspaces can
+  send runs through it."
   """
   @callback gateway_reach_sentence(
               kind :: :intro | :who_can_use | :default_row | :empty,

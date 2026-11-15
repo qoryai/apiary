@@ -166,7 +166,7 @@ defmodule Apiary.Stacks.Sources do
 
   require Logger
 
-  alias Apiary.{Access, Edition, Features, Harnesses, Repo, Stacks}
+  alias Apiary.{Access, Features, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
   alias Apiary.Artifacts.TemplateTypes
@@ -694,11 +694,7 @@ defmodule Apiary.Stacks.Sources do
   defp shared_listed(%Organisation{} = organisation) do
     with %{choice: :repository, git: git} = chosen when is_binary(git) <- shared(organisation),
          %Stack{owner_organisation_id: owner} <- Stacks.shared(organisation) do
-      hidden =
-        Resolution.hidden?(owner, %{
-          organisation_id: organisation.id,
-          operated: Edition.operated?(organisation)
-        })
+      hidden = Resolution.hidden?(owner, %{organisation_id: organisation.id})
 
       [
         %{
@@ -2268,12 +2264,7 @@ defmodule Apiary.Stacks.Sources do
     if Harnesses.assigned?(id, %{"git" => git, "ref" => ref, "stack" => stack}), do: ref
   end
 
-  defp hides?(owner, %Organisation{id: id} = organisation) do
-    Resolution.hidden?(owner, %{
-      operated: Edition.operated?(organisation),
-      organisation_id: id
-    })
-  end
+  defp hides?(owner, %Organisation{id: id}), do: Resolution.hidden?(owner, %{organisation_id: id})
 
   @doc false
   # save_qory_start/2 saves the harness of `workspace`, new, made from the Qory template,

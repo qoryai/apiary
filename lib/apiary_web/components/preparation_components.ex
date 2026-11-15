@@ -801,13 +801,6 @@ defmodule ApiaryWeb.PreparationComponents do
   defp built_fix({:pool_log, pool}),
     do: rich_gettext("Read the cause in the log of %{pool} on its host.", pool: {:b, pool})
 
-  defp built_fix({:operator_log, operator, pool}),
-    do:
-      rich_gettext("Ask an admin of %{operator} for the cause in the log of %{pool}.",
-        operator: operator,
-        pool: {:b, pool}
-      )
-
   defp built_fix({:support, run}), do: gettext("Contact support with run %{run}.", run: run)
 
   defp built_fix({:rebuild, target}),

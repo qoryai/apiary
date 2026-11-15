@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
   # A run that goes through a gateway of the organisation, which has no workspace: its
   # discovery, a registration from a node of any workspace of the organisation, the
-  # attach, the batches and the outcome, through the endpoints. Then, through the
-  # edition's seams, a gateway of another organisation that serves this one's
-  # workspaces, while that organisation is out of use.
+  # attach, the batches and the outcome, through the endpoints, also while the organisation
+  # is out of use (`Apiary.EditionStubs.OutOfUse`) and once it is marked for deletion.
   use ApiaryWeb.ConnCase, async: true
 
   import Apiary.ContractFixtures
@@ -112,6 +111,27 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
     run
   end
 
+  defp reload({key, secret}, run_id),
+    do: signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
+
+  defp deliver_as({key, secret}, events, delivery),
+    do: signed_post(build_conn(), key.key_id, secret, events, delivery: delivery)
+
+  # A run of the node of the other workspace, registered through the organisation's
+  # gateway and attached by it.
+  defp attached(ctx) do
+    {run_id, run_key} = registered(ctx.key)
+    assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
+    {run_id, run_key}
+  end
+
+  defp stored(run_id) do
+    run = run(run_id)
+
+    {Repo.aggregate(from(e in Apiary.Runs.Event, where: e.run_id == ^run.id), :count),
+     Repo.aggregate(from(d in Apiary.Runs.Delivery, where: d.node_run_id == ^run_id), :count)}
+  end
+
   describe "a gateway of the organisation" do
     test "is given a document without workspaces, under the digest every answer names",
          ctx do
@@ -137,76 +157,81 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
       refute Repo.exists?(from r in Run, where: r.node_run_id == ^subject)
     end
-  end
 
-  # Another organisation whose organisation-level gateway serves the scope's
-  # organisation's workspaces, through the edition's seams, and is the default of the
-  # scope's organisation's node once the scope's organisation's gateway goes.
-  defp serving_another(ctx) do
-    %{scope: operator} = sign_up_fixture()
-    gateway = organisation_gateway_fixture(operator)
+    test "a delivery sent again is answered as before", ctx do
+      {run_id, run_key} = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      delivery = Ecto.UUID.generate()
+      assert response(deliver_as(ctx.gateway_key, [started], delivery), 202) == ""
+      assert stored(run_id) == {1, 1}
 
-    %{access_key: gateway_key, secret: gateway_secret} =
-      contract_key_fixture(operator, node: gateway)
+      conn = deliver_as(ctx.gateway_key, [started], delivery)
+      assert response(conn, 202) == ""
+      assert get_resp_header(conn, "x-qory-configuration") != []
+      assert stored(run_id) == {1, 1}
 
-    # Its own workspace's node, on its organisation's default: this gateway.
-    %{access_key: own_key, secret: own_secret} = contract_key_fixture(operator)
-
-    Edition.put_test_stub(EditionStubs.ServesAcross)
-    EditionStubs.ServesAcross.put([{operator.organisation.id, ctx.scope.organisation.id}])
-
-    # The scope's organisation's gateway goes, so its workspaces' default is the other
-    # organisation's.
-    {:ok, _} = Apiary.Nodes.update_node(ctx.elsewhere, ctx.node, %{gateway_choice: "direct"})
-    {:ok, _} = Apiary.Nodes.delete_node(ctx.scope, ctx.gateway)
-    {:ok, _} = Apiary.Nodes.update_node(ctx.elsewhere, ctx.node, %{gateway_choice: "default"})
-
-    %{
-      operator: operator,
-      gateway: gateway,
-      gateway_key: {gateway_key, gateway_secret},
-      own_key: {own_key, own_secret}
-    }
-  end
-
-  describe "a gateway of an organisation out of use, serving another" do
-    setup :serving_another
-
-    test "carries the served organisation's run through every endpoint", ctx do
-      EditionStubs.ServesAcross.out_of_use([ctx.operator.organisation.id])
-      carried(ctx, ctx.elsewhere.workspace)
+      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
     end
 
+    @tag needs: :security
+    test "is given the run's policy at its reload", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
+      {run_id, _run_key} = attached(ctx)
+      assert reload(ctx.gateway_key, run_id).status == 200
+    end
+
+    test "a new delivery to a run whose events were pruned is a 410 that records it", ctx do
+      {run_id, _run_key} = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
+
+      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
+        set: [events_pruned_at: DateTime.utc_now()]
+      )
+
+      next = wire_event(run_id, 2, "run.heartbeat")
+      assert response(deliver(ctx.gateway_key, [next]), 410) == ""
+      {_events, deliveries} = stored(run_id)
+      assert deliveries == 2
+    end
+  end
+
+  describe "a gateway of an organisation out of use" do
+    setup do
+      :ok = Edition.put_test_stub(EditionStubs.OutOfUse)
+    end
+
+    defp out_of_use(%{scope: scope}), do: Process.put(:out_of_use, [scope.organisation.id])
+
     test "its key is discovered, and a workspace's gateway of its organisation is not", ctx do
-      workspace_gateway = gateway_fixture(ctx.operator)
+      workspace_gateway = gateway_fixture(ctx.scope)
 
       %{access_key: key, secret: secret} =
-        contract_key_fixture(ctx.operator, node: workspace_gateway)
+        contract_key_fixture(ctx.scope, node: workspace_gateway)
 
-      EditionStubs.ServesAcross.out_of_use([ctx.operator.organisation.id])
+      out_of_use(ctx)
 
       assert json_response(discover(ctx.gateway_key), 200)["node_id"] == ctx.gateway.public_id
       assert json_response(discover({key, secret}), 401) == %{"error" => "unauthorized"}
     end
 
-    test "acts for no run of its own organisation's workspaces", ctx do
-      {run_id, run_key} = registered(ctx.own_key)
-      EditionStubs.ServesAcross.out_of_use([ctx.operator.organisation.id])
+    test "acts for no run of its organisation's workspaces", ctx do
+      {run_id, run_key} = registered(ctx.key)
+      out_of_use(ctx)
 
       conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
       assert json_response(conn, 401) == %{"error" => "unauthorized"}
       assert run(run_id).attached_at == nil
 
-      # Its own organisation's node is refused, as every key of a node out of use is.
-      assert json_response(register(ctx.own_key, gateway_registration()), 401) ==
+      # The organisation's node is refused, as every key of a node out of use is.
+      assert json_response(register(ctx.key, gateway_registration()), 401) ==
                %{"error" => "unauthorized"}
     end
 
     test "is refused everywhere once its organisation is marked for deletion", ctx do
       {run_id, run_key} = registered(ctx.key)
 
-      {:ok, _} =
-        Apiary.Deletion.delete_organisation(ctx.operator, ctx.operator.organisation.slug)
+      {:ok, _} = Apiary.Deletion.delete_organisation(ctx.scope, ctx.scope.organisation.slug)
 
       assert json_response(discover(ctx.gateway_key), 401) == %{"error" => "unauthorized"}
 
@@ -218,164 +243,6 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       assert json_response(deliver(ctx.gateway_key, [started]), 401) == %{
                "error" => "unauthorized"
              }
-
-      assert json_response(register(ctx.key, gateway_registration()), 409) ==
-               %{"error" => "gateway_without_key"}
-    end
-  end
-
-  describe "a gateway that may no longer serve a run's workspace" do
-    setup :serving_another
-
-    defp reload({key, secret}, run_id),
-      do: signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
-
-    defp deliver_as({key, secret}, events, delivery),
-      do: signed_post(build_conn(), key.key_id, secret, events, delivery: delivery)
-
-    # A run of the scope's organisation's node, registered through the other
-    # organisation's gateway and attached by it.
-    defp attached(ctx) do
-      {run_id, run_key} = registered(ctx.key)
-      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
-      {run_id, run_key}
-    end
-
-    defp stored(run_id) do
-      run = run(run_id)
-
-      {Repo.aggregate(from(e in Apiary.Runs.Event, where: e.run_id == ^run.id), :count),
-       Repo.aggregate(from(d in Apiary.Runs.Delivery, where: d.node_run_id == ^run_id), :count)}
-    end
-
-    # The batch refused: signed, no digest, and nothing of it stored.
-    defp batch_refused(conn, run_id, before) do
-      assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
-      assert signed_answer?(conn)
-      assert get_resp_header(conn, "x-qory-configuration") == []
-      assert get_resp_header(conn, "x-qory-run-configuration") == []
-      assert stored(run_id) == before
-    end
-
-    # Each refusal, signed, and nothing of the batch stored: a new delivery, and one
-    # accepted before the gateway stopped serving the workspace, sent again.
-    defp refused(ctx, {run_id, run_key}, {accepted, events}) do
-      {_subject, [_started, next]} = first_events_and_next(run_id)
-      before = stored(run_id)
-
-      batch_refused(deliver(ctx.gateway_key, [next]), run_id, before)
-      batch_refused(deliver_as(ctx.gateway_key, events, accepted), run_id, before)
-
-      conn = reload(ctx.gateway_key, run_id)
-      assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
-      assert signed_answer?(conn)
-      assert get_resp_header(conn, "x-qory-run-configuration") == []
-
-      conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
-      assert json_response(conn, 409) == %{"error" => "workspace_not_served"}
-      assert signed_answer?(conn)
-    end
-
-    # A delivery accepted while the gateway serves the workspace: its id and its events.
-    defp accepted(ctx, run_id) do
-      {_subject, [started]} = first_events(run_id)
-      delivery = Ecto.UUID.generate()
-      assert response(deliver_as(ctx.gateway_key, [started], delivery), 202) == ""
-      {delivery, [started]}
-    end
-
-    defp first_events_and_next(run_id) do
-      {subject, [started]} = first_events(run_id)
-      {subject, [started, wire_event(run_id, 2, "run.heartbeat")]}
-    end
-
-    # With the relation back, a new run registers and is attached.
-    defp served_again(ctx) do
-      EditionStubs.ServesAcross.switch(:on)
-      EditionStubs.ServesAcross.put([{ctx.operator.organisation.id, ctx.scope.organisation.id}])
-      {run_id, _run_key} = attached(ctx)
-      {_subject, [started]} = first_events(run_id)
-      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
-    end
-
-    test "is served while the relation holds, a delivery sent again answered as before", ctx do
-      {run_id, run_key} = attached(ctx)
-      {delivery, events} = accepted(ctx, run_id)
-      assert stored(run_id) == {1, 1}
-
-      conn = deliver_as(ctx.gateway_key, events, delivery)
-      assert response(conn, 202) == ""
-      assert get_resp_header(conn, "x-qory-configuration") != []
-      assert stored(run_id) == {1, 1}
-
-      assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
-    end
-
-    @tag needs: :security
-    test "is given the run's policy at its reload while the relation holds", ctx do
-      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
-      {run_id, _run_key} = attached(ctx)
-      assert reload(ctx.gateway_key, run_id).status == 200
-    end
-
-    @tag needs: :security
-    test "is given no policy at its reload once the relation is withdrawn", ctx do
-      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
-      {run_id, _run_key} = attached(ctx)
-      EditionStubs.ServesAcross.put([])
-
-      conn = reload(ctx.gateway_key, run_id)
-      assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
-      assert get_resp_header(conn, "x-qory-run-configuration") == []
-    end
-
-    test "is refused once the relation is withdrawn", ctx do
-      {run_id, _run_key} = run = attached(ctx)
-      delivery = accepted(ctx, run_id)
-      EditionStubs.ServesAcross.put([])
-      refused(ctx, run, delivery)
-      served_again(ctx)
-    end
-
-    test "is refused while the edition's serving is off", ctx do
-      {run_id, _run_key} = run = attached(ctx)
-      delivery = accepted(ctx, run_id)
-      EditionStubs.ServesAcross.switch(:off)
-      refused(ctx, run, delivery)
-      served_again(ctx)
-    end
-
-    test "is refused once the run's organisation leaves, while it serves others", ctx do
-      %{scope: another} = sign_up_fixture()
-      {run_id, _run_key} = run = attached(ctx)
-      delivery = accepted(ctx, run_id)
-
-      EditionStubs.ServesAcross.put([
-        {ctx.operator.organisation.id, another.organisation.id}
-      ])
-
-      refused(ctx, run, delivery)
-      served_again(ctx)
-    end
-
-    test "a run whose events were pruned is refused alike, and no delivery is recorded", ctx do
-      {run_id, _run_key} = attached(ctx)
-      {delivery, events} = accepted(ctx, run_id)
-
-      Repo.update_all(from(r in Run, where: r.node_run_id == ^run_id),
-        set: [events_pruned_at: DateTime.utc_now()]
-      )
-
-      # While served, a new delivery to it is a 410 that records the delivery.
-      {_subject, [_started, next]} = first_events_and_next(run_id)
-      assert response(deliver(ctx.gateway_key, [next]), 410) == ""
-      {_events, deliveries} = stored(run_id)
-      assert deliveries == 2
-
-      EditionStubs.ServesAcross.put([])
-      before = stored(run_id)
-      batch_refused(deliver(ctx.gateway_key, [next]), run_id, before)
-      batch_refused(deliver_as(ctx.gateway_key, events, delivery), run_id, before)
     end
   end
 end

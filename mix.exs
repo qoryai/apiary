@@ -184,6 +184,8 @@ defmodule Apiary.MixProject do
       # What the CHANGELOG names of code that is gone: shown as code, linked nowhere.
       skip_code_autolink_to: [
         "c:Apiary.Edition.features_of/3",
+        "c:Apiary.Edition.serving_organisations/1",
+        "c:Apiary.Edition.served_organisations/1",
         "Apiary.Features.of/2",
         "Apiary.Features.on?/2",
         # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` mentions.

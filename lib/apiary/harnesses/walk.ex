@@ -21,8 +21,7 @@ defmodule Apiary.Harnesses.Walk do
   #   4. else the Qory harness, the base of the workspace's type's definition
   #      (`Apiary.Lingo.Domain.definition/1`) at its default branch, `main`, as a document
   #      that only extends it, origin `:setting`, with no stacks row
-  #      (`stack_id` nil) and no owner. It is hidden only where the run's organisation is
-  #      operated (`c:Apiary.Edition.operated?/1`).
+  #      (`stack_id` nil) and no owner. It is never hidden.
   #
   # Where the target's harness file is read and does not apply, the run keeps the
   # `target_version` that read returned.
@@ -352,7 +351,6 @@ defmodule Apiary.Harnesses.Walk do
   defp by_target(input, otherwise) do
     case target(input) do
       {version, {:file, section, target}} ->
-        put(:hidden, Edition.operated?(input.organisation))
         sources(section, input.organisation, target)
 
         walked(%{
@@ -432,7 +430,6 @@ defmodule Apiary.Harnesses.Walk do
   # (`Apiary.Organisations.Workspace.qory_stack/1`), for a run with no choice, after the
   # target's harness file read at `version`, nil for none.
   defp qory(input, version) do
-    put(:hidden, Edition.operated?(input.organisation))
     definition = input.workspace |> Domain.for_workspace() |> Domain.definition()
     base = Map.put(definition.harness, "stack", Workspace.qory_stack(input.workspace))
     section = %{"extends" => base}

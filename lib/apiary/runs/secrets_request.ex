@@ -57,21 +57,14 @@ defmodule Apiary.Runs.SecretsRequest do
   #     the key is no longer a value of the provider's secret; the provider's secret or
   #     chain differs from the run's; the provider's keys are a
   #     workspace's secret (`Apiary.Secrets.provider_keys_workspace/1`) and the run is of
-  #     another workspace; the provider's organisation is
-  #     not the one its chain is made of (`provider_organisation/2`): the run's for a
-  #     provider of the organisation's chain, the operator's for a provider of an operator's
-  #     chain (a provider of that chain is left to the gateway check where the edition names
-  #     no operator); the gateway may not receive the key
-  #     (`Apiary.Runs.ProviderCredential.sealable_to?/3`): for a provider of the
-  #     organisation's chain, a gateway of another organisation, and for a provider of an
-  #     operator's chain, a gateway of an organisation other than the operator's or whose
-  #     gateways do not serve the run's, or any gateway once the edition returns another
-  #     chain than "operator" for the run's organisation
-  #     (`c:Apiary.Edition.model_choice_chain/1`) or names no operator
-  #     (`c:Apiary.Edition.operator_chain_organisation/1`); the instance's gateway may
-  #     receive a key of either chain; for a request that names the work entry, a gateway
+  #     another workspace; the provider of the organisation's chain is of another
+  #     organisation than the run's (`provider_organisation/2`); the gateway may not
+  #     receive the key (`Apiary.Runs.ProviderCredential.sealable_to?/3`): a gateway of
+  #     another organisation, a gateway of another workspace, and any gateway for a
+  #     provider of any other chain; the instance's gateway may receive a key of the
+  #     organisation's chain; for a request that names the work entry, a gateway
   #     that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`):
-  #     a gateway of another organisation whose gateways do not serve the run's; the
+  #     a gateway of another organisation or of another workspace; the
   #     access key's public key fails a key check
   #     (`Apiary.Contract.Ed25519.check_public_key/1`);
   #  9. for a request that names the work entry, after every check above and the model
@@ -96,13 +89,10 @@ defmodule Apiary.Runs.SecretsRequest do
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
   # key, with the provider's public id, the first named key's credential name
-  # (`credential`) and every named key's (`credentials`): for a provider of the
-  # organisation's chain, in the run's organisation's trail, about the run; for a provider
-  # of an operator's chain, in the operator's organisation's trail, about the gateway,
-  # with the run's id, so the run's organisation's people read nothing of the operator's
-  # provider. In one transaction with that entry, before it, a row per named key keeps
-  # when the sealed value was set (`Apiary.ModelKeys.keep_copies/2`). A seal without a
-  # model key is not recorded.
+  # (`credential`) and every named key's (`credentials`), in the run's organisation's
+  # trail, about the run. In one transaction with that entry, before it, a row per named
+  # key keeps when the sealed value was set (`Apiary.ModelKeys.keep_copies/2`). A seal
+  # without a model key is not recorded.
   #
   # The value goes into the seal and nowhere else: no log line, error, exception message
   # or audit entry has it, nor the plaintext, the sealed bytes or a key. A log line has
@@ -420,19 +410,14 @@ defmodule Apiary.Runs.SecretsRequest do
   end
 
   # The organisation whose providers make up the chain of `provider` for the run: the run's
-  # organisation for the organisation's chain, and for an operator's chain the operator's
-  # (`Apiary.Runs.ProviderCredential.operator_of/1`). Where the edition names no operator,
-  # the provider's organisation is taken, so that the gateway check refuses the key
+  # organisation for the organisation's chain. For a provider of any other chain, the
+  # provider's organisation is taken, so that the gateway check refuses the key
   # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
-  defp provider_organisation(%{chain: "operator"} = provider, %Run{} = run),
-    do: ProviderCredential.operator_of(run.organisation_id) || provider.organisation_id
+  defp provider_organisation(%{chain: "organisation"}, %Run{organisation_id: id}), do: id
+  defp provider_organisation(provider, _run), do: provider.organisation_id
 
-  defp provider_organisation(_provider, %Run{organisation_id: organisation_id}),
-    do: organisation_id
-
-  # The work entry's credential may be sealed for a gateway of the run's organisation, the
-  # instance's gateway, or a gateway of an organisation whose gateways serve the run's
-  # (`Apiary.Runs.WorkCredential.sealable_to?/2`).
+  # The work entry's credential may be sealed for a gateway of the run's organisation, or
+  # the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`).
   defp work_sealable(_run, nil, _access_key), do: :ok
 
   defp work_sealable(%Run{} = run, %{}, %AccessKey{node: node}) do
@@ -617,12 +602,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # The records of the seal, for a request that lists the run's model key, in one
   # transaction: the copies of its keys (`Apiary.ModelKeys.keep_copies/2`), then the
   # audit entry; the answer to such a request goes out only with both. A request that
-  # does not list it, such as one for `registry` alone, gets neither. A key of the
-  # organisation's chain: in the run's organisation's trail, about the run. A key of an
-  # operator's chain: in the operator's organisation's trail
-  # (`Apiary.Runs.ProviderCredential.operator_of/1`), about the gateway, with the run's
-  # id in its details. Either way the access key acts in that organisation
-  # (`Apiary.Accounts.Scope.key_in_organisation/2`).
+  # does not list it, such as one for `registry` alone, gets neither. The entry goes in the
+  # run's organisation's trail, about the run, and the access key acts in that
+  # organisation (`Apiary.Accounts.Scope.key_in_organisation/2`).
   defp record(_access_key, _run, {nil, _copies}), do: :ok
 
   defp record(access_key, run, {credential, copies}) do
@@ -632,23 +614,12 @@ defmodule Apiary.Runs.SecretsRequest do
       "credentials" => Enum.map(credential.keys, & &1.name)
     }
 
-    {organisation_id, subject, details} =
-      case credential.provider.chain do
-        "operator" ->
-          {ProviderCredential.operator_of(run.organisation_id), access_key.node,
-           Map.put(details, "run_id", run.node_run_id)}
-
-        _organisation ->
-          {run.organisation_id, run, details}
-      end
-
     Repo.transact(fn ->
-      with %Organisation{} = organisation <-
-             organisation_id && Repo.get(Organisation, organisation_id),
+      with %Organisation{} = organisation <- Repo.get(Organisation, run.organisation_id),
            :ok <- ModelKeys.keep_copies(run.id, copies),
            scope = Scope.key_in_organisation(Scope.for_access_key(access_key), organisation),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"secret.seal", subject, %{details: details}) do
+             Audit.record(Repo, scope, :"secret.seal", run, %{details: details}) do
         {:ok, :recorded}
       else
         _failed -> {:error, :unavailable}

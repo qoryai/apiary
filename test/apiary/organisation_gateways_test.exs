@@ -1,8 +1,7 @@
 defmodule Apiary.OrganisationGatewaysTest do
   # Gateways that live at an organisation, with no workspace: what they may serve, the
   # defaults they hold, their keys and runs, their deletion, the purges, and the schema
-  # that keeps them. The edition's seams answer through `Apiary.EditionStubs.ServesAcross`
-  # where a test lets one organisation's gateways serve another's workspaces.
+  # that keeps them.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -37,13 +36,6 @@ defmodule Apiary.OrganisationGatewaysTest do
   defp other_workspace(scope) do
     workspace = workspace_fixture(scope.organisation)
     %{workspace: workspace, scope: workspace_scope(scope.user, workspace)}
-  end
-
-  # Another organisation, whose organisation-level gateways serve the scope's workspaces
-  # (`serving`), or whose workspaces the scope's organisation's serve (`served`).
-  defp serves_across(pairs) do
-    Edition.put_test_stub(EditionStubs.ServesAcross)
-    EditionStubs.ServesAcross.put(pairs)
   end
 
   defp entries(node) do
@@ -182,7 +174,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert Enum.any?(entries(first), &(&1.action == "node.edit"))
     end
 
-    test "the database holds an organisation to one default of its own", %{scope: scope} do
+    test "the database allows an organisation one default among its gateways", %{scope: scope} do
       first = organisation_gateway_fixture(scope)
       second = organisation_gateway_fixture(scope)
       assert first.default_gateway
@@ -247,190 +239,18 @@ defmodule Apiary.OrganisationGatewaysTest do
     end
   end
 
-  describe "through the edition's seams" do
-    setup do
-      %{scope: other} = sign_up_fixture()
-      %{other: other}
-    end
-
-    test "another organisation's gateways serve a workspace the edition names, after its own",
-         %{scope: scope, other: other} do
-      theirs = organisation_gateway_fixture(other, name: "theirs")
-      serves_across([{other.organisation.id, scope.organisation.id}])
-
-      assert Gateways.levels(scope.workspace) == [
-               {:workspace, scope.workspace.id},
-               {:organisation, scope.organisation.id},
-               {:organisation, other.organisation.id},
-               :instance
-             ]
-
-      assert Apiary.Access.may_serve?(theirs, scope.workspace)
-      assert Apiary.Access.may_serve?(theirs, other.workspace)
-      assert Enum.map(Gateways.gateway_choices(scope), & &1.id) == [theirs.id]
-      assert Gateways.default_gateway_for(scope.workspace).id == theirs.id
-
-      assert theirs |> Gateways.serves() |> Enum.map(& &1.id) |> Enum.sort() ==
-               Enum.sort([scope.workspace.id, other.workspace.id])
-
-      # The organisation's own default comes before the one that serves it.
-      ours = organisation_gateway_fixture(scope, name: "ours")
-      refute ours.default_gateway
-      {:ok, _} = Nodes.make_default_gateway(scope, ours)
-      assert Gateways.default_gateway_for(scope.workspace).id == ours.id
-
-      assert Enum.map(Gateways.gateway_choices(scope), & &1.id) == [ours.id, theirs.id]
-    end
-
-    test "the serving organisations' defaults resolve in the edition's order",
-         %{scope: scope, other: other} do
-      %{scope: third} = sign_up_fixture()
-      later = organisation_gateway_fixture(third)
-      first = organisation_gateway_fixture(other)
-
-      serves_across([
-        {other.organisation.id, scope.organisation.id},
-        {third.organisation.id, scope.organisation.id}
-      ])
-
-      assert Gateways.default_gateway_for(scope.workspace).id == first.id
-
-      serves_across([
-        {third.organisation.id, scope.organisation.id},
-        {other.organisation.id, scope.organisation.id}
-      ])
-
-      assert Gateways.default_gateway_for(scope.workspace).id == later.id
-    end
-
-    test "a new gateway is not made the default when a later level's default resolves for it",
-         %{scope: scope, other: other} do
-      theirs = organisation_gateway_fixture(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
-      node = node_fixture(scope)
-      assert node.gateway_choice == :default
-      assert Gateways.chosen(node).id == theirs.id
-
-      # The organisation's first gateway would come before theirs: marking it would move
-      # the node, so it is not.
-      ours = organisation_gateway_fixture(scope)
-      refute ours.default_gateway
-      assert Gateways.chosen(node).id == theirs.id
-    end
-
-    test "a gateway serving another organisation's workspaces is made the default only when none resolves after it",
-         %{scope: scope, other: other} do
-      # Our gateways serve the other organisation, which has a default of its own: that one
-      # comes before ours for its workspaces, so ours is marked.
-      _their_own = organisation_gateway_fixture(other)
-      serves_across([{scope.organisation.id, other.organisation.id}])
-
-      ours = organisation_gateway_fixture(scope)
-      assert ours.default_gateway
-      assert Gateways.default_gateway_for(scope.workspace).id == ours.id
-    end
-
-    test "a node of a served workspace on the default holds the gateway from deletion",
-         %{scope: scope, other: other} do
-      theirs = organisation_gateway_fixture(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
-      node = node_fixture(scope)
-      named = node_fixture(scope, gateway_choice: "named", gateway_id: theirs.id)
-
-      assert %{nodes: nodes, runs: []} = Gateways.delete_blockers(theirs)
-      assert Enum.sort(Enum.map(nodes, & &1.id)) == Enum.sort([node.id, named.id])
-
-      assert {:error, {:gateway_in_use, %{nodes: [_, _]}}} = Nodes.delete_node(other, theirs)
-
-      # A workspace with a default of its own does not resolve to it.
-      gateway_fixture(scope)
-      {:ok, _} = Nodes.update_node(scope, named, %{gateway_choice: "direct"})
-      assert %{nodes: [%{id: id}]} = Gateways.delete_blockers(theirs)
-      assert id == node.id
-      {:ok, _} = Nodes.make_default_gateway(scope, hd(Gateways.gateway_choices(scope)))
-      assert Gateways.delete_blockers(theirs) == %{nodes: [], runs: []}
-      assert {:ok, _} = Nodes.delete_node(other, theirs)
-    end
-
-    test "after a deletion, the oldest left at the level is the default for a served workspace",
-         %{scope: scope, other: other} do
-      first = organisation_gateway_fixture(other)
-      second = organisation_gateway_fixture(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
-
-      # The other organisation's own workspace marks a default of its own, so only ours
-      # still resolves through its organisation's.
-      {:ok, own} =
-        Nodes.create_node(other, %{kind: "gateway", name: "own", url: "https://gateway.example"})
-
-      {:ok, _} = Nodes.make_default_gateway(other, own)
-
-      assert {:ok, _} = Nodes.delete_node(other, first)
-      assert reload(second).default_gateway
-      assert Gateways.default_gateway_for(scope.workspace).id == second.id
-    end
-
-    test "a serving organisation out of use keeps its level: the default still resolves to it",
-         %{scope: scope, other: other} do
-      theirs = organisation_gateway_fixture(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
-      node = node_fixture(scope)
-      assert Gateways.chosen(node).id == theirs.id
-
-      EditionStubs.ServesAcross.out_of_use([other.organisation.id])
-
-      assert Gateways.default_gateway_for(scope.workspace).id == theirs.id
-      assert Gateways.chosen(reload(node)).id == theirs.id
-      assert Enum.map(Gateways.gateway_choices(scope), & &1.id) == [theirs.id]
-
-      # A gateway made now is not marked: nothing moves from the gateway out of use.
-      ours = organisation_gateway_fixture(scope)
-      refute ours.default_gateway
-      assert Gateways.chosen(reload(node)).id == theirs.id
-    end
-
-    test "a run of a served workspace registers through it, and its key attaches and posts",
-         %{scope: scope, other: other} do
-      %{gateway: theirs, key: gateway_key} = keyed(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
-      %{access_key: key} = contract_key_fixture(scope)
-
-      {:ok, %{run: run, run_key: run_key}} =
-        register_run(key, gateway_registration(), instance_id())
-
-      assert run.gateway_id == theirs.id
-      assert run.workspace_id == scope.workspace.id
-
-      {:ok, body} = Attach.parse(attach_body(run_key))
-
-      assert {:ok, %{run: %Run{attached_at: %DateTime{}}}} =
-               Attach.attach(gateway_key, run.node_run_id, body, %{instance_id: instance_id()})
-
-      # No longer served: its attach of a fresh run is refused.
-      {:ok, %{run: fresh, run_key: fresh_key}} =
-        register_run(key, gateway_registration(), instance_id())
-
-      serves_across([])
-      {:ok, body} = Attach.parse(attach_body(fresh_key))
-
-      assert {:error, :workspace_not_served} =
-               Attach.attach(gateway_key, fresh.node_run_id, body, %{instance_id: instance_id()})
-    end
-  end
-
   describe "a gateway of an organisation out of use" do
-    # The other organisation's gateway serves the scope's workspaces; the other
-    # organisation is then held out of use, neither deleted nor marked.
+    # The organisation is held out of use (`Apiary.EditionStubs.OutOfUse`), neither
+    # deleted nor marked.
     setup %{scope: scope} do
-      %{scope: other} = sign_up_fixture()
-      %{gateway: gateway, key: gateway_key} = keyed(other)
-      serves_across([{other.organisation.id, scope.organisation.id}])
+      %{gateway: gateway, key: gateway_key} = keyed(scope)
       %{access_key: key} = contract_key_fixture(scope)
-      %{other: other, gateway: gateway, gateway_key: gateway_key, key: key}
+      :ok = Edition.put_test_stub(EditionStubs.OutOfUse)
+      %{gateway: gateway, gateway_key: gateway_key, key: key}
     end
 
     defp out_of_use(%{organisation: organisation}),
-      do: EditionStubs.ServesAcross.out_of_use([organisation.id])
+      do: Process.put(:out_of_use, [organisation.id])
 
     defp attach(gateway_key, run, run_key) do
       {:ok, body} = Attach.parse(attach_body(run_key))
@@ -443,56 +263,22 @@ defmodule Apiary.OrganisationGatewaysTest do
       Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()})
     end
 
-    @tag :feature_sets
-    test "its key verifies and carries a run of a workspace it serves, end to end",
-         %{other: other, gateway: gateway, gateway_key: gateway_key, key: key} do
-      out_of_use(other)
-      assert {:ok, verified} = AccessKeys.fetch_for_verification(gateway_key.key_id)
-      assert verified.node.id == gateway.id
-      assert AccessKeys.active_key?(gateway)
-
-      {:ok, %{run: run, run_key: run_key}} =
-        register_run(key, gateway_registration(), instance_id())
-
-      assert run.gateway_id == gateway.id
-      assert {:ok, %{run: %Run{attached_at: %DateTime{}}}} = attach(verified, run, run_key)
-      assert {:ok, %{status: 202, inserted: 1}} = post(verified, run)
-
-      # The run's reload is answered to it, as for any gateway. With the `registry`
-      # feature, its run configuration has the run's registry credential and no other.
-      # Without it, the workspace's policy version 1 and no credential, or not found where
-      # the security policy is off.
-      reload = Apiary.Runs.Registration.fetch(verified, run.node_run_id, instance_id())
-
-      cond do
-        Apiary.Features.on?(:registry) ->
-          assert {:ok, %{settings: settings}} = reload
-          assert %{"credentials" => [%{"name" => "registry"}]} = Jason.decode!(settings)
-
-        Apiary.Features.on?(:security) ->
-          assert {:ok, %{settings: settings}} = reload
-          refute Map.has_key?(Jason.decode!(settings), "credentials")
-
-        true ->
-          assert reload == {:error, :not_found}
-      end
-    end
-
-    test "its key acts for no run of its own organisation's workspaces",
-         %{other: other, gateway: gateway, gateway_key: gateway_key} do
-      %{access_key: own_key} = contract_key_fixture(other)
-      assert Gateways.chosen(own_key.node).id == gateway.id
+    test "its key verifies, and acts for no run of its organisation's workspaces",
+         %{scope: scope, gateway: gateway, gateway_key: gateway_key, key: key} do
+      assert Gateways.chosen(key.node).id == gateway.id
 
       {:ok, %{run: attached, run_key: attached_key}} =
-        register_run(own_key, gateway_registration(), instance_id())
+        register_run(key, gateway_registration(), instance_id())
 
       {:ok, %{run: waiting, run_key: waiting_key}} =
-        register_run(own_key, gateway_registration(), instance_id())
+        register_run(key, gateway_registration(), instance_id())
 
       assert {:ok, _} = attach(gateway_key, attached, attached_key)
 
-      out_of_use(other)
-      {:ok, verified} = AccessKeys.fetch_for_verification(gateway_key.key_id)
+      out_of_use(scope)
+      assert {:ok, verified} = AccessKeys.fetch_for_verification(gateway_key.key_id)
+      assert verified.node.id == gateway.id
+      assert AccessKeys.active_key?(gateway)
 
       assert attach(verified, waiting, waiting_key) == {:error, :unauthorized}
       assert {:error, :unauthorized} = post(verified, attached)
@@ -501,28 +287,27 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert Apiary.Runs.Registration.fetch(verified, attached.node_run_id, instance_id()) ==
                {:error, :not_found}
 
-      # The node of its own organisation's workspace is out of use: its key fails.
-      assert AccessKeys.fetch_for_verification(own_key.key_id) == :error
+      # The node of the organisation's workspace is out of use: its key fails.
+      assert AccessKeys.fetch_for_verification(key.key_id) == :error
     end
 
     test "a node or a node pool of an organisation out of use is not verified", %{
       scope: scope,
       key: key
     } do
-      EditionStubs.ServesAcross.out_of_use([scope.organisation.id])
+      out_of_use(scope)
       assert AccessKeys.fetch_for_verification(key.key_id) == :error
     end
 
     test "its key is refused once its organisation is marked for deletion",
-         %{other: other, gateway: gateway, gateway_key: gateway_key, key: key} do
-      {:ok, _} = Apiary.Deletion.delete_organisation(other, other.organisation.slug)
+         %{scope: scope, gateway: gateway, gateway_key: gateway_key, key: key} do
+      {:ok, _} = Apiary.Deletion.delete_organisation(scope, scope.organisation.slug)
 
       assert AccessKeys.fetch_for_verification(gateway_key.key_id) == :error
       refute AccessKeys.active_key?(gateway)
 
-      # A registration through it finds it without a key.
-      assert {:error, :gateway_without_key} =
-               register_run(key, gateway_registration(), instance_id())
+      # A node that goes through it finds it without a key.
+      assert {:error, :gateway_without_key} = Gateways.resolve(key.node)
     end
   end
 
@@ -539,7 +324,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert reload(gateway).deleted_at == nil
     end
 
-    test "a node of a workspace with its own default does not hold the organisation's",
+    test "a node of a workspace with a default at the workspace does not block the organisation's",
          %{scope: scope} do
       gateway = organisation_gateway_fixture(scope)
       node = node_fixture(scope)
@@ -689,7 +474,7 @@ defmodule Apiary.OrganisationGatewaysTest do
       assert Gateways.delete_blockers(gateway).runs |> Enum.map(& &1.id) == [run.id]
     end
 
-    test "its key registers no run of its own", %{gateway_key: gateway_key} do
+    test "its key registers no run", %{gateway_key: gateway_key} do
       assert {:error, :gateway_key} =
                register_run(gateway_key, gateway_registration(), instance_id())
     end

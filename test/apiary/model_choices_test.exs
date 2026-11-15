@@ -288,6 +288,32 @@ defmodule Apiary.ModelChoicesTest do
       assert ModelChoices.resolve(scope, stranger, "hello") == {:error, :not_found}
     end
 
+    test "any chain but the organisation's is refused, and the organisation's is kept", ctx do
+      %{scope: scope, provider: provider} = ctx
+      {:ok, kept} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
+
+      for chain <- ["operator", "other"] do
+        assert Connections.create_provider(scope, %{
+                 provider: "anthropic",
+                 chain: chain,
+                 keys: [%{value_id: "main", value: @key}]
+               }) == {:error, :forbidden}
+
+        assert Connections.list_providers(scope, chain) == {:error, :not_found}
+        assert Connections.get_provider(scope, provider.public_id, chain) == {:error, :not_found}
+
+        assert ModelChoices.put_choice(scope, :organisation, attrs(provider), chain) ==
+                 {:error, :not_found}
+
+        assert ModelChoices.delete_choice(scope, :organisation, chain) == {:error, :not_found}
+        assert ModelChoices.list_choices(scope, chain) == {:error, :not_found}
+      end
+
+      assert {:ok, [%ModelChoice{id: id}]} = ModelChoices.list_choices(scope)
+      assert id == kept.id
+      assert {:ok, [_provider]} = Connections.list_providers(scope)
+    end
+
     test "a provider of another organisation is invalid", ctx do
       %{scope: scope} = ctx
       %{scope: foreign} = sign_up_fixture()
@@ -668,45 +694,20 @@ defmodule Apiary.ModelChoicesTest do
       assert ModelChoices.resolve(scope, target, "hello") == {:ok, :none}
     end
 
-    test "reads the chain the edition answers for the organisation", ctx do
+    test "reads the choices of the organisation's chain alone", ctx do
       %{scope: scope, provider: provider} = ctx
 
-      {:ok, %ModelChoice{}} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      {:ok, default} = ModelChoices.put_choice(scope, :organisation, attrs(provider))
 
-      assert Apiary.Edition.model_choice_chain(scope.organisation.id) == "organisation"
+      assert {:ok, {:ok, %Resolution{level: 6}}} =
+               ModelChoices.resolve(scope, :workspace, "hello")
 
-      # The operator's chain is the rows of the operator's organisation; the organisation's
-      # rows are kept and unused while the edition answers "operator".
-      %{scope: operator} = sign_up_fixture()
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ServesAcrossWithChain)
-      Apiary.EditionStubs.ServesAcross.put([{operator.organisation.id, scope.organisation.id}])
-      Apiary.EditionStubs.ServesAcrossWithChain.writer(true)
-
-      {:ok, theirs} =
-        Connections.create_provider(operator, %{
-          provider: "anthropic",
-          chain: "operator",
-          keys: [%{value_id: "main", value: @key}]
-        })
-
-      {:ok, %ModelChoice{chain: "operator"}} =
-        ModelChoices.put_choice(
-          operator,
-          :organisation,
-          %{provider: theirs.public_id, key: "main", model: "claude-haiku-5-5"},
-          "operator"
+      # A row of another chain, which no write here makes, is not read.
+      {1, _rows} =
+        Repo.update_all(from(c in ModelChoice, where: c.id == ^default.id),
+          set: [chain: "operator"]
         )
 
-      assert {:ok, {:ok, %Resolution{model_id: @model}}} =
-               ModelChoices.resolve(scope, :workspace, "hello")
-
-      Apiary.EditionStubs.ServesAcrossWithChain.chain("operator")
-
-      assert {:ok, {:ok, %Resolution{level: 6, model_id: "claude-haiku-5-5"}}} =
-               ModelChoices.resolve(scope, :workspace, "hello")
-
-      # The edition names no operator: the chain has no choice, and the run no provider.
-      Apiary.EditionStubs.ServesAcrossWithChain.operator(nil)
       assert ModelChoices.resolve(scope, :workspace, "hello") == {:ok, :none}
     end
 
