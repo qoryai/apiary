@@ -206,7 +206,7 @@ defmodule ApiaryPro.FeaturePartsTest do
                ])
     end
 
-    test "a part the client is hidden is hidden from its people; the operator's people see what the operator sees",
+    test "a part the client is hidden is hidden from its people and from the operator's people there",
          ctx do
       %{operator: operator, client: client} = ctx
 
@@ -219,18 +219,23 @@ defmodule ApiaryPro.FeaturePartsTest do
       assert @terminal in owner.hidden
       assert {:error, :not_found} = log?(owner)
 
-      # Point 4: the operator's people, in the client, are shown what the operator is.
+      # The operator's people, in the workspace the operator operates, are shown what the
+      # client is: never more.
       theirs = fresh(operator.user, client.organisation, client.workspace)
       assert {:operator, _via} = theirs.reach
-      refute @terminal in theirs.hidden
-      assert :ok = log?(theirs)
+      assert @terminal in theirs.hidden
+      assert {:error, :not_found} = log?(theirs)
 
-      # And hidden what the operator is hidden, not the client.
+      # And hidden what the operator is hidden, as the client is.
       assert {:ok, _} =
                Grants.set_client(operator.scope, client.organisation.id, [
                  "observability",
                  "observability.terminal"
                ])
+
+      theirs = fresh(operator.user, client.organisation, client.workspace)
+      refute @terminal in theirs.hidden
+      assert :ok = log?(theirs)
 
       assert {:ok, _} =
                Grants.set_organisation(ctx.admin, operator.organisation.id, [

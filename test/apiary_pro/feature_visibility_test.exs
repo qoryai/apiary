@@ -130,66 +130,50 @@ defmodule ApiaryPro.FeatureVisibilityTest do
       end)
     end
 
-    test "see what the operator is shown with the flag on", %{client: client, operator: operator} do
+    test "see the client's set with the flag on: never more than the client is shown",
+         %{client: client, operator: operator} do
       with_flag(true, fn ->
         scope = fresh(operator.user, client.organisation, client.workspace)
         assert {:operator, _via} = scope.reach
 
-        assert scope.hidden == fresh(operator.user, operator.organisation).hidden
-        refute :security in scope.hidden
-        assert :organisation_policy in scope.hidden
-
-        # The client's people still are not shown it.
-        assert :security in fresh(client.owner.user, client.organisation, client.workspace).hidden
-      end)
-    end
-
-    test "with the flag on, read the client's hidden security policy and its people do not",
-         %{client: client, operator: operator} do
-      with_flag(true, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
-        assert :ok = Access.authorize(scope, :"security_policy.read", client.workspace)
-
         owner = fresh(client.owner.user, client.organisation, client.workspace)
+        assert scope.hidden == owner.hidden
+        assert :security in scope.hidden
 
-        assert {:error, :not_found} =
-                 Access.authorize(owner, :"security_policy.read", client.workspace)
-      end)
-
-      with_flag(false, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
-
-        assert {:error, :not_found} =
-                 Access.authorize(scope, :"security_policy.read", client.workspace)
+        # The operator itself is shown it.
+        refute :security in fresh(operator.user, operator.organisation).hidden
       end)
     end
 
-    test "a person who is a member of the client too sees the operator's set where their reach is read",
+    test "with the flag on or off, do not read the client's hidden security policy",
+         %{client: client, operator: operator} do
+      for on? <- [true, false] do
+        with_flag(on?, fn ->
+          scope = fresh(operator.user, client.organisation, client.workspace)
+
+          assert {:error, :not_found} =
+                   Access.authorize(scope, :"security_policy.read", client.workspace)
+        end)
+      end
+    end
+
+    test "a person who is a member of the client too sees the client's set, however their scope is read",
          %{client: client, operator: operator} do
       with_flag(true, fn ->
         _joined = join_fixture(client.owner.scope, operator.user)
 
-        # resolve_scope/4, as a page's path loads it, reads their reach through the
-        # operator.
         scope = fresh(operator.user, client.organisation, client.workspace)
         assert {:operator, _via} = scope.reach
         assert scope.membership
-        refute :security in scope.hidden
+        assert :security in scope.hidden
 
-        # load_scope/2 puts their membership in the client without the edition's reach:
-        # what the client is not shown is hidden from them there too, more hidden, never
-        # less.
         loaded = Organisations.load_scope(Scope.for_user(operator.user), client.organisation.id)
-        assert loaded.organisation.id == client.organisation.id
         assert loaded.reach == nil
         assert :security in loaded.hidden
-        assert :organisation_policy in loaded.hidden
 
-        # Read again, their reach through the operator is back, and with it the operator's
-        # set.
         reloaded = Access.reload(loaded)
         assert {:operator, _via} = reloaded.reach
-        refute :security in reloaded.hidden
+        assert :security in reloaded.hidden
       end)
     end
   end

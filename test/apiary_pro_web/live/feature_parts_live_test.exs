@@ -136,7 +136,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute render(lv) =~ "hello from the node"
     end
 
-    test "while the node still records the log, which the operator's people read", ctx do
+    test "while the node still records the log, which the operator's people there do not read",
+         ctx do
       {key, secret} = ctx.key
       before = events_of(ctx.run)
 
@@ -152,15 +153,12 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       assert events_of(ctx.run) == before + 1
       {:ok, _run} = Projector.project(ctx.run)
 
-      # The operator's people, in the client, see what the operator sees: the log.
+      # The operator's people, in the workspace the operator operates, see what the
+      # client sees: no log.
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
-      assert has_element?(lv, "#run-tab-terminal")
-
-      answer = get(conn, run_path(ctx, "/log") <> "?stream=terminal")
-      assert answer.status == 200
-      assert answer.resp_body =~ "hello from the node"
-      assert answer.resp_body =~ "still recorded"
+      refute has_element?(lv, "#run-tab-terminal")
+      assert get(conn, run_path(ctx, "/log") <> "?stream=terminal").status == 404
     end
 
     test "with the switch off, the client's row hides nothing", ctx do

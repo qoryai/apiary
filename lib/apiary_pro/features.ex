@@ -159,27 +159,15 @@ defmodule ApiaryPro.Features do
   #
   # By place, whoever asks: what the organisation is shown. A client is shown what it was
   # granted of its operator's, so its people do not see what is hidden from the client,
-  # nor what is hidden from its operator.
+  # nor what is hidden from its operator. A person of an operator who works in a
+  # workspace of the client that the operator operates is shown the same, so they never
+  # see more there than the client is granted.
   #
-  # While `ApiaryPro.Flags.feature_visibility?/0` is on, by who asks as well:
-  #
-  # - a person who reaches a workspace of a client through a level in its operator
-  #   (`reach` `{:operator, operated}`, `ApiaryPro.Reach.operator_membership/3`) sees in
-  #   the client what that operator is shown, whether or not they are a member of the
-  #   client too;
-  # - an instance admin who reaches an organisation through the instance (`reach`
-  #   `:instance`, `ApiaryPro.Reach.instance_reach?/1`) sees every feature the instance
-  #   has. Their role there is still reader (`ApiaryPro.Access`), so a feature hidden from
-  #   the organisation is readable to them and changes nothing.
-  #
-  # Where the scope carries no reach of the edition's, the core's `load_scope/2` and
-  # `load_home_scope/2`, which put the membership without `c:Apiary.Edition.reach/1`, the
-  # answer is by place: a person who is a member of a client and holds a level in its
-  # operator is then not shown what is hidden from the client either, more hidden and
-  # never less, but for the nodes (`parts_hidden_from/2`). Those scopes serve lists and
-  # the person's home and instance pages, which gate no feature;
-  # `ApiaryPro.Reach.reload/2` puts the reach back for a client, so a check read again
-  # under `Apiary.Access.reload/2` asks with it.
+  # While `ApiaryPro.Flags.feature_visibility?/0` is on, an instance admin who reaches an
+  # organisation through the instance (`reach` `:instance`,
+  # `ApiaryPro.Reach.instance_reach?/1`) sees every feature the instance has. Their role
+  # there is still reader (`ApiaryPro.Access`), so a feature hidden from the organisation
+  # is readable to them and changes nothing.
   #
   # The locks: under `Apiary.Access.reload/2` with `lock: :share` the core holds the
   # organisation's row and, for a client, its operator's `FOR SHARE`
@@ -189,19 +177,17 @@ defmodule ApiaryPro.Features do
   # written only while its row is held `FOR NO KEY UPDATE` or `FOR UPDATE`
   # (`ApiaryPro.Grants`, `ApiaryPro.Transfers`, `ApiaryPro.Operators`), or, for an
   # organisation being created, before anyone reaches it; so a grant, a change of kind or
-  # a parting waits for the read, or came first and is read. The reach this asks of was
-  # read again under the operator's people lock (`ApiaryPro.Reach.reload/2`), and so is
-  # the membership in the operator that `parts_hidden_from/2` reads for the nodes, which
-  # that lock covers as it covers the reach. Nothing more is locked for it.
+  # a parting waits for the read, or came first and is read. The membership in the
+  # operator that `parts_hidden_from/2` reads for the nodes is covered by the operator's
+  # people lock.
   #
   # An open page reads this again only when its person is told of a change of their
   # memberships (`Apiary.Organisations.broadcast_membership_changes/1`), so each change of
   # what is read here tells the people whose answer it changes: a grant, the people of the
   # organisation, of its clients and of its operator (`ApiaryPro.Grants`); a change of
-  # kind, the organisation's people (`ApiaryPro.Operators.change_kind/3`); a new client,
-  # the operator's; a drop, a leave and an accepted offer, the people of the client and of
-  # the operator (`ApiaryPro.Transfers`); a suspension, the people it reaches
-  # (`ApiaryPro.Suspensions`); a membership, the core. An instance admin who reaches an
+  # kind, the organisation's people (`ApiaryPro.Operators.change_kind/3`); a drop, a leave
+  # and an accepted offer, the people of the client and of the operator
+  # (`ApiaryPro.Transfers`); a membership, the core. An instance admin who reaches an
   # organisation through the instance is told none of these: with the switch on they are
   # shown everything, and with it off they are as before.
   #
@@ -211,20 +197,9 @@ defmodule ApiaryPro.Features do
   # of no feature, are hidden only from a client's people, where its row hides them
   # (`client_parts/1`).
   defp shown_to(scope, organisation, enabled) do
-    if Flags.feature_visibility?() do
-      cond do
-        Reach.instance_reach?(scope) ->
-          enabled
-
-        Reach.operator_level(scope) != nil ->
-          of(%Organisation{id: Tenants.operator_id(organisation)}, enabled)
-
-        true ->
-          of(organisation, enabled)
-      end
-    else
-      of(organisation, enabled)
-    end
+    if Flags.feature_visibility?() and Reach.instance_reach?(scope),
+      do: enabled,
+      else: of(organisation, enabled)
   end
 
   # The parts hidden from the scope's person, while features are shown by who asks
@@ -233,37 +208,26 @@ defmodule ApiaryPro.Features do
   # hides it (`granted` false), whatever the kind of the organisation the row is of, and
   # the row of an operator hides it from its clients too: from the people of each client,
   # as every feature it is not shown is, down the chain. Who asks, as `shown_to/3`: an
-  # instance admin who reaches the organisation through the instance is hidden no part,
-  # and a person who reaches a client through a level in its operator is hidden what the
-  # operator is, the operator's rows, not the client's. The core hides a part of a feature
-  # hidden from the person as well (`Apiary.Features.visible?/2`), so only a row hides one
-  # here. Read under the locks `hidden/1` says, as the features are: a part's row is
-  # written as a feature's is (`ApiaryPro.Grants`).
+  # instance admin who reaches the organisation through the instance is hidden no part;
+  # anyone else, a person of the client's operator included, is hidden the parts hidden
+  # there by place. The core hides a part of a feature hidden from the person as well
+  # (`Apiary.Features.visible?/2`), so only a row hides one here. Read under the locks
+  # `hidden/1` says, as the features are: a part's row is written as a feature's is
+  # (`ApiaryPro.Grants`).
   #
   # The nodes, `:nodes`, are hidden only by the client's row, and only while both
   # switches are on (`client_parts/1`): never from an organisation with no operator, the
-  # instance organisation or an operator, and never from a person with a level in the
-  # client's operator, who sees what the operator is shown. That holds by place too,
-  # where the scope carries no reach (`shown_to/3`): a person with an unsuspended
-  # membership in the operator (`ApiaryPro.Reach.operator_membership/3`) is not hidden
-  # them there, unlike the run's Terminal and the features, which stay more hidden by
-  # place. The membership is read only where the client's row hides the nodes.
+  # instance organisation or an operator, and never from a person with an unsuspended
+  # membership in the operator of a workspace of the client
+  # (`ApiaryPro.Reach.operator_membership/3`), unlike the run's Terminal and the
+  # features. The membership is read only where the client's row hides the nodes.
   defp parts_hidden_from(scope, organisation) do
-    if Flags.feature_visibility?() do
-      cond do
-        Reach.instance_reach?(scope) ->
-          []
+    if Flags.feature_visibility?() and not Reach.instance_reach?(scope) do
+      hidden = hidden_in(organisation)
 
-        Reach.operator_level(scope) != nil ->
-          hidden_parts([Tenants.operator_id(organisation)]) -- @client_parts
-
-        true ->
-          hidden = hidden_in(organisation)
-
-          if Enum.any?(@client_parts, &(&1 in hidden)) and operator_person?(scope, organisation),
-            do: hidden -- @client_parts,
-            else: hidden
-      end
+      if Enum.any?(@client_parts, &(&1 in hidden)) and operator_person?(scope, organisation),
+        do: hidden -- @client_parts,
+        else: hidden
     else
       []
     end

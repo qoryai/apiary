@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   # A feature hidden from a person is absent for them, its pages and actions not found, and
-  # still works in full for the organisation's nodes and runs. With
-  # `ApiaryPro.Flags.feature_visibility?/0` on, the operator's people see in a client what
-  # the operator is shown (`ApiaryPro.Features.hidden/1`).
+  # still works in full for the organisation's nodes and runs. The operator's people see
+  # in the workspace it operates what the client is shown, never more, with
+  # `ApiaryPro.Flags.feature_visibility?/0` on or off (`ApiaryPro.Features.hidden/1`).
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -52,16 +52,14 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   describe "with the flag on" do
     setup do: Flags.put_feature_visibility(true)
 
-    test "the operator's people open the client's hidden policy page; the client's people do not",
+    test "neither the client's people nor the operator's open the client's hidden policy page",
          ctx do
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, policy_page(ctx.client))
-      assert render(lv) =~ "ads.example"
+      for user <- [ctx.client.owner.user, ctx.operator.user] do
+        conn = log_in_user(build_conn(), user)
 
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
-
-      assert_raise ApiaryWeb.Features.NotFound, fn ->
-        live(conn, policy_page(ctx.client))
+        assert_raise ApiaryWeb.Features.NotFound, fn ->
+          live(conn, policy_page(ctx.client))
+        end
       end
     end
 
@@ -137,7 +135,7 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
       end
     end
 
-    test "stays for the operator's people when the operator hides it from the client (flag on)",
+    test "leaves for the operator's people when the operator hides it from the client (flag on)",
          ctx do
       Flags.put_feature_visibility(true)
       conn = log_in_user(build_conn(), ctx.operator.user)
@@ -148,10 +146,10 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
                  "observability"
                ])
 
-      # Told, it loads its scope again and stays: the operator is still shown it.
-      assert render(lv) =~ "Policy"
-      assert Process.alive?(lv.pid)
-      refute_redirected(lv, ~p"/#{ctx.client.organisation}")
+      # Told, it loads its scope again and leaves: the client is not shown it any more.
+      assert {path, flash} = assert_redirect(lv)
+      assert path == ~p"/#{ctx.client.organisation}"
+      assert flash["error"] =~ "is no longer shown in Beacon"
     end
 
     test "leaves for the operator's people when the operator is not shown it (flag on)", ctx do

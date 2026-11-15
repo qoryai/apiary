@@ -1218,6 +1218,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   through the operator alone. The group "Clients of" an operator, with its folded heading
   and count, is gone; an organisation is listed only for its members.
 <!-- /feature -->
+<!-- feature: managed_organisations, feature_visibility -->
+- With `feature_visibility` on, an operator's people in a workspace the operator operates
+  are shown the features and parts the organisation is shown there, and hidden those
+  hidden from it. Up to this change they were shown the operator's features, so they could
+  see more than the organisation was granted. An instance admin who reaches an
+  organisation through the instance is still shown every feature.
+<!-- /feature -->
 
 <!-- feature: factory, secrets -->
 - A model provider follows the catalogue entry of its kind in the Qory Apiary release it
