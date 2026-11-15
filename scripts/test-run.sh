@@ -241,8 +241,9 @@ break_stale_lock() {
 if [ "$targeted" -eq 0 ]; then
 	said_fix=0
 	until mkdir "$lock_dir" 2>/dev/null; do
-		if [ ! -e "$lock_dir" ]; then
-			say "create the directory $(dirname "$lock_dir") or set APIARY_TEST_LOCK: the lock cannot be made"
+		lock_parent=$(dirname "$lock_dir")
+		if [ ! -d "$lock_parent" ] || [ ! -w "$lock_parent" ]; then
+			say "create the directory $lock_parent or set APIARY_TEST_LOCK: the lock cannot be made"
 			exit 2
 		fi
 		break_stale_lock
