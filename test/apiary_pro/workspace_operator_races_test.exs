@@ -88,7 +88,7 @@ defmodule ApiaryPro.WorkspaceOperatorRacesTest do
       assert limited?(ctx)
     end
 
-    test "the suspension first: the write waits, and is not found", ctx do
+    test "the suspension first: the write waits, and is refused", ctx do
       {suspension, suspension_pid} = hold(fn -> suspend(ctx) end)
       assert {:ok, %Organisation{}} = suspension.result
 
@@ -96,7 +96,9 @@ defmodule ApiaryPro.WorkspaceOperatorRacesTest do
       await_blocked(write.backend, suspension_pid)
       commit(suspension)
 
-      assert {:error, :not_found} = Task.await(write.task)
+      # Ann reaches Main through the operator no more, and has no membership in its
+      # organisation: the role refuses her.
+      assert {:error, :forbidden} = Task.await(write.task)
       assert suspended?(ctx)
       assert linked?(ctx)
       refute limited?(ctx)
