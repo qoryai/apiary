@@ -236,8 +236,8 @@ defmodule ApiaryPro.Access do
   @flagged_transfers [:"organisation.withdraw_transfer"]
 
   # What an operator's person changes in a workspace the operator operates, while
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, at the role their level there gives
-  # them (`operator_role/2`): the time limits of the workspace and its targets, its
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, at the role that matches their
+  # level there (`operator_role/2`): the time limits of the workspace and its targets, its
   # retention, the process and its artifact types, and the model choices. Nothing else they
   # change there: no node or access key, no person of the organisation, no harness
   # document, secret, variable, connection or security policy. Of what the organisation has

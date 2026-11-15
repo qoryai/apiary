@@ -208,7 +208,7 @@ defmodule Apiary.ModelChoices do
 
   # What a resolution reads for the runs of `workflow` of `workspace` at `target`, nil for
   # none: the choices of the organisation's chain that may reach them, each with its
-  # fallbacks, and the providers those name. Read without a lock.
+  # fallbacks, and the providers those refer to. Read without a lock.
   defp input(%Workspace{} = workspace, target, workflow) do
     input = choices_for(workspace, target, workflow)
     input = %{input | choices: Repo.preload(input.choices, :fallbacks)}

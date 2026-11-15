@@ -236,7 +236,7 @@ defmodule ApiaryWeb.Edition do
     default;
   - `:empty`, the body of the Gateways page's empty state, under No gateways yet.
 
-  The core's sentences name the workspaces of `organisation` alone: "Machines and pools
+  The core's sentences contain the workspaces' names of `organisation` alone: "Machines and pools
   in any workspace of Acme can use the gateways added here. A workspace can also add
   gateways that only its machines and pools use.", "Machines and pools in any workspace
   of Acme can use it." and "The default gateway for workspaces in Acme that don't set

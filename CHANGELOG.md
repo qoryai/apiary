@@ -1795,7 +1795,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   - an operator's assignments of harness sources to the organisations it managed;
   - the operator's chain of model providers and choices for the organisations it
     managed, and the operator's gateways serving those organisations' workspaces;
-  - the callbacks of `Apiary.Edition` that no edition implements any more:
+  - the callbacks of `Apiary.Edition` that only that model used:
     `model_choice_chain/1`, `operator_chain_organisation/1`, `operator_chain_writer?/1`,
     `operated?/1`, `harness_owner/1`, `harness_source_allowed?/3`, `client_reads/4`,
     `serving_organisations/1` and `served_organisations/1`.

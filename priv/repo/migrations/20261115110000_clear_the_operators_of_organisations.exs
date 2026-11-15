@@ -2,7 +2,7 @@ defmodule Apiary.Repo.Migrations.ClearTheOperatorsOfOrganisations do
   use Ecto.Migration
 
   # Clears the data of the earlier model, in which an operator managed whole
-  # organisations. An operator now relates to workspaces alone (`workspace_operators`),
+  # organisations. An operator relates to workspaces alone (`workspace_operators`),
   # and no code reads these rows:
   #
   # - Every organisation's operator: `tenants.operator_id` and `tenants.operator_since`
