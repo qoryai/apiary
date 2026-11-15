@@ -94,6 +94,7 @@ in `mise.local.toml`, which is not tracked, or in the shell.
 ```sh
 mix setup                          # dependencies, database, assets
 mix test                           # creates and migrates the test database, then runs everything
+scripts/test-run.sh                # the same on a database for this run, dropped when it ends
 mix format                         # CI runs mix format --check-formatted
 mix compile --warnings-as-errors
 mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
@@ -107,6 +108,15 @@ The tests tagged `:contract` replay Forager's contract fixtures at the commit in
 `.forager-contract-ref`. They take them from `FORAGER_CONTRACT_DIR`, set to
 `contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
 left out, and a line says so.
+
+A run with `MIX_TEST_PARTITION` set uses the database `apiary_test` followed by its value
+(`config/test.exs`), and drops that database as it ends, whether the tests pass or fail
+(`Apiary.TestDatabase`). A run without it uses `apiary_test` and keeps it.
+`scripts/test-run.sh` takes the arguments of `mix test` and sets a new partition for each
+run. It runs `mix test` with 4 schedulers and `--max-cases 4`, one full suite at a time,
+and drops the run's database after INT, TERM or HUP too. A run killed with SIGKILL leaves
+its database behind: the script's next run drops it once it is more than 24 hours old and
+has no connection. The script's header lists the details.
 
 CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
 do not depend on the features, runs once: the formatting check, the compile with warnings
