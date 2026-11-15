@@ -1,11 +1,13 @@
 defmodule ApiaryProWeb.RunCancelReaderTest do
   # Cancel run shows only to a person who may cancel the run (`run.cancel`): a person of a
   # client's operator, who reads the client and changes nothing there, has no Cancel run
-  # on a running run's page (`ApiaryWeb.RunLive.Show`) or on its work item
-  # (`ApiaryWeb.WorkItemLive.Show`). The client's owner has it on both.
+  # on the page of a running run, or of a lost run that may still attach again
+  # (`ApiaryWeb.RunLive.Show`), or on its work item (`ApiaryWeb.WorkItemLive.Show`). The
+  # client's owner has it on both.
   # Not async: the features are the node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures
@@ -51,6 +53,26 @@ defmodule ApiaryProWeb.RunCancelReaderTest do
   test "the run page has Cancel run for the owner and none for the reader", ctx do
     assert has_element?(open(ctx.conn, ctx.people.owner, ctx.run_page), "#run-cancel")
     refute has_element?(open(ctx.conn, ctx.people.reader, ctx.run_page), "#run-cancel")
+  end
+
+  test "a lost run that may still attach has Cancel run for the owner, none for the reader",
+       ctx do
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: [
+          state: "lost",
+          lost_at: DateTime.utc_now(),
+          silenced_at: nil,
+          backstop_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+        ]
+      )
+
+    assert has_element?(open(ctx.conn, ctx.people.owner, ctx.run_page), "#run-cancel")
+    refute has_element?(open(ctx.conn, ctx.people.reader, ctx.run_page), "#run-cancel")
+
+    button = "#work-item-explore-run-cancel"
+    assert has_element?(open(ctx.conn, ctx.people.owner, ctx.work_item_page), button)
+    refute has_element?(open(ctx.conn, ctx.people.reader, ctx.work_item_page), button)
   end
 
   test "the work item has Cancel run for the owner and none for the reader", ctx do

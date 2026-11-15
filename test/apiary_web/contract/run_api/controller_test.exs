@@ -186,6 +186,31 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       )
   end
 
+  # The run, attached, as the lost-run check leaves it 300 seconds after its loss, its
+  # backstop ahead, with whatever else `changes` sets.
+  defp lost!(ctx, changes) do
+    now = DateTime.utc_now()
+
+    # Each call starts again from a lost run with no end, whatever an earlier call set.
+    set = [
+      state: "lost",
+      lost_at: DateTime.add(now, -300, :second),
+      backstop_at: DateTime.add(now, 3600, :second),
+      silenced_at: nil,
+      exited_at: nil,
+      exit_state: nil,
+      events_pruned_at: nil
+    ]
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: Keyword.merge(set, changes)
+      )
+  end
+
+  # The run lost for good: the lost-run check ended it for its silence a minute ago.
+  defp silenced!(ctx), do: lost!(ctx, silenced_at: DateTime.add(DateTime.utc_now(), -60, :second))
+
   describe "the feature" do
     test "off: a verified request is the 404 of a path the router does not know, signed", ctx do
       RunApiStubs.put(:flag, false)
@@ -1391,6 +1416,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert read(ctx, "/work-item").status == 200
     end
 
+    test "a run lost after its attach and not lost for good pushes and gives a verdict",
+         ctx do
+      lost!(ctx, [])
+
+      push = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      assert push.status == 201
+      assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
+      assert length(RunApiStubs.pushed()) == 2
+    end
+
+    test "a run lost for good is 409 run_ended, for a push and a verdict", ctx do
+      silenced!(ctx)
+
+      for conn <- [
+            write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}])),
+            write(ctx, "/verdict", %{"verdict" => "passed"})
+          ] do
+        assert json_response(conn, 409)["error"] == "run_ended"
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a run whose run of the queue ended is 409 run_ended", ctx do
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
@@ -1843,6 +1891,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           set: [state: "cancelled", exit_reason: "stopped"]
         )
 
+      assert read(ctx, "/resume/transcript").status == 404
+    end
+
+    test "a continuation lost after its attach and not lost for good reads it", ctx do
+      paused!(ctx, @lines)
+      lost!(ctx, [])
+      assert response(read(ctx, "/resume/transcript"), 200) == ~s({"a":1}\n{"b":2}\n)
+    end
+
+    test "a continuation lost for good is 404", ctx do
+      paused!(ctx, @lines)
+      silenced!(ctx)
       assert read(ctx, "/resume/transcript").status == 404
     end
 

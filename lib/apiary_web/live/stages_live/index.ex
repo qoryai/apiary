@@ -21,16 +21,17 @@ defmodule ApiaryWeb.StagesLive.Index do
   # Owners and admins also get Export process.yaml under the tabs' row, a link to
   # `ApiaryWeb.ProcessExportController`.
   #
-  # A stage's workflow is a text field that suggests `Apiary.Processes.declared_workflows/1`
-  # and takes any name the schema's pattern allows. Once the page is connected, for
+  # A stage's workflow is a dropdown of `Apiary.Processes.declared_workflows/1`, with the
+  # entry's workflow last when the list does not have it. Once the page is connected, for
   # whoever may save the harness (`harness.save`), it reads the workspace's harness as
   # Check again on a work item does (`Apiary.Stacks.Sources.chosen_workflows/2`, outside
   # the page's process): the choice, else the harness the organisation shares, else the
   # Qory harness. It records the names as the workspace's snapshot; a read that fails
-  # keeps the list of the last read, with its error. With a snapshot, each workflow on
-  # the canvas and in the inspector has a check when `declared_workflows/1` has it, else a
-  # cross, the workflow a stage waits for (`Apiary.Stages`); before the first read, no
-  # workflow has a mark and no stage waits.
+  # keeps the list of the last read, with its error, which shows above the workflows on
+  # Stages and under the list on Details. With a snapshot, each workflow on the canvas and
+  # in the inspector has a check when `declared_workflows/1` has it, else a cross, the
+  # workflow a stage waits for (`Apiary.Stages`); before the first read, no workflow has a
+  # mark and no stage waits.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -679,6 +680,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 machine_types={@machine_types}
                 from_update={from_update?(@base)}
                 marks={marks(assigns)}
+                read_failed={@declared_error && Words.read_failed(@declared_error, @snapshot)}
               />
             </div>
           </div>

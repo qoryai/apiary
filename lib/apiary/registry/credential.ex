@@ -13,8 +13,8 @@ defmodule Apiary.Registry.Credential do
   # `verify/2` compares the SHA-256 of the secret given with the stored one in constant
   # time, and compares it with a fixed value of the same length where the run is unknown
   # or has no credential, so the time taken does not say which. The credential works
-  # while the run is live: pending or running, with its sending not ended
-  # (`live?/1`); a token request of a run that ended fails, whatever the secret.
+  # while the run is live (`live?/1`); a token request of a run that ended fails,
+  # whatever the secret.
 
   import Ecto.Query, only: [from: 2]
 
@@ -67,9 +67,9 @@ defmodule Apiary.Registry.Credential do
   end
 
   @doc false
-  # live?/1 is whether `run`'s credential works: the run is pending or running, and its
-  # sending has not ended.
+  # live?/1 is whether `run`'s credential works: the run is live now
+  # (`Apiary.Runs.Sender.live?/2`), pending or running, or lost after its attach and not
+  # lost for good, with no exit and no pruned events.
   @spec live?(Run.t()) :: boolean
-  def live?(%Run{} = run),
-    do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
+  def live?(%Run{} = run), do: Sender.live?(run, DateTime.utc_now())
 end

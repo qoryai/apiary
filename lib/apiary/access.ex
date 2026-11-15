@@ -332,7 +332,9 @@ defmodule Apiary.Access do
       roles: @members,
       audited: {:not, @read}
     ),
-    Action.new(:"run.cancel", "cancel a running run, so it changes nothing more",
+    Action.new(
+      :"run.cancel",
+      "cancel a running run, or a lost run that may still attach again, so it changes nothing more",
       feature: :observability,
       roles: @members
     ),

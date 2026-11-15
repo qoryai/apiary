@@ -72,7 +72,12 @@ defmodule Apiary.Runs.CancelTest do
             outcome_digest: :crypto.strong_rand_bytes(32)
           ],
           [state: "pending"],
-          [state: "lost", lost_at: DateTime.utc_now()],
+          # Lost for good: past its backstop.
+          [
+            state: "lost",
+            lost_at: DateTime.utc_now(),
+            backstop_at: DateTime.add(DateTime.utc_now(), -1, :second)
+          ],
           [state: "completed"]
         ] do
       run = started_run(scope)
@@ -82,6 +87,40 @@ defmodule Apiary.Runs.CancelTest do
     end
 
     assert Repo.all(from e in Entry, where: e.action == "run.cancel") == []
+  end
+
+  test "a lost run that may still attach again is cancelled; one lost for good is not", %{
+    scope: scope,
+    run: run
+  } do
+    now = DateTime.utc_now()
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", lost_at: now, backstop_at: DateTime.add(now, 3600, :second)]
+      )
+
+    assert {:ok, %Run{state: "lost"} = cancelled} = Runs.cancel(scope, Repo.get!(Run, run.id))
+    assert Runs.Cancel.cancelling?(cancelled)
+    assert [%Entry{details: %{"number" => number}}] = entries(run)
+    assert number == run.number
+
+    for changes <- [
+          [backstop_at: DateTime.add(now, -1, :second)],
+          [backstop_at: DateTime.add(now, 3600, :second), silenced_at: now],
+          [exited_at: now],
+          [events_pruned_at: now]
+        ] do
+      lost = started_run(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^lost.id),
+          set: [state: "lost", lost_at: now] ++ changes
+        )
+
+      assert {:error, :not_running} = Runs.cancel(scope, Repo.get!(Run, lost.id))
+      refute Run.cancel_requested?(Repo.get!(Run, lost.id))
+    end
   end
 
   test "a run of another workspace is out of reach of a person who is not a member there", %{
@@ -170,6 +209,9 @@ defmodule Apiary.Runs.CancelTest do
       marked_lost_past_backstop: [state: "lost", backstop_at: before] ++ mark,
       marked_lost_attach_closed: [state: "lost"] ++ gateway ++ mark,
       marked_lost_attached: [state: "lost"] ++ gateway ++ attached ++ mark,
+      # Retention pruned its events: no route serves it (`Apiary.Runs.Sender.live?/2`).
+      marked_lost_pruned: [state: "lost", events_pruned_at: before] ++ mark,
+      marked_running_pruned: [state: "running", events_pruned_at: before] ++ mark,
       lost_may_attach: [state: "lost", backstop_at: later]
     ]
 

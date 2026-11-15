@@ -14,11 +14,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
-- **Cancel run** on a running run's page and on its work item stops the run: the agent
-  stops at its next report to Qory Apiary. What the run already sent stays, is marked as
-  from a cancelled run, and does not count for its stage. In a software workspace, a
-  cancelled run's page says which repositories the run pushed, or that no push to them was
-  recorded.
+- After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
+  Qory Apiary accepts requests for it from the gateway that started it, on the same node
+  and instance. A run of a workspace's queue still ends 600 seconds after its last
+  heartbeat.
+- **Cancel run** on the page of a running run, or of a lost run that may still reconnect,
+  and on its work item, stops the run: the agent stops at its next report to Qory Apiary.
+  What the run already sent stays, is marked as from a cancelled run, and does not count
+  for its stage. In a software workspace, a cancelled run's page says which repositories
+  the run pushed, or that no push to them was recorded.
 - Qory Apiary is one product, under the Apache License 2.0: every instance has what
   was available only under a separate licence before.
   - An instance has any number of organisations, and an organisation any number of
@@ -880,9 +884,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   purge takes the workspace from every list.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- A stage's workflow, in Workspace settings › **Stages** and Instance settings ›
-  **Workspace types**, is a text field: it suggests the workflows the harness lists and
-  takes any name of lower-case letters, digits and hyphens that starts with a letter.
+- A stage's workflow, in Workspace settings › **Workflows** and Instance settings ›
+  **Workspace types**, is a dropdown of the workflows the harness lists, in alphabetical
+  order, and of the stage's saved name when the harness does not list it.
   Each workflow on the canvas and in the stage's panel shows a check, “A stage can run
   it”, when it is a workflow the harness listed at its last read, or a workflow saved
   on the **Workflow** page; else a cross, “Not in the harness”, with

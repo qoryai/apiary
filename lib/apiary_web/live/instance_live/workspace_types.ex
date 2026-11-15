@@ -15,12 +15,12 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
   the history. The version line, Save and Discard changes are beside the tabs, on both:
   one draft has the edits of both tabs, and a switch of tabs keeps it. Save makes a new
   version at once, with its author; there are no trials and no work items. A stage's
-  workflow is a text field that suggests the Qory harness's workflows
-  (`Apiary.Processes.TypeTemplates.workflows/0`) and takes any name the schema's pattern
-  allows; each workflow has a check when the Qory harness lists it, else a cross. A gate
-  is none or any member, since a type has no members to name. The history lists every version with
-  its changes against the version it started from. A type key no type has is a path that
-  does not exist.
+  workflow is a dropdown of the Qory harness's workflows
+  (`Apiary.Processes.TypeTemplates.workflows/0`), with the entry's workflow last when the
+  list does not have it; each workflow has a check when the Qory harness lists it, else a
+  cross. A gate is none or any member, since a type has no members to name. The history
+  lists every version with its changes against the version it started from. A type key no
+  type has is a path that does not exist.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, instance: :workflow_model

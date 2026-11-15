@@ -31,13 +31,15 @@ defmodule Apiary.ModelKeys.Report do
        key, that the key and the request's instance may reload, of a workspace the
        gateway may still serve; then where `Apiary.Access` refuses the key
        `run.post_events` on the run;
-    3. `{:error, :gone}` for a run that has ended: not pending or running, or its sending
-       ended (`Apiary.Runs.Sender.sending_ended?/1`); the states are recorded first, as in
+    3. `{:error, :gone}` for a run that has ended (`Apiary.Runs.Sender.live?/2`): not
+       pending or running, unless it is lost after its attach and not lost for good, or
+       with its exit or its events pruned; the states are recorded first, as in
        step 4, when the run ended at most 60 seconds before, by this server's clock: the
        first of when this server received the run's first `dev.qory.run.exited` or
-       `dev.qory.run.refused`, and when it ended the run by another path, such as the
-       lost-run check. The gateway sends its last report within 10 seconds of the run's
-       end;
+       `dev.qory.run.refused`, and when it ended the run by another path: for a lost
+       run, when it became lost for good, as the lost-run check ended it for its silence
+       (`silenced_at`) or at its backstop (`backstop_at`). The gateway sends its last
+       report within 10 seconds of the run's end;
     4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
@@ -221,7 +223,7 @@ defmodule Apiary.ModelKeys.Report do
          true <- ProviderCredential.applies?(features) || {:error, :not_found},
          :ok <- may_post(access_key, run) do
       cond do
-        live?(run) ->
+        Sender.live?(run, now) ->
           keys = ModelKeys.run_keys(run, features)
           :ok = ModelKeys.record(keys, report.keys, now)
           {:ok, body(ModelKeys.run_states(keys, now))}
@@ -289,9 +291,6 @@ defmodule Apiary.ModelKeys.Report do
     end
   end
 
-  defp live?(%Run{} = run),
-    do: run.state in Run.alive_states() and not Sender.sending_ended?(run)
-
   # Whether the run ended at most `@after_exit_seconds` before `now`, by this server's
   # clock alone: the run ended at the first of the times this server recorded for its
   # end (`ended_at/1`). Each is the first of its kind, so no later event reopens the
@@ -299,7 +298,7 @@ defmodule Apiary.ModelKeys.Report do
   defp just_ended?(%Run{} = run, now) do
     since = DateTime.add(now, -@after_exit_seconds, :second)
 
-    case ended_at(run) do
+    case ended_at(run, now) do
       nil -> false
       at -> DateTime.compare(at, since) != :lt
     end
@@ -307,11 +306,10 @@ defmodule Apiary.ModelKeys.Report do
 
   # The first of: when this server received the run's first `dev.qory.run.exited` or
   # `dev.qory.run.refused` (`received_at`; the times the gateway gives those events are
-  # not read); when its lost-run check found the run lost (`lost_at` of a run with no
-  # exit, as an exit with the state lost sets `lost_at` to the exit's time); when its
+  # not read); when a lost run with no exit became lost for good (`lost_end/2`); when its
   # start failed (`start_failed_at`); and when the starter's outcome came
   # (`outcome_received_at`). Nil for none.
-  defp ended_at(%Run{id: id} = run) do
+  defp ended_at(%Run{id: id} = run, now) do
     received =
       Repo.one(
         from e in Event,
@@ -319,11 +317,23 @@ defmodule Apiary.ModelKeys.Report do
           select: min(e.received_at)
       )
 
-    lost_at = if is_nil(run.exited_at), do: run.lost_at
+    lost_end = if is_nil(run.exited_at), do: lost_end(run, now)
 
-    [received, lost_at, run.start_failed_at, run.outcome_received_at]
+    [received, lost_end, run.start_failed_at, run.outcome_received_at]
     |> Enum.reject(&is_nil/1)
     |> Enum.min(DateTime, fn -> nil end)
+  end
+
+  # When a lost run became lost for good (`Apiary.Runs.Run.lost_for_good?/2`): when the
+  # lost-run check ended it for its silence (`silenced_at`); else its `backstop_at`, once
+  # `now` is past it; else when it was found lost (`lost_at`), as a run never attached is
+  # at the end of its attach window. Until then the run is live and its report recorded.
+  # An exit with the state lost sets `lost_at` to the exit's time, and the exit is read
+  # from its event instead.
+  defp lost_end(%Run{silenced_at: %DateTime{} = at}, _now), do: at
+
+  defp lost_end(%Run{} = run, now) do
+    if Apiary.Runs.Liveness.past_backstop?(run, now), do: run.backstop_at, else: run.lost_at
   end
 
   @doc """

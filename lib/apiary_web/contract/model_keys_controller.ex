@@ -12,8 +12,8 @@ defmodule ApiaryWeb.Contract.ModelKeysController do
   that refused it in `names`; a `time` more than 300 seconds from the server's clock is
   `401`, unsigned, as an outcome's is; where model keys do not apply (the `factory` and
   `secrets` features), and for a run the key's gateway does not hold, `404`; for a run
-  that has ended, `410` with no body, as the secrets request answers a run that is not
-  live.
+  that has ended, a lost run once it is lost for good (`Apiary.Runs.Sender.live?/2`),
+  `410` with no body, as the secrets request answers a run that is not live.
 
   The answer is `200`, `application/json`, `{"version":1,"keys":[…]}`: the newest state of
   each key of the run and window, from every gateway, under the run's credential names,

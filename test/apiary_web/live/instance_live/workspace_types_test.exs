@@ -28,6 +28,21 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
   defp details(view), do: render_patch(view, @edit <> "?tab=details")
 
+  # Sends the stage form with `stage` merged into its values. `form/3` takes only a name the
+  # workflow dropdown offers; the values of `stage` go unchecked, as any request may send.
+  defp change_stage(view, stage),
+    do: view |> form("#stage-form") |> render_change(%{"stage" => stage})
+
+  # The options of the first row's workflow dropdown, in order: each value, and whether it
+  # is selected.
+  defp workflow_options(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("select#stage-entry-0-workflow option")
+    |> Enum.map(&{hd(LazyHTML.attribute(&1, "value")), LazyHTML.attribute(&1, "selected") != []})
+  end
+
   defp canvas_stages(view) do
     [json] =
       view
@@ -125,20 +140,11 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       refute has_element?(view, "#stages-save-trial")
       refute has_element?(view, "#stages-assign-form")
 
-      # The workflow field suggests the Qory harness's workflows alone.
-      options =
-        view
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("datalist#stage-entry-0-workflow-names option")
-        |> LazyHTML.attribute("value")
-
-      assert options == TypeTemplates.workflows()
-
-      assert has_element?(
-               view,
-               ~s{#stage-entry-0-workflow[type="text"][value="explore-a-ticket"]}
-             )
+      # The workflow field is a dropdown of the Qory harness's workflows alone.
+      options = workflow_options(view)
+      assert Enum.map(options, &elem(&1, 0)) == TypeTemplates.workflows()
+      assert {"explore-a-ticket", true} in options
+      refute has_element?(view, "input#stage-entry-0-workflow")
 
       view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
       assert has_element?(view, "#type-dirty", "Unsaved changes")
@@ -162,7 +168,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert LazyHTML.text(history(view, 1)) =~ "The first version."
     end
 
-    test "a typed workflow: any name the pattern allows, marked against the Qory harness's workflows",
+    test "a sent workflow: any name the pattern allows, marked against the Qory harness's workflows",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, @edit)
 
@@ -172,11 +178,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
                "A stage can run it"
              )
 
-      view
-      |> form("#stage-form",
-        stage: %{sequence: %{"0" => %{workflow: "triage"}}}
-      )
-      |> render_change()
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "triage"}}})
 
       assert has_element?(
                view,
@@ -206,11 +208,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       assert alert in explore["alerts"]
 
       # A name the pattern refuses keeps triage, with the error at the field.
-      view
-      |> form("#stage-form",
-        stage: %{sequence: %{"0" => %{workflow: "Triage!"}}}
-      )
-      |> render_change()
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "Triage!"}}})
 
       assert has_element?(view, "#stage-entry-0", "Write a workflow name")
       assert has_element?(view, ~s{#stage-entry-0-workflow-mark[data-mark="missing"]})
@@ -219,6 +217,20 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
 
       assert [%{"workflow" => "triage"}] =
                hd(TypeTemplates.newest(@type_key).document["stages"])["sequence"]
+    end
+
+    test "a name the Qory harness does not list is the last option, until Discard changes", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, @edit)
+
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "triage"}}})
+
+      assert workflow_options(view) == [{"explore-a-ticket", false}, {"triage", true}]
+      assert has_element?(view, ~s{#stage-entry-0-workflow-mark[data-mark="missing"]})
+
+      view |> element("#type-discard") |> render_click()
+      assert workflow_options(view) == [{"explore-a-ticket", true}]
     end
 
     test "Stages opens first; Details has the sentence, the type's texts and the history", %{
@@ -300,18 +312,14 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
       add = fn selector -> view |> element(selector) |> render_click() end
 
       # The first stage and `other`, each with a row at place 0 and a loop at place 1, and a
-      # bad workflow name and bad rounds typed on `other`.
+      # bad workflow name and bad rounds sent for `other`.
       bad_values = fn ->
         render_hook(view, "select", %{"id" => other["id"]})
 
-        view
-        |> form("#stage-form",
-          stage: %{
-            name: "Assemble",
-            sequence: %{"0" => %{workflow: "Bad_Name"}, "1" => %{rounds: "40"}}
-          }
-        )
-        |> render_change()
+        change_stage(view, %{
+          "name" => "Assemble",
+          "sequence" => %{"0" => %{"workflow" => "Bad_Name"}, "1" => %{"rounds" => "40"}}
+        })
 
         assert has_element?(view, "#stage-loop-1", "Give the loop 1 to 10 rounds.")
         assert has_element?(view, "#stage-panel", "Write a workflow name")

@@ -176,7 +176,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   word
                 />
                 <.cancel_button
-                  :if={@can_cancel && !@cancel_confirm && Cancel.cancellable?(@run)}
+                  :if={@can_cancel && !@cancel_confirm && @cancellable}
                   id="run-cancel"
                   event="ask_cancel_run"
                 />
@@ -237,7 +237,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 </.link>
               </p>
               <.cancel_confirm
-                :if={@can_cancel && @cancel_confirm && Cancel.cancellable?(@run)}
+                :if={@can_cancel && @cancel_confirm && @cancellable}
                 id="run-cancel-confirm"
                 class="mt-2"
                 number={@run.number}
@@ -1677,6 +1677,7 @@ defmodule ApiaryWeb.RunLive.Show do
        security: security,
        run: nil,
        can_cancel: false,
+       cancellable: false,
        cancel_confirm: false,
        write_run: false,
        canceller: nil,
@@ -1894,11 +1895,25 @@ defmodule ApiaryWeb.RunLive.Show do
       quiet_for: quiet_for(run),
       page_title: run_title(run, socket.assigns.tab),
       can_cancel: Access.can?(scope, :"run.cancel", run),
-      cancel_writes: cancel_writes(scope, run),
-      cancel_confirm: socket.assigns.cancel_confirm and Cancel.cancellable?(run)
+      cancel_writes: cancel_writes(scope, run)
     )
+    |> assign_cancellable()
     |> assign_canceller(run)
   end
+
+  # Whether a member can cancel the run now (`Apiary.Runs.Cancel.cancellable?/1`), read
+  # with the run and again on the quiet timer: a lost run is lost for good once its
+  # backstop passes, which changes no row and sends no broadcast.
+  defp assign_cancellable(%{assigns: %{run: %Run{} = run}} = socket) do
+    cancellable = Cancel.cancellable?(run)
+
+    assign(socket,
+      cancellable: cancellable,
+      cancel_confirm: socket.assigns.cancel_confirm and cancellable
+    )
+  end
+
+  defp assign_cancellable(socket), do: socket
 
   # Who cancelled the run, read once its mark is set, and read again for another run
   # (`canceller_of`, the run's id), as a patch to another run's page keeps the assigns.
@@ -3154,7 +3169,7 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   # A crafted event, or one for a page without a run: nothing to do.
-  # Cancel run: the inline confirm opens, and Keep running closes it.
+  # Cancel run: the inline confirm opens, and Don't cancel closes it.
   def handle_event("ask_cancel_run", _params, %{assigns: %{run: %Run{} = run}} = socket) do
     write = Cancel.write_run?(socket.assigns.current_scope.workspace, run)
     {:noreply, assign(socket, cancel_confirm: true, write_run: write)}
@@ -3662,7 +3677,7 @@ defmodule ApiaryWeb.RunLive.Show do
               ),
             else: socket
 
-        socket = socket |> assign(quiet_for: now) |> read_machine_start()
+        socket = socket |> assign(quiet_for: now) |> read_machine_start() |> assign_cancellable()
 
         # The run as `read_machine_start/1` may have read it again.
         {:noreply,

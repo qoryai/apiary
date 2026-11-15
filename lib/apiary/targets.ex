@@ -203,7 +203,8 @@ defmodule Apiary.Targets do
               silenced_at: l.silenced_at,
               backstop_at: l.backstop_at,
               attached_at: l.attached_at,
-              attach_by: l.attach_by
+              attach_by: l.attach_by,
+              events_pruned_at: l.events_pruned_at
             },
             runs: s.runs,
             ended_well: s.ended_well,
@@ -377,7 +378,8 @@ defmodule Apiary.Targets do
         silenced_at: r.silenced_at,
         backstop_at: r.backstop_at,
         attached_at: r.attached_at,
-        attach_by: r.attach_by
+        attach_by: r.attach_by,
+        events_pruned_at: r.events_pruned_at
       }
   end
 
