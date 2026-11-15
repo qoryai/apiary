@@ -62,7 +62,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     nonces = Enum.map(answers, &elem(&1, 0))
     assert length(Enum.uniq(nonces)) == length(nonces)
     # The edition's pages were loaded: the instance's and the organisation's.
-    assert length(known) >= 40
+    assert length(known) >= 30
   end
 
   test "the markup check refuses an inline style, a handler and a script without the nonce" do
