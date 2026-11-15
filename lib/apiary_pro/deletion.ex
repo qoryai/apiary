@@ -9,9 +9,12 @@ defmodule ApiaryPro.Deletion do
   The instance organisation holds the instance admins, and an instance without it would
   give its next sign-up the instance: it is never marked nor purged,
   `:instance_organisation`. An operator is deleted once it has no clients, `:has_clients`:
-  each is deleted or dropped first, and the database keeps the reference until then. A
-  client's operator reads it through the operator, so the operator's people hear of its
-  marking and its cancelling, and of its workspaces', as its members do.
+  each is deleted or dropped first, and the database keeps the reference until then; and
+  once it operates no workspace, `:has_operated_workspaces`: each link ends first
+  (`ApiaryPro.WorkspaceOperators`), and the database keeps the reference until then. A
+  workspace with an operator is not deleted, `:operated`, until its link ends. The people of the operators of an organisation's
+  workspaces reach those workspaces, so they hear of the organisation's marking and its
+  cancelling, and of their workspaces', as its members do.
   """
 
   import Ecto.Query, warn: false
@@ -25,11 +28,14 @@ defmodule ApiaryPro.Deletion do
   @doc """
   refusal/2 is why `subject` may not be deleted or purged, or nil:
   `:instance_organisation` for the instance organisation, `:has_clients` for an operator
-  that still has clients. Asked on the row locked for the change, whose tenant it reads
-  under the lock when the organisation carries none (`ApiaryPro.Tenants`).
+  that still has clients, `:has_operated_workspaces` for an operator that still operates
+  a workspace, one marked for deletion included; and `:operated` for a workspace marked
+  for deletion while it has an operator. Asked on the row locked for the change, whose
+  tenant it reads under the lock when the organisation has none
+  (`ApiaryPro.Tenants`). A workspace whose organisation is purged goes with its link.
   """
   @spec refusal(:delete | :purge, %Organisation{} | %Workspace{}) ::
-          nil | :instance_organisation | :has_clients
+          nil | :instance_organisation | :has_clients | :has_operated_workspaces | :operated
   def refusal(_what, %Organisation{} = organisation) do
     cond do
       Tenants.instance_organisation?(organisation) ->
@@ -38,35 +44,57 @@ defmodule ApiaryPro.Deletion do
       Tenants.operator?(organisation) and ApiaryPro.Operators.has_clients?(organisation) ->
         :has_clients
 
+      Tenants.operator?(organisation) and
+          ApiaryPro.WorkspaceOperators.operates_workspaces?(organisation) ->
+        :has_operated_workspaces
+
       true ->
         nil
     end
+  end
+
+  def refusal(:delete, %Workspace{id: id}) do
+    if Repo.exists?(
+         from l in ApiaryPro.Operators.WorkspaceOperator, where: l.workspace_id == ^id
+       ),
+       do: :operated
   end
 
   def refusal(_what, _subject), do: nil
 
   @doc """
   changed/4 is what the edition does when a workspace or an organisation is marked for
-  deletion or restored, inside the transaction: the people of its organisation's operator,
-  for a client, are told once it commits, `{:ok, memberships}`. Nothing for a purge.
+  deletion or restored, inside the transaction: the people of the operator of the
+  workspace, or of the operators of the organisation's workspaces, are told once it
+  commits, `{:ok, memberships}`. Nothing for a purge.
   """
   @spec changed(Ecto.Repo.t(), :marked | :restored | :purged, term, Scope.t()) ::
           :ok | {:ok, [%Membership{}]}
   def changed(repo, event, subject, _scope) when event in [:marked, :restored],
-    do: {:ok, operator_people(repo, organisation_id(subject))}
+    do: {:ok, operator_people(repo, subject)}
 
   def changed(_repo, :purged, _subject, _scope), do: :ok
 
-  defp organisation_id(%Organisation{id: id}), do: id
-  defp organisation_id(%Workspace{organisation_id: id}), do: id
-
-  # The memberships of the organisation's operator, for a client; none otherwise.
-  defp operator_people(repo, organisation_id) do
+  # The memberships of the operator of the workspace, or of the operators of the
+  # organisation's workspaces; none where there is none.
+  defp operator_people(repo, %Organisation{id: id}) do
     repo.all(
       from m in Membership,
-        join: t in Tenant,
-        on: t.operator_id == m.organisation_id,
-        where: t.organisation_id == ^organisation_id
+        where:
+          m.organisation_id in subquery(
+            from l in ApiaryPro.Operators.WorkspaceOperator,
+              where: l.organisation_id == ^id,
+              select: l.operator_id
+          )
+    )
+  end
+
+  defp operator_people(repo, %Workspace{id: id}) do
+    repo.all(
+      from m in Membership,
+        join: l in ApiaryPro.Operators.WorkspaceOperator,
+        on: l.operator_id == m.organisation_id,
+        where: l.workspace_id == ^id
     )
   end
 

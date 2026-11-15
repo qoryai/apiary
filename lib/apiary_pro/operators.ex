@@ -58,7 +58,7 @@ defmodule ApiaryPro.Operators do
   alias Apiary.{Access, Audit, Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
-  alias ApiaryPro.{Grants, Reach, Tenants, Transfers}
+  alias ApiaryPro.{Grants, Reach, Tenants, Transfers, WorkspaceOperators}
   alias ApiaryPro.Operators.OperatorInvitation
   alias ApiaryPro.Tenants.Tenant
 
@@ -867,8 +867,12 @@ defmodule ApiaryPro.Operators do
   change_kind/3 makes the organisation `organisation_id` of the kind `kind`
   (`instance.change_kind`, an owner's of the instance organisation, asked in it, with
   `managed_organisations`): an organisation an operator, unless it is a client of one,
-  `{:error, :client}`; an operator an organisation, once it has no clients, marked for
-  deletion or not, `{:error, :has_clients}`. The database refuses either too. The instance
+  `{:error, :client}`, or a workspace of it has an operator,
+  `{:error, :has_operated_workspaces}`; an operator an organisation, once it has no
+  clients, marked for deletion or not, `{:error, :has_clients}`, and operates no
+  workspace, one marked for deletion included, `{:error, :has_operated_workspaces}`.
+  A database constraint holds each of these but the operated workspaces of an
+  organisation made an operator. The instance
   organisation is changed as any other: made an operator, its people see its Clients page
   and its owners and admins create clients from it; made an organisation again once it has
   none. The organisation's row is locked `FOR UPDATE` while its tenant is changed, so a
@@ -882,7 +886,12 @@ defmodule ApiaryPro.Operators do
   """
   @spec change_kind(Scope.t(), String.t(), Tenants.kind() | String.t()) ::
           {:ok, %Organisation{}}
-          | {:error, :client | :has_clients | Ecto.Changeset.t() | Access.reason()}
+          | {:error,
+             :client
+             | :has_clients
+             | :has_operated_workspaces
+             | Ecto.Changeset.t()
+             | Access.reason()}
   def change_kind(%Scope{} = scope, organisation_id, kind) do
     with {:ok, kind} <- kind(kind),
          {:ok, id} <- cast(organisation_id) do
@@ -899,8 +908,14 @@ defmodule ApiaryPro.Operators do
             kind == :operator and Tenants.client?(organisation) ->
               {:error, :client}
 
+            kind == :operator and WorkspaceOperators.has_operated_workspaces?(organisation) ->
+              {:error, :has_operated_workspaces}
+
             kind == :organisation and has_clients?(organisation) ->
               {:error, :has_clients}
+
+            kind == :organisation and WorkspaceOperators.operates_workspaces?(organisation) ->
+              {:error, :has_operated_workspaces}
 
             true ->
               had = ApiaryPro.Features.of(organisation)

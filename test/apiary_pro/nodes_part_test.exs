@@ -121,7 +121,7 @@ defmodule ApiaryPro.NodesPartTest do
       _joined = join_fixture(ctx.client.owner.scope, ctx.operator_admin.user)
       scope = fresh(ctx.operator_admin.user, ctx.client.organisation, ctx.client.workspace)
       assert %{level: :member} = scope.membership
-      assert {:operator, %{level: :admin}} = scope.reach
+      assert ApiaryPro.Reach.operator_level(scope) == :admin
       refute :nodes in scope.hidden
       assert :ok = nodes?(scope)
 

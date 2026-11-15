@@ -1026,6 +1026,9 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
          )
          |> back()}
 
+      {:error, :has_operated_workspaces} ->
+        {:noreply, socket |> put_flash(:error, operated_refusal(kind)) |> back()}
+
       {:error, _reason} ->
         {:noreply, refused(socket)}
     end
@@ -1215,6 +1218,14 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       when event in ~w(suspend_organisation transfer save_features) do
     {:noreply, socket |> load() |> back()}
   end
+
+  # Why a change of kind is refused while a link to an operated workspace stands: an
+  # organisation with one is not made an operator, nor an operator that has one.
+  defp operated_refusal("operator"),
+    do: gettext("An organisation with an operated workspace cannot be made an operator.")
+
+  defp operated_refusal(_organisation),
+    do: gettext("An operator that operates a workspace cannot be made an organisation.")
 
   defp load(socket) do
     scope = socket.assigns.scope

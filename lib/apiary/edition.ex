@@ -35,7 +35,7 @@ defmodule Apiary.Edition do
     organisation's stored secrets may be read, changed, linked or sealed.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
     `reload/2`, `places_to_lock/1`, `lock_rows/1`, `every_workspace_levels/0`,
-    `reaches_workspace?/3`, `reached_workspaces/2`.
+    `reaches_workspace?/3`, `reached_workspaces/2`, `reaches_all_workspaces?/1`.
   - **In use**, refinements of the queries that must leave out what the edition holds out
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
@@ -463,7 +463,7 @@ defmodule Apiary.Edition do
   @callback put_organisation(%Organisation{}) :: %Organisation{}
 
   @doc """
-  The role the edition gives the scope's person through the reach the scope carries, or
+  The role the edition gives the scope's person through the reach in the scope, or
   nil: the role of one without a membership there, and whether a reach the scope carries
   still stands (`Apiary.Access.reach/1`).
   """
@@ -554,7 +554,9 @@ defmodule Apiary.Edition do
   Whether the scope's membership, at a level that does not reach every workspace
   (`every_workspace_levels/0`), reaches the workspace `workspace_id`, as the scope carries
   it: from what `reach/1`, `reached_workspaces/2` and `reload/2` put on it, without a
-  read. `opts` is ignored.
+  read. Asked too for a person without a membership whom the edition lets in, where that
+  reach does not let them into every workspace (`reaches_all_workspaces?/1`). `opts` is
+  ignored.
   """
   @callback reaches_workspace?(Scope.t(), workspace_id :: Ecto.UUID.t(), keyword) :: boolean
 
@@ -566,8 +568,19 @@ defmodule Apiary.Edition do
   core puts on the scope's `edition` when the membership opens that workspace, and in the
   membership's `edition` under the same key, a list, when it lists memberships. `scope`
   is the scope that opens it, whose reach may read every workspace; nil for a listing.
+
+  Asked too without the binding `:membership`, for a scope whose person has no membership
+  in the organisation and whom the edition lets in (`reach/1`): to the workspaces that
+  reach lets them into.
   """
   @callback reached_workspaces(Ecto.Queryable.t(), Scope.t() | nil) :: Ecto.Query.t()
+
+  @doc """
+  Whether the reach in the scope (`reach/1`) lets its person into every workspace of
+  the organisation, from the scope as it is, without a read. Asked for a scope whose
+  `reach` is the edition's. The core's answer is `true`.
+  """
+  @callback reaches_all_workspaces?(Scope.t()) :: boolean
 
   # In use
 
@@ -860,6 +873,7 @@ defmodule Apiary.Edition do
     every_workspace_levels: 0,
     reaches_workspace?: 3,
     reached_workspaces: 2,
+    reaches_all_workspaces?: 1,
     active_accounts: 2,
     active_organisations: 2,
     account_refusal: 1,

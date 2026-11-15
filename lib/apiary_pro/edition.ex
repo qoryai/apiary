@@ -22,7 +22,8 @@ defmodule ApiaryPro.Edition do
   def reach(scope), do: ApiaryPro.Reach.reach(scope)
 
   @impl true
-  def put_organisation(organisation), do: ApiaryPro.Tenants.put(organisation)
+  def put_organisation(organisation),
+    do: organisation |> ApiaryPro.Tenants.put() |> ApiaryPro.WorkspaceOperators.put()
 
   @impl true
   def role(scope), do: ApiaryPro.Access.role(scope)
@@ -45,6 +46,9 @@ defmodule ApiaryPro.Edition do
 
   @impl true
   def reached_workspaces(query, scope), do: ApiaryPro.Reach.reached_workspaces(query, scope)
+
+  @impl true
+  def reaches_all_workspaces?(scope), do: ApiaryPro.Reach.reaches_all_workspaces?(scope)
 
   @impl true
   def active_accounts(query, binding), do: ApiaryPro.Suspensions.active_accounts(query, binding)
@@ -101,22 +105,27 @@ defmodule ApiaryPro.Edition do
 
   def level_refusal(_scope, _organisation, _level, _opts), do: nil
 
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, an entry made in a client by
-  # a person who acts there through its operator keeps the operator they acted through,
+  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, an entry made in a workspace
+  # by a person who acts there through its operator keeps the operator they acted through,
   # `via_operator_id`, which the Activity page names beside them
   # (`ApiaryProWeb.Edition`'s `activity_actor/2`). From the scope, without a read.
   @impl true
   def audit_details(
         %Apiary.Accounts.Scope{
           organisation: %Apiary.Organisations.Organisation{id: id},
-          reach: {:operator, %Apiary.Organisations.Membership{organisation_id: operator_id}}
+          reach: {:operator, _operated}
         } = scope,
         id,
         details
       ) do
-    if ApiaryPro.Flags.operator_infrastructure?() and ApiaryPro.Access.through_operator?(scope),
-      do: Map.put(details, "via_operator_id", operator_id),
-      else: details
+    with true <- ApiaryPro.Flags.operator_infrastructure?(),
+         true <- ApiaryPro.Access.through_operator?(scope),
+         %Apiary.Organisations.Membership{organisation_id: operator_id} <-
+           ApiaryPro.Reach.operator_membership(scope) do
+      Map.put(details, "via_operator_id", operator_id)
+    else
+      _not_through -> details
+    end
   end
 
   # An entry a person of the operator writes in its client from the operator's pages
@@ -193,25 +202,15 @@ defmodule ApiaryPro.Edition do
 
   def operator_chain_writer?(_scope), do: false
 
-  # Who creates a client's first workspace: its owners and admins, and, while the operator
-  # owns its clients, the operator's owners (`ApiaryPro.Access`). The core's line for an
-  # organisation that is no client. The overview and the dead end of New workspace show it.
+  # Who creates a client's first workspace: its owners and admins (`ApiaryPro.Access`). The
+  # core's line for an organisation that is no client. The overview and the dead end of New
+  # workspace show it.
   @impl true
   def first_workspace_waiting_line(%Apiary.Organisations.Organisation{} = organisation) do
     if ApiaryPro.Tenants.client?(organisation) do
-      case operator_owning(organisation) do
-        %Apiary.Organisations.Organisation{name: operator} ->
-          gettext(
-            "An owner or an admin of %{organisation}, or an owner of %{operator}, creates the first workspace.",
-            organisation: organisation.name,
-            operator: operator
-          )
-
-        nil ->
-          gettext("An owner or an admin of %{organisation} creates the first workspace.",
-            organisation: organisation.name
-          )
-      end
+      gettext("An owner or an admin of %{organisation} creates the first workspace.",
+        organisation: organisation.name
+      )
     else
       Apiary.Edition.Core.first_workspace_waiting_line(organisation)
     end
@@ -263,19 +262,10 @@ defmodule ApiaryPro.Edition do
       do: ApiaryPro.Operators.operator_of(%Apiary.Accounts.Scope{organisation: organisation})
   end
 
-  # Who connects a system for a client while the operator owns its clients: the operator's
-  # owners and admins (`@operator_held` in `ApiaryPro.Access`, `adapter.connect`), on both
-  # steps. Nil, the core's sentence, for any other organisation.
+  # A client's systems are connected by its owners and admins, as any organisation's
+  # (`adapter.connect` in `ApiaryPro.Access`): the core's sentence.
   @impl true
-  def connects_line(%Apiary.Organisations.Organisation{} = organisation, step)
-      when step in [:sources, :destinations] do
-    with %Apiary.Organisations.Organisation{name: operator} <- operator_owning(organisation) do
-      gettext("Owners and admins of %{operator} connect it once for %{client}.",
-        operator: operator,
-        client: organisation.name
-      )
-    end
-  end
+  def connects_line(_organisation, _step), do: nil
 
   @impl true
   def set_up_steps(scope, steps), do: ApiaryPro.SetUp.steps(scope, steps)
@@ -310,13 +300,17 @@ defmodule ApiaryPro.Edition do
   def harness_owner(
         %Apiary.Accounts.Scope{
           organisation: %Apiary.Organisations.Organisation{} = organisation,
-          reach: {:operator, %Apiary.Organisations.Membership{organisation_id: operator_id}}
+          reach: {:operator, _operated}
         } = scope
       ) do
-    if ApiaryPro.Flags.operator_infrastructure?() and
-         ApiaryPro.Tenants.operator_id(organisation) == operator_id,
-       do: operator_id,
-       else: Apiary.Edition.Core.harness_owner(scope)
+    with true <- ApiaryPro.Flags.operator_infrastructure?(),
+         %Apiary.Organisations.Membership{organisation_id: operator_id} <-
+           ApiaryPro.Reach.operator_membership(scope),
+         ^operator_id <- ApiaryPro.Tenants.operator_id(organisation) do
+      operator_id
+    else
+      _other -> Apiary.Edition.Core.harness_owner(scope)
+    end
   end
 
   def harness_owner(scope), do: Apiary.Edition.Core.harness_owner(scope)

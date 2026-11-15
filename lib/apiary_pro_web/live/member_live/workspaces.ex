@@ -18,6 +18,8 @@ defmodule ApiaryProWeb.MemberLive.Workspaces do
   """
   use ApiaryProWeb, :live_view
 
+  on_mount {ApiaryWeb.Access, :"member.read"}
+
   alias Apiary.{Access, Organisations}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 

@@ -109,10 +109,18 @@ defmodule ApiaryPro.OperatorsTest do
         {:"retention.edit", workspace}
       ]
 
+      # In Main, which the operator operates, forbidden; of what the client owns as a
+      # whole, and an action asked of the client, such as an invitation, not found.
       for {action, subject} <- asked,
           scope <- [ctx.owner_in_client, ctx.admin_in_client, ctx.member_in_client] do
         refute Access.can?(scope, action, subject), "can? #{action}"
-        assert Access.authorize(scope, action, subject) == {:error, :forbidden}, "#{action}"
+
+        refusal =
+          if subject == workspace and Access.action(action).asked_of != :organisation,
+            do: :forbidden,
+            else: :not_found
+
+        assert Access.authorize(scope, action, subject) == {:error, refusal}, "#{action}"
       end
 
       for scope <- [ctx.owner_in_client, ctx.admin_in_client, ctx.member_in_client] do
@@ -123,17 +131,22 @@ defmodule ApiaryPro.OperatorsTest do
       end
     end
 
-    test "read everything there at every level: the runs, their terminals, the policy and the trail",
+    test "read everything in Main at every level: the runs, their terminals and the policy",
          ctx do
       for scope <- [ctx.owner_in_client, ctx.admin_in_client, ctx.member_in_client],
           action <- [:"run.read", :"run.read_log", :"security_policy.read"] do
         assert Access.authorize(scope, action, ctx.client.workspace) == :ok
       end
 
-      # A member of the operator reads the client's trail, which a member of the client
-      # does not.
+      # The client's policy and trail are not there for a member of the operator.
+      assert Access.authorize(
+               ctx.member_in_client,
+               :"organisation_policy.read",
+               ctx.client.organisation
+             ) == {:error, :not_found}
+
       assert Access.authorize(ctx.member_in_client, :"audit.read", ctx.client.organisation) ==
-               :ok
+               {:error, :not_found}
 
       %{scope: own_member} = member_fixture(ctx.client_owner, :member)
 
@@ -141,15 +154,17 @@ defmodule ApiaryPro.OperatorsTest do
                {:error, :forbidden}
     end
 
-    test "reach every workspace of the client, a member of the operator too", ctx do
+    test "reach the workspaces the operator operates and no other, a member of the operator too",
+         ctx do
       second = workspace_fixture(ctx.client.organisation, "Second")
 
       for user <- [ctx.operator.user, ctx.admin.user, ctx.member.user] do
-        scope = scope_in(user, ctx.client.organisation, second)
+        scope = scope_in(user, ctx.client.organisation, ctx.client.workspace)
         assert %Scope{workspace: %Workspace{id: id}} = scope
-        assert id == second.id
-        assert Access.reaches_every_workspace_in?(scope)
-        assert Access.authorize(scope, :"run.read", second) == :ok
+        assert id == ctx.client.workspace.id
+        refute Access.reaches_every_workspace_in?(scope)
+        assert Access.authorize(scope, :"run.read", ctx.client.workspace) == :ok
+        assert scope_in(user, ctx.client.organisation, second) == nil
       end
     end
 
@@ -195,8 +210,9 @@ defmodule ApiaryPro.OperatorsTest do
       assert Access.authorize(scope, :"workspace.rename", scope.workspace) ==
                {:error, :forbidden}
 
-      # The operator's reach still reads what the membership does not: the trail.
-      assert Access.authorize(scope, :"audit.read", ctx.client.organisation) == :ok
+      # What the client owns as a whole they read at their level there.
+      assert Access.authorize(scope, :"audit.read", ctx.client.organisation) ==
+               {:error, :forbidden}
     end
 
     test "reach no organisation the operator does not manage", ctx do
@@ -205,9 +221,12 @@ defmodule ApiaryPro.OperatorsTest do
       assert scope_in(ctx.member.user, elsewhere) == nil
     end
 
-    test "are not listed among the client's members, whose settings name the operator", ctx do
+    test "are not listed among the client's members, which they do not see, whose settings show the operator",
+         ctx do
+      assert Organisations.list_members(ctx.owner_in_client) == []
+
       assert [%Membership{level: :owner, user_id: owner_id}] =
-               Organisations.list_members(ctx.owner_in_client)
+               Organisations.list_members(ctx.client_owner)
 
       assert owner_id == ctx.client.owner.user.id
       assert %Organisation{id: id} = Operators.operator_of(ctx.owner_in_client)
@@ -534,15 +553,8 @@ defmodule ApiaryPro.OperatorsTest do
 
       assert allowance_id == operator.organisation.id
 
-      # An owner of the operator sets up the first workspace while it owns its clients.
-      ApiaryPro.Flags.put_operator_infrastructure(true)
-
-      assert {:ok, workspace} =
-               Organisations.create_first_workspace(scope_in(operator.user, client), %{
-                 "domain" => Apiary.Lingo.Domain.default().name()
-               })
-
-      ApiaryPro.Flags.put_operator_infrastructure(false)
+      # The client gets its first workspace.
+      workspace = workspace_fixture(client, "Main")
 
       # A workspace in use: the invitation is sent from it, as before.
       assert {:ok, %Invitation{workspace_id: workspace_id}} =
@@ -861,7 +873,7 @@ defmodule ApiaryPro.OperatorsTest do
       assert {back.before, back.after} == {%{"kind" => "#{other}"}, %{"kind" => "#{was}"}}
     end
 
-    test "the instance organisation made an operator takes clients, and is no organisation again until they go",
+    test "the instance organisation made an operator takes clients, and is no organisation again until they go and it operates no workspace",
          %{admin: admin} do
       here = instance_organisation()
 
@@ -880,6 +892,7 @@ defmodule ApiaryPro.OperatorsTest do
 
       {:ok, _} = Transfers.drop(admin_scope, client.organisation.id, client.organisation.name)
 
+      # The drop ended the link to Main too.
       assert {:ok, organisation} =
                Operators.change_kind(admin.instance_scope, here.id, :organisation)
 
@@ -1151,15 +1164,18 @@ defmodule ApiaryPro.OperatorsTest do
         refute Access.can?(scope, :"organisation.rename", organisation)
       end
 
-      # A client of the instance organisation's own, made an operator: they read it as its
-      # operator's people.
+      # A client of the instance organisation's own, made an operator, which operates its
+      # Main: they reach Main as its operator's people, keep the instance admin's reach
+      # beside it, so read what the client owns as well, and change none of it.
       own = client_fixture(make_instance_organisation_an_operator(admin))
       assert Access.reach(own.scope) == :operator
       assert Access.level(own.scope) == nil
+      assert Access.authorize(own.scope, :"run.read", own.workspace) == :ok
       assert Access.authorize(own.scope, :"audit.read", own.organisation) == :ok
+      assert Access.authorize(own.scope, :"secret.read", own.workspace) == :ok
 
       assert Access.authorize(own.scope, :"organisation.rename", own.organisation) ==
-               {:error, :forbidden}
+               {:error, :not_found}
     end
 
     test "the instance organisation's admins and members reach it, read its own clients, and nothing beyond",
@@ -1195,7 +1211,7 @@ defmodule ApiaryPro.OperatorsTest do
       admin_in_client = scope_in(admin, client.organisation, client.workspace)
       %{membership: member} = member_fixture(client.owner.scope, :member)
 
-      assert {:error, :forbidden} =
+      assert {:error, :not_found} =
                Organisations.set_member_level(admin_in_client, member.id, :owner)
 
       assert %Membership{level: :member} = Repo.get!(Membership, member.id)
@@ -1246,7 +1262,7 @@ defmodule ApiaryPro.OperatorsTest do
 
         assert scope.organisation.id == ctx.client.organisation.id
         assert scope.membership == nil
-        assert {:operator, %Membership{user_id: user_id}} = scope.reach
+        assert %Membership{user_id: user_id} = ApiaryPro.Reach.operator_membership(scope)
         assert user_id == user.id
         assert scope.workspace.id == ctx.client.workspace.id
       end
@@ -1258,7 +1274,7 @@ defmodule ApiaryPro.OperatorsTest do
                :error
     end
 
-    test "list_places/1 lists the clients reached through the operator, with every workspace",
+    test "list_places/1 lists the clients reached through the operator, with the workspaces it operates",
          ctx do
       second = workspace_fixture(ctx.client.organisation, "Second")
 
@@ -1268,8 +1284,8 @@ defmodule ApiaryPro.OperatorsTest do
       assert operator_id == ctx.operator.organisation.id
       assert client.organisation.id == ctx.client.organisation.id
 
-      assert Enum.map(client.workspaces, & &1.id) |> Enum.sort() ==
-               Enum.sort([ctx.client.workspace.id, second.id])
+      assert Enum.map(client.workspaces, & &1.id) == [ctx.client.workspace.id]
+      refute second.id in Enum.map(client.workspaces, & &1.id)
 
       assert client.operator_membership.id == ctx.member.membership.id
       assert client.membership == nil
@@ -1297,11 +1313,12 @@ defmodule ApiaryPro.OperatorsTest do
                ctx.client.organisation.slug
              ) == :error
 
-      # The operator's owner reads the client, and cancels nothing there.
+      # The operator's owner finds nothing the client owns as a whole, and cancels nothing
+      # there.
       operator_owner = Scope.for_user(ctx.operator.user)
       assert Deletion.list_marked_organisations(operator_owner) == []
       id = ctx.client.organisation.id
-      assert {:error, :forbidden} = Deletion.restore_organisation(operator_owner, id)
+      assert {:error, :not_found} = Deletion.restore_organisation(operator_owner, id)
 
       owner = Scope.for_user(ctx.client.owner.user)
       assert [%Organisation{id: ^id}] = Deletion.list_marked_organisations(owner)

@@ -5,15 +5,13 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   # (`ApiaryWeb.RefusalsRows`, `ApiaryProWeb.RefusalsRows`), whose world they use: the
   # client, its owner, made while the flag was off, its admin and its member, a pool with
   # a limit, a rule and a locked rule, the operator's people, and its policy request to
-  # the client. Its setup comes
-  # last and turns the flag on last, so the client keeps the owner it had; then the
-  # operator's owner adds a gateway at the operator and one at the client. Sent by
+  # the client. Its setup comes last and turns the flag on last, so the client keeps the
+  # owner it had; then the operator's owner adds a gateway at the operator, and the
+  # client's owner one at the client. Sent by
   # `ApiaryProWeb.OperatorAsOwnerRefusalsTest`, which asks these rows alone: the flag-off
   # rows cover every action already.
 
   @behaviour ApiaryWeb.RefusalsCase
-
-  import Apiary.OrganisationsFixtures
 
   @client_owner_email %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}
   @dropped %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}
@@ -34,8 +32,10 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       # Nor does its owner, made before the flag was on, nor the operator's owner.
       {:"member.change_level", :client_owner, "/:client/settings/people", "set_level",
        %{"membership_id" => :client_admin_membership, "level" => "owner"}},
+      # The People page is not found for the operator's owner.
       {:"member.change_level", :operator_owner, "/:client/settings/people", "set_level",
-       %{"membership_id" => :client_admin_membership, "level" => "owner"}},
+       %{"membership_id" => :client_admin_membership, "level" => "owner"},
+       answer: :not_found_at_mount},
       {:"member.remove", :client_admin,
        "/:client/settings/people/:client_owner_membership/remove", "remove", %{},
        answer: :refused_at_mount},
@@ -46,32 +46,19 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       {:"organisation.leave_operator", :operator_owner, "/:client/settings/ownership",
        "leave_operator", %{"confirm" => %{"name" => :operator_name}}},
 
-      # Its workspaces are the operator's: its own admin and owner neither delete nor bring
-      # one back.
-      {:"workspace.delete", :client_admin,
-       "/:client/settings/workspaces/:client_platform_id/delete", "delete_workspace",
-       %{"confirm" => %{"slug" => :client_platform}}, answer: :refused_at_mount},
-      {:"workspace.delete", :client_owner,
-       "/:client/settings/workspaces/:client_platform_id/delete", "delete_workspace",
-       %{"confirm" => %{"slug" => :client_platform}}, answer: :refused_at_mount},
-      {:"workspace.restore", :client_admin, "/:client/settings", "restore_workspace",
-       %{"id" => :client_marked_id}},
-
-      # Its nodes are the operator's: not there for its own people.
+      # The nodes of the workspace the operator operates are the operator's: not there for
+      # the client's people.
       {:"node.create", :client_owner, "/:client/:client_ws/machines", "create",
        %{"node" => %{"name" => "sneaky"}}},
       {:"node.create", :client_admin, "/:client/:client_ws/machines/new", "create",
        %{"node" => %{"name" => "sneaky"}}, answer: :refused_at_mount},
 
-      # Its gateways at the organisation are the operator's too: its own people neither
-      # add one nor change one the operator's owner added.
-      {:"node.create", :client_admin, "/:client/gateways/new", "create", @sneaky_gateway,
-       answer: :refused_at_mount},
-      {:"node.create", :client_owner, "/:client/gateways", "create", @sneaky_gateway},
-      {:"node.edit", :client_admin, "/:client/gateways/:client_gateway/settings", "save",
-       %{"node" => %{"name" => "sneaky"}}},
-      {:"node.delete", :client_owner, "/:client/gateways/:client_gateway/settings/delete",
-       "delete", %{}, answer: :refused_at_mount},
+      # Its gateways at the organisation are the client's: their pages are not found for
+      # the operator's people, who reach the workspace it operates alone.
+      {:"node.create", :operator_owner, "/:client/gateways", "create", @sneaky_gateway,
+       answer: :not_found_at_mount},
+      {:"node.edit", :operator_admin, "/:client/gateways/:client_gateway/settings", "save",
+       %{"node" => %{"name" => "sneaky"}}, answer: :not_found_at_mount},
 
       # The operator's gateways are not there for the client's people, and its members
       # read them.
@@ -92,34 +79,17 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       {:"retention.edit", :client_admin, "/:client/:client_ws/settings", "save_retention",
        %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}}},
 
-      # A rule's lock is the operator's owners': the client's owner, made before the flag
-      # was on, and the operator's admin neither lock, unlock nor change a locked rule.
-      {:"security_policy.lock", :client_owner, "/:client/:client_ws/policy", "lock_toggle",
+      # A workspace's policy and the organisation's are the client's: the operator's people
+      # neither lock a rule nor change the organisation's policy.
+      {:"security_policy.lock", :operator_owner, "/:client/:client_ws/policy", "lock_toggle",
        %{"id" => :client_rule_open}},
-      {:"security_policy.lock", :client_owner, "/:client/:client_ws/policy", "lock_toggle",
-       %{"id" => :client_rule_locked}},
-      {:"security_policy.lock", :client_owner, "/:client/:client_ws/policy", "change_action",
-       %{"id" => :client_rule_locked}},
-      {:"security_policy.lock", :client_owner, "/:client/:client_ws/policy", "remove_confirm",
-       %{}, prelude: [{"remove", %{"id" => :client_rule_locked}}]},
       {:"security_policy.lock", :operator_admin, "/:client/:client_ws/policy", "lock_toggle",
        %{"id" => :client_rule_open}},
-
-      # So is the organisation's policy: the client's owner reads it and changes nothing.
-      {:"organisation_policy.edit", :client_owner, "/:client/policy/rules/new", "rule_save", %{},
-       answer: :refused_at_mount, needs: :organisation_policy},
-      {:"organisation_policy.edit", :client_owner, "/:client/policy", "rule_save", %{},
-       prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}],
-       needs: :organisation_policy},
+      # The organisation's policy page is not found for them.
+      {:"organisation_policy.edit", :operator_owner, "/:client/policy", "rule_save", %{},
+       answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.edit", :operator_admin, "/:client/policy", "rule_save", %{},
-       prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}],
-       needs: :organisation_policy},
-      {:"organisation_policy.set_floor", :client_owner, "/:client/policy", "mode_open", %{},
-       needs: :organisation_policy},
-      {:"organisation_policy.set_floor", :client_owner, "/:client/policy", "mode_set", %{},
-       needs: :organisation_policy},
-      {:"organisation_policy.set_switch", :client_owner, "/:client/policy", "switch_ask", %{},
-       needs: :organisation_policy},
+       answer: :not_found_at_mount, needs: :organisation_policy},
 
       # Policy requests are not there: their pages are not found as they open.
       {:"policy_request.send", :operator_owner, "/:operator/clients/requests/new", "send",
@@ -156,10 +126,7 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   def exempt, do: %{}
 
   @impl true
-  def setup(%{client: client, client_owner: owner, operator: operator} = world) do
-    platform = workspace_fixture(client, "Platform")
-    marked = workspace_fixture(client, "Marked")
-    {:ok, _} = Apiary.Deletion.delete_workspace(owner.scope, marked.id, marked.slug)
+  def setup(%{client_owner: owner, operator: operator} = world) do
     pool = Apiary.NodesFixtures.pool_fixture(owner.scope, instance_limit: 5)
 
     # A rule of the client's workspace, and a locked one, made by its owner.
@@ -168,7 +135,7 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
 
     ApiaryPro.Flags.put_operator_infrastructure(true)
 
-    # A gateway of the operator's, and one its owner added at the client.
+    # A gateway of the operator's, and one the client's owner added at the client.
     operator_owner = world.operator_owner.user
 
     operator_gateway =
@@ -178,14 +145,9 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
       )
 
     client_gateway =
-      Apiary.NodesFixtures.organisation_gateway_fixture(
-        ApiaryPro.OperatorsFixtures.scope_in(operator_owner, client),
-        name: "edge-client"
-      )
+      Apiary.NodesFixtures.organisation_gateway_fixture(owner.scope, name: "edge-client")
 
     %{
-      client_platform: platform,
-      client_marked: marked,
       client_pool: pool,
       client_rule_open: open,
       client_rule_locked: locked,
@@ -195,9 +157,6 @@ defmodule ApiaryProWeb.OperatorAsOwnerRefusalsRows do
   end
 
   @impl true
-  def value(:client_platform, world), do: world.client_platform.slug
-  def value(:client_platform_id, world), do: {:id, world.client_platform.id}
-  def value(:client_marked_id, world), do: {:id, world.client_marked.id}
   def value(:client_pool, world), do: {:id, world.client_pool.public_id}
   def value(:client_rule_open, world), do: {:id, world.client_rule_open.id}
   def value(:client_rule_locked, world), do: {:id, world.client_rule_locked.id}

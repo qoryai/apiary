@@ -4,8 +4,7 @@ defmodule ApiaryPro.FirstWorkspaceTest do
   instance admin's New organisation and an operator's New client create it with no
   workspace, for the kind cards of its overview to make; a client's first invitation is to
   the organisation alone. The line about who waits for the first workspace
-  (`c:Apiary.Edition.first_workspace_waiting_line/1`) names a client's owners and admins,
-  and the operator's owners while the operator owns its clients.
+  (`c:Apiary.Edition.first_workspace_waiting_line/1`) names a client's owners and admins.
   """
   # Not async: the sign-up settings and the features are the node's.
   use Apiary.DataCase, async: false
@@ -110,16 +109,11 @@ defmodule ApiaryPro.FirstWorkspaceTest do
       assert workspace.name == Apiary.Lingo.Domain.default().type_name()
       assert Organisations.has_workspace?(client)
 
-      # An owner of the operator makes another, through the operator.
-      assert {:ok, _other} =
-               Organisations.create_workspace_of_kind(
-                 scope_in(operator.user, client),
-                 Apiary.Lingo.Domain.default(),
-                 :any
-               )
+      # The operator operates none of its workspaces: its owner does not reach the client.
+      assert scope_in(operator.user, client) == nil
     end
 
-    test "with the flag on, an admin of the operator may not make a client's first workspace" do
+    test "with the flag on, the operator's people do not reach a client with no workspace they operate" do
       Flags.put_operator_infrastructure(true)
       operator = operator_fixture()
       admin = member_fixture(operator.scope, :admin)
@@ -130,12 +124,7 @@ defmodule ApiaryPro.FirstWorkspaceTest do
           "email" => Apiary.AccountsFixtures.unique_user_email()
         })
 
-      assert {:error, :forbidden} =
-               Organisations.create_workspace_of_kind(
-                 scope_in(admin.user, client),
-                 Apiary.Lingo.Domain.default(),
-                 :first
-               )
+      for user <- [operator.user, admin.user], do: assert(scope_in(user, client) == nil)
 
       refute Organisations.has_workspace?(client)
     end
@@ -172,21 +161,16 @@ defmodule ApiaryPro.FirstWorkspaceTest do
                "An owner of #{organisation.name} creates the first workspace."
     end
 
-    test "name a client's owners and admins while the operator does not own its clients" do
+    test "name a client's owners and admins, with the flag on or off" do
       operator = operator_fixture()
       %{organisation: client} = client_fixture(operator.scope)
 
-      assert Apiary.Edition.first_workspace_waiting_line(client) ==
-               "An owner or an admin of #{client.name} creates the first workspace."
-    end
+      for flag <- [false, true] do
+        Flags.put_operator_infrastructure(flag)
 
-    test "name the operator's owners too while the operator owns its clients" do
-      operator = operator_fixture()
-      %{organisation: client} = client_fixture(operator.scope)
-      Flags.put_operator_infrastructure(true)
-
-      assert Apiary.Edition.first_workspace_waiting_line(client) ==
-               "An owner or an admin of #{client.name}, or an owner of #{operator.organisation.name}, creates the first workspace."
+        assert Apiary.Edition.first_workspace_waiting_line(client) ==
+                 "An owner or an admin of #{client.name} creates the first workspace."
+      end
     end
   end
 end

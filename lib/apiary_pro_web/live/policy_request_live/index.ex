@@ -500,6 +500,12 @@ defmodule ApiaryProWeb.PolicyRequestLive.Index do
 
     scope = socket.assigns.current_scope
 
+    # The requests are the organisation's, read under `security_policy.read` of it: for a
+    # person who reaches some of its workspaces through their operator alone, they are not
+    # there (`ApiaryPro.Access`), and neither is the page.
+    unless Access.can?(scope, :"security_policy.read", scope.organisation),
+      do: raise(ApiaryWeb.NotFound)
+
     {:ok,
      socket
      |> assign(

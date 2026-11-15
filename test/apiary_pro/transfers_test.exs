@@ -87,9 +87,13 @@ defmodule ApiaryPro.TransfersTest do
     end
 
     test "only its owners leave, whatever its operator is, and while it is not suspended", ctx do
-      for scope <- [ctx.admin.scope, ctx.member.scope, ctx.client.scope] do
+      for scope <- [ctx.admin.scope, ctx.member.scope] do
         assert {:error, :forbidden} = Transfers.leave(scope, ctx.operator.organisation.name)
       end
+
+      # The operator's people find nothing the client owns as a whole.
+      assert {:error, :not_found} =
+               Transfers.leave(ctx.client.scope, ctx.operator.organisation.name)
 
       %{scope: plain} = sign_up_fixture()
       assert {:error, :not_found} = Transfers.leave(plain, ctx.operator.organisation.name)
@@ -261,12 +265,9 @@ defmodule ApiaryPro.TransfersTest do
       assert there.organisation_id == client.id
       assert there.after == %{"operator_id" => ctx.operator.organisation.id}
 
-      # The operator's owner reads it and changes nothing; its owners act as before.
-      reader = scope_in(ctx.operator.user, client, ctx.offered.workspace)
-      assert Access.reader(reader) == :operator
-
-      assert Access.authorize(reader, :"organisation.delete", reader.organisation) ==
-               {:error, :forbidden}
+      # The operator operates none of its workspaces, so the operator's owner does not
+      # reach it; its owners act as before.
+      assert scope_in(ctx.operator.user, client, ctx.offered.workspace) == nil
 
       owner = scope_in(ctx.offered.user, client, ctx.offered.workspace)
       assert Access.level(owner) == :owner
@@ -382,8 +383,14 @@ defmodule ApiaryPro.TransfersTest do
   end
 
   # A leaving or a drop, `action`, by `actor_id`: an entry in the client's trail and one in
-  # the operator's, each naming the other.
+  # the operator's, each naming the other; and the operator operates no workspace of the
+  # client any more.
   defp assert_parted(before, ctx, action, actor_id) do
+    refute Repo.exists?(
+             from l in ApiaryPro.Operators.WorkspaceOperator,
+               where: l.organisation_id == ^ctx.client.organisation.id
+           )
+
     assert [here, there] =
              Enum.sort_by(
                entries() -- before,

@@ -55,12 +55,14 @@ defmodule ApiaryProWeb.MemberLive.ReadersTest do
       |> assert_members_listed(ctx.memberships)
     end
 
-    test "lists the members for a member of the operator", ctx do
+    # The core's page is not found for a person `member.read` refuses.
+    test "is not found for a member of the operator, who reaches the workspace it operates alone",
+         ctx do
       operator_member = member_fixture(ctx.operator.scope, :member)
 
-      operator_member.user
-      |> people(ctx.client.organisation)
-      |> assert_members_listed(ctx.memberships)
+      assert_raise ApiaryWeb.NotFound, fn ->
+        people(operator_member.user, ctx.client.organisation)
+      end
     end
   end
 

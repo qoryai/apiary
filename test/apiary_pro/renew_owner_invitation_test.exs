@@ -109,10 +109,7 @@ defmodule ApiaryPro.RenewOwnerInvitationTest do
 
       ApiaryPro.Flags.put_operator_infrastructure(true)
 
-      assert {:ok, workspace} =
-               Organisations.create_first_workspace(scope_in(ctx.operator.user, ctx.client), %{
-                 "domain" => Apiary.Lingo.Domain.default().name()
-               })
+      workspace = workspace_fixture(ctx.client, "Main")
 
       ApiaryPro.Flags.put_operator_infrastructure(false)
       Mail.put_test_source(:none)

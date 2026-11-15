@@ -227,7 +227,8 @@ defmodule ApiaryPro.GatewayRacesTest do
     # setup; that gateway deleted while the flag was off, when the client's node did not
     # hold it. So the node is on Default and resolves to none, and each side makes the
     # first gateway of its level: the first made is the node's, and the second moves it
-    # nowhere.
+    # nowhere. The client's organisation-level gateway is made by its owner: the operator
+    # operates Main, not the client's organisation level.
     setup ctx do
       node = node_fixture(ctx.in_client, name: unique_node_name(), gateway_choice: "default")
       assert Gateways.chosen(node).id == ctx.gateway.id
@@ -246,7 +247,9 @@ defmodule ApiaryPro.GatewayRacesTest do
       {operators, clients} =
         race(
           fn -> Nodes.create_organisation_gateway(ctx.in_operator, gateway_attrs("edge-o")) end,
-          fn -> Nodes.create_organisation_gateway(ctx.in_client, gateway_attrs("edge-c")) end
+          fn ->
+            Nodes.create_organisation_gateway(ctx.client.owner.scope, gateway_attrs("edge-c"))
+          end
         )
 
       assert {:ok, %Node{default_gateway: true} = operator_gateway} = operators
@@ -258,7 +261,9 @@ defmodule ApiaryPro.GatewayRacesTest do
          ctx do
       {clients, operators} =
         race(
-          fn -> Nodes.create_organisation_gateway(ctx.in_client, gateway_attrs("edge-c")) end,
+          fn ->
+            Nodes.create_organisation_gateway(ctx.client.owner.scope, gateway_attrs("edge-c"))
+          end,
           fn -> Nodes.create_organisation_gateway(ctx.in_operator, gateway_attrs("edge-o")) end
         )
 

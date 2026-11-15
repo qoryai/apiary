@@ -521,32 +521,32 @@ defmodule Apiary.WorkspaceSetupTest do
     defp targets!(adapter_id), do: set!(Node, adapter_id, targets: true)
 
     test "connected_ids/3: the adapters for the type with a connected connection", ctx do
-      organisation = ctx.scope.organisation
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      scope = ctx.scope
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       # Pending is not connected.
       %{adapter: pending} = connectable_adapter_fixture()
       {_connection, _nonce} = connection_fixture(ctx.scope, pending, :pending)
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       %{adapter: adapter} = connectable_adapter_fixture()
       {connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) ==
                MapSet.new([adapter.id])
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :targets) == MapSet.new()
 
       targets!(adapter.id)
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) ==
+      assert WorkspaceSetup.connected_ids(scope, @software, :targets) ==
                MapSet.new([adapter.id])
 
       # An adapter that serves another type counts for that type alone.
       set!(Node, adapter.id, domains: ["example"])
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
-      assert WorkspaceSetup.connected_ids(organisation, Apiary.Lingo.Domain.Example, :items) ==
+      assert WorkspaceSetup.connected_ids(scope, Apiary.Lingo.Domain.Example, :items) ==
                MapSet.new([adapter.id])
 
       # An ended connection counts for none.
@@ -558,11 +558,22 @@ defmodule Apiary.WorkspaceSetupTest do
         ended_reason: "adapter_reported"
       )
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       # Another organisation's connection counts for none.
-      assert WorkspaceSetup.connected_ids(sign_up_fixture().organisation, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(sign_up_fixture().scope, @software, :items) ==
                MapSet.new()
+    end
+
+    test "connected_ids/3: none for a person who may not read the instance's adapters", ctx do
+      %{adapter: adapter} = connectable_adapter_fixture()
+      {_connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
+
+      assert WorkspaceSetup.connected_ids(ctx.scope, @software, :items) ==
+               MapSet.new([adapter.id])
+
+      :ok = Edition.put_test_stub(NoAdapterRead)
+      assert WorkspaceSetup.connected_ids(ctx.scope, @software, :items) == MapSet.new()
     end
 
     @tag needs: [:factory, :secrets]

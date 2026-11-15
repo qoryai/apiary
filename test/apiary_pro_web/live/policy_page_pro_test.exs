@@ -74,12 +74,52 @@ defmodule ApiaryProWeb.PolicyPageProTest do
   # Whether the client's rule not locked, then its locked one, are locked now.
   defp locks(ctx), do: Enum.map([ctx.open, ctx.locked], &Repo.get!(Policy.Rule, &1.id).locked)
 
-  @only_the_operator "Only owners of Hive Ops, its operator, lock, unlock or change a locked rule."
-  @vault_locked "The rule for vault.example is locked. " <> @only_the_operator
-
   # What a target's rule form and a connection's panel say of vault.example before who may
   # change it.
   @vault_on_the_target "A locked workspace rule denies vault.example . It holds against every repository, so no rule added here would change what happens."
+
+  # The sentences of who may change a locked rule, for a member of the client, in the
+  # core's words.
+  defp assert_core_lock_words(ctx, places) do
+    locker = %{user: ctx.people.client_owner, scope: ctx.client.owner.scope}
+    words = lock_words(ctx, places, locker)
+    by = "Locked by #{ctx.people.client_owner.email} on ‹date›."
+
+    assert dated(words.tips) == [
+             [
+               "#{by} Only an owner can change or unlock it.",
+               "Locked. Only an owner can change or unlock it."
+             ],
+             [
+               "#{by} Only an owner can change or unlock it.",
+               "Locked. Only an owner can change or unlock it."
+             ]
+           ]
+
+    assert words.form == "Only an owner can lock, unlock or change a locked rule."
+
+    assert words.tab_form ==
+             "#{@vault_on_the_target} Only an owner can change or unlock it. Show the locked rule"
+
+    assert words.paths ==
+             "The workspace's rule for vault.example is locked, so a repository cannot change its paths. An owner changes it in the workspace."
+
+    core =
+      "The rule for vault.example is locked. Only an owner changes or removes a locked rule."
+
+    assert words.change == core
+    assert words.remove == core
+
+    assert words.destination ==
+             "A locked workspace rule denies *.lock.example. Only an owner can change it, on the workspace's policy page."
+
+    assert words.run_panel == "#{@vault_on_the_target} Only an owner can change or unlock it."
+    assert words.network_panel == words.run_panel
+
+    assert words.overview == [
+             "A locked workspace rule denies vault.example. Only an owner can change it."
+           ]
+  end
 
   # The lock's tips with the date a rule was locked on as ‹date›.
   defp dated(tips),
@@ -555,8 +595,9 @@ defmodule ApiaryProWeb.PolicyPageProTest do
       }
     end
 
-    test "the operator's owner locks and unlocks the client's rules", ctx do
-      view = open_as(ctx, :operator_owner)
+    test "the client's owner locks and unlocks the client's rules, as in any organisation",
+         ctx do
+      view = open_as(ctx, :client_owner)
       open = row(view, "cdn.example")
       locked = row(view, "vault.example")
       assert text(view, "##{open}-lock-toggle") == "Lock"
@@ -568,124 +609,46 @@ defmodule ApiaryProWeb.PolicyPageProTest do
       assert locks(ctx) == [true, false]
     end
 
-    test "anyone else edits the rules not locked, and is refused a lock in the operator's words",
-         ctx do
-      for actor <- [:operator_admin, :client_owner, :client_admin, :client_member] do
+    test "the operator's people, who reach the workspace it operates, lock nothing", ctx do
+      for actor <- [:operator_owner, :operator_admin] do
         view = open_as(ctx, actor)
-        open = row(view, "cdn.example")
-        locked = row(view, "vault.example")
+        refute has_element?(view, "##{row(view, "cdn.example")}-lock-toggle"), "#{actor}"
 
-        # The rule not locked has its menu, with no Lock; the locked one has no menu.
-        assert has_element?(view, "##{open}-change"), "#{actor}"
-        refute has_element?(view, "##{open}-lock-toggle"), "#{actor}"
-        refute has_element?(view, "##{locked}-menu"), "#{actor}"
-
-        # A crafted Lock or Unlock is refused, and names the operator.
         for rule <- [ctx.open, ctx.locked] do
           render_hook(view, "lock_toggle", %{"id" => rule.id})
-          assert text(view, "#policy-write-error") == @only_the_operator, "#{actor}"
+          assert has_element?(view, "#policy-write-error"), "#{actor}"
         end
 
         assert locks(ctx) == [false, true], "#{actor}"
       end
     end
 
-    test "the client's owner made before is refused a lock and an unlock in the operator's words",
-         ctx do
-      scope = ctx.client.owner.scope
+    test "the client's admin and member are refused a lock in the core's words", ctx do
+      for actor <- [:client_admin, :client_member] do
+        view = open_as(ctx, actor)
+        open = row(view, "cdn.example")
+        assert has_element?(view, "##{open}-change"), "#{actor}"
+        refute has_element?(view, "##{open}-lock-toggle"), "#{actor}"
+        refute has_element?(view, "##{row(view, "vault.example")}-menu"), "#{actor}"
 
-      for rule <- [ctx.open, ctx.locked], set <- [&Policy.lock/2, &Policy.unlock/2] do
-        assert {:error, %Policy.Error{reason: :forbidden, message: @only_the_operator}} =
-                 set.(scope, rule)
+        render_hook(view, "lock_toggle", %{"id" => ctx.open.id})
+
+        assert text(view, "#policy-write-error") ==
+                 "Only an owner can lock, unlock or change a locked rule.",
+               "#{actor}"
+
+        assert locks(ctx) == [false, true], "#{actor}"
       end
-
-      # Nor does it change or remove a locked rule.
-      assert {:error, %Policy.Error{reason: :forbidden, message: @vault_locked}} =
-               Policy.allow(scope, nil, %{host: "vault.example"})
-
-      assert {:error, %Policy.Error{reason: :forbidden, message: @vault_locked}} =
-               Policy.remove_rule(scope, ctx.locked)
-
-      assert locks(ctx) == [false, true]
     end
 
-    test "each sentence of who may change a locked rule names the operator, after what is locked",
+    test "each sentence of who may change a locked rule is the core's, with the flag on or off",
          ctx do
       places = lock_places(ctx)
-      locker = %{user: ctx.people.operator_owner, scope: ctx.client.scope}
-      words = lock_words(ctx, places, locker)
-      by = "Locked by #{ctx.people.client_owner.email} on ‹date›."
 
-      # The lock's tip on the workspace's page and on the target's tab, with who locked it
-      # known and not known.
-      assert dated(words.tips) == [
-               ["#{by} #{@only_the_operator}", "Locked. #{@only_the_operator}"],
-               ["#{by} #{@only_the_operator}", "Locked. #{@only_the_operator}"]
-             ]
-
-      assert words.form == @only_the_operator
-
-      assert words.tab_form ==
-               "#{@vault_on_the_target} #{@only_the_operator} Show the locked rule"
-
-      assert words.paths ==
-               "The workspace's rule for vault.example is locked, so a repository cannot change its paths. #{@only_the_operator}"
-
-      assert words.change == @vault_locked
-      assert words.remove == @vault_locked
-
-      assert words.destination ==
-               "A locked workspace rule denies *.lock.example. #{@only_the_operator}"
-
-      assert words.run_panel == "#{@vault_on_the_target} #{@only_the_operator}"
-      assert words.network_panel == words.run_panel
-
-      assert words.overview == [
-               "A locked workspace rule denies vault.example. #{@only_the_operator}"
-             ]
-    end
-
-    test "with the flag off, each sentence of who may change a locked rule is the core's", ctx do
-      places = lock_places(ctx)
-      ApiaryPro.Flags.put_operator_infrastructure(false)
-      locker = %{user: ctx.people.client_owner, scope: ctx.client.owner.scope}
-      words = lock_words(ctx, places, locker)
-      by = "Locked by #{ctx.people.client_owner.email} on ‹date›."
-
-      assert dated(words.tips) == [
-               [
-                 "#{by} Only an owner can change or unlock it.",
-                 "Locked. Only an owner can change or unlock it."
-               ],
-               [
-                 "#{by} Only an owner can change or unlock it.",
-                 "Locked. Only an owner can change or unlock it."
-               ]
-             ]
-
-      assert words.form == "Only an owner can lock, unlock or change a locked rule."
-
-      assert words.tab_form ==
-               "#{@vault_on_the_target} Only an owner can change or unlock it. Show the locked rule"
-
-      assert words.paths ==
-               "The workspace's rule for vault.example is locked, so a repository cannot change its paths. An owner changes it in the workspace."
-
-      core =
-        "The rule for vault.example is locked. Only an owner changes or removes a locked rule."
-
-      assert words.change == core
-      assert words.remove == core
-
-      assert words.destination ==
-               "A locked workspace rule denies *.lock.example. Only an owner can change it, on the workspace's policy page."
-
-      assert words.run_panel == "#{@vault_on_the_target} Only an owner can change or unlock it."
-      assert words.network_panel == words.run_panel
-
-      assert words.overview == [
-               "A locked workspace rule denies vault.example. Only an owner can change it."
-             ]
+      for on? <- [true, false] do
+        ApiaryPro.Flags.put_operator_infrastructure(on?)
+        assert_core_lock_words(ctx, places)
+      end
     end
 
     test "with the flag off, the client's owner locks, and its admin is refused as before",

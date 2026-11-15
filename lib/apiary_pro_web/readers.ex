@@ -43,13 +43,17 @@ defmodule ApiaryProWeb.Readers do
   def sentence(_where, _scope), do: nil
 
   @doc """
-  operator_name/1 is the name of the operator the person of `scope` reads a client
-  through, where the scope carries it: `Apiary.Organisations.resolve_scope/4` loads it
-  with their membership there. Nil otherwise.
+  operator_name/1 is the name of the operator the person of `scope` reads the scope's
+  workspace through, where the scope has it: `Apiary.Organisations.resolve_scope/4`
+  loads it with their membership there. Nil otherwise.
   """
   @spec operator_name(Scope.t() | nil) :: String.t() | nil
-  def operator_name(%Scope{reach: {:operator, %{organisation: %Organisation{name: name}}}}),
-    do: name
+  def operator_name(%Scope{} = scope) do
+    case ApiaryPro.Reach.operator_membership(scope) do
+      %{organisation: %Organisation{name: name}} -> name
+      _none -> nil
+    end
+  end
 
   def operator_name(_scope), do: nil
 end

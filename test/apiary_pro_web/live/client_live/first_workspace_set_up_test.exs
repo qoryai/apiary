@@ -5,9 +5,9 @@ defmodule ApiaryProWeb.ClientLive.FirstWorkspaceSetUpTest do
   the kind cards. A card opens the type's page, and Create workspace there creates the first
   workspace and opens its Name step.
   With `ApiaryPro.Flags.operator_infrastructure?/0` off the first person is the owner; with
-  it on they are the admin. Both create the workspace, and so does an owner of the operator
-  while the flag is on. An admin or a member of the operator may not, and a member of the
-  client reads the line on who creates it.
+  it on they are the admin. Both create the workspace. The operator's people, who reach
+  only the workspaces the operator operates, do not reach a client with none, and a member
+  of the client reads the line on who creates it.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -116,39 +116,14 @@ defmodule ApiaryProWeb.ClientLive.FirstWorkspaceSetUpTest do
       assert [%Workspace{name: "Software factory"}] = workspaces(ctx.client)
     end
 
-    test "an owner of the operator sees the cards and chooses one", %{conn: conn} = ctx do
-      Flags.put_operator_infrastructure(true)
-      owner_conn = log_in_user(conn, ctx.operator.user)
-
-      {:ok, lv, _html} = live(owner_conn, ~p"/#{ctx.client}")
-      assert has_element?(lv, "#set-up-card-software-link")
-      refute has_element?(lv, "#first-workspace-waiting")
-
-      name = choose(owner_conn, lv)
-      assert has_element?(name, "h1", "Name this workspace")
-      assert [%Workspace{name: "Software factory"}] = workspaces(ctx.client)
-    end
-
-    test "an admin of the operator, who is no owner, is refused the first workspace",
+    test "the operator's owner and admin, with no workspace of it to operate, do not reach it",
          %{conn: conn} = ctx do
       Flags.put_operator_infrastructure(true)
       %{user: admin} = member_fixture(ctx.operator.scope, :admin)
 
-      assert {:error, :forbidden} =
-               Organisations.create_first_workspace(scope_in(admin, ctx.client), %{
-                 "domain" => "software"
-               })
-
-      refute Organisations.has_workspace?(ctx.client)
-
-      # The overview shows no card to them. Whether it opens at all is the core's call.
-      case live(log_in_user(conn, admin), ~p"/#{ctx.client}") do
-        {:ok, lv, _html} ->
-          refute has_element?(lv, "#set-up-cards")
-          refute has_element?(lv, "#set-up-card-software-link")
-
-        {:error, _redirect} ->
-          :ok
+      for user <- [ctx.operator.user, admin] do
+        assert scope_in(user, ctx.client) == nil
+        assert html_response(get(log_in_user(conn, user), ~p"/#{ctx.client}"), 404)
       end
 
       refute Organisations.has_workspace?(ctx.client)
@@ -170,7 +145,7 @@ defmodule ApiaryProWeb.ClientLive.FirstWorkspaceSetUpTest do
       assert has_element?(
                lv,
                "#first-workspace-waiting",
-               "An owner or an admin of #{ctx.client.name}, or an owner of #{ctx.operator.organisation.name}, creates the first workspace."
+               "An owner or an admin of #{ctx.client.name} creates the first workspace."
              )
 
       refute has_element?(lv, "#set-up-cards")
@@ -217,7 +192,7 @@ defmodule ApiaryProWeb.ClientLive.FirstWorkspaceSetUpTest do
       Flags.put_operator_infrastructure(true)
 
       assert dead_end.() ==
-               "An owner or an admin of #{ctx.client.name}, or an owner of #{ctx.operator.organisation.name}, creates the first workspace."
+               "An owner or an admin of #{ctx.client.name} creates the first workspace."
     end
   end
 end

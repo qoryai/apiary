@@ -16,22 +16,16 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   #     member_and_client_admin  a member of the operator who is an admin of the client
   #     admin_and_client_owner   an admin of the operator who is an owner of the client
   #
-  # The operator's owners and admins act at their level; someone in both at the higher of
-  # their two levels. What is the client's own to decide (deleting it, offering it,
-  # leaving the operator) is refused to anyone who acts there through the operator: with
-  # no membership in the client, or a level in the operator strictly higher than theirs in
-  # the client. Workspaces are made by the client's owners and admins and by the operator's
-  # owners, and deleted and brought back by the operator's owners and admins. What the
-  # operator sets is theirs, and not there for anyone
-  # else: nodes, a pool's limit and keys, time limits, a workspace's retention
-  # and the harness documents saved at the client's levels. Model providers, runtimes and
-  # model choices are the operator's too while the client's switch is on the operator's
-  # (`ApiaryPro.OperatorAsOwnerOperatorChainAccessRows` asks that); on the client's
-  # providers, the default here, they are the client's owners' and admins', and a person
-  # who acts there through the operator reads only. The client keeps its integrations and
-  # services (`connection.write`). A rule's lock and the organisation's policy are the
-  # operator's owners' alone, refused to its admins and to the client's owners. Policy
-  # requests are not there for anyone.
+  # The operator operates Main. In Main, the operator's owners and admins act at their
+  # level on what the operator changes there (`ApiaryPro.Access`'s `@operator_in_workspace`):
+  # its nodes, a pool's limit and keys, its time limits and retention, the harness saved in
+  # it, its process and artifact types, and, on the operator's providers, its model
+  # choices; someone in both at the higher of their two levels. Everything else in Main they
+  # read. Of what the client owns as a whole, a person of the operator with no membership
+  # there reads its policy alone, and finds nothing else. What the operator sets in Main is
+  # not there for anyone else, the client's owners and admins among them. The client's
+  # people act in it, by their membership, as in any organisation. Policy requests are not
+  # there for anyone.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -50,12 +44,14 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :admin_and_client_owner
   ]
 
-  # At the owner's level, whichever way they reach it.
-  @owners [:client_owner, :operator_owner, :owner_and_client_member, :admin_and_client_owner]
-  # At the admin's level or above.
-  @admins @owners ++ [:client_admin, :operator_admin, :member_and_client_admin]
-  # Everyone but the operator's member, who reads only.
-  @writers @admins ++ [:client_member]
+  # A person of the operator with no membership in the client.
+  @operator_only [:operator_owner, :operator_admin, :operator_member]
+  # Everyone with a membership in the client.
+  @in_client @all -- @operator_only
+  # An owner of the client.
+  @own_owners [:client_owner, :admin_and_client_owner]
+  # An owner or an admin of the client.
+  @own_admins @own_owners ++ [:client_admin, :member_and_client_admin]
   # The operator's owners and admins, whatever their level in the client.
   @operator_owners_admins [
     :operator_owner,
@@ -63,13 +59,9 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :owner_and_client_member,
     :admin_and_client_owner
   ]
-  # The operator's owners, whatever their level in the client.
-  @operator_owners [:operator_owner, :owner_and_client_member]
-  # An owner of the client's own.
-  @own_owners [:client_owner, :admin_and_client_owner]
 
-  # What the operator sets in the client, whatever the switch: the operator's owners and
-  # admins hold each, and it is not there for anyone else.
+  # What the operator sets in Main, whatever the switch: the operator's owners and admins
+  # hold each, and it is not there for anyone else.
   @operator_held [
     :"node.create",
     :"node.edit",
@@ -80,11 +72,14 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
     :"access_key.cancel_code",
     :"access_key.add",
     :"access_key.revoke",
-    :"adapter.connect",
     :"time_limit.edit",
     :"retention.edit",
     :"harness.save"
   ]
+
+  # What the operator changes in Main beside what it sets: the client's owners and admins
+  # change it too.
+  @operator_changes [:"process.edit", :"artifact_type.edit"]
 
   # What the client's switch decides: its model providers and runtimes, and the model
   # choices of its workspaces and targets.
@@ -93,12 +88,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   # Who holds them on the client's providers: its owners and admins, and a person of the
   # operator who is one of them in the client at an equal or higher level there. Someone
   # who acts there through the operator, with no membership or a lower level, reads only.
-  @chain_on_organisation [
-    :client_owner,
-    :client_admin,
-    :member_and_client_admin,
-    :admin_and_client_owner
-  ]
+  @chain_on_organisation @own_admins
 
   # Core's instance actions: not found in a client, for everyone.
   @instance_only [
@@ -192,89 +182,92 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   def rows do
     [
       {:"organisation.create", yes: @all},
-      {:"organisation.rename", yes: @admins},
+      {:"organisation.rename", yes: @own_admins},
       {:"organisation.delete", yes: @own_owners},
-      {:"organisation.restore", yes: @owners},
+      {:"organisation.restore", yes: @own_owners},
       {:"organisation.purge", yes: []},
-      {:"member.read", yes: @all},
-      {:"member.invite", yes: @admins, on: :workspace},
-      {:"member.change_level", yes: @owners, on: :workspace},
-      {:"member.remove", yes: @admins, on: :workspace},
-      {:"invitation.revoke", yes: @admins},
-      {:"invitation.renew", yes: @admins},
+      {:"member.read", yes: @in_client},
+      {:"member.invite", yes: @own_admins, on: :workspace},
+      {:"member.change_level", yes: @own_owners, on: :workspace},
+      {:"member.remove", yes: @own_admins, on: :workspace},
+      {:"invitation.revoke", yes: @own_admins},
+      {:"invitation.renew", yes: @own_admins},
       {:"invitation.accept", yes: []},
-      {:"member.suspend", yes: @admins, on: :workspace},
-      {:"member.activate", yes: @admins, on: :workspace},
+      {:"member.suspend", yes: @own_admins, on: :workspace},
+      {:"member.activate", yes: @own_admins, on: :workspace},
       {:"instance_admin.grant", yes: []},
       {:"instance_admin.revoke", yes: []},
-      {:"audit.read", yes: @all -- [:client_member]},
+      {:"audit.read", yes: @own_admins},
       {:"audit.prune", yes: []},
-      {:"workspace.create", yes: @owners ++ [:client_admin, :member_and_client_admin]},
-      {:"workspace.rename", yes: @admins},
-      {:"workspace.delete", yes: @operator_owners_admins},
-      {:"workspace.restore", yes: @operator_owners_admins},
+      {:"workspace.create", yes: @own_admins},
+      {:"workspace.rename", yes: @own_admins},
+      {:"workspace.delete", yes: @own_admins},
+      {:"workspace.restore", yes: @own_admins},
       {:"workspace.purge", yes: []},
       {:"node.read", yes: @all},
       {:"run.read", yes: @all},
       {:"run.read_log", yes: @all},
-      {:"run.cancel", yes: @writers},
+      {:"run.cancel", yes: @in_client},
       {:"security_policy.read", yes: @all},
-      {:"security_policy.edit", yes: @writers},
-      {:"security_policy.lock", yes: @operator_owners},
-      {:"security_policy.set_mode", yes: @admins},
-      {:"secret.read", yes: @all},
-      {:"secret.write", yes: @admins},
-      {:"secret.use", yes: @admins},
-      {:"variable.read", yes: @all},
-      {:"variable.edit", yes: @admins},
-      {:"connection.read", yes: @all},
-      {:"connection.write", yes: @admins},
+      {:"security_policy.edit", yes: @in_client},
+      {:"security_policy.lock", yes: @own_owners},
+      {:"security_policy.set_mode", yes: @own_admins},
+      {:"secret.read", yes: @in_client},
+      {:"secret.write", yes: @own_admins},
+      {:"secret.use", yes: @own_admins},
+      {:"variable.read", yes: @in_client},
+      {:"variable.edit", yes: @own_admins},
+      {:"connection.read", yes: @in_client},
+      {:"connection.write", yes: @own_admins},
+      {:"adapter.connect", yes: @own_admins},
       {:"run.post_events", yes: []},
       {:"run_configuration.fetch", yes: []},
       {:"run.read_diagnostics", yes: [], on: :run},
       {:"run.list_instance", yes: [], on: :run},
       {:"secret.seal", yes: []},
       {:"run_credential.issue", yes: []},
-      {:"workspace_access.add", yes: @admins},
-      {:"workspace_access.remove", yes: @admins},
+      {:"workspace_access.add", yes: @own_admins},
+      {:"workspace_access.remove", yes: @own_admins},
       {:"organisation.transfer", yes: @own_owners},
       {:"organisation.withdraw_transfer", yes: @own_owners},
       {:"organisation.accept_transfer", yes: []},
       {:"organisation.leave_operator", yes: @own_owners},
-      {:"organisation_policy.read", yes: @all -- [:client_member]},
-      {:"organisation_policy.edit", yes: @operator_owners},
-      {:"organisation_policy.set_floor", yes: @operator_owners},
-      {:"organisation_policy.set_switch", yes: @operator_owners},
-      {:"organisation_variable.read", yes: @all -- [:client_member]},
-      {:"organisation_variable.edit", yes: @admins},
-      {:"organisation_secret.read", yes: @all -- [:client_member]},
-      {:"organisation_secret.write", yes: @admins},
-      {:"organisation_secret.use", yes: @admins},
-      {:"adapter.read", yes: @all},
-      {:"collection.assign", yes: @admins},
-      {:"collection.set_backlog", yes: @admins},
+      {:"organisation_policy.read", yes: @own_admins},
+      {:"organisation_policy.edit", yes: @own_owners},
+      {:"organisation_policy.set_floor", yes: @own_owners},
+      {:"organisation_policy.set_switch", yes: @own_owners},
+      {:"organisation_variable.read", yes: @own_admins},
+      {:"organisation_variable.edit", yes: @own_admins},
+      {:"organisation_secret.read", yes: @own_admins},
+      {:"organisation_secret.write", yes: @own_admins},
+      {:"organisation_secret.use", yes: @own_admins},
+      {:"adapter.read", yes: @in_client},
+      {:"collection.assign", yes: @own_admins},
+      {:"collection.set_backlog", yes: @own_admins},
       # The instance's alone, by itself: refused to every person in the client.
       {:"adapter.install", yes: []},
       {:"node.install", yes: []},
       {:"collection.move", yes: []},
       {:"work_item.read", yes: @all},
-      {:"work_item.take_in", yes: @writers},
-      {:"work_item.undo", yes: @writers},
-      {:"work_item.close", yes: @writers},
-      {:"work_item.answer", yes: @writers},
-      {:"work_item.review_comment", yes: @writers},
-      {:"work_item.confirm", yes: @writers},
-      {:"work_item.explore_again", yes: @writers},
-      {:"work_item.comment", yes: @writers},
-      {:"work_item.comment_delete", yes: @admins},
-      {:"process.edit", yes: @admins},
-      {:"gate.approve", yes: @writers},
-      {:"artifact.write", yes: @writers},
-      {:"artifact_type.edit", yes: @admins},
-      {:"target.set_further_repositories", yes: @admins},
-      {:"target.rebuild_environment", yes: @writers}
+      {:"work_item.take_in", yes: @in_client},
+      {:"work_item.undo", yes: @in_client},
+      {:"work_item.close", yes: @in_client},
+      {:"work_item.answer", yes: @in_client},
+      {:"work_item.review_comment", yes: @in_client},
+      {:"work_item.confirm", yes: @in_client},
+      {:"work_item.explore_again", yes: @in_client},
+      {:"work_item.comment", yes: @in_client},
+      {:"work_item.comment_delete", yes: @own_admins},
+      {:"gate.approve", yes: @in_client},
+      {:"artifact.write", yes: @in_client},
+      {:"target.set_further_repositories", yes: @own_admins},
+      {:"target.rebuild_environment", yes: @in_client}
     ] ++
-      Enum.map(@operator_held, &{&1, yes: @operator_owners_admins}) ++
+      Enum.map(@operator_held, &{&1, yes: @operator_owners_admins, on: :workspace}) ++
+      Enum.map(
+        @operator_changes,
+        &{&1, yes: Enum.uniq(@own_admins ++ @operator_owners_admins)}
+      ) ++
       Enum.map(@chain_held, &{&1, yes: @chain_on_organisation}) ++
       Enum.map(@adapter_keys, &{&1, yes: [], on: :adapter}) ++
       Enum.map(@pool_keys, &{&1, yes: []}) ++
@@ -354,12 +347,24 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   def place(_action, _actor), do: nil
 
   @doc false
-  def refusal(action, actor, _subject) do
+  def refusal(action, actor, subject) do
     cond do
       action in (@not_here ++ @adapter_keys ++ @instance_only) ->
         :not_found
 
+      # The operator's people find nothing the organisation owns as a whole, and no
+      # action asked of it, but what the operator changes in the workspace.
+      actor in @operator_only and
+          (match?(%Apiary.Organisations.Organisation{id: id} when is_binary(id), subject) or
+             (Apiary.Access.action(action).asked_of == :organisation and
+                action not in @operator_held)) ->
+        :not_found
+
       action in @operator_held and actor not in @operator_owners_admins ->
+        :not_found
+
+      # The workspace's secrets and variables are not there for the operator's people.
+      actor in @operator_only and action in [:"secret.read", :"variable.read"] ->
         :not_found
 
       true ->
@@ -386,9 +391,10 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   #     client_member_at_operator  operator's place, which they do not reach: not found
   #
   # At the operator's place its owners and admins make, change and delete its gateways
-  # and their keys, and its members read them. At the client's place only the operator's
-  # owners and admins do, whatever their level in the client; everyone else in the client
-  # reads, and finds nothing to change.
+  # and their keys, and its members read them. At the client's place, where the operator
+  # operates a workspace and not the client, the client's owners and admins do, and its
+  # members read them; a person of the operator with no membership in the client finds
+  # nothing there, and one in both acts at their level in the client.
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -404,12 +410,9 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
 
   @at_client ApiaryPro.OperatorAsOwnerAccessRows.actors()
 
-  @operator_owners_admins [
-    :operator_owner,
-    :operator_admin,
-    :owner_and_client_member,
-    :admin_and_client_owner
-  ]
+  @operator_only [:operator_owner, :operator_admin, :operator_member]
+
+  @own_admins [:client_owner, :client_admin, :member_and_client_admin, :admin_and_client_owner]
 
   @writes [
     :"node.create",
@@ -433,14 +436,14 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   def rows do
     [
       {:"node.read",
-       yes: [:at_operator_owner, :at_operator_admin, :at_operator_member | @at_client],
+       yes:
+         [:at_operator_owner, :at_operator_admin, :at_operator_member] ++
+           (@at_client -- @operator_only),
        on: :organisation}
     ] ++
       Enum.map(
         @writes,
-        &{&1,
-         yes: [:at_operator_owner, :at_operator_admin | @operator_owners_admins],
-         on: :organisation}
+        &{&1, yes: [:at_operator_owner, :at_operator_admin | @own_admins], on: :organisation}
       )
   end
 
@@ -476,12 +479,12 @@ defmodule ApiaryPro.OperatorAsOwnerGatewayAccessRows do
   def place(_action, _actor), do: nil
 
   @doc false
-  def refusal(action, actor, _subject) do
+  def refusal(_action, actor, _subject) do
     cond do
       actor in [:client_owner_at_operator, :client_admin_at_operator, :client_member_at_operator] ->
         :not_found
 
-      actor in @at_client and action in @writes and actor not in @operator_owners_admins ->
+      actor in @operator_only ->
         :not_found
 
       true ->
@@ -495,13 +498,16 @@ defmodule ApiaryPro.OperatorAsOwnerOperatorChainAccessRows do
   # The rows of the access test for what the client's switch decides, while the operator
   # owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`) and the switch is on the
   # operator's providers, `ApiaryPro.OperatorAsOwnerAccessRows`'s actors asking as there:
-  # the model providers and runtimes, and the model choices, are the operator's owners' and
-  # admins', and not there for anyone else. The time limits and the retention, which the
-  # operator holds whatever the switch, beside them.
+  # Main's model choices are the operator's owners' and admins', and not there for anyone
+  # else. The client's model providers and runtimes, which the client owns as a whole, are
+  # not there for anyone: a level in the operator counts in Main alone. The time limits and
+  # the retention, which the operator holds whatever the switch, beside them.
 
   alias ApiaryPro.OperatorAsOwnerAccessRows, as: Rows
 
-  @asked Rows.chain_held() ++ [:"time_limit.edit", :"retention.edit"]
+  @in_main [:"model_choice.write", :"time_limit.edit", :"retention.edit"]
+  @of_client [:"provider.write", :"runtime.write"]
+  @asked @in_main ++ @of_client
 
   @doc false
   def actions, do: @asked
@@ -510,7 +516,10 @@ defmodule ApiaryPro.OperatorAsOwnerOperatorChainAccessRows do
   defdelegate actors, to: Rows
 
   @doc false
-  def rows, do: Enum.map(@asked, &{&1, yes: Rows.operator_owners_admins()})
+  def rows do
+    Enum.map(@in_main, &{&1, yes: Rows.operator_owners_admins()}) ++
+      Enum.map(@of_client, &{&1, yes: []})
+  end
 
   @doc false
   def setup(made), do: Rows.setup(made, :operator)

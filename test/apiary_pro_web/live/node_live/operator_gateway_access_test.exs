@@ -2,8 +2,9 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewayAccessTest do
   # Who sees to the organisation-level gateways while the operator owns its clients
   # (`ApiaryPro.Flags.operator_infrastructure?/0`): at the operator, its owners and admins
   # add, change, mark and delete them and their keys, its members read them, and the
-  # client's people find them nowhere; at the client, only the operator's owners and
-  # admins add them. A node or pool in the client's workspace may name the operator's
+  # client's people find them nowhere; at the client, its owners and admins add them, and
+  # the operator's people, who reach only the workspace the operator operates, find them
+  # nowhere. A node or pool in the client's workspace may name the operator's
   # gateway, or be on Default and resolve to the operator's default; another operator's
   # client may not name it. The flag is set for this process.
   use ApiaryWeb.ConnCase, async: true
@@ -143,10 +144,11 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewayAccessTest do
   end
 
   describe "at the client" do
-    test "the operator's owners and admins add its gateways; its own people read them", ctx do
+    test "its owners and admins add its gateways, its members read them, and the operator's people find none",
+         ctx do
       client = ctx.client.organisation
 
-      for {person, name} <- [{ctx.operator, "edge-o"}, {ctx.operator_admin, "edge-a"}] do
+      for {person, name} <- [{ctx.client.owner, "edge-o"}, {ctx.client_admin, "edge-a"}] do
         conn = conn_of(person)
         {:ok, lv, _html} = live(conn, gateways_path(client, "/new"))
 
@@ -159,13 +161,11 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewayAccessTest do
         assert html =~ "#{name} is added."
       end
 
-      for person <- [ctx.client.owner, ctx.client_admin, ctx.client_member] do
-        {:ok, lv, _html} = live(conn_of(person), gateways_path(client))
-        assert has_element?(lv, "#gateways", "edge-o")
-        refute has_element?(lv, "#new-organisation-gateway")
-      end
+      {:ok, lv, _html} = live(conn_of(ctx.client_member), gateways_path(client))
+      assert has_element?(lv, "#gateways", "edge-o")
+      refute has_element?(lv, "#new-organisation-gateway")
 
-      for scope <- [ctx.client.owner.scope, ctx.client_admin.scope] do
+      for scope <- [ctx.client.scope, ctx.in_client_as_operator_admin] do
         assert Nodes.create_organisation_gateway(scope, %{
                  name: "sneaky",
                  url: "https://sneaky.example"

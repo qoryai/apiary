@@ -212,9 +212,10 @@ defmodule ApiaryPro.OperatorChainWriterTest do
 
     test "is refused to a person of the operator who acts in a client through their reach",
          ctx do
-      assert {:operator, _membership} = ctx.on.scope.reach
+      assert {:operator, _operated} = ctx.on.scope.reach
 
-      assert {:error, :forbidden} =
+      # The client's providers are what it owns as a whole: not found for them.
+      assert {:error, :not_found} =
                Connections.create_provider(ctx.on.scope, provider_attrs("operator"))
 
       assert {:error, :not_found} = Connections.list_providers(ctx.on.scope, "operator")

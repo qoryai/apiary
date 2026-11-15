@@ -1,10 +1,10 @@
 defmodule ApiaryProWeb.WorkspaceSetupSourceTest do
   # The Work sources step of the workspace set-up, `/:org/:workspace/set-up/sources`
   # (`ApiaryWeb.WorkspaceSetupLive`), on an instance, for a person `adapter.connect`
-  # refuses: while the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`),
-  # a client's people see who connects work sources, with Skip, and no
-  # Connect; with the flag off, and in an organisation with no operator, the core's
-  # behaviour. The flag is set per process (`Flags.put_operator_infrastructure/1`).
+  # refuses. A client's owners and admins connect its systems, as any organisation's, with
+  # `operator_infrastructure` on or off; the operator's people, who reach the workspace the
+  # operator operates, do not. The flag is set per process
+  # (`Flags.put_operator_infrastructure/1`).
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -53,7 +53,7 @@ defmodule ApiaryProWeb.WorkspaceSetupSourceTest do
   describe "in a client, with the flag on" do
     setup do: Flags.put_operator_infrastructure(true)
 
-    test "its first person sees who connects and Skip, and no Connect", ctx do
+    test "its first person connects as in the core: Connect, and no sentence", ctx do
       %{client: client, adapter: adapter} = ctx
 
       {:ok, lv, _html} =
@@ -62,14 +62,9 @@ defmodule ApiaryProWeb.WorkspaceSetupSourceTest do
         |> live(set_up_path(client.organisation, client.workspace))
 
       assert has_element?(lv, "h1", "Where does work for Main come from?")
-
-      refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-
-      # The About work sources column says who connects, so the page has no second line for it.
+      assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
       refute has_element?(lv, "#set-up-connect-who-may")
-
-      assert words(lv, "#set-up-what") =~
-               "Owners and admins of #{ctx.operator_name} connect it once for Acme."
+      refute words(lv, "#set-up-what") =~ ctx.operator_name
 
       assert has_element?(
                lv,
@@ -78,8 +73,7 @@ defmodule ApiaryProWeb.WorkspaceSetupSourceTest do
              )
     end
 
-    test "a member of the client sees the same sentence",
-         ctx do
+    test "a member of the client sees the core's sentence and no Connect", ctx do
       %{client: client, adapter: adapter} = ctx
 
       {:ok, lv, _html} =
@@ -88,39 +82,28 @@ defmodule ApiaryProWeb.WorkspaceSetupSourceTest do
         |> live(set_up_path(client.organisation, client.workspace))
 
       refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-      refute has_element?(lv, "#set-up-connect-who-may")
 
-      assert words(lv, "#set-up-what") =~
-               "Owners and admins of #{ctx.operator_name} connect it once for Acme."
-    end
-
-    test "an owner of the operator can connect: Connect, and no sentence", ctx do
-      %{client: client, adapter: adapter} = ctx
-
-      {:ok, lv, _html} =
-        build_conn()
-        |> log_in_user(ctx.operator.user)
-        |> live(set_up_path(client.organisation, client.workspace))
-
-      assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-      refute has_element?(lv, "#set-up-connect-who-may")
+      assert words(lv, "#set-up-connect-who-may") ==
+               "Only owners and admins of #{client.organisation.name} connect work sources."
     end
   end
 
   describe "in the operator, with the flag on" do
     setup do: Flags.put_operator_infrastructure(true)
 
-    test "an admin of the operator can connect in a client: Connect, and no sentence", ctx do
+    test "its owner and admin, in a client's workspace it operates, have no Connect: the client connects its systems",
+         ctx do
       %{client: client, adapter: adapter} = ctx
       admin = member_fixture(ctx.operator.scope, :admin)
 
-      {:ok, lv, _html} =
-        build_conn()
-        |> log_in_user(admin.user)
-        |> live(set_up_path(client.organisation, client.workspace))
+      for user <- [ctx.operator.user, admin.user] do
+        {:ok, lv, _html} =
+          build_conn()
+          |> log_in_user(user)
+          |> live(set_up_path(client.organisation, client.workspace))
 
-      assert has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
-      refute has_element?(lv, "#set-up-connect-who-may")
+        refute has_element?(lv, "#set-up-adapter-#{adapter.public_id}-connect")
+      end
     end
 
     test "the operator's organisation itself gets Connect and no sentence", ctx do

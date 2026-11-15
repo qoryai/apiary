@@ -569,10 +569,11 @@ defmodule ApiaryPro.Transfers do
   #
   # leave/2 takes the scope's organisation, a client, away from its operator at once
   # (`organisation.leave_operator`, an owner's of the client), when `confirmation` is the
-  # operator's name: it is an organisation with no operator from then on, the operator's
-  # people read it no more, and the grants the operator made it go, so it has what an
-  # organisation with no operator has. An entry of `organisation.leave_operator` in its
-  # trail and one in the operator's, each naming the other.
+  # operator's name: it is an organisation with no operator from then on, the operator
+  # operates none of its workspaces, the operator's people read it no more, and the
+  # grants the operator made it go, so it has what an organisation with no operator has.
+  # An entry of `organisation.leave_operator` in its trail and one in the operator's, each
+  # naming the other.
   #
   # `{:ok, organisation}`; `{:error, :confirmation}` for a confirmation that is not the
   # operator's name, asked after the role; `{:error, :not_found}` for an organisation with
@@ -605,9 +606,9 @@ defmodule ApiaryPro.Transfers do
   @doc """
   drop/3 takes the client `client_id` away from the scope's organisation, its operator,
   at once (`client.drop`, an owner's of the operator), when `confirmation` is the
-  client's name: it is an organisation with no operator from then on, its people
-  keeping their levels. An entry of `client.drop` in the
-  operator's trail and one in the client's, each naming the other.
+  client's name: it is an organisation with no operator from then on, the operator
+  operates none of its workspaces, and its people keep their levels. An entry of
+  `client.drop` in the operator's trail and one in the client's, each naming the other.
 
   `{:ok, organisation}`, the client as it is now; `{:error, :no_owner}` for a client that
   has no owner yet, which would be left with nobody in it, and which its operator deletes
@@ -659,8 +660,15 @@ defmodule ApiaryPro.Transfers do
   defp confirm(_name, _confirmation), do: {:error, :confirmation}
 
   # A client parted from its operator, by `action`: no operator, what an organisation with
-  # no operator has, and an entry in each trail, the client's first.
+  # no operator has, no workspace of it operated by the operator any more
+  # (`ApiaryPro.WorkspaceOperators`), and an entry in each trail, the client's first. The
+  # links go under the client's row, held `FOR NO KEY UPDATE`.
   defp part(scope, action, client, operator) do
+    Repo.delete_all(
+      from l in ApiaryPro.Operators.WorkspaceOperator,
+        where: l.organisation_id == ^client.id and l.operator_id == ^operator.id
+    )
+
     with {:ok, tenant} <-
            client |> Tenants.tenant() |> Tenants.operator_changeset(nil) |> Repo.update(),
          parted = Tenants.put_tenant(client, tenant),

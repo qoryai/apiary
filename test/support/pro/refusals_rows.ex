@@ -287,15 +287,15 @@ defmodule ApiaryProWeb.RefusalsRows do
 
       # Answered in the client by whoever writes its policy: every level of the client has
       # `security_policy.edit`, so no level of it is refused for want of it. Never by the
-      # operator's people, who read the client; never another client's request, which is
-      # not found; a locked rule is an owner's at acceptance too; and a workspace of
-      # another organisation is refused, whatever the answer.
+      # operator's people, who find no request of the client's; never another client's
+      # request, which is not found; a locked rule is an owner's at acceptance too; and a
+      # workspace of another organisation is refused, whatever the answer.
       {:"policy_request.accept", :operator_owner, "/:client/policy-requests", "accept",
        %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
+       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
       {:"policy_request.accept", :operator_member, "/:client/policy-requests", "accept",
        %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
+       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
       {:"policy_request.accept", :client_admin, "/:client/policy-requests", "accept",
        %{"answer_id" => :client_b_answer, "workspaces" => [:client_workspace_id]},
        answer: :not_found, needs: [:managed_organisations, :security]},
@@ -307,7 +307,7 @@ defmodule ApiaryProWeb.RefusalsRows do
        needs: [:managed_organisations, :security]},
       {:"policy_request.decline", :operator_admin, "/:client/policy-requests", "decline",
        %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       needs: [:managed_organisations, :security]},
+       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
       {:"policy_request.decline", :client_admin, "/:client/policy-requests", "decline",
        %{"answer_id" => :client_b_answer, "decline" => %{"reason" => "Sneaky"}},
        answer: :not_found, needs: [:managed_organisations, :security]},
@@ -320,11 +320,11 @@ defmodule ApiaryProWeb.RefusalsRows do
        %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
        needs: [:managed_organisations, :security]},
       # A decline is asked on the request's row, at a path of its own that refuses as it
-      # opens a person who answers nothing.
+      # opens a person who answers nothing, and is not there for the operator's people.
       {:"policy_request.decline", :operator_owner,
        "/:client/policy-requests/:client_answer/decline", "decline",
        %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
+       answer: :not_found_at_mount, needs: [:managed_organisations, :security]},
       {:"policy_request.decline", :client_unplaced,
        "/:client/policy-requests/:client_answer/decline", "decline",
        %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
@@ -354,22 +354,22 @@ defmodule ApiaryProWeb.RefusalsRows do
        %{"id" => :org_rule}},
       {:"organisation_policy.edit", :instance_admin, "/:org/policy", "rule_save", %{},
        prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
+      # The organisation's policy page is not found for the operator's people.
       {:"organisation_policy.edit", :operator_owner, "/:client/policy", "rule_save", %{},
-       prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}],
-       needs: :organisation_policy},
+       answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_open", %{}},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_set", %{}},
       {:"organisation_policy.set_floor", :demoted_owner, "/:org/policy", "mode_set", %{},
        prelude: [{"mode_open", %{}}, {"mode_pick", %{"mode" => "enforce"}}]},
       {:"organisation_policy.set_floor", :instance_admin, "/:org/policy", "mode_open", %{}},
       {:"organisation_policy.set_floor", :operator_owner, "/:client/policy", "mode_open", %{},
-       needs: :organisation_policy},
+       answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_switch", :admin, "/:org/policy", "switch_ask", %{}},
       {:"organisation_policy.set_switch", :demoted_owner, "/:org/policy", "setting_confirm", %{},
        prelude: [{"switch_ask", %{}}]},
       {:"organisation_policy.set_switch", :instance_admin, "/:org/policy", "switch_ask", %{}},
       {:"organisation_policy.set_switch", :operator_owner, "/:client/policy", "switch_ask", %{},
-       needs: :organisation_policy},
+       answer: :not_found_at_mount, needs: :organisation_policy},
 
       # The organisation's variables, the Variables tab of its settings' Secrets and
       # variables: read by its owners, admins and readers, changed by its owners and
@@ -437,7 +437,8 @@ defmodule ApiaryProWeb.RefusalsRows do
   # The keys of the model providers added for every workspace, on the Secrets tab, changed
   # under `provider.write`: a member does not open the page, and an admin demoted while it
   # is open is refused each change. (An owner demoted to admin keeps `provider.write`.) In a
-  # client, a person of the operator reads the page and is sent back as it opens.
+  # client, the page is not there for a person of the operator, who reaches the
+  # workspace the operator operates and nothing the client owns as a whole.
   defp key_rows do
     changes = fn secret ->
       [
@@ -460,17 +461,17 @@ defmodule ApiaryProWeb.RefusalsRows do
            [answer: :refused_at_mount, needs: [:factory, :secrets, :organisation_variables]]},
           {:operator_owner, "/:client", ":client_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
           {:operator_admin, "/:client", ":client_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
           {:operator_member, "/:client", ":client_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]}
         ],
@@ -496,15 +497,17 @@ defmodule ApiaryProWeb.RefusalsRows do
            needs: :managed_organisations},
           {:"node.create", actor, "/:client/:client_ws/machines", "create",
            %{"node" => %{"name" => "sneaky"}}, needs: :managed_organisations},
+          # The People page is not found for them (`member.read`).
           {:"member.invite", actor, "/:client/settings/people", "invite",
-           %{"invitation" => %{"email" => "invitee@example.com"}}, needs: :managed_organisations},
+           %{"invitation" => %{"email" => "invitee@example.com"}},
+           answer: :not_found_at_mount, needs: :managed_organisations},
           {:"member.remove", actor, "/:client/settings/people", "remove", %{},
-           needs: :managed_organisations},
+           answer: :not_found_at_mount, needs: :managed_organisations},
           {:"member.remove", actor, "/:client/settings/people/:client_member_membership/remove",
-           "remove", %{}, answer: :refused_at_mount, needs: :managed_organisations},
+           "remove", %{}, answer: :not_found_at_mount, needs: :managed_organisations},
           {:"member.change_level", actor, "/:client/settings/people", "set_level",
            %{"membership_id" => :client_member_membership, "level" => "admin"},
-           needs: :managed_organisations},
+           answer: :not_found_at_mount, needs: :managed_organisations},
           {:"security_policy.edit", actor, "/:client/:client_ws/policy", "rule_save", %{},
            prelude: [
              {"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}
@@ -685,6 +688,9 @@ defmodule ApiaryProWeb.RefusalsRows do
   # (`test/apiary_pro/organisation_secrets_test.exs`). No page sets the model providers of
   # a client either: `ApiaryPro.Operators.set_model_chain/3` refuses an operator's member,
   # another operator's owner and a client's people (`test/apiary_pro/model_chain_test.exs`).
+  # No page starts or ends a workspace's operator yet: `ApiaryPro.WorkspaceOperators`
+  # refuses a member, an admin who ends one, and the operator's admin
+  # (`test/apiary_pro/workspace_operators_test.exs`).
   @impl true
   def exempt,
     do: %{
@@ -696,7 +702,10 @@ defmodule ApiaryProWeb.RefusalsRows do
         :"organisation_secret.read"
       ],
       after_migrate: [:"instance.adopt"],
-      no_page: [:"organisation_secret.use", :"client.set_model_chain"]
+      no_page: [
+        :"organisation_secret.use",
+        :"client.set_model_chain"
+      ]
     }
 
   @impl true

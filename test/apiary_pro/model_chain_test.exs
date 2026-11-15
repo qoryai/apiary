@@ -282,22 +282,27 @@ defmodule ApiaryPro.ModelChainTest do
         refute may?(scopes.operator_member, held, client), inspect(held)
       end
 
-      {action, on} = hd(@chain_held)
-
-      assert Access.authorize(scopes.operator_admin, action, subject(client, on)) ==
+      # In Main through the operator, forbidden; of what the client owns as a whole, not
+      # found.
+      assert Access.authorize(scopes.operator_admin, :"model_choice.write", client.workspace) ==
                {:error, :forbidden}
+
+      assert Access.authorize(scopes.operator_admin, :"provider.write", client.organisation) ==
+               {:error, :not_found}
     end
 
-    test "on the operator's providers, the operator's owner and admin do, the client's do not",
+    test "on the operator's providers, the operator's owner and admin do in Main, the client's do not",
          ctx do
       client = model_chain_fixture(ctx.operator.scope, ctx.client, :operator)
       scopes = scopes(ctx, client)
 
-      for held <- @chain_held do
+      # The client's providers and runtimes, which it owns as a whole, nobody writes: a
+      # level in the operator counts in Main alone.
+      for {_action, on} = held <- @chain_held do
         refute may?(scopes.client_owner, held, client), inspect(held)
         refute may?(scopes.client_admin, held, client), inspect(held)
-        assert may?(scopes.operator_owner, held, client), inspect(held)
-        assert may?(scopes.operator_admin, held, client), inspect(held)
+        assert may?(scopes.operator_owner, held, client) == (on == :workspace), inspect(held)
+        assert may?(scopes.operator_admin, held, client) == (on == :workspace), inspect(held)
         refute may?(scopes.operator_member, held, client), inspect(held)
       end
 

@@ -88,21 +88,18 @@ defmodule ApiaryProWeb.MemberLive.OperatorOwnsLevelsTest do
   @member_hint "Sees the runs and changes the policy's unlocked rules"
 
   describe "while the operator owns its clients" do
-    test "Owner is not offered, to the operator's owner or the client's", ctx do
+    test "Owner is not offered to the client's owner", ctx do
       admin = ctx.client_admin.membership
 
-      for user <- [ctx.operator.user, ctx.client.owner.user] do
-        lv = people(user, ctx.client.organisation)
-        assert has_element?(lv, "#member-#{admin.id}-level-admin")
-        assert has_element?(lv, "#member-#{admin.id}-level-member")
-        refute has_element?(lv, "#member-#{admin.id}-level-owner")
-      end
+      lv = people(ctx.client.owner.user, ctx.client.organisation)
+      assert has_element?(lv, "#member-#{admin.id}-level-admin")
+      assert has_element?(lv, "#member-#{admin.id}-level-member")
+      refute has_element?(lv, "#member-#{admin.id}-level-owner")
 
       # The levels the page offers, and the invitation's form, which offers no level.
-      assert Access.grantable_levels(ctx.client.scope) == [:admin, :member]
       assert Access.grantable_levels(ctx.client.owner.scope) == [:admin, :member]
 
-      lv = people(ctx.operator.user, ctx.client.organisation, "/invite")
+      lv = people(ctx.client.owner.user, ctx.client.organisation, "/invite")
       assert has_element?(lv, "#invite")
       refute has_element?(lv, "#invite [value='owner']")
     end
@@ -118,7 +115,16 @@ defmodule ApiaryProWeb.MemberLive.OperatorOwnsLevelsTest do
 
     test "Admin's hint says what an admin manages in a client, and the others are the core's",
          ctx do
-      assert level_hints(ctx, ctx.operator.user) == [
+      # A second owner of the client, made in the database, who changes the first's level.
+      reader = Apiary.AccountsFixtures.user_fixture(%{})
+
+      Repo.insert!(%Apiary.Organisations.Membership{
+        organisation_id: ctx.client.organisation.id,
+        user_id: reader.id,
+        level: :owner
+      })
+
+      assert level_hints(ctx, reader) == [
                [
                  owner: "Changes everything, including who owns the organisation",
                  admin: "Manages members and settings",
@@ -147,20 +153,15 @@ defmodule ApiaryProWeb.MemberLive.OperatorOwnsLevelsTest do
       member = ctx.client_member.membership
       before = entries(ctx.client.organisation)
 
-      for user <- [ctx.operator.user, ctx.client.owner.user] do
-        lv = people(user, ctx.client.organisation)
-
-        render_click(lv, "set_level", %{"membership_id" => member.id, "level" => "owner"})
-        assert render(lv) =~ refused(ctx)
-      end
+      lv = people(ctx.client.owner.user, ctx.client.organisation)
+      render_click(lv, "set_level", %{"membership_id" => member.id, "level" => "owner"})
+      assert render(lv) =~ refused(ctx)
 
       assert Repo.reload!(member).level == :member
       assert entries(ctx.client.organisation) == before
 
-      for scope <- [ctx.client.scope, ctx.client.owner.scope] do
-        assert Organisations.set_member_level(scope, member.id, :owner) ==
-                 {:error, {:level_refused, :operator_owns}}
-      end
+      assert Organisations.set_member_level(ctx.client.owner.scope, member.id, :owner) ==
+               {:error, {:level_refused, :operator_owns}}
     end
 
     test "the edition's rollback still refuses an owner made past the refusal", ctx do

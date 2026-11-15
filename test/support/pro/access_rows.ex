@@ -7,10 +7,11 @@ defmodule ApiaryPro.AccessRows do
       unreached_member    a member of the organisation, not added to the workspace
       client_owner        an owner of a client of an operator, in the client: an owner as
                           anywhere, who may also leave the operator
-      operator_owner      an owner of an operator, in a client of it, through the operator:
+      operator_owner      an owner of an operator, in the workspace Main of a client of
+                          it, which the operator operates, through the operator:
                           read-only
-      operator_admin      an admin of that operator, in the same client: read-only
-      operator_member     a member of that operator, in the same client: read-only
+      operator_admin      an admin of that operator, in the same workspace: read-only
+      operator_member     a member of that operator, in the same workspace: read-only
       operator_elsewhere  an owner of an operator, on an organisation it does not manage
       instance_reader     an instance admin, without a membership in the organisation:
                           read-only
@@ -24,9 +25,10 @@ defmodule ApiaryPro.AccessRows do
   of it, made an operator here.
 
   A client owns its people: its owner acts there as an owner anywhere. An operator's
-  people read everything in its clients at every level, and change nothing there; an
-  instance admin reads every organisation they reach neither way, and changes it only by
-  the instance actions. Both are the role `reader`. An operator's actions over its
+  people read everything in the workspaces it operates at every level, and change nothing
+  there; of what the client owns as a whole they read its policy alone, and find nothing
+  else. An instance admin reads every organisation they reach neither way, and changes it
+  only by the instance actions. Both are the role `reader`. An operator's actions over its
   clients are asked in an operator, the instance organisation among them, which the
   world makes one as the first sign-up of an instance with `managed_organisations` does;
   leaving an operator in a client; the instance actions in the instance organisation
@@ -40,6 +42,8 @@ defmodule ApiaryPro.AccessRows do
 
   @operators [:operator_owner, :operator_admin, :operator_member]
   @readers @operators ++ [:instance_reader]
+  # Who reads what the organisation owns as a whole, without a membership there.
+  @organisation_readers [:instance_reader]
   @people [
             :member,
             :unreached_member,
@@ -160,7 +164,7 @@ defmodule ApiaryPro.AccessRows do
       {:"organisation.rename", yes: @owners},
       {:"organisation.delete", yes: [:client_owner]},
       {:"organisation.restore", yes: @owners},
-      {:"member.read", yes: [:unreached_member] ++ @owners ++ @readers},
+      {:"member.read", yes: [:unreached_member] ++ @owners ++ @organisation_readers},
       {:"member.invite", yes: @owners},
       {:"member.change_level", yes: @owners},
       {:"member.remove", yes: @owners},
@@ -168,7 +172,7 @@ defmodule ApiaryPro.AccessRows do
       {:"invitation.renew", yes: @owners},
       {:"member.suspend", yes: @owners},
       {:"member.activate", yes: @owners},
-      {:"audit.read", yes: @owners ++ @readers},
+      {:"audit.read", yes: @owners ++ @organisation_readers},
       {:"workspace.create", yes: @owners},
       {:"workspace.rename", yes: @owners},
       {:"workspace.delete", yes: @owners},
@@ -194,19 +198,20 @@ defmodule ApiaryPro.AccessRows do
       {:"security_policy.edit", yes: @owners},
       {:"security_policy.lock", yes: @owners},
       {:"security_policy.set_mode", yes: @owners},
-      {:"secret.read", yes: @owners ++ @readers},
+      # Not read by the operator's people: the workspace's secrets and variables.
+      {:"secret.read", yes: @owners ++ @organisation_readers},
       {:"secret.write", yes: @owners},
       {:"secret.use", yes: @owners},
-      {:"variable.read", yes: @owners ++ @readers},
+      {:"variable.read", yes: @owners ++ @organisation_readers},
       {:"variable.edit", yes: @owners},
       # Asked of the organisation: a member not added to the workspace reads them too.
-      {:"connection.read", yes: [:unreached_member] ++ @owners ++ @readers},
+      {:"connection.read", yes: [:unreached_member] ++ @owners ++ @organisation_readers},
       {:"connection.write", yes: @owners},
       {:"provider.write", yes: @owners},
       {:"runtime.write", yes: @owners},
       {:"model_choice.write", yes: @owners},
       {:"time_limit.edit", yes: @owners},
-      {:"adapter.read", yes: [:unreached_member] ++ @owners ++ @readers},
+      {:"adapter.read", yes: [:unreached_member] ++ @owners ++ @organisation_readers},
       {:"adapter.create", yes: [:instance_owner]},
       {:"adapter.edit", yes: [:instance_owner]},
       {:"adapter.set_interval", yes: [:instance_owner]},
@@ -298,7 +303,7 @@ defmodule ApiaryPro.AccessRows do
       # The organisation's policy: read by its owners and admins and by the readers,
       # changed by its owners.
       {:"organisation_policy.read",
-       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @readers},
+       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @organisation_readers},
       {:"organisation_policy.edit", yes: [:owner] ++ @owners},
       {:"organisation_policy.set_floor", yes: [:owner] ++ @owners},
       {:"organisation_policy.set_switch", yes: [:owner] ++ @owners},
@@ -306,12 +311,12 @@ defmodule ApiaryPro.AccessRows do
       # changed by its owners and admins. A client is shown them as its operator is
       # granted them: `secrets`, which they need, is no grant's and shown to both.
       {:"organisation_variable.read",
-       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @readers},
+       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @organisation_readers},
       {:"organisation_variable.edit", yes: [:owner, :admin, :instance_org_admin] ++ @owners},
       # The organisation's secrets: read by its owners and admins and by the readers, as
       # its variables are; changed and linked by its owners and admins.
       {:"organisation_secret.read",
-       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @readers},
+       yes: [:owner, :admin, :instance_org_admin] ++ @owners ++ @organisation_readers},
       {:"organisation_secret.write", yes: [:owner, :admin, :instance_org_admin] ++ @owners},
       {:"organisation_secret.use", yes: [:owner, :admin, :instance_org_admin] ++ @owners}
     ]
@@ -429,6 +434,15 @@ defmodule ApiaryPro.AccessRows do
         :not_found
 
       action in @in_clients and actor not in [:client_owner | @operators] ->
+        :not_found
+
+      actor in @operators and action in [:"secret.read", :"variable.read"] ->
+        :not_found
+
+      # What the client owns as a whole is not there for a person of the operator of a
+      # workspace of it.
+      actor in @operators and
+          match?(%Apiary.Organisations.Organisation{id: id} when is_binary(id), subject) ->
         :not_found
 
       true ->

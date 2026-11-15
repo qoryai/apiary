@@ -464,15 +464,14 @@ defmodule ApiaryProWeb.ClientLive.IndexTest do
       assert has_element?(lv, "#operator-reader", "and nothing changed")
     end
 
-    test "a client's People page lists its own people, read-only for the operator's", ctx do
+    test "a client's People page lists its people for them, and is not found for the operator's",
+         ctx do
       client = client_fixture(ctx.operator.scope, "Acme")
       %{membership: membership} = member_fixture(client.owner.scope, :member)
 
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{client.organisation}/settings/people")
-      assert has_element?(lv, "#member-#{client.owner.membership.id}", client.owner.user.email)
-      refute has_element?(lv, "#member-#{membership.id}-level-owner")
-      refute has_element?(lv, "a", "Invite people")
-      assert has_element?(lv, "#operator-reader")
+      assert_raise ApiaryWeb.NotFound, fn ->
+        live(ctx.conn, ~p"/#{client.organisation}/settings/people")
+      end
 
       # Its owner gives any level there, owner included.
       conn = log_in_user(build_conn(), client.owner.user)

@@ -283,11 +283,16 @@ defmodule ApiaryPro.FeatureGrantsTest do
       assert :secrets in all[operator.organisation.id]
       assert :secrets in all[client.organisation.id]
 
-      # The operator's people at home and in the client, and the client's owner.
+      # The operator's people at home and in the client, and the client's owner. In the
+      # client's workspace, its secrets are not there for the operator's people.
       for scope <- [operator.scope, client.scope, client.owner.scope] do
         refute :secrets in scope.hidden
-        assert Access.can?(scope, :"secret.read", scope.workspace)
       end
+
+      for scope <- [operator.scope, client.owner.scope],
+          do: assert(Access.can?(scope, :"secret.read", scope.workspace))
+
+      refute Access.can?(client.scope, :"secret.read", client.scope.workspace)
 
       assert Access.can?(client.owner.scope, :"secret.write", client.workspace)
     end

@@ -201,16 +201,25 @@ defmodule Apiary.WorkspaceSetup do
 
   @doc false
   # connected_ids/3 is the ids of the adapters in use with items (`:items`) or with
-  # `targets` true (`:targets`) that serve `domain` and that `organisation` has a
-  # connected connection of.
-  @spec connected_ids(Organisation.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
-  def connected_ids(%Organisation{id: organisation_id}, domain, role),
-    do:
+  # `targets` true (`:targets`) that serve `domain` and that the scope's organisation has
+  # a connected connection of; none for a person who may not read the instance's adapters
+  # there (`adapter.read`).
+  @spec connected_ids(Scope.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
+  def connected_ids(
+        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+        domain,
+        role
+      ) do
+    if Access.can?(scope, :"adapter.read", organisation) do
       organisation_id
       |> connected_adapters(domain, role)
       |> select([_k, n], n.id)
       |> Repo.all()
       |> MapSet.new()
+    else
+      MapSet.new()
+    end
+  end
 
   defp connected_adapters(organisation_id, domain, role) do
     name = domain.name()

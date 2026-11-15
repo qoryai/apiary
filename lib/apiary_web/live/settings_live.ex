@@ -821,6 +821,20 @@ defmodule ApiaryWeb.SettingsLive do
            gettext("Only owners and admins delete a workspace.")
          )}
 
+      # A refusal of the edition's is said in its words, where it has some.
+      {:error, reason} when is_atom(reason) ->
+        case ApiaryWeb.Edition.refusal_sentence(reason) do
+          sentence when is_binary(sentence) ->
+            {:noreply,
+             socket
+             |> put_flash(:error, sentence)
+             |> load_workspaces()
+             |> push_patch(to: section_path(scope, socket.assigns.live_action))}
+
+          nil ->
+            {:noreply, gone(socket)}
+        end
+
       _not_found ->
         {:noreply, gone(socket)}
     end

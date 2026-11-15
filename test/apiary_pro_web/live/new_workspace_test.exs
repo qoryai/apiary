@@ -236,21 +236,15 @@ defmodule ApiaryProWeb.NewWorkspaceTest do
 
     for {flag, state} <- [{false, "off"}, {true, "on"}] do
       @tag needs: :managed_organisations
-      test "names a client's owners and admins, and the operator's owners only while the flag is on, with the flag #{state}" do
+      test "names a client's owners and admins, with the flag #{state}" do
         Flags.put_operator_infrastructure(unquote(flag))
         operator = operator_fixture()
         client = client_fixture(operator.scope)
         member = client_member_fixture(client, :member)
         conn = log_in_user(build_conn(), member.user)
-        name = client.organisation.name
 
-        expected =
-          if unquote(flag),
-            do:
-              "Only owners and admins of #{name}, and owners of #{operator.organisation.name}, create workspaces.",
-            else: "Only owners and admins of #{name} create workspaces."
-
-        assert dead_end(conn, client.organisation) == expected
+        assert dead_end(conn, client.organisation) ==
+                 "Only owners and admins of #{client.organisation.name} create workspaces."
       end
     end
   end

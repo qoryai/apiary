@@ -113,10 +113,9 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
     %{membership: membership} =
       Apiary.OrganisationsFixtures.sign_up_fixture(%{email: email, invitation_token: token})
 
-    owner_in_client = scope_in(ctx.operator.user, client)
-
-    {:ok, %{level: :member}} =
-      Apiary.Organisations.set_member_level(owner_in_client, membership.id, :member)
+    # Made a member in the database: the operator's people reach no client with no
+    # workspace the operator operates.
+    Apiary.Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     lv = clients(ctx)
     assert has_element?(lv, "#client-#{client.id}-owners", "No admin yet")
@@ -236,10 +235,9 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
     %{membership: membership} =
       Apiary.OrganisationsFixtures.sign_up_fixture(%{email: email, invitation_token: token})
 
-    owner_in_client = scope_in(ctx.operator.user, client)
-
-    {:ok, %{level: :member}} =
-      Apiary.Organisations.set_member_level(owner_in_client, membership.id, :member)
+    # Made a member in the database: the operator's people reach no client with no
+    # workspace the operator operates.
+    Apiary.Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     client
   end
@@ -311,7 +309,16 @@ defmodule ApiaryProWeb.ClientLive.OperatorOwnsTest do
   end
 
   test "the client's trail says its first admin was invited, and the filter may offer it", ctx do
-    {:ok, lv, _html} = live(ctx.conn, "/#{ctx.fresh.slug}/audit-log")
+    # Read by an owner of the client: the operator's people reach none of its trail.
+    reader = Apiary.AccountsFixtures.user_fixture(%{})
+
+    Apiary.Repo.insert!(%Apiary.Organisations.Membership{
+      organisation_id: ctx.fresh.id,
+      user_id: reader.id,
+      level: :owner
+    })
+
+    {:ok, lv, _html} = live(log_in_user(build_conn(), reader), "/#{ctx.fresh.slug}/audit-log")
     render_async(lv)
 
     assert render(lv) =~ "Invited its first admin, for its operator"

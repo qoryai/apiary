@@ -191,6 +191,9 @@ defmodule Apiary.Edition.Core do
   def reached_workspaces(query, _scope), do: Ecto.Queryable.to_query(query)
 
   @impl true
+  def reaches_all_workspaces?(_scope), do: true
+
+  @impl true
   def active_accounts(query, _binding), do: Ecto.Queryable.to_query(query)
 
   @impl true

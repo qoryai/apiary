@@ -1,9 +1,10 @@
 defmodule ApiaryPro.ClientReach do
   @moduledoc """
-  A client of an operator, as a person of the operator reaches it: the client
-  organisation, the person's membership in the operator, their membership in the
-  client when they have one too, and the workspaces of the client, every one, by name,
-  since an operator's people read every workspace of its clients. Not stored: what
+  An organisation as a person of an operator reaches it through the workspaces the
+  operator operates there: the organisation, the person's membership in the operator it
+  is listed under, their membership in the organisation when they have one too, and the
+  workspaces they reach there, by name: those the operators they belong to operate, and
+  those their membership reaches besides. Not stored: what
   `Apiary.Organisations.list_places/1` gives the switcher beside the person's memberships.
   """
 
@@ -15,7 +16,7 @@ defmodule ApiaryPro.ClientReach do
             workspaces: [],
             workspace_access: []
 
-  @typedoc "A client reached through its operator."
+  @typedoc "An organisation reached through the operators of some of its workspaces."
   @type t :: %__MODULE__{
           organisation: %Apiary.Organisations.Organisation{},
           organisation_id: Ecto.UUID.t(),

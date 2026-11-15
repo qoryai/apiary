@@ -819,27 +819,16 @@ defmodule ApiaryProWeb.PolicyRequestLiveTest do
                live(conn, list <> "/#{answer.id}/decline")
     end
 
-    test "the operator's people read the requests and answer none", ctx do
+    test "the operator's people, who reach the workspace it operates alone, do not find them",
+         ctx do
       request = send!(ctx, @allow)
       answer = answer_of(request, ctx.client)
       conn = log_in_user(ctx.conn, ctx.operator.user)
       list = ~p"/#{ctx.client.organisation}/policy-requests"
 
-      {:ok, lv, _html} = live(conn, list)
-      render_async(lv)
-      assert has_element?(lv, "#requests-read-only")
-      refute has_element?(lv, "#received-#{answer.id}-answer-link")
-      refute has_element?(lv, "#received-#{answer.id}-menu")
-
-      {:ok, lv, _html} = live(conn, list <> "/#{answer.id}")
-      render_async(lv)
-      assert has_element?(lv, "#requests-read-only")
-      assert has_element?(lv, "#received-#{answer.id}-note")
-      assert has_element?(lv, "#received-#{answer.id}-waiting")
-      refute has_element?(lv, "#received-#{answer.id}-accept")
-
-      assert {:error, {:live_redirect, %{to: ^list, flash: %{"error" => _}}}} =
-               live(conn, list <> "/#{answer.id}/decline")
+      for path <- [list, list <> "/#{answer.id}"] do
+        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+      end
     end
 
     test "the views and the search narrow the list", ctx do

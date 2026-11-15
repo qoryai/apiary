@@ -129,7 +129,7 @@ who does not reach it.
 
 An edition may let a person into an organisation where they hold no membership
 (`c:Apiary.Edition.reach/1`), and give them a role there (`c:Apiary.Edition.role/1`): such
-a person reaches every workspace of it, and holds what that role holds.
+a person reaches every workspace of it, and holds what that role allows.
 `Apiary.Access.level/1` is the level of a membership there, and nil for one the edition
 lets in without one; `Apiary.Access.reader/1` names the edition's way in for a person
 without a membership there whose role holds no change (`Apiary.Access.reads_only?/1`: no
@@ -142,7 +142,7 @@ and for whom the edition lets in (`Apiary.Organisations.put_reach/2`); the switc
 the places the edition gives (`Apiary.Organisations.list_places/1`,
 `c:Apiary.Edition.places/1`), in the core a person's memberships.
 
-`can?/3` answers from the reach the scope carries. `authorize/3` reads the membership
+`can?/3` answers from the reach in the scope. `authorize/3` reads the membership
 again, and what the edition put on the scope (`c:Apiary.Edition.reload/2`), and fails
 closed: a membership removed or suspended, or one whose account is no longer in use, is
 no source of reach. A write that must stay allowed while it is written, the security
@@ -1206,18 +1206,32 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
 
 1. **Their membership there**, at its level, as in the core: what they may change there
    is that level's.
-2. **Their membership in its operator**, when the organisation is a client of one (its
-   tenant's `operator_id`, [architecture.md](architecture.md), Operators and clients;
-   `{:operator, membership}` in the scope). An operator provides a harness, its agents,
-   skills, workflows and integrations, that its clients run on Qory Apiary, and keeps it
-   working. Every person of the operator, owner, admin or member, reads everything in
-   each of its clients, in every workspace: the runs, their terminals, the policy, the
-   trail in its audit log, and its members. They change nothing there, the policy
-   included, for which the operator sends a request the client answers (Policy requests,
-   below): the role `reader`. Their level in the operator counts only inside the
-   operator. A person of the operator who also holds a membership in the client changes
-   what that membership allows, in the workspaces it reaches, and reads every workspace
-   besides.
+2. **Their membership in the operator of a workspace there** (`{:operator, operated}` in
+   the scope, each operated workspace's id with that membership;
+   `ApiaryPro.WorkspaceOperators`). A workspace has at most one operator, a row of
+   `workspace_operators`. No screen starts such a link; a client's leaving or drop ends
+   its operator's links in it. Every person of the operator, owner, admin or member,
+   reaches the workspaces it operates there, and no other workspace of the organisation,
+   and reads everything in them but the workspaces' secrets and variables (`secret.read`,
+   `variable.read`): the role `reader`. Nothing the organisation owns as a whole, its
+   policy, its people, its trail, its connections, its secrets, its variables or its
+   settings, is found for them, and no action asked of the organisation
+   (`Apiary.Access.Action`, `asked_of`): its pages, People among them (`member.read`), are
+   not found. Its gateways, the connections of its systems, the security policies of its
+   workspaces and its first workspace are changed by the organisation's people, at their
+   levels, as in any organisation. While `ApiaryPro.Flags.operator_infrastructure?/0` is
+   on, the operator's owners and admins act in such a workspace at their level there, on
+   the workspace's time limits and retention, its harness, process and artifact types, its
+   model choices, and its node pools with their access keys; the ones of these the
+   operator sets are not found for anyone else in the workspace. A person of the operator
+   who also holds a membership in the organisation acts at that membership's level, and in
+   an operated workspace at the higher of their two levels on what the operator changes
+   there. A workspace with an operator is not deleted until the link ends (`:operated`),
+   and an operator is neither deleted nor made an organisation while it operates a
+   workspace (`:has_operated_workspaces`). A suspended operator's workspaces keep running;
+   its people reach nothing. An instance admin who is a person of the operator, with no
+   membership in the organisation, keeps the instance admin's reach beside it, and reads
+   every workspace there.
 3. **As an instance admin**, an owner of the instance organisation, in an organisation
    they reach neither way (`:instance` in the scope): the role `reader` too. They read
    every other organisation, an operator or another operator's client included, and change
@@ -1229,25 +1243,28 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
 `Apiary.Access.level/1` is the level of a membership there, and nil for a reader, who
 holds none; `Apiary.Access.reader/1` says how a person without a membership there reads
 it, `:operator` or `:instance`, or nil, and the edition's pages say so to them
-(`ApiaryProWeb.Readers`). The path scope (`Apiary.Organisations.resolve_scope/4`) opens a
-client for the operator's people and any organisation for an instance admin, with no
-membership there; the organisation menu lists the clients a person reads through their operator
+(`ApiaryProWeb.Readers`). The path scope (`Apiary.Organisations.resolve_scope/4`) opens an
+operated workspace for the operator's people and any organisation for an instance admin,
+with no membership there; the organisation menu lists each organisation a person reaches
+through the operators they belong to, with the workspaces those operators operate there
 (`Apiary.Organisations.list_places/1`, `ApiaryPro.Places`, each an
-`ApiaryPro.ClientReach`), under a heading of the operator's name
+`ApiaryPro.ClientReach`), under the name of the operator of its first such workspace
+by name
 (`ApiaryProWeb.Edition.place_group/1`); the instance admins open another organisation from the instance
 page.
 
-`can?/3` answers from the reach the scope carries. `authorize/3` reads each source again
-(`ApiaryPro.Reach.reload/2`): the membership there, the membership in the operator, and,
-with neither, whether the person is an instance admin; a person removed from the
-operator reads its clients no more, and neither do the operator's people once a client
-has been dropped (A client's drop, below). A suspended membership, a suspended
-account and a suspended operator are no source of reach (Suspension, below). A write that
-must stay allowed while it is written, the security policy's, holds the client and its
-operator `FOR SHARE` (`Apiary.Access.lock_places/1`, with the edition's
+`can?/3` answers from the reach in the scope. `authorize/3` reads each source again
+(`ApiaryPro.Reach.reload/2`): the membership there, the memberships in the operators of
+its workspaces, and, with neither, whether the person is an instance admin; a person
+removed from an operator reaches its workspaces no more, and neither do the operator's
+people once the link ends. A suspended membership, a suspended account and a suspended operator
+are no source of reach (Suspension, below). A write that must stay allowed while it is
+written, the security policy's, holds the organisation and the operators of its
+workspaces `FOR SHARE` (`Apiary.Access.lock_places/1`, with the edition's
 `ApiaryPro.Reach.places_to_lock/1`) and reads the membership there `FOR SHARE`
-(`reload/2` with `lock: :share`), in the lock order below. The membership in the operator
-it reads without a lock: it gives only reads, which no change holds.
+(`reload/2` with `lock: :share`), in the lock order below. Code that writes a link must
+lock the organisation's row `FOR NO KEY UPDATE` first, so that such a write reads links
+that nobody changes until it commits.
 
 A client owns its people as any organisation does: its owners, admins and members, its
 invitations, its settings and its security policy. Its owners and admins invite and

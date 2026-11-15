@@ -106,7 +106,7 @@ defmodule ApiaryPro.OrganisationSecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "in a client, the operator's people read them, and change nothing" do
+    test "in a client, the operator's people do not find them: the client owns them as a whole" do
       operator = operator_fixture()
       client = client_fixture(operator.scope)
       for organisation <- [operator.organisation, client.organisation], do: grant!(organisation)
@@ -114,9 +114,9 @@ defmodule ApiaryPro.OrganisationSecretsTest do
 
       for user <- [operator.user, operator_member] do
         assert answers(scope_in(user, client.organisation)) == %{
-                 read: :ok,
-                 write: {:error, :forbidden},
-                 use: {:error, :forbidden}
+                 read: {:error, :not_found},
+                 write: {:error, :not_found},
+                 use: {:error, :not_found}
                }
       end
 
@@ -285,7 +285,7 @@ defmodule ApiaryPro.OrganisationSecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "a client without the feature is not found to the operator's people", _ctx do
+    test "a client's are not found to the operator's people, with the feature or without", _ctx do
       ApiaryPro.Flags.put_feature_visibility(true)
       operator = operator_fixture()
       client = client_fixture(operator.scope)
@@ -298,9 +298,7 @@ defmodule ApiaryPro.OrganisationSecretsTest do
 
       grant!(client.organisation)
       scope = scope_in(operator.user, client.organisation)
-
-      assert checks(scope, client.organisation) ==
-               %{read: :ok, write: {:error, :forbidden}, use: {:error, :forbidden}}
+      assert checks(scope, client.organisation) == @not_found
     end
 
     @tag needs: :managed_organisations

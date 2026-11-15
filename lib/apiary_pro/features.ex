@@ -163,9 +163,10 @@ defmodule ApiaryPro.Features do
   #
   # While `ApiaryPro.Flags.feature_visibility?/0` is on, by who asks as well:
   #
-  # - a person who reaches a client through a level in its operator (`reach`
-  #   `{:operator, membership}`, `ApiaryPro.Reach.operator_level/1`) sees in it what the
-  #   operator is shown, whether or not they are a member of the client too;
+  # - a person who reaches a workspace of a client through a level in its operator
+  #   (`reach` `{:operator, operated}`, `ApiaryPro.Reach.operator_membership/3`) sees in
+  #   the client what that operator is shown, whether or not they are a member of the
+  #   client too;
   # - an instance admin who reaches an organisation through the instance (`reach`
   #   `:instance`, `ApiaryPro.Reach.instance_reach?/1`) sees every feature the instance
   #   has. Their role there is still reader (`ApiaryPro.Access`), so a feature hidden from

@@ -101,14 +101,13 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
 
   describe "the action harness.save in an operated client" do
     test "is held by the operator's owners and admins", ctx do
-      client = ctx.client.organisation
+      assert Access.authorize(ctx.client.scope, :"harness.save", ctx.client.workspace) == :ok
 
-      assert Access.authorize(ctx.client.scope, :"harness.save", client) == :ok
-      assert Access.authorize(in_client(ctx, ctx.admin), :"harness.save", client) == :ok
+      assert Access.authorize(in_client(ctx, ctx.admin), :"harness.save", ctx.client.workspace) ==
+               :ok
     end
 
     test "is not there for the operator's members, nor for the client's people", ctx do
-      client = ctx.client.organisation
       client_admin = client_member_fixture(ctx.client, :admin)
       client_member = client_member_fixture(ctx.client, :member)
 
@@ -118,7 +117,8 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
             client_admin.scope,
             client_member.scope
           ] do
-        assert Access.authorize(scope, :"harness.save", client) == {:error, :not_found}
+        assert Access.authorize(scope, :"harness.save", ctx.client.workspace) ==
+                 {:error, :not_found}
       end
     end
 
@@ -126,7 +126,7 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
       id = ctx.client.organisation.id
       client_admin = client_member_fixture(ctx.client, :admin)
 
-      assert Access.authorize(ctx.client.owner.scope, :"harness.save", ctx.client.organisation) ==
+      assert Access.authorize(ctx.client.owner.scope, :"harness.save", ctx.client.workspace) ==
                {:error, :not_found}
 
       # A drop is not offered while the operator owns its clients: it is done as before.
@@ -139,7 +139,7 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
 
       for person <- [ctx.client.owner, client_admin] do
         scope = scope_in(person.user, dropped, ctx.client.workspace)
-        assert Access.authorize(scope, :"harness.save", dropped) == :ok
+        assert Access.authorize(scope, :"harness.save", ctx.client.workspace) == :ok
       end
 
       owner = scope_in(ctx.client.owner.user, dropped, ctx.client.workspace)
@@ -162,8 +162,11 @@ defmodule ApiaryPro.OperatorHarnessOwnerTest do
       assert Edition.harness_owner(ctx.client.scope) == nil
       assert save(ctx.client.scope, ctx) == {:error, :forbidden}
 
-      assert Access.authorize(ctx.client.owner.scope, :"harness.save", client) == :ok
-      assert Access.authorize(ctx.client.scope, :"harness.save", client) == {:error, :forbidden}
+      assert Access.authorize(ctx.client.owner.scope, :"harness.save", ctx.client.workspace) ==
+               :ok
+
+      assert Access.authorize(ctx.client.scope, :"harness.save", ctx.client.workspace) ==
+               {:error, :forbidden}
 
       assert {:ok, %Stack{} = stack} = save(ctx.client.owner.scope, ctx)
       assert stack.owner_organisation_id == client.id

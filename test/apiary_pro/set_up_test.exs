@@ -129,15 +129,8 @@ defmodule ApiaryPro.SetUpTest do
 
     test "keeps Invitation and Your account once the client has a workspace", ctx do
       # The invitation was written before the workspace was made, so it still has none.
-      # An owner of the operator makes it while the flag is on.
       Flags.put_operator_infrastructure(true)
-
-      {:ok, _workspace} =
-        Organisations.create_workspace_of_kind(
-          scope_in(ctx.operator.user, ctx.client),
-          Apiary.Lingo.Domain.default(),
-          :first
-        )
+      _workspace = workspace_fixture(ctx.client, "Main")
 
       for current <- [:invitation, :account] do
         list = invitation_steps(ctx.token, current)

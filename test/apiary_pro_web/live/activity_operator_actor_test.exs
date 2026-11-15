@@ -126,8 +126,6 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       expected = "#{email} of #{ctx.operator_name}"
 
       assert actor(ctx.client.owner.user, ctx.client.organisation, made) == expected
-      # The operator's person reads the entry they made as theirs.
-      assert actor(ctx.operator.user, ctx.client.organisation, made) == "#{expected} you"
     end
 
     test "a client person's entry, and the operator's trail, are as the core says", ctx do
@@ -156,6 +154,8 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
          ctx do
       client = fresh_client(ctx, "Beta")
       operator_admin = member_fixture(ctx.operator.scope, :admin)
+
+      reader = Apiary.AccountsFixtures.user_fixture(%{})
       [invitation] = Operators.list_clients(ctx.operator.scope) |> elem(1) |> pending_of(client)
 
       Apiary.Mail.put_test_source(:none)
@@ -166,18 +166,25 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       [renewed] = Operators.list_clients(ctx.operator.scope) |> elem(1) |> pending_of(client)
       {:ok, _} = Operators.revoke_admin_invitation(ctx.operator.scope, client.id, renewed.id)
 
+      # Read by an owner of the client: the operator's people reach none of its trail.
+      Repo.insert!(%Apiary.Organisations.Membership{
+        organisation_id: client.id,
+        user_id: reader.id,
+        level: :owner
+      })
+
       owner = "#{ctx.operator.user.email} of #{ctx.operator_name}"
       admin = "#{operator_admin.user.email} of #{ctx.operator_name}"
 
       for {action, words} <- [
-            {:"client.create", "#{owner} you"},
-            {:"client.invite_admin", "#{owner} you"},
+            {:"client.create", owner},
+            {:"client.invite_admin", owner},
             {:"client.renew_admin_invitation", admin},
-            {:"client.revoke_admin_invitation", "#{owner} you"}
+            {:"client.revoke_admin_invitation", owner}
           ] do
         made = entry(client, action)
         assert made.details["via_operator_id"] == ctx.operator.organisation.id, "#{action}"
-        assert actor(ctx.operator.user, client, made) == words, "#{action}"
+        assert actor(reader, client, made) == words, "#{action}"
       end
 
       # The operator's trail is as it was.
@@ -242,16 +249,26 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
   end
 
   describe "someone in both organisations" do
-    # Their entry in the client, made in it, and the one their scope in the operator would
-    # write in it from the operator's pages.
-    defp both_ways(ctx, user) do
-      {:ok, _} =
-        Organisations.update_workspace(
-          scope_in(user, ctx.client.organisation, ctx.client.workspace),
-          %{"name" => "Renamed #{System.unique_integer([:positive])}"}
-        )
+    # Their entry in the client, made in the workspace the operator operates, and the one
+    # their scope in the operator would write in it from the operator's pages. A node,
+    # which the operator's owners and admins make there, for an admin of the operator; a
+    # new name of the workspace, which the operator does not change, for anyone else.
+    defp both_ways(ctx, user, made \\ :rename) do
+      in_client = scope_in(user, ctx.client.organisation, ctx.client.workspace)
 
-      made = entry(ctx.client.organisation, :"workspace.rename")
+      made =
+        case made do
+          :node ->
+            made_node(ctx, in_client, "both-#{System.unique_integer([:positive])}")
+
+          :rename ->
+            {:ok, _} =
+              Organisations.update_workspace(in_client, %{
+                "name" => "Renamed #{System.unique_integer([:positive])}"
+              })
+
+            entry(ctx.client.organisation, :"workspace.rename")
+        end
 
       from_operator =
         Reach.in_client(scope_in(user, ctx.operator.organisation), ctx.client.organisation)
@@ -266,7 +283,7 @@ defmodule ApiaryProWeb.ActivityOperatorActorTest do
       operator_id = ctx.operator.organisation.id
 
       assert {%{"via_operator_id" => ^operator_id}, %{"via_operator_id" => ^operator_id}} =
-               both_ways(ctx, user)
+               both_ways(ctx, user, :node)
     end
 
     test "equal levels in both: not named with the operator", ctx do

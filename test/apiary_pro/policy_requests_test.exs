@@ -423,9 +423,9 @@ defmodule ApiaryPro.PolicyRequestsTest do
       answer = answer_of(request, ctx.client)
       workspaces = [ctx.client.workspace.id]
 
-      # The operator's people read the client and answer nothing there.
-      assert {:error, :forbidden} = PolicyRequests.accept(ctx.client.scope, answer.id, workspaces)
-      assert {:error, :forbidden} = PolicyRequests.decline(ctx.client.scope, answer.id, nil)
+      # The operator's people reach Main alone, and find no answer of the client's.
+      assert {:error, :not_found} = PolicyRequests.accept(ctx.client.scope, answer.id, workspaces)
+      assert {:error, :not_found} = PolicyRequests.decline(ctx.client.scope, answer.id, nil)
 
       # Another client's answer is not found; so is a workspace of another organisation.
       other = answer_of(request, ctx.other)
@@ -593,7 +593,7 @@ defmodule ApiaryPro.PolicyRequestsTest do
   end
 
   describe "reading" do
-    test "the operator's people read what they sent; the client's and the operator's read what it received",
+    test "the operator's people read what they sent; the client's read what it received, and the operator's in the client find it not",
          ctx do
       request = send!(ctx)
 
@@ -603,12 +603,11 @@ defmodule ApiaryPro.PolicyRequestsTest do
       assert id == request.id
       assert Enum.map(answers, & &1.client.name) == ["Acme", "Bolt"]
 
-      for scope <- [ctx.client_member.scope, ctx.client.scope] do
-        assert {:ok, [%{request: %{id: ^id}, operator: operator}]} =
-                 PolicyRequests.list_received(scope)
+      assert {:ok, [%{request: %{id: ^id}, operator: operator}]} =
+               PolicyRequests.list_received(ctx.client_member.scope)
 
-        assert operator.id == ctx.operator.organisation.id
-      end
+      assert operator.id == ctx.operator.organisation.id
+      assert {:error, :not_found} = PolicyRequests.list_received(ctx.client.scope)
 
       assert PolicyRequests.pending_count(ctx.client_member.scope) == 1
 

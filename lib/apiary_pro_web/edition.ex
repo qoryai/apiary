@@ -309,6 +309,14 @@ defmodule ApiaryProWeb.Edition do
         "An operator with clients cannot be deleted. On Clients, delete each client that has no owner and drop each one that has; a deleted client counts until it is purged."
       )
 
+  # An operator is deleted once it operates no workspace, and a workspace once it has no
+  # operator (`ApiaryPro.Deletion.refusal/2`).
+  def refusal_sentence(:has_operated_workspaces),
+    do: gettext("An operator that operates a workspace cannot be deleted.")
+
+  def refusal_sentence(:operated),
+    do: gettext("A workspace with an operator cannot be deleted.")
+
   def refusal_sentence(_reason), do: nil
 
   # While the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`),
@@ -348,18 +356,6 @@ defmodule ApiaryProWeb.Edition do
   @set_by_operator_chain [:"model_choice.write", :"provider.write", :"runtime.write"]
 
   @impl true
-  # While the operator owns its clients, a client's rule locks are the operator's owners'
-  # alone (`ApiaryPro.Access`): the refusal of a lock or an unlock, and of a change of a
-  # locked rule, says so.
-  def who_may_sentence(:"security_policy.lock", scope) do
-    with %{name: operator} <- owning_operator(scope),
-         do:
-           gettext(
-             "Only owners of %{operator}, its operator, lock, unlock or change a locked rule.",
-             operator: operator
-           )
-  end
-
   # While the operator owns its clients, a client's nodes, node pools, gateways and their
   # access keys are the operator's owners' and admins' (`ApiaryPro.Access`): a refusal of
   # one of these in a client says so, in the words of the client's node pages.
@@ -379,36 +375,14 @@ defmodule ApiaryProWeb.Edition do
     if ApiaryPro.Tenants.model_chain(organisation) == :operator, do: set_by_sentence(scope)
   end
 
-  # While the operator owns its clients, a client's adapters are connected by the operator's
-  # owners and admins alone (`ApiaryPro.Access`): the workspace set-up's second step says
-  # so to the client's people, who are refused Connect there.
-  def who_may_sentence(:"adapter.connect", scope) do
-    with %{name: operator} <- owning_operator(scope),
-         do:
-           gettext(
-             "Owners and admins of %{operator}, its operator, connect work sources here. Ask one of them.",
-             operator: operator
-           )
-  end
-
-  # A client's admins create its workspaces as its owners do, and, while the operator owns
-  # its clients, so do the operator's owners (`ApiaryPro.Access`): the dead end of New
-  # workspace says so to a client's people who are refused. The core's words elsewhere.
-  def who_may_sentence(:"workspace.create", %Scope{organisation: organisation} = scope) do
+  # A client's admins create its workspaces as its owners do (`ApiaryPro.Access`): the dead
+  # end of New workspace says so to a client's people who are refused. The core's words
+  # elsewhere.
+  def who_may_sentence(:"workspace.create", %Scope{organisation: organisation}) do
     if ApiaryPro.Tenants.client?(organisation) do
-      case owning_operator(scope) do
-        %{name: operator} ->
-          gettext(
-            "Only owners and admins of %{organisation}, and owners of %{operator}, create workspaces.",
-            organisation: organisation.name,
-            operator: operator
-          )
-
-        nil ->
-          gettext("Only owners and admins of %{organisation} create workspaces.",
-            organisation: organisation.name
-          )
-      end
+      gettext("Only owners and admins of %{organisation} create workspaces.",
+        organisation: organisation.name
+      )
     end
   end
 

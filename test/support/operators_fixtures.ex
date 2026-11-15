@@ -9,11 +9,10 @@ defmodule ApiaryPro.OperatorsFixtures do
   """
 
   import Apiary.OrganisationsFixtures
-  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{AccountsFixtures, Organisations, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Membership, Organisation}
+  alias Apiary.Organisations.Organisation
   alias ApiaryPro.Operators
 
   @doc """
@@ -72,9 +71,10 @@ defmodule ApiaryPro.OperatorsFixtures do
   A client of the scope's operator, created by the scope's person, an owner or an admin
   of it, with its first owner, whom the operator invited and who signed up with the
   invitation, and its first workspace, Main, which the client starts without
-  (`first_workspace_fixture/3`): the client, its workspace, `scope`, the operator's
-  person's scope in it, reached through the operator, which reads and changes nothing,
-  and `owner`, what `sign_up_fixture/1` returns for the owner, `scope` theirs in Main.
+  (`first_workspace_fixture/3`) and the operator operates (`operate_fixture/2`): the
+  client, its workspace, `scope`, the operator's person's scope in it, reached through
+  the operator, and `owner`, what `sign_up_fixture/1` returns for the owner, `scope`
+  theirs in Main.
   """
   def client_fixture(%Scope{} = operator_scope, name \\ nil) do
     name = name || "Client #{System.unique_integer([:positive])}"
@@ -84,6 +84,8 @@ defmodule ApiaryPro.OperatorsFixtures do
 
     owner = sign_up_fixture(%{email: email, invitation_token: token})
     workspace = first_workspace_fixture(operator_scope, client, owner)
+
+    operate_fixture(workspace, operator_scope.organisation)
 
     %{
       organisation: client,
@@ -96,34 +98,27 @@ defmodule ApiaryPro.OperatorsFixtures do
   @doc """
   The first workspace, Main, of the client `client`, which has none after
   `ApiaryPro.Operators.create_client/3`, made as the overview's kind cards make it
-  (`Apiary.Organisations.create_first_workspace/2`) by whom `workspace.create` allows: the
-  client's first person, `first` (what `sign_up_fixture/1` returns), or, while
-  `ApiaryPro.Flags.operator_infrastructure?/0` is on, an owner of the operator, as the
-  scope `operator_scope` is in the operator. The workspace.
+  (`Apiary.Organisations.create_first_workspace/2`) by the client's first person,
+  `first` (what `sign_up_fixture/1` returns). The workspace.
   """
-  def first_workspace_fixture(%Scope{organisation: operator} = _operator_scope, client, first) do
-    maker =
-      if ApiaryPro.Flags.operator_infrastructure?() do
-        owner =
-          Repo.one!(
-            from m in Membership,
-              where: m.organisation_id == ^operator.id and m.level == :owner,
-              order_by: [asc: m.inserted_at, asc: m.id],
-              limit: 1,
-              preload: [:user]
-          )
-
-        scope_in(owner.user, client)
-      else
-        scope_in(first.user, client)
-      end
-
+  def first_workspace_fixture(%Scope{} = _operator_scope, client, first) do
     {:ok, workspace} =
-      Organisations.create_first_workspace(maker, %{
+      Organisations.create_first_workspace(scope_in(first.user, client), %{
         "domain" => Apiary.Lingo.Domain.default().name()
       })
 
     workspace
+  end
+
+  @doc """
+  The operator `operator` made the operator of `workspace`: a row of `workspace_operators`
+  inserted (`ApiaryPro.Operators.WorkspaceOperator`), since no code in the product starts
+  a link. The link.
+  """
+  def operate_fixture(%Apiary.Organisations.Workspace{} = workspace, %Organisation{} = operator) do
+    workspace
+    |> ApiaryPro.Operators.WorkspaceOperator.create_changeset(operator.id, DateTime.utc_now())
+    |> Repo.insert!()
   end
 
   @doc """

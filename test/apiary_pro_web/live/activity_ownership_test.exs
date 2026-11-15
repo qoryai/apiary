@@ -110,7 +110,8 @@ defmodule ApiaryProWeb.ActivityOwnershipTest do
 
     operator_conn = log_in_user(conn, operator.user)
 
-    view = open(operator_conn, client)
+    # The client's trail, read by its owner: the operator's people reach none of it.
+    view = open(log_in_user(build_conn(), owner.user), client)
     joined = entry(client, :"client.accept")
 
     assert text(view, "#entry-#{joined.id}-action") =~

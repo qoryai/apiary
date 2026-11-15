@@ -126,10 +126,9 @@ defmodule ApiaryPro.DeletionTest do
       assert Enum.all?(Enum.drop(pages, -1), &(length(&1) == 1))
     end
 
-    test "a client's operator hears of its marking and its cancelling, as its members do" do
+    test "the operator of a client's workspace hears of the client's marking and its cancelling, as its members do" do
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
       client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
-      workspace = workspace_fixture(client.organisation)
       operator_id = operator.organisation.id
       client_id = client.organisation.id
 
@@ -137,11 +136,27 @@ defmodule ApiaryPro.DeletionTest do
         Phoenix.PubSub.subscribe(Apiary.PubSub, Organisations.membership_topic(user.id))
       end
 
-      {:ok, _} = Deletion.delete_workspace(client.owner.scope, workspace.id, workspace.slug)
+      # Main, which the operator operates, is not deleted until the link ends, whatever
+      # other workspace the client has.
+      _second = workspace_fixture(client.organisation)
+
+      assert {:error, :operated} =
+               Deletion.delete_workspace(
+                 client.owner.scope,
+                 client.workspace.id,
+                 client.workspace.slug
+               )
+
+      {:ok, _} = Deletion.delete_organisation(client.owner.scope, client.organisation.slug)
       assert_receive {:membership_changed, %{organisation_id: ^operator_id}}
       assert_receive {:membership_changed, %{organisation_id: ^client_id}}
 
-      {:ok, _} = Deletion.restore_workspace(client.owner.scope, workspace.id)
+      {:ok, _} =
+        Deletion.restore_organisation(
+          Apiary.Accounts.Scope.for_user(client.owner.user),
+          client_id
+        )
+
       assert_receive {:membership_changed, %{organisation_id: ^operator_id}}
       assert_receive {:membership_changed, %{organisation_id: ^client_id}}
 

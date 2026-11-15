@@ -508,7 +508,7 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "in a client, the operator's people have the entry and open both tabs" do
+    test "in a client, the operator's people find neither tab: the client's alone" do
       operator = operator_fixture()
       client = client_fixture(operator.scope)
 
@@ -529,16 +529,11 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
       for user <- [operator.user, operator_member] do
         conn = log_in_user(build_conn(), user)
 
-        {:ok, lv, _html} = live(conn, ~p"/#{client.organisation}/settings")
-        assert has_element?(lv, "#settings-tab-secrets")
-
         for path <- [
               ~p"/#{client.organisation}/settings/secrets",
               ~p"/#{client.organisation}/settings/variables"
             ] do
-          {:ok, lv, _html} = live(conn, path)
-          assert has_element?(lv, "#secrets-tabs-secrets")
-          assert has_element?(lv, "#secrets-tabs-variables")
+          assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
         end
       end
     end

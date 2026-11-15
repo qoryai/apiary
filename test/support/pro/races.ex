@@ -14,8 +14,9 @@ defmodule ApiaryPro.Races do
   @doc """
   A client of the scope's operator, created by the scope's person, with its first owner,
   who signed up with the operator's invitation, and its first workspace Main, which the
-  client starts without (`ApiaryPro.OperatorsFixtures.first_workspace_fixture/3`): the
-  client, its workspace, `scope`, the operator's person's scope in it, and `owner`, the
+  client starts without (`ApiaryPro.OperatorsFixtures.first_workspace_fixture/3`) and the
+  operator operates (`ApiaryPro.OperatorsFixtures.operate_fixture/2`): the client, its
+  workspace, `scope`, the operator's person's scope in it, and `owner`, the
   owner's fixture, `scope` theirs in Main. Its name and its owner's address are a race's.
   """
   @spec client(Scope.t()) :: map
@@ -47,6 +48,7 @@ defmodule ApiaryPro.Races do
       )
 
     workspace = ApiaryPro.OperatorsFixtures.first_workspace_fixture(operator_scope, client, owner)
+    ApiaryPro.OperatorsFixtures.operate_fixture(workspace, operator_scope.organisation)
 
     %{
       organisation: client,

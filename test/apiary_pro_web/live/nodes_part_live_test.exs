@@ -194,12 +194,18 @@ defmodule ApiaryProWeb.NodesPartLiveTest do
     test "the operator's people read them, through the operator and from a lower membership",
          ctx do
       _joined = join_fixture(ctx.client.owner.scope, ctx.operator_admin.user)
+      org = "/#{ctx.client.organisation.slug}/"
 
       for person <- [ctx.operator, ctx.operator_admin] do
         conn = log_in_user(build_conn(), person.user)
 
-        for path <- node_pages(ctx),
-            do: assert({:ok, _lv, _html} = live(conn, path))
+        # The client's organisation-level gateways are the client's: an operator's person
+        # with no membership there finds their pages not found.
+        for path <- node_pages(ctx) do
+          if person == ctx.operator and String.starts_with?(path, org <> "gateways"),
+            do: assert_raise(ApiaryWeb.NotFound, fn -> live(conn, path) end),
+            else: assert({:ok, _lv, _html} = live(conn, path))
+        end
 
         {:ok, lv, _html} = live(conn, client_path(ctx, "/runs/#{ctx.run.number}"))
 

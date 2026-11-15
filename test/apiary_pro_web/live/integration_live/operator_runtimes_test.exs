@@ -1,9 +1,11 @@
 defmodule ApiaryProWeb.IntegrationLive.OperatorRuntimesTest do
   @moduledoc """
   A client's Integrations page while the operator owns its clients
-  (`ApiaryPro.Flags.operator_infrastructure?/0`): the operator sets the client's agents
-  (`runtime.write`, while the client's switch is on the operator's providers), so the client's admin reads the agents, sees no card to add one and
-  is told who sets them, and keeps the cards for APIs and programs (`connection.write`).
+  (`ApiaryPro.Flags.operator_infrastructure?/0`) and the client's switch is on the
+  operator's providers: the client's admin reads the agents, sees no card to add one
+  (`runtime.write`) and is told who sets them, and keeps the cards for APIs and programs
+  (`connection.write`). The operator's people do not find the page: the client owns its
+  integrations as a whole.
   """
   # The flag is set for this process.
   use ApiaryWeb.ConnCase, async: true
@@ -19,17 +21,18 @@ defmodule ApiaryProWeb.IntegrationLive.OperatorRuntimesTest do
 
   @operator_sentence "Set by your operator, Main Ops. Ask them to change it."
 
-  # The operator Main Ops and its client Acme, made while the flag was off, then the flag
-  # on. The operator sets up an agent in the client; the client's admin sets up an API.
+  # The operator Main Ops and its client Acme, made while the flag was off, with an agent
+  # the client's owner set up then; then the flag on and the client's switch on the
+  # operator's providers. The client's admin sets up an API.
   setup do
     Flags.put_operator_infrastructure(false)
     operator = operator_fixture(%{organisation_name: "Main Ops"})
     client = client_fixture(operator.scope, "Acme")
     client_admin = client_member_fixture(client, :admin)
+    {:ok, agent} = Connections.create_runtime(client.owner.scope, %{runtime: "claude"})
     Flags.put_operator_infrastructure(true)
     client = model_chain_fixture(operator.scope, client, :operator)
 
-    {:ok, agent} = Connections.create_runtime(client.scope, %{runtime: "claude"})
     {:ok, api} = Connections.create_service(client_admin.scope, %{service: "sentry"})
 
     %{operator: operator, client: client, client_admin: client_admin, agent: agent, api: api}
@@ -106,17 +109,12 @@ defmodule ApiaryProWeb.IntegrationLive.OperatorRuntimesTest do
   end
 
   describe "the operator's admin" do
-    test "sees the cards for agents, and opens the form that sets one up", ctx do
+    test "does not find the client's integrations, which the client owns as a whole", ctx do
       admin = member_fixture(ctx.operator.scope, :admin)
-      {lv, _html} = open(ctx, admin.user)
 
-      assert has_element?(lv, "#add-group-agent")
-      assert has_element?(lv, "#add-card-runtime-claude")
-      assert has_element?(lv, "#add-group-apis")
-      assert has_element?(lv, "#add-group-programs")
-
-      {lv, _html} = open(ctx, admin.user, "/new-runtime")
-      assert has_element?(lv, "#new-runtime-form")
+      for rest <- ["", "/new-runtime"] do
+        assert_raise ApiaryWeb.NotFound, fn -> open(ctx, admin.user, rest) end
+      end
     end
   end
 

@@ -665,6 +665,11 @@ msgstr ""
 msgid "A variable of the organisation"
 msgstr ""
 
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "A workspace with an operator cannot be deleted."
+msgstr ""
+
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
 msgid "A workspace's secret with the same name is a different secret: neither one replaces the other."
@@ -994,6 +999,16 @@ msgstr ""
 
 #: lib/apiary_pro_web/edition.ex
 #, elixir-autogen, elixir-format
+msgid "An operator that operates a workspace cannot be deleted."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An operator that operates a workspace cannot be made an organisation."
+msgstr ""
+
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
 msgid "An operator with clients cannot be deleted. On Clients, delete each client that has no owner and drop each one that has; a deleted client counts until it is purged."
 msgstr ""
 
@@ -1005,6 +1020,11 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "An operator with clients is not purged: each client is deleted first."
+msgstr ""
+
+#: lib/apiary_pro_web/live/instance_live/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "An organisation with an operated workspace cannot be made an operator."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
@@ -1025,11 +1045,6 @@ msgstr ""
 #: lib/apiary_pro/edition.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or an admin of %{organisation} creates the first workspace."
-msgstr ""
-
-#: lib/apiary_pro/edition.ex
-#, elixir-autogen, elixir-format
-msgid "An owner or an admin of %{organisation}, or an owner of %{operator}, creates the first workspace."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/requests.ex
@@ -3038,11 +3053,6 @@ msgstr ""
 msgid "Only owners and admins of %{organisation} create workspaces."
 msgstr ""
 
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners and admins of %{organisation}, and owners of %{operator}, create workspaces."
-msgstr ""
-
 #: lib/apiary_pro_web/live/client_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins of an operator create its clients."
@@ -3091,22 +3101,6 @@ msgstr ""
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners of %{name} change its policy: these settings and its rules."
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners of %{operator}, its operator, lock, unlock or change a locked rule."
-msgstr ""
-
-#: lib/apiary_pro/organisation_policy.ex
-#: lib/apiary_pro_web/live/policy_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners of %{operator}, the operator of %{name}, change its policy."
-msgstr ""
-
-#: lib/apiary_pro_web/live/policy_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "Only owners of %{operator}, the operator of %{name}, change its policy: these settings and its rules."
 msgstr ""
 
 #: lib/apiary_pro_web/live/client_live/requests.ex
@@ -3277,17 +3271,7 @@ msgstr ""
 
 #: lib/apiary_pro/edition.ex
 #, elixir-autogen, elixir-format
-msgid "Owners and admins of %{operator} connect it once for %{client}."
-msgstr ""
-
-#: lib/apiary_pro/edition.ex
-#, elixir-autogen, elixir-format
 msgid "Owners and admins of %{operator} finish the set-up."
-msgstr ""
-
-#: lib/apiary_pro_web/edition.ex
-#, elixir-autogen, elixir-format
-msgid "Owners and admins of %{operator}, its operator, connect work sources here. Ask one of them."
 msgstr ""
 
 #: lib/apiary_pro_web/edition.ex

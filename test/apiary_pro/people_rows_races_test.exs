@@ -255,9 +255,11 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   describe "while the operator owns its clients" do
     setup do: Flags.put_operator_infrastructure(true)
 
-    # An owner of the operator demotes its admin, who, through the operator, demotes the
-    # owner in the client, where the owner is an admin too: each holds the operator's
-    # people lock first, so neither holds a membership the other waits for.
+    # An owner of the operator demotes its admin, who, through the operator, would demote
+    # the owner in the client, where the owner is an admin too: each holds the operator's
+    # people lock first, so neither holds a membership the other waits for. The operator
+    # operates Main, not the client's people, so a change of them through the operator is
+    # not found once its locks are held.
     setup ctx do
       Repo.insert!(%Membership{
         organisation_id: ctx.client.id,
@@ -269,7 +271,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       %{owner_in_client: owner_in_client}
     end
 
-    test "the demotion in the operator first: the admin's demotion in the client waits, and is refused",
+    test "the demotion in the operator first: the admin's demotion in the client waits, and is not found",
          ctx do
       before = deadlocks()
       {demotion, demotion_pid} = hold(fn -> Organisations.lock_owners(ctx.in_operator) end)
@@ -296,34 +298,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
       commit(demotion)
 
-      assert {:error, :forbidden} = Task.await(in_client.task)
-      assert deadlocks() == before
-    end
-
-    test "the demotion in the client first: the demotion in the operator waits, and both are made",
-         ctx do
-      before = deadlocks()
-      {in_client, in_client_pid} = hold(fn -> Organisations.lock_owners(ctx.person_in_client) end)
-
-      demotion =
-        start(fn ->
-          Organisations.set_member_level(ctx.in_operator, ctx.person.membership.id, :member)
-        end)
-
-      await_blocked(demotion.backend, in_client_pid)
-
-      assert {:ok, %Membership{level: :member}} =
-               continue(in_client, fn ->
-                 Organisations.set_member_level(
-                   ctx.person_in_client,
-                   ctx.owner_in_client.membership.id,
-                   :member
-                 )
-               end)
-
-      commit(in_client)
-
-      assert {:ok, %Membership{level: :member}} = Task.await(demotion.task)
+      assert {:error, :not_found} = Task.await(in_client.task)
       assert deadlocks() == before
     end
 
@@ -402,29 +377,6 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       # Then it reads the owner's account suspended, and may not change the client.
       assert {:error, :forbidden} = Task.await(change.task)
       assert Repo.get!(Membership, ctx.client_admin.membership.id).level == :admin
-      assert deadlocks() == before
-    end
-
-    test "the operator's owner's change in the client first: their account's suspension waits for it",
-         ctx do
-      owner = ctx.second_owner
-      in_client = scope_in(owner.user, ctx.client, ctx.workspace)
-      before = deadlocks()
-
-      {change, change_pid} =
-        hold(fn ->
-          Organisations.set_member_level(in_client, ctx.client_admin.membership.id, :member)
-        end)
-
-      assert {:ok, %Membership{level: :member}} = change.result
-
-      suspension =
-        start(fn -> Suspensions.suspend_account(ctx.instance_admin, owner.user.id) end)
-
-      await_blocked(suspension.backend, change_pid)
-      commit(change)
-
-      assert {:ok, %{user: %User{}}} = Task.await(suspension.task)
       assert deadlocks() == before
     end
   end
@@ -814,8 +766,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   # The person's level in the client's operator, as the scope's reach carries it: nil for
   # none.
   defp operator_level({:ok, %Scope{} = scope}), do: operator_level(scope)
-  defp operator_level(%Scope{reach: {:operator, %Membership{level: level}}}), do: level
-  defp operator_level(%Scope{}), do: nil
+  defp operator_level(%Scope{} = scope), do: ApiaryPro.Reach.operator_level(scope)
 
   # An invitation of `user` into the scope's organisation, as a member: its token.
   defp invite(scope, %User{email: email}) do

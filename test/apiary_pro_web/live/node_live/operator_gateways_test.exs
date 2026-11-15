@@ -175,14 +175,17 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewaysTest do
 
   describe "a client's Gateways" do
     # Acme has no gateways at the organisation level: its Gateways page, read by the
-    # client's owner and by the operator's, says under the heading whose gateways its
-    # nodes can use, and in the empty state's body who adds them.
+    # client's owner, says under the heading whose gateways its nodes can use, and in the
+    # empty state's body who adds them. The operator's owner, with no membership in Acme,
+    # finds the page not found: Acme's organisation-level gateways are Acme's.
     defp client_gateways(ctx) do
-      for user <- [ctx.client.owner.user, ctx.operator.user] do
-        {:ok, lv, _html} = live(log_in_user(build_conn(), user), client_gateways_path(ctx))
-        assert has_element?(lv, "#gateways-empty", "No gateways yet")
-        {text(lv, "#gateways-intro"), text(lv, "#gateways-empty p")}
-      end
+      operator = log_in_user(build_conn(), ctx.operator.user)
+      assert_raise ApiaryWeb.NotFound, fn -> live(operator, client_gateways_path(ctx)) end
+
+      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      {:ok, lv, _html} = live(conn, client_gateways_path(ctx))
+      assert has_element?(lv, "#gateways-empty", "No gateways yet")
+      {text(lv, "#gateways-intro"), text(lv, "#gateways-empty p")}
     end
 
     test "while the operator owns its clients, name the operator's gateways and people",
@@ -193,7 +196,7 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewaysTest do
       empty =
         "Machines and pools in Acme's workspaces can use the gateways of #{ctx.name}, its operator, whose owners and admins also add gateways here."
 
-      assert client_gateways(ctx) == List.duplicate({intro, empty}, 2)
+      assert client_gateways(ctx) == {intro, empty}
     end
 
     test "with the flag off, say the core's words", ctx do
@@ -202,7 +205,7 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewaysTest do
       intro =
         "Machines and pools in any workspace of Acme can use the gateways added here. A workspace can also add gateways that only its machines and pools use."
 
-      assert client_gateways(ctx) == List.duplicate({intro, core_empty("Acme")}, 2)
+      assert client_gateways(ctx) == {intro, core_empty("Acme")}
     end
   end
 
@@ -246,22 +249,16 @@ defmodule ApiaryProWeb.NodeLive.OperatorGatewaysTest do
   end
 
   describe "a refused node or key action in a client, while the operator owns its clients" do
-    # The client's gateway at the organisation, which the operator's owner adds.
-    setup ctx do
-      gateway = organisation_gateway_fixture(ctx.client.scope, name: "edge-c")
-      %{client_gateway: gateway}
-    end
-
-    test "deleting a gateway or a node is refused in the operator's words", ctx do
+    # A node of the workspace the operator operates is the operator's; a gateway at the
+    # client's organisation is the client's
+    # (`test/apiary_pro_web/live/node_live/operator_gateway_access_test.exs`).
+    test "deleting a node is refused in the operator's words", ctx do
       conn = log_in_user(build_conn(), ctx.client.owner.user)
 
-      for path <- [
-            "/#{ctx.client.organisation.slug}/gateways/#{ctx.client_gateway.public_id}/settings/delete",
-            nodes_path(ctx, "/#{ctx.node.public_id}/settings/delete")
-          ] do
-        assert {:error, {:live_redirect, %{flash: %{"error" => flash}}}} = live(conn, path)
-        assert flash == ctx.managed
-      end
+      assert {:error, {:live_redirect, %{flash: %{"error" => flash}}}} =
+               live(conn, nodes_path(ctx, "/#{ctx.node.public_id}/settings/delete"))
+
+      assert flash == ctx.managed
     end
 
     test "getting the command to connect a node is refused in the operator's words", ctx do

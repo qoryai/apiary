@@ -325,10 +325,11 @@ defmodule ApiaryPro.Tenants do
   (`lock_people/1`). It never locks a membership or a row of the core's.
 
   - `{:places, scope}`, a write that must stay allowed for the scope's person: when the
-    scope has a person and its organisation is a client, its operator's row
-    `FOR SHARE`, so a change of the operator's people waits for the write, or came first
-    and the write reads it. The operator is read under the client's row, which the core
-    holds `FOR SHARE` and every change of a client's operator locks for update first. The
+    scope has a person and its organisation has operated workspaces, the rows of the
+    operators of its workspaces `FOR SHARE`, so a change of an operator's people waits for
+    the write, or came first and the write reads it. The operators are read under the
+    organisation's row, which the core holds `FOR SHARE` and which code that changes a
+    workspace's operator must lock for update first (`ApiaryPro.WorkspaceOperators`). The
     rows do not depend on the scope's workspace: a repeat in the same change takes the
     same rows in the same mode.
   - `{:people, scope, organisation}`, a change of the organisation's people: the rows
@@ -353,15 +354,15 @@ defmodule ApiaryPro.Tenants do
   def lock_rows({:account, _user_id, organisation_ids}) when is_list(organisation_ids),
     do: lock_people(organisation_ids, :update)
 
-  # The rows a write that must stay allowed for the scope's person takes: its operator's,
-  # when the scope's organisation is a client, read now.
+  # The rows a write that must stay allowed for the scope's person takes: those of the
+  # operators of the organisation's workspaces, read now.
   defp places_rows(%Scope{user: %User{}, organisation: %Organisation{id: id}})
-       when is_binary(id) do
-    case Repo.one(from t in Tenant, where: t.organisation_id == ^id, select: t.operator_id) do
-      nil -> []
-      operator_id -> [{operator_id, :share}]
-    end
-  end
+       when is_binary(id),
+       do:
+         for(
+           operator_id <- ApiaryPro.WorkspaceOperators.operator_ids_of(id),
+           do: {operator_id, :share}
+         )
 
   defp places_rows(_scope), do: []
 

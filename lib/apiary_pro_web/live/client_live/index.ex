@@ -1880,14 +1880,14 @@ defmodule ApiaryProWeb.ClientLive.Index do
   defp may?(scope, action), do: Access.can?(scope, action, scope.organisation)
 
   # Whether the client has no workspace and the person may make its first, as the client's
-  # overview asks (`workspace.create`): the scope moved into the client,
-  # reaching it through the operator, as the person's membership in the operator says. No
-  # read: `Apiary.Access.can?/3` takes the scope as it is.
+  # overview asks (`workspace.create`): the scope moved into the client, reaching it
+  # through the operator, which operates none of its workspaces yet. No read:
+  # `Apiary.Access.can?/3` takes the scope as it is.
   defp may_set_up?(
-         %{membership: %Apiary.Organisations.Membership{} = via} = scope,
+         %{membership: %Apiary.Organisations.Membership{}} = scope,
          %{workspace?: false, organisation: client}
        ) do
-    in_client = %{Reach.in_client(scope, client) | reach: {:operator, via}}
+    in_client = %{Reach.in_client(scope, client) | reach: {:operator, %{}}}
 
     Access.can?(in_client, :"workspace.create", client)
   end
