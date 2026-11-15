@@ -66,9 +66,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #     the organisation's chain; for a request that names the work entry, a gateway
   #     that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
   #     both checks are also false for a gateway of another organisation or of another
-  #     workspace, a request that step 4 ends first; the access key's public key fails a
-  #     key check
-  #     (`Apiary.Contract.Ed25519.check_public_key/1`);
+  #     workspace, whose request step 4 ends first; the access key's public key fails a
+  #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
   #  9. for a request that names the work entry, after every check above and the model
   #     key's read, its credential is not issued (`Apiary.Runs.WorkCredential.issue/4`):
   #     `{:error, :not_found}` where `Apiary.Access` refuses the key `run_credential.issue`
