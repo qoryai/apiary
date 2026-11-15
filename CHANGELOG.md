@@ -2029,13 +2029,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `workspace_operators` (20261115100000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.
   No row is written, and no existing table changes. Rolling back drops it.
-- `tenants` and `invitations` (20261115110000): the upgrade clears the data of the
-  earlier model, in which an operator managed whole organisations. Every
-  `tenants.operator_id` and `tenants.operator_since` becomes NULL, and `model_chain`
-  becomes `organisation`. The pending invitations an operator sent are deleted, with
-  their `operator_invitations` rows. Without this, an old operator could not be purged
-  or made an organisation, and its invitations would make plain members. Rolling back
-  changes nothing: the cleared data cannot come back.
+- The operator of each organisation, and `invitations` (20261115110000): the upgrade
+  clears the data of the earlier model, in which an operator managed whole
+  organisations. On every organisation, `operator_id` and `operator_since` become NULL,
+  and `model_chain` becomes `organisation`. The pending invitations an operator sent are
+  deleted, with their `operator_invitations` rows. Without this, an old operator could
+  not be purged or made an organisation, and its invitations would make plain members.
+  Rolling back changes nothing: the cleared data cannot come back.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
