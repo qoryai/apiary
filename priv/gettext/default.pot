@@ -3444,11 +3444,6 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage}: a gate with no approval offers no track. Remove its tracks, or let a person approve."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
 msgstr ""
 
@@ -3470,11 +3465,6 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: keep at most 20 entries in each list."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage}: write each track of the gate as lower-case words joined by hyphens, such as fast-track."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -10765,7 +10755,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Give every track an id of lower-case words joined by hyphens, such as fast-track, and a name of 1 to 60 characters."
+msgid "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -12051,6 +12041,26 @@ msgstr ""
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Keep me signed in"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep one condition on %{stage}: remove its when or its unless."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep one condition on %{workflow} in %{stage}: remove its when or its unless."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep one condition on a loop in %{stage}: remove its when or its unless."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep one condition on the input %{input} in %{stage}: remove its when or its unless."
 msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
@@ -17268,6 +17278,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the track %{track} from the gate of %{stage}, or add it to the tracks of the process."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the tracks from the gate of %{stage}, or let a person approve at it. A gate with no approval offers no track."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -24304,6 +24319,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Write at most %{number} characters."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Write each track of the gate of %{stage} as lower-case words joined by hyphens, such as small-change."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

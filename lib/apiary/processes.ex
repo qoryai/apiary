@@ -99,7 +99,8 @@ defmodule Apiary.Processes do
   `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
-  `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
+  `:condition_both` for a stage, an input, a loop or a workflow entry with both `when` and
+  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
   gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
   on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
@@ -269,7 +270,8 @@ defmodule Apiary.Processes do
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
   and the rules it cannot say: every stage id and every stage name once, every track id
   once, each track a gate offers declared, the input of each condition an output of an earlier
-  stage, and the track of each condition one that an earlier gate offers. `:ok`, or
+  stage, the track of each condition one that an earlier gate offers, and one condition on an item,
+  `when` or `unless`. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -388,14 +390,27 @@ defmodule Apiary.Processes do
 
       errors =
         for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
-            key <- ["when", "unless"],
-            error <- condition_error(item[key], path <> "/" <> key, earlier),
+            error <- item_errors(item, path, earlier),
             do: error
 
       made = for o <- stage["outputs"] || [], do: o["type"]
       {errors, {Enum.into(made, types), Enum.into(stage["gate"]["tracks"] || [], tracks)}}
     end)
     |> elem(0)
+  end
+
+  # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
+  # item's place).
+  defp item_errors(item, path, earlier) do
+    both =
+      if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
+        do: [%{path: path, error: :condition_both, detail: nil}],
+        else: []
+
+    both ++
+      for key <- ["when", "unless"],
+          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          do: error
   end
 
   defp condition_error(%{"input" => type}, path, {types, _tracks}) do

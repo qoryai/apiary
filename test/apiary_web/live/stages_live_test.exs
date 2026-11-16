@@ -1158,6 +1158,37 @@ defmodule ApiaryWeb.StagesLiveTest do
              ]
     end
 
+    test "the refusal of both when and unless names the item" do
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "standard"}}
+
+      document =
+        "software"
+        |> Processes.default_document()
+        |> Map.put("tracks", [%{"id" => "standard", "name" => "Standard"}])
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard"])}
+        end)
+        |> Draft.update_stage(id_of("Build"), fn stage ->
+          stage
+          |> Map.merge(both)
+          |> Map.put("inputs", [Map.merge(%{"type" => "proposal", "required" => true}, both)])
+          |> Map.put("sequence", [
+            Map.merge(%{"workflow" => "capture-demos"}, both),
+            Map.merge(
+              %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos"}]}},
+              both
+            )
+          ])
+        end)
+
+      assert refusals(document) == [
+               "Keep one condition on Build: remove its when or its unless.",
+               "Keep one condition on the input proposal in Build: remove its when or its unless.",
+               "Keep one condition on capture-demos in Build: remove its when or its unless.",
+               "Keep one condition on a loop in Build: remove its when or its unless."
+             ]
+    end
+
     test "the refusal of a track id twice, a gate's undeclared track, and tracks on a gate with no approval" do
       doc = Processes.default_document("software")
 
@@ -1188,7 +1219,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         end)
 
       assert refusals(none) == [
-               "Explore: a gate with no approval offers no track. Remove its tracks, or let a person approve."
+               "Remove the tracks from the gate of Explore, or let a person approve at it. A gate with no approval offers no track."
              ]
     end
 
@@ -1197,9 +1228,18 @@ defmodule ApiaryWeb.StagesLiveTest do
       track = Map.put(doc, "tracks", [%{"id" => "Fast", "name" => "Fast track"}])
 
       text =
-        "Give every track an id of lower-case words joined by hyphens, such as fast-track, and a name of 1 to 60 characters."
+        "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
 
       assert text in refusals(track)
+
+      gate =
+        Draft.update_stage(doc, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["Small Change"])}
+        end)
+
+      assert "Write each track of the gate of Explore as lower-case words joined by hyphens, such as small-change." in refusals(
+               gate
+             )
     end
   end
 

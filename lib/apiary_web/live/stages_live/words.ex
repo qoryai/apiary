@@ -432,6 +432,40 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # A stage, an input, a loop or a workflow entry with both `when` and `unless`, at its place.
+  def refusal(%{error: :condition_both, path: path}, doc) when is_binary(path) do
+    {stage, _field} = place(path, doc)
+
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
+        gettext(
+          "Keep one condition on %{workflow} in %{stage}: remove its when or its unless.",
+          workflow: workflow,
+          stage: stage
+        )
+
+      {:input, input} ->
+        gettext(
+          "Keep one condition on the input %{input} in %{stage}: remove its when or its unless.",
+          input: input,
+          stage: stage
+        )
+
+      :loop ->
+        gettext("Keep one condition on a loop in %{stage}: remove its when or its unless.",
+          stage: stage
+        )
+
+      :stage ->
+        gettext("Keep one condition on %{stage}: remove its when or its unless.", stage: stage)
+
+      _other ->
+        gettext("%{stage}: a value is not valid. Check the stage, then save again.",
+          stage: stage
+        )
+    end
+  end
+
   def refusal(%{error: :duplicate_track_id, detail: track}, _doc),
     do: gettext("Give each track a different id. Two tracks have the id %{track}.", track: track)
 
@@ -464,18 +498,18 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       String.starts_with?(path, "#/tracks") ->
         gettext(
-          "Give every track an id of lower-case words joined by hyphens, such as fast-track, and a name of 1 to 60 characters."
+          "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
         )
 
       error == :gate_none_tracks ->
         gettext(
-          "%{stage}: a gate with no approval offers no track. Remove its tracks, or let a person approve.",
+          "Remove the tracks from the gate of %{stage}, or let a person approve at it. A gate with no approval offers no track.",
           stage: stage
         )
 
       String.contains?(path, "/gate/tracks") ->
         gettext(
-          "%{stage}: write each track of the gate as lower-case words joined by hyphens, such as fast-track.",
+          "Write each track of the gate of %{stage} as lower-case words joined by hyphens, such as small-change.",
           stage: stage
         )
 
@@ -627,7 +661,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   # `{:workflow, name}`, `{:output, type}`, `{:input, type}`, `:loop` or `:stage`; nil where the
   # document has nothing there.
   defp condition_subject(doc, path) do
-    holder = path |> String.replace(~r{/(when|unless)/(input|track)$}, "")
+    holder = String.replace(path, ~r{/(when|unless)/(input|track)$}, "")
 
     case {document_at(doc, holder), String.contains?(holder, "/outputs/"),
           String.contains?(holder, "/inputs/")} do

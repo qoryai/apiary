@@ -449,6 +449,42 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
+    test "refuses an item with both when and unless (:condition_both), on each kind of item" do
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast-track"}}
+      on_shape = &edit(tracked(), fn s -> if(s["id"] == @shape, do: &1.(s), else: s) end)
+
+      assert errors(on_shape.(&Map.merge(&1, both))) == [{"#/stages/1", :condition_both}]
+
+      entry = Map.merge(%{"workflow" => "write-specs"}, both)
+
+      assert errors(put_sequence(tracked(), @shape, [entry])) == [
+               {"#/stages/1/sequence/0", :condition_both}
+             ]
+
+      loop = Map.merge(%{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}, both)
+
+      assert errors(put_sequence(tracked(), @shape, [loop])) == [
+               {"#/stages/1/sequence/0", :condition_both}
+             ]
+
+      body = %{"loop" => %{"rounds" => 2, "body" => [entry]}}
+
+      assert errors(put_sequence(tracked(), @shape, [body])) ==
+               [{"#/stages/1/sequence/0/loop/body/0", :condition_both}]
+
+      input = Map.merge(%{"type" => "proposal", "required" => true}, both)
+
+      assert errors(on_shape.(&Map.put(&1, "inputs", [input]))) ==
+               [{"#/stages/1/inputs/0", :condition_both}]
+
+      # One condition of each key is valid.
+      assert Processes.validate(
+               put_sequence(tracked(), @shape, [
+                 %{entry | "workflow" => "x"} |> Map.delete("when")
+               ])
+             ) == :ok
+    end
+
     test "refuses a track condition and an unless on an output: an output keeps when {input} only" do
       output = &(%{"type" => "mockup", "required" => true} |> Map.merge(&1))
 
