@@ -447,6 +447,27 @@ defmodule Apiary.Stages do
 
   def limits(%DispatchRun{}), do: nil
 
+  # run_access/2 is the access level of the run of the queue `run` whose harness walk
+  # resolved `walk`: with the workflow model, a walk of `:write` lowered by the run's stage
+  # entry (`limits/1`) to `:read` or `:local_write`; else `walk`. A run with no limits keeps
+  # `:write`.
+  #
+  # The claim computes the level once: the run's documents and its work credential row
+  # keep it (`Apiary.Dispatches.Handover`, `Apiary.Runs.RunCredentials`). A run claimed as
+  # write keeps renewing write tokens after a later process version lowers its entry, and
+  # a waiting run gets the level of the entry of its process version (`process_version_id`)
+  # when it is claimed.
+  @doc false
+  @spec run_access(:read | :write, DispatchRun.t()) :: :read | :local_write | :write
+  def run_access(:write, %DispatchRun{} = run) do
+    case limits(run) do
+      %{access: level} when level in [:read, :local_write] -> level
+      _none -> :write
+    end
+  end
+
+  def run_access(walk, %DispatchRun{}), do: walk
+
   # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
   # workflow model on: the name its harness walk, its documents, its time limits and its
   # model choice are read by. nil for a run the stage runner did not queue, or with the

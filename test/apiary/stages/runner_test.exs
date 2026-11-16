@@ -649,6 +649,12 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.limits(seq, pos(0, nil, 1), nil).access == :local_write
       assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :read}).access == :read
 
+      # An entry value the schema does not take counts as read.
+      other = put_in(build(), ["sequence"], [wf("verify", %{"access" => "push"})])
+
+      assert Runner.limits(other, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :read
+
       [{:queue, spec}] =
         Runner.step(seq, nil, :enter, %{
           declarations: %{"verify" => %{time_limit: nil, access: :write}}

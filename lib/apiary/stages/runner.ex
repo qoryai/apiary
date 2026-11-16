@@ -532,11 +532,13 @@ defmodule Apiary.Stages.Runner do
 
   # The lower of two access levels, from lowest to highest read, local-write (a writable
   # checkout with no push) and write: read when either is read, then local-write when the
-  # entry's is. nil where neither sets a level.
+  # entry's is. An entry value other than `read` or `local-write` counts as read. nil where
+  # neither sets a level.
   defp lower_access(entry, declared) do
     cond do
-      read?(entry) or read?(declared) -> :read
+      read?(declared) -> :read
       entry == "local-write" -> :local_write
+      not is_nil(entry) -> :read
       declared in [:write, "write"] -> :write
       true -> nil
     end

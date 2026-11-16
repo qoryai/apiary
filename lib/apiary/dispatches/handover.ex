@@ -1006,16 +1006,12 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # Hand-over: with the workflow model, a run the stage runner queued with the access
-  # level `read` or `local_write` (`Apiary.Stages.limits/1`) has that level, whatever its
-  # walk resolved.
-  defp lowered_access(%{access: :write} = harness, dispatch_run) do
-    case Apiary.Stages.limits(dispatch_run) do
-      %{access: level} when level in [:read, :local_write] -> %{harness | access: level}
-      _none -> harness
-    end
-  end
+  # level `read` or `local_write` has that level, whatever its walk resolved
+  # (`Apiary.Stages.run_access/2`).
+  defp lowered_access(%{access: walk} = harness, dispatch_run),
+    do: %{harness | access: Apiary.Stages.run_access(walk, dispatch_run)}
 
-  defp lowered_access(harness, _dispatch_run), do: harness
+  defp lowered_access(nil, _dispatch_run), do: nil
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.

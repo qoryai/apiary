@@ -271,6 +271,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
       version
     end
 
+    # The documents the claim sent the run of the queue `queued`, decoded.
+    defp sent_documents(queued),
+      do: Jason.decode!(Repo.get_by!(Run, dispatch_run_id: queued.id).run_documents)
+
     # A run of the queue under a version with `from`, moved to a version with `to`.
     defp moved!(ctx, from, to) do
       process!(ctx, from)
@@ -322,7 +326,29 @@ defmodule Apiary.Runs.RunCredentialsTest do
       {_work_item, queued} = queued!(ctx)
 
       assert claimed_levels(ctx, queued) == {:local_write, :read}
-      assert ApiaryWeb.Contract.DispatchAnswer.access(%{access: :local_write}) == "read"
+      assert %{"access" => "read"} = sent_documents(queued)
+    end
+
+    # Cancel run's confirm says a write run's changes are not pushed
+    # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
+    # by the documents the claim sent it and, for a run without them, by its entry.
+    for {access, write?} <- [{"local-write", false}, {"read", false}, {nil, true}] do
+      @tag needs: [:factory, :workflow_model]
+      test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
+           ctx do
+        entry =
+          Map.reject(%{"workflow" => "build", "access" => unquote(access)}, &is_nil(elem(&1, 1)))
+
+        process!(ctx, [entry])
+        {_work_item, queued} = queued!(ctx)
+        claimed_levels(ctx, queued)
+        run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, %{run | run_documents: nil}) ==
+                 unquote(write?)
+      end
     end
 
     @tag needs: [:factory, :workflow_model]

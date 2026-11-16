@@ -147,17 +147,44 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   Whether `run` writes changes that its end pushes: a run of a software workspace
-  (`workspace`) whose harness has write access (`Apiary.Harnesses.RunHarness`).
+  (`workspace`) whose access level is `write`. The level is the `access` of the documents
+  the claim sent the run (`runs.run_documents`). For a run without them, it is the level
+  of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage entry
+  (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
-  def write_run?(%{domain: "software"}, %Run{dispatch_run_id: id}) when is_binary(id) do
-    Repo.exists?(
-      from h in Apiary.Harnesses.RunHarness,
-        where: h.dispatch_run_id == ^id and h.access_level == :write
-    )
+  def write_run?(%{domain: "software"}, %Run{dispatch_run_id: id} = run) when is_binary(id) do
+    case sent_access(run) do
+      nil -> computed_access(id) == :write
+      access -> access == "write"
+    end
   end
 
   def write_run?(_workspace, _run), do: false
+
+  # The `access` of the run's documents, nil for a run with no documents or none in them.
+  defp sent_access(%Run{run_documents: documents}) when is_binary(documents) do
+    case Jason.decode(documents) do
+      {:ok, %{"access" => access}} when is_binary(access) -> access
+      _other -> nil
+    end
+  end
+
+  defp sent_access(_run), do: nil
+
+  defp computed_access(id) do
+    walk =
+      Repo.one(
+        from h in Apiary.Harnesses.RunHarness,
+          where: h.dispatch_run_id == ^id,
+          select: h.access_level
+      )
+
+    case {walk, Repo.get(DispatchRun, id)} do
+      {:write, %DispatchRun{} = dispatch_run} -> Apiary.Stages.run_access(:write, dispatch_run)
+      _read_or_none -> :read
+    end
+  end
 
   defp mark(scope, held) do
     now = DateTime.utc_now()
