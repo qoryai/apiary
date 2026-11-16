@@ -12032,6 +12032,11 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep at most 10 tracks in the process."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep it"
@@ -12087,6 +12092,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Keep the secret in a secret store."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Keep this loop. Its condition cannot move to %{workflow}, which has a condition already."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -12399,6 +12409,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "List %{workflow} under workflows in the harness's qory-stack.yaml, or choose another workflow for %{stage}. Until then, %{stage} waits and starts no run."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "List each track once in the gate of %{stage}."
 msgstr ""
 
 #: lib/apiary/artifacts/type_rules.ex
@@ -14957,6 +14972,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Off: the saved password cannot be read. Enter it again and save."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Offer at most 10 tracks at the gate of %{stage}."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -19200,6 +19220,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the comment to 2,000 characters or fewer."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the description of %{track} to at most 500 characters."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -25130,6 +25155,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "a removed stage"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "a track"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex

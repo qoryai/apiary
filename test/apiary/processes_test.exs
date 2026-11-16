@@ -301,16 +301,23 @@ defmodule Apiary.ProcessesTest do
     end
 
     test "refuses a track id that has another form, or a track without a name" do
-      for track <- [
-            %{"id" => "Fast", "name" => "Fast track"},
-            %{"id" => "fast_track", "name" => "Fast track"},
-            %{"id" => "-fast", "name" => "Fast track"},
-            %{"id" => "fast-", "name" => "Fast track"},
-            %{"id" => "fast", "name" => ""},
-            %{"name" => "Fast track"}
+      for {track, path} <- [
+            {%{"id" => "Fast", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "fast_track", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "-fast", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "fast-", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => String.duplicate("a", 41), "name" => "Fast track"}, "#/tracks/0/id"},
+            # An empty name breaks minLength and the pattern: two errors at its place.
+            {%{"id" => "fast", "name" => ""}, ["#/tracks/0/name", "#/tracks/0/name"]},
+            {%{"id" => "fast", "name" => "Fast", "description" => String.duplicate("a", 501)},
+             "#/tracks/0/description"},
+            {%{"name" => "Fast track"}, "#/tracks/0"}
           ] do
-        assert errors(Map.put(default(), "tracks", [track])) != []
+        assert errors(Map.put(default(), "tracks", [track])) == expected(path)
       end
+
+      eleven = for n <- 1..11, do: %{"id" => "track-#{n}", "name" => "Track #{n}"}
+      assert errors(Map.put(default(), "tracks", eleven)) == chain("#/tracks")
     end
 
     test "refuses a track id twice (:duplicate_track_id)" do
@@ -338,7 +345,8 @@ defmodule Apiary.ProcessesTest do
     end
 
     test "refuses a track twice in a gate, and tracks on a gate of kind none" do
-      assert errors(with_gate_tracks(tracked(), @explore, ["standard", "standard"])) != []
+      assert errors(with_gate_tracks(tracked(), @explore, ["standard", "standard"])) ==
+               chain("#/stages/0/gate/tracks")
 
       none =
         edit(tracked(), fn
@@ -444,7 +452,9 @@ defmodule Apiary.ProcessesTest do
           ] do
         for key <- ["when", "unless"] do
           entry = %{"workflow" => "write-specs", key => condition}
-          assert errors(put_sequence(tracked(), @shape, [entry])) != []
+
+          assert errors(put_sequence(tracked(), @shape, [entry])) ==
+                   chain("#/stages/1/sequence/0")
         end
       end
     end
@@ -493,7 +503,16 @@ defmodule Apiary.ProcessesTest do
           if(s["id"] == @shape, do: Map.put(s, "outputs", [&1]), else: s)
         end)
 
-      assert errors(put.(output.(%{"when" => %{"track" => "standard"}}))) != []
+      assert errors(put.(output.(%{"when" => %{"track" => "standard"}}))) ==
+               expected([
+                 "#/stages/1/outputs/0/when",
+                 "#/stages/1/outputs/0/when",
+                 "#/stages/1/outputs/0/when/track"
+               ])
+
+      assert errors(put.(output.(%{"unless" => %{"input" => "proposal"}}))) ==
+               chain("#/stages/1/outputs/0/unless")
+
       assert Processes.validate(put.(output.(%{"when" => %{"input" => "proposal"}}))) == :ok
     end
 
@@ -513,7 +532,7 @@ defmodule Apiary.ProcessesTest do
         "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}
       }
 
-      assert errors(put_sequence(default(), @shape, [both])) != []
+      assert errors(put_sequence(default(), @shape, [both])) == chain("#/stages/1/sequence/0")
     end
 
     test "refuses a stage id or a stage name twice, names compared trimmed and without case" do
@@ -635,6 +654,22 @@ defmodule Apiary.ProcessesTest do
         stage ->
           stage
       end)
+
+  # JSV reports a schema refusal at each place from the document down to the value:
+  # `chain("#/tracks/0/id")` is `#`, `#/tracks`, `#/tracks/0` and `#/tracks/0/id`.
+  defp chain(path) do
+    [first | rest] = String.split(path, "/")
+
+    rest
+    |> Enum.scan(first, &(&2 <> "/" <> &1))
+    |> then(&[first | &1])
+    |> Enum.map(&{&1, :schema})
+  end
+
+  # `chain/1` of a place, then each place in the list after it once more: JSV reports two
+  # errors at a value that breaks two keywords.
+  defp expected([path | more]), do: chain(path) ++ Enum.map(more, &{&1, :schema})
+  defp expected(path), do: chain(path)
 
   defp put_sequence(document, id, sequence),
     do: edit(document, &if(&1["id"] == id, do: %{&1 | "sequence" => sequence}, else: &1))

@@ -386,7 +386,7 @@ defmodule Apiary.Processes do
 
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
-            do: {Map.delete(output, "unless"), "#{at}/outputs/#{k}"}
+            do: {output, "#{at}/outputs/#{k}"}
 
       errors =
         for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,

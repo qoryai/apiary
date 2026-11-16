@@ -1230,10 +1230,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
-- A stage's gate button reads **Approve**, where it read "Approve" and the stage's name.
-  The confirmation dialog is titled "Approve this stage?" and its button reads
-  **Approve**. The line that says an output is missing reads "Add the outputs before you
-  approve this stage."
+- The gate button of a stage read "Approve" and the stage's name, for example "Approve
+  Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
+  stage?" and its button reads **Approve**. The line about a missing output reads "Add
+  %{outputs} before you approve this stage.", where it ended with the stage's name."
 <!-- feature: workflow_model -->
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change

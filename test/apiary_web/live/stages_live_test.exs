@@ -1094,6 +1094,61 @@ defmodule ApiaryWeb.StagesLiveTest do
              ]
     end
 
+    test "Remove loop moves the loop's condition onto each workflow",
+         %{conn: conn, path: path, scope: scope} do
+      document =
+        Draft.update_stage(tracked_document(), id_of("Build"), fn stage ->
+          %{
+            stage
+            | "sequence" => [
+                %{
+                  "loop" => %{
+                    "rounds" => 2,
+                    "body" => [%{"workflow" => "capture-demos"}, %{"workflow" => "fix-demos"}]
+                  },
+                  "unless" => @fast
+                }
+              ]
+          }
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view |> element(~s(#stage-loop-0 button[phx-click="remove_loop"])) |> render_click()
+      refute has_element?(view, "#stage-loop-0")
+      refute has_element?(view, "[data-save-error]")
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+
+      build =
+        Enum.find(Processes.current(scope.workspace).document["stages"], &(&1["name"] == "Build"))
+
+      assert build["sequence"] == [
+               %{"workflow" => "capture-demos", "unless" => @fast},
+               %{"workflow" => "fix-demos", "unless" => @fast}
+             ]
+    end
+
+    test "Remove loop keeps a loop whose condition cannot move to a workflow that has one",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, _version} = Processes.save(scope, scope.workspace, tracked_document())
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
+
+      assert has_element?(view, "#stage-loop-1")
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Keep this loop. Its condition cannot move to fix-demos, which has a condition already."
+             )
+    end
+
     test "a gate changed to no approval offers no track", %{conn: conn, path: path, scope: scope} do
       document =
         Map.put(tracked_document(), "stages", Processes.default_document("software")["stages"])
@@ -1221,6 +1276,38 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert refusals(none) == [
                "Remove the tracks from the gate of Explore, or let a person approve at it. A gate with no approval offers no track."
              ]
+    end
+
+    test "the refusal of too many tracks, a description that is too long, and a gate that lists a track twice" do
+      doc = Processes.default_document("software")
+
+      eleven = for n <- 1..11, do: %{"id" => "track-#{n}", "name" => "Track #{n}"}
+      assert "Keep at most 10 tracks in the process." in refusals(Map.put(doc, "tracks", eleven))
+
+      long = [
+        %{"id" => "fast", "name" => "Fast track", "description" => String.duplicate("a", 501)}
+      ]
+
+      assert "Shorten the description of Fast track to at most 500 characters." in refusals(
+               Map.put(doc, "tracks", long)
+             )
+
+      declared = Map.put(doc, "tracks", [%{"id" => "standard", "name" => "Standard"}])
+
+      twice =
+        Draft.update_stage(declared, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard", "standard"])}
+        end)
+
+      assert "List each track once in the gate of Explore." in refusals(twice)
+
+      many =
+        Draft.update_stage(declared, id_of("Explore"), fn stage ->
+          ids = for n <- 1..11, do: "track-#{n}"
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ids)}
+        end)
+
+      assert "Offer at most 10 tracks at the gate of Explore." in refusals(many)
     end
 
     test "the refusal of a track with an id or a name that breaks the schema" do

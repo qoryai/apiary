@@ -496,6 +496,14 @@ defmodule ApiaryWeb.StagesLive.Words do
       String.contains?(path, "machine") ->
         machine_refused()
 
+      path == "#/tracks" and error_detail == :maxItems ->
+        gettext("Keep at most 10 tracks in the process.")
+
+      String.starts_with?(path, "#/tracks") and String.ends_with?(path, "/description") ->
+        gettext("Shorten the description of %{track} to at most 500 characters.",
+          track: track_name(doc, path)
+        )
+
       String.starts_with?(path, "#/tracks") ->
         gettext(
           "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
@@ -506,6 +514,12 @@ defmodule ApiaryWeb.StagesLive.Words do
           "Remove the tracks from the gate of %{stage}, or let a person approve at it. A gate with no approval offers no track.",
           stage: stage
         )
+
+      String.ends_with?(path, "/gate/tracks") and error_detail == :uniqueItems ->
+        gettext("List each track once in the gate of %{stage}.", stage: stage)
+
+      String.ends_with?(path, "/gate/tracks") and error_detail == :maxItems ->
+        gettext("Offer at most 10 tracks at the gate of %{stage}.", stage: stage)
 
       String.contains?(path, "/gate/tracks") ->
         gettext(
@@ -575,6 +589,15 @@ defmodule ApiaryWeb.StagesLive.Words do
         fallback: fallback
       )
 
+  # Remove loop refused: the loop's condition cannot move onto `workflow`, which has one.
+  @doc false
+  def loop_kept(workflow),
+    do:
+      gettext(
+        "Keep this loop. Its condition cannot move to %{workflow}, which has a condition already.",
+        workflow: workflow
+      )
+
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
   def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")
@@ -640,6 +663,19 @@ defmodule ApiaryWeb.StagesLive.Words do
         title: item.title,
         stage: stage
       )
+
+  # The name of the track at a place such as `#/tracks/1/description`, else its id, else
+  # "a track".
+  defp track_name(doc, path) do
+    with [_all, index] <- Regex.run(~r{^#/tracks/(\d+)}, path),
+         %{} = track <- Enum.at(doc["tracks"] || [], String.to_integer(index)) do
+      [track["name"], track["id"]]
+      |> Enum.find(&(is_binary(&1) and String.trim(&1) != ""))
+      |> Kernel.||(gettext("a track"))
+    else
+      _none -> gettext("a track")
+    end
+  end
 
   # The stage's name and the field under it, of a place such as `#/stages/1/name`.
   defp place(path, doc) when is_binary(path) do
