@@ -1754,7 +1754,9 @@ defmodule Apiary.Organisations do
   `create_workspace/2`'s answers, `{:error, :exists}` with `:first` where the
   organisation has a workspace in use already, and `{:error, {:qory, failure}}` where the
   read of the Qory harness failed (Apiary.Harnesses.Qory.failure/0), with nothing
-  made.
+  made. A Qory template whose `submit` names no structured entry of its `artifact_types`
+  (Apiary.Artifacts.TemplateTypes.check_submit/1) is `{:error, {:qory, {:unreadable,
+  :invalid, nil}}}`, as a template the reader refuses.
   """
   @spec create_workspace_of_kind(Scope.t(), module, :first | :any) ::
           {:ok, %Workspace{}}
@@ -1801,9 +1803,10 @@ defmodule Apiary.Organisations do
   `create_workspace_of_kind/3`'s answers, and `{:error, :invalid}` for a source that
   offers no template, a connected or an assigned source that differs from the
   organisation's list of them, a template whose `type` is the key of no domain's type
-  (`Apiary.Lingo.Domain.known_type?/1`), or a row the save rules refuse; `{:error,
-  errors}` for a process Apiary.Processes.validate/1 refuses; `{:error, {:invalid, type,
-  error}}` for a custom type the database refuses; and `{:error, :not_found}` where the
+  (`Apiary.Lingo.Domain.known_type?/1`) or whose `submit` names no structured entry of its
+  `artifact_types` (Apiary.Artifacts.TemplateTypes.check_submit/1), or a row the save
+  rules refuse; `{:error, errors}` for a process Apiary.Processes.validate/1 refuses;
+  `{:error, {:invalid, type, error}}` for a custom type the database refuses; and `{:error, :not_found}` where the
   feature is off, or the source is the shared harness and the organisation no longer
   shares that repository. Nothing is made on any error.
   """
@@ -1855,7 +1858,7 @@ defmodule Apiary.Organisations do
   defp qory_start_of(%{provided_by: "qory", key: key}) do
     with {:ok, commit} <- Qory.read({:branch, Qory.default_branch()}) |> qory_read() do
       case Qory.template(commit) do
-        %{type: ^key} = template -> {:ok, %{qory: true, template: template, commit: commit}}
+        %{type: ^key} = template -> qory_template_start(template, commit)
         %{} -> {:ok, nil}
         nil -> {:error, {:qory, {:unreadable, :invalid, nil}}}
       end
@@ -1863,6 +1866,14 @@ defmodule Apiary.Organisations do
   end
 
   defp qory_start_of(_definition), do: {:ok, nil}
+
+  # A template whose `submit` qory refuses is refused as a template the reader refuses.
+  defp qory_template_start(template, commit) do
+    case TemplateTypes.check_submit(template) do
+      :ok -> {:ok, %{qory: true, template: template, commit: commit}}
+      {:error, _refusals} -> {:error, {:qory, {:unreadable, :invalid, nil}}}
+    end
+  end
 
   defp qory_read({:ok, commit}), do: {:ok, commit}
   defp qory_read({:error, failure}), do: {:error, {:qory, failure}}

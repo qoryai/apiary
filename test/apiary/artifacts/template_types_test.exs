@@ -240,6 +240,91 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
     end
   end
 
+  describe "the check of submit" do
+    defp with_submit(template, type, send \\ "after_gate"),
+      do: Map.put(template, :submit, %{"type" => type, "send" => send})
+
+    test "takes a submit that names a structured custom type of the list" do
+      for send <- ["end_of_run", "after_gate"] do
+        submitted = with_submit(template([@document, @structured]), "customer-facts", send)
+        assert TemplateTypes.check(submitted) == :ok
+        assert TemplateTypes.check_submit(submitted) == :ok
+      end
+    end
+
+    test "takes a template with no submit, or a nil one" do
+      assert TemplateTypes.check_submit(template([@document])) == :ok
+      assert TemplateTypes.check(Map.put(template([@document]), :submit, nil)) == :ok
+    end
+
+    test "refuses a type no entry of the list is named" do
+      submitted = with_submit(template([@structured]), "reply-draft")
+
+      assert TemplateTypes.check(submitted) == {:error, [{:submit, "reply-draft", :missing}]}
+      assert TemplateTypes.check_submit(submitted) == TemplateTypes.check(submitted)
+    end
+
+    test "refuses a type when the template has no artifact_types" do
+      submitted = with_submit(template(nil), "customer-facts")
+
+      assert TemplateTypes.check(submitted) == {:error, [{:submit, "customer-facts", :missing}]}
+    end
+
+    test "refuses a standard type, listed by its name alone" do
+      submitted = with_submit(template([%{"name" => "mockup"}, @structured]), "mockup")
+
+      assert TemplateTypes.check(submitted) == {:error, [{:submit, "mockup", :standard}]}
+    end
+
+    test "refuses a custom type of another base view" do
+      submitted = with_submit(template([@document, @structured]), "reply-draft")
+
+      assert TemplateTypes.check(submitted) ==
+               {:error, [{:submit, "reply-draft", {:base_view, "document"}}]}
+    end
+
+    test "comes after the refusals of the list" do
+      listed = [%{"name" => "reply-draft"}, @structured]
+
+      assert TemplateTypes.check(with_submit(template(listed), "reply-draft")) ==
+               {:error,
+                [
+                  {:not_standard, "reply-draft"},
+                  {:submit, "reply-draft", :standard}
+                ]}
+    end
+
+    test "check_submit/1 makes no other refusal of the list" do
+      submitted =
+        with_submit(template([%{"name" => "reply-draft"}, @structured]), "customer-facts")
+
+      assert {:error, [{:not_standard, "reply-draft"}]} = TemplateTypes.check(submitted)
+      assert TemplateTypes.check_submit(submitted) == :ok
+    end
+
+    test "takes a template read from a file with a valid submit" do
+      path = Path.join(@sources, "factory/modules/support-desk/process.yaml")
+
+      text =
+        File.read!(path) <>
+          """
+          artifact_types:
+            - name: customer-facts
+              base_view: structured
+              size_limit: 65536
+              max_files: 1
+              json_schema: {type: object}
+          submit:
+            type: customer-facts
+            send: end_of_run
+          """
+
+      assert {:ok, template} = Reader.template(text)
+      assert template.submit == %{"type" => "customer-facts", "send" => "end_of_run"}
+      assert TemplateTypes.check(template) == :ok
+    end
+  end
+
   describe "the total over a template's schemas" do
     # `count` structured definitions, each with a schema of the form `schema.(index)`.
     defp structured(count, schema \\ fn _index -> %{} end) do
@@ -337,6 +422,15 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert TemplateTypes.message({:invalid, "reply-draft", :base_view}) ==
                "the custom type reply-draft is not valid: Choose a base view."
+
+      assert TemplateTypes.message({:submit, "reply-draft", :missing}) ==
+               "set submit.type to a structured type of artifact_types: no entry is named reply-draft"
+
+      assert TemplateTypes.message({:submit, "mockup", :standard}) ==
+               "set submit.type to a structured type of artifact_types: mockup is a standard type"
+
+      assert TemplateTypes.message({:submit, "reply-draft", {:base_view, "document"}}) ==
+               "set submit.type to a structured type of artifact_types: reply-draft has base_view document"
     end
 
     test "ends an invalid definition's text with the Artifact types form's line" do

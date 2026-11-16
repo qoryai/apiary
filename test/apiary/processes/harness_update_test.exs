@@ -64,6 +64,16 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   # The template's submit step, named `type`, as a version's record keeps it.
   defp submit(type), do: %{"type" => type, "send" => "after_gate"}
 
+  # A template whose submit names no structured type of its artifact_types, with the
+  # refusal: a name no entry has, a standard type, and spec, a document type.
+  defp refused_submits do
+    [
+      {submitting("blueprint"), {:submit, "blueprint", :missing}},
+      {submitting("mockup"), {:submit, "mockup", :standard}},
+      {submitting(described(), "spec"), {:submit, "spec", {:base_view, "document"}}}
+    ]
+  end
+
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
   defp calls do
     receive do
@@ -264,6 +274,30 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       Repo.delete_all(from s in Stack, where: s.workspace_id == ^ctx.workspace.id)
       repository_choice!(ctx.workspace, Map.delete(QoryHarnessFixture.files(), @process))
       assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, :no_template}
+    end
+  end
+
+  describe "read/2 of a template's submit" do
+    test "refuses a submit that names no structured type of the template", ctx do
+      for {files, refusal} <- refused_submits() do
+        main_at!(files)
+        assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, {:types, [refusal]}}
+      end
+
+      assert ApiaryWeb.HarnessUpdateComponents.reason_words(
+               {:types, [{:submit, "spec", {:base_view, "document"}}]},
+               nil,
+               nil
+             ) ==
+               "Correct the process.yaml of the harness, then press Update from harness again: " <>
+                 "set submit.type to a structured type of artifact_types: spec has base_view document."
+    end
+
+    test "a harness repository refuses it as a template that is not readable", ctx do
+      repository_harness!(ctx.workspace, "main", files: submitting("mockup"))
+
+      assert HarnessUpdate.read(ctx.scope, ctx.workspace) ==
+               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
     end
   end
 
@@ -911,6 +945,25 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
       assert {:error, {:types, [_refusal | _more]}} = HarnessUpdate.follow(ctx.workspace)
       assert :ok = HarnessUpdate.follow_all()
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "a submit that names no structured type of the template saves nothing", ctx do
+      for {files, refusal} <- refused_submits() do
+        main_at!(files)
+        assert HarnessUpdate.follow(ctx.workspace) == {:error, {:types, [refusal]}}
+        assert :ok = HarnessUpdate.follow_all()
+        assert length(versions(ctx.workspace)) == 1
+      end
+    end
+
+    test "a harness repository's submit that names no structured type saves nothing", ctx do
+      repository = repository_harness!(ctx.workspace, "main")
+      PublicGitServer.commit!(repository.dir, submitting("mockup"))
+
+      assert HarnessUpdate.follow(ctx.workspace) ==
+               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
+
       assert length(versions(ctx.workspace)) == 1
     end
 

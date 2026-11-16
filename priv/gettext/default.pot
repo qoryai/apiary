@@ -26221,6 +26221,21 @@ msgstr ""
 msgid "secret · shown once"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a structured type of artifact_types: %{type} has base_view %{view}"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a structured type of artifact_types: %{type} is a standard type"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a structured type of artifact_types: no entry is named %{type}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "setup container not removed"

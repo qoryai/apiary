@@ -936,6 +936,63 @@ defmodule Apiary.Stacks.SourcesTest do
                Sources.templates(ctx.scope, source)
     end
 
+    test "a submit that names a structured type of the file reaches the template", ctx do
+      file = template_file() <> submit_types() <> "submit:\n  type: facts\n  send: after_gate\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, %{templates: [a, b], not_readable: []}} = Sources.templates(ctx.scope, source)
+      assert a.submit == %{"type" => "facts", "send" => "after_gate"}
+      assert b.submit == nil
+    end
+
+    test "a submit that names no structured type of the file is not readable", ctx do
+      for {type, refusal, text} <- [
+            {"other", {:submit, "other", :missing}, "no entry is named other"},
+            {"mockup", {:submit, "mockup", :standard}, "mockup is a standard type"},
+            {"draft", {:submit, "draft", {:base_view, "document"}},
+             "draft has base_view document"}
+          ] do
+        file =
+          template_file() <> submit_types() <> "submit:\n  type: #{type}\n  send: end_of_run\n"
+
+        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert [%{module: "b"}] = read.templates
+        assert read.not_readable == [%{module: "a", reason: {:types, [refusal]}}]
+
+        assert TemplateTypes.message(refusal) ==
+                 "set submit.type to a structured type of artifact_types: " <> text
+      end
+    end
+
+    test "a submit with no artifact_types is not readable", ctx do
+      file = template_file() <> "submit:\n  type: facts\n  send: end_of_run\n"
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: reason}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert reason == {:types, [{:submit, "facts", :missing}]}
+    end
+
+    # An artifact_types of a standard type, a document type and a structured type.
+    defp submit_types do
+      """
+      artifact_types:
+        - name: mockup
+        - name: draft
+          base_view: document
+          size_limit: 65536
+          max_files: 1
+        - name: facts
+          base_view: structured
+          size_limit: 65536
+          max_files: 1
+          json_schema: {type: object}
+      """
+    end
+
     # A clock of the read's checks, on time for the first `on_time` reads and 60 s past the
     # read's deadline from then on.
     defp clock(on_time) do

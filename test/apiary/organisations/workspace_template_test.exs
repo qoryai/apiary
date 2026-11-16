@@ -208,6 +208,20 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert version.template["submit"] == %{"type" => "submission", "send" => "end_of_run"}
     end
 
+    test "a template whose submit names no structured type makes nothing" do
+      scope = scope_fixture()
+      before = held(scope)
+
+      for type <- ["blueprint", "mockup"] do
+        qory_submitting!(type)
+
+        assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
+                 {:error, {:qory, {:unreadable, :invalid, nil}}}
+      end
+
+      assert held(scope) == before
+    end
+
     test "a failed read of the Qory harness makes nothing" do
       scope = scope_fixture()
       before = held(scope)
@@ -629,6 +643,31 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "version" => nil,
                "submit" => %{"type" => "facts", "send" => "after_gate"}
              }
+    end
+
+    test "a template whose submit names no structured type is refused, and nothing is made" do
+      scope = scope_fixture()
+      source = linked!(scope)
+      before = held(scope)
+
+      document = %{
+        "name" => "draft",
+        "base_view" => "document",
+        "size_limit" => 65_536,
+        "max_files" => 1
+      }
+
+      for type <- ["other", "mockup", "draft"] do
+        changes = %{
+          artifact_types: [%{"name" => "mockup"}, document],
+          submit: %{"type" => type, "send" => "end_of_run"}
+        }
+
+        assert Organisations.create_workspace_from_template(scope, start(source, changes)) ==
+                 {:error, :invalid}
+      end
+
+      assert held(scope) == before
     end
 
     test "a process that does not pass the check is refused before the transaction" do
