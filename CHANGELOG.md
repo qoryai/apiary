@@ -1203,6 +1203,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- The notes for the next run, on the work item and in `GET work-item`, list only open
+  notes. A request for changes, an escalation's note and a failed check leave the list
+  once their stage is approved after them, and a move once the stage it moved to is
+  approved after it. A gate none that passes on counts as an approval.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
   (`workspace_operators`). No screen starts or ends such a link. In an operated
@@ -2030,6 +2036,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `gate_decisions` (20261116100000): a nullable column `to_stage_id`, the stage a move
+  went to, and a kind `pass`, a gate none that passed on. The column has no default, so
+  adding it rewrites no row. The two checks scan `gate_decisions` under a lock that
+  blocks reads and writes, one row per decision. It changes no row: a move made before
+  has no `to_stage_id` and stays in the notes for the next run. Rolling back deletes
+  every `pass` row and drops `to_stage_id`.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.

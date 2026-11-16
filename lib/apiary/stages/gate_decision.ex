@@ -2,10 +2,12 @@ defmodule Apiary.Stages.GateDecision do
   # A person's decision at a stage's gate on a work item (`Apiary.Stages`): an approval,
   # `:approve`, which covers the artifact versions in `versions` (their public ids,
   # `av_…`), a request for changes, `:request_changes`, which may point at one version,
-  # `artifact_version_id`, or a move of the work item from the stage to another, `:move`.
-  # `note` is what the person wrote, nil for nothing. `stage_id`
-  # and `process_version_id` are the stage and the version of the process it was made
-  # under. Nothing changes a decision once it is written.
+  # `artifact_version_id`, or a move of the work item from the stage to another, `:move`,
+  # to the stage `to_stage_id` (nil for a move written before that column). `:pass` is a
+  # gate `none` that passed on, with no person and no versions. `note` is what the person
+  # wrote, nil for nothing. `stage_id` and `process_version_id` are the stage and the
+  # version of the process it was made under. Nothing changes a decision once it is
+  # written.
   @moduledoc false
   use Ecto.Schema
 
@@ -16,7 +18,8 @@ defmodule Apiary.Stages.GateDecision do
   @foreign_key_type :binary_id
   schema "gate_decisions" do
     field :stage_id, :string
-    field :kind, Ecto.Enum, values: [:approve, :request_changes, :move]
+    field :kind, Ecto.Enum, values: [:approve, :request_changes, :move, :pass]
+    field :to_stage_id, :string
     field :versions, {:array, :string}, default: []
     field :artifact_version_id, :string
     field :note, :string

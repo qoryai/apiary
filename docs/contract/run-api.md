@@ -131,6 +131,11 @@ Returns `200` with the work item snapshot:
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
+  `notes` contains only open notes. A `request_changes`, `escalation` or `check` note
+  closes once the stage `stage_id` passes its gate after `at`, and a `move` once the
+  stage it moved to passes its gate after `at`: a person approves the gate, or a gate
+  `none` passes on. An `answer`, and a `move` written before Qory Apiary kept the stage
+  it moved to, stay open.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.

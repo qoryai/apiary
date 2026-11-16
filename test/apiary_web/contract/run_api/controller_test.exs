@@ -458,6 +458,64 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
+    test "has only the open notes: a later approval or pass of the stage closes them", ctx do
+      place!(ctx)
+      shape = "st_p9w5cvh311"
+      time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
+
+      # Explore's request and failed check, then Explore's approval.
+      decide!(ctx, :request_changes, note: "Add the empty cart.", inserted_at: time.(1))
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+
+      Repo.insert!(%Check{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: Apiary.Processes.version_for(work_item).id,
+        stage_id: @explore,
+        round: 2,
+        gaps: "proposal: no version of this stage.",
+        inserted_at: time.(1)
+      })
+
+      decide!(ctx, :approve, inserted_at: time.(2))
+      # A move from Shape back to Explore, which Explore has not passed since.
+      move =
+        decide!(ctx, :move,
+          stage_id: shape,
+          to_stage_id: @explore,
+          note: "Back to Explore.",
+          inserted_at: time.(3)
+        )
+
+      # Shape's request, then Shape's gate none passing on.
+      decide!(ctx, :request_changes, stage_id: shape, note: "Split it.", inserted_at: time.(4))
+      decide!(ctx, :pass, stage_id: shape, user_id: nil, inserted_at: time.(5))
+      open = decide!(ctx, :request_changes, note: "Keep the coupon.", inserted_at: time.(6))
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      name = Inputs.person_name(ctx.scope.user.id)
+
+      assert body["notes"] == [
+               %{
+                 "kind" => "move",
+                 "stage_id" => shape,
+                 "by" => %{"name" => name},
+                 "note" => "Back to Explore.",
+                 "artifact_version_id" => nil,
+                 "at" => at(move.inserted_at)
+               },
+               %{
+                 "kind" => "request_changes",
+                 "stage_id" => @explore,
+                 "by" => %{"name" => name},
+                 "note" => "Keep the coupon.",
+                 "artifact_version_id" => nil,
+                 "at" => at(open.inserted_at)
+               }
+             ]
+    end
+
     test "has the newest verdict with its points", ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
 

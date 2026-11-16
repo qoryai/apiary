@@ -1047,7 +1047,8 @@ defmodule Apiary.Stages do
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            target when is_map(target) <-
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
-           {:ok, _decision} <- decide(scope, work_item, version, stage, :move, [], nil, note),
+           {:ok, _decision} <-
+             decide(scope, work_item, version, stage, :move, [], nil, note, target["id"]),
            {:ok, _entry} <-
              audit(scope, work_item, "move", %{
                "from" => stage["id"],
@@ -1395,10 +1396,17 @@ defmodule Apiary.Stages do
   # answers to a run's questions) and the gaps of failed checks that started a round
   # (`:check`, with no person). What members gave Explore (`Apiary.Explore.Given`) are
   # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
-  # `comment` true, as the run API sends them.
+  # `comment` true. The page labels a comment by it; the run API sends no `comment`.
+  #
+  # Only open notes are listed. A request for changes, an escalation's note and a failed
+  # check close once their stage passes its gate after them, and a move once the stage it
+  # went to passes its gate after it: a person's approval, or a gate `none` that passed
+  # on (`:pass`). A move kept with no `to_stage_id`, and an answer, stay open.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id} = work_item) do
+    passed = passed_at(id)
+
     decisions =
       Repo.all(
         from d in GateDecision,
@@ -1406,6 +1414,7 @@ defmodule Apiary.Stages do
           select: %{
             kind: d.kind,
             stage_id: d.stage_id,
+            to_stage_id: d.to_stage_id,
             user_id: d.user_id,
             note: d.note,
             artifact_version_id: d.artifact_version_id,
@@ -1441,9 +1450,42 @@ defmodule Apiary.Stages do
           }
       )
 
+    closable =
+      (decisions ++ escalations ++ checks)
+      |> Enum.filter(&open?(&1, passed))
+      |> Enum.map(&Map.delete(&1, :to_stage_id))
+
     answers = given_notes(work_item)
 
-    Enum.sort_by(decisions ++ escalations ++ checks ++ answers, & &1.inserted_at, DateTime)
+    Enum.sort_by(closable ++ answers, & &1.inserted_at, DateTime)
+  end
+
+  # The time each stage of the work item last passed its gate, by stage id.
+  defp passed_at(work_item_id) do
+    Repo.all(
+      from d in GateDecision,
+        where: d.work_item_id == ^work_item_id and d.kind in [:approve, :pass],
+        group_by: d.stage_id,
+        select: {d.stage_id, max(d.inserted_at)}
+    )
+    |> Map.new()
+  end
+
+  # Whether a note is still open: the stage that closes it has not passed its gate since.
+  # A move's is the stage it went to; every other note's, its stage.
+  defp open?(%{kind: :move, to_stage_id: nil}, _passed), do: true
+
+  defp open?(%{kind: :move, to_stage_id: stage_id} = note, passed),
+    do: not passed_after?(passed, stage_id, note.inserted_at)
+
+  defp open?(%{stage_id: stage_id} = note, passed),
+    do: not passed_after?(passed, stage_id, note.inserted_at)
+
+  defp passed_after?(passed, stage_id, at) do
+    case passed do
+      %{^stage_id => %DateTime{} = last} -> DateTime.after?(last, at)
+      _never -> false
+    end
   end
 
   # What members gave Explore as notes, each with the stage of the run it was given at.
@@ -1552,7 +1594,9 @@ defmodule Apiary.Stages do
 
         {work_item, run}
 
+      # Only a gate `none` passes on (`Apiary.Stages.Runner`).
       :advance, {work_item, _run} ->
+        pass!(work_item, version, stage)
         advance(work_item, version, stage)
     end)
   end
@@ -2091,7 +2135,18 @@ defmodule Apiary.Stages do
     )
   end
 
-  defp decide(scope, work_item, version, stage, kind, covered, artifact_version_id, note) do
+  # `to_stage_id` is the stage a move goes to, nil for the other kinds.
+  defp decide(
+         scope,
+         work_item,
+         version,
+         stage,
+         kind,
+         covered,
+         artifact_version_id,
+         note,
+         to_stage_id \\ nil
+       ) do
     %GateDecision{
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
@@ -2103,9 +2158,24 @@ defmodule Apiary.Stages do
       versions: covered,
       artifact_version_id: artifact_version_id,
       note: note,
+      to_stage_id: to_stage_id,
       inserted_at: DateTime.utc_now()
     }
     |> Repo.insert()
+  end
+
+  # A gate `none` that passes on: a `:pass` with no person, which resolves the notes of
+  # the stage as an approval does (`notes/1`).
+  defp pass!(work_item, version, stage) do
+    Repo.insert!(%GateDecision{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: stage["id"],
+      process_version_id: version.id,
+      kind: :pass,
+      inserted_at: DateTime.utc_now()
+    })
   end
 
   defp version_of(_work_item, nil), do: :ok
