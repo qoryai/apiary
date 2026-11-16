@@ -2475,6 +2475,154 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the when key (A-16)" do
+    @verify "st_m1mqbeywdg"
+    @demos %{"input" => "demo-scenarios"}
+
+    # Explore; Shape, worked by people, whose demo scenarios are optional; Verify, whose
+    # capture-demos runs only with demo scenarios, and whose film is required only then.
+    defp verify_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-scenarios",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "demo-scenarios", "required" => false}]
+        }),
+        stage(
+          @verify,
+          "Verify",
+          [
+            %{"workflow" => "capture-demos", "when" => @demos},
+            %{"workflow" => "verify-a-ticket"}
+          ],
+          %{
+            "outputs" => [
+              %{"type" => "explainer", "required" => true},
+              %{"type" => "demo-video", "required" => true, "when" => @demos}
+            ]
+          }
+        )
+      ])
+    end
+
+    # The work item at Shape's gate, with the demo scenarios `scenarios` adds; then Shape
+    # approved, so it enters Verify.
+    defp at_verify!(scope, scenarios) do
+      verify_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      scenarios.(work_item)
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      reload(work_item)
+    end
+
+    defp scenarios(binary),
+      do: [%{filename: "demo-scenarios.md", content_type: "text/markdown", binary: binary}]
+
+    # The end of a run of verify-a-ticket: an explainer and the verdict passed.
+    defp verified(run, registered) do
+      {:ok, _version} =
+        Artifacts.push(
+          {:run, run},
+          Repo.get!(WorkItem, run.work_item_id),
+          "explainer",
+          [%{filename: "explainer.md", content_type: "text/markdown", binary: "# What changed"}],
+          name: "main",
+          stage_id: run.stage_id
+        )
+
+      verdict("passed").(run, registered)
+    end
+
+    test "with no demo-scenarios, capture-demos starts no run and Verify's gate opens without a film",
+         %{scope: scope} do
+      work_item = at_verify!(scope, fn _work_item -> :ok end)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "verify-a-ticket", stage_entry: 1} = newest_run(work_item)
+      refute Enum.any?(runs(work_item), &(&1.workflow == "capture-demos"))
+
+      assert [
+               %{
+                 stage_id: @verify,
+                 workflow: "capture-demos",
+                 input: "demo-scenarios",
+                 round: 1,
+                 after_attempt: 1
+               }
+             ] = Stages.skips(work_item)
+
+      work_item = end_run!(work_item, &verified/2)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      refute escalation(work_item)
+      assert Stages.missing_outputs(work_item) == []
+
+      assert %{state: :at_gate, outputs: outputs, gate: %{approvable?: true}} =
+               Stages.status(work_item, scope)
+
+      assert [
+               %{type: "explainer", required: true, check: :passed},
+               %{type: "demo-video", required: false, version: nil, check: :missing}
+             ] = outputs
+
+      assert {:ok, %WorkItem{state: :closed}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @verify)
+    end
+
+    test "with demo-scenarios of more than 0 bytes, capture-demos runs and the film is required",
+         %{scope: scope} do
+      work_item =
+        at_verify!(scope, fn work_item ->
+          {:ok, _version} =
+            Stages.add_version(scope, work_item, "demo-scenarios", scenarios("# Scenario 1"))
+        end)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running, stage_entry: 0} = work_item
+      assert %DispatchRun{workflow: "capture-demos"} = newest_run(work_item)
+      assert Stages.skips(work_item) == []
+
+      assert %{outputs: [_explainer, %{type: "demo-video", required: true}]} =
+               Stages.status(work_item, scope)
+    end
+
+    test "a version of demo-scenarios with one file of 0 bytes does not count", %{scope: scope} do
+      work_item =
+        at_verify!(scope, fn work_item ->
+          {:ok, _version} = Stages.add_version(scope, work_item, "demo-scenarios", scenarios(""))
+        end)
+
+      assert [%{size: 0}] = hd(versions(work_item, "demo-scenarios")).files
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+      assert [%{workflow: "capture-demos"}] = Stages.skips(work_item)
+    end
+
+    test "a skip of another organisation's work item is not this work item's", %{scope: scope} do
+      work_item = at_verify!(scope, fn _work_item -> :ok end)
+      %{scope: other} = sign_up_fixture()
+      other_item = at_verify!(other, fn _work_item -> :ok end)
+
+      assert [%{after_attempt: 1}] = Stages.skips(work_item)
+      assert [_one] = Stages.skips(other_item)
+
+      assert Repo.aggregate(
+               from(s in Apiary.Stages.Skip,
+                 where:
+                   s.work_item_id == ^work_item.id and
+                     s.organisation_id != ^scope.workspace.organisation_id
+               ),
+               :count
+             ) == 0
+    end
+  end
+
   describe "a work item the runner has not placed" do
     setup %{scope: scope} do
       work_item = take_in!(scope)
