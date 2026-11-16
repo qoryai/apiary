@@ -191,7 +191,7 @@ defmodule Apiary.ProcessesTest do
         |> edit(fn
           %{"id" => @shape} = stage ->
             Map.put(stage, "outputs", [
-              %{"type" => "change", "required" => true, "check" => %{"reported" => "opened"}}
+              %{"type" => "submission", "required" => true, "check" => %{"reported" => "opened"}}
             ])
 
           stage ->

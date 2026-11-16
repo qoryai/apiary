@@ -45,12 +45,13 @@ defmodule Apiary.Adapters.WireTest do
              } = declaration
 
       assert Enum.sort(Map.keys(declaration)) ==
-               ~w(call_url connect_url default_interval description minimum_interval sends_changes setup_url time)a
+               ~w(call_url connect_url default_interval description minimum_interval sends_changes setup_url submit_module time)a
 
       # Without a setup_url, the adapter has nothing to set up; without a call_url, Qory
       # Apiary does not call it.
       assert declaration.setup_url == nil
       assert declaration.call_url == nil
+      assert declaration.submit_module == nil
 
       assert Description.item_noun(description) == %{one: "issue", other: "issues"}
       assert Description.collection_noun(description) == %{one: "project", other: "projects"}
@@ -83,6 +84,14 @@ defmodule Apiary.Adapters.WireTest do
                read(fixture("adapter/code-host-call.json"))
     end
 
+    test "code-host-submit-module.json, with a submit_module, is accepted as written" do
+      raw = fixture("adapter/code-host-submit-module.json")
+      written = Jason.decode!(raw)["submit_module"]
+
+      assert %{"source" => %{"ref" => "3f2a91c4d5e6f708192a3b4c5d6e7f8091a2b3c4"}} = written
+      assert {:ok, %{submit_module: ^written}} = read(raw)
+    end
+
     test "the schema's refusals and the control plane's are refused" do
       names =
         Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) ++
@@ -105,6 +114,10 @@ defmodule Apiary.Adapters.WireTest do
                "invalid/adapter-setup-url-state-first.json",
                "invalid/adapter-setup-url-state-percent-encoded.json",
                "invalid/adapter-setup-url-state.json",
+               # Each refused for its submit_module alone: "submit_module" below.
+               "invalid/adapter-submit-module-exclude.json",
+               "invalid/adapter-submit-module-ref-branch.json",
+               "invalid/adapter-submit-module-ref-short.json",
                "invalid/adapter-sync-without-sends-changes.json",
                "invalid/adapter-without-description.json",
                "refused-by-control-plane/adapter-integer-with-fraction.json",
@@ -280,6 +293,18 @@ defmodule Apiary.Adapters.WireTest do
       assert Wire.member_value(~s({"description":12.5e3}), "description") == {:ok, "12.5e3"}
       assert Wire.member_value(~s({"a":[],"description":true }), "description") == {:ok, "true"}
       assert Wire.member_value(~s({"description":{}}), "description") == {:ok, "{}"}
+    end
+
+    test "returns :error at the first stop name, before its value" do
+      raw = ~S({"a":1,"submit_module":{"b":2},"submit":3,"inputs":{"c":4}})
+      assert Wire.member_value(raw, "submit_module", ["submit", "inputs"]) == {:ok, ~S({"b":2})}
+      assert Wire.member_value(raw, "inputs", ["submit"]) == :error
+
+      assert Wire.member_value(~S({"a":1,"inputs":{"c":4}}), "submit_module", ["inputs"]) ==
+               :error
+
+      # A stop name is read with its escapes, as `name` is.
+      assert Wire.member_value(~S({"subm\u0069t":1,"x":2}), "x", ["submit"]) == :error
     end
 
     test "reads a member's name with its escapes" do
@@ -828,6 +853,81 @@ defmodule Apiary.Adapters.WireTest do
           ] do
         refute Wire.call_url?(url), inspect(url)
         assert declaration(Map.put(valid(), "call_url", url)) == :error, inspect(url)
+      end
+    end
+  end
+
+  describe "submit_module" do
+    @module %{
+      "name" => "forge-submit",
+      "source" => %{
+        "git" => "https://code.example.com/example-org/forge-module",
+        "ref" => "3f2a91c4d5e6f708192a3b4c5d6e7f8091a2b3c4",
+        "module" => "forge-submit"
+      }
+    }
+
+    defp with_module(module), do: declaration(Map.put(valid(), "submit_module", module))
+
+    test "each invalid fixture is refused for its submit_module: with the fault taken out, it is accepted" do
+      for {name, fixed} <- [
+            {"adapter-submit-module-exclude.json", &Map.delete(&1, "exclude")},
+            {"adapter-submit-module-ref-branch.json",
+             &put_in(&1, ["source", "ref"], @module["source"]["ref"])},
+            {"adapter-submit-module-ref-short.json",
+             &put_in(&1, ["source", "ref"], @module["source"]["ref"])}
+          ] do
+        raw = fixture("invalid/" <> name)
+        body = Jason.decode!(raw)
+        module = fixed.(body["submit_module"])
+
+        assert read(raw) == :error, name
+
+        assert {:ok, %{submit_module: ^module}} =
+                 declaration(Map.put(body, "submit_module", module)),
+               name
+
+        assert {:ok, %{submit_module: nil}} = declaration(Map.delete(body, "submit_module")),
+               name
+      end
+    end
+
+    test "a source with a path, the root of a remote source, no name and a 64-digit ref are accepted" do
+      for module <- [
+            put_in(@module, ["source"], Map.delete(@module["source"], "module")),
+            Map.delete(@module, "name"),
+            put_in(@module, ["source", "path"], "modules/forge-submit")
+            |> update_in(["source"], &Map.delete(&1, "module")),
+            put_in(@module, ["source", "ref"], String.duplicate("0a", 32))
+          ] do
+        assert {:ok, %{submit_module: ^module}} = with_module(module), inspect(module)
+      end
+    end
+
+    test "a module the run contract refuses, or a git that is no https address, is refused" do
+      for module <- [
+            nil,
+            "forge-submit",
+            [],
+            %{},
+            Map.delete(@module, "source"),
+            Map.put(@module, "only", %{"skills" => ["submit-notes"]}),
+            Map.put(@module, "variant", "draft"),
+            Map.put(@module, "link", true),
+            put_in(@module, ["source", "ref"], "v1.0.0"),
+            put_in(@module, ["source", "ref"], String.upcase(@module["source"]["ref"])),
+            put_in(@module, ["source", "path"], "modules/forge-submit"),
+            put_in(
+              @module,
+              ["source", "git"],
+              "http://code.example.com/example-org/forge-module"
+            ),
+            put_in(@module, ["source", "git"], "git@code.example.com:example-org/forge-module"),
+            put_in(@module, ["source", "git"], "https://user@code.example.com/example-org/m"),
+            put_in(@module, ["source", "git"], "https://code.example.com/m?token=x"),
+            put_in(@module, ["source", "git"], "")
+          ] do
+        assert with_module(module) == :error, inspect(module)
       end
     end
   end

@@ -168,6 +168,30 @@ defmodule Apiary.Artifacts do
   # commits: a page that reads at once may not find the version yet, or find none should
   # the outer transaction roll back.
   #
+  # ## A withdrawal
+  #
+  # `withdraw({:run, run}, work_item, type, opts)` stores a withdrawal: a version of the
+  # work item's artifact of `type` and `opts[:name]` with no files and `withdrawn` true,
+  # by the run, with `opts[:stage_id]` and `opts[:note]` as a push takes them. A name is
+  # withdrawn when its newest version, leaving out versions by a run a member cancelled, is
+  # a withdrawal (`withdrawn?/1`): the stages and the work item's pages leave it out, and
+  # the next version with files lists it again. Only a run withdraws a name; any other
+  # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
+  # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
+  # `review-comments`, `verdict` or `proposal` (`withdrawable_type?/1`), is
+  # `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
+  # of a push's transaction, the artifact's newest version, leaving out versions by a run a
+  # member cancelled, is read, and the withdrawal is refused, as
+  # `{:error, {:withdraw, reason}}`, when it is:
+  #
+  #   - none, as the name has no version outside cancelled runs: `:no_version`;
+  #   - a withdrawal: `{:withdrawn, number}`;
+  #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
+  #     whose newest version a run wrote.
+  #
+  # The version is numbered as a push's, and the same message goes to the work item's
+  # artifacts topic.
+  #
   # ## Reading
   #
   # `list(work_item)` is the work item's artifacts by type and name, each with its
@@ -185,8 +209,9 @@ defmodule Apiary.Artifacts do
   # `exists?(work_item, stage_id, type)` is the Exists check of a stage's output: whether
   # the work item has a version of `type`, of any name, made in `stage_id`, whose files
   # are what the type takes, by the content types the format check kept at the push
-  # (`Apiary.Artifacts.Format.stored?/2`); no file is read again. False for a
-  # type the workspace does not have and for a hidden standard type.
+  # (`Apiary.Artifacts.Format.stored?/2`); no file is read again. A version of a name
+  # whose newest version is a withdrawal does not count. False for a type the workspace
+  # does not have and for a hidden standard type.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -219,6 +244,9 @@ defmodule Apiary.Artifacts do
 
   # The types only the member actions write for a person (`Apiary.WorkItems.Moves`).
   @member_types ~w(questions review-comments)
+
+  # The types Qory Apiary reads itself, which a run cannot withdraw (`withdraw/4`).
+  @not_withdrawable ~w(questions review-comments verdict proposal)
 
   @typedoc "Who pushes a version: a run of the queue, a person, or a member action."
   @type actor :: {:run, DispatchRun.t()} | {:person, Scope.t()} | {:member_action, Scope.t()}
@@ -615,6 +643,98 @@ defmodule Apiary.Artifacts do
          {:ok, staged} <- stage_all(checked, files),
          :ok <- complete(checked, staged) do
       writer |> write(work_item, type, fields, staged) |> broadcast()
+    end
+  end
+
+  @doc false
+  @spec withdraw(actor, WorkItem.t(), term, keyword) ::
+          {:ok, Version.t()}
+          | {:error,
+             refusal
+             | {:withdraw,
+                :type
+                | :no_version
+                | {:withdrawn, pos_integer}
+                | {:person, pos_integer, Ecto.UUID.t() | nil}}
+             | :not_found
+             | :stage_changed
+             | :run_ended
+             | :run_cancelled}
+  def withdraw(actor, work_item, type_name, opts \\ [])
+
+  def withdraw({:run, %DispatchRun{}} = actor, %WorkItem{} = work_item, type_name, opts) do
+    with {:ok, work_item} <- current(work_item),
+         {:ok, writer} <- writer(actor, work_item, type_name),
+         {:ok, type} <- push_type(work_item, type_name),
+         :ok <- actor_type(writer, type),
+         :ok <- withdrawable_type(type),
+         {:ok, fields} <- fields(opts),
+         :ok <- member_name(type, fields) do
+      writer |> write_withdrawal(work_item, type, fields) |> broadcast()
+    end
+  end
+
+  def withdraw(_actor, _work_item, _type_name, _opts), do: {:error, :not_found}
+
+  # withdrawable_type?/1 is whether a run may withdraw a name of the type `name`: every
+  # type but those Qory Apiary reads itself, `questions`, `review-comments`, `verdict` and
+  # `proposal`. A withdrawal of one of those would leave the stage runner or Explore with
+  # a newest version that has no file to read.
+  @doc false
+  @spec withdrawable_type?(term) :: boolean
+  def withdrawable_type?(name), do: name not in @not_withdrawable
+
+  defp withdrawable_type(%Type{name: name}),
+    do: if(withdrawable_type?(name), do: :ok, else: {:error, {:withdraw, :type}})
+
+  # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
+  # when the artifact's newest version is a run's version with files (`withdrawable/3`).
+  defp write_withdrawal(writer, work_item, type, fields) do
+    Repo.transact(fn ->
+      now = DateTime.utc_now()
+
+      with :ok <- shown_kept(work_item, type),
+           %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- run_live(writer),
+           :ok <- stage_kept(held, fields.expect_stage),
+           :ok <- type_kept(type),
+           {:ok, artifact} <- withdrawable(held, type, fields),
+           {:ok, version} <- version(artifact, writer, Map.put(fields, :withdrawn, true), now) do
+        {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
+      else
+        nil -> {:error, :not_found}
+        {:error, _reason} = error -> error
+      end
+    end)
+  end
+
+  # The artifact of the held work item, `type` and the name, when its newest version that
+  # no cancelled run wrote (`withdrawn?/1`) is a run's version with files.
+  defp withdrawable(held, type, fields) do
+    newest =
+      Repo.one(
+        from v in Version,
+          as: :version,
+          join: a in assoc(v, :artifact),
+          where: a.work_item_id == ^held.id and a.type == ^type.name and a.name == ^fields.name,
+          where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
+          order_by: [desc: v.number],
+          limit: 1,
+          preload: [artifact: a]
+      )
+
+    case newest do
+      nil ->
+        {:error, {:withdraw, :no_version}}
+
+      %Version{withdrawn: true, number: number} ->
+        {:error, {:withdraw, {:withdrawn, number}}}
+
+      %Version{writer: :person} = version ->
+        {:error, {:withdraw, {:person, version.number, version.user_id}}}
+
+      %Version{artifact: artifact} ->
+        {:ok, artifact}
     end
   end
 
@@ -1333,6 +1453,7 @@ defmodule Apiary.Artifacts do
       user_id: writer.user_id,
       stage_id: fields.stage_id,
       note: fields.note,
+      withdrawn: Map.get(fields, :withdrawn, false),
       inserted_at: now
     })
   end
@@ -1459,6 +1580,36 @@ defmodule Apiary.Artifacts do
   def cancelled?(%{writer: :run, run: %{run: run}}), do: Apiary.Runs.Run.cancel_requested?(run)
   def cancelled?(_version), do: false
 
+  # withdrawn?/1 is whether the newest version of `artifact` that no cancelled run wrote
+  # (`cancelled?/1`) is a withdrawal (`withdraw/4`), for an artifact whose versions are
+  # newest first, as `list/1` reads them and `Apiary.Stages.artifact_index/1` returns them,
+  # with `cancelled` set. A withdrawal by a run a member cancelled counts for nothing, as
+  # every other version that run wrote. False for an artifact with no such version.
+  @doc false
+  @spec withdrawn?(Artifact.t() | map) :: boolean
+  def withdrawn?(%{versions: versions}) when is_list(versions),
+    do: match?(%{withdrawn: true}, Enum.find(versions, &(not counted_out?(&1))))
+
+  def withdrawn?(_artifact), do: false
+
+  defp counted_out?(%{cancelled: cancelled}) when is_boolean(cancelled), do: cancelled
+  defp counted_out?(version), do: cancelled?(version)
+
+  # not_withdrawn_name/0 is the condition, on an artifact bound as `:artifact`, that its
+  # newest version that no cancelled run wrote is not a withdrawal: the rule of
+  # `withdrawn?/1` in SQL.
+  @doc false
+  @spec not_withdrawn_name() :: Ecto.Query.dynamic_expr()
+  def not_withdrawn_name do
+    dynamic(
+      [artifact: a],
+      fragment(
+        "NOT coalesce((SELECT n.withdrawn FROM artifact_versions n WHERE n.artifact_id = ? AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.dispatch_run_id = n.run_id AND r.cancel_requested_at IS NOT NULL) ORDER BY n.number DESC LIMIT 1), false)",
+        a.id
+      )
+    )
+  end
+
   @doc false
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
   def open_file(%ArtifactFile{store_key: key}), do: Store.impl().open(key)
@@ -1483,18 +1634,21 @@ defmodule Apiary.Artifacts do
   def exists?(%WorkItem{}, _stage_id, _type_name), do: false
 
   # The content types of the files of each version of `type`, of any name, made in
-  # `stage_id`, but by a run a member cancelled (`cancelled?/1`): a list per version. A
-  # version has one file or more.
+  # `stage_id`, but by a run a member cancelled (`cancelled?/1`) and of a name whose newest
+  # version is a withdrawal (`withdrawn?/1`): a list per version. A version here has one
+  # file or more, so a withdrawal, which has none, is never in the list.
   defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type) do
     Repo.all(
       from v in Version,
         as: :version,
         join: a in assoc(v, :artifact),
+        as: :artifact,
         join: f in assoc(v, :files),
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
         where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
+        where: ^not_withdrawn_name(),
         group_by: v.id,
         select: fragment("array_agg(?)", f.content_type)
     )

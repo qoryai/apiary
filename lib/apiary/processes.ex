@@ -607,9 +607,22 @@ defmodule Apiary.Processes do
         "stack" => Workspace.qory_stack(workspace),
         "type" => template.type,
         "version" => newest.number
-      },
+      }
+      |> with_submit(template),
       []
     )
+  end
+
+  @doc false
+  # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
+  # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
+  # where it has one (`Apiary.Processes.Version`).
+  @spec with_submit(map, map) :: map
+  def with_submit(record, template) do
+    case Map.get(template, :submit) do
+      %{} = submit -> Map.put(record, "submit", submit)
+      nil -> record
+    end
   end
 
   @doc """

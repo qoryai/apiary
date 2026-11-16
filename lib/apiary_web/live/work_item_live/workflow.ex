@@ -75,8 +75,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # page/2 is what the work item page draws of `row` under the workflow model: the
   # stages of its process version with the current one marked, the current stage with
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
-  # escalation, the artifacts' approval marks, and what the reader may do; nil for a work
-  # item the stage runner has not placed.
+  # escalation, the artifacts' approval marks, but those of a withdrawn name
+  # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
+  # stage runner has not placed.
   @spec page(Scope.t(), struct) :: map | nil
   def page(scope, row) do
     case Stages.status(row, scope) do
@@ -135,7 +136,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
-      index: Enum.map(index, &indexed/1),
+      index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),

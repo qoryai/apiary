@@ -516,6 +516,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                        "number" => 1,
                        "writer" => %{"kind" => "run", "run_id" => ctx.dispatch_run.run_id},
                        "cancelled" => false,
+                       "withdrawn" => false,
                        "stage_id" => @explore,
                        "note" => nil,
                        "at" =>
@@ -1137,6 +1138,86 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "a submission.json the type's schema takes is stored as a version of submission",
+         ctx do
+      submission = %{
+        "ref" => "qory/wi_example",
+        "verdict" => "passed",
+        "repositories" => [
+          %{
+            "system" => "forge.example.com",
+            "path" => "example/shop",
+            "commit" => String.duplicate("a", 40),
+            "draft" => %{
+              "number" => 4,
+              "url" => "https://forge.example.com/example/shop/pull/4",
+              "title" => "Gift cards",
+              "state" => "draft",
+              "action" => "opened"
+            }
+          }
+        ],
+        "text" => %{"title" => "Gift cards", "description" => "Adds gift cards to checkout."}
+      }
+
+      bytes = Jason.encode!(submission)
+      body = push_body("submission", [{"submission.json", "application/json", bytes}])
+      conn = write(ctx, "/artifacts", body)
+
+      assert %{"artifact" => %{"type" => "submission", "version" => %{"id" => id, "number" => 1}}} =
+               json_response(conn, 201)
+
+      assert Apiary.Artifacts.newest(ctx.work_item, "submission", "main").public_id == id
+      assert [%{files: [%{filename: "submission.json", content: ^bytes}]}] = RunApiStubs.pushed()
+
+      # A submission with no verdict fails the type's schema.
+      bytes = Jason.encode!(Map.delete(submission, "verdict"))
+      body = push_body("submission", [{"submission.json", "application/json", bytes}])
+      conn = write(ctx, "/artifacts", body)
+      assert json_response(conn, 422)["error"] == "invalid_artifact"
+      assert length(RunApiStubs.pushed()) == 1
+    end
+
+    test "change is no standard type: a push of it is 422 unknown_type", ctx do
+      file = {"change.json", "application/json", ~s({"url":"https://forge.example.com/pr/4"})}
+      conn = write(ctx, "/artifacts", push_body("change", [file]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "unknown_type",
+               "type" => "change",
+               "message" =>
+                 "Define the artifact type change in the workspace's Artifact types, " <>
+                   "then run the round again."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a submission to a workspace without the type is 422 unknown_type, with the step " <>
+           "to define it",
+         ctx do
+      {1, _rows} =
+        Repo.delete_all(
+          from t in Apiary.Artifacts.Type,
+            where: t.workspace_id == ^ctx.work_item_workspace.id and t.name == "submission"
+        )
+
+      file = {"submission.json", "application/json", ~s({"ref":"qory/wi_example"})}
+      conn = write(ctx, "/artifacts", push_body("submission", [file]))
+
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "unknown_type",
+               "type" => "submission",
+               "message" =>
+                 "Define the artifact type submission in the workspace's Artifact types, " <>
+                   "then run the round again."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "what the push returns is answered with the type, its limit and the member",
          ctx do
       cases = [
@@ -1587,6 +1668,293 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert Apiary.Stages.run_stage_id(%{dispatch_run | stage_id: "st_other"}, ctx.work_item) ==
                "st_other"
+    end
+  end
+
+  describe "POST artifacts with withdraw" do
+    defp withdrawal(type, name, extra \\ %{}),
+      do: Map.merge(%{"type" => type, "name" => name, "withdraw" => true}, extra)
+
+    defp screenshot(name, content) do
+      push_body("screenshot", [{"one.png", "image/png", content}], %{"name" => name})
+    end
+
+    test "stores a version with no files, which the index marks withdrawn", ctx do
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png}], %{"name" => "scenario-2"})
+             ).status == 201
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          withdrawal("screenshot", "scenario-2", %{"note" => "Shape removed scenario-2."})
+        )
+
+      assert signed_answer?(conn)
+      [_pushed, withdrawn] = RunApiStubs.pushed()
+
+      assert json_response(conn, 201) == %{
+               "version" => 1,
+               "artifact" => %{
+                 "type" => "screenshot",
+                 "name" => "scenario-2",
+                 "version" => %{"id" => withdrawn.public_id, "number" => 2}
+               }
+             }
+
+      assert withdrawn.withdrawn
+      assert withdrawn.files == []
+      assert withdrawn.writer == :run
+      assert withdrawn.note == "Shape removed scenario-2."
+      assert {:run, %DispatchRun{id: id}} = withdrawn.opts[:actor]
+      assert id == ctx.dispatch_run.id
+      assert withdrawn.opts[:stage_id] == ctx.dispatch_run.stage_id
+      refute Repo.exists?(from f in ArtifactFile, where: f.version_id == ^withdrawn.id)
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert artifact["newest_version"] == 2
+
+      assert [
+               %{
+                 "number" => 2,
+                 "withdrawn" => true,
+                 "files" => [],
+                 "note" => "Shape removed scenario-2."
+               },
+               %{"number" => 1, "withdrawn" => false, "files" => [_png]}
+             ] = artifact["versions"]
+    end
+
+    test "takes files as an empty list, and withdraw only as true, false or null", ctx do
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2", %{"files" => []}))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2", %{"withdraw" => 1}))
+      assert json_response(conn, 400) == %{"error" => "invalid_request", "names" => ["withdraw"]}
+
+      # Without withdraw, a push needs files as before.
+      for withdraw <- [false, nil] do
+        conn =
+          write(
+            ctx,
+            "/artifacts",
+            withdrawal("screenshot", "scenario-2", %{"withdraw" => withdraw})
+          )
+
+        assert json_response(conn, 400) == %{"error" => "invalid_request", "names" => ["files"]}
+      end
+
+      assert [%{number: 2}] = RunApiStubs.pushed()
+    end
+
+    test "refuses a name with no version, files, a withdrawal and a person's upload", ctx do
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 409) == %{
+               "error" => "no_version",
+               "type" => "screenshot",
+               "message" =>
+                 "Withdraw only a stored artifact. screenshot/scenario-2 has no version outside cancelled runs."
+             }
+
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("screenshot", [{"scenario-2.png", "image/png", @png}], %{
+            "name" => "scenario-2",
+            "withdraw" => true
+          })
+        )
+
+      assert json_response(conn, 422) == %{
+               "error" => "withdrawal_with_files",
+               "type" => "screenshot",
+               "message" =>
+                 "Push either files or a withdrawal. A withdrawal of screenshot/scenario-2 " <>
+                   "stores no files, and the push has 1 file."
+             }
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2")).status == 201
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+
+      assert json_response(conn, 409) == %{
+               "error" => "already_withdrawn",
+               "type" => "screenshot",
+               "message" =>
+                 "Leave screenshot/scenario-2 as it is. Its newest version, v2, is already a " <>
+                   "withdrawal."
+             }
+
+      # A run's version, then a person's upload on top of it.
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-1")
+
+      {:ok, _upload} =
+        Apiary.Artifacts.push(
+          {:person, ctx.scope},
+          ctx.work_item,
+          "screenshot",
+          [file("one.png", "image/png", @png <> "b")],
+          name: "scenario-1"
+        )
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-1"))
+
+      assert json_response(conn, 409) == %{
+               "error" => "person_version",
+               "type" => "screenshot",
+               "message" =>
+                 "Leave screenshot/scenario-1 to a member. Its newest version, v2, is a " <>
+                   "version by #{Inputs.person_name(ctx.scope.user.id)}, and a run withdraws " <>
+                   "only a name whose newest version a run wrote."
+             }
+
+      # Only the one withdrawal was stored.
+      assert [%{number: 2, withdrawn: true}] = RunApiStubs.pushed()
+
+      numbers =
+        for artifact <- json_response(read(ctx, "/artifacts"), 200)["artifacts"],
+            into: %{},
+            do: {artifact["name"], artifact["newest_version"]}
+
+      assert numbers == %{"scenario-1" => 2, "scenario-2" => 2}
+    end
+
+    test "refuses each type Qory Apiary reads itself, before the files", ctx do
+      for type <- ~w(questions review-comments verdict proposal) do
+        for body <- [
+              withdrawal(type, "main"),
+              push_body(type, [{"a.json", "application/json", "{}"}], %{"withdraw" => true})
+            ] do
+          conn = write(ctx, "/artifacts", body)
+          assert signed_answer?(conn)
+
+          assert json_response(conn, 422) == %{
+                   "error" => "type_not_withdrawable",
+                   "type" => type,
+                   "message" =>
+                     "Push a new version of #{type} instead. Qory Apiary reads questions, " <>
+                       "review-comments, verdict and proposal itself, so a run cannot " <>
+                       "withdraw them."
+                 }
+        end
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a withdrawal by a run that ended or that a member cancelled is 409 run_ended",
+         ctx do
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      # Running, as a member can cancel it, then cancelled.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [state: "running", started_at: DateTime.utc_now()]
+        )
+
+      {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+
+      assert json_response(conn, 409) == %{
+               "error" => "run_ended",
+               "message" =>
+                 "The run was cancelled, so it can no longer push artifacts or give a verdict."
+             }
+
+      # Ended, with no cancel.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [cancel_requested_at: nil, cancel_requested_by_id: nil]
+        )
+
+      end_run!(ctx)
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+
+      assert json_response(conn, 409) == %{
+               "error" => "run_ended",
+               "message" =>
+                 "The run has ended, so it can no longer push artifacts or give a verdict."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a type the workspace does not have is refused before the files", ctx do
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("demo-findings", [{"a.json", "application/json", "{}"}], %{
+            "withdraw" => true
+          })
+        )
+
+      assert %{"error" => "unknown_type", "type" => "demo-findings"} = json_response(conn, 422)
+    end
+
+    test "the stage's output leaves out a withdrawn name; a push of files lists it again",
+         ctx do
+      # Explore, on a process version whose Explore has the output screenshot too.
+      document = Apiary.Processes.default_document("software")
+      [explore | rest] = document["stages"]
+
+      explore =
+        Map.update!(explore, "outputs", &(&1 ++ [%{"type" => "screenshot", "required" => false}]))
+
+      {:ok, version} =
+        Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, %{
+          document
+          | "stages" => [explore | rest]
+        })
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [process_version_id: version.id]
+        )
+
+      place!(ctx)
+
+      outputs = fn ->
+        Enum.filter(
+          json_response(read(ctx, "/work-item"), 200)["outputs"],
+          &(&1["type"] == "screenshot")
+        )
+      end
+
+      assert write(ctx, "/artifacts", screenshot("a", @png <> "a")).status == 201
+      assert write(ctx, "/artifacts", screenshot("b", @png <> "b")).status == 201
+      [a, b] = RunApiStubs.pushed()
+
+      assert [%{"type" => "screenshot", "version" => %{"id" => id}, "check" => "passed"}] =
+               outputs.()
+
+      assert id == b.public_id
+
+      # b withdrawn: the output is a's version.
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "b")).status == 201
+      assert [%{"version" => %{"id" => id}, "check" => "passed"}] = outputs.()
+      assert id == a.public_id
+
+      # Both withdrawn: no version, and the Exists check fails.
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "a")).status == 201
+      assert [%{"version" => nil, "check" => "missing"}] = outputs.()
+
+      # A push of files lists b again.
+      assert write(ctx, "/artifacts", screenshot("b", @png <> "c")).status == 201
+      again = List.last(RunApiStubs.pushed())
+      assert again.number == 3
+
+      assert [%{"version" => %{"id" => id, "number" => 3}, "check" => "passed"}] = outputs.()
+      assert id == again.public_id
     end
   end
 

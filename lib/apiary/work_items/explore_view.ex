@@ -218,7 +218,8 @@ defmodule Apiary.WorkItems.ExploreView do
 
   # newest_outputs/3 is the newest version of each of `types` that a run of `work_item`'s
   # current take in pushed at the stage `stage_id`, a stage after Explore's, by type, of the
-  # artifact named `main`. A type with none has no entry.
+  # artifact named `main`. A type with none has no entry, and so has a type whose `main` is
+  # withdrawn (`Apiary.WorkItems.Explore.versions/3`).
   @doc false
   @spec newest_outputs(WorkItem.t(), String.t(), [String.t()]) :: %{String.t() => pos_integer}
   def newest_outputs(%WorkItem{id: id, take_in: take_in}, stage_id, types)
