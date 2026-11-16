@@ -2044,7 +2044,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- `stage_skips` (20261116100000): a new table, the workflow entries that the stage runner
+- `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.
   Rolling back drops the table, with every record of a passed-over entry.
