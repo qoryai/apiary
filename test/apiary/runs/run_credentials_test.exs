@@ -271,6 +271,12 @@ defmodule Apiary.Runs.RunCredentialsTest do
       version
     end
 
+    # The run's documents, changed by `change` on their decoded form.
+    defp documents!(run, change) do
+      documents = Repo.get!(Run, run.id).run_documents |> Jason.decode!() |> change.()
+      set!(Run, run.id, run_documents: Jason.encode!(documents))
+    end
+
     # The documents the claim sent the run of the queue `queued`, decoded.
     defp sent_documents(queued),
       do: Jason.decode!(Repo.get_by!(Run, dispatch_run_id: queued.id).run_documents)
@@ -352,6 +358,52 @@ defmodule Apiary.Runs.RunCredentialsTest do
         set!(Run, run.id, run_documents: nil)
         assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
       end
+    end
+
+    # Cancel run reads the first source the run has: its work entry before its documents,
+    # its documents before its stage entry. Each case gives the sources different levels.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run takes the work entry first, then the documents", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+      # A work entry of write, with documents that say read.
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.run_id == ^run.id),
+          set: [access: :write]
+        )
+
+      assert sent_documents(queued)["access"] == "read"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      # No work entry, documents that say write, and a stage entry that lowers to read.
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+      documents!(run, &Map.put(&1, "access", "write"))
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      set!(Run, run.id, run_documents: nil)
+      refute Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+    end
+
+    # A text of the documents may have a NUL, which JSON writes as an escape.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run reads the access of documents with a NUL in a text", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+
+      documents!(run, fn documents ->
+        documents
+        |> Map.put("access", "write")
+        |> put_in(["work_item", "title"], "Checkout \u0000 storefront")
+      end)
+
+      assert Repo.get!(Run, run.id).run_documents =~ "\\u0000"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
     end
 
     # The claim reads the run's level once, for its documents and its work entry: the entry

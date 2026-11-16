@@ -150,8 +150,7 @@ defmodule Apiary.Runs.Cancel do
   (`workspace`) whose access level is `write`, as its claim recorded it. The level is the
   `access` of the run's work credential entry (`Apiary.Runs.RunCredential`), which a run
   has only where its adapter declares apply items; else the top-level `access` of the
-  documents the claim sent the run (`runs.run_documents`), read in the database, so the
-  documents do not leave it; else, for a run with neither, the level of its harness walk
+  documents the claim sent the run (`runs.run_documents`); else, for a run with neither, the level of its harness walk
   (`Apiary.Harnesses.RunHarness`) lowered by its stage entry
   (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
@@ -180,12 +179,18 @@ defmodule Apiary.Runs.Cancel do
     if entry, do: Atom.to_string(entry), else: sent_access(run_id)
   end
 
+  # Decoded here: Postgres raises an error on a JSON text with the escape of a NUL,
+  # `\u0000`, in both `json` and `jsonb`, and a text of the documents may have one.
   defp sent_access(run_id) do
-    Repo.one(
-      from r in Run,
-        where: r.id == ^run_id and not is_nil(r.run_documents),
-        select: fragment("convert_from(?, 'UTF8')::jsonb ->> 'access'", r.run_documents)
-    )
+    documents =
+      Repo.one(from r in Run, where: r.id == ^run_id, select: r.run_documents)
+
+    with documents when is_binary(documents) <- documents,
+         {:ok, %{"access" => access}} when is_binary(access) <- Jason.decode(documents) do
+      access
+    else
+      _none -> nil
+    end
   end
 
   defp computed_access(id) do
