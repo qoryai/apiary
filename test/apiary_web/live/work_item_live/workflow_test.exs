@@ -90,7 +90,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                 }
               ],
               "outputs" => [
-                %{"type" => "change", "required" => true, "check" => %{"reported" => "opened"}},
+                %{
+                  "type" => "submission",
+                  "required" => true,
+                  "check" => %{"reported" => "opened"}
+                },
                 %{"type" => "demo-video", "required" => true},
                 %{"type" => "explainer", "required" => true},
                 %{"type" => "decision-record", "required" => false}
@@ -476,8 +480,25 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     }
   end
 
-  defp sample("change") do
-    json("change.json", %{"url" => "https://forge.example.com/example/shop/pull/4"})
+  defp sample("submission") do
+    json("submission.json", %{
+      "ref" => "qory/wi_example",
+      "verdict" => "passed",
+      "repositories" => [
+        %{
+          "system" => "forge.example.com",
+          "path" => "example/shop",
+          "commit" => String.duplicate("a", 40),
+          "draft" => %{
+            "number" => 4,
+            "url" => "https://forge.example.com/example/shop/pull/4",
+            "title" => "Gift cards",
+            "state" => "draft",
+            "action" => "opened"
+          }
+        }
+      ]
+    })
   end
 
   defp sample(type) do
@@ -2515,7 +2536,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(
                view,
-               "#work-item-stage-gate-check-change",
+               "#work-item-stage-gate-check-submission",
                "Not checked in this version"
              )
 
@@ -3497,7 +3518,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_build(scope, :at_gate, approvers: %{"members" => [listed.user.id]})
       push!({:person, scope}, work_item, "demo-video", @build)
       push!({:person, scope}, work_item, "explainer", @build)
-      push!({:person, scope}, work_item, "change", @build)
+      push!({:person, scope}, work_item, "submission", @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-stage-gate-approve")

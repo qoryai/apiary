@@ -1211,6 +1211,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   saves its features.
 - A switch on that page, off by default: **Features by person**. Where the server's
   config turned it on, the first start after the upgrade saves it on.
+- A template's `process.yaml` may declare the submit step of a run, `submit: {type,
+  send}`, as qory's harness contract v1 has it since qory `c0184bd`. A process version
+  made from the template keeps it in its template record. Qory Apiary refuses a template
+  whose `submit.type` is not a structured type that its `artifact_types` defines, with
+  the fix first: "set submit.type to a structured type of artifact_types: mockup is a
+  standard type".
 
 ### Changed
 
@@ -1818,6 +1824,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   features were saved.
 
 ### Removed
+
+- The standard artifact type `change`, with its JSON Schema and its view, which showed a
+  change's `url` as a link. The type `submission` of the software factory template
+  replaces it (vault decision 0216). A run's push of `change` now gets `422`
+  `unknown_type`, as any type the workspace does not have, and **Artifact types** no
+  longer lists `change`. Stored versions of `change` stay, and their page has a download
+  link for the file.
 
 <!-- feature: managed_organisations -->
 - An operator relates only to the workspaces it operates (under Changed), not to whole
