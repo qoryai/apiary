@@ -26,34 +26,14 @@ msgstr ""
 msgid "A host takes at most %{max} paths."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "Enter the operator's address."
-msgstr ""
-
 #: lib/apiary_pro/organisation_policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."
 msgstr ""
 
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "No operator has that address."
-msgstr ""
-
 #: lib/apiary_pro/organisation_policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "already has a rule here"
-msgstr ""
-
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
-msgid "cannot be an operator: it is a client of one"
-msgstr ""
-
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
-msgid "cannot be an organisation while it has clients"
 msgstr ""
 
 #: lib/apiary_pro/tenants.ex
@@ -116,20 +96,9 @@ msgstr ""
 msgid "is no longer an admin who can act: choose another"
 msgstr ""
 
-#: lib/apiary_pro/tenants.ex
-#, elixir-autogen, elixir-format
-msgid "is not an operator"
-msgstr ""
-
 #: lib/apiary_pro/sign_up.ex
 #, elixir-autogen, elixir-format
 msgid "is not open for sign-up"
-msgstr ""
-
-#: lib/apiary_pro_web/live/client_live/index.ex
-#: lib/apiary_pro_web/live/settings_live/ownership.ex
-#, elixir-autogen, elixir-format
-msgid "is not the name"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex

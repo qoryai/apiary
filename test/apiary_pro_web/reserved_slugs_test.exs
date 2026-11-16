@@ -14,14 +14,14 @@ defmodule ApiaryProWeb.ReservedSlugsTest do
       assert name in ReservedSlugs.organisation(), name
     end
 
-    for page <- ~w(clients instance policy-requests workspaces policy) do
+    for page <- ~w(instance workspaces policy) do
       assert page in ReservedSlugs.workspace(), page
     end
   end
 
   # A workspace name is refused only where an organisation-level page has the path.
   test "a name that no page of an organisation has is no reserved workspace name" do
-    for name <- ~w(access audit billing grants invitations keys) do
+    for name <- ~w(access audit billing clients grants invitations keys) do
       refute name in ReservedSlugs.workspace(), name
     end
   end

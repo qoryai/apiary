@@ -1,17 +1,18 @@
 defmodule ApiaryPro.PeopleRowsRacesTest do
   # The people locks a change takes at its one point (`ApiaryPro.Tenants.lock_rows/1`)
-  # against other changes, each on a connection of its own, outside the SQL sandbox, so
+  # against other changes, each on a separate connection, outside the SQL sandbox, so
   # each commits and each waits on the other's locks as it would in production. Not async:
   # what these tests commit is visible to every other test while they run, and they delete
   # it again before they end.
   #
   # The rule under test is the lock order of docs/access.md: the organisation rows, then
   # the people locks in the order of their ids, then workspaces, memberships and accounts.
-  # A write in a client that relies on its person's level in the operator holds the
-  # operator's people lock `FOR SHARE`; a change of the operator's people locks it
-  # `FOR UPDATE`; an account's deletion and suspension lock those of the account's
-  # organisations `FOR UPDATE`. So the second of two such changes waits for the first, and
-  # then sees it, and nothing deadlocks, which Postgres's own count of deadlocks shows.
+  # A write in an organisation with an operated workspace, which relies on its person's
+  # level in the operator, holds the operator's people lock `FOR SHARE`; a change of the
+  # operator's people locks it `FOR UPDATE`; an account's deletion and suspension lock
+  # those of the account's organisations `FOR UPDATE`. So the second of two such changes
+  # waits for the first, and then sees it, and nothing deadlocks, which the deadlock count
+  # of Postgres shows.
   #
   # Each test holds the first side's transaction open until the second side is seen, in
   # the database, waiting on a lock the first side holds (`pg_blocking_pids`): the order
@@ -41,10 +42,11 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   end
 
   # An operator, made one as the product makes one, its owner and a second owner, and an
-  # admin of it who reads its client through it; the client, with its owner and an admin
-  # of its own; and an instance admin. The instance admin's membership is inserted as it
-  # is, and goes with their account; their entries in the instance organisation's trail
-  # are deleted when the test ends.
+  # admin of it who reaches the operated workspace through it; an organisation whose
+  # workspace Main the operator operates, with its owner and an admin; and an instance
+  # admin. The instance admin's membership is inserted as it is, and goes with their
+  # account; their entries in the instance organisation's trail are deleted when the test
+  # ends.
   setup do
     admin = sign_up()
     instance_organisation = ApiaryPro.Organisations.instance_organisation()
@@ -70,8 +72,8 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     second_owner = member(operator.scope, :owner)
     person = member(operator.scope, :admin)
 
-    client = client(in_operator)
-    client_admin = member(client.owner.scope, :admin)
+    operated = operated(in_operator)
+    operated_admin = member(operated.owner.scope, :admin)
 
     %{
       instance_admin: scope_in(admin.user, instance_organisation),
@@ -79,15 +81,15 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       in_operator: in_operator,
       second_owner: second_owner,
       person: person,
-      client: client.organisation,
-      workspace: client.workspace,
-      client_owner: client.owner,
-      client_admin: client_admin,
-      person_in_client: scope_in(person.user, client.organisation, client.workspace)
+      operated: operated.organisation,
+      workspace: operated.workspace,
+      operated_owner: operated.owner,
+      operated_admin: operated_admin,
+      person_in_operated: scope_in(person.user, operated.organisation, operated.workspace)
     }
   end
 
-  describe "a change of an operator's people against a write in its client that relies on it" do
+  describe "a change of an operator's people against a write in a workspace it operates" do
     # Each change of the person's membership in the operator, made by its owner, and what
     # the person's level in the operator is once it is made: nil for none.
     @changes [
@@ -107,7 +109,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
         {held, held_pid} = hold(fn -> change(@change, ctx) end)
         assert {:ok, %Membership{}} = held.result
 
-        write = start(fn -> locked_reload(ctx.person_in_client) end)
+        write = start(fn -> locked_reload(ctx.person_in_operated) end)
         await_blocked(write.backend, held_pid)
         commit(held)
 
@@ -118,7 +120,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
       test "the write first: the #{change} waits for it, and is made after", ctx do
         before = deadlocks()
-        {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_client) end)
+        {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_operated) end)
         assert operator_level(write.result) == :admin
 
         held = start(fn -> change(@change, ctx) end)
@@ -139,7 +141,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
       assert {:ok, %Membership{suspended_at: nil}} = held.result
 
-      write = start(fn -> locked_reload(ctx.person_in_client) end)
+      write = start(fn -> locked_reload(ctx.person_in_operated) end)
       await_blocked(write.backend, held_pid)
       commit(held)
 
@@ -152,7 +154,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       {:ok, _} = Organisations.suspend_member(ctx.in_operator, ctx.person.membership.id)
       before = deadlocks()
 
-      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_client) end)
+      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_operated) end)
       assert operator_level(write.result) == nil
 
       held =
@@ -165,17 +167,23 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       assert deadlocks() == before
     end
 
-    test "an acceptance of the operator's invitation first: the write waits, and reaches the client",
+    test "an acceptance of the operator's invitation first: the write waits, and reaches the workspace",
          ctx do
       %{user: joining} = sign_up()
       token = invite(ctx.in_operator, joining)
-      in_client = %{Scope.for_user(joining) | organisation: ctx.client, workspace: ctx.workspace}
+
+      in_operated = %{
+        Scope.for_user(joining)
+        | organisation: ctx.operated,
+          workspace: ctx.workspace
+      }
+
       before = deadlocks()
 
       {held, held_pid} = hold(fn -> Organisations.accept_invitation(joining, token) end)
       assert {:ok, %Membership{}} = held.result
 
-      write = start(fn -> locked_reload(in_client) end)
+      write = start(fn -> locked_reload(in_operated) end)
       await_blocked(write.backend, held_pid)
       commit(held)
 
@@ -189,7 +197,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       token = invite(ctx.in_operator, joining)
       before = deadlocks()
 
-      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_client) end)
+      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_operated) end)
       held = start(fn -> Organisations.accept_invitation(joining, token) end)
       await_blocked(held.backend, write_pid)
       commit(write)
@@ -201,32 +209,32 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
   describe "a change of the instance organisation's people, the instance organisation an operator" do
     # The instance organisation is an operator where the instance was set up with the
-    # managed organisations; a client of it, created by the instance admin.
+    # managed organisations; an organisation whose workspace Main it operates.
     setup ctx do
       instance_organisation = ApiaryPro.Organisations.instance_organisation()
       assert Tenants.operator?(instance_organisation)
 
-      client = client(ctx.instance_admin)
+      operated = operated(ctx.instance_admin)
       %{user: person} = sign_up()
       on_exit(fn -> clean_up_entries_naming(instance_organisation.id, person.id) end)
 
       %{
-        instance_client: client.organisation,
         person: person,
-        in_instance_client: %{
+        in_instance_operated: %{
           Scope.for_user(person)
-          | organisation: client.organisation,
-            workspace: client.workspace
+          | organisation: operated.organisation,
+            workspace: operated.workspace
         }
       }
     end
 
-    test "an instance admin granted first: the write in its client waits, and reaches it", ctx do
+    test "an instance admin granted first: the write in a workspace it operates waits, and reaches it",
+         ctx do
       before = deadlocks()
       {held, held_pid} = hold(fn -> Organisations.grant_instance_admin(ctx.person) end)
       assert {:ok, %{granted?: true}} = held.result
 
-      write = start(fn -> locked_reload(ctx.in_instance_client) end)
+      write = start(fn -> locked_reload(ctx.in_instance_operated) end)
       await_blocked(write.backend, held_pid)
       commit(held)
 
@@ -235,14 +243,15 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       assert deadlocks() == before
     end
 
-    test "an instance admin revoked first: the write in its client waits, and reads it", ctx do
+    test "an instance admin revoked first: the write in a workspace it operates waits, and reads it",
+         ctx do
       {:ok, _} = Organisations.grant_instance_admin(ctx.person)
       before = deadlocks()
 
       {held, held_pid} = hold(fn -> Organisations.revoke_instance_admin(ctx.person) end)
       assert {:ok, %Membership{level: :member}} = held.result
 
-      write = start(fn -> locked_reload(ctx.in_instance_client) end)
+      write = start(fn -> locked_reload(ctx.in_instance_operated) end)
       await_blocked(write.backend, held_pid)
       commit(held)
 
@@ -252,81 +261,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  describe "while the operator owns its clients" do
-    setup do: Flags.put_operator_infrastructure(true)
-
-    # An owner of the operator demotes its admin, who, through the operator, demotes the
-    # owner in the client, where the owner is an admin too: each holds the operator's
-    # people lock first, so neither holds a membership the other waits for.
-    setup ctx do
-      Repo.insert!(%Membership{
-        organisation_id: ctx.client.id,
-        user_id: ctx.in_operator.user.id,
-        level: :admin
-      })
-
-      owner_in_client = scope_in(ctx.in_operator.user, ctx.client, ctx.workspace)
-      %{owner_in_client: owner_in_client}
-    end
-
-    test "the demotion in the operator first: the admin's demotion in the client waits, and is refused",
-         ctx do
-      before = deadlocks()
-      {demotion, demotion_pid} = hold(fn -> Organisations.lock_owners(ctx.in_operator) end)
-
-      in_client =
-        start(fn ->
-          Organisations.set_member_level(
-            ctx.person_in_client,
-            ctx.owner_in_client.membership.id,
-            :member
-          )
-        end)
-
-      await_blocked(in_client.backend, demotion_pid)
-
-      assert {:ok, %Membership{level: :member}} =
-               continue(demotion, fn ->
-                 Organisations.set_member_level(
-                   ctx.in_operator,
-                   ctx.person.membership.id,
-                   :member
-                 )
-               end)
-
-      commit(demotion)
-
-      assert {:error, :forbidden} = Task.await(in_client.task)
-      assert deadlocks() == before
-    end
-
-    test "the demotion in the client first: the demotion in the operator waits, and both are made",
-         ctx do
-      before = deadlocks()
-      {in_client, in_client_pid} = hold(fn -> Organisations.lock_owners(ctx.person_in_client) end)
-
-      demotion =
-        start(fn ->
-          Organisations.set_member_level(ctx.in_operator, ctx.person.membership.id, :member)
-        end)
-
-      await_blocked(demotion.backend, in_client_pid)
-
-      assert {:ok, %Membership{level: :member}} =
-               continue(in_client, fn ->
-                 Organisations.set_member_level(
-                   ctx.person_in_client,
-                   ctx.owner_in_client.membership.id,
-                   :member
-                 )
-               end)
-
-      commit(in_client)
-
-      assert {:ok, %Membership{level: :member}} = Task.await(demotion.task)
-      assert deadlocks() == before
-    end
-
+  describe "two people who change each other's level" do
     test "two owners of the operator demote each other: the second waits, and is refused", ctx do
       before = deadlocks()
       second = ctx.second_owner
@@ -354,21 +289,19 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       assert deadlocks() == before
     end
 
-    test "two admins of the client demote each other at once: nothing deadlocks", ctx do
-      other = member(ctx.client_owner.scope, :admin)
+    test "two owners of the operated organisation demote each other at once: nothing deadlocks",
+         ctx do
+      owner = ctx.operated_owner
+      other = member(owner.scope, :owner)
       before = deadlocks()
 
       answers =
         together([
           fn ->
-            Organisations.set_member_level(
-              ctx.client_admin.scope,
-              other.membership.id,
-              :member
-            )
+            Organisations.set_member_level(owner.scope, other.membership.id, :member)
           end,
           fn ->
-            Organisations.set_member_level(other.scope, ctx.client_admin.membership.id, :member)
+            Organisations.set_member_level(other.scope, owner.membership.id, :member)
           end
         ])
 
@@ -376,66 +309,16 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       refute Enum.any?(answers, &match?({:error, %Postgrex.Error{}}, &1))
       assert deadlocks() == before
     end
-
-    test "the operator's owner's account suspended first: their change in the client waits, and is refused",
-         ctx do
-      owner = ctx.second_owner
-      in_client = scope_in(owner.user, ctx.client, ctx.workspace)
-      before = deadlocks()
-
-      {suspension, suspension_pid} =
-        hold(fn -> Suspensions.suspend_account(ctx.instance_admin, owner.user.id) end)
-
-      assert {:ok, %{user: %User{}}} = suspension.result
-
-      change =
-        start(fn ->
-          Organisations.set_member_level(in_client, ctx.client_admin.membership.id, :member)
-        end)
-
-      # It waits at the operator's people lock, the suspension's, before it reads the
-      # account the suspension also holds.
-      await_blocked(change.backend, suspension_pid)
-      assert waits_on(change.backend) == "people_locks"
-      commit(suspension)
-
-      # Then it reads the owner's account suspended, and may not change the client.
-      assert {:error, :forbidden} = Task.await(change.task)
-      assert Repo.get!(Membership, ctx.client_admin.membership.id).level == :admin
-      assert deadlocks() == before
-    end
-
-    test "the operator's owner's change in the client first: their account's suspension waits for it",
-         ctx do
-      owner = ctx.second_owner
-      in_client = scope_in(owner.user, ctx.client, ctx.workspace)
-      before = deadlocks()
-
-      {change, change_pid} =
-        hold(fn ->
-          Organisations.set_member_level(in_client, ctx.client_admin.membership.id, :member)
-        end)
-
-      assert {:ok, %Membership{level: :member}} = change.result
-
-      suspension =
-        start(fn -> Suspensions.suspend_account(ctx.instance_admin, owner.user.id) end)
-
-      await_blocked(suspension.backend, change_pid)
-      commit(change)
-
-      assert {:ok, %{user: %User{}}} = Task.await(suspension.task)
-      assert deadlocks() == before
-    end
   end
 
-  describe "an account's deletion against a write in a client that relies on the person's level" do
-    test "the deletion first: the write waits, and the person reaches the client no more", ctx do
+  describe "an account's deletion against a write in an operated workspace that relies on the person's level" do
+    test "the deletion first: the write waits, and the person reaches the workspace no more",
+         ctx do
       before = deadlocks()
       {deletion, deletion_pid} = hold(fn -> Accounts.delete_user(ctx.person.user) end)
       assert {:ok, _deleted} = deletion.result
 
-      write = start(fn -> locked_reload(ctx.person_in_client) end)
+      write = start(fn -> locked_reload(ctx.person_in_operated) end)
       await_blocked(write.backend, deletion_pid)
       commit(deletion)
 
@@ -446,7 +329,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
     test "the write first: the deletion waits for it", ctx do
       before = deadlocks()
-      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_client) end)
+      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_operated) end)
       assert operator_level(write.result) == :admin
 
       deletion = start(fn -> Accounts.delete_user(ctx.person.user) end)
@@ -489,7 +372,8 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   end
 
   describe "an operator made an organisation against its member's account deletion" do
-    # An operator of no client, made one as the product makes one, and a member of it.
+    # An operator that operates no workspace, made one as the product makes one, and a
+    # member of it.
     setup do
       %{organisation: organisation, scope: owner} = sign_up()
 
@@ -538,13 +422,14 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  describe "an acceptance into a client against a change of its operator's kind" do
+  describe "an acceptance into an operated organisation against a change of the operator's kind" do
     # The acceptance takes the operator's people lock without its organisation row; the
     # change of kind holds the operator's row `FOR UPDATE` and takes no people lock. While
-    # the operator has a client the change is refused, and neither waits on the other.
+    # the operator operates a workspace the change is refused, and neither waits on the
+    # other.
     setup ctx do
       %{user: joining} = sign_up()
-      token = invite(ctx.client_owner.scope, joining)
+      token = invite(ctx.operated_owner.scope, joining)
       %{joining: joining, token: token}
     end
 
@@ -555,7 +440,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       {change, _change_pid} =
         hold(fn -> Operators.change_kind(ctx.instance_admin, ctx.operator.id, :organisation) end)
 
-      assert {:error, :has_clients} = change.result
+      assert {:error, :has_operated_workspaces} = change.result
       assert people_lock_held(ctx.operator.id) == nil
 
       # Made while the change of kind still holds the operator's row: it waits for nothing.
@@ -580,7 +465,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       change =
         start(fn -> Operators.change_kind(ctx.instance_admin, ctx.operator.id, :organisation) end)
 
-      assert {:error, :has_clients} = Task.await(change.task)
+      assert {:error, :has_operated_workspaces} = Task.await(change.task)
       commit(acceptance)
 
       assert Tenants.operator?(ctx.operator)
@@ -588,7 +473,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  describe "the arbiter's offer in an operator, accepted against a write in its client" do
+  describe "the arbiter's offer in an operator, accepted against a write in a workspace it operates" do
     # The operator's owner's account suspended, the arbiter offers its ownership to its
     # admin, the person.
     setup ctx do
@@ -614,7 +499,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       {acceptance, acceptance_pid} = hold(fn -> Transfers.accept(ctx.recipient) end)
       assert {:ok, %Organisation{}} = acceptance.result
 
-      write = start(fn -> locked_reload(ctx.client_admin.scope) end)
+      write = start(fn -> locked_reload(ctx.operated_admin.scope) end)
       await_blocked(write.backend, acceptance_pid)
       commit(acceptance)
 
@@ -624,7 +509,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
     test "the write first: the acceptance waits for it", ctx do
       before = deadlocks()
-      {write, write_pid} = hold(fn -> locked_reload(ctx.client_admin.scope) end)
+      {write, write_pid} = hold(fn -> locked_reload(ctx.operated_admin.scope) end)
 
       acceptance = start(fn -> Transfers.accept(ctx.recipient) end)
       await_blocked(acceptance.backend, write_pid)
@@ -636,18 +521,15 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  describe "a write that asks for its people locks twice in one change, against the client's drop" do
-    setup do: Flags.put_transfers(true)
-
-    test "the write first: it holds the operator's people lock in one mode, and the drop waits",
-         ctx do
+  describe "a write that asks for its people locks twice in one change" do
+    test "the write holds the operator's people lock in one mode", ctx do
       before = deadlocks()
 
-      {write, write_pid} =
+      {write, _write_pid} =
         hold(fn ->
-          :ok = Access.lock_places(ctx.person_in_client)
+          :ok = Access.lock_places(ctx.person_in_operated)
           first = people_lock_held(ctx.operator.id)
-          scope = Access.reload(ctx.person_in_client, lock: :share)
+          scope = Access.reload(ctx.person_in_operated, lock: :share)
           {first, scope}
         end)
 
@@ -657,30 +539,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
       # Asked again by the locked reload, the same row is held in the same mode.
       assert people_lock_held(ctx.operator.id) == :share
 
-      drop = start(fn -> Transfers.drop(ctx.in_operator, ctx.client.id, ctx.client.name) end)
-      await_blocked(drop.backend, write_pid)
       commit(write)
-
-      assert {:ok, %Organisation{edition: %{tenant: %Tenant{operator_id: nil}}}} =
-               Task.await(drop.task)
-
-      assert deadlocks() == before
-    end
-
-    test "the drop first: the write waits, and reaches the client no more", ctx do
-      before = deadlocks()
-
-      {drop, drop_pid} =
-        hold(fn -> Transfers.drop(ctx.in_operator, ctx.client.id, ctx.client.name) end)
-
-      assert {:ok, %Organisation{}} = drop.result
-
-      write = start(fn -> locked_reload(ctx.person_in_client) end)
-      await_blocked(write.backend, drop_pid)
-      commit(drop)
-
-      assert {:ok, scope} = Task.await(write.task)
-      assert scope.reach == nil
       assert deadlocks() == before
     end
   end
@@ -701,7 +560,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
       assert {:ok, %Membership{}} = held.result
 
-      write = start(fn -> locked_reload(ctx.person_in_client) end)
+      write = start(fn -> locked_reload(ctx.person_in_operated) end)
       await_blocked(write.backend, held_pid)
       commit(held)
 
@@ -713,7 +572,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
 
     test "the write first: the row is made and held, and the change of its people waits", ctx do
       before = deadlocks()
-      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_client) end)
+      {write, write_pid} = hold(fn -> locked_reload(ctx.person_in_operated) end)
       assert operator_level(write.result) == :admin
 
       held =
@@ -734,7 +593,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     # Two organisations' people locks, the one with the larger id held by another
     # transaction so that a share of it waits.
     setup ctx do
-      [first, second] = Enum.sort([ctx.operator.id, ctx.client.id])
+      [first, second] = Enum.sort([ctx.operator.id, ctx.operated.id])
       %{first: first, second: second}
     end
 
@@ -811,11 +670,10 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end)
   end
 
-  # The person's level in the client's operator, as the scope's reach carries it: nil for
-  # none.
+  # The person's level in the operator of the scope's workspace, through the scope's
+  # reach: nil for none.
   defp operator_level({:ok, %Scope{} = scope}), do: operator_level(scope)
-  defp operator_level(%Scope{reach: {:operator, %Membership{level: level}}}), do: level
-  defp operator_level(%Scope{}), do: nil
+  defp operator_level(%Scope{} = scope), do: ApiaryPro.Reach.operator_level(scope)
 
   # An invitation of `user` into the scope's organisation, as a member: its token.
   defp invite(scope, %User{email: email}) do
@@ -834,7 +692,7 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
     end
   end
 
-  # Whether a connection of its own takes the people lock of the organisation `id` at once
+  # Whether a separate connection takes the people lock of the organisation `id` at once
   # in `mode`, `FOR SHARE` or `FOR NO KEY UPDATE`: `:free`, or `:busy` when it is held so
   # that it would wait.
   defp probe(id, mode) do
@@ -866,18 +724,6 @@ defmodule ApiaryPro.PeopleRowsRacesTest do
   defp end_refused(%{task: task, pid: pid}) do
     send(pid, :commit)
     assert {:error, :rollback} = Task.await(task)
-  end
-
-  # The table of the row the backend `backend` waits for: the tuple lock a waiter for a
-  # row holds while it waits for the row's locker.
-  defp waits_on(backend) do
-    %{rows: [[table]]} =
-      Repo.query!(
-        "SELECT relation::regclass::text FROM pg_locks WHERE pid = $1 AND locktype = 'tuple'",
-        [backend]
-      )
-
-    table
   end
 
   # Postgres's own count of deadlocks it broke in this database.

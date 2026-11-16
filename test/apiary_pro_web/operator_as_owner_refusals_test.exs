@@ -1,6 +1,6 @@
 defmodule ApiaryProWeb.OperatorAsOwnerRefusalsTest do
-  # The changes the pages offer in a client while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`), sent through the web layer by someone
+  # The changes the pages offer in a workspace an operator operates while its owners and
+  # admins act there (`ApiaryPro.Flags.operator_infrastructure?/0`), sent through the web layer by someone
   # who may not make them: `ApiaryProWeb.OperatorAsOwnerRefusalsRows`, in the world of the
   # core's and the edition's rows, sent by `ApiaryWeb.RefusalsCase.assert_row/3`. The module does
   # not `use` the case: its check that every action has a row runs in

@@ -418,6 +418,9 @@ defmodule Apiary.Stages.StopCause do
 
   # A gateway that may not receive the run's secrets: one of its keys was made without
   # stored secrets, or the model key may not be sealed for it.
+  # No run matches this head: the claim and `Apiary.Stages.claim_context/1` set
+  # `gateway:` to the tuple `Apiary.Dispatches.Handover.gateway/1` returns, not to a
+  # `%Node{}`, so the next clause returns the support line instead.
   defp secrets(n, %{gateway: %Node{} = gateway} = ctx) do
     cond do
       # The instance's gateway: the person sees neither it nor its keys.

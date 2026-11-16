@@ -4,18 +4,15 @@ defmodule ApiaryPro.AuditChanges do
   the edition's audited actions made the way the product makes it, what it needs first, then the
   trail as it is (`before`), then the change; and the same change refused, `{the trail
   before the attempt, the attempt's answer}`. A change that leaves an entry in two
-  organisations, each naming the other, is looked for in its actor's own organisation.
+  organisations is looked for in the organisation of the scope `make/2` returns.
   """
 
-  import Apiary.AccountsFixtures, only: [unique_user_email: 0]
   import Apiary.AuditCase, only: [entries: 0, in_trail: 2, refuse_as_member: 4]
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
-  import ExUnit.Assertions
 
   alias Apiary.Access
   alias Apiary.Accounts.Scope
-  alias Apiary.Audit.Entry
 
   alias ApiaryPro.{
     Deletion,
@@ -23,7 +20,6 @@ defmodule ApiaryPro.AuditChanges do
     Operators,
     OrganisationPolicy,
     OrganisationVariables,
-    PolicyRequests,
     Suspensions,
     Transfers
   }
@@ -34,22 +30,8 @@ defmodule ApiaryPro.AuditChanges do
     [
       :"workspace_access.add",
       :"workspace_access.remove",
-      :"organisation.transfer",
       :"organisation.withdraw_transfer",
       :"organisation.accept_transfer",
-      :"organisation.leave_operator",
-      :"client.create",
-      :"client.invite_owner",
-      :"client.revoke_owner_invitation",
-      :"client.renew_owner_invitation",
-      :"client.invite_admin",
-      :"client.revoke_admin_invitation",
-      :"client.renew_admin_invitation",
-      :"client.accept",
-      :"client.grant_features",
-      :"client.drop",
-      :"client.set_model_chain",
-      :"client.delete",
       :"instance.create_organisation",
       :"instance.create_operator",
       :"instance.change_kind",
@@ -62,10 +44,6 @@ defmodule ApiaryPro.AuditChanges do
       :"instance.grant_features",
       :"instance.change_sign_up",
       :"instance.adopt",
-      :"policy_request.send",
-      :"policy_request.withdraw",
-      :"policy_request.accept",
-      :"policy_request.decline",
       :"organisation_policy.edit",
       :"organisation_policy.set_floor",
       :"organisation_policy.set_switch",
@@ -94,274 +72,6 @@ defmodule ApiaryPro.AuditChanges do
       ApiaryPro.WorkspaceAccess.remove(scope, membership.id, scope.workspace.id)
 
     %{scope: scope, subject: {"workspace_access", access.id}, before: before}
-  end
-
-  # An operator's new client begins its own trail, by the operator's person; the
-  # invitation of its first owner follows, which is not the one looked for.
-  def make(:"client.create", _ctx) do
-    operator = operator_fixture()
-    before = entries()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    assert [%Entry{action: "client.invite_owner"} = invited] =
-             Enum.filter(entries() -- before, &(&1.action == "client.invite_owner"))
-
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"organisation", client.id}, before: before ++ [invited]}
-  end
-
-  # The operator's invitation of a client's first owner is the client's entry.
-  def make(:"client.invite_owner", _ctx) do
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    before = entries()
-
-    {:ok, invitation} =
-      Operators.invite_owner(
-        operator.scope,
-        client.id,
-        %{"email" => unique_user_email()},
-        &"http://localhost/invitations/#{&1}"
-      )
-
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  # The operator's revocation of its client's first owner's invitation is the client's.
-  def make(:"client.revoke_owner_invitation", _ctx) do
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    {:ok, _} = Operators.revoke_owner_invitation(operator.scope, client.id, invitation.id)
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  # The operator's new link for its client's first owner's invitation is the client's,
-  # without mail, whose link the page shows.
-  def make(:"client.renew_owner_invitation", _ctx) do
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    Apiary.Mail.put_test_source(:none)
-
-    {:ok, _, {:link, _url}} =
-      Operators.renew_owner_invitation(
-        operator.scope,
-        client.id,
-        invitation.id,
-        &"http://localhost/invitations/#{&1}"
-      )
-
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  # While the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), the
-  # invitation of a client's first admin, its revocation and its new link are the
-  # client's, as the first owner's are.
-  def make(:"client.invite_admin", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    before = entries()
-
-    {:ok, invitation} =
-      Operators.invite_admin(
-        operator.scope,
-        client.id,
-        %{"email" => unique_user_email()},
-        &"http://localhost/invitations/#{&1}"
-      )
-
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  def make(:"client.revoke_admin_invitation", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    {:ok, _} = Operators.revoke_admin_invitation(operator.scope, client.id, invitation.id)
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  def make(:"client.renew_admin_invitation", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    Apiary.Mail.put_test_source(:none)
-
-    {:ok, _, {:link, _url}} =
-      Operators.renew_admin_invitation(
-        operator.scope,
-        client.id,
-        invitation.id,
-        &"http://localhost/invitations/#{&1}"
-      )
-
-    scope = %Scope{user: operator.user, organisation: client}
-    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
-  end
-
-  # A client with no owner yet deleted by its operator: the operator's entry, which
-  # outlives the client's trail; its invitation's withdrawal is the client's.
-  def make(:"client.delete", _ctx) do
-    operator = operator_fixture()
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    before = entries()
-    {:ok, _} = Deletion.delete_client(operator.scope, client.id, "Acme")
-    withdrawn = in_trail(entries() -- before, client)
-
-    %{
-      scope: operator.scope,
-      subject: {"organisation", operator.organisation.id},
-      before: before ++ [withdrawn]
-    }
-  end
-
-  # A client switched to its operator's model providers by the operator's owner: an entry
-  # in the operator's trail. The client is made while the operator does not own its
-  # clients' infrastructure, as a client is, then the flag is turned on.
-  def make(:"client.set_model_chain", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(false)
-    %{operator: operator, client: client} = client_with_admin()
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    before = entries()
-    {:ok, _} = Operators.set_model_chain(operator.scope, client.organisation.id, :operator)
-
-    %{
-      scope: operator.scope,
-      subject: {"organisation", operator.organisation.id},
-      before: before
-    }
-  end
-
-  # A drop and a leaving: an entry in the client and one in the operator, each naming the
-  # other; the one looked for is the actor's own organisation's.
-  def make(:"client.drop", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    before = entries()
-    {:ok, _} = Transfers.drop(operator.scope, client.organisation.id, client.organisation.name)
-    parted = in_trail(entries() -- before, client.organisation)
-
-    %{
-      scope: operator.scope,
-      subject: {"organisation", operator.organisation.id},
-      before: before ++ [parted]
-    }
-  end
-
-  def make(:"organisation.leave_operator", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    before = entries()
-    {:ok, _} = Transfers.leave(client.owner.scope, operator.organisation.name)
-    parted = in_trail(entries() -- before, operator.organisation)
-
-    %{
-      scope: client.owner.scope,
-      subject: {"organisation", client.organisation.id},
-      before: before ++ [parted]
-    }
-  end
-
-  # A policy request: sent, an entry in the operator's trail and one in each client's;
-  # answered or withdrawn, one in each trail; the one looked for is the actor's own
-  # organisation's, and an acceptance's policy changes are the policy's own entries.
-  def make(:"policy_request.send", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    before = entries()
-    {:ok, request} = send_policy_request(operator.scope)
-    received = in_trail(entries() -- before, client.organisation)
-
-    %{
-      scope: operator.scope,
-      subject: {"policy_request", request.id},
-      before: before ++ [received]
-    }
-  end
-
-  def make(:"policy_request.withdraw", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    before = entries()
-    {:ok, _} = PolicyRequests.withdraw(operator.scope, request.id)
-    withdrawn = in_trail(entries() -- before, client.organisation)
-
-    %{
-      scope: operator.scope,
-      subject: {"policy_request", request.id},
-      before: before ++ [withdrawn]
-    }
-  end
-
-  def make(action, _ctx) when action in [:"policy_request.accept", :"policy_request.decline"] do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    [answer] = request.answers
-    before = entries()
-
-    {:ok, _} =
-      case action do
-        :"policy_request.accept" ->
-          PolicyRequests.accept(client.owner.scope, answer.id, [client.workspace.id])
-
-        :"policy_request.decline" ->
-          PolicyRequests.decline(client.owner.scope, answer.id, "Not now")
-      end
-
-    made = entries() -- before
-
-    [answered] =
-      Enum.filter(
-        made,
-        &(&1.action == Atom.to_string(action) and &1.organisation_id == client.organisation.id)
-      )
-
-    %{
-      scope: client.owner.scope,
-      subject: {"policy_request_answer", answer.id},
-      before: before ++ (made -- [answered])
-    }
   end
 
   # An organisation an instance admin creates begins its trail, by them.
@@ -406,20 +116,31 @@ defmodule ApiaryPro.AuditChanges do
     }
   end
 
-  # An organisation offered to an operator by its owner: the organisation's entry.
-  def make(:"organisation.transfer", %{scope: scope}) do
-    operator = operator_fixture()
-    before = entries()
-    {:ok, transfer} = Transfers.offer_to_operator(scope, operator.organisation.slug)
-    %{scope: scope, subject: {"transfer", transfer.id}, before: before}
-  end
-
+  # The arbiter's offer lapses when the owner's account is activated again: an entry in
+  # the organisation, by the instance admin who activates it, beside the activation's
+  # entry in the instance organisation.
   def make(:"organisation.withdraw_transfer", %{scope: scope}) do
-    operator = operator_fixture()
-    {:ok, transfer} = Transfers.offer_to_operator(scope, operator.organisation.slug)
+    instance_admin = instance_admin_fixture()
+    %{membership: membership} = member_fixture(scope, :admin)
+    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, scope.user.id)
+
+    {:ok, transfer} =
+      Transfers.arbitrate(
+        instance_admin.instance_scope,
+        scope.organisation.id,
+        membership.id,
+        "The owner is away."
+      )
+
     before = entries()
-    {:ok, _} = Transfers.withdraw(scope)
-    %{scope: scope, subject: {"transfer", transfer.id}, before: before}
+    {:ok, _} = Suspensions.activate_account(instance_admin.instance_scope, scope.user.id)
+    activated = in_trail(entries() -- before, instance_admin.instance_scope.organisation)
+
+    %{
+      scope: %Scope{user: instance_admin.user, organisation: scope.organisation},
+      subject: {"transfer", transfer.id},
+      before: before ++ [activated]
+    }
   end
 
   # The admin accepts the arbiter's offer of an organisation whose owners are all
@@ -440,29 +161,6 @@ defmodule ApiaryPro.AuditChanges do
     before = entries()
     {:ok, _} = Transfers.accept(admin)
     %{scope: admin, subject: {"organisation", scope.organisation.id}, before: before}
-  end
-
-  # An operator's owner accepts an organisation offered to it: an entry in the operator,
-  # and one in the organisation it takes on, which is not the one looked for.
-  def make(:"client.accept", _ctx) do
-    operator = operator_fixture()
-    offered = sign_up_fixture()
-    {:ok, _} = Transfers.offer_to_operator(offered.scope, operator.organisation.slug)
-    before = entries()
-    {:ok, _} = Transfers.accept_client(operator.scope, offered.organisation.id)
-
-    assert [%Entry{action: "client.accept", subject_kind: "organisation"} = joined] =
-             Enum.filter(entries() -- before, &(&1.organisation_id == offered.organisation.id))
-
-    assert joined.subject_id == offered.organisation.id
-    assert joined.after == %{"operator_id" => operator.organisation.id}
-    assert {joined.actor_kind, joined.actor_id} == {:person, operator.user.id}
-
-    %{
-      scope: operator.scope,
-      subject: {"organisation", operator.organisation.id},
-      before: before ++ [joined]
-    }
   end
 
   # An account's suspension and activation are the instance organisation's entries.
@@ -508,24 +206,23 @@ defmodule ApiaryPro.AuditChanges do
   # The arbiter's offer is the organisation's entry, by the instance admin.
   def make(:"instance.transfer", _ctx) do
     instance_admin = instance_admin_fixture()
-    %{client: client, admin: admin} = client_with_admin()
-    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, client.owner.user.id)
+    %{operated: operated, admin: admin} = operated_with_admin()
+    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, operated.owner.user.id)
     before = entries()
 
     {:ok, transfer} =
       Transfers.arbitrate(
         instance_admin.instance_scope,
-        client.organisation.id,
+        operated.organisation.id,
         admin.membership.id,
         "The owner is away."
       )
 
-    scope = %Scope{user: instance_admin.user, organisation: client.organisation}
+    scope = %Scope{user: instance_admin.user, organisation: operated.organisation}
     %{scope: scope, subject: {"transfer", transfer.id}, before: before}
   end
 
-  # Features: an instance admin's grant is the organisation's entry, an operator's the
-  # client's.
+  # Features: an instance admin's grant is the organisation's entry.
   def make(:"instance.grant_features", %{scope: scope}) do
     admin = instance_admin_fixture()
     before = entries()
@@ -567,21 +264,8 @@ defmodule ApiaryPro.AuditChanges do
     }
   end
 
-  def make(:"client.grant_features", _ctx) do
-    operator = operator_fixture()
-    %{organisation: client} = client_fixture(operator.scope)
-    before = entries()
-    {:ok, _} = Grants.set_client(operator.scope, client.id, ["observability"])
-
-    %{
-      scope: %Scope{user: operator.user, organisation: client},
-      subject: {"organisation", client.id},
-      before: before
-    }
-  end
-
   # The organisation's policy: an owner's change, one entry on the organisation; the
-  # workspaces it renders again leave their own entries, the policy's, in the trail
+  # workspaces it renders again leave entries of `security_policy.edit` in the trail
   # before it.
   def make(:"organisation_policy.edit", %{scope: scope}) do
     before = entries()
@@ -624,184 +308,6 @@ defmodule ApiaryPro.AuditChanges do
   `{the trail before the attempt, the attempt's answer}`.
   """
   @spec refuse(Access.action(), map) :: {list, term}
-  # In an organisation that is no operator, clients are not found.
-  def refuse(:"client.create", %{scope: scope}) do
-    before = entries()
-    attrs = %{"name" => "Acme", "email" => unique_user_email()}
-    {before, Operators.create_client(scope, attrs, &"http://localhost/invitations/#{&1}")}
-  end
-
-  def refuse(:"client.invite_owner", %{scope: scope}) do
-    before = entries()
-
-    {before,
-     Operators.invite_owner(
-       scope,
-       Ecto.UUID.generate(),
-       %{"email" => unique_user_email()},
-       &"http://localhost/invitations/#{&1}"
-     )}
-  end
-
-  # A member of the operator: revoking an invitation of a client's owner is its owners'
-  # and admins'.
-  def refuse(:"client.revoke_owner_invitation", _ctx) do
-    operator = operator_fixture()
-    %{scope: member} = member_fixture(operator.scope, :member)
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    {before, Operators.revoke_owner_invitation(member, client.id, invitation.id)}
-  end
-
-  # A member of the operator: a new link for a client's owner's invitation is its owners'
-  # and admins'.
-  def refuse(:"client.renew_owner_invitation", _ctx) do
-    operator = operator_fixture()
-    %{scope: member} = member_fixture(operator.scope, :member)
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-
-    {before,
-     Operators.renew_owner_invitation(
-       member,
-       client.id,
-       invitation.id,
-       &"http://localhost/invitations/#{&1}"
-     )}
-  end
-
-  # While the operator owns its clients: a client that is not there, and a member of the
-  # operator, who neither revokes nor renews a first admin's invitation.
-  def refuse(:"client.invite_admin", %{scope: scope}) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    before = entries()
-
-    {before,
-     Operators.invite_admin(
-       scope,
-       Ecto.UUID.generate(),
-       %{"email" => unique_user_email()},
-       &"http://localhost/invitations/#{&1}"
-     )}
-  end
-
-  def refuse(:"client.revoke_admin_invitation", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    operator = operator_fixture()
-    %{scope: member} = member_fixture(operator.scope, :member)
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-    {before, Operators.revoke_admin_invitation(member, client.id, invitation.id)}
-  end
-
-  def refuse(:"client.renew_admin_invitation", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    operator = operator_fixture()
-    %{scope: member} = member_fixture(operator.scope, :member)
-
-    {%{organisation: client}, _token} =
-      create_client_fixture(operator.scope, %{"name" => "Acme", "email" => unique_user_email()})
-
-    [invitation] =
-      Operators.list_clients(operator.scope) |> elem(1) |> hd() |> Map.fetch!(:owner_invitations)
-
-    before = entries()
-
-    {before,
-     Operators.renew_admin_invitation(
-       member,
-       client.id,
-       invitation.id,
-       &"http://localhost/invitations/#{&1}"
-     )}
-  end
-
-  # A client with an owner is dropped, not deleted.
-  def refuse(:"client.delete", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    before = entries()
-
-    {before,
-     Deletion.delete_client(operator.scope, client.organisation.id, client.organisation.name)}
-  end
-
-  # An admin of the operator: dropping a client is its owners'.
-  def refuse(:"client.drop", _ctx) do
-    %{operator: operator, client: client} = client_with_admin()
-    %{scope: operator_admin} = member_fixture(operator.scope, :admin)
-    before = entries()
-    {before, Transfers.drop(operator_admin, client.organisation.id, client.organisation.name)}
-  end
-
-  # A member of the operator: choosing a client's model providers is its owners' and admins'.
-  def refuse(:"client.set_model_chain", _ctx) do
-    ApiaryPro.Flags.put_operator_infrastructure(false)
-    %{operator: operator, client: client} = client_with_admin()
-    %{scope: operator_member} = member_fixture(operator.scope, :member)
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    before = entries()
-    {before, Operators.set_model_chain(operator_member, client.organisation.id, :operator)}
-  end
-
-  # An admin of the client: leaving its operator is its owners'.
-  def refuse(:"organisation.leave_operator", _ctx) do
-    %{operator: operator, admin: admin} = client_with_admin()
-    before = entries()
-    {before, Transfers.leave(admin.scope, operator.organisation.name)}
-  end
-
-  # A member of the operator: sending and withdrawing are its owners' and admins'.
-  def refuse(:"policy_request.send", _ctx) do
-    %{operator: operator} = client_with_admin()
-    %{scope: member} = member_fixture(operator.scope, :member)
-    before = entries()
-    {before, send_policy_request(member)}
-  end
-
-  def refuse(:"policy_request.withdraw", _ctx) do
-    %{operator: operator} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    %{scope: member} = member_fixture(operator.scope, :member)
-    before = entries()
-    {before, PolicyRequests.withdraw(member, request.id)}
-  end
-
-  # The operator's owner, who reads the client and answers nothing there.
-  def refuse(action, _ctx)
-      when action in [:"policy_request.accept", :"policy_request.decline"] do
-    %{operator: operator, client: client} = client_with_admin()
-    {:ok, request} = send_policy_request(operator.scope)
-    [answer] = request.answers
-    before = entries()
-
-    {before,
-     case action do
-       :"policy_request.accept" ->
-         PolicyRequests.accept(client.scope, answer.id, [client.workspace.id])
-
-       :"policy_request.decline" ->
-         PolicyRequests.decline(client.scope, answer.id, nil)
-     end}
-  end
-
   # Anywhere but in the instance organisation, the instance actions are not found.
   def refuse(action, %{scope: scope})
       when action in [:"instance.create_organisation", :"instance.create_operator"] do
@@ -810,11 +316,11 @@ defmodule ApiaryPro.AuditChanges do
     {before, Operators.create_organisation(scope, %{"name" => "Acme", "kind" => kind})}
   end
 
-  # An operator with clients stays an operator.
+  # An operator that operates a workspace stays an operator.
   def refuse(:"instance.change_kind", _ctx) do
     admin = instance_admin_fixture()
     operator = operator_fixture()
-    client_fixture(operator.scope)
+    operated_fixture(operator.scope)
     before = entries()
 
     {before, Operators.change_kind(admin.instance_scope, operator.organisation.id, :organisation)}
@@ -826,6 +332,25 @@ defmodule ApiaryPro.AuditChanges do
     %{organisation: organisation} = sign_up_fixture()
     before = entries()
     {before, Deletion.purge_on_request(admin.instance_scope, organisation.id, "not-the-slug")}
+  end
+
+  # Only an instance admin's activation of the owner withdraws the arbiter's offer: an
+  # admin of the organisation activates nobody, and the offer stays.
+  def refuse(:"organisation.withdraw_transfer", %{scope: scope}) do
+    instance_admin = instance_admin_fixture()
+    %{membership: membership, scope: admin} = member_fixture(scope, :admin)
+    {:ok, _} = Suspensions.suspend_account(instance_admin.instance_scope, scope.user.id)
+
+    {:ok, _} =
+      Transfers.arbitrate(
+        instance_admin.instance_scope,
+        scope.organisation.id,
+        membership.id,
+        "The owner is away."
+      )
+
+    before = entries()
+    {before, Suspensions.activate_account(admin, scope.user.id)}
   end
 
   # An admin it was not offered to.
@@ -845,16 +370,6 @@ defmodule ApiaryPro.AuditChanges do
 
     before = entries()
     {before, Transfers.accept(other)}
-  end
-
-  # An admin of the operator: accepting a client is its owners'.
-  def refuse(:"client.accept", _ctx) do
-    operator = operator_fixture()
-    %{scope: operator_admin} = member_fixture(operator.scope, :admin)
-    offered = sign_up_fixture()
-    {:ok, _} = Transfers.offer_to_operator(offered.scope, operator.organisation.slug)
-    before = entries()
-    {before, Transfers.accept_client(operator_admin, offered.organisation.id)}
   end
 
   # An instance admin does not suspend their own account.
@@ -930,11 +445,6 @@ defmodule ApiaryPro.AuditChanges do
      end)}
   end
 
-  def refuse(:"client.grant_features", %{scope: scope}) do
-    before = entries()
-    {before, Grants.set_client(scope, Ecto.UUID.generate(), ["observability"])}
-  end
-
   # The organisation's policy is an owner's: an admin reads it and is refused each change.
   def refuse(:"organisation_policy.edit", %{scope: scope}) do
     %{scope: admin} = member_fixture(scope, :admin)
@@ -961,8 +471,7 @@ defmodule ApiaryPro.AuditChanges do
     {before, OrganisationVariables.create(member, %{name: "LOG_LEVEL", value: "debug"})}
   end
 
-  # A member where the change is an owner's or an admin's: a workspace access, an
-  # organisation's transfer to an operator and its withdrawal.
+  # A member where the change is an admin's: a workspace access.
   def refuse(action, ctx),
     do: refuse_as_member(action, ctx, &prepare(action, &1), &attempt(action, &1, &2))
 
@@ -972,42 +481,19 @@ defmodule ApiaryPro.AuditChanges do
   defp prepare(:"workspace_access.remove", %{scope: scope}),
     do: {member_fixture(scope).membership, scope.workspace}
 
-  defp prepare(:"organisation.transfer", _ctx), do: operator_fixture().organisation
-
-  # The owner's organisation offered to an operator, pending.
-  defp prepare(:"organisation.withdraw_transfer", %{scope: scope}) do
-    operator = operator_fixture()
-    {:ok, _} = Transfers.offer_to_operator(scope, operator.organisation.slug)
-    nil
-  end
-
   defp attempt(:"workspace_access.add", scope, {membership, workspace}),
     do: ApiaryPro.WorkspaceAccess.add(scope, membership.id, workspace.id)
 
   defp attempt(:"workspace_access.remove", scope, {membership, workspace}),
     do: ApiaryPro.WorkspaceAccess.remove(scope, membership.id, workspace.id)
 
-  defp attempt(:"organisation.transfer", scope, operator),
-    do: Transfers.offer_to_operator(scope, operator.slug)
-
-  defp attempt(:"organisation.withdraw_transfer", scope, _), do: Transfers.withdraw(scope)
-
-  # A client of a fresh operator, with its owner and an admin of its own: the operator's
-  # fixture, the client's, with the operator's owner's scope in it, and the admin's.
-  defp client_with_admin do
+  # An organisation whose workspace a fresh operator operates, with its owner and an admin:
+  # the operator's fixture, the organisation's, with the operator's owner's scope in it,
+  # and the admin's.
+  defp operated_with_admin do
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
-    %{operator: operator, client: client, admin: client_member_fixture(client)}
-  end
-
-  # A policy request of the scope's operator to its clients, a host to allow.
-  defp send_policy_request(scope) do
-    PolicyRequests.send_request(scope, %{
-      "changes" => %{
-        "rules" => [%{"change" => "rule_added", "action" => "allow", "host" => "api.example"}]
-      },
-      "note" => "The harness calls it."
-    })
+    operated = operated_fixture(operator.scope)
+    %{operator: operator, operated: operated, admin: organisation_member_fixture(operated)}
   end
 
   # An organisation as the core's edition created it, with its workspace and its owner,

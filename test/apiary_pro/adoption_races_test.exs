@@ -1,17 +1,17 @@
 defmodule ApiaryPro.AdoptionRacesTest do
   # The adoption (`ApiaryPro.Adoption.run/0`) against an account's deletion, each on a
-  # connection of its own, outside the SQL sandbox, so each commits and each waits on the
+  # separate connection, outside the SQL sandbox, so each commits and each waits on the
   # other's locks as it would in production: an instance that ran the core until now, its
   # nodes swapped one at a time, where a person deletes their account as a node adopts.
   # Not async: the suite's instance organisation is hidden while a test runs, and what the
   # tests commit is deleted again before they end.
   #
   # The rule under test is the lock order of docs/access.md: several organisation rows
-  # taken in a mode that conflicts with `FOR SHARE` are taken at one point, the clients
-  # first, then the rest, each in the order of their ids. The adoption takes the
-  # organisations without a tenant and the one it makes the instance organisation, which
-  # here has its tenant and the lowest id, in that one pass; an account's deletion holds
-  # the organisations it owns `FOR SHARE` in the same order.
+  # taken in a mode that conflicts with `FOR SHARE` are taken at one point, those with
+  # operated workspaces first, then the rest, each in the order of their ids. The adoption
+  # takes the organisations without a tenant and the one it makes the instance
+  # organisation, which here has its tenant and the lowest id, in that one pass; an
+  # account's deletion holds the organisations it owns `FOR SHARE` in the same order.
   use ExUnit.Case, async: false
 
   import Ecto.Query

@@ -30,9 +30,8 @@ defmodule Apiary.Runs.Diagnostics do
   instance (`Apiary.AccessKeys.diagnostics_scope/1`). Either reads the log and the steps'
   output. `machine_logs` is there for an instance admin, who may read the instance
   (`instance.read`, asked in the instance's organisation, `Apiary.Access.in_instance/1`),
-  and for a diagnostics key. The events are read as the run page reads them, through the
-  edition (its `client_reads` callback, `:run_events`), under the person's scope or the
-  instance's; the `dev.qory.run.log` events are left out, as their output is in `log` and
+  and for a diagnostics key. The events are read as the run page reads them; the
+  `dev.qory.run.log` events are left out, as their output is in `log` and
   in the steps' output already, and so are the `dev.qory.session.transcript` events, the
   chunks of a runtime session's transcript. `log` and `events` are also left out once the
   retention removed them (`runs.log_pruned_at`, `runs.events_pruned_at`).
@@ -53,7 +52,7 @@ defmodule Apiary.Runs.Diagnostics do
 
   import Ecto.Query, only: [from: 2, dynamic: 1, dynamic: 2]
 
-  alias Apiary.{Access, AccessKeys, Edition, Repo}
+  alias Apiary.{Access, AccessKeys, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
@@ -154,7 +153,7 @@ defmodule Apiary.Runs.Diagnostics do
       LeakedSecrets.read(run, dispatch,
         machine_logs: machine_logs?,
         machine_log: machine_log && machine_log.text,
-        events: events_query(scope, run)
+        events: events_query(run)
       )
 
     base =
@@ -174,7 +173,7 @@ defmodule Apiary.Runs.Diagnostics do
       |> fit(max_bytes)
 
     if is_nil(run.events_pruned_at) do
-      events(scope, run, base, max_bytes)
+      events(run, base, max_bytes)
     else
       base
     end
@@ -467,8 +466,8 @@ defmodule Apiary.Runs.Diagnostics do
   # `document` leaves of `max_bytes`, at most `@max_events`, put back in sequence order;
   # and how many earlier ones are left out, counted below the oldest kept, so that an
   # event stored since is not counted.
-  defp events(%Scope{} = scope, %Run{} = run, document, max_bytes) do
-    events = events_query(scope, run)
+  defp events(%Run{} = run, document, max_bytes) do
+    events = events_query(run)
     budget = max_bytes - byte_size(Jason.encode!(document)) - @slack
     sizes = event_sizes(events, budget)
 
@@ -492,16 +491,12 @@ defmodule Apiary.Runs.Diagnostics do
     |> Map.put("events_omitted", max(omitted, 0))
   end
 
-  # The run's events as the run page reads them for `scope` (`Apiary.Runs.Record`), the
-  # edition narrowing them (`:run_events`), without the `dev.qory.run.log` and
-  # `dev.qory.session.transcript` events.
-  defp events_query(%Scope{} = scope, %Run{id: id} = run) do
-    query =
-      from e in Event,
-        where: e.organisation_id == ^run.organisation_id and e.workspace_id == ^run.workspace_id,
-        where: e.run_id == ^id and e.type not in [@log_event, @transcript_event]
-
-    Edition.client_reads(scope, :run_events, run, query)
+  # The run's events as the run page reads them (`Apiary.Runs.Record`), without the
+  # `dev.qory.run.log` and `dev.qory.session.transcript` events.
+  defp events_query(%Run{id: id} = run) do
+    from e in Event,
+      where: e.organisation_id == ^run.organisation_id and e.workspace_id == ^run.workspace_id,
+      where: e.run_id == ^id and e.type not in [@log_event, @transcript_event]
   end
 
   # The sequences and the estimated sizes of the latest events whose estimates fit in

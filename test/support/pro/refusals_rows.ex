@@ -10,15 +10,11 @@ defmodule ApiaryProWeb.RefusalsRows do
       elsewhere      a member added to another workspace of the organisation only, on that
                      workspace's pages, sending ids of this one
       operator_owner, operator_admin, operator_member
-                     an owner, an admin and a member of an operator: on its Clients page,
-                     and in its client, which they read and change nothing in
-      client_owner   the owner of that client, on the operator's pages, which their
-                     membership in the client does not reach
-      client_admin, client_member
-                     an admin and a member of that client, in it, and on the operator's
-                     pages
-      client_unplaced
-                     a member of that client added to no workspace of it
+                     an owner, an admin and a member of an operator, in the organisation
+                     whose workspace it operates, which they read and change nothing in
+      operated_owner, operated_admin
+                     the owner and an admin of that organisation, for the rows of
+                     `ApiaryProWeb.OperatorAsOwnerRefusalsRows`
       instance_admin an owner of the instance organisation: on the Instance settings pages, and
                      reading the organisation, which they reach only as one, read-only
       revoked_instance_admin
@@ -29,10 +25,9 @@ defmodule ApiaryProWeb.RefusalsRows do
                      page
 
   The world adds to the core's: the instance organisation with an instance admin, an admin
-  and a member; an operator made one by that instance admin, with an admin, a member and a
-  client, and the client's owner, whom the operator invited, an admin, a member and a
-  member added to no workspace of the client's own; with the security policy, a second
-  client, and a request of the operator's to both, pending in each.
+  and a member; an operator made one by that instance admin, with an admin, a member and an
+  organisation whose workspace it operates, and that organisation's owner, an admin and a
+  member.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -41,7 +36,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   import Apiary.AccountsFixtures, only: [user_fixture: 0]
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Organisations, Policy, Repo}
+  alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Membership
   alias ApiaryPro.{Operators, WorkspaceAccess}
@@ -55,10 +50,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       :operator_owner,
       :operator_admin,
       :operator_member,
-      :client_owner,
-      :client_admin,
-      :client_member,
-      :client_unplaced,
+      :operated_owner,
+      :operated_admin,
       :instance_admin,
       :revoked_instance_admin,
       :io_admin,
@@ -67,7 +60,7 @@ defmodule ApiaryProWeb.RefusalsRows do
   end
 
   @impl true
-  def rows, do: organisation_rows() ++ key_rows() ++ in_client_rows() ++ instance_rows()
+  def rows, do: organisation_rows() ++ key_rows() ++ in_operated_rows() ++ instance_rows()
 
   defp organisation_rows do
     [
@@ -92,49 +85,11 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"member.activate", :instance_admin, "/:org/settings/people", "activate",
        %{"id" => :other_member}},
 
-      # The ownership, a tab of the organisation's settings: an owner offers and
-      # withdraws, and only the admin an offer names accepts it. A reader for whom the
-      # section is not listed is sent to General as the page opens.
-      {:"organisation.transfer", :admin, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.transfer", :demoted_owner, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}}, needs: :managed_organisations},
-      # A client is offered to no other operator: it leaves its own first.
-      {:"organisation.transfer", :client_owner, "/:client/settings/ownership",
-       "offer_to_operator", %{"transfer" => %{"operator_slug" => :operator}},
-       needs: :managed_organisations},
-      {:"organisation.transfer", :instance_admin, "/:org/settings/ownership", "offer_to_operator",
-       %{"transfer" => %{"operator_slug" => :operator}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      # With an offer pending: the organisation's to the operator, and the arbiter's of
-      # the client to an admin of it other than the one who tries.
-      {:"organisation.withdraw_transfer", :admin, "/:org/settings/ownership", "withdraw_transfer",
-       %{},
-       setup: :offered_to_operator, answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
-       %{},
-       setup: :offered_to_operator, answer: :refused_at_mount, needs: :managed_organisations},
-      # The arbiter's offer, made to another admin of the organisation.
+      # The ownership, a tab of the organisation's settings: only the admin an offer is
+      # for accepts it. A reader for whom the section is not listed is sent to General as
+      # the page opens. The arbiter's offer, made to another admin of the organisation.
       {:"organisation.accept_transfer", :admin, "/:org/settings/ownership", "accept_transfer",
        %{}, setup: :arbitrated_to_another_admin, answer: :refused_at_mount},
-      {:"organisation.accept_transfer", :client_admin, "/:client/settings/ownership",
-       "accept_transfer", %{}, setup: :client_arbitrated, needs: :managed_organisations},
-
-      # Leaving an operator: the client's owners', neither its admins' and members' nor the
-      # operator's people's, the operator's name typed all the same.
-      {:"organisation.leave_operator", :client_admin, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
-      {:"organisation.leave_operator", :client_member, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
-      {:"organisation.leave_operator", :client_admin, "/:client/settings/ownership/leave",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       answer: :refused_at_mount, needs: :managed_organisations},
-      {:"organisation.leave_operator", :operator_owner, "/:client/settings/ownership",
-       "leave_operator", %{"confirm" => %{"name" => :operator_name}},
-       needs: :managed_organisations},
 
       # A member who no longer reaches the workspace, and one of another workspace
       # carrying the ids of this one.
@@ -157,22 +112,6 @@ defmodule ApiaryProWeb.RefusalsRows do
        "/:org/:workspace_b/machines/:node/instances/:instance/clear", "clear_instance", %{},
        answer: :not_found_at_mount},
 
-      # An operator's clients.
-      {:"client.create", :operator_member, "/:operator/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}}},
-      # The page's path refuses as it opens; the row above is the event's refusal.
-      {:"client.create", :operator_member, "/:operator/clients/new", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :refused_at_mount},
-      # A person of a client, on its operator's page and on the client's own: neither is
-      # theirs to open.
-      {:"client.create", :client_admin, "/:operator/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :not_found_at_mount},
-      {:"client.create", :client_admin, "/:client/clients", "create",
-       %{"organisation" => %{"name" => "Sneaky", "email" => "owner@example.com"}},
-       answer: :not_found_at_mount},
-
       # A new organisation of a person's own, from the switcher's entry: of a kind whose
       # sign-up setting is closed, the suite's operators, whatever the form says. With both
       # settings closed the entry, the button and the page are not there, and the event is
@@ -185,156 +124,11 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"organisation.create", :instance_admin, "/users/organisations/new", "create",
        %{"organisation" => %{"name" => "Sneaky", "kind" => "instance_organisation"}}},
 
-      # The first owner of a client: invited by the operator's owners and admins while the
-      # client has none; this one has an owner, who invites its people.
-      {:"client.invite_owner", :operator_member, "/:operator/clients", "invite_owner",
-       %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}},
-      {:"client.invite_owner", :operator_member, "/:operator/clients/:client_id/owner",
-       "invite_owner", %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}},
-       answer: :refused_at_mount},
-      {:"client.invite_owner", :operator_owner, "/:operator/clients/:client_id/owner",
-       "invite_owner",
-       %{"client_id" => :client_id, "owner" => %{"email" => "owner@example.com"}}},
-
-      # The first admin's invitation, not found while the operator does not own its
-      # clients: its page, and each event, as for a client that is not there.
-      {:"client.invite_admin", :operator_owner, "/:operator/clients/:client_id/admin",
-       "invite_admin", %{"client_id" => :client_id, "owner" => %{"email" => "admin@example.com"}},
-       answer: :not_found_at_mount},
-      {:"client.invite_admin", :operator_owner, "/:operator/clients", "invite_admin",
-       %{"client_id" => :client_id, "owner" => %{"email" => "admin@example.com"}},
-       answer: :not_found},
-      {:"client.revoke_admin_invitation", :operator_owner, "/:operator/clients",
-       "revoke_admin_invitation", %{"client" => :client_id, "id" => :client_id},
-       answer: :not_found},
-      {:"client.renew_admin_invitation", :operator_owner, "/:operator/clients",
-       "renew_admin_invitation", %{"client" => :client_id, "id" => :client_id},
-       answer: :not_found},
-
-      # Dropping a client: the operator's owners', neither its admins' nor its members',
-      # the client's name typed all the same; the client's owner does not reach the
-      # operator.
-      {:"client.drop", :operator_admin, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.drop", :operator_member, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.drop", :operator_admin, "/:operator/clients/:client_id/drop", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :refused_at_mount},
-      {:"client.drop", :client_owner, "/:operator/clients", "drop_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :not_found_at_mount},
-
-      # A client's first owner's invitation, revoked while it has no owner: the operator's
-      # owners' and admins'; the world's client has an owner, whose invitations are its
-      # own.
-      {:"client.revoke_owner_invitation", :operator_member, "/:operator/clients",
-       "revoke_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-      {:"client.revoke_owner_invitation", :operator_owner, "/:operator/clients",
-       "revoke_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-
-      # A new link for a client's first owner's invitation, while it has no owner: the
-      # operator's owners' and admins'; the world's client has an owner, whose invitations
-      # are its own.
-      {:"client.renew_owner_invitation", :operator_member, "/:operator/clients",
-       "renew_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-      {:"client.renew_owner_invitation", :operator_owner, "/:operator/clients",
-       "renew_owner_invitation", %{"client" => :client_id, "id" => :client_id}},
-
-      # A client with no owner yet is deleted by the operator's owners, never by its
-      # admins or members; the world's client has an owner, so it is dropped, not deleted.
-      {:"client.delete", :operator_admin, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.delete", :operator_member, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-      {:"client.delete", :operator_admin, "/:operator/clients/:client_id/delete", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}},
-       answer: :refused_at_mount},
-      {:"client.delete", :operator_owner, "/:operator/clients", "delete_client",
-       %{"client_id" => :client_id, "confirm" => %{"name" => :client_name}}},
-
-      # An organisation offered to the operator, and a client's features: an owner's of it.
-      {:"client.accept", :operator_member, "/:operator/clients", "accept_client",
-       %{"id" => :organisation_id}},
-      {:"client.accept", :operator_member, "/:operator/clients/offers/:organisation_id/accept",
-       "accept_client", %{"id" => :organisation_id}, answer: :refused_at_mount},
-      # A suspended client is granted nothing, by its operator's owner either.
-      {:"client.grant_features", :operator_owner, "/:operator/clients", "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
-       setup: :client_suspended},
-      {:"client.grant_features", :operator_member, "/:operator/clients", "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}}},
-      {:"client.grant_features", :operator_member, "/:operator/clients/:client_id/features",
-       "save_client_features",
-       %{"client_id" => :client_id, "features" => %{"observability" => "true"}},
-       answer: :refused_at_mount},
-
-      # An operator's policy requests: sent and withdrawn by its owners and admins, never
-      # its members; the new request's path refuses as it opens.
-      {:"policy_request.send", :operator_member, "/:operator/clients/requests", "send",
-       %{"request" => %{"note" => "Sneaky", "mode" => "enforce"}},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.send", :operator_member, "/:operator/clients/requests/new", "send",
-       %{"request" => %{"note" => "Sneaky", "mode" => "enforce"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.withdraw", :operator_member, "/:operator/clients/requests", "withdraw",
-       %{"id" => :request_id}, needs: [:managed_organisations, :security]},
-      # Its withdrawal is asked on the request's row, at a path of its own that refuses as
-      # it opens.
-      {:"policy_request.withdraw", :operator_member,
-       "/:operator/clients/requests/:request_id/withdraw", "withdraw", %{"id" => :request_id},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-
-      # Answered in the client by whoever writes its policy: every level of the client has
-      # `security_policy.edit`, so no level of it is refused for want of it. Never by the
-      # operator's people, who read the client; never another client's request, which is
-      # not found; a locked rule is an owner's at acceptance too; and a workspace of
-      # another organisation is refused, whatever the answer.
-      {:"policy_request.accept", :operator_owner, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :operator_member, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_admin, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_b_answer, "workspaces" => [:client_workspace_id]},
-       answer: :not_found, needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_admin, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_owner, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:workspace_id]},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :operator_admin, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :client_admin, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_b_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :not_found, needs: [:managed_organisations, :security]},
-      # A member of the client added to no workspace of it may write the policy nowhere,
-      # so answers nothing: an answer is the whole client's.
-      {:"policy_request.decline", :client_unplaced, "/:client/policy-requests", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       needs: [:managed_organisations, :security]},
-      {:"policy_request.accept", :client_unplaced, "/:client/policy-requests", "accept",
-       %{"answer_id" => :client_answer, "workspaces" => [:client_workspace_id]},
-       needs: [:managed_organisations, :security]},
-      # A decline is asked on the request's row, at a path of its own that refuses as it
-      # opens a person who answers nothing.
-      {:"policy_request.decline", :operator_owner,
-       "/:client/policy-requests/:client_answer/decline", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-      {:"policy_request.decline", :client_unplaced,
-       "/:client/policy-requests/:client_answer/decline", "decline",
-       %{"answer_id" => :client_answer, "decline" => %{"reason" => "Sneaky"}},
-       answer: :refused_at_mount, needs: [:managed_organisations, :security]},
-
       # The organisation's policy: read by its owners, admins and readers, changed by its
       # owners alone. A member does not open the page; an admin, an instance admin and an
-      # owner demoted while the page is open are refused each change; the people of a
-      # client's operator read it there and change nothing. Those rows need the managed
-      # organisations as well as the organisation's policy, and a row names one feature:
+      # owner demoted while the page is open are refused each change; the people of the
+      # operator of its workspace read it there and change nothing. Those rows need the
+      # managed organisations as well as the organisation's policy, and a row names one feature:
       # they name the policy's, which the wall and the record leaves out while it has the
       # managed organisations, and no instance CI makes has without them.
       {:"organisation_policy.edit", :member, "/:org/policy/rules/new", "rule_save", %{},
@@ -354,22 +148,22 @@ defmodule ApiaryProWeb.RefusalsRows do
        %{"id" => :org_rule}},
       {:"organisation_policy.edit", :instance_admin, "/:org/policy", "rule_save", %{},
        prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
-      {:"organisation_policy.edit", :operator_owner, "/:client/policy", "rule_save", %{},
-       prelude: [{"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}],
-       needs: :organisation_policy},
+      # The organisation's policy page is not found for the operator's people.
+      {:"organisation_policy.edit", :operator_owner, "/:operated/policy", "rule_save", %{},
+       answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_open", %{}},
       {:"organisation_policy.set_floor", :admin, "/:org/policy", "mode_set", %{}},
       {:"organisation_policy.set_floor", :demoted_owner, "/:org/policy", "mode_set", %{},
        prelude: [{"mode_open", %{}}, {"mode_pick", %{"mode" => "enforce"}}]},
       {:"organisation_policy.set_floor", :instance_admin, "/:org/policy", "mode_open", %{}},
-      {:"organisation_policy.set_floor", :operator_owner, "/:client/policy", "mode_open", %{},
-       needs: :organisation_policy},
+      {:"organisation_policy.set_floor", :operator_owner, "/:operated/policy", "mode_open", %{},
+       answer: :not_found_at_mount, needs: :organisation_policy},
       {:"organisation_policy.set_switch", :admin, "/:org/policy", "switch_ask", %{}},
       {:"organisation_policy.set_switch", :demoted_owner, "/:org/policy", "setting_confirm", %{},
        prelude: [{"switch_ask", %{}}]},
       {:"organisation_policy.set_switch", :instance_admin, "/:org/policy", "switch_ask", %{}},
-      {:"organisation_policy.set_switch", :operator_owner, "/:client/policy", "switch_ask", %{},
-       needs: :organisation_policy},
+      {:"organisation_policy.set_switch", :operator_owner, "/:operated/policy", "switch_ask", %{},
+       answer: :not_found_at_mount, needs: :organisation_policy},
 
       # The organisation's variables, the Variables tab of its settings' Secrets and
       # variables: read by its owners, admins and readers, changed by its owners and
@@ -437,7 +231,8 @@ defmodule ApiaryProWeb.RefusalsRows do
   # The keys of the model providers added for every workspace, on the Secrets tab, changed
   # under `provider.write`: a member does not open the page, and an admin demoted while it
   # is open is refused each change. (An owner demoted to admin keeps `provider.write`.) In a
-  # client, a person of the operator reads the page and is sent back as it opens.
+  # organisation, the page is not there for a person of the operator, who reaches the
+  # workspace the operator operates and nothing the organisation has as a whole.
   defp key_rows do
     changes = fn secret ->
       [
@@ -458,19 +253,19 @@ defmodule ApiaryProWeb.RefusalsRows do
           {:demoted_admin, "/:org", ":org_key", [needs: [:factory, :secrets]]},
           {:instance_admin, "/:org", ":org_key",
            [answer: :refused_at_mount, needs: [:factory, :secrets, :organisation_variables]]},
-          {:operator_owner, "/:client", ":client_key",
+          {:operator_owner, "/:operated", ":operated_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
-          {:operator_admin, "/:client", ":client_key",
+          {:operator_admin, "/:operated", ":operated_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]},
-          {:operator_member, "/:client", ":client_key",
+          {:operator_member, "/:operated", ":operated_key",
            [
-             answer: :refused_at_mount,
+             answer: :not_found_at_mount,
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]}
         ],
@@ -478,39 +273,42 @@ defmodule ApiaryProWeb.RefusalsRows do
         do: {:"provider.write", actor, path, event, params, opts}
   end
 
-  # In a client, the operator's people, at every level, read everything and change
-  # nothing: each change the client's pages offer, sent by an owner, an admin and a member
-  # of the operator.
-  defp in_client_rows do
+  # In an operated workspace, the operator's people, at every level, read everything and
+  # change nothing: each change the organisation's pages offer, sent by an owner, an admin
+  # and a member of the operator.
+  defp in_operated_rows do
     for actor <- [:operator_owner, :operator_admin, :operator_member],
         row <- [
-          {:"organisation.rename", actor, "/:client/settings", "save_organisation",
+          {:"organisation.rename", actor, "/:operated/settings", "save_organisation",
            %{"organisation" => %{"name" => "Renamed"}}, needs: :managed_organisations},
-          {:"workspace.delete", actor, "/:client/settings", "delete_workspace",
-           %{"confirm" => %{"slug" => :client_ws}}, needs: :managed_organisations},
-          {:"workspace.create", actor, "/:client/workspaces/new?step=name&type=software",
+          {:"workspace.delete", actor, "/:operated/settings", "delete_workspace",
+           %{"confirm" => %{"slug" => :operated_ws}}, needs: :managed_organisations},
+          {:"workspace.create", actor, "/:operated/workspaces/new?step=name&type=software",
            "create", %{"workspace" => %{"name" => "Sneaky"}},
            answer: :not_found_at_mount, needs: :managed_organisations},
-          {:"retention.edit", actor, "/:client/:client_ws/settings", "save_retention",
+          {:"retention.edit", actor, "/:operated/:operated_ws/settings", "save_retention",
            %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}},
            needs: :managed_organisations},
-          {:"node.create", actor, "/:client/:client_ws/machines", "create",
+          {:"node.create", actor, "/:operated/:operated_ws/machines", "create",
            %{"node" => %{"name" => "sneaky"}}, needs: :managed_organisations},
-          {:"member.invite", actor, "/:client/settings/people", "invite",
-           %{"invitation" => %{"email" => "invitee@example.com"}}, needs: :managed_organisations},
-          {:"member.remove", actor, "/:client/settings/people", "remove", %{},
-           needs: :managed_organisations},
-          {:"member.remove", actor, "/:client/settings/people/:client_member_membership/remove",
-           "remove", %{}, answer: :refused_at_mount, needs: :managed_organisations},
-          {:"member.change_level", actor, "/:client/settings/people", "set_level",
-           %{"membership_id" => :client_member_membership, "level" => "admin"},
-           needs: :managed_organisations},
-          {:"security_policy.edit", actor, "/:client/:client_ws/policy", "rule_save", %{},
+          # The People page is not found for them (`member.read`).
+          {:"member.invite", actor, "/:operated/settings/people", "invite",
+           %{"invitation" => %{"email" => "invitee@example.com"}},
+           answer: :not_found_at_mount, needs: :managed_organisations},
+          {:"member.remove", actor, "/:operated/settings/people", "remove", %{},
+           answer: :not_found_at_mount, needs: :managed_organisations},
+          {:"member.remove", actor,
+           "/:operated/settings/people/:operated_member_membership/remove", "remove", %{},
+           answer: :not_found_at_mount, needs: :managed_organisations},
+          {:"member.change_level", actor, "/:operated/settings/people", "set_level",
+           %{"membership_id" => :operated_member_membership, "level" => "admin"},
+           answer: :not_found_at_mount, needs: :managed_organisations},
+          {:"security_policy.edit", actor, "/:operated/:operated_ws/policy", "rule_save", %{},
            prelude: [
              {"rule_validate", %{"rule" => %{"host" => "new.example", "paths" => ""}}}
            ],
            needs: [:managed_organisations, :security]},
-          {:"security_policy.set_mode", actor, "/:client/:client_ws/policy", "mode_set",
+          {:"security_policy.set_mode", actor, "/:operated/:operated_ws/policy", "mode_set",
            %{"mode" => "enforce"}, needs: [:managed_organisations, :security]}
         ],
         do: row
@@ -544,11 +342,12 @@ defmodule ApiaryProWeb.RefusalsRows do
        "change_kind", %{"kind" => "operator"}, answer: :not_found_at_mount},
       {:"instance.change_kind", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/kind", "change_kind", %{"kind" => "operator"}},
-      # An operator with clients stays an operator, and a client becomes none. The
-      # instance organisation's kind changes as any other's (`ApiaryPro.OperatorsTest`).
+      # An operator that operates a workspace stays an operator, and the organisation of
+      # that workspace is not made one. The instance organisation's kind changes as any
+      # other's (`ApiaryPro.OperatorsTest`).
       {:"instance.change_kind", :instance_admin, "/instance/organisations/:operator_id/kind",
        "change_kind", %{"kind" => "organisation"}},
-      {:"instance.change_kind", :instance_admin, "/instance/organisations/:client_id/kind",
+      {:"instance.change_kind", :instance_admin, "/instance/organisations/:operated_id/kind",
        "change_kind", %{"kind" => "operator"}},
       {:"instance.purge_organisation", :io_admin,
        "/instance/organisations/:organisation_id/purge", "purge",
@@ -561,7 +360,8 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"instance.purge_organisation", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/purge", "purge",
        %{"confirm" => %{"slug" => :org}}},
-      # The instance organisation is never purged, nor an operator with clients.
+      # The instance organisation is never purged, nor an operator that operates a
+      # workspace.
       {:"instance.purge_organisation", :instance_admin,
        "/instance/organisations/:instance_org_id/purge", "purge",
        %{"confirm" => %{"slug" => :instance_org}}},
@@ -589,16 +389,13 @@ defmodule ApiaryProWeb.RefusalsRows do
       {:"instance.activate_organisation", :revoked_instance_admin, "/instance/organisations",
        "activate_organisation", %{"id" => :organisation_id}},
       {:"instance.transfer", :revoked_instance_admin,
-       "/instance/organisations/:client_id/transfer", "transfer",
+       "/instance/organisations/:operated_id/transfer", "transfer",
        %{
-         "transfer" => %{"membership_id" => :client_admin_membership, "reason" => "Gone quiet"}
+         "transfer" => %{"membership_id" => :operated_admin_membership, "reason" => "Gone quiet"}
        }, needs: :managed_organisations},
       {:"instance.grant_features", :revoked_instance_admin,
        "/instance/organisations/:organisation_id/features", "save_features",
        %{"features" => %{"observability" => "true"}}},
-      {:"instance.grant_features", :instance_admin, "/instance/organisations/:client_id/features",
-       "save_features", %{"features" => %{"observability" => "true"}},
-       needs: :managed_organisations},
       # Who may sign up, on Instance settings › Configuration, which is not found for
       # anyone but an instance admin.
       {:"instance.change_sign_up", :io_admin, "/instance/configuration", "save",
@@ -673,30 +470,34 @@ defmodule ApiaryProWeb.RefusalsRows do
     ]
   end
 
-  # An operator's Clients page and the Instance's pages are reads, `client.read` and
-  # `instance.read`: their refusals are the Access hook's
-  # (`test/apiary_pro_web/live/client_live/`, `test/apiary_pro_web/live/instance_live/`).
+  # The Instance's pages are reads, `instance.read`: their refusals are the Access hook's
+  # (`test/apiary_pro_web/live/instance_live/`).
   # The adoption of the core's organisations is the instance's, after the migrations,
   # never offered by a page (`test/apiary_pro/adoption_test.exs`). The organisation's
   # variables are read on their page, which the Access hook refuses as it mounts
   # (`test/apiary_pro_web/live/settings_live/variables_test.exs`), and so are its secrets
   # (`test/apiary_pro_web/live/settings_live/secrets_test.exs`). No page makes a link to
   # one of its secrets yet: the edition's answer for `:use` is asked directly
-  # (`test/apiary_pro/organisation_secrets_test.exs`). No page sets the model providers of
-  # a client either: `ApiaryPro.Operators.set_model_chain/3` refuses an operator's member,
-  # another operator's owner and a client's people (`test/apiary_pro/model_chain_test.exs`).
+  # (`test/apiary_pro/organisation_secrets_test.exs`).
+  # No page starts or ends a workspace's operator yet: `ApiaryPro.WorkspaceOperators`
+  # refuses a member, an admin who ends one, and the operator's admin
+  # (`test/apiary_pro/workspace_operators_test.exs`). No page withdraws an offer of
+  # ownership: the arbiter's offer lapses once an owner may act again
+  # (`ApiaryPro.Transfers.withdraw_overruled/2`, `test/apiary_pro/suspensions_test.exs`).
   @impl true
   def exempt,
     do: %{
       reads: [
-        :"client.read",
         :"instance.read",
         :"organisation_policy.read",
         :"organisation_variable.read",
         :"organisation_secret.read"
       ],
       after_migrate: [:"instance.adopt"],
-      no_page: [:"organisation_secret.use", :"client.set_model_chain"]
+      no_page: [
+        :"organisation_secret.use",
+        :"organisation.withdraw_transfer"
+      ]
     }
 
   @impl true
@@ -720,13 +521,12 @@ defmodule ApiaryProWeb.RefusalsRows do
       })
 
     operators
-    |> Map.merge(policy_requests(operators))
     |> Map.merge(organisation_policy(owner))
     |> Map.merge(organisation_variable(owner))
     |> Map.merge(organisation_secret(owner))
     |> Map.merge(%{
       org_key: key_secret(owner),
-      client_key: operators.client && key_secret(operators.client_owner.scope)
+      operated_key: operators.operated && key_secret(operators.operated_owner.scope)
     })
     |> Map.merge(%{
       stale_member: member,
@@ -798,8 +598,8 @@ defmodule ApiaryProWeb.RefusalsRows do
   end
 
   # The instance organisation with an instance admin, an admin and a member; an operator
-  # made one by that instance admin, with an admin, a member and a client, and the
-  # client's owner, whom the operator invited, an admin and a member of the client's own.
+  # made one by that instance admin, with an admin, a member and an organisation whose
+  # workspace it operates, and that organisation's owner, an admin and a member.
   # The people of the instance organisation are inserted as they are, without the locks
   # the product takes on its row and its owners, which every row of this test shares.
   defp operators do
@@ -819,9 +619,9 @@ defmodule ApiaryProWeb.RefusalsRows do
 
     operator_owner = scope_in(operator_owner.user, operator)
 
-    client =
+    operated =
       if ApiaryPro.Tenants.operator?(operator),
-        do: ApiaryPro.OperatorsFixtures.client_fixture(operator_owner, "Client")
+        do: ApiaryPro.OperatorsFixtures.operated_fixture(operator_owner, "Fabrikam")
 
     %{
       instance_organisation: instance_organisation,
@@ -830,62 +630,14 @@ defmodule ApiaryProWeb.RefusalsRows do
       io_member: instance_person(instance_organisation, :member),
       operator: operator,
       operator_member: RefusalsCase.person(operator_owner, :member),
-      client: client && client.organisation,
-      client_owner: client && client.owner,
-      client_admin: client && RefusalsCase.person(client.owner.scope, :admin),
-      client_member: client && RefusalsCase.person(client.owner.scope, :member),
-      client_unplaced: client && unplaced(client.owner.scope, client.workspace),
-      client_workspace: client && client.workspace,
+      operated: operated && operated.organisation,
+      operated_owner: operated && operated.owner,
+      operated_admin: operated && RefusalsCase.person(operated.owner.scope, :admin),
+      operated_member: operated && RefusalsCase.person(operated.owner.scope, :member),
+      operated_workspace: operated && operated.workspace,
       operator_admin: RefusalsCase.person(operator_owner, :admin),
       operator_owner: %{user: operator_owner.user, scope: operator_owner}
     }
-  end
-
-  # With the security policy and an operator: a second client of the operator, a locked
-  # rule in the first client's workspace, and a request of the operator's to both, which
-  # changes that rule, pending in each.
-  defp policy_requests(%{client: nil}),
-    do: %{client_b: nil, request: nil, client_answer: nil, client_b_answer: nil}
-
-  defp policy_requests(%{client: client, client_owner: owner, operator_owner: operator}) do
-    if :security in Apiary.Features.enabled() do
-      client_b = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Client B")
-      {:ok, _} = Policy.deny(owner.scope, nil, %{host: "locked.example", locked: true})
-
-      {:ok, request} =
-        ApiaryPro.PolicyRequests.send_request(operator.scope, %{
-          "changes" => %{
-            "rules" => [
-              %{"change" => "rule_changed", "action" => "allow", "host" => "locked.example"}
-            ]
-          },
-          "note" => "The harness calls it."
-        })
-
-      answer = fn organisation ->
-        Repo.get_by!(ApiaryPro.PolicyRequests.Answer,
-          request_id: request.id,
-          organisation_id: organisation.id
-        )
-      end
-
-      %{
-        client_b: client_b.organisation,
-        request: request,
-        client_answer: answer.(client),
-        client_b_answer: answer.(client_b.organisation)
-      }
-    else
-      policy_requests(%{client: nil})
-    end
-  end
-
-  # A member of the client removed from its one workspace: in it, and in none of its
-  # workspaces.
-  defp unplaced(owner, workspace) do
-    %{membership: membership} = unplaced = RefusalsCase.person(owner, :member)
-    {:ok, _} = WorkspaceAccess.remove(owner, membership.id, workspace.id)
-    unplaced
   end
 
   defp instance_person(instance_organisation, level) do
@@ -909,64 +661,32 @@ defmodule ApiaryProWeb.RefusalsRows do
   @impl true
   def value(:instance_org, world), do: world.instance_organisation.slug
   def value(:operator, world), do: world.operator.slug
-  def value(:client, world), do: world.client.slug
-  def value(:client_ws, world), do: world.client_workspace.slug
-  def value(:operator_name, world), do: world.operator.name
-  def value(:client_name, world), do: world.client.name
+  def value(:operated, world), do: world.operated.slug
+  def value(:operated_ws, world), do: world.operated_workspace.slug
   def value(:instance_org_id, world), do: {:id, world.instance_organisation.id}
-  def value(:client_id, world), do: {:id, world.client.id}
+  def value(:operated_id, world), do: {:id, world.operated.id}
   def value(:operator_id, world), do: {:id, world.operator.id}
   def value(:member_user_id, world), do: {:id, world.member.user.id}
-  def value(:client_admin_membership, world), do: {:id, world.client_admin.membership.id}
-  def value(:client_member_membership, world), do: {:id, world.client_member.membership.id}
-  def value(:client_workspace_id, world), do: {:id, world.client_workspace.id}
-  def value(:request_id, world), do: {:id, world.request.id}
-  def value(:client_answer, world), do: {:id, world.client_answer.id}
-  def value(:client_b_answer, world), do: {:id, world.client_b_answer.id}
+  def value(:operated_admin_membership, world), do: {:id, world.operated_admin.membership.id}
+  def value(:operated_member_membership, world), do: {:id, world.operated_member.membership.id}
   def value(:org_rule, world), do: {:id, world.org_rule.id}
   def value(:org_variable, world), do: {:id, world.org_variable.id}
   def value(:org_locked_variable, world), do: {:id, world.org_locked_variable.id}
   def value(:org_secret, world), do: {:id, world.org_secret.public_id}
   def value(:org_key, world), do: {:id, world.org_key.public_id}
-  def value(:client_key, world), do: {:id, world.client_key.public_id}
+  def value(:operated_key, world), do: {:id, world.operated_key.public_id}
   def value(:target_page_b, world), do: world.target_b.public_id
   def value(_name, _world), do: nil
 
-  # The operator and its clients, whose features, offers and people a row may reach.
+  # The operator and the organisation whose workspace it operates, whose features and
+  # people a row may reach.
   @impl true
-  def watched(world), do: [world.operator, world.client, world.client_b]
-
-  # The organisation offered to the operator by its owner.
-  @impl true
-  def before_page(:offered_to_operator, world) do
-    if is_nil(ApiaryPro.Transfers.pending(world.owner)),
-      do: {:ok, _} = ApiaryPro.Transfers.offer_to_operator(world.owner, world.operator.slug)
-
-    :ok
-  end
-
-  # The client's ownership offered by the instance's arbiter to a second admin of it:
-  # seeded as the offer's row, since its owner may act.
-  def before_page(:client_arbitrated, world) do
-    if is_nil(Repo.get_by(ApiaryPro.Transfers.Transfer, organisation_id: world.client.id)) do
-      %{user: second} = RefusalsCase.person(world.client_owner.scope, :admin)
-
-      Repo.insert!(%ApiaryPro.Transfers.Transfer{
-        organisation_id: world.client.id,
-        kind: :to_admin,
-        recipient_id: second.id,
-        offered_by_id: world.instance_admin.user.id,
-        arbitrated: true,
-        reason: "Seeded for the refusal table."
-      })
-    end
-
-    :ok
-  end
+  def watched(world), do: [world.operator, world.operated]
 
   # The organisation's ownership offered by the instance's arbiter to an admin of it
   # other than the world's admin: seeded as the offer's row, since the organisation has
   # owners who may act, whom the arbiter would not overrule.
+  @impl true
   def before_page(:arbitrated_to_another_admin, world) do
     if is_nil(ApiaryPro.Transfers.pending(world.owner)) do
       %{user: other} = RefusalsCase.person(world.owner, :admin)
@@ -979,16 +699,6 @@ defmodule ApiaryProWeb.RefusalsRows do
         arbitrated: true,
         reason: "Seeded for the refusal table."
       })
-    end
-
-    :ok
-  end
-
-  # The client suspended by an instance admin.
-  def before_page(:client_suspended, world) do
-    if is_nil(ApiaryPro.Tenants.suspended_at(Repo.reload!(world.client))) do
-      admin = scope_in(world.instance_admin.user, world.instance_organisation)
-      {:ok, _} = ApiaryPro.Suspensions.suspend_organisation(admin, world.client.id)
     end
 
     :ok

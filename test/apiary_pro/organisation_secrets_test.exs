@@ -106,21 +106,21 @@ defmodule ApiaryPro.OrganisationSecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "in a client, the operator's people read them, and change nothing" do
+    test "in an operated organisation, the operator's people do not find them: they are the organisation's as a whole" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      for organisation <- [operator.organisation, client.organisation], do: grant!(organisation)
+      operated = operated_fixture(operator.scope)
+      for organisation <- [operator.organisation, operated.organisation], do: grant!(organisation)
       %{user: operator_member} = member_fixture(operator.scope, :member)
 
       for user <- [operator.user, operator_member] do
-        assert answers(scope_in(user, client.organisation)) == %{
-                 read: :ok,
-                 write: {:error, :forbidden},
-                 use: {:error, :forbidden}
+        assert answers(scope_in(user, operated.organisation)) == %{
+                 read: {:error, :not_found},
+                 write: {:error, :not_found},
+                 use: {:error, :not_found}
                }
       end
 
-      assert answers(in_org(client.owner.user, client.organisation)) ==
+      assert answers(in_org(operated.owner.user, operated.organisation)) ==
                %{read: :ok, write: :ok, use: :ok}
     end
   end
@@ -285,22 +285,22 @@ defmodule ApiaryPro.OrganisationSecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "a client without the feature is not found to the operator's people", _ctx do
+    test "an operated organisation's are not found to the operator's people, with the feature or without",
+         _ctx do
       ApiaryPro.Flags.put_feature_visibility(true)
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       grant!(operator.organisation)
-      grant!(client.organisation, false)
+      grant!(operated.organisation, false)
 
-      scope = scope_in(operator.user, client.organisation)
-      refute :organisation_variables in scope.hidden
-      assert checks(scope, client.organisation) == @not_found
+      # The operator's people are hidden what the operated organisation is.
+      scope = scope_in(operator.user, operated.organisation)
+      assert :organisation_variables in scope.hidden
+      assert checks(scope, operated.organisation) == @not_found
 
-      grant!(client.organisation)
-      scope = scope_in(operator.user, client.organisation)
-
-      assert checks(scope, client.organisation) ==
-               %{read: :ok, write: {:error, :forbidden}, use: {:error, :forbidden}}
+      grant!(operated.organisation)
+      scope = scope_in(operator.user, operated.organisation)
+      assert checks(scope, operated.organisation) == @not_found
     end
 
     @tag needs: :managed_organisations
@@ -388,18 +388,18 @@ defmodule ApiaryPro.OrganisationSecretsTest do
     end
 
     @tag needs: :managed_organisations
-    test "an operator's owner in the operator, and in a client with features by who asks" do
+    test "an operator's owner in the operator, and in an operated organisation, with features by who asks" do
       ApiaryPro.Flags.put_feature_visibility(true)
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       grant!(operator.organisation)
-      grant!(client.organisation, false)
+      grant!(operated.organisation, false)
       not_found = {:error, :not_found}
 
       assert answers(scope_in(operator.user, operator.organisation)) ==
                %{read: :ok, write: :ok, use: :ok}
 
-      assert answers(scope_in(operator.user, client.organisation)) ==
+      assert answers(scope_in(operator.user, operated.organisation)) ==
                %{read: not_found, write: not_found, use: not_found}
     end
   end

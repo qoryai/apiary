@@ -9,15 +9,13 @@ defmodule Apiary.Harnesses do
   #
   # A link is one installation of an adapter's app on one external account, a grant of an
   # organisation's connection (`Apiary.Adapters.Grant`); its owner is the organisation of
-  # that connection. A run of an organisation may use a link for a harness source, in this
-  # order:
+  # that connection. A run of an organisation may use a link for a harness source in two
+  # cases:
   #
   #   1. when the link's owner is the run's organisation;
   #   2. when the owner is the instance's organisation
   #      (`Apiary.Edition.instance_organisation_id/0`), and an instance assignment of the
-  #      run's organisation or of every organisation covers the source;
-  #   3. otherwise, when the edition allows it
-  #      (`Apiary.Edition.harness_source_allowed?/3`). The core allows nothing more.
+  #      run's organisation or of every organisation covers the source.
   #
   # An assignment covers a source with the same `git` and the same `ref`, compared as
   # texts. An assignment with a `path`, a `stack` or a `module` covers only the source
@@ -84,17 +82,9 @@ defmodule Apiary.Harnesses do
   def allowed?(run_organisation_id, owner_organisation_id, source)
       when is_binary(run_organisation_id) and is_binary(owner_organisation_id) and
              is_map(source) do
-    cond do
-      owner_organisation_id == run_organisation_id ->
-        true
-
-      owner_organisation_id == Edition.instance_organisation_id() and
-          assigned?(run_organisation_id, source) ->
-        true
-
-      true ->
-        Edition.harness_source_allowed?(run_organisation_id, owner_organisation_id, source)
-    end
+    owner_organisation_id == run_organisation_id or
+      (owner_organisation_id == Edition.instance_organisation_id() and
+         assigned?(run_organisation_id, source))
   end
 
   def allowed?(_run_organisation_id, _owner_organisation_id, _source), do: false

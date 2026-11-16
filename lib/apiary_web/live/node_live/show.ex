@@ -136,7 +136,7 @@ defmodule ApiaryWeb.NodeLive.Show do
     assign(socket,
       gateways: scope |> Gateways.gateway_choices() |> Repo.preload(:organisation),
       default: scope.workspace |> Gateways.default_gateway_for() |> Repo.preload(:organisation),
-      through: node |> Gateways.chosen() |> Repo.preload(:organisation),
+      through: Gateways.chosen(node),
       using: nil
     )
   end

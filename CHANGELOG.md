@@ -42,10 +42,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
     by default. `SIGNUP_ORGANISATIONS` and `SIGNUP_OPERATORS`, set to `open` or
     `closed`, override the page.
 <!-- feature: managed_organisations -->
-  - Operators and their **Clients**, with the feature `managed_organisations`: an
-    operator creates client organisations and reads them, and asks them for changes to
-    their security policy. Where the feature is on, the organisation that a new
-    instance is set up with is an operator.
+  - Operators, with the feature `managed_organisations`: an operator's people reach the
+    workspaces it operates. Where the feature is on, the organisation that a new instance
+    is set up with is an operator.
 <!-- /feature -->
 <!-- feature: organisation_policy -->
   - The organisation's **Policy**, with the feature `organisation_policy`: rules that
@@ -1155,13 +1154,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Paused: a key of Northwind Claude reached its limit. It continues in run 15.” A
   paused run that no run continues shows “Paused: a key of Northwind Claude reached its
   limit.” Where the provider was deleted since, the line starts “Paused: a model key
-  reached its limit.” A provider that the instance admin set up is not named: the line
-  is “Paused: every model key is in cooldown until Fri 14:00. It continues in run 15.”
-  while that time is to come, else it starts “Paused: a model key reached its limit.”,
-  and a waiting run shows “Waiting for a model key: every model key is in cooldown until
-  14:00.” The runs list's Filter menu has the family Paused, with the state Paused,
-  between Cancelled and Ended badly, and `state:paused`; a filter of that family alone
-  that finds no run shows “No runs paused.”
+  reached its limit.” The runs list's Filter menu has the family Paused, with the state
+  Paused, between Cancelled and Ended badly, and `state:paused`; a filter of that family
+  alone that finds no run shows “No runs paused.”
 - A run of Explore that pushed its questions or a proposal, and then reached its keys'
   limit, ends **Completed** with its result: no run continues it, its stage goes on as
   after any completed run, and it shows no Paused line. A result that an earlier run
@@ -1207,6 +1202,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   config turned it on, the first start after the upgrade saves it on.
 
 ### Changed
+
+<!-- feature: managed_organisations -->
+- An operator's people reach only the workspaces the operator operates
+  (`workspace_operators`). No screen starts or ends such a link. In an operated
+  workspace they read everything but its secrets and variables, and change nothing. The
+  organisation's owners and admins keep every action in the workspace. Of the
+  organisation the operator's people reach nothing: its people, policy, trail,
+  connections, secrets, variables and settings are not found for them. The owners and
+  admins of an organisation that has an operator connect its systems, add its gateways,
+  lock its workspaces' rules, change its policy and make its first workspace, as in any
+  organisation. An operated workspace is not deleted, and an operator is not deleted,
+  purged or made an organisation, while a link stands.
+<!-- /feature -->
+<!-- feature: managed_organisations -->
+- The organisation menu lists a workspace an operator operates under the operator, after
+  the operator's workspaces, as "workspace · organisation", for a person who reaches it
+  through the operator alone. The group "Clients of" an operator, with its folded heading
+  and count, is gone; an organisation is listed only for its members.
+<!-- /feature -->
+<!-- feature: managed_organisations -->
+- With `feature_visibility` on, an operator's people in a workspace the operator operates
+  are shown the features and parts the organisation is shown there, and hidden those
+  hidden from it. Up to this change they were shown the operator's features, so they could
+  see more than the organisation was granted. An instance admin who reaches an
+  organisation through the instance is shown every feature.
+<!-- /feature -->
 
 <!-- feature: factory, secrets -->
 - A model provider follows the catalogue entry of its kind in the Qory Apiary release it
@@ -1766,6 +1787,29 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
 
+### Removed
+
+<!-- feature: managed_organisations -->
+- An operator relates only to the workspaces it operates (under Changed), not to whole
+  organisations. These parts of the earlier model are gone:
+  - the operator's pages of the organisations it managed ("Clients"), with their sidebar
+    entry, the creation of such an organisation and the invitation of its first owner,
+    and the Clients view, the Operator column and the filter by operator on
+    **Instance settings › Organisations**;
+  - policy requests: an operator's requests for changes to the security policy of an
+    organisation it managed, with their pages and notices;
+  - transfers to an operator, an organisation leaving its operator, and an operator
+    dropping an organisation;
+  - an operator's grants of features to the organisations it managed;
+  - an operator's assignments of harness sources to the organisations it managed;
+  - the operator's chain of model providers and choices for the organisations it
+    managed, and the operator's gateways serving those organisations' workspaces;
+  - the callbacks of `Apiary.Edition` that only that model used:
+    `model_choice_chain/1`, `operator_chain_organisation/1`, `operator_chain_writer?/1`,
+    `operated?/1`, `harness_owner/1`, `harness_source_allowed?/3`, `client_reads/4`,
+    `serving_organisations/1` and `served_organisations/1`.
+<!-- /feature -->
+
 ### Fixed
 
 - A run's notes on missing session events sit inside or after the run's steps, never
@@ -1870,15 +1914,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   counted the run API's requests (the host `run-api.qory.invalid`) as a destination
   enforce would deny.
 <!-- /feature -->
-<!-- feature: managed_organisations -->
-- An operated client no longer sees the operator's model keys of a run whose model
-  provider the operator deleted, and, where the run has its key names, still sees the
-  run's other credentials, such as a registry credential. Before, the client saw some of
-  those keys, or saw none of the run's credentials.
-<!-- /feature -->
 
 ### Security
 
+<!-- feature: factory, secrets -->
+- A gateway made in a workspace receives a run's work credential, or a model key of
+  either chain, only for runs of that workspace. Up to this change, a gateway made in one
+  workspace of an organisation was accepted for the runs of any workspace of it.
+<!-- /feature -->
 - Each field for a model provider's key has `autocomplete="new-password"`: **Key** on
   **Add key** and **New model provider**, **New value** on **Edit key**, and the key on
   the set-up's **Model** step. A browser then does not fill it with a saved sign-in
@@ -1945,7 +1988,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   - each organisation's secrets and variables;
   <!-- /feature -->
   <!-- feature: managed_organisations -->
-  - the relationships between operators and their clients;
+  - operators, and the operators of workspaces;
   <!-- /feature -->
   - the features an instance admin took away from an organisation or granted to it:
     every organisation has every feature the instance has;
@@ -1987,6 +2030,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: managed_organisations -->
+- `workspace_operators` (20261115120000), a table of the operator of a workspace: at
+  most one per workspace, of the kind operator, never of the workspace's organisation.
+  No row is written, and no existing table changes. Rolling back drops it.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no

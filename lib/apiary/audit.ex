@@ -430,7 +430,8 @@ defmodule Apiary.Audit do
 
   # The node of a key acting in another organisation (`organisation_id/1`), when the node
   # has no organisation, is the subject of an entry in that organisation's trail: the
-  # instance's gateway, about a seal for a run of an operator's chain.
+  # instance's pool, about a dispatch for a workspace of that organisation
+  # (`Apiary.Dispatches.Release`, `Apiary.Dispatches.MachineEnds`).
   defp subject(
          %Node{id: id, organisation_id: nil, workspace_id: nil} = subject,
          %Scope{
