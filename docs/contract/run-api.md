@@ -664,11 +664,11 @@ The messages:
     about question q7, which is not open."
   - For a version of `verdict` whose `track.id` is a track that the gate of the stage the
     version is made in does not offer, `names` is `["track"]` and the message is, for a
-    gate that offers tracks, "Set track.id to a track that the gate of Shape offers,
-    standard, fast-track, or leave track out of the verdict. The track express is not
+    gate that offers tracks, "Set track.id to a track that the gate of Shape offers
+    (standard, fast-track), or leave track out of the verdict. The track express is not
     offered.", and for a gate that offers none, "Leave track out of the verdict: the gate
-    of Shape offers no track." A run in no stage reads "the run's stage" for the stage's
-    name. The check is the same for `POST verdict` and for `POST artifacts` with the type
+    of Shape offers no track." A stage the process version does not have reads "the run's
+    stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest

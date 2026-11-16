@@ -12,6 +12,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: workflow_model -->
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>." The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
@@ -19,14 +20,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not
   offer is `422` `invalid_artifact` with `names` `["track"]`, also for a push of the artifact
   `verdict` with `POST artifacts`. A body with `"track": null` has none.
-- An approval at a gate records a track. `gate_decisions.track` holds the id, and only an
-  approval has one. With no track chosen, the approval records the track that the runs of
+- An approval at a gate records a track. `gate_decisions.track` is the id, and only an
+  approval or a move has one. With no track chosen, the approval records the track that the runs of
   the stage proposed in their verdicts, if the gate offers it, else the track the work
   item is on, if the gate offers it, else the gate's first track, else none. An approval
   with a track that the gate does not offer is refused. A process with no tracks records
-  none. `Stages.track/1` is the track of a work item: the track of its newest approval that
-  has one, made in its current take in, so a work item taken in again starts with none.
-  `gate_decisions.take_in` holds the take in. `stage_skips` can record the condition that
+  none. A person's move forward past a gate that offers tracks records the track the same
+  way, on the move. The runs that propose a track are the runs since the work item last
+  entered the stage. `Stages.track/1` is the track of a work item: the track of its newest
+  approval or move that has one, made in its current take in, so a work item taken in again
+  starts with none. `gate_decisions.take_in` is the take-in. An approval is refused when a
+  verdict of the stage cannot be read from the artifact store, and no track is guessed.
+  `stage_skips` can record the condition that
   passed an entry or a whole stage over as `input` or `track`, with `negated` for an
   `unless`; the record of a stage goes when the stage is entered again.
 - A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
@@ -51,10 +56,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stage panel. The Details tab lists the tracks, and for a process that declares tracks its
   line reads "Every work item of <workspace> goes through these stages in order, except a
   stage that its track skips. Each save makes a new version." The History says `Tracks
-  changed.` when the tracks change, `<stage>: condition changed.` when a stage's own `when` or
-  `unless` changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's tracks
+  changed.` when the tracks change, `<stage>: condition changed.` when the `when` or
+  `unless` of a stage changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's tracks
   change, or `... Offers no track.` when a gate stops offering tracks. A change to the
   condition of an input, a loop or an entry shows as a change of the inputs or the sequence.
+<!-- /feature -->
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.
@@ -1272,10 +1278,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
   stage?" and its button reads **Approve**. The line about a missing output reads "Add
-  %{outputs} before you approve this stage.", where it ended with the stage's name."
+  <outputs> before you approve this stage.", where it ended with the stage's name.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change
@@ -2129,6 +2137,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
+  column `gate_decisions.track`, the track an approval chose, with a check that only an
+  approval has one; and, on `stage_skips`, `input` now nullable, a column `track`, a column
+  `negated`, false by default, and a check that a row has exactly one of `input` and
+  `track`. The columns are nullable or have a constant default, so adding them rewrites no
+  row. The first migration adds the checks without a scan, and the second validates them
+  with a scan that does not block writes. No stored row breaks them. Rolling back drops
+  `gate_decisions.track`, with every track that approvals recorded, and deletes the
+  `stage_skips` rows that a track condition wrote, which have no `input`, before it drops
+  `track` and `negated` and restores `input` as not null.
+- `stage_skips` (20261116120200 and 20261116120300): `workflow` and `stage_entry` now
+  nullable, so a row can record a stage passed over whole, with a check that a row has a
+  workflow and an entry or neither, and no loop entry without a workflow. Dropping a NOT
+  NULL takes no scan; the first migration adds the check without a scan, and the second
+  validates it with a scan that does not block writes. It changes no row. Rolling back
+  deletes every row with no workflow, each record of a stage passed over whole, and
+  restores the two columns as not null.
+- `gate_decisions` (20261116130000): a nullable column `take_in`, the take in of the work
+  item that a decision was made in. It has no default, so adding it rewrites no row, and a
+  decision stored before has none. Rolling back drops the column, with the take in of every
+  decision.
+- `work_items` (20261116140000): a nullable column `stage_entered_at`, when the stage
+  runner last entered the work item into its stage. It has no default, so adding it
+  rewrites no row. Rolling back drops the column, with that time of every work item.
+- `gate_decisions` (20261116140100 and 20261116140200): the check on `track` also allows a
+  `move`, so a person's move forward records a track. The first migration replaces the
+  check and adds it without a scan, and the second validates it with a scan that does not
+  block writes. It changes no row. Rolling back sets the track of every move to null, then
+  restores the check for an approval alone.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
   default, true for an approval that a gate `none` recorded with no member, with a check

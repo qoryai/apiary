@@ -1397,6 +1397,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  def refused(:store_unavailable, _flow), do: store_error()
+
   def refused(:not_approver, flow),
     do: gettext("Ask an approver of %{stage} to act on it.", stage: flow.stage.name)
 

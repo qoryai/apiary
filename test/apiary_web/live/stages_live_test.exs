@@ -1147,6 +1147,11 @@ defmodule ApiaryWeb.StagesLiveTest do
                "[data-save-error]",
                "Keep this loop. Its condition cannot move to fix-demos, which has a condition already."
              )
+
+      # The first sentence is the fix, at most 100 characters, and has no workflow name.
+      [first | _rest] = String.split(Words.loop_kept("fix-demos"), ". ", parts: 2)
+      assert first == "Keep this loop"
+      refute first =~ "fix-demos"
     end
 
     test "a gate changed to no approval offers no track", %{conn: conn, path: path, scope: scope} do

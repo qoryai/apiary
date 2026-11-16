@@ -411,7 +411,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Leave track out of the verdict: #{gate} offers no track."
 
       ids ->
-        "Set track.id to a track that #{gate} offers, #{Enum.join(ids, ", ")}, " <>
+        "Set track.id to a track that #{gate} offers (#{Enum.join(ids, ", ")}), " <>
           "or leave track out of the verdict." <> named(id)
     end
   end

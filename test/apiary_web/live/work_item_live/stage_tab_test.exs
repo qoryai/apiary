@@ -1834,6 +1834,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "Choose a track that the gate of Shape offers. It does not offer express."
     end
 
+    test "an approval refused for the artifact store says to try again" do
+      flow = %{stage: %{name: "Shape"}}
+
+      assert ApiaryWeb.WorkItemLive.Show.refused(:store_unavailable, flow) ==
+               "Try again in a minute. The artifact store cannot be reached."
+    end
+
     test "a track the gate does not offer is refused through decide/4", %{scope: scope} do
       work_item = at_gate!(scope)
       page = ApiaryWeb.WorkItemLive.Workflow.page(scope, work_item)

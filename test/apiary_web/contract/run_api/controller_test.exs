@@ -2221,7 +2221,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                json_response(conn, 422)
 
       assert message ==
-               "Set track.id to a track that the gate of Explore offers, standard, or leave track out of the verdict. The track fast-track is not offered."
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
 
       assert RunApiStubs.pushed() == []
     end
@@ -2272,7 +2272,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                json_response(conn, 422)
 
       assert message ==
-               "Set track.id to a track that the gate of Explore offers, standard, or leave track out of the verdict. The track fast-track is not offered."
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
 
       assert RunApiStubs.pushed() == []
 
