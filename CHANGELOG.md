@@ -2089,7 +2089,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: workflow_model -->
-- `dispatch_runs` and `escalations` (20261116150000 and 20261116150100): a nullable
+- `dispatch_runs` and `escalations` (20261116180000 and 20261116180100): a nullable
   column `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
   check that it is a stage id; and the check on `escalations.cause` takes `return_limit`.
   The column has no default, so adding it rewrites no row. The first migration adds both
