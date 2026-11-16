@@ -487,6 +487,7 @@ defmodule Apiary.WorkItems.Explore do
   defp versions_query(id, take_in) do
     from v in Version,
       join: a in Artifact,
+      as: :artifact,
       on: a.id == v.artifact_id,
       join: d in DispatchRun,
       as: :dispatch,
@@ -494,11 +495,7 @@ defmodule Apiary.WorkItems.Explore do
       where: a.work_item_id == ^id and a.name == "main",
       where: d.work_item_id == ^id and d.take_in == ^take_in,
       where: not v.withdrawn,
-      where:
-        fragment(
-          "NOT coalesce((SELECT n.withdrawn FROM artifact_versions n WHERE n.artifact_id = ? ORDER BY n.number DESC LIMIT 1), false)",
-          a.id
-        ),
+      where: ^Apiary.Artifacts.not_withdrawn_name(),
       select: {a.type, v.number}
   end
 

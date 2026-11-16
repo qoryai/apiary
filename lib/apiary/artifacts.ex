@@ -170,14 +170,14 @@ defmodule Apiary.Artifacts do
   # `withdraw({:run, run}, work_item, type, opts)` stores a withdrawal: a version of the
   # work item's artifact of `type` and `opts[:name]` with no files and `withdrawn` true,
   # by the run, with `opts[:stage_id]` and `opts[:note]` as a push takes them. A name whose
-  # newest version is a withdrawal is withdrawn (`withdrawn?/1`): the stages and the work
-  # item's pages leave it out, and the next version with files lists it again. Only a run
-  # withdraws a name; any other actor is `{:error, :not_found}`. The checks of the actor,
-  # the type and the options are those of a push, 1 to 3. A type Qory Apiary reads itself,
-  # `questions`, `review-comments`, `verdict` or `proposal` (`withdrawable_type?/1`), is
-  # `{:error, {:withdraw, :type}}`. Then, in the transaction, with
-  # the locks and the reads of a push's transaction, the artifact's newest version is read,
-  # and the withdrawal is refused, as `{:error, {:withdraw, reason}}`, when it is:
+  # newest version that no cancelled run wrote is a withdrawal is withdrawn
+  # (`withdrawn?/1`): the stages and the work item's pages leave it out, and the next
+  # version with files lists it again. Only a run withdraws a name; any other actor is
+  # `{:error, :not_found}`. The checks of the actor, the type and the options are those of
+  # a push, 1 to 3. A type Qory Apiary reads itself, `questions`, `review-comments`,
+  # `verdict` or `proposal` (`withdrawable_type?/1`), is `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
+  # of a push's transaction, the artifact's newest version that no cancelled run wrote is
+  # read, and the withdrawal is refused, as `{:error, {:withdraw, reason}}`, when it is:
   #
   #   - none, as the name has no version: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
@@ -703,14 +703,16 @@ defmodule Apiary.Artifacts do
     end)
   end
 
-  # The artifact of the held work item, `type` and the name, when its newest version is a
-  # run's version with files.
+  # The artifact of the held work item, `type` and the name, when its newest version that
+  # no cancelled run wrote (`withdrawn?/1`) is a run's version with files.
   defp withdrawable(held, type, fields) do
     newest =
       Repo.one(
         from v in Version,
+          as: :version,
           join: a in assoc(v, :artifact),
           where: a.work_item_id == ^held.id and a.type == ^type.name and a.name == ^fields.name,
+          where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
           order_by: [desc: v.number],
           limit: 1,
           preload: [artifact: a]
@@ -1553,13 +1555,35 @@ defmodule Apiary.Artifacts do
   def cancelled?(%{writer: :run, run: %{run: run}}), do: Apiary.Runs.Run.cancel_requested?(run)
   def cancelled?(_version), do: false
 
-  # withdrawn?/1 is whether the newest version of `artifact` is a withdrawal (`withdraw/4`),
-  # for an artifact whose versions are newest first, as `list/1` reads them and
-  # `Apiary.Stages.artifact_index/1` returns them. False for an artifact with no version.
+  # withdrawn?/1 is whether the newest version of `artifact` that no cancelled run wrote
+  # (`cancelled?/1`) is a withdrawal (`withdraw/4`), for an artifact whose versions are
+  # newest first, as `list/1` reads them and `Apiary.Stages.artifact_index/1` returns them,
+  # with `cancelled` set. A withdrawal by a run a member cancelled counts for nothing, as
+  # every other version that run wrote. False for an artifact with no such version.
   @doc false
   @spec withdrawn?(Artifact.t() | map) :: boolean
-  def withdrawn?(%{versions: [%{withdrawn: true} | _older]}), do: true
+  def withdrawn?(%{versions: versions}) when is_list(versions),
+    do: match?(%{withdrawn: true}, Enum.find(versions, &(not counted_out?(&1))))
+
   def withdrawn?(_artifact), do: false
+
+  defp counted_out?(%{cancelled: cancelled}) when is_boolean(cancelled), do: cancelled
+  defp counted_out?(version), do: cancelled?(version)
+
+  # not_withdrawn_name/0 is the condition, on an artifact bound as `:artifact`, that its
+  # newest version that no cancelled run wrote is not a withdrawal: the rule of
+  # `withdrawn?/1` in SQL.
+  @doc false
+  @spec not_withdrawn_name() :: Ecto.Query.dynamic_expr()
+  def not_withdrawn_name do
+    dynamic(
+      [artifact: a],
+      fragment(
+        "NOT coalesce((SELECT n.withdrawn FROM artifact_versions n WHERE n.artifact_id = ? AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.dispatch_run_id = n.run_id AND r.cancel_requested_at IS NOT NULL) ORDER BY n.number DESC LIMIT 1), false)",
+        a.id
+      )
+    )
+  end
 
   @doc false
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
@@ -1593,16 +1617,13 @@ defmodule Apiary.Artifacts do
       from v in Version,
         as: :version,
         join: a in assoc(v, :artifact),
+        as: :artifact,
         join: f in assoc(v, :files),
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
         where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
-        where:
-          fragment(
-            "NOT coalesce((SELECT n.withdrawn FROM artifact_versions n WHERE n.artifact_id = ? ORDER BY n.number DESC LIMIT 1), false)",
-            a.id
-          ),
+        where: ^not_withdrawn_name(),
         group_by: v.id,
         select: fragment("array_agg(?)", f.content_type)
     )

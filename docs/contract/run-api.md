@@ -187,12 +187,14 @@ the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
 a member cancelled the run that wrote the version, and false for a version of any other
 run or of a person. `withdrawn` is true for a withdrawal, a version a run stored with no
-files (`files` is `[]`), and false for every other version. A name whose newest version is
-a withdrawal is withdrawn: the index lists it with its versions, and the stage's outputs
-and inputs in `GET work-item` and the work item's pages leave it out. A run cannot
-withdraw `verdict`, so the newest verdict in `GET work-item` is never a withdrawal. An
-approval is `{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index
-contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+files (`files` is `[]`), and false for every other version. A name whose newest version
+that no cancelled run wrote is a withdrawal is withdrawn: a withdrawal by a run a member
+cancelled counts for nothing. The index lists a withdrawn name with its versions, and the
+stage's outputs and inputs in `GET work-item` and the work item's pages leave it out. A
+run cannot withdraw `verdict`, so the newest verdict in `GET work-item` is never a
+withdrawal. An approval is `{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`.
+The index contains no file contents; `GET artifacts/<version_id>/files/<filename>`
+returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 
@@ -458,9 +460,9 @@ removed, with a push of `"withdraw": true` and no files:
 Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
 `withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
 the version, as a push does. Gates, stage inputs and the work item's pages leave out a
-name whose newest version is a withdrawal. A stage done whose last approval covered a
-version of that name is at its gate again. A later push of files is a new version, and
-lists the name again. A run cannot withdraw `questions`, `review-comments`, `verdict` or
+name whose newest version that no cancelled run wrote is a withdrawal. A stage done
+whose last approval covered a version of that name is at its gate again. A later push of
+files is a new version, and lists the name again. A run cannot withdraw `questions`, `review-comments`, `verdict` or
 `proposal`: Qory Apiary reads them itself, and a run pushes a new version of them
 instead.
 
@@ -473,7 +475,7 @@ Checks, in order, after the checks of every request:
    `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
-   of the name: none, as the name has no version, `409` `no_version`; a withdrawal,
+   of the name that no cancelled run wrote: none, `409` `no_version`; a withdrawal,
    `409` `already_withdrawn`; a version a person uploaded, `409` `person_version`. A run
    withdraws only a name whose newest version a run wrote.
 

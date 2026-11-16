@@ -116,6 +116,15 @@ defmodule Apiary.StagesTest do
     |> Repo.insert!()
   end
 
+  # The registered run of the run of the queue `run`, cancelled by a member: what `run`
+  # pushed or withdrew counts for nothing (`Apiary.Artifacts.cancelled?/1`).
+  defp cancel_run!(scope, run) do
+    Apiary.RunEventsFixtures.run_fixture(scope, %{
+      dispatch_run_id: run.id,
+      cancel_requested_at: DateTime.utc_now()
+    })
+  end
+
   # A version of the explainer `name` that the run of the queue `run` pushes at Explore.
   defp push_explainer(run, name) do
     Stages.Artifacts.push(
@@ -2375,6 +2384,66 @@ defmodule Apiary.StagesTest do
 
       assert Stages.status(work_item).state == :at_gate
     end
+
+    test "a withdrawal by a run a member cancelled leaves the name and the gate as they were",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"])
+      run = live_run!(work_item)
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, work_item, "explainer", stage_id: @explore)
+
+      assert Stages.status(work_item).state == :at_gate
+      cancel_run!(scope, run)
+
+      assert Stages.status(work_item).state == :done
+      assert [explainer] = Enum.filter(Artifacts.list(work_item), &(&1.type == "explainer"))
+      refute Artifacts.withdrawn?(explainer)
+      assert Artifacts.exists?(work_item, @explore, "explainer")
+      assert MapSet.member?(Explore.versions(work_item.id, work_item.take_in), {"explainer", 1})
+    end
+
+    test "a run withdraws a name again after a withdrawal by a run a member cancelled",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"])
+      cancelled = live_run!(work_item)
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, cancelled}, work_item, "explainer", stage_id: @explore)
+
+      cancel_run!(scope, cancelled)
+
+      assert {:ok, %{number: 3, withdrawn: true}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a run does not withdraw a person's upload under a cancelled run's version",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, [])
+
+      {:ok, upload} =
+        Stages.Artifacts.push(
+          {:person, scope},
+          work_item,
+          "explainer",
+          [%{filename: "explainer.md", content_type: "text/markdown", binary: "# P"}],
+          stage_id: @explore
+        )
+
+      cancelled = live_run!(work_item)
+      {:ok, %{number: 2}} = push_explainer(cancelled, "main")
+      cancel_run!(scope, cancelled)
+
+      assert {:error, {:withdraw, {:person, 1, user_id}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+
+      assert upload.number == 1
+      assert user_id == scope.user.id
+    end
   end
 
   describe "a stage with no workflow (§ 4)" do
@@ -2684,6 +2753,40 @@ defmodule Apiary.StagesTest do
       {:ok, _version} = push_explainer(run, "main")
 
       assert [%{version: %{id: ^id}}] = Stages.inputs(work_item)
+    end
+
+    test "an input keeps a name a run a member cancelled withdrew", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "outputs" => [
+            %{"type" => "proposal", "required" => true},
+            %{"type" => "explainer", "required" => false}
+          ]
+        }),
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "explainer", "required" => true}]})
+      ])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
+          {:ok, _version} = push_explainer(run, "main")
+        end)
+
+      {:ok, work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
+      [explainer] = versions(work_item, "explainer")
+      run = live_run!(work_item)
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, work_item, "explainer", stage_id: @explore)
+
+      assert [%{type: "explainer", version: nil}] = Stages.inputs(work_item)
+      cancel_run!(scope, run)
+
+      assert [%{version: %{id: id}}] = Stages.inputs(work_item)
+      assert id == explainer.public_id
     end
   end
 
