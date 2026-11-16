@@ -119,6 +119,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       loop: get(status, :loop) == true,
       gaps: lines(get(status, :gaps)),
       runs: runs,
+      # The workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`).
+      skips: Stages.skips(row),
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,

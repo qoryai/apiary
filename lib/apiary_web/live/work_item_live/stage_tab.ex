@@ -97,6 +97,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #
   #   * `stage`: the tab's stage, on a stage tab, else nil;
   #   * `runs`: the stage's runs of the take in, oldest first;
+  #   * `skips`: the stage's workflow entries the runner passed over in the take in;
   #   * `take_ins`: the earlier take ins with the stage's runs, each with its `place` among
   #     all of them, from 1;
   #   * `questions`: on the current stage's tab, every open question and the closed ones the
@@ -111,6 +112,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: nil,
       runs: [],
+      skips: [],
       take_ins: read.earlier_take_ins,
       questions: read.questions,
       questions_version: read.questions_version,
@@ -138,6 +140,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: nil,
       runs: read.earlier_runs,
+      skips: [],
       take_ins: read.earlier_take_ins,
       questions: read.questions,
       questions_version: read.questions_version,
@@ -156,6 +159,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: stage,
       runs: runs,
+      skips: Enum.filter(Map.get(flow, :skips, []), &(&1.stage_id == stage.id)),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),

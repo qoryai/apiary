@@ -13677,6 +13677,11 @@ msgstr ""
 msgid "No %{type} was stored in this stage."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{type}: %{workflow} did not run."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"

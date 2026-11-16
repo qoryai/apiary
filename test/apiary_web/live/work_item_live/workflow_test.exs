@@ -6142,6 +6142,93 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "a workflow entry the runner passed over (A-16)" do
+    test "Verify's tab lists capture-demos with the reason, before verify-a-ticket's run",
+         %{conn: conn, scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-scenarios",
+          "base_view" => "document"
+        })
+
+      [explore | _rest] = Processes.default_document("software")["stages"]
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      save!(scope, %{
+        "schema" => "qory.process/v1",
+        "stages" => [
+          explore,
+          %{
+            "id" => @shape,
+            "name" => "Shape",
+            "sequence" => [],
+            "outputs" => [%{"type" => "demo-scenarios", "required" => false}],
+            "gate" => gate
+          },
+          %{
+            "id" => @verify,
+            "name" => "Verify",
+            "sequence" => [
+              %{"workflow" => "capture-demos", "when" => %{"input" => "demo-scenarios"}},
+              %{"workflow" => "verify-a-ticket"}
+            ],
+            "outputs" => [
+              %{
+                "type" => "demo-video",
+                "required" => true,
+                "when" => %{"input" => "demo-scenarios"}
+              }
+            ],
+            "gate" => gate
+          }
+        ]
+      })
+
+      work_item = taken_in_fixture(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = Repo.get!(WorkItem, work_item.id)
+      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      work_item =
+        work_item
+        |> then(&Repo.get!(WorkItem, &1.id))
+        |> end_run!(fn run, _registered ->
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              %{"verdict" => "passed"},
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/stages/#{@verify}")
+
+      assert has_element?(
+               view,
+               "#work-item-record-skip-0 b",
+               "capture-demos"
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-record-skip-0",
+               "No demo scenarios: capture-demos did not run."
+             )
+
+      assert [skipped, run] = fold_rows(view)
+      assert skipped == "capture-demos"
+      assert run =~ ~r/^Attempt 2 \(Run \d+\) · verify-a-ticket · round 1 · passed/
+      assert hd(summary(view)) == "1 run"
+
+      # The gate lists the film as optional.
+      assert has_element?(view, "#work-item-stage-gate-check-demo-video", "Optional, none")
+    end
+  end
+
   describe "work items the migration placed" do
     test "in Explore and in Shape at its gate, on the page and the board", %{
       conn: conn,
