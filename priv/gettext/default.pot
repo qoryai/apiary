@@ -7309,6 +7309,11 @@ msgstr ""
 msgid "Choose a target"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a track that the gate of %{stage} offers. It does not offer %{track}."
+msgstr ""
+
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type"

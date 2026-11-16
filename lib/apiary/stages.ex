@@ -27,7 +27,7 @@ defmodule Apiary.Stages do
   #     its settle (`Apiary.Dispatches.Settle.settle/1`), in their transaction: the runner
   #     reads what the run gave and acts. A run ended `run_ended` is read once its outcome
   #     is stored.
-  #   * `confirmed/2`, from `Apiary.WorkItems.confirm/3`: a confirmation of Explore's
+  #   * `confirmed/3`, from `Apiary.WorkItems.confirm/4`: a confirmation of Explore's
   #     proposal approves Explore's gate.
   #
   # ## A gate `none`
@@ -158,15 +158,18 @@ defmodule Apiary.Stages do
           | :not_live
           | :stage_changed
           | {:outputs_missing, [String.t()]}
+          | {:track_not_offered, String.t()}
           | {:invalid, :note}
           | term
 
   @typedoc """
   The stage the person acted on, as their page showed it: `expect_stage: stage_id`,
   required. An action on a work item that is no longer in that stage, or that names
-  none, changes nothing and returns `{:error, :stage_changed}`.
+  none, changes nothing and returns `{:error, :stage_changed}`. `track` is the id of the
+  track an approval chooses (`approve/4`, `confirmed/3`); nil, or no `track`, for the
+  default.
   """
-  @type expect :: [expect_stage: String.t()]
+  @type expect :: [expect_stage: String.t(), track: String.t() | nil]
 
   # on?/0 is whether the workflow model is on for the instance.
   @doc false
@@ -540,9 +543,11 @@ defmodule Apiary.Stages do
   end
 
   # confirmed/3 approves Explore's gate for the work item whose proposal the scope's
-  # person confirmed in this transaction (`Apiary.WorkItems.confirm/3`), which passes
-  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`). At the
-  # gate it asks `work_item.confirm` (`Apiary.Access`) of the locked work item again.
+  # person confirmed in this transaction (`Apiary.WorkItems.confirm/4`), which passes
+  # the stage of the confirmed run as `expect_stage` (`confirmed_stage_id/2`), and the
+  # `track` the person chose, if any. At the gate it asks `work_item.confirm`
+  # (`Apiary.Access`) of the locked work item again. The approval records its track as
+  # `approve/4` does.
   @doc false
   @spec confirmed(Scope.t(), WorkItem.t(), expect) :: {:ok, WorkItem.t()} | {:error, term}
   def confirmed(%Scope{} = scope, %WorkItem{id: id}, opts \\ []) do
@@ -553,7 +558,8 @@ defmodule Apiary.Stages do
          :ok <- expected(work_item, opts),
          :at_gate <- work_item.stage_state do
       with :ok <- Access.authorize(scope, :"work_item.confirm", work_item),
-           {:ok, work_item} <- approve_locked(scope, work_item, version, stage, nil, false) do
+           {:ok, track} <- chosen_track(work_item, stage, opts),
+           {:ok, work_item} <- approve_locked(scope, work_item, version, stage, nil, false, track) do
         tell_now(work_item)
         {:ok, work_item}
       end
@@ -901,6 +907,11 @@ defmodule Apiary.Stages do
   # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of a stage
   # with no workflow is refused while a required output is missing,
   # `{:error, {:outputs_missing, types}}` (`missing_outputs/1`).
+  #
+  # The decision records a track (`chosen_track/3`): the `track` of `opts` where the gate
+  # offers it, else `{:error, {:track_not_offered, track}}`; with none, the track the stage's
+  # latest run proposed (`proposed_track/1`) where the gate offers it, else the gate's first
+  # track, else none. A missing track never refuses an approval.
   @doc false
   @spec approve(Scope.t(), WorkItem.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -910,9 +921,10 @@ defmodule Apiary.Stages do
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
            :ok <- outputs_exist(work_item, version, stage),
+           {:ok, track} <- chosen_track(work_item, stage, opts),
            {:ok, confirmed?} <- confirm_explore(scope, work_item, stage) do
         # A confirmation already wrote the act's entry in the audit trail.
-        approve_locked(scope, lock!(work_item.id), version, stage, note, not confirmed?)
+        approve_locked(scope, lock!(work_item.id), version, stage, note, not confirmed?, track)
       end
     end)
   end
@@ -941,12 +953,12 @@ defmodule Apiary.Stages do
 
   # An approval; `audit?` false where the confirmation of today's proposal wrote the act's
   # one entry in the trail.
-  defp approve_locked(scope, work_item, version, stage, note, audit?) do
+  defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     covered = Enum.map(newest_outputs(work_item, stage), & &1.public_id)
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
     with {:ok, _decision} <-
-           decide(scope, work_item, version, stage, :approve, covered, nil, note),
+           decide(scope, work_item, version, stage, :approve, covered, nil, note, track),
          {:ok, _entry} <-
            if(audit?, do: audit(scope, work_item, "approve", details), else: {:ok, nil}) do
       {work_item, _run} = advance(work_item, version, stage)
@@ -1711,6 +1723,116 @@ defmodule Apiary.Stages do
     :ok
   end
 
+  ## Tracks
+
+  @doc """
+  track/1 is the id of the track `work_item` is on: the track of its newest approval that
+  has one, at any stage, or nil where no approval chose a track (a process with no tracks,
+  or no approval yet). A later approval with another track changes it.
+  """
+  @spec track(WorkItem.t()) :: String.t() | nil
+  def track(%WorkItem{id: id}) do
+    Repo.one(
+      from d in GateDecision,
+        where: d.work_item_id == ^id and d.kind == :approve and not is_nil(d.track),
+        order_by: [desc: d.inserted_at, desc: d.id],
+        limit: 1,
+        select: d.track
+    )
+  end
+
+  @doc """
+  offered_tracks/1 is the tracks the gate of `work_item`'s stage offers, in the gate's
+  order, each `%{id, name, description}` as the process declares it (`description` nil for
+  none). `[]` where the gate offers none, the process declares no tracks, or the work item
+  is in no stage.
+  """
+  @spec offered_tracks(WorkItem.t()) :: [
+          %{id: String.t(), name: String.t(), description: String.t() | nil}
+        ]
+  def offered_tracks(%WorkItem{} = work_item) do
+    case placed(work_item) do
+      {:ok, version, stage} -> gate_tracks(version, stage)
+      :not_placed -> []
+    end
+  end
+
+  defp gate_tracks(version, stage) do
+    declared = Map.new(version.document["tracks"] || [], &{&1["id"], &1})
+
+    for id <- stage["gate"]["tracks"] || [], track = declared[id] do
+      %{id: id, name: track["name"], description: track["description"]}
+    end
+  end
+
+  @doc """
+  proposed_track/1 is the track the latest run of `work_item`'s stage in its take in
+  proposed: the `track.id` of the newest `verdict` named `main` that the run pushed. nil
+  where the stage has no run, the run pushed no verdict, or the verdict has no track. The
+  track is not checked against the gate: `chosen_track/3` does that.
+  """
+  @spec proposed_track(WorkItem.t()) :: String.t() | nil
+  def proposed_track(%WorkItem{stage_id: stage_id} = work_item) when is_binary(stage_id) do
+    latest =
+      Repo.one(
+        from d in DispatchRun,
+          left_join: r in subquery(Run.registered()),
+          on: r.dispatch_run_id == d.id,
+          where:
+            d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in and
+              d.stage_id == ^stage_id,
+          order_by: [desc: d.attempt],
+          limit: 1,
+          select: {d.id, r.id}
+      )
+
+    with {dispatch_run_id, run_id} <- latest,
+         %{} = verdict <-
+           newest_verdict(work_item, Enum.reject([dispatch_run_id, run_id], &is_nil/1)),
+         %{"track" => %{"id" => id}} when is_binary(id) <- verdict do
+      id
+    else
+      _none -> nil
+    end
+  end
+
+  def proposed_track(%WorkItem{}), do: nil
+
+  # The file of the newest version of the verdict `main` that one of the runs `run_ids` pushed.
+  defp newest_verdict(work_item, run_ids) do
+    versions =
+      for artifact <- Artifacts.list(work_item),
+          artifact.type == "verdict" and artifact.name == "main",
+          version <- artifact.versions,
+          version.run_id in run_ids,
+          do: version
+
+    case versions do
+      [version | _older] -> Artifacts.read_json(version)
+      [] -> nil
+    end
+  end
+
+  # The track an approval at `stage`'s gate records: the `track` of `opts` where the gate
+  # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the proposed
+  # track where the gate offers it, else the gate's first track, else nil. A gate that
+  # offers none refuses a track that `opts` names and records none otherwise.
+  defp chosen_track(work_item, stage, opts) do
+    offered = for id <- stage["gate"]["tracks"] || [], do: id
+
+    case Keyword.get(opts, :track) do
+      nil ->
+        proposed = proposed_track(work_item)
+        {:ok, if(proposed in offered, do: proposed, else: List.first(offered))}
+
+      track when is_binary(track) ->
+        if track in offered, do: {:ok, track}, else: {:error, {:track_not_offered, track}}
+
+      _other ->
+        {:error, :invalid}
+    end
+  end
+
   # The next stage of the version after `stage`, entered; after the last, the stage is
   # done and the work item closes.
   defp advance(work_item, version, stage) do
@@ -2276,7 +2398,17 @@ defmodule Apiary.Stages do
     )
   end
 
-  defp decide(scope, work_item, version, stage, kind, covered, artifact_version_id, note) do
+  defp decide(
+         scope,
+         work_item,
+         version,
+         stage,
+         kind,
+         covered,
+         artifact_version_id,
+         note,
+         track \\ nil
+       ) do
     %GateDecision{
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
@@ -2288,6 +2420,7 @@ defmodule Apiary.Stages do
       versions: covered,
       artifact_version_id: artifact_version_id,
       note: note,
+      track: track,
       inserted_at: DateTime.utc_now()
     }
     |> Repo.insert()

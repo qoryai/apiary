@@ -1181,10 +1181,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Approve is disabled while a changed decision is a draft; a click that reaches the
   # page then does nothing.
-  defp act("confirm", _params, socket) do
+  defp act("confirm", params, socket) do
     if changed_decision?(socket),
       do: {:noreply, socket},
-      else: confirm(socket)
+      else: confirm(socket, text(params["track"]))
   end
 
   # A reply goes to the review comment of the open Reply page; a `"reply"` with the id of
@@ -1248,9 +1248,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp act(_event, _params, socket), do: {:noreply, socket}
 
-  defp confirm(socket) do
+  defp confirm(socket, track) do
     with_attempt(socket, fn attempt ->
-      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
+      done(
+        socket,
+        WorkItems.confirm(scope(socket), socket.assigns.row, attempt, track: track)
+      )
     end)
   end
 
@@ -1270,7 +1273,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: {:noreply, assign(socket, stage_asking: :changes, stage_error: nil)}
 
   defp stage_act("stage_approve", params, socket),
-    do: fresh(socket, params, &decided(&1, &2, {:approve, note(params)}))
+    do: fresh(socket, params, &decided(&1, &2, {:approve, note(params), text(params["track"])}))
 
   defp stage_act("stage_request_changes", params, socket) do
     case note(params) do
@@ -1382,6 +1385,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def refused({:outputs_missing, types}, _flow) do
     gettext("Add %{outputs} before you approve this stage.",
       outputs: StageComponents.outputs_words(types)
+    )
+  end
+
+  def refused({:track_not_offered, track}, flow) do
+    gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
+      stage: flow.stage.name,
+      track: track
     )
   end
 

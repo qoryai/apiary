@@ -12,6 +12,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- An approval at a gate records a track. `gate_decisions.track` holds the id, and only an
+  approval has one. With no track chosen, the approval records the track that the latest
+  run of the stage proposed in its verdict, if the gate offers it, else the gate's first
+  track, else none. An approval with a track that the gate does not offer is refused. A
+  process with no tracks records none. `Stages.track/1` is the track of a work item: the
+  track of its newest approval that has one. `stage_skips` can record the condition that
+  passed an entry over as `input` or `track`, with `negated` for an `unless`. The runner
+  does not use tracks yet.
 - A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
   example Standard and Fast track. A gate lists the track ids it offers in `tracks`, and
   a gate of kind `none` offers none. A stage, a loop, a workflow entry and an input take

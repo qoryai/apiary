@@ -1637,6 +1637,28 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "an approval with a track (A-23)" do
+    test "the gate takes the track through the page's action, and says what a refusal needs" do
+      flow = %{stage: %{name: "Shape"}}
+
+      assert ApiaryWeb.WorkItemLive.Show.refused({:track_not_offered, "express"}, flow) ==
+               "Choose a track that the gate of Shape offers. It does not offer express."
+    end
+
+    test "a track the gate does not offer is refused through decide/4", %{scope: scope} do
+      work_item = at_gate!(scope)
+      page = ApiaryWeb.WorkItemLive.Workflow.page(scope, work_item)
+
+      assert ApiaryWeb.WorkItemLive.Workflow.decide(
+               scope,
+               work_item,
+               page,
+               {:approve, nil, "express"}
+             ) ==
+               {:error, {:track_not_offered, "express"}}
+    end
+  end
+
   describe "an output on two stages" do
     defp two_stages!(scope) do
       process!(scope, %{}, %{

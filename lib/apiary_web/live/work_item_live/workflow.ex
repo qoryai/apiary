@@ -665,6 +665,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
          {:ok, action} <- checked(action, page) do
       case action do
         {:approve, note} -> Stages.approve(scope, row, note, expect)
+        {:approve, note, track} -> Stages.approve(scope, row, note, [track: track] ++ expect)
         {:request_changes, note, av} -> Stages.request_changes(scope, row, note, av, expect)
         {:resolve, how, note} -> Stages.resolve_escalation(scope, row, how, note, expect)
         {:move, stage_id, note} -> Stages.move(scope, row, stage_id, note, expect)
@@ -678,6 +679,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # At Explore's gate, a member confirms the proposal (`Apiary.WorkItems.confirm/4`),
   # which approves the gate: the page offers no Approve and no Request changes there.
   defp checked({:approve, _note}, %{confirm_gate: true}), do: {:error, :confirm_gate}
+  defp checked({:approve, _note, _track}, %{confirm_gate: true}), do: {:error, :confirm_gate}
 
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}

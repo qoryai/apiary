@@ -2760,6 +2760,209 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the track of an approval (A-23)" do
+    @tracks [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast track", "description" => "Skips shaping."}
+    ]
+
+    defp offering(ids),
+      do: %{"gate" => %{"kind" => "person", "approvers" => "members", "tracks" => ids}}
+
+    # Explore, whose gate offers `explore`, then Shape, whose gate offers `shape`; the
+    # process declares the tracks Standard and Fast track.
+    defp tracked_process!(scope, explore, shape \\ []) do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(explore)),
+          stage(@shape, "Shape", [], offering(shape))
+        ]
+      }
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      version
+    end
+
+    defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
+
+    test "an approval with no track records the gate's first track, and the work item is on it",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert Stages.proposed_track(work_item) == nil
+      assert [%{id: "standard"}, %{id: "fast-track"}] = Stages.offered_tracks(work_item)
+      assert Stages.track(work_item) == nil
+
+      assert {:ok, %WorkItem{stage_id: @shape} = moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+      assert Stages.track(moved) == "standard"
+    end
+
+    test "a verdict with no track proposes none", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          proposal_only().(run, registered)
+          verdict("passed").(run, registered)
+        end)
+
+      assert Stages.proposed_track(work_item) == nil
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+    end
+
+    test "the track a person chooses is recorded, at the gate and by confirm", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      assert tracks_of(moved) == ["fast-track"]
+
+      other = take_in!(scope) |> end_run!(understood_result())
+
+      assert {:ok, moved} =
+               Stages.approve(scope, other, nil, expect_stage: @explore, track: "fast-track")
+
+      assert tracks_of(moved) == ["fast-track"]
+    end
+
+    test "a track the gate does not offer is refused, and nothing is written", %{scope: scope} do
+      tracked_process!(scope, ["standard"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert WorkItems.confirm(scope, work_item, 1, track: "fast-track") ==
+               {:error, {:track_not_offered, "fast-track"}}
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @explore, track: "express") ==
+               {:error, {:track_not_offered, "express"}}
+
+      work_item = reload(work_item)
+      assert %{stage_id: @explore, stage_state: :at_gate} = work_item
+      assert decisions(work_item) == []
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
+    end
+
+    test "a gate that offers no track refuses one, and records none without one", %{scope: scope} do
+      tracked_process!(scope, ["standard"], [])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %{stage_id: @shape} = work_item
+
+      assert Stages.offered_tracks(work_item) == []
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape, track: "standard") ==
+               {:error, {:track_not_offered, "standard"}}
+
+      assert {:ok, _done} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert tracks_of(work_item) == ["standard", nil]
+      assert Stages.track(work_item) == "standard"
+    end
+
+    test "a process with no tracks records none, and behaves as before", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert Stages.offered_tracks(work_item) == []
+      assert Stages.proposed_track(work_item) == nil
+
+      assert {:ok, %WorkItem{stage_id: @shape} = moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == [nil]
+      assert Stages.track(moved) == nil
+
+      assert Stages.approve(scope, moved, nil, expect_stage: @shape, track: "standard") ==
+               {:error, {:track_not_offered, "standard"}}
+    end
+
+    test "the database keeps a track to an approval, and a skip to one condition", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      [decision] = decisions(moved)
+
+      fields =
+        Map.take(decision, [
+          :organisation_id,
+          :workspace_id,
+          :work_item_id,
+          :stage_id,
+          :process_version_id
+        ])
+
+      error =
+        catch_error(
+          Repo.insert!(
+            struct(
+              GateDecision,
+              Map.merge(fields, %{
+                kind: :request_changes,
+                track: "standard",
+                inserted_at: DateTime.utc_now()
+              })
+            )
+          )
+        )
+
+      assert Exception.message(error) =~ "gate_decisions_track_check"
+
+      skip =
+        Map.merge(fields, %{
+          take_in: 1,
+          stage_entry: 0,
+          round: 1,
+          workflow: "capture-demos",
+          after_attempt: 0,
+          inserted_at: DateTime.utc_now()
+        })
+
+      for condition <- [%{}, %{input: "spec", track: "standard"}] do
+        error = catch_error(Repo.insert!(struct(Stages.Skip, Map.merge(skip, condition))))
+        assert Exception.message(error) =~ "stage_skips_condition_check"
+      end
+
+      for condition <- [%{input: "spec"}, %{track: "fast-track", negated: true}] do
+        assert %Stages.Skip{} = Repo.insert!(struct(Stages.Skip, Map.merge(skip, condition)))
+      end
+    end
+
+    test "a later approval with another track changes the track", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.track(moved) == "standard"
+
+      {:ok, moved} =
+        Stages.approve(scope, reload(moved), nil, expect_stage: @shape, track: "fast-track")
+
+      assert Stages.track(moved) == "fast-track"
+      assert tracks_of(moved) == ["standard", "fast-track"]
+    end
+
+    test "a later approval at Explore's gate with another track changes the track", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.track(moved) == "standard"
+
+      {:ok, back} = Stages.move(scope, reload(moved), @explore, nil, expect_stage: @shape)
+      assert %{stage_id: @explore} = back
+
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "fast-track")
+
+      assert Stages.track(again) == "fast-track"
+      assert tracks_of(again) == ["standard", nil, "fast-track"]
+    end
+  end
+
   describe "a gate none (vault 0252)" do
     # A stage with a loop of two workflows and a gate none, as Build, then a stage that
     # reads its outputs, as Verify. `explainer` stands for Build's submission.
