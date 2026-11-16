@@ -1096,7 +1096,7 @@ defmodule Apiary.Artifacts do
         answers -> answers_open(held, answers)
       end
     else
-      {:error, _refusal} = refused -> refused
+      {:error, {:invalid, _reason}} = refused -> refused
       _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
     end
   end

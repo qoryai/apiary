@@ -3164,6 +3164,39 @@ defmodule Apiary.StagesTest do
       assert [%{stage_id: @build, track: "standard"}] = Stages.stage_skips(closed)
     end
 
+    test "the records of stages passed over are in the order they were written, to the microsecond",
+         %{scope: scope} do
+      runner_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+      [%{stage_id: @shape}] = Stages.stage_skips(work_item)
+
+      Repo.delete_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id))
+
+      row = fn stage, at ->
+        Repo.insert!(%Stages.Skip{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          stage_id: stage,
+          process_version_id: work_item.process_version_id,
+          take_in: work_item.take_in,
+          round: 1,
+          track: "standard",
+          after_attempt: 0,
+          inserted_at: at
+        })
+      end
+
+      # The first was written at 12:00:01.9, the second at 12:00:02.1: as terms, 100000
+      # sorts before 900000, so the second would come first.
+      row.(@shape, ~U[2025-11-14 12:00:01.900000Z])
+      row.(@build, ~U[2025-11-14 12:00:02.100000Z])
+
+      assert [@shape, @build] == Enum.map(Stages.stage_skips(work_item), & &1.stage_id)
+    end
+
     test "two stages in a row passed over, then the third runs", %{scope: scope} do
       verify = "st_m1mqbeywdg"
 

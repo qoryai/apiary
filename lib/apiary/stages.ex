@@ -910,8 +910,9 @@ defmodule Apiary.Stages do
   #
   # The decision records a track (`chosen_track/3`): the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`; with none, the track the stage's
-  # latest run proposed (`proposed_track/1`) where the gate offers it, else the gate's first
-  # track, else none. A missing track never refuses an approval.
+  # runs proposed (`proposed_track/1`) where the gate offers it, else the track the work
+  # item is on (`track/1`) where the gate offers it, else the gate's first track, else none.
+  # A missing track never refuses an approval.
   @doc false
   @spec approve(Scope.t(), WorkItem.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1315,7 +1316,7 @@ defmodule Apiary.Stages do
         rounds: shown_rounds(stage, work_item.stage_entry),
         loop: is_integer(work_item.loop_entry),
         state: state,
-        gaps: shown_gaps(escalation, work_item, stage, artifacts, counted),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts, counted, track),
         outputs: outputs,
         missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts, %{counted: counted, track: track}),
@@ -1507,7 +1508,8 @@ defmodule Apiary.Stages do
       skips: for(skip <- entries, skip.take_in == take_in, do: entry.(skip)),
       earlier_skips: for(skip <- entries, skip.take_in < take_in, do: entry.(skip)),
       stage_skips:
-        for skip <- Enum.sort_by(stages, &{&1.inserted_at, &1.id}), skip.take_in == take_in do
+        for skip <- Enum.sort_by(stages, &{DateTime.to_unix(&1.inserted_at, :microsecond), &1.id}),
+            skip.take_in == take_in do
           %{
             stage_id: skip.stage_id,
             input: skip.input,
@@ -1898,17 +1900,19 @@ defmodule Apiary.Stages do
       |> Enum.flat_map(fn {dispatch_run_id, run_id} -> [dispatch_run_id, run_id] end)
       |> Enum.reject(&is_nil/1)
 
-    # The versions are newest first: the first with a track is the newest.
-    for artifact <- Artifacts.list(work_item),
-        artifact.type == "verdict" and artifact.name == "main",
-        version <- artifact.versions,
-        version.run_id in run_ids,
-        %{"track" => %{"id" => id}} <- [Artifacts.read_json(version)],
-        is_binary(id),
-        reduce: nil do
-      nil -> id
-      found -> found
-    end
+    # The versions are newest first: the first with a track is the newest, and the rest are
+    # not read.
+    work_item
+    |> Artifacts.list()
+    |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
+    |> Stream.flat_map(& &1.versions)
+    |> Stream.filter(&(&1.run_id in run_ids))
+    |> Enum.find_value(fn version ->
+      case Artifacts.read_json(version) do
+        %{"track" => %{"id" => id}} when is_binary(id) -> id
+        _none -> nil
+      end
+    end)
   end
 
   def proposed_track(%WorkItem{}), do: nil
@@ -2947,11 +2951,12 @@ defmodule Apiary.Stages do
          %WorkItem{stage_state: :waiting_workflow} = work_item,
          stage,
          artifacts,
-         counted
+         counted,
+         track
        ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage, counted, track(work_item)),
+    case {waiting_workflow(work_item, stage, counted, track),
           Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         case Sources.chosen(workspace) do
@@ -2964,7 +2969,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp shown_gaps(escalation, work_item, stage, artifacts, _counted),
+  defp shown_gaps(escalation, work_item, stage, artifacts, _counted, _track),
     do: gaps(escalation, work_item, stage, artifacts)
 
   # not_listed/4 is why a stage waits for a workflow its harness did not list.

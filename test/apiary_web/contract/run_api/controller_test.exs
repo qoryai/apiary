@@ -1930,6 +1930,20 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
     end
 
+    test "a verdict file that is not JSON is 422 invalid_artifact, as before", ctx do
+      offering!(ctx, ["standard"])
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("verdict", [{"verdict.json", "application/json", "{not json"}])
+        )
+
+      assert %{"error" => "invalid_artifact", "names" => ["files[0]"]} = json_response(conn, 422)
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a null track is no track, and is stored without the member", ctx do
       offering!(ctx, ["standard"])
       assert write(ctx, "/verdict", %{"verdict" => "passed", "track" => nil}).status == 201

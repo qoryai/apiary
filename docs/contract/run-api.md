@@ -591,6 +591,13 @@ The messages:
       attribute", "the url() in the style element", "the url() in the xmlns:a
       attribute", "the @import in the text of the desc element" or "the image-set() in
       the style attribute". A name past 64 characters is cut to 64 and "…".
+    - "Shrink sources.json to at most 1048576 bytes."
+    - "Make sources.json valid JSON. The file does not parse as JSON."
+    - "Fix sources.json to match the format of proposal sources: at #, additional
+      properties are not allowed but found property 'items'." The part after the colon
+      is the JSON pointer of the first failing value and the text of the failed check: a
+      schema check, or a check outside the schema such as a key that comes twice in an
+      object ("the object has the key <key> twice", check 6).
   - For a run's version of `mockup` with `screens.json`, the message of the first
     rule the version breaks, with the fix first, such as "Remove the `<script>` element
     from `home.html` (screen `home`): a mockup page runs no script."
@@ -605,13 +612,6 @@ The messages:
     of Shape offers no track." A run in no stage reads "the run's stage" for the stage's
     name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
-    - "Shrink sources.json to at most 1048576 bytes."
-    - "Make sources.json valid JSON. The file does not parse as JSON."
-    - "Fix sources.json to match the format of proposal sources: at #, additional
-      properties are not allowed but found property 'items'." The part after the colon
-      is the JSON pointer of the first failing value and the text of the failed check: a
-      schema check, or a check outside the schema such as a key that comes twice in an
-      object ("the object has the key <key> twice", check 6).
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
