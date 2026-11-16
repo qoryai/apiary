@@ -372,6 +372,28 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       valid!(documents)
     end
 
+    test "puts the host of the submit_module's source in the run's stack_hosts", ctx do
+      process!(ctx, @submit)
+      work_item = walked!(ctx, :write)
+      forge!(ctx, work_item, @submit_module)
+
+      run =
+        ctx
+        |> claim()
+        |> registered()
+
+      assert {:ok, members} = ComposedConfiguration.members(run)
+      assert members.stack_hosts == ["modules.example.org"]
+
+      # A run whose documents have no submit_module: no such host.
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
+        set: [run_documents: ~s({"step":"explore","inputs":{}})]
+      )
+
+      assert {:ok, without} = ComposedConfiguration.members(Repo.get!(Apiary.Runs.Run, run.id))
+      assert without == nil or without.stack_hosts == []
+    end
+
     test "of a write run whose forge's adapter declared no submit_module is submit alone",
          ctx do
       process!(ctx, @submit)
