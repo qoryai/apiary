@@ -742,7 +742,7 @@ defmodule Apiary.ProcessesTest do
 
       assert :ok = Processes.validate(with_name.(String.duplicate("n", 60)))
 
-      for name <- [String.duplicate("n", 61), ""] do
+      for name <- [String.duplicate("n", 61), "", "   "] do
         assert {"#/stages/1/sequence/0", :schema} in errors(with_name.(name))
       end
 

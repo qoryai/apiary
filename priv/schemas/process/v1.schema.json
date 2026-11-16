@@ -89,7 +89,8 @@
           "description": "Optional. A name for this entry in plain text, 1 to 60 characters. Pages show it under the entry.",
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "pattern": "\\S"
         },
         "machine": {"$ref": "#/$defs/machine"},
         "time_limit": {

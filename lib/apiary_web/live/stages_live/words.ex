@@ -673,7 +673,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   end
 
   defp bad_name?(%{"name" => name}),
-    do: not (is_binary(name) and length(String.codepoints(name)) in 1..60)
+    do: not (is_binary(name) and length(String.codepoints(name)) in 1..60 and name =~ ~r/\S/)
 
   defp bad_name?(_entry), do: false
 

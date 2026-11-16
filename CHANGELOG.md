@@ -25,9 +25,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workflow entry with a condition on a track shows it on its card and in its panel (`Skipped
   on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`, `Runs on Standard or
   Slow only.`), and so does a workflow in a loop. A workflow entry takes an optional `name`
-  of 1 to 60 characters, shown as `Name: ...` under its row. The Details tab lists the tracks,
+  of 1 to 60 characters with at least one letter or sign, shown as `Name: ...` under its row in the stage panel. The Details tab lists the tracks,
   and for a process that declares tracks its line reads "Every work item of <workspace> goes
-  through these stages in order, except a stage that its track skips." The History says
+  through these stages in order, except a stage that its track skips. Each save makes a new version." The History says
   `Tracks changed.` when the tracks change, `<stage>: condition changed.` when a stage's own
   `when` or `unless` changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's
   tracks change. A change to the condition of an input, a loop or an entry shows as a change
