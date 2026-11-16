@@ -1482,7 +1482,7 @@ defmodule Apiary.Stages do
   # `negated` (true for an `unless` that was met), when it was passed over, and `approved`,
   # the approval that put the work item on the track that passed it over: the newest
   # approval with a track made in the take in before the stage was passed over, as
-  # `%{track_id, track_name, stage_id, user_id, at}`; nil for none, and for a condition
+  # `%{kind, track_id, track_name, stage_id, user_id, at}`, `kind` `:approve` or `:move`; nil for none, and for a condition
   # that is no track's. `track_name` is the name the process version declares, else the id.
   # A stage's record is deleted when the stage is entered again (`enter_locked/4`), so a
   # stage has at most one, and none once it ran or waits at its gate.
@@ -1555,6 +1555,7 @@ defmodule Apiary.Stages do
 
       decision ->
         %{
+          kind: decision.kind,
           track_id: decision.track,
           track_name: names[decision.track] || decision.track,
           stage_id: decision.stage_id,

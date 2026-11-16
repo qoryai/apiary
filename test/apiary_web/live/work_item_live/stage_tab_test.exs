@@ -1779,6 +1779,82 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "#{ApiaryWeb.People.short(scope.user.email)} approved Fast track at Explore's gate on 14 Nov 2025. Fast track skips Shape."
     end
 
+    # Explore's gate offers Fast track first; Build runs on Standard only. A person's move
+    # forward past Explore's gate records the first track, and approving Shape then passes
+    # Build over. The move and the pass-over are dated as `confirmed!/2` dates them.
+    defp moved!(scope) do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", ["fast-track", "standard"])}
+
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{"sequence" => [], "outputs" => []})
+
+          %{"id" => @build} = stage ->
+            Map.put(stage, "when", %{"track" => "standard"})
+
+          stage ->
+            stage
+        end)
+
+      document =
+        document
+        |> Map.put("stages", stages)
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+      {:ok, _moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @explore)
+      {:ok, _approved} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+
+      {_n, _rows} =
+        Repo.update_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [inserted_at: ~U[2025-11-14 12:00:00.000000Z]]
+        )
+
+      {_n, _rows} =
+        Repo.update_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id),
+          set: [inserted_at: ~U[2025-11-14 12:00:01.000000Z]]
+        )
+
+      reload(work_item)
+    end
+
+    test "a track that a move recorded reads that the person moved the work item, You", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = moved!(scope)
+      assert [%{kind: :move, track_id: "fast-track"}] = approvals_of(work_item)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert shown(view) ==
+               "You moved the work item past Explore's gate on 14 Nov 2025, so it runs Fast track. Fast track skips Build."
+    end
+
+    test "a track that a move recorded reads the member's name for another reader", %{
+      scope: scope
+    } do
+      work_item = moved!(scope)
+      %{user: other} = Apiary.OrganisationsFixtures.member_fixture(scope, :admin)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), other), stage(scope, work_item.number, @build))
+
+      assert shown(view) ==
+               "#{ApiaryWeb.People.short(scope.user.email)} moved the work item past Explore's gate on 14 Nov 2025, so it runs Fast track. Fast track skips Build."
+    end
+
+    defp approvals_of(work_item),
+      do: for(%{approved: %{} = a} <- Stages.stage_skips(work_item), do: a)
+
     test "an approval of a member whose account is gone reads Former member", %{
       conn: conn,
       scope: scope

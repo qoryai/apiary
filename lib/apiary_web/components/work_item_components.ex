@@ -5250,17 +5250,31 @@ defmodule ApiaryWeb.WorkItemComponents do
       stage: stage
     ]
 
-    if you?(by),
-      do:
+    case {approval.kind, you?(by)} do
+      {:move, true} ->
+        gettext(
+          "You moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
+          values
+        )
+
+      {:move, false} ->
+        gettext(
+          "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
+          [member: by.name] ++ values
+        )
+
+      {_approve, true} ->
         gettext(
           "You approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
           values
-        ),
-      else:
+        )
+
+      {_approve, false} ->
         gettext(
           "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
           [member: by.name] ++ values
         )
+    end
   end
 
   defp passed_over_words(%{track: track} = skip, stage, _stage_names, _now)

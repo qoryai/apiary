@@ -14,7 +14,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: workflow_model -->
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
-  reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>." The
+  reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
+  track that a person's move recorded, "You moved the work item past <stage>'s gate on
+  <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
+  name in place of "You". The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not

@@ -1280,6 +1280,11 @@ msgstr ""
 msgid "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -24909,6 +24914,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You left %{name}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex
