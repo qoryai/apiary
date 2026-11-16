@@ -2099,8 +2099,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
   the submit program that an adapter's latest start-up declares, with a check that it is
   null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
-  reads and writes. It changes no row: Apiary stores the module at each adapter's next
-  start-up.
+  reads and writes. It changes no row: Apiary stores the module that each adapter
+  declares at its next start-up.
   Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
