@@ -157,37 +157,6 @@ defmodule Apiary.Policy.AboveTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
       assert egress!(scope, nil)["mode"] == "enforce"
     end
-
-    test "requested changes: observe is refused with the floor's sentence, enforce is what holds",
-         %{scope: scope} do
-      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
-      above!([], floor: true)
-      {:ok, observe} = Policy.requested_changes(%{"mode" => "observe"})
-
-      {:ok, enforce} =
-        Policy.requested_changes(%{
-          "mode" => "enforce",
-          "rules" => [%{"change" => "rule_added", "action" => "allow", "host" => "cdn.example"}]
-        })
-
-      assert {:error, %Error{reason: :fixed, message: message}} =
-               Repo.transact(fn ->
-                 {:ok, [workspace]} = Policy.lock_workspaces(scope, [scope.workspace.id])
-                 Policy.apply_requested(scope, [workspace], observe)
-               end)
-
-      assert message =~ "Eight Wonders"
-      assert message =~ "In #{scope.workspace.name}:"
-
-      assert {:ok, [%Change{action: "rule_added"}]} =
-               Repo.transact(fn ->
-                 {:ok, [workspace]} = Policy.lock_workspaces(scope, [scope.workspace.id])
-                 Policy.apply_requested(scope, [workspace], enforce)
-               end)
-
-      assert Policy.get_mode(scope) == "observe"
-      assert egress!(scope, nil)["mode"] == "enforce"
-    end
   end
 
   describe "a host the level decides" do

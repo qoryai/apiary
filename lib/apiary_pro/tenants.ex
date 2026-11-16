@@ -1,14 +1,13 @@
 defmodule ApiaryPro.Tenants do
   @moduledoc """
-  Tenants is what the edition keeps of an organisation beyond the core's: its kind, its
-  operator when it is a client, and its suspension. Each organisation has a separate
-  row, a tenant (`ApiaryPro.Tenants.Tenant`), written in the transaction that creates the
+  Tenants is what the edition keeps of an organisation beyond the core's: its kind and its
+  suspension. Each organisation has a separate row, a tenant (`ApiaryPro.Tenants.Tenant`), written in the transaction that creates the
   organisation (`organisation_created/2`), or by `ApiaryPro.Adoption` for one created
   before the instance had tenants.
 
   Every organisation has a `kind`: `:organisation`, an ordinary one, or `:operator`, which
-  also manages client organisations. One organisation is the **instance organisation**,
-  `instance_organisation: true`: the instance owner, whose owners are the instance admins
+  may also operate workspaces of other organisations (`ApiaryPro.WorkspaceOperators`). One
+  organisation is the **instance organisation**, `instance_organisation: true`: the instance owner, whose owners are the instance admins
   (`c:Apiary.Edition.instance_organisation_id/0`). The first sign-up of an instance, its
   set-up by its set-up link (`Apiary.Setup`), creates it (`organisation_created/2`), of
   the kind `first_sign_up_kind/0` gives: an operator where the instance has
@@ -17,26 +16,16 @@ defmodule ApiaryPro.Tenants do
   (`ApiaryPro.Operators.change_kind/3`). A partial unique index lets one tenant carry the
   flag, and nothing in the product unsets it.
 
-  An organisation of the kind `:organisation` may be a **client** of an operator,
-  `operator_id`: the managing relationship, one level deep. The database keeps it so: the
-  operator is an organisation of the kind `:operator`, and only an organisation of the
-  kind `:organisation` has one, so an operator is never a client, a client never becomes
-  an operator, and an operator with clients does not become an organisation or go while
-  one references it. The instance organisation, made an operator, may be the operator
-  of clients too, and is never a client itself, which a check keeps. A client owns its
-  people as any organisation, and its operator's people read it (`ApiaryPro.Reach`). Set
-  at creation; emptied when the client is dropped (`ApiaryPro.Transfers`). Nothing here is ever cast from a
-  form.
+  Nothing here is ever cast from a form.
 
   **On the organisation.** The tenant travels on the organisation it describes, in its
   `edition` map under `:tenant` (`Apiary.Organisations.Organisation`): `put/1` reads the
   tenants of one organisation or of a list in one read, and `put_tenant/2` puts one read
   already. `tenant/1` and the questions after it (`kind/1`, `operator?/1`,
-  `instance_organisation?/1`, `client?/1`, `operator_id/1`, `suspended?/1`) answer from
-  the organisation as it carries it, and read its tenant when it carries none. An
-  organisation without a row, which only a database written before the instance had
-  tenants has, is an organisation of the kind `:organisation` with no operator, as
-  the adoption makes it.
+  `instance_organisation?/1`, `suspended?/1`) answer from the organisation as it carries
+  it, and read its tenant when it carries none. An organisation without a row, which only
+  a database written before the instance had tenants has, is an organisation of the kind
+  `:organisation`, as the adoption makes it.
 
   **Locks.** A tenant is written only under its organisation's row locked for update: an
   operator's change, a suspension and its end, and the adoption's flag of the instance
@@ -64,7 +53,6 @@ defmodule ApiaryPro.Tenants do
   alias ApiaryPro.Tenants.{PeopleLock, Tenant}
 
   @kinds Tenant.kinds()
-  @model_chains Tenant.model_chains()
 
   @typedoc "A kind of `kinds/0`."
   @type kind :: Tenant.kind()
@@ -77,8 +65,8 @@ defmodule ApiaryPro.Tenants do
 
   @doc """
   tenant/1 is the tenant of `organisation`, as the organisation carries it in its
-  `edition`, or read now when it carries none: the defaults, an organisation of no
-  operator, for one without a row, and for one not inserted yet.
+  `edition`, or read now when it carries none: the defaults, an ordinary organisation, for
+  one without a row, and for one not inserted yet.
   """
   @spec tenant(%Organisation{}) :: Tenant.t()
   def tenant(%Organisation{edition: %{tenant: %Tenant{} = tenant}}), do: tenant
@@ -131,7 +119,7 @@ defmodule ApiaryPro.Tenants do
     do: %{organisation | edition: Map.put(edition, :tenant, tenant)}
 
   @doc """
-  new/1 is an organisation not inserted yet, of the kind `kind` and of no operator: what
+  new/1 is an organisation not inserted yet, of the kind `kind`: what
   `organisation.create` is asked of before it exists (`ApiaryPro.Access`).
   """
   @spec new(kind) :: %Organisation{}
@@ -155,54 +143,6 @@ defmodule ApiaryPro.Tenants do
     do: tenant(organisation).instance_organisation == true
 
   def instance_organisation?(_other), do: false
-
-  @doc "client?/1 says whether an organisation is a client of an operator."
-  @spec client?(term) :: boolean
-  def client?(%Organisation{} = organisation), do: is_binary(operator_id(organisation))
-  def client?(_organisation), do: false
-
-  @doc "operator_id/1 is the id of the operator of `organisation`, a client; nil for any other."
-  @spec operator_id(%Organisation{}) :: Ecto.UUID.t() | nil
-  def operator_id(%Organisation{} = organisation), do: tenant(organisation).operator_id
-
-  @doc "operator_since/1 is since when `organisation` is its operator's client, or nil."
-  @spec operator_since(%Organisation{}) :: DateTime.t() | nil
-  def operator_since(%Organisation{} = organisation), do: tenant(organisation).operator_since
-
-  # model_chain/1 is whose model providers the runs of `organisation` use, as it carries its
-  # tenant: `:operator` for a client its operator lets work on the operator's, `:organisation`
-  # for any other.
-  @doc false
-  @spec model_chain(%Organisation{}) :: Tenant.model_chain()
-  def model_chain(%Organisation{} = organisation), do: tenant(organisation).model_chain
-
-  # model_chain_of/1 is `model_chain/1` of the organisation `organisation_id`, read now with
-  # one statement and no lock: `:operator` only for a client with that switch, `:organisation`
-  # for any other, an organisation that is not there included.
-  @doc false
-  @spec model_chain_of(Ecto.UUID.t()) :: Tenant.model_chain()
-  def model_chain_of(organisation_id) do
-    Repo.one(
-      from t in Tenant,
-        where: t.organisation_id == ^organisation_id and not is_nil(t.operator_id),
-        select: t.model_chain
-    ) || :organisation
-  end
-
-  # operator_on_chain_of/1 is the operator of the organisation `organisation_id`, read now
-  # with one statement and no lock, when it is a client whose switch is `:operator`
-  # (`model_chain_of/1`); nil for any other, an organisation that is not there included.
-  @doc false
-  @spec operator_on_chain_of(Ecto.UUID.t()) :: Ecto.UUID.t() | nil
-  def operator_on_chain_of(organisation_id) do
-    Repo.one(
-      from t in Tenant,
-        where:
-          t.organisation_id == ^organisation_id and not is_nil(t.operator_id) and
-            t.model_chain == :operator,
-        select: t.operator_id
-    )
-  end
 
   @doc """
   suspended?/1 says whether `organisation` is suspended (`ApiaryPro.Suspensions`), as it
@@ -325,10 +265,11 @@ defmodule ApiaryPro.Tenants do
   (`lock_people/1`). It never locks a membership or a row of the core's.
 
   - `{:places, scope}`, a write that must stay allowed for the scope's person: when the
-    scope has a person and its organisation is a client, its operator's row
-    `FOR SHARE`, so a change of the operator's people waits for the write, or came first
-    and the write reads it. The operator is read under the client's row, which the core
-    holds `FOR SHARE` and every change of a client's operator locks for update first. The
+    scope has a person and its organisation has operated workspaces, the rows of the
+    operators of its workspaces `FOR SHARE`, so a change of an operator's people waits for
+    the write, or came first and the write reads it. The operators are read under the
+    organisation's row, which the core holds `FOR SHARE` and which code that changes a
+    workspace's operator must lock for update first (`ApiaryPro.WorkspaceOperators`). The
     rows do not depend on the scope's workspace: a repeat in the same change takes the
     same rows in the same mode.
   - `{:people, scope, organisation}`, a change of the organisation's people: the rows
@@ -353,15 +294,15 @@ defmodule ApiaryPro.Tenants do
   def lock_rows({:account, _user_id, organisation_ids}) when is_list(organisation_ids),
     do: lock_people(organisation_ids, :update)
 
-  # The rows a write that must stay allowed for the scope's person takes: its operator's,
-  # when the scope's organisation is a client, read now.
+  # The rows a write that must stay allowed for the scope's person takes: those of the
+  # operators of the organisation's workspaces, read now.
   defp places_rows(%Scope{user: %User{}, organisation: %Organisation{id: id}})
-       when is_binary(id) do
-    case Repo.one(from t in Tenant, where: t.organisation_id == ^id, select: t.operator_id) do
-      nil -> []
-      operator_id -> [{operator_id, :share}]
-    end
-  end
+       when is_binary(id),
+       do:
+         for(
+           operator_id <- ApiaryPro.WorkspaceOperators.operator_ids_of(id),
+           do: {operator_id, :share}
+         )
 
   defp places_rows(_scope), do: []
 
@@ -392,8 +333,8 @@ defmodule ApiaryPro.Tenants do
   passes are one point: whatever an insert waits for, another transaction's insert of
   the same row or its tenant's key, it waits for in the insert pass, before any row of
   the lock pass is held, and the rows that pass holds are new ones no other transaction
-  can have locked. An organisation without a tenant has no row to lock: it is neither an operator
-  nor a client, and no change takes its row. `:ok`.
+  can have locked. An organisation without a tenant has no row to lock: it is no operator,
+  and no change takes its row. `:ok`.
   """
   @spec lock_people([{Ecto.UUID.t(), :share | :update}]) :: :ok
   def lock_people(rows) when is_list(rows) do
@@ -468,54 +409,11 @@ defmodule ApiaryPro.Tenants do
   @doc """
   kind_changeset/2 changes the kind of the organisation of `tenant`: an organisation made
   an operator, or an operator made an organisation, the instance organisation as any
-  other. The database refuses a client made an operator (the check) and an operator with
-  clients made an organisation (the foreign key), each an error on `kind`.
+  other.
   """
   @spec kind_changeset(Tenant.t(), kind) :: Ecto.Changeset.t()
-  def kind_changeset(%Tenant{} = tenant, kind) when kind in @kinds do
-    tenant
-    |> change(kind: kind)
-    |> check_constraint(:kind,
-      name: :tenants_client_kind_check,
-      message: dgettext_noop("errors", "cannot be an operator: it is a client of one")
-    )
-    |> foreign_key_constraint(:kind,
-      name: :tenants_operator_fkey,
-      message: dgettext_noop("errors", "cannot be an organisation while it has clients")
-    )
-  end
-
-  @doc """
-  operator_changeset/2 makes the organisation of `tenant` a client of `operator`, an
-  organisation of the kind `:operator`, from now on (`operator_since`), or, with nil, a
-  client of no operator. The foreign key and the check answer for an operator that is
-  none, on `operator_id`, and a check for the instance organisation, which is no client.
-  """
-  @spec operator_changeset(Tenant.t(), %Organisation{} | nil) :: Ecto.Changeset.t()
-  # With nil, `model_chain` is set back to `:organisation`.
-  def operator_changeset(%Tenant{} = tenant, nil),
-    do: change(tenant, operator_id: nil, operator_since: nil, model_chain: :organisation)
-
-  def operator_changeset(%Tenant{} = tenant, %Organisation{id: operator_id}) do
-    tenant
-    |> change(kind: :organisation, operator_id: operator_id, operator_since: DateTime.utc_now())
-    |> operator_constraints()
-    |> check_constraint(:operator_id,
-      name: :tenants_instance_organisation_not_client,
-      message: dgettext_noop("errors", "cannot be changed: it is the instance owner")
-    )
-  end
-
-  # model_chain_changeset/2 sets whose model providers the runs of the organisation of
-  # `tenant` use, `:organisation` or `:operator`. The database refuses `:operator` for a
-  # tenant with no operator, on `model_chain`.
-  @doc false
-  @spec model_chain_changeset(Tenant.t(), Tenant.model_chain()) :: Ecto.Changeset.t()
-  def model_chain_changeset(%Tenant{} = tenant, chain) when chain in @model_chains do
-    tenant
-    |> change(model_chain: chain)
-    |> check_constraint(:model_chain, name: :tenants_model_chain_operator_check)
-  end
+  def kind_changeset(%Tenant{} = tenant, kind) when kind in @kinds,
+    do: change(tenant, kind: kind)
 
   @doc """
   suspension_changeset/3 suspends the organisation of `tenant` now, by `suspended_by_id`,
@@ -536,26 +434,13 @@ defmodule ApiaryPro.Tenants do
   def suspension_changeset(%Tenant{} = tenant, :activate, _suspended_by_id),
     do: change(tenant, suspended_at: nil, suspended_by_id: nil)
 
-  defp operator_constraints(changeset) do
-    changeset
-    |> foreign_key_constraint(:operator_id,
-      name: :tenants_operator_fkey,
-      message: dgettext_noop("errors", "is not an operator")
-    )
-    |> check_constraint(:operator_id,
-      name: :tenants_client_kind_check,
-      message: dgettext_noop("errors", "is not an operator")
-    )
-  end
-
   ## Creation
 
   @doc """
   first_sign_up_kind/0 is the kind of the instance organisation the instance's first
   sign-up creates: `:operator` where the instance has `managed_organisations`, among the
-  features it was started with (`QORY_FEATURES`, `Apiary.Features.on?/1`), so its owners
-  may create clients from it at once; `:organisation` otherwise, an organisation like any
-  other, with no Clients page. The instance admins may change it later
+  features it was started with (`QORY_FEATURES`, `Apiary.Features.on?/1`);
+  `:organisation` otherwise, an organisation like any other. The instance admins may change it later
   (`ApiaryPro.Operators.change_kind/3`).
   """
   @spec first_sign_up_kind() :: kind
@@ -577,15 +462,14 @@ defmodule ApiaryPro.Tenants do
     are open, and `is not open for sign-up on this instance` for a closed one;
   - `{:kind, kind}`, of `kind`, which the caller asked `Apiary.Access` for: a signed-in
     person's new organisation (`ApiaryPro.Organisations.create_organisation/2`), or one an
-    instance admin creates (`ApiaryPro.Operators.create_organisation/2`);
-  - `{:client, operator}`, a client of `operator` (`ApiaryPro.Operators.create_client/3`).
+    instance admin creates (`ApiaryPro.Operators.create_organisation/2`).
 
   The step `:tenant` is the new organisation carrying its tenant. A new operator that is
-  not the instance organisation is granted what the instance has, and a client what its
-  operator has (`ApiaryPro.Grants.written_out/3`); an organisation follows the instance,
-  and the instance organisation has what the instance has, whatever its kind
+  not the instance organisation is granted what the instance has
+  (`ApiaryPro.Grants.written_out/3`); an organisation follows the instance, and the
+  instance organisation has what the instance has, whatever its kind
   (`ApiaryPro.Features`). The organisation's entry records its kind, and whether it is the
-  instance organisation or the operator of a client.
+  instance organisation.
   """
   @spec organisation_created(Ecto.Multi.t(), term) :: Ecto.Multi.t()
   def organisation_created(multi, :first_sign_up) do
@@ -609,18 +493,6 @@ defmodule ApiaryPro.Tenants do
     multi
     |> Ecto.Multi.put(:kind, kind)
     |> kind_steps()
-  end
-
-  def organisation_created(multi, {:client, %Organisation{} = operator}) do
-    multi
-    |> insert_tenant(fn organisation, _changes -> new_client(organisation, operator) end)
-    |> Ecto.Multi.run(:grants, fn _repo, %{tenant: client} ->
-      Grants.written_out(client, {:client, operator})
-    end)
-    |> Ecto.Multi.put(:organisation_entry, %{
-      after: %{kind: :organisation},
-      details: %{operator_id: operator.id}
-    })
   end
 
   # The kind the `:kind` step gives, and what it is granted: a new operator what the
@@ -663,13 +535,6 @@ defmodule ApiaryPro.Tenants do
       name: :tenants_one_instance_organisation_index,
       message: dgettext_noop("errors", "could not be signed up just now; please try again")
     )
-  end
-
-  # A new client's tenant, of `operator`, from now on.
-  defp new_client(%Organisation{id: id}, %Organisation{id: operator_id}) do
-    %Tenant{organisation_id: id}
-    |> change(kind: :organisation, operator_id: operator_id, operator_since: DateTime.utc_now())
-    |> operator_constraints()
   end
 
   # The kind a later sign-up creates, of those the instance's settings open, read inside

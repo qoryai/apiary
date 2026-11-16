@@ -24,7 +24,7 @@ defmodule ApiaryWeb.PreparationStepsTest do
   defp machine(started \\ %{}) do
     %{
       dispatch_id: "dp_0123456789abcdef",
-      pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace, operator: nil},
+      pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace},
       queued_at: nil,
       machine_type: nil,
       requested_at: DateTime.add(@dispatched, -4, :second),

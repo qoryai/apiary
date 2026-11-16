@@ -437,7 +437,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           into: MapSet.new(),
           do: adapter_id
 
-    connected = WorkspaceSetup.connected_ids(flow.organisation, flow.domain, role)
+    connected = WorkspaceSetup.connected_ids(scope, flow.domain, role)
 
     adapters =
       IntegrationComponents.offered(

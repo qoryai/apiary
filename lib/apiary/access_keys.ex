@@ -121,8 +121,8 @@ defmodule Apiary.AccessKeys do
   is in use again: a key is a workspace's, not a person's, so a suspended membership or an
   account out of use leaves the keys working. The key of an organisation's gateway is
   verified while its organisation is out of use, and acts for a run only while the run's
-  place is in use (`place_in_use?/2`): it keeps carrying the runs of the other
-  organisations it serves, and none of its organisation's. It keeps the keys it holds
+  place is in use (`place_in_use?/2`), so it acts for none of its organisation's runs
+  while its organisation is out of use. It keeps the keys it holds
   and enrols no new one: an enrolment is refused while its organisation is out of use, as
   every enrolment code of an organisation out of use is. A workspace's gateway is held to its organisation's use as any node is.
 
@@ -220,10 +220,9 @@ defmodule Apiary.AccessKeys do
   # revoked, of a node in use, of a workspace and an organisation neither marked for
   # deletion nor, but for an organisation's gateway, out of use. The key of a gateway of an
   # organisation, which has no workspace, is verified while its organisation is out of
-  # use: it may serve the workspaces of other organisations, whose runs it keeps carrying.
-  # A workspace's gateway serves that workspace alone, and is held to it as any node is. For each run, its own place is checked
-  # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
-  # of use. A key without an organisation, of an adapter or of the instance's pool or
+  # use. A workspace's gateway serves that workspace alone, and is held to it as any node
+  # is. For each run, the run's place is checked (`place_in_use?/2`), so a gateway acts for
+  # none of its organisation's runs while that organisation is out of use. A key without an organisation, of an adapter or of the instance's pool or
   # gateway, none of which has one, is the instance's: no organisation's state holds it,
   # whatever it is.
   defp verifiable_query do

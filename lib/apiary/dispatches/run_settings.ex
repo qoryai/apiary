@@ -482,17 +482,15 @@ defmodule Apiary.Dispatches.RunSettings do
   # The providers the choices and their fallbacks name, as they are now: with the
   # workspaces they apply to and their keys' secret's value ids, by row id.
   defp providers(%{organisation: organisation, input: input}) do
-    {chain, owner} = ModelChoices.chain_owner(organisation.id)
     ids = provider_ids(input)
 
-    # The providers of the run's chain are the rows of the organisation that chain is made
-    # of: the run's organisation, or, on the operator's chain, the operator's.
-    if ids == [] or is_nil(owner) do
+    # The providers of the run's chain are the rows of the run's organisation.
+    if ids == [] do
       %{}
     else
       from(c in Connection,
-        where: c.id in ^ids and c.organisation_id == ^owner,
-        where: not is_nil(c.provider_kind) and c.chain == ^chain,
+        where: c.id in ^ids and c.organisation_id == ^organisation.id,
+        where: not is_nil(c.provider_kind) and c.chain == "organisation",
         preload: [
           workspaces: [],
           secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]

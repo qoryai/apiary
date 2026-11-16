@@ -143,7 +143,7 @@ defmodule Apiary.Dispatches.PauseTest do
     # The run's organisation's provider is named, and is not the instance admin's.
     assert Pause.of_run(paused) == %{
              provider: ctx.provider.name,
-             operator: false,
+             other_organisation: false,
              until: nil,
              number: continuation.number,
              workspace_id: ctx.scope.workspace.id
@@ -233,19 +233,8 @@ defmodule Apiary.Dispatches.PauseTest do
              "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
   end
 
-  test "an instance admin's provider has no name in the line", ctx do
-    %{scope: operator} = sign_up_fixture()
-    keys = [%{value_id: "main", value: "sk-ant-operator-main-0123456789"}]
-    {:ok, theirs} = Connections.create_provider(operator, %{provider: "anthropic", keys: keys})
-
-    given = %{
-      ctx.given
-      | provider_connection_id: theirs.id,
-        provider_secret_id: theirs.secret_id,
-        provider_chain: "operator"
-    }
-
-    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, given)
+  test "a provider deleted since has no name in the line", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @paused)
 
     until = DateTime.add(DateTime.utc_now(), 3_600, :second)
@@ -256,7 +245,53 @@ defmodule Apiary.Dispatches.PauseTest do
       )
 
     number = registered(run_of(dispatch_run.work_item_id, 2)).number
-    assert %{provider: nil, operator: true} = pause = Pause.of_run(Repo.get!(Run, run.id))
+    # The pause as `Pause.of/1` reads it once the provider is deleted.
+    pause = %{Pause.of_run(Repo.get!(Run, run.id)) | provider: nil}
+
+    line = fn pause ->
+      pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text()
+    end
+
+    # With no provider, the line has no cooldown end, while that time is to come too.
+    assert line.(pause) ==
+             "Paused: a model key reached its limit or its Use up to percentage. It continues in run #{number}."
+
+    assert line.(%{pause | number: nil}) ==
+             "Paused: a model key reached its limit or its Use up to percentage."
+
+    refute line.(pause) =~ ctx.provider.name
+  end
+
+  test "a provider of another organisation has no name in the line", ctx do
+    %{scope: other} = sign_up_fixture()
+    keys = [%{value_id: "main", value: "sk-ant-other-main-0123456789"}]
+    {:ok, theirs} = Connections.create_provider(other, %{provider: "anthropic", keys: keys})
+
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @paused)
+
+    # A run that took a key of another organisation's provider, left from when an
+    # operator managed whole organisations.
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          provider_connection_id: theirs.id,
+          provider_secret_id: theirs.secret_id,
+          provider_chain: "operator"
+        ]
+      )
+
+    until = DateTime.add(DateTime.utc_now(), 3_600, :second)
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [paused_until: until]
+      )
+
+    number = registered(run_of(dispatch_run.work_item_id, 2)).number
+
+    assert %{provider: nil, other_organisation: true} =
+             pause = Pause.of_run(Repo.get!(Run, run.id))
 
     line = fn pause ->
       pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text()

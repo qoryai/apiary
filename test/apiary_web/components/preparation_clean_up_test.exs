@@ -17,7 +17,7 @@ defmodule ApiaryWeb.PreparationCleanUpTest do
     Map.merge(
       %{
         dispatch_id: "dp_0123456789abcdef",
-        pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace, operator: nil},
+        pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace},
         machine_type: nil,
         requested_at: DateTime.add(@ended, -600, :second),
         queued_at: nil,

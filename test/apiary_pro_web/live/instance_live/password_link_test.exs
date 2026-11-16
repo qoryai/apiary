@@ -2,7 +2,7 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
   @moduledoc """
   Make a password link, on Instance settings › Accounts (`ApiaryProWeb.InstanceLive.Accounts`):
   offered to an instance admin, for each other account that is not suspended, while no mail
-  is set, any organisation's, a client's owner's included; the link is the core's
+  is set, any organisation's; the link is the core's
   (`Apiary.Accounts.build_password_link/3`), shown once above the list until Done, and
   never in a path, a flash, the title or the log. Nobody else, nobody whose sign-in is not
   recent, and nobody once mail is set, makes one.
@@ -72,10 +72,9 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
     assert html =~ "That password link has expired"
   end
 
-  test "without mail, an instance admin makes a client's owner's link, shown once until Done",
+  test "without mail, an instance admin makes another organisation's owner's link, shown once until Done",
        ctx do
-    %{scope: operator_scope} = operator_fixture()
-    %{owner: %{user: owner}} = client_fixture(operator_scope)
+    %{user: owner} = sign_up_fixture()
     Apiary.Mail.put_test_source(:none)
 
     previous = Logger.level()
@@ -127,7 +126,7 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
     refute_redirected(lv)
     refute log =~ token
 
-    # The instance organisation's trail: the client's owner holds no membership there, so
+    # The instance organisation's trail: the owner has no membership there, so
     # the entry is about the organisation and names the account by its id, not the link.
     here = instance_organisation()
     assert [entry] = entries()
@@ -259,10 +258,10 @@ defmodule ApiaryProWeb.InstanceLive.PasswordLinkTest do
 
   test "the page, and so its event, is not there for anyone but the instance admins", ctx do
     %{user: admin} = member_fixture(ctx.admin.instance_scope, :admin)
-    %{owner: %{user: client_owner}} = client_fixture(operator_fixture().scope)
+    %{user: owner} = sign_up_fixture()
     Apiary.Mail.put_test_source(:none)
 
-    for person <- [admin, client_owner] do
+    for person <- [admin, owner] do
       assert_raise ApiaryWeb.NotFound, fn ->
         live(log_in_user(build_conn(), person), ~p"/instance/accounts")
       end

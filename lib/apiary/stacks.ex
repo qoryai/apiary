@@ -38,13 +38,11 @@ defmodule Apiary.Stacks do
   # `Apiary.Organisations.create_workspace_from_template/3` or
   # `create_workspace_of_kind/3`. A write records the person who saved the value and, in
   # `owner_organisation_id`, the option `owner:` where the caller gives it, as
-  # `save_start/3` does with the shared row's owner, else the organisation the edition
-  # gives for the scope (`Apiary.Edition.harness_owner/1`). The core gives the scope's
-  # organisation when the
-  # scope reaches it through a membership there alone (`saved_by/1`), and the instance's
-  # organisation for an instance admin who reaches it any other way. A scope the edition
-  # gives no organisation for, such as the instance acting by itself, saves nothing
-  # (`{:error, :forbidden}`).
+  # `save_start/3` does with the shared row's owner, else the organisation of the scope:
+  # the scope's organisation when the scope reaches it through a membership there alone
+  # (`saved_by/1`), and the instance's organisation for an instance admin who reaches it
+  # any other way. A scope with neither, such as the instance acting by itself, saves
+  # nothing (`{:error, :forbidden}`).
   #
   # ## Refused on save
   #
@@ -269,8 +267,7 @@ defmodule Apiary.Stacks do
         organisation_id: organisation.id,
         workspace_id: workspace.id,
         target_id: target_id,
-        workflow: workflow,
-        operated: Edition.operated?(organisation)
+        workflow: workflow
       })
 
     {ref, kind} =
@@ -381,22 +378,22 @@ defmodule Apiary.Stacks do
   @doc false
   # put_stack/4 sets the harness document at `place` to `harness`, nil for none at a
   # place with a workflow, replacing what the place had, saved by the scope's person and
-  # owned by the organisation the edition gives for the scope
-  # (`Apiary.Edition.harness_owner/1`). `opts`: `access`, the access level recorded for
-  # the runs of the place's workflow, `:read` or `:write`, nil for none (the default); and
-  # `choice`, the harness choice at a place with no workflow (the moduledoc), nil for
-  # none (the default), so a write there without one removes the choice. `{:ok, stack}`;
-  # `{:error, :forbidden}` when the edition gives none; or `{:error, changeset}` with the
-  # reason on its field. `version`, `{kind, name}`, is the version of a choice
-  # (`Apiary.Stacks.Stack`), nil for none (the default). `owner` is the organisation that
-  # owns the row, in place of the edition's answer. It checks no access (the moduledoc).
+  # owned by the organisation `owner/1` returns for the scope. `opts`: `access`, the
+  # access level recorded for the runs of the place's workflow, `:read` or `:write`, nil
+  # for none (the default); and `choice`, the harness choice at a place with no workflow
+  # (the moduledoc), nil for none (the default), so a write there without one removes
+  # the choice. `{:ok, stack}`; `{:error, :forbidden}` when `owner/1` returns nil; or
+  # `{:error, changeset}` with the reason on its field. `version`, `{kind, name}`, is the
+  # version of a choice (`Apiary.Stacks.Stack`), nil for none (the default). `owner` is
+  # the organisation that owns the row, in place of `owner/1`'s answer. It checks no
+  # access (the moduledoc).
   @spec put_stack(Scope.t(), place, term, keyword) ::
           {:ok, Stack.t()} | {:error, Ecto.Changeset.t() | :forbidden}
   def put_stack(%Scope{organisation: %Organisation{}} = scope, place, harness, opts \\ []) do
     columns = columns(place)
     user_id = scope.user && scope.user.id
 
-    case Keyword.get_lazy(opts, :owner, fn -> Edition.harness_owner(scope) end) do
+    case Keyword.get_lazy(opts, :owner, fn -> owner(scope) end) do
       owner when is_binary(owner) ->
         Repo.transact(fn ->
           current = lock_row(columns)
@@ -445,7 +442,7 @@ defmodule Apiary.Stacks do
   @doc false
   # saved_by/1 is the scope's organisation when the scope's membership is in it and the
   # scope reaches it through that membership alone (`reach` nil or `:membership`), else
-  # nil: the core's first answer to `Apiary.Edition.harness_owner/1`.
+  # nil: the first answer of `owner/1`.
   @spec saved_by(Scope.t()) :: Ecto.UUID.t() | nil
   def saved_by(%Scope{
         organisation: %Organisation{id: id},
@@ -456,6 +453,15 @@ defmodule Apiary.Stacks do
       do: id
 
   def saved_by(%Scope{}), do: nil
+
+  # The organisation that owns a harness document the person of `scope` saves: the
+  # scope's organisation for a member who reaches it through that membership
+  # (`saved_by/1`), else the instance's organisation for an instance admin, else nil.
+  defp owner(scope) do
+    with nil <- saved_by(scope) do
+      if Apiary.Access.instance_admin?(scope), do: Edition.instance_organisation_id()
+    end
+  end
 
   # The columns of a place: its organisation, workspace, target and workflow.
   defp columns({:organisation, %Organisation{id: id}}),

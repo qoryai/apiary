@@ -55,7 +55,10 @@ defmodule ApiaryPro.RuntimeConfigTest do
   test "development reloads the page for the edition's files as for the core's" do
     patterns = get_in(runtime(:dev), [:apiary, ApiaryWeb.Endpoint, :live_reload, :patterns])
 
-    assert Enum.any?(patterns, &Regex.match?(&1, "lib/apiary_pro_web/live/client_live/index.ex"))
+    assert Enum.any?(
+             patterns,
+             &Regex.match?(&1, "lib/apiary_pro_web/live/instance_live/organisations.ex")
+           )
 
     assert Enum.any?(
              patterns,

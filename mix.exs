@@ -134,7 +134,9 @@ defmodule Apiary.MixProject do
       # tenants. A test database starts empty, and its set-up makes what the step would.
       # `ecto.setup`, `ecto.reset` and `test` migrate through this alias too.
       "ecto.migrate": &migrate/1,
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      # The drop of a partitioned test database is registered first, so the database is
+      # also dropped after a failed migration or a test helper that raises.
+      test: [&drop_test_database_at_exit/1, "ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind apiary", "esbuild apiary"],
       "assets.deploy": [
@@ -161,6 +163,22 @@ defmodule Apiary.MixProject do
     ]
   end
 
+  # Registers `Apiary.TestDatabase.drop/0` to run as the VM exits, once per VM: the key in
+  # `:persistent_term` is the one `Apiary.TestDatabase.drop_at_exit/0` sets and reads. The
+  # module is in test/support, which compiles after this step; `ecto.create` compiles it
+  # before it creates the database.
+  defp drop_test_database_at_exit(_args) do
+    key = {Apiary.TestDatabase, :drop_at_exit}
+
+    if not :persistent_term.get(key, false) do
+      :persistent_term.put(key, true)
+
+      System.at_exit(fn _status ->
+        if Code.ensure_loaded?(Apiary.TestDatabase), do: apply(Apiary.TestDatabase, :drop, [])
+      end)
+    end
+  end
+
   defp migrate(args) do
     Mix.Task.run("ecto.migrate", args)
 
@@ -184,6 +202,8 @@ defmodule Apiary.MixProject do
       # What the CHANGELOG names of code that is gone: shown as code, linked nowhere.
       skip_code_autolink_to: [
         "c:Apiary.Edition.features_of/3",
+        "c:Apiary.Edition.serving_organisations/1",
+        "c:Apiary.Edition.served_organisations/1",
         "Apiary.Features.of/2",
         "Apiary.Features.on?/2",
         # A function with hidden docs, which `ApiaryWeb.TargetLive.FurtherRepositories` mentions.
@@ -202,7 +222,6 @@ defmodule Apiary.MixProject do
         "guides/forager-file.md",
         "guides/organisations.md",
         "guides/operators.md",
-        "guides/policy-requests.md",
         "guides/organisation-policy.md",
         "guides/organisation-variables.md",
         "guides/organisation-secrets.md",
@@ -225,7 +244,6 @@ defmodule Apiary.MixProject do
           "guides/forager-file.md",
           "guides/organisations.md",
           "guides/operators.md",
-          "guides/policy-requests.md",
           "guides/organisation-policy.md",
           "guides/organisation-variables.md",
           "guides/organisation-secrets.md"
@@ -267,8 +285,10 @@ defmodule Apiary.MixProject do
           ~r/^ApiaryPro\.WorkspaceAccess/,
           ApiaryPro.Invitations
         ],
-        "Operators and their clients": [~r/^ApiaryPro\.Operators/, ApiaryPro.ClientReach],
-        "Policy requests": [~r/^ApiaryPro\.PolicyRequests/],
+        "Operators and the workspaces they operate": [
+          ~r/^ApiaryPro\.Operators/,
+          ApiaryPro.OperatedPlace
+        ],
         "The organisation's policy": [~r/^ApiaryPro\.OrganisationPolicy/],
         "The organisation's variables": [~r/^ApiaryPro\.OrganisationVariables/],
         "The organisation's secrets": [~r/^ApiaryPro\.OrganisationSecrets/],
@@ -305,15 +325,10 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        # Operators and their clients, and the policy requests between them, whose
-        # passages that need the security policy too are marked in the guide.
+        # Operators and the workspaces they operate.
         managed_organisations: [
-          extras: ["guides/operators.md", "guides/policy-requests.md"],
-          modules: [
-            ~r/^ApiaryPro\.Operators/,
-            ApiaryPro.ClientReach,
-            ~r/^ApiaryPro\.PolicyRequests/
-          ]
+          extras: ["guides/operators.md"],
+          modules: [~r/^ApiaryPro\.Operators/, ApiaryPro.OperatedPlace]
         ],
         # The organisation's policy, above its workspaces' security policy.
         organisation_policy: [

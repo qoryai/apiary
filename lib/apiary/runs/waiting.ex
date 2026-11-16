@@ -14,8 +14,9 @@ defmodule Apiary.Runs.Waiting do
   #   * `{:cooldown, provider, until}`, every key of each of its model providers
   #     (`dispatch_runs.model_provider_ids`) is in cooldown, while runs are given model
   #     keys (`Apiary.ModelKeys.first_to_leave/2`): `provider` is the name of the one whose
-  #     key leaves its cooldown first, nil for a provider of an operator's chain, of
-  #     another organisation than the run's, and `until` when that key leaves it;
+  #     key leaves its cooldown first, nil for a provider of another organisation than
+  #     the run's, left from when an operator managed whole organisations, and `until`
+  #     when that key leaves it;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -97,7 +98,9 @@ defmodule Apiary.Runs.Waiting do
     with true <- ProviderCredential.applies?(),
          {id, until} <- ModelKeys.first_to_leave(ids, now),
          %Connection{} = provider <- Repo.get(Connection, id) do
-      # The name of the run's organisation's provider alone: an operator's is not shown.
+      # No name for a provider of another organisation than the run's, left from when an
+      # operator managed whole organisations: the run's organisation's people do not read
+      # it.
       name = if provider.organisation_id == queued.organisation_id, do: provider.name
       {:cooldown, name, until}
     else

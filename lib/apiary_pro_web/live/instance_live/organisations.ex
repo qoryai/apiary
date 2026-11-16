@@ -6,29 +6,26 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   `ApiaryProWeb.InstanceLive.Paths`'. It is the one page that says the instance
   organisation is the instance owner.
 
-  Every organisation on the instance, with its kind, its operator, its features and its
-  status, in views (All, Operators, Clients, Suspended, Deleted), with a search by name or
-  slug, a filter by operator and an order, all in the URL; its name leads to it, which an
-  instance admin reads and does not change. The instance actions, each asked of
+  Every organisation on the instance, with its kind, its features and its status, in views
+  (All, Operators, Suspended, Deleted), with a search by name or slug and an order, all in
+  the URL; its name leads to it, which an instance admin reads and does not change. The instance actions, each asked of
   `Apiary.Access` and each an audit entry, from the row's menu:
 
   - **New organisation**, a page: an organisation, or with `managed_organisations` an
     operator, whose first owner is the instance admin who creates it
     (`ApiaryPro.Operators.create_organisation/2`);
-  - **Make operator** and **Make organisation**, confirmed on the row: an organisation that
-    is no client made an operator, an operator without clients made an organisation
-    (`ApiaryPro.Operators.change_kind/3`);
+  - **Make operator** and **Make organisation**, confirmed on the row: an organisation made
+    an operator, an operator made an organisation (`ApiaryPro.Operators.change_kind/3`);
   - **Purge now**, confirmed on the row: an organisation purged at once on an erasure
     request, its slug typed to confirm (`ApiaryPro.Deletion.purge_on_request/3`);
   - **Suspend**, confirmed on the row, and **Activate**, at once: an organisation or an
     operator made read-only, its access keys refused, and working again
     (`ApiaryPro.Suspensions.suspend_organisation/2`, `activate_organisation/2`);
   - **Transfer ownership**, a page: the arbiter's offer of an organisation's ownership to
-    one of its admins, with a reason, for an organisation whose owners are all suspended,
-    a client as any other (`ApiaryPro.Transfers.arbitrate/4`);
-  - **Features**, a page: what an operator is granted, opt-in, or what an organisation with
-    no operator keeps of the instance's, opt-out (`ApiaryPro.Grants.set_organisation/3`);
-    a client's are its operator's to grant.
+    one of its admins, with a reason, for an organisation whose owners are all suspended
+    (`ApiaryPro.Transfers.arbitrate/4`);
+  - **Features**, a page: what an operator is granted, opt-in, or what any other
+    organisation keeps of the instance's, opt-out (`ApiaryPro.Grants.set_organisation/3`).
 
   Of them only the change of kind is offered for the instance organisation, which may be
   of either kind: it is never purged or suspended, is transferred to no one and has every
@@ -239,25 +236,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
                 placeholder={gettext("Find by name or slug")}
                 value={@list.q}
               />
-              <.filter_menu
-                :if={operators(rows) != []}
-                id="organisations-filter"
-                count={if @list.operator, do: 1, else: 0}
-              >
-                <.menu_heading title={gettext("Operator")} sub={gettext("Its clients")} />
-                <.menu_item
-                  :for={operator <- operators(rows)}
-                  id={"organisations-filter-#{operator.id}"}
-                  checked={@list.operator == operator.id}
-                  patch={
-                    list_path(@list,
-                      operator: if(@list.operator == operator.id, do: nil, else: operator.id)
-                    )
-                  }
-                >
-                  {operator.name}
-                </.menu_item>
-              </.filter_menu>
               <.sort_menu id="organisations-sort" current={sort_label(@list.sort)}>
                 <.menu_item
                   :for={{sort, label} <- sorts()}
@@ -269,17 +247,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
                 </.menu_item>
               </.sort_menu>
             </div>
-
-            <.filter_tokens id="organisations-tokens" clear={list_path(@list, operator: nil)}>
-              <:token
-                :for={operator <- operators(rows)}
-                :if={@list.operator == operator.id}
-                patch={list_path(@list, operator: nil)}
-                label={gettext("Remove the filter %{filter}", filter: operator.name)}
-              >
-                {gettext("Clients of %{operator}", operator: operator.name)}
-              </:token>
-            </.filter_tokens>
 
             <%!-- Always there, so a screen reader hears what the search left. --%>
             <div id="organisations-status" role="status" class="q-status">
@@ -298,9 +265,9 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
                 <:actions :if={narrowed?(@list)}>
                   <.button
                     id="organisations-clear"
-                    patch={list_path(%{@list | q: nil, operator: nil}, [])}
+                    patch={list_path(%{@list | q: nil}, [])}
                   >
-                    {gettext("Clear the search and the filters")}
+                    {gettext("Clear the search")}
                   </.button>
                 </:actions>
               </.empty_state>
@@ -378,42 +345,8 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
                       {gettext("The instance owner")}
                     <% Tenants.operator?(r.organisation) -> %>
                       {kind_label(:operator)}
-                    <% r.operator -> %>
-                      {gettext("Client")}
                     <% true -> %>
                       <span class="sr-only">{kind_label(:organisation)}</span>
-                  <% end %>
-                </span>
-              </:col>
-              <:col :let={r} label={gettext("Operator")} from="sm">
-                <span id={"organisation-#{r.organisation.id}-operator"}>
-                  <%= cond do %>
-                    <% r.operator -> %>
-                      <span class="q-cut max-w-[24ch]" title={r.operator.name}>
-                        {r.operator.name}
-                      </span>
-                    <% Tenants.operator?(r.organisation) and
-                         Tenants.instance_organisation?(r.organisation) -> %>
-                      <%!-- The instance organisation's clients, which its sidebar
-                           lists only once there is one: the way to them, to add the
-                           first. --%>
-                      <.link
-                        id={"organisation-#{r.organisation.id}-clients"}
-                        navigate={~p"/#{r.organisation}/clients"}
-                        class="q-link tabular-nums"
-                      >
-                        {ngettext("%{number} client", "%{number} clients", r.clients,
-                          number: Format.number(r.clients)
-                        )}
-                      </.link>
-                    <% Tenants.operator?(r.organisation) -> %>
-                      <span class="tabular-nums">
-                        {ngettext("%{number} client", "%{number} clients", r.clients,
-                          number: Format.number(r.clients)
-                        )}
-                      </span>
-                    <% true -> %>
-                      <span class="sr-only">{gettext("None")}</span>
                   <% end %>
                 </span>
               </:col>
@@ -550,19 +483,19 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   defp features_sentence(true = _operator?, false = _shown?),
     do:
       gettext(
-        "An operator has only what you grant it, and grants its clients within that. A feature a new release adds reaches it once you grant it here."
+        "An operator has only what you grant it. A feature a new release adds reaches it once you grant it here."
       )
 
   defp features_sentence(false, false),
     do:
       gettext(
-        "An organisation with no operator has what this instance has, but for what you take away here. A feature a new release adds reaches it."
+        "An organisation has what this instance has, but for what you take away here. A feature a new release adds reaches it."
       )
 
   defp features_sentence(true, true),
     do:
       gettext(
-        "Its people see only the features you show here, and it shows its clients only those. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
+        "Its people see only the features you show here. Hidden features still work for its machines and runs. A feature a new release adds is hidden from it until you show it here."
       )
 
   defp features_sentence(false, true),
@@ -571,12 +504,10 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
         "Its people see every feature this instance has, but those you hide here. Hidden features still work for its machines and runs. A feature a new release adds is shown to it."
       )
 
-  # A client's features are its operator's to choose.
-  defp client_features_sentence do
-    if Flags.feature_visibility?(),
-      do: gettext("A client's operator chooses which features it is shown."),
-      else: gettext("A client's features are its operator's to grant.")
-  end
+  # Why the Features page offers no boxes: the instance organisation has every feature the
+  # instance has, and a deleted organisation is changed no more.
+  defp no_features_sentence,
+    do: gettext("This organisation's features can't be changed.")
 
   defp needs_runs do
     if Flags.feature_visibility?(),
@@ -720,7 +651,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
 
     ~H"""
     <p :if={!@may_grant} id="organisation-features-none" class="text-muted">
-      {client_features_sentence()}
+      {no_features_sentence()}
     </p>
     <.form
       :if={@may_grant}
@@ -775,12 +706,12 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       {if @to == :operator,
         do:
           gettext(
-            "%{name} becomes an operator: its owners and admins can create client organisations and reach them at their level. Nothing it holds changes.",
+            "%{name} becomes an operator. Nothing it holds changes.",
             name: @row.organisation.name
           ),
         else:
           gettext(
-            "%{name} becomes an organisation again: it has no clients, and can create none. Nothing it holds changes.",
+            "%{name} becomes an organisation again. Nothing it holds changes.",
             name: @row.organisation.name
           )}
       <:action>
@@ -795,25 +726,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
           {kind_button(@to)}
         </.button>
       </:action>
-    </.inline_confirm>
-    """
-  end
-
-  defp organisation_confirm(%{act: :purge, row: %{clients: clients}} = assigns)
-       when clients > 0 do
-    ~H"""
-    <.inline_confirm
-      id="purge"
-      question={gettext("Purge %{name} now?", name: @row.organisation.name)}
-      cancel={@back}
-    >
-      <span id="purge-has-clients">
-        {gettext(
-          "%{name} is an operator with clients. Each client is deleted or purged first.",
-          name: @row.organisation.name
-        )}
-      </span>
-      <:action></:action>
     </.inline_confirm>
     """
   end
@@ -866,9 +778,9 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
         "%{name} becomes read-only: its people can sign in and read everything in it, and change nothing. It sends no invitations, and its access keys are refused, so no run starts or reports.",
         name: @row.organisation.name
       )}
-      <span :if={Tenants.operator?(@row.organisation)} id="suspend-operator-clients">
+      <span :if={Tenants.operator?(@row.organisation)} id="suspend-operator-workspaces">
         {gettext(
-          "Its people lose their reach into its clients, which keep running: the clients' people and access keys work as before, and their admins are told that their owner is suspended."
+          "Its people lose their reach into the workspaces it operates, which keep running for their organisations."
         )}
       </span>
       {gettext("Nothing is removed. You can activate it again at any time.")}
@@ -1011,20 +923,8 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
          |> load()
          |> back()}
 
-      {:error, :client} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, gettext("A client of an operator cannot be made an operator."))
-         |> back()}
-
-      {:error, :has_clients} ->
-        {:noreply,
-         socket
-         |> put_flash(
-           :error,
-           gettext("An operator with clients cannot be made an organisation.")
-         )
-         |> back()}
+      {:error, :has_operated_workspaces} ->
+        {:noreply, socket |> put_flash(:error, operated_refusal(kind)) |> back()}
 
       {:error, _reason} ->
         {:noreply, refused(socket)}
@@ -1049,13 +949,11 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       {:error, :confirmation} ->
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
 
-      {:error, :has_clients} ->
+      {:error, :has_operated_workspaces} ->
         {:noreply,
          socket
-         |> put_flash(
-           :error,
-           gettext("An operator with clients is not purged: each client is deleted first.")
-         )
+         |> put_flash(:error, ApiaryProWeb.Edition.refusal_sentence(:has_operated_workspaces))
+         |> load()
          |> back()}
 
       {:error, _reason} ->
@@ -1187,13 +1085,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
            errors: [needs_runs()]
          })}
 
-      {:error, :client} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, client_features_sentence())
-         |> load()
-         |> back()}
-
       {:error, :busy} ->
         {:noreply,
          socket
@@ -1215,6 +1106,14 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       when event in ~w(suspend_organisation transfer save_features) do
     {:noreply, socket |> load() |> back()}
   end
+
+  # Why a change of kind is refused while a link to an operated workspace stands: an
+  # organisation with one is not made an operator, nor an operator that has one.
+  defp operated_refusal("operator"),
+    do: gettext("An organisation with an operated workspace cannot be made an operator.")
+
+  defp operated_refusal(_organisation),
+    do: gettext("An operator that operates a workspace cannot be made an organisation.")
 
   defp load(socket) do
     scope = socket.assigns.scope
@@ -1251,12 +1150,10 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     Enum.map(rows, &Map.put(&1, :features, Map.fetch!(features, &1.organisation.id)))
   end
 
-  # Features are granted to an operator and taken away from an organisation with no
-  # operator, in use; a client's are its operator's, and the instance organisation has
-  # all.
+  # Features are granted to an operator and taken away from any other organisation, in
+  # use; the instance organisation has all.
   defp may_grant?(scope, %{organisation: organisation} = row) do
-    in_use?(row) and not Tenants.client?(organisation) and
-      Access.can?(scope, :"instance.grant_features", organisation)
+    in_use?(row) and Access.can?(scope, :"instance.grant_features", organisation)
   end
 
   # The arbiter's choice of admin and reason, and what was refused of them. A radio group
@@ -1330,7 +1227,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     do: gettext("The ownership is offered. Its admin becomes its owner when they accept it.")
 
   defp assign_form(socket, params, action \\ nil) do
-    changeset = Operators.change_client(params)
+    changeset = Operators.change_organisation(params)
     changeset = if action, do: Map.put(changeset, :action, action), else: changeset
     assign(socket, :form, to_form(changeset))
   end
@@ -1345,7 +1242,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     assign(socket, :confirm_form, to_form(params, as: :confirm, errors: errors))
   end
 
-  # Back to the list as it was left: its view, search, filter and order.
+  # Back to the list as it was left: its view, search and order.
   defp back(socket),
     do: push_patch(socket, to: list_path(socket.assigns.list, []))
 
@@ -1384,7 +1281,7 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   end
 
   # The arbiter's transfer, offered where it may be made: an organisation whose owners are
-  # all suspended, a client as any other, in use and not suspended itself.
+  # all suspended, in use and not suspended itself.
   defp may_transfer?(scope, %{organisation: organisation} = row) do
     in_use?(row) and not Tenants.suspended?(organisation) and row.owner_suspended and
       Access.can?(scope, :"instance.transfer", organisation)
@@ -1395,16 +1292,14 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       Access.can?(scope, :"instance.create_organisation", scope.organisation) or
         Access.can?(scope, :"instance.create_operator", scope.organisation)
 
-  # The kind a row may be changed to, as the page offers it: an organisation that is no
-  # client an operator, an operator without clients an organisation, the instance
-  # organisation as any other; nil for none.
+  # The kind a row may be changed to, as the page offers it: an organisation an operator,
+  # an operator an organisation, the instance organisation as any other; nil for none.
   defp kind_change(scope, %{organisation: organisation} = row) do
     cond do
       not in_use?(row) -> nil
       not Access.can?(scope, :"instance.change_kind", organisation) -> nil
-      not Tenants.operator?(organisation) and not Tenants.client?(organisation) -> :operator
-      Tenants.operator?(organisation) and row.clients == 0 -> :organisation
-      true -> nil
+      Tenants.operator?(organisation) -> :organisation
+      true -> :operator
     end
   end
 
@@ -1415,11 +1310,10 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
   defp in_use?(_row), do: false
 
   # The kind in words, as its column says it; nil for a plain organisation, which says none.
-  defp kind_word(%{organisation: organisation} = row) do
+  defp kind_word(%{organisation: organisation}) do
     cond do
       Tenants.instance_organisation?(organisation) -> gettext("The instance owner")
       Tenants.operator?(organisation) -> kind_label(:operator)
-      row.operator -> gettext("Client")
       true -> nil
     end
   end
@@ -1450,16 +1344,15 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
       else: gettext("%{name} is an organisation now.", name: name)
   end
 
-  ## The list's views, search, filter and order, all in the URL.
+  ## The list's views, search and order, all in the URL.
 
-  @views ~w(all operators clients suspended deleted)
+  @views ~w(all operators suspended deleted)
   @sorts ~w(name created)
 
   defp views do
     [
       {"all", gettext("All")},
       {"operators", gettext("Operators")},
-      {"clients", gettext("Clients")},
       {"suspended", gettext("Suspended")},
       {"deleted", gettext("Deleted")}
     ]
@@ -1473,11 +1366,6 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     %{
       view: if(params["view"] in @views, do: params["view"], else: "all"),
       q: query(params["q"]),
-      operator:
-        case Ecto.UUID.cast(params["operator"] || "") do
-          {:ok, id} -> id
-          :error -> nil
-        end,
       sort: if(params["sort"] in @sorts, do: params["sort"], else: "name")
     }
   end
@@ -1489,15 +1377,14 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     end
   end
 
-  # Whether the search or the filter narrows the view.
-  defp narrowed?(list), do: not is_nil(list.q) or not is_nil(list.operator)
+  # Whether the search narrows the view.
+  defp narrowed?(list), do: not is_nil(list.q)
 
-  # What an empty list says: that nothing matches where the search or the filter narrows
-  # it, what the view keeps where only the view does.
+  # What an empty list says: that nothing matches where the search narrows it, what the
+  # view keeps where only the view does.
   defp empty_title(list) do
     case {narrowed?(list), list.view} do
       {false, "operators"} -> gettext("No organisation is an operator")
-      {false, "clients"} -> gettext("No organisation is a client")
       {false, "suspended"} -> gettext("No organisation is suspended")
       {false, "deleted"} -> gettext("No organisation is deleted")
       _matches -> gettext("No organisation matches")
@@ -1510,29 +1397,19 @@ defmodule ApiaryProWeb.InstanceLive.Organisations do
     Paths.organisations(
       view: list.view != "all" && list.view,
       q: list.q,
-      operator: list.operator,
       sort: list.sort != "name" && list.sort
     )
   end
 
-  # The operators among the rows, by name: the values of the Filter menu's one section.
-  defp operators(rows) do
-    rows
-    |> Enum.filter(&Tenants.operator?(&1.organisation))
-    |> Enum.map(& &1.organisation)
-  end
-
   defp in_view?(_row, "all"), do: true
   defp in_view?(row, "operators"), do: in_use?(row) and Tenants.operator?(row.organisation)
-  defp in_view?(row, "clients"), do: in_use?(row) and not is_nil(row.operator)
   defp in_view?(row, "suspended"), do: in_use?(row) and Tenants.suspended?(row.organisation)
   defp in_view?(row, "deleted"), do: not in_use?(row)
 
-  # The rows the view, the search and the operator keep, in the order chosen.
+  # The rows the view and the search keep, in the order chosen.
   defp shown(rows, list) do
     rows
     |> Enum.filter(&in_view?(&1, list.view))
-    |> Enum.filter(&(is_nil(list.operator) or (&1.operator && &1.operator.id == list.operator)))
     |> Enum.filter(&matches?([&1.organisation.name, &1.organisation.slug], list.q))
     |> then(fn rows ->
       if list.sort == "created",

@@ -132,7 +132,7 @@ test("the pointer rests about 100 ms before an organisation is pointed at", () =
 })
 
 test("focus lost for nowhere: kept inside, given back from the page, else the menu closes", () => {
-  // A tap on ›, a group's fold or the way back, which takes no focus on Safari and iOS.
+  // A tap on › or the way back, which takes no focus on Safari and iOS.
   assert.equal(afterFocusLost({inside: false, onPage: true}), "refocus")
   // The click that followed moved focus into the menu, or the window lost focus.
   assert.equal(afterFocusLost({inside: true, onPage: false}), "keep")

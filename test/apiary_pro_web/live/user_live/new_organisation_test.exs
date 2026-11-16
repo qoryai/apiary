@@ -314,7 +314,7 @@ defmodule ApiaryProWeb.UserLive.NewOrganisationTest do
       assert has_element?(
                view,
                "#new-organisation-form",
-               "Creates and runs organisations for clients."
+               "Operates workspaces of other organisations."
              )
 
       assert field_names(view) == ["organisation[kind]", "organisation[name]"]

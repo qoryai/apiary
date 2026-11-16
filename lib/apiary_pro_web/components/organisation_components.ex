@@ -39,7 +39,7 @@ defmodule ApiaryProWeb.OrganisationComponents do
         %{
           value: "operator",
           title: gettext("Operator"),
-          subtitle: gettext("Creates and runs organisations for clients.")
+          subtitle: gettext("Operates workspaces of other organisations.")
         }
       ]}
       required

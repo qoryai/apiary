@@ -312,16 +312,18 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
                  "#{ApiaryWeb.Format.week_time(until, now)}."
     end
 
+    # A provider of another organisation than the run's, left from when an operator
+    # managed whole organisations.
     @tag needs: [:factory, :secrets]
-    test "says a run waits for a model key, without the name of an operator's provider",
+    test "says a run waits for a model key, without the name of another organisation's provider",
          %{conn: conn, scope: scope} do
-      %{scope: operator} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()
 
       {:ok, theirs} =
-        Apiary.Connections.create_provider(operator, %{
+        Apiary.Connections.create_provider(other, %{
           provider: "anthropic",
-          name: "Operator keys",
-          keys: [%{value_id: "main", value: "sk-ant-queued-page-operator"}]
+          name: "Other keys",
+          keys: [%{value_id: "main", value: "sk-ant-queued-page-other"}]
         })
 
       {_work_item, queued} = queue!(scope)

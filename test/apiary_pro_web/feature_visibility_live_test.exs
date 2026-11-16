@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   # A feature hidden from a person is absent for them, its pages and actions not found, and
-  # still works in full for the organisation's nodes and runs. With
-  # `ApiaryPro.Flags.feature_visibility?/0` on, the operator's people see in a client what
-  # the operator is shown (`ApiaryPro.Features.hidden/1`).
+  # still works in full for the organisation's nodes and runs. The operator's people see
+  # in the workspace it operates what the organisation is shown, never more, with
+  # `ApiaryPro.Flags.feature_visibility?/0` on or off (`ApiaryPro.Features.hidden/1`).
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -24,8 +24,9 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # An operator shown Runs and the security policy; its client, whose workspace has a rule
-  # and a node, shown Runs alone, so its security policy is hidden from its people.
+  # An operator shown Runs and the security policy; an organisation whose workspace Main it
+  # operates, with a rule and a node in Main, which an instance admin left Runs alone, so
+  # its security policy is hidden from its people.
   setup do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
@@ -36,43 +37,41 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
                "security"
              ])
 
-    client = client_fixture(operator.scope, "Acme")
-    in_client = client.owner.scope
-    %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_client)
-    {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
-    {:ok, %{digest: baseline}} = Policy.current_configuration(in_client, nil)
+    operated = operated_fixture(operator.scope, "Acme")
+    in_operated = operated.owner.scope
+    %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_operated)
+    {:ok, _rule} = Policy.deny(in_operated, nil, %{host: "ads.example"})
+    {:ok, %{digest: baseline}} = Policy.current_configuration(in_operated, nil)
 
-    assert {:ok, _} = Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+    assert {:ok, _} = Grants.set_organisation(admin, operated.organisation.id, ["observability"])
 
-    %{operator: operator, client: client, key: {key, secret}, node: node, baseline: baseline}
+    %{operator: operator, operated: operated, key: {key, secret}, node: node, baseline: baseline}
   end
 
-  defp policy_page(client), do: ~p"/#{client.organisation}/#{client.workspace}/policy"
+  defp policy_page(operated), do: ~p"/#{operated.organisation}/#{operated.workspace}/policy"
 
   describe "with the flag on" do
     setup do: Flags.put_feature_visibility(true)
 
-    test "the operator's people open the client's hidden policy page; the client's people do not",
+    test "neither the organisation's people nor the operator's open its hidden policy page",
          ctx do
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, policy_page(ctx.client))
-      assert render(lv) =~ "ads.example"
+      for user <- [ctx.operated.owner.user, ctx.operator.user] do
+        conn = log_in_user(build_conn(), user)
 
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
-
-      assert_raise ApiaryWeb.Features.NotFound, fn ->
-        live(conn, policy_page(ctx.client))
+        assert_raise ApiaryWeb.Features.NotFound, fn ->
+          live(conn, policy_page(ctx.operated))
+        end
       end
     end
 
-    test "an action of the hidden feature is not found for the client's people", ctx do
-      owner = scope_in(ctx.client.owner.user, ctx.client.organisation, ctx.client.workspace)
+    test "an action of the hidden feature is not found for the organisation's people", ctx do
+      owner = scope_in(ctx.operated.owner.user, ctx.operated.organisation, ctx.operated.workspace)
 
       assert {:error, %Policy.Error{reason: :not_found}} =
                Policy.deny(owner, nil, %{host: "paste.example"})
     end
 
-    test "the client's nodes are still served its policy, and its runs recorded", ctx do
+    test "the organisation's nodes are still served its policy, and its runs recorded", ctx do
       {key, _secret} = ctx.key
       assert Serving.managed?(key)
       assert {:ok, configuration} = Serving.fetch(key, %{})
@@ -98,11 +97,11 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   describe "with the flag off" do
     setup do: Flags.put_feature_visibility(false)
 
-    test "the operator's people are not shown the client's hidden policy either", ctx do
+    test "the operator's people are not shown the organisation's hidden policy either", ctx do
       conn = log_in_user(build_conn(), ctx.operator.user)
 
       assert_raise ApiaryWeb.Features.NotFound, fn ->
-        live(conn, policy_page(ctx.client))
+        live(conn, policy_page(ctx.operated))
       end
     end
   end
@@ -110,62 +109,47 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
   # An open page of a feature follows what its person is shown: told of a change of what
   # is shown (`ApiaryPro.Grants`), it loads its scope again, and a page whose feature is
   # hidden from them now leaves for the organisation's overview and says so.
-  describe "an open page of the client's security policy" do
+  describe "an open page of the operated organisation's security policy" do
     setup do
       %{instance_scope: admin} = suite_instance_admin()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Beacon")
-      %{admin: admin, operator: operator, client: client}
+      operated = operated_fixture(operator.scope, "Beacon")
+      %{admin: admin, operator: operator, operated: operated}
     end
 
     for on? <- [false, true] do
       @on on?
 
-      test "leaves for its client's people when the operator hides it (flag #{@on})", ctx do
+      test "leaves for the organisation's people when the instance hides it (flag #{@on})", ctx do
         Flags.put_feature_visibility(@on)
-        conn = log_in_user(build_conn(), ctx.client.owner.user)
-        {:ok, lv, _html} = live(conn, policy_page(ctx.client))
+        conn = log_in_user(build_conn(), ctx.operated.owner.user)
+        {:ok, lv, _html} = live(conn, policy_page(ctx.operated))
 
         assert {:ok, _} =
-                 Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [
+                 Grants.set_organisation(ctx.admin, ctx.operated.organisation.id, [
                    "observability"
                  ])
 
         assert {path, flash} = assert_redirect(lv)
-        assert path == ~p"/#{ctx.client.organisation}"
+        assert path == ~p"/#{ctx.operated.organisation}"
         assert flash["error"] =~ "is no longer shown in Beacon"
       end
     end
 
-    test "stays for the operator's people when the operator hides it from the client (flag on)",
+    test "leaves for the operator's people when the instance hides it from the organisation (flag on)",
          ctx do
       Flags.put_feature_visibility(true)
       conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, policy_page(ctx.client))
+      {:ok, lv, _html} = live(conn, policy_page(ctx.operated))
 
       assert {:ok, _} =
-               Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, [
+               Grants.set_organisation(ctx.admin, ctx.operated.organisation.id, [
                  "observability"
                ])
 
-      # Told, it loads its scope again and stays: the operator is still shown it.
-      assert render(lv) =~ "Policy"
-      assert Process.alive?(lv.pid)
-      refute_redirected(lv, ~p"/#{ctx.client.organisation}")
-    end
-
-    test "leaves for the operator's people when the operator is not shown it (flag on)", ctx do
-      Flags.put_feature_visibility(true)
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      {:ok, lv, _html} = live(conn, policy_page(ctx.client))
-
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin, ctx.operator.organisation.id, [
-                 "observability"
-               ])
-
+      # Told, it loads its scope again and leaves: the organisation is not shown it any more.
       assert {path, flash} = assert_redirect(lv)
-      assert path == ~p"/#{ctx.client.organisation}"
+      assert path == ~p"/#{ctx.operated.organisation}"
       assert flash["error"] =~ "is no longer shown in Beacon"
     end
   end

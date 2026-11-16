@@ -5,7 +5,7 @@ defmodule ApiaryPro.Tenants.PeopleLock do
   lock (`ApiaryPro.Tenants.lock_rows/1`) to keep a change of the organisation's people
   and a write that relies on someone's level there one after the other, without locking
   a membership: a change of an operator's people locks its row `FOR UPDATE`, and a write
-  in one of its clients `FOR SHARE`. It holds nothing but its key and when it was
+  in a workspace it operates `FOR SHARE`. It holds nothing but its key and when it was
   written.
 
   The row is written with its tenant, in the same transaction, or by the migration that

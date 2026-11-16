@@ -5,51 +5,35 @@ defmodule ApiaryPro.Races do
   remembered for `on_exit` to delete, and named as a race's.
   """
 
-  import ExUnit.Assertions
-
-  alias Apiary.{OrganisationsFixtures, Races}
+  alias Apiary.{OrganisationsFixtures, Races, Repo}
   alias Apiary.Accounts.Scope
-  alias ApiaryPro.Operators
+  alias Apiary.Organisations.Organisation
 
   @doc """
-  A client of the scope's operator, created by the scope's person, with its first owner,
-  who signed up with the operator's invitation, and its first workspace Main, which the
-  client starts without (`ApiaryPro.OperatorsFixtures.first_workspace_fixture/3`): the
-  client, its workspace, `scope`, the operator's person's scope in it, and `owner`, the
-  owner's fixture, `scope` theirs in Main. Its name and its owner's address are a race's.
+  An organisation whose first workspace the scope's operator operates, made as
+  `ApiaryPro.OperatorsFixtures.operated_fixture/2` makes one: its first person signs up
+  with a race's address and creates it, with its first workspace Main, under a race's
+  name, and the operator operates Main (`ApiaryPro.OperatorsFixtures.operate_fixture/2`).
+  The organisation, its workspace, `scope`, the operator's person's scope in it, and
+  `owner`, the first person's fixture, `scope` theirs in Main.
   """
-  @spec client(Scope.t()) :: map
-  def client(%Scope{} = operator_scope) do
-    parent = self()
-    ref = make_ref()
-    email = Races.email()
-
-    {:ok, %{organisation: client, sent: {:ok, _invitation}}} =
-      Operators.create_client(
-        operator_scope,
-        %{"name" => Races.name("client"), "email" => email},
-        fn token ->
-          send(parent, {ref, token})
-          "http://localhost/invitations/#{token}"
-        end
-      )
-
-    token =
-      receive do
-        {^ref, token} -> token
-      after
-        0 -> flunk("create_client did not call the URL function")
-      end
+  @spec operated(Scope.t()) :: map
+  def operated(%Scope{} = operator_scope) do
+    operator = operator_scope.organisation
 
     owner =
       Races.created(
-        OrganisationsFixtures.sign_up_fixture(%{email: email, invitation_token: token})
+        OrganisationsFixtures.sign_up_fixture(%{
+          email: Races.email(),
+          organisation_name: Races.name("operated")
+        })
       )
 
-    workspace = ApiaryPro.OperatorsFixtures.first_workspace_fixture(operator_scope, client, owner)
+    %{organisation: organisation, workspace: workspace} = owner
+    ApiaryPro.OperatorsFixtures.operate_fixture(workspace, operator)
 
     %{
-      organisation: client,
+      organisation: ApiaryPro.Tenants.put(Repo.get!(Organisation, organisation.id)),
       workspace: workspace,
       scope: OrganisationsFixtures.workspace_scope(operator_scope.user, workspace),
       owner: %{owner | scope: OrganisationsFixtures.workspace_scope(owner.user, workspace)}

@@ -365,7 +365,7 @@ defmodule Apiary.Dispatches.Handover do
     issued = Registration.issue_grant(grant, locked.now, @attach_seconds)
     locked = Map.put(locked, :documents_limit, documents_limit(locked.run, issued))
 
-    case locked |> formed(workspace) |> with_work() |> sealable(gateway, workspace, keys) do
+    case locked |> formed(workspace) |> with_work() |> sealable(gateway, locked.run, keys) do
       {:end, cause} ->
         {:ended, end_claimed(locked.run, cause, locked.now)}
 
@@ -736,31 +736,42 @@ defmodule Apiary.Dispatches.Handover do
   # provider, with the features under which it is given its credential
   # (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed` on the same
   # keys, or when the provider's key may not be sealed for the gateway
-  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
-  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, workspace, keys) do
+  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`). `run` is the run of the queue, read
+  # under lock at the claim.
+  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, run, keys) do
     if Enum.all?(keys, & &1.allow_secrets),
-      do: model_sealable(ok, gateway, workspace, keys),
+      do: model_sealable(ok, gateway, run, keys),
       else: {:end, :secrets_not_allowed}
   end
 
-  defp sealable(formed, gateway, workspace, keys),
-    do: model_sealable(formed, gateway, workspace, keys)
+  defp sealable(formed, gateway, run, keys), do: model_sealable(formed, gateway, run, keys)
 
-  defp model_sealable(
-         {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
-         %Node{} = gateway,
-         %Workspace{organisation_id: organisation_id},
-         keys
-       ) do
+  @doc false
+  # model_sealable/4 is `formed` when the run's model key may be sealed for `gateway`, else
+  # `{:end, :secrets_not_allowed}`. The seal is checked for the organisation and the
+  # workspace of `dispatch_run`, the run of the queue read under lock at the claim, not
+  # for the workspace of the claiming pool.
+  @spec model_sealable(term, Node.t(), DispatchRun.t(), [AccessKey.t()]) :: term
+  def model_sealable(
+        {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
+        %Node{} = gateway,
+        %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id},
+        keys
+      ) do
+    run = %{organisation_id: organisation_id, workspace_id: workspace_id}
+
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway, organisation_id) -> ok
+      ProviderCredential.sealable_to?(chain, gateway, run) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
 
-  defp model_sealable(formed, _gateway, _workspace, _keys), do: formed
+  # A run formed with no model provider, or not formed: nothing to seal. Any gateway or
+  # run of the queue of another shape raises `FunctionClauseError`, so the seal is not
+  # skipped.
+  def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
 
   # The run's work credential entry, formed from what the run is formed from
   # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the

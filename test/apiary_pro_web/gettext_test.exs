@@ -49,8 +49,11 @@ defmodule ApiaryProWeb.GettextTest do
 
     test "follows the locale set for every backend, and its plural rules" do
       Gettext.with_locale("en@software", fn ->
-        assert ngettext("%{number} client", "%{number} clients", 1, number: "1") == "1 client"
-        assert ngettext("%{number} client", "%{number} clients", 2, number: "2") == "2 clients"
+        assert ngettext("%{number} membership", "%{number} memberships", 1, number: "1") ==
+                 "1 membership"
+
+        assert ngettext("%{number} membership", "%{number} memberships", 2, number: "2") ==
+                 "2 memberships"
       end)
     end
 
@@ -58,8 +61,8 @@ defmodule ApiaryProWeb.GettextTest do
       assert Backends.all() == [ApiaryWeb.Gettext, ApiaryProWeb.Gettext]
 
       assert ApiaryWeb.CoreComponents.translate_error(
-               {"cannot be an operator: it is a client of one", []}
-             ) == "cannot be an operator: it is a client of one"
+               {"cannot be changed: it is the instance owner", []}
+             ) == "cannot be changed: it is the instance owner"
     end
   end
 

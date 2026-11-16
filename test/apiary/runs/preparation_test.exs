@@ -160,7 +160,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{
                dispatch_id: dispatch_id,
-               pool: %{name: "build-pool", place: :workspace, operator: nil},
+               pool: %{name: "build-pool", place: :workspace},
                machine_type: nil,
                started_as: nil,
                requested_at: requested_at,
@@ -345,7 +345,7 @@ defmodule Apiary.Runs.PreparationTest do
     test "a stop at a step has its first sentence alone for the header, on every pool" do
       stopped = %{step: 3, what: "Start the wall failed with exit code 125.", text: "x"}
 
-      for fixer <- [:support, :operator_admin, :workspace_admin] do
+      for fixer <- [:support, :workspace_admin] do
         assert Preparation.stop_line(%{stopped: Map.put(stopped, :fixer, fixer)}) ==
                  "Start the wall failed with exit code 125."
       end
@@ -1155,10 +1155,6 @@ defmodule Apiary.Runs.PreparationTest do
       assert cause.(preparation) ==
                what <> " Read the cause in the log of build-pool on its host."
 
-      # A pool of another organisation, which an edition may let serve the workspace, is
-      # in `ApiaryWeb.RunListTest`: a dispatch's pool is of its workspace or the
-      # instance's here (`pool_place_matches`).
-
       # The instance's pool: support, with the run.
       change_dispatch!(ctx.dispatch, pool_id: instance_pool_fixture(%{name: "qory-pool"}).id)
       preparation = Preparation.read(ctx.scope, run)
@@ -1351,12 +1347,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{machine: machine, stopped: stopped} = Preparation.read(ctx.scope, run)
 
-      assert machine.pool == %{
-               id: instance_pool.public_id,
-               name: "qory-pool",
-               place: :instance,
-               operator: nil
-             }
+      assert machine.pool == %{id: instance_pool.public_id, name: "qory-pool", place: :instance}
 
       assert machine.started.state == "failed"
       assert machine.started.ended_at == run.lost_at

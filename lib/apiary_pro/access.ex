@@ -8,7 +8,6 @@ defmodule ApiaryPro.Access do
 
   @owners [:owner]
   @admins [:owner, :admin]
-  @members [:owner, :admin, :member]
   @read "a read changes nothing"
 
   # Every action the edition adds, named once, as `Apiary.Access` names the core's actions: the
@@ -24,119 +23,16 @@ defmodule ApiaryPro.Access do
       roles: @admins,
       asked_of: :organisation
     ),
-    # The organisation's operator.
-    Action.new(
-      :"organisation.transfer",
-      "offer the organisation to an operator, whose client it becomes once an owner of the operator accepts",
-      roles: @owners,
-      asked_of: :organisation
-    ),
+    # The ownership of the organisation.
     Action.new(
       :"organisation.withdraw_transfer",
-      "withdraw the pending offer of the organisation's ownership",
+      "read the pending offer of the organisation's ownership; the lapse of an offer is recorded under this action",
       roles: @owners,
       asked_of: :organisation
     ),
     Action.new(
       :"organisation.accept_transfer",
       "accept the ownership the instance admins offered you, an admin of the organisation: the offer allows it, and no role",
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"organisation.leave_operator",
-      "leave the organisation's operator at once: it is an organisation with no operator from then on",
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    # An operator's clients.
-    Action.new(:"client.read", "list an operator's clients, with their status: its Clients page",
-      feature: :managed_organisations,
-      roles: @members ++ [:reader],
-      asked_of: :organisation,
-      audited: {:not, @read}
-    ),
-    Action.new(
-      :"client.create",
-      "create a client organisation of the operator, with no workspace, and invite its first owner to it",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.invite_owner",
-      "invite the first owner of a client of the operator that has no owner yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.revoke_owner_invitation",
-      "revoke a pending invitation of the first owner of a client of the operator that has no owner yet",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.renew_owner_invitation",
-      "make a new link for a pending invitation of the first owner of a client of the operator that has no owner yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.invite_admin",
-      "invite the first admin of a client of the operator that has no owner or admin yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.revoke_admin_invitation",
-      "revoke a pending invitation of the first admin of a client of the operator that has no owner or admin yet",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.renew_admin_invitation",
-      "make a new link for a pending invitation of the first admin of a client of the operator that has no owner or admin yet, against the operator's invitations",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.accept",
-      "accept an organisation offered to the operator, which becomes its client",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.grant_features",
-      "show or hide features for a client of the operator, of those the operator is shown",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.drop",
-      "drop a client of the operator at once: it is an organisation with no operator from then on",
-      feature: :managed_organisations,
-      roles: @owners,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.set_model_chain",
-      "set whether the runs of a client of the operator use the operator's model providers or the client's",
-      feature: :managed_organisations,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"client.delete",
-      "delete a client of the operator that has no owner yet: mark it for purging after the grace period",
-      feature: :managed_organisations,
-      roles: @owners,
       asked_of: :organisation
     ),
     # The instance: the instance organisation's owners, on Instance settings' pages.
@@ -157,7 +53,7 @@ defmodule ApiaryPro.Access do
     ),
     Action.new(
       :"instance.change_kind",
-      "make an organisation that is no client an operator, or an operator without clients an organisation",
+      "make an organisation an operator, or an operator an organisation, while no workspace of it has an operator and it operates none",
       feature: :managed_organisations,
       roles: @owners,
       asked_of: :organisation,
@@ -205,7 +101,7 @@ defmodule ApiaryPro.Access do
     ),
     Action.new(
       :"instance.grant_features",
-      "show or hide features for an operator, or for an organisation with no operator, of those the instance has",
+      "show or hide features for an organisation or an operator, of those the instance has",
       roles: @owners,
       asked_of: :organisation,
       instance: true
@@ -222,35 +118,6 @@ defmodule ApiaryPro.Access do
       "adopt an organisation created before the instance had tenants: taken after the migrations (`ApiaryPro.Adoption`), which no role takes",
       asked_of: :organisation,
       instance: true
-    ),
-    # An operator's requests for changes to its clients' security policy.
-    Action.new(
-      :"policy_request.send",
-      "send an operator's clients a request for changes to their security policy, with a note saying why its harness needs them",
-      feature: :security,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.withdraw",
-      "withdraw an operator's policy request from the clients that have not answered it",
-      feature: :security,
-      roles: @admins,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.accept",
-      "accept a policy request of the client's operator: its changes made in the workspaces chosen, as a write of the policy by the person who accepts",
-      feature: :security,
-      roles: @members,
-      asked_of: :organisation
-    ),
-    Action.new(
-      :"policy_request.decline",
-      "decline a policy request of the client's operator, with a reason or none",
-      feature: :security,
-      roles: @members,
-      asked_of: :organisation
     ),
     # The organisation's policy, above its workspaces' (`ApiaryPro.OrganisationPolicy`).
     Action.new(
@@ -331,11 +198,11 @@ defmodule ApiaryPro.Access do
   ]
 
   @roles [
-    # One who reaches an organisation with no membership there: a person of its operator,
-    # at any level there, in one of its clients, or an instance admin in an organisation
-    # they reach no other way.
+    # One who reaches an organisation with no membership there: a person of the operator
+    # of some of its workspaces, at any level there, or an instance admin in an
+    # organisation they reach no other way.
     reader:
-      "an instance admin anywhere, or an operator's person in its clients: reads everything in every workspace, changes nothing",
+      "an instance admin anywhere, reading everything in every workspace, or an operator's person in the workspaces it operates, reading everything in them; changes nothing",
     # Anyone signed in, whose account is neither deleted nor suspended.
     person:
       "anyone signed in, in any organisation or none, for a kind of organisation the instance opens"
@@ -353,7 +220,6 @@ defmodule ApiaryPro.Access do
     :"connection.read",
     :"audit.read",
     :"node.read",
-    :"client.read",
     :"organisation_policy.read",
     :"organisation_variable.read",
     :"organisation_secret.read",
@@ -365,102 +231,29 @@ defmodule ApiaryPro.Access do
   # differ by, which no doc names.
   @documented_reads @reads -- [:"adapter.read", :"work_item.read"]
 
-  # The actions hidden while `ApiaryPro.Flags.transfers?/0` is off: not found for everyone,
+  # The action hidden while `ApiaryPro.Flags.transfers?/0` is off: not found for everyone,
   # and left out of the table of actions below.
-  @flagged_transfers [
-    :"organisation.transfer",
-    :"organisation.withdraw_transfer",
-    :"organisation.leave_operator",
-    :"client.accept"
-  ]
+  @flagged_transfers [:"organisation.withdraw_transfer"]
 
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, the client's decisions,
-  # which nobody takes in a client through its operator, whatever their level there: its
-  # leaving, its offer to another operator and the offer's withdrawal, its deletion, and
-  # the answers to its operator's policy requests.
-  @not_through_operator [
-    :"organisation.leave_operator",
-    :"organisation.transfer",
-    :"organisation.withdraw_transfer",
-    :"organisation.delete",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
-
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, a client's first person is
-  # invited as its admin, and the actions of the first owner's invitation, and a client's
-  # drop, are not found; while it is off, the first admin's are, and they are left out of
-  # the table of actions below.
-  @owner_invitations [
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation"
-  ]
-  @admin_invitations [
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation"
-  ]
-  # Not found while `ApiaryPro.Flags.operator_infrastructure?/0` is off, and left out of the
-  # table of actions below: the operator's choice of the model providers a client uses.
-  @needs_operator_infrastructure [:"client.set_model_chain"]
-  # An operator's policy requests, and its clients' answers to them, are not found while it
-  # is on either.
-  @policy_requests [
-    :"policy_request.send",
-    :"policy_request.withdraw",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
-  @hidden_while_operator_owns [:"client.drop" | @owner_invitations ++ @policy_requests]
-
-  # The actions over a client's people a client's admin takes on its admins as on its
-  # members while the flag is on: nobody in a client is an owner but those who were.
-  @over_admins [:"member.remove", :"member.change_level"]
-
-  # What the operator sets in a client, which, while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`), only the operator's owners and admins
-  # hold: for anyone else in the client, its owners and admins among them, it is not
-  # there. They are the client's nodes, a pool's instance limit and the access keys, the
-  # time limits of its workspaces and targets, a workspace's retention, and the harness
-  # documents saved at its levels. Reading any of these is not among them; the client
-  # reads it. The client keeps its integrations and services
-  # (`connection.write`). Its model providers and runtimes and the model choices of its
-  # workspaces and targets follow its switch (`@chain_held`).
-  @operator_held [
-    :"node.create",
-    :"node.edit",
-    :"node.set_limit",
-    :"node.delete",
-    :"node.clear_instance",
-    :"access_key.create_code",
-    :"access_key.cancel_code",
-    :"access_key.add",
-    :"access_key.revoke",
-    :"adapter.connect",
+  # What an operator's person changes in a workspace the operator operates, while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on, at the role that matches their
+  # level there (`operator_role/2`): the time limits of the workspace and its targets, its
+  # retention, the process and its artifact types, and the model choices. Nothing else they
+  # change there: no node or access key, no person of the organisation, no harness
+  # document, secret, variable, connection or security policy. Of what the organisation has
+  # as a whole they change nothing. The organisation's owners and admins keep every action
+  # in the workspace, these included.
+  @operator_in_workspace [
     :"time_limit.edit",
     :"retention.edit",
-    :"harness.save"
+    :"process.edit",
+    :"artifact_type.edit",
+    :"model_choice.write"
   ]
 
-  # What a client's model providers decide: its providers and runtimes, and the model
-  # choices of its workspaces and targets. While the flag is on, they are held by the
-  # operator's owners and admins when the client's switch is `:operator`
-  # (`ApiaryPro.Tenants.model_chain/1`), and not there for anyone else in the client. While
-  # it is `:organisation`, they follow the usual rules, as in a client with no operator:
-  # the client's owners and admins hold them, and a person who acts in the client through
-  # its operator reads only.
-  @chain_held [:"provider.write", :"runtime.write", :"model_choice.write"]
-
-  # While the operator owns its clients, a client's workspace rule locks, and its
-  # organisation's policy, are the operator's owners' alone: locking and unlocking a rule,
-  # changing or removing a locked one, and the organisation's rules, floor and switch.
-  @operator_owners_in_client [
-    :"security_policy.lock",
-    :"organisation_policy.edit",
-    :"organisation_policy.set_floor",
-    :"organisation_policy.set_switch"
-  ]
+  # The reads of a workspace that its operator's people do not make: its secrets, with
+  # their names, notes and value ids, and its variables with their values.
+  @not_read_by_operator [:"secret.read", :"variable.read"]
 
   @instance_actions for %Action{name: name, instance: true} <- @actions, do: name
 
@@ -469,7 +262,6 @@ defmodule ApiaryPro.Access do
   @not_on_instance_organisation [
     :"organisation.delete",
     :"organisation.purge",
-    :"organisation.transfer",
     :"organisation.withdraw_transfer"
   ]
 
@@ -501,27 +293,28 @@ defmodule ApiaryPro.Access do
      `%Apiary.Organisations.Organisation{}` not inserted yet, with the kind asked for.
      Anyone signed in may, whose account is neither deleted nor suspended, for a kind the
      instance's sign-up settings open (`ApiaryPro.SignUp.kinds/0`). A kind whose
-     setting is closed, and anything but a new organisation of no operator, is
+     setting is closed, and anything but a new organisation, is
      `{:error, :forbidden}`; so is every scope without a person.
   3. Once the place is known (`Apiary.Access.check_place/3`), for every other action:
      - **the organisation's secrets**: `organisation_secret.read`,
        `organisation_secret.write` and `organisation_secret.use` are not found, for every
        role, in an organisation that does not have the feature `organisation_variables`
        (`ApiaryPro.Features.of/2`);
-     - **what kind of organisation it is**: an operator's actions over its clients
-       (`client.*`, `policy_request.send`, `policy_request.withdraw`) are asked in an
-       operator, and not found in an organisation of another kind; answering its policy
-       requests (`policy_request.accept`, `policy_request.decline`) is asked in a client,
-       and not found in an organisation with no operator;
      - **the instance organisation**: #{Enum.map_join(@not_on_instance_organisation -- @flagged_transfers, ", ", &"`#{&1}`")}
        are forbidden on it, for every role, the instance's included (`Apiary.Access.refused_on?/2`);
      - **suspension**: a suspended organisation (`suspended?/1`) is read-only, every
        action but the reads (`reads/0`) forbidden there for every role but
        the instance's jobs;
-     - **the reader**: one who reaches the organisation through its operator, or as an
-       instance admin, reads everything in every workspace (`reads/0`); a person of the
-       operator who holds a membership there too changes only what that membership
-       allows, in the workspaces it reaches;
+     - **the operator of a workspace** (`ApiaryPro.WorkspaceOperators`): a person of the
+       operator reaches the workspaces it operates alone, and reads everything in them
+       (`reads/0`) but their secrets and variables, as the role `reader`, and changes
+       nothing there; nothing the organisation owns as a whole is found, its policy,
+       people, connections, secrets and variables among them, nor any action asked of the
+       organisation. The organisation's owners and admins keep every action in the
+       workspace. A person of the operator who holds a membership in the organisation too
+       acts there at that membership's level;
+     - **the reader**: an instance admin reads everything in every workspace
+       (`reads/0`);
      - **workspace access**: adding a person to a workspace and removing them from one are
        over people, as the core's are (`Apiary.Access.acts_on?/2`).
 
@@ -532,7 +325,7 @@ defmodule ApiaryPro.Access do
 
   | Action | What | Feature |
   |---|---|---|
-  #{@actions |> Enum.reject(&(&1.name in (@flagged_transfers ++ @admin_invitations ++ @needs_operator_infrastructure))) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
+  #{@actions |> Enum.reject(&(&1.name in @flagged_transfers)) |> Enum.map_join("\n", fn action -> "| `#{action.name}` | #{action.what} | #{if action.feature, do: "`#{action.feature}`", else: "every instance"} |" end)}
 
   ## Roles
 
@@ -545,34 +338,6 @@ defmodule ApiaryPro.Access do
   `organisation.create`, which `check/3` answers for them. The edition's actions are held by the
   core's levels too, as each one's `roles` say.
   """
-
-  # The actions of an operator over its clients, asked in the operator: in an organisation
-  # of another kind they are not found, as a page that is not there.
-  @operator_actions [
-    :"client.read",
-    :"client.create",
-    :"client.invite_owner",
-    :"client.revoke_owner_invitation",
-    :"client.renew_owner_invitation",
-    :"client.invite_admin",
-    :"client.revoke_admin_invitation",
-    :"client.renew_admin_invitation",
-    :"client.accept",
-    :"client.grant_features",
-    :"client.drop",
-    :"client.set_model_chain",
-    :"client.delete",
-    :"policy_request.send",
-    :"policy_request.withdraw"
-  ]
-
-  # The actions of a client over its place, asked in the client: in an organisation with
-  # no operator they are not found.
-  @client_actions [
-    :"organisation.leave_operator",
-    :"policy_request.accept",
-    :"policy_request.decline"
-  ]
 
   # The instance actions asked of the organisation acted on: a change of kind, and what is
   # never taken on the instance organisation itself, which holds the instance admins, so
@@ -621,7 +386,7 @@ defmodule ApiaryPro.Access do
 
   @doc """
   suspended?/1 says whether the scope's organisation is suspended (`ApiaryPro.Suspensions`),
-  as the scope carries it: read-only, for everyone in it. A page says so, and shows no
+  from the scope as it is: read-only, for everyone in it. A page says so, and shows no
   control that changes something, since `Apiary.Access.can?/3` answers no for each.
   """
   @spec suspended?(Scope.t() | nil) :: boolean
@@ -639,39 +404,26 @@ defmodule ApiaryPro.Access do
   """
   @spec check(Scope.t() | nil, Access.action(), Access.subject() | nil) ::
           :continue | :ok | {:error, Access.reason()}
-  # Before all of it, what a flag hides is not found, for everyone (`hidden?/2`).
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is read once here and passed to `hidden?/2`
-  # and the steps of `answer/4`. It is read again elsewhere for the same question: by
+  # Before all of it, what a flag hides is not found, for everyone (`hidden?/1`).
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is read once here and passed to the steps
+  # of `answer/4`. It is read again elsewhere for the same question: by
   # `role/1`, which the core calls after `:continue`, and by the check the core runs again
   # when someone in both acts at their level in the operator.
   def check(scope, action, subject) do
     on? = Flags.operator_infrastructure?()
 
-    if hidden?(action, on?),
+    if hidden?(action),
       do: {:error, :not_found},
       else: answer(scope, action, subject, on?)
   end
 
   # hidden?/1 is true when a flag hides `action` now, as a path that does not exist: the
-  # actions `ApiaryPro.Flags.transfers?/0` gates while it is off; the first owner's
-  # invitation, a client's drop and the policy requests while
-  # `ApiaryPro.Flags.operator_infrastructure?/0` is on; the first admin's invitation and
-  # the operator's choice of a client's model providers while it is off. `check/3` calls
-  # `hidden?/2` first, and a page that is not there while a flag hides its action calls
-  # `hidden?/1`. Not in the published documentation: what a flag hides is not named there
-  # (`ApiaryPro.Flags`).
+  # action `ApiaryPro.Flags.transfers?/0` gates while it is off. `check/3` calls it first,
+  # and a page that is not there while a flag hides its action calls it too. Not in the
+  # published documentation: what a flag hides is not named there (`ApiaryPro.Flags`).
   @doc false
   @spec hidden?(Access.action()) :: boolean
-  def hidden?(action), do: hidden?(action, Flags.operator_infrastructure?())
-
-  defp hidden?(action, on?) do
-    cond do
-      action in @flagged_transfers -> not Flags.transfers?()
-      action in @hidden_while_operator_owns -> on?
-      action in @admin_invitations or action in @needs_operator_infrastructure -> not on?
-      true -> false
-    end
-  end
+  def hidden?(action), do: action in @flagged_transfers and not Flags.transfers?()
 
   defp answer(nil, action, subject, _on?) do
     if action in @not_on_instance_organisation and instance_organisation?(subject),
@@ -719,7 +471,7 @@ defmodule ApiaryPro.Access do
   defp recipient?(_scope, _offer), do: false
 
   # The role the scope acts in, as `Apiary.Access.role/1` gives it, with the flag as this
-  # answer read it: a person who reaches the organisation through its operator alone
+  # answer read it: a person who reaches the scope's workspace through its operator alone
   # takes the role of their level there (`operator_role/2`); anyone else's is the core's,
   # which asks `role/1` only where there is no operator's level to read the flag for.
   defp scope_role(scope, on?) do
@@ -730,14 +482,15 @@ defmodule ApiaryPro.Access do
   end
 
   # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator's owners act in
-  # its clients as owners and its admins as admins; its members, and everyone while it is
-  # off, read.
+  # the workspaces it operates as owners and its admins as admins; its members, and
+  # everyone while it is off, read.
   defp operator_role(level, true) when level in [:owner, :admin], do: level
   defp operator_role(_level, _on?), do: :reader
 
-  # A person in both, while the flag is on, whose level in the operator is an owner's or an
-  # admin's and higher than their level in the client: they act at the higher of their two
-  # levels, through the operator.
+  # A person in both, while the flag is on, whose level in the operator of the scope's
+  # workspace is an owner's or an admin's and higher than their level in the organisation:
+  # for what the operator changes there, they act at the higher of their two levels,
+  # through the operator.
   defp higher_through_operator?(scope, via) do
     own = Access.level(scope)
 
@@ -745,28 +498,26 @@ defmodule ApiaryPro.Access do
   end
 
   @doc """
-  through_operator?/1 says whether the person of `scope` acts in its organisation, a
-  client, through the client's operator: they have a level in the operator and either no
-  membership in the client, or a level in the operator strictly higher than theirs in the
-  client. As the scope carries it.
+  through_operator?/1 says whether the person of `scope` acts in its workspace through the
+  workspace's operator: they have a level in the operator and either no membership in
+  the organisation, or a level in the operator strictly higher than theirs in the
+  organisation. From the scope as it is.
   """
   @spec through_operator?(Scope.t() | nil) :: boolean
   def through_operator?(scope), do: through_operator?(scope, Reach.operator_level(scope))
 
-  # Whether the person acts in the client through its operator: they have a level in the
-  # operator and either no membership in the client, or a level in the operator strictly
-  # higher than theirs in the client. On a tie they act at their level in the client.
+  # Whether the person acts in the workspace through its operator: they have a level in
+  # the operator and either no membership in the organisation, or a level in the operator
+  # strictly higher than theirs in the organisation. On a tie they act at their level in
+  # the organisation.
   defp through_operator?(_scope, nil), do: false
-  defp through_operator?(scope, via), do: through_operator_at?(via, Access.level(scope))
 
-  # through_operator_at?/2 is the same answer from the two levels alone: `via`, the
-  # person's in the operator, and `own`, theirs in the client, nil for none. For
-  # `ApiaryPro.Reach.acted_through_operator?/1`, which has no scope to ask with.
-  @doc false
-  @spec through_operator_at?(Membership.level() | nil, Membership.level() | nil) :: boolean
-  def through_operator_at?(nil, _own), do: false
-  def through_operator_at?(_via, nil), do: true
-  def through_operator_at?(via, own), do: higher?(via, own)
+  defp through_operator?(scope, via) do
+    case Access.level(scope) do
+      nil -> true
+      own -> higher?(via, own)
+    end
+  end
 
   defp higher?(via, own), do: rank(via) > rank(own)
 
@@ -775,16 +526,14 @@ defmodule ApiaryPro.Access do
   defp rank(:member), do: 1
 
   defp check_in_place(scope, action, subject, role, on?) do
-    via = Reach.operator_level(scope)
+    # The person's level in the operator of the subject's workspace, nil for what the
+    # organisation owns as a whole: a level in an operator counts in the workspaces it
+    # operates alone.
+    workspace_id = workspace_of(subject)
+    via = Reach.operator_level(scope, workspace_id)
 
     cond do
       action in @organisation_secrets and not has_organisation_secrets?(subject) ->
-        {:error, :not_found}
-
-      action in @operator_actions and not operator?(scope) ->
-        {:error, :not_found}
-
-      action in @client_actions and not client?(scope) ->
         {:error, :not_found}
 
       action in @not_on_instance_organisation and instance_organisation?(subject) ->
@@ -793,76 +542,49 @@ defmodule ApiaryPro.Access do
       role != :instance and suspended?(scope) and action not in @reads ->
         {:error, :forbidden}
 
-      # A reader, and a person of the operator whatever their membership there, reads
-      # everything.
+      # A person who reaches the organisation through the operators of some of its
+      # workspaces alone reaches nothing it owns as a whole: no subject of the
+      # organisation's, and no action asked of the organisation, such as the check of
+      # an organisation page that the core asks of the workspace in the scope, but what
+      # the operator changes in the workspace.
+      is_nil(Access.level(scope)) and Reach.operator_reach?(scope) and
+          (organisation_level?(scope, subject) or
+             (asked_of_organisation?(action) and action not in @operator_in_workspace)) ->
+        # An instance admin among them reads it as the instance admins read every
+        # organisation.
+        if Reach.instance_reach?(scope) and action in @reads,
+          do: :ok,
+          else: {:error, :not_found}
+
+      # The workspace's secrets and variables are not there for a person of its operator
+      # whose membership in the organisation, if any, does not reach the workspace, but an
+      # instance admin: they read everything else in it.
+      via != nil and action in @not_read_by_operator and
+        (is_nil(Access.level(scope)) or not Reach.own_reaches?(scope, subject)) and
+          not Reach.instance_reach?(scope) ->
+        {:error, :not_found}
+
+      # A reader, and a person of the operator of the workspace whatever their membership
+      # there, reads everything else.
       action in @reads and (role == :reader or via != nil) ->
         :ok
 
-      # While the flag is on, what the operator sets in a client is held by the operator's
-      # owners and admins: for anyone else, the client's owners and admins among them, it
-      # is not there.
-      on? and action in @operator_held and client?(scope) and via not in [:owner, :admin] ->
-        {:error, :not_found}
-
-      # While the flag is on and the client's switch is `:operator`, the model providers
-      # are the operator's owners' and admins': for anyone else in the client it is not
-      # there. On `:organisation` the person who acts there through the operator reads only.
-      on? and action in @chain_held and client?(scope) and operator_chain?(scope) and
-          via not in [:owner, :admin] ->
-        {:error, :not_found}
-
-      on? and action in @chain_held and client?(scope) and not operator_chain?(scope) and
-          through_operator?(scope, via) ->
-        {:error, :forbidden}
-
-      # While the flag is on, a client's rule locks and its organisation's policy are the
-      # operator's owners' alone: anyone else is refused, the client's owners among them.
-      on? and action in @operator_owners_in_client and client?(scope) and via != :owner ->
-        {:error, :forbidden}
-
-      # While the flag is on, the client's decisions are refused to anyone who acts in it
-      # through its operator (`through_operator?/2`), the check run again for
-      # someone in both with no membership among them; anyone else answers at their level
-      # in the client.
-      on? and action in @not_through_operator and through_operator?(scope, via) ->
-        {:error, :forbidden}
-
-      # While the flag is on, a client's workspaces are deleted and brought back by the
-      # operator's owners and admins: whatever their level in the client, as the
-      # operator's level says, not the role.
-      on? and action in [:"workspace.delete", :"workspace.restore"] and client?(scope) and
-          via not in [:owner, :admin] ->
+      # A person of the operator of the workspace changes there only what the operator
+      # changes: anything else is forbidden to one with no membership in the organisation.
+      via != nil and is_nil(Access.level(scope)) and action not in @operator_in_workspace ->
         {:error, :forbidden}
 
       # While the flag is on, a person in both whose level in the operator is higher acts
-      # at it, as though they had no membership in the client.
-      on? and higher_through_operator?(scope, via) ->
+      # at it, as though they had no membership in the organisation, for what the
+      # operator changes in the workspace.
+      on? and action in @operator_in_workspace and higher_through_operator?(scope, via) ->
         Access.check(%{scope | membership: nil}, action, subject)
 
-      # A person of the operator who is a member of the client too reads every workspace
-      # through the operator, and changes only where their membership in the client
-      # reaches. While the flag is on, the operator's owners and admins reach every
-      # workspace.
-      via != nil and operator_role(via, on?) == :reader and
-          not Reach.own_reaches?(scope, subject) ->
+      # A person of the operator who is a member of the organisation too reads the
+      # workspace through the operator, and changes it only where their membership
+      # reaches.
+      via != nil and not Reach.own_reaches?(scope, subject) ->
         {:error, :forbidden}
-
-      # While the flag is on, a client's admins act on its admins as on its members: they
-      # remove them and change their level, between admin and member
-      # (`ApiaryPro.Edition`'s `membership_changed/5` refuses an owner). An admin never
-      # acts on an owner.
-      on? and role == :admin and action in @over_admins and client?(scope) and
-          match?(%Membership{level: level} when level in [:admin, :member], subject) ->
-        :ok
-
-      # A client's admins create its workspaces as its owners do, with the flag on or off.
-      # The core gives the action to owners alone. While the flag is on, a person who acts
-      # through the operator has the operator's role instead, which the core answers. While
-      # it is off, the operator's level gives nothing to change, so a person who is an
-      # admin of the client and an owner of its operator acts as the client's admin.
-      action == :"workspace.create" and role == :admin and client?(scope) and
-          not (on? and through_operator?(scope, via)) ->
-        :ok
 
       action in @workspace_access and not over?(role, subject) ->
         {:error, :forbidden}
@@ -871,6 +593,25 @@ defmodule ApiaryPro.Access do
         :continue
     end
   end
+
+  # The workspace of the subject, nil for what the organisation owns and what is nowhere.
+  defp workspace_of(subject) do
+    case Access.place(subject) do
+      {_organisation_id, workspace_id} -> workspace_id
+      nil -> nil
+    end
+  end
+
+  # Whether the action is asked of the organisation (`Apiary.Access.Action`).
+  defp asked_of_organisation?(action), do: Access.action(action).asked_of == :organisation
+
+  # Whether the subject is something the scope's organisation owns as a whole, in no
+  # workspace.
+  defp organisation_level?(%Scope{organisation: %Organisation{id: id}}, subject)
+       when is_binary(id),
+       do: Access.place(subject) == {id, nil}
+
+  defp organisation_level?(_scope, _subject), do: false
 
   # Whether the organisation acted on has the feature of its secrets. Any other subject is
   # false, so it is not found: every caller passes the organisation.
@@ -960,41 +701,31 @@ defmodule ApiaryPro.Access do
   defp new_organisation?(%Organisation{id: nil} = organisation) do
     tenant = Tenants.tenant(organisation)
 
-    tenant.kind in Tenants.kinds() and not tenant.instance_organisation and
-      is_nil(tenant.operator_id)
+    tenant.kind in Tenants.kinds() and not tenant.instance_organisation
   end
 
   defp new_organisation?(_subject), do: false
 
   @doc """
   role/1 is the role the edition gives the scope's person through its reach
-  (`c:Apiary.Edition.role/1`): `:reader` for a person of a client's operator, reaching it
-  through their membership in the operator, and for an instance admin in an organisation
-  other than the instance organisation; nil for anyone else. As the scope carries it.
+  (`c:Apiary.Edition.role/1`): `:reader` for a person of the operator of some workspaces
+  of the organisation, reaching them through their membership in the operator, and for
+  an instance admin in an organisation other than the instance organisation; nil for
+  anyone else. From the scope as it is.
   """
-  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator's owners and
-  # admins take the role of their level instead (`operator_role/2`). The flag is read only
-  # where there is an operator's level.
+  # In a workspace the operator operates, while `ApiaryPro.Flags.operator_infrastructure?/0`
+  # is on, the operator's owners and admins take the role of their level instead
+  # (`operator_role/2`). The flag is read only where there is an operator's level.
   @spec role(Scope.t() | nil) :: Access.role() | nil
   def role(scope) do
     case Reach.operator_level(scope) do
-      nil -> if Reach.instance_reach?(scope), do: :reader
-      via -> operator_role(via, Flags.operator_infrastructure?())
+      nil ->
+        if Reach.operator_reach?(scope) or Reach.instance_reach?(scope), do: :reader
+
+      via ->
+        operator_role(via, Flags.operator_infrastructure?())
     end
   end
-
-  defp operator?(%Scope{organisation: %Organisation{} = organisation}),
-    do: Tenants.operator?(organisation)
-
-  defp operator?(_scope), do: false
-
-  defp client?(%Scope{organisation: %Organisation{} = organisation}),
-    do: Tenants.client?(organisation)
-
-  defp client?(_scope), do: false
-
-  defp operator_chain?(%Scope{organisation: %Organisation{} = organisation}),
-    do: Tenants.model_chain(organisation) == :operator
 
   defp instance_organisation?(subject), do: Tenants.instance_organisation?(subject)
 
