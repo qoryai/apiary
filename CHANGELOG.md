@@ -23,16 +23,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Version 1 · Model families: Build claude · Verify deepseek”, as the run wrote them.
   When a member accepted the stage's escalation as it is after the run wrote the
   verification, the frame starts with “Accepted as it is by dana”; the criteria keep the
-  states the run wrote. A verification with no such table shows as its Markdown.
+  states the run wrote. A verification with no such table shows as its Markdown, after
+  the same line. An Evidence cell that names a scenario of the Scenarios frame, such as
+  “Demo video: scenario 1”, links to that scenario.
 - On that tab, one frame “Scenarios” has the films and pictures of the verified commit,
   in scenario order, in place of one frame per type: each film with its file name and
   its captions and, beside it, the scenario's title, each step with its expected result,
   and the artifact row; for a pictures scenario, one picture per step, each with the
-  step's title and expected result. A scenario whose name is withdrawn is left out.
+  step's title and expected result. A scenario whose name is withdrawn is left out, and
+  so are the scenarios of an earlier take in.
+- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
+  Explainer, show the version and the artifact rows only, and a row names the artifact
+  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+  films and pictures together, in scenario order.
 - An output frame on a stage's tab lists the artifact row of each name of its type,
   `main` first, and an output with only other names has a frame too.
-- A run's page and a version page's History show a withdrawal as “Withdrew
-  demo-script/scenario-2 (version 3)” in place of “Pushed”.
+- A run's page shows a withdrawal as “Withdrew demo-script/scenario-2 (version 3)” in
+  place of “Pushed”, and a version page's History shows it in place of “Version 3”.
 <!-- /feature -->
 
 - An artifact page that shows videos has a Speed row under each video, with the buttons

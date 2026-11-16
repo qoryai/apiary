@@ -180,7 +180,8 @@ Returns `200` with the index:
 
 `approved_version` is the id of the newest version that a gate approved, or null for
 none; `newest_version` is the number of the newest version, leaving out versions by a
-run a member cancelled. `changed_after_approval` is true when that newest version is
+run a member cancelled, and null when a run a member cancelled wrote every version.
+`changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
