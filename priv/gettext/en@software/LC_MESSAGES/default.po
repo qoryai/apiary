@@ -1275,6 +1275,11 @@ msgstr ""
 msgid "%{list}, and %{last}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -4328,11 +4333,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A machine, pool or gateway"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "A member approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex

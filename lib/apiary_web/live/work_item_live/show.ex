@@ -412,7 +412,6 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             runs={@view.runs}
             skips={@view.skips}
             passed_over={@view.passed_over}
-            viewer={@current_scope.user.id}
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
@@ -2018,8 +2017,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         artifacts: assigns.artifacts
       })
 
+    view = %{view | passed_over: passed_over_by(socket, view.passed_over)}
     socket |> assign(:view, view) |> framed()
   end
+
+  # The person of the approval that put the work item on the track that passed the stage over
+  # (`Apiary.Stages.stage_skips/1`), as the components show a person, Former member for one
+  # whose account is gone.
+  defp passed_over_by(socket, %{approved: %{user_id: id} = approved} = skip) do
+    person = socket |> scope() |> View.people(List.wrap(id)) |> View.person(id)
+    %{skip | approved: Map.put(approved, :by, person)}
+  end
+
+  defp passed_over_by(_socket, skip), do: skip
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do

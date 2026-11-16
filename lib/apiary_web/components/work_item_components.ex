@@ -2495,7 +2495,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the record of the runner passing the stage over whole in the take in (`Apiary.Stages.stage_skips/1`), nil for none"
 
-  attr :viewer, :string, default: nil, doc: "the id of the reader, for \"You approved\""
   attr :stage_names, :map, default: %{}, doc: "the process version's stage names, by stage id"
 
   attr :outputs, :list, default: []
@@ -2609,7 +2608,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </h2>
         </div>
         <p id={"#{@id}-passed-over-why"} class="q-xp-cap">
-          {passed_over_words(@passed_over, @stage.name, @stage_names, @viewer, @now)}
+          {passed_over_words(@passed_over, @stage.name, @stage_names, @now)}
         </p>
       </section>
       <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} cancel={@cancel} />
@@ -5241,8 +5240,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   # Why a stage did not run: the approval that put the work item on the track that skips
-  # it, else the condition that held the stage back.
-  defp passed_over_words(%{approved: %{} = approval}, stage, stage_names, viewer, now) do
+  # it, with `by`, the person who approved (`ApiaryWeb.WorkItemLive.View.person/2`), else
+  # the condition that held the stage back.
+  defp passed_over_words(%{approved: %{by: by} = approval}, stage, stage_names, now) do
     values = [
       track: approval.track_name,
       gate: Map.get(stage_names, approval.stage_id) || gettext("an earlier stage"),
@@ -5250,7 +5250,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       stage: stage
     ]
 
-    if approval.user_id != nil and approval.user_id == viewer,
+    if you?(by),
       do:
         gettext(
           "You approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
@@ -5258,19 +5258,19 @@ defmodule ApiaryWeb.WorkItemComponents do
         ),
       else:
         gettext(
-          "A member approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
-          values
+          "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
+          [member: by.name] ++ values
         )
   end
 
-  defp passed_over_words(%{track: track} = skip, stage, _stage_names, _viewer, _now)
+  defp passed_over_words(%{track: track} = skip, stage, _stage_names, _now)
        when is_binary(track) do
     if skip.negated,
       do: gettext("%{stage} does not run on %{track}.", stage: stage, track: skip.track_name),
       else: gettext("%{stage} runs on %{track} only.", stage: stage, track: skip.track_name)
   end
 
-  defp passed_over_words(%{input: type} = skip, stage, _stage_names, _viewer, _now) do
+  defp passed_over_words(%{input: type} = skip, stage, _stage_names, _now) do
     if skip.negated,
       do:
         gettext("%{stage} does not run while the work item has %{type}.",

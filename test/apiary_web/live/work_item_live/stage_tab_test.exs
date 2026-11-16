@@ -1751,7 +1751,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-tab-passed-over")
     end
 
-    test "another member's approval reads A member approved", %{conn: conn, scope: scope} do
+    test "another member's approval names the member", %{conn: conn, scope: scope} do
       work_item = confirmed!(scope, "fast-track")
       %{user: other} = Apiary.OrganisationsFixtures.member_fixture(scope, :admin)
 
@@ -1759,7 +1759,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         live(log_in_user(build_conn(), other), stage(scope, work_item.number, @shape))
 
       assert view |> element("#work-item-tab-passed-over-why") |> render() =~
-               "A member approved Fast track at Explore&#39;s gate on"
+               "#{ApiaryWeb.People.short(scope.user.email)} approved Fast track at Explore&#39;s gate on"
     end
   end
 
