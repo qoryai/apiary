@@ -1200,6 +1200,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   saves its features.
 - A switch on that page, off by default: **Features by person**. Where the server's
   config turned it on, the first start after the upgrade saves it on.
+- A template's `process.yaml` may declare the submit step of a run, `submit: {type,
+  send}`, as qory's harness contract v1 has it since qory `c0184bd`. A process version
+  made from the template keeps it in its template record. Qory Apiary refuses a template
+  whose `submit.type` is not a structured type that its `artifact_types` defines, with
+  the fix first: "set submit.type to a structured type of artifact_types: mockup is a
+  standard type".
 
 ### Changed
 
