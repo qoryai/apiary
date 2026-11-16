@@ -49,10 +49,12 @@ defmodule ApiaryWeb.StagesLive.Words do
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
-  # its label and its workflows. A workflow with a return to an earlier stage (choice 10)
-  # also has the line `returns`, in `stages`, the document's stages. Text only.
+  # its label and its workflows. Text only. With the process document `doc`, an entry or a
+  # loop that has a condition on a track also has `condition`, its words (`condition/4`),
+  # and a loop has `conditions`, the words of each workflow's condition, nil for none. A
+  # workflow with a return to an earlier stage (choice 10) also has `returns`, its line.
   @doc false
-  def card_sequence(stage, stages) do
+  def card_sequence(stage, doc \\ nil) do
     for entry <- stage["sequence"] do
       case entry do
         %{"loop" => %{"rounds" => rounds, "body" => body}} ->
@@ -63,23 +65,26 @@ defmodule ApiaryWeb.StagesLive.Words do
               ),
             workflows: Enum.map(body, &to_string(&1["workflow"]))
           }
+          |> put_conditions(Enum.map(body, &condition(&1, doc, stage["id"])))
+          |> put_condition(condition(entry, doc, stage["id"]))
 
         entry ->
-          item = %{workflow: to_string(entry["workflow"])}
-
-          case earlier_return(entry, stage, stages) do
-            {name, limit} -> Map.put(item, :returns, card_return(name, limit))
-            nil -> item
-          end
+          %{workflow: to_string(entry["workflow"])}
+          |> put_condition(condition(entry, doc, stage["id"]))
+          |> put_returns(earlier_return(entry, stage, doc))
       end
     end
   end
 
+  defp put_returns(map, nil), do: map
+  defp put_returns(map, {name, limit}), do: Map.put(map, :returns, card_return(name, limit))
+
   # The stage that a workflow entry's return key is set to, by name, and the most returns,
-  # when the stage is before `stage` in `stages`; nil for an entry with no key, and for a
-  # key to a stage that is not before it, which the editor shows as an error.
+  # when the stage is before `stage` in the process document `doc`; nil for an entry with
+  # no key, with no document, and for a key to a stage that is not before it, which the
+  # editor shows as an error.
   @doc false
-  def earlier_return(%{"return" => %{"stage" => id} = key}, stage, stages) do
+  def earlier_return(%{"return" => %{"stage" => id} = key}, stage, %{"stages" => stages}) do
     earlier = Enum.take_while(stages, &(&1["id"] != stage["id"]))
 
     case Enum.find(earlier, &(&1["id"] == id)) do
@@ -88,7 +93,7 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
-  def earlier_return(_entry, _stage, _stages), do: nil
+  def earlier_return(_entry, _stage, _doc), do: nil
 
   # The line under a workflow on its card, and in the card's label.
   defp card_return(name, limit),
@@ -100,38 +105,144 @@ defmodule ApiaryWeb.StagesLive.Words do
         stage: name
       )
 
-  # The words a screen reader reads for a card: its name, its description, its workflows
-  # and loops, each workflow's return, its gate, each in full.
+  # `conditions`, one place for each workflow of a loop, nil for a workflow with none; no key
+  # where none of them has one.
+  defp put_conditions(map, conditions) do
+    if Enum.all?(conditions, &is_nil/1), do: map, else: Map.put(map, :conditions, conditions)
+  end
+
+  defp put_condition(map, nil), do: map
+  defp put_condition(map, text), do: Map.put(map, :condition, text)
+
+  # The name the process document `doc` gives the track `id`, else the id.
   @doc false
-  def card_label(stage, stages, people) do
+  def track_name(doc, id) do
+    case Enum.find(doc["tracks"] || [], &(&1["id"] == id)) do
+      %{"name" => name} -> name
+      _none -> id
+    end
+  end
+
+  # "Offers: Standard, Fast track" for a stage whose gate offers tracks, in the gate's
+  # order; nil for a stage that offers none, or with no document.
+  @doc false
+  def offers(%{"gate" => %{"tracks" => [_ | _] = ids}}, %{} = doc),
+    do: gettext("Offers: %{tracks}", tracks: Enum.map_join(ids, ", ", &track_name(doc, &1)))
+
+  def offers(_stage, _doc), do: nil
+
+  # The words of a condition on a track in `when` or `unless` of `item`, a stage, a loop or a
+  # workflow entry of the stage `stage_id` in `doc`; nil for an item with none, for a
+  # condition on an input (no words here), and with no document.
+  #
+  #   * a stage: "Skipped on Fast track" for `unless`, "Runs on Fast track." for `when`;
+  #   * a loop or entry: "Runs on Fast track." for `when`; for `unless`, "Runs on Standard
+  #     only.", with the other tracks that the gates before the stage offer, in the
+  #     document's order, and "Skipped on Fast track" when there is none.
+  @doc false
+  def condition(item, doc, stage_id, kind \\ :part)
+
+  def condition(%{"when" => %{"track" => id}}, %{} = doc, _stage_id, _kind),
+    do: gettext("Runs on %{track}.", track: track_name(doc, id))
+
+  def condition(%{"unless" => %{"track" => id}}, %{} = doc, stage_id, kind) do
+    others =
+      if kind == :part, do: Enum.reject(offered_before(doc, stage_id), &(&1 == id)), else: []
+
+    case others do
+      [] ->
+        gettext("Skipped on %{track}", track: track_name(doc, id))
+
+      _others ->
+        gettext("Runs on %{tracks} only.",
+          tracks: ApiaryWeb.SourceComponents.joined(Enum.map(others, &track_name(doc, &1)), :or)
+        )
+    end
+  end
+
+  def condition(_item, _doc, _stage_id, _kind), do: nil
+
+  # The ids of the tracks that the gates before the stage `stage_id` offer, in the order of
+  # the document's `tracks`.
+  defp offered_before(doc, stage_id) do
+    offered =
+      (doc["stages"] || [])
+      |> Enum.take_while(&(&1["id"] != stage_id))
+      |> Enum.flat_map(&((&1["gate"] || %{})["tracks"] || []))
+
+    for %{"id" => id} <- doc["tracks"] || [], id in offered, do: id
+  end
+
+  # The lines under a workflow entry's row in the editor and the member's panel: "Name: ..."
+  # for an entry with a name, then its condition.
+  @doc false
+  def entry_notes(entry, doc, stage_id) do
+    name =
+      case entry["name"] do
+        name when is_binary(name) and name != "" -> gettext("Name: %{name}", name: name)
+        _none -> nil
+      end
+
+    Enum.reject([name, condition(entry, doc, stage_id)], &is_nil/1)
+  end
+
+  # The words a screen reader reads for a card, in the card's order: its name, its condition,
+  # its description, its workflows and loops, each workflow's return, its gate and the tracks it offers, each in full.
+  @doc false
+  def card_label(stage, people, doc \\ nil) do
     sequence =
-      case card_sequence(stage, stages) do
+      case card_sequence(stage, doc) do
         [] ->
           [gettext("No workflow")]
 
         items ->
           Enum.map(items, fn
-            %{loop: loop, workflows: names} ->
+            %{loop: loop, workflows: names} = item ->
               gettext("a loop of %{workflows}, %{rounds}",
-                workflows: Enum.join(names, ", "),
+                workflows: Enum.join(loop_names(names, item), ", "),
                 rounds: loop
               )
+              |> with_condition(item)
 
-            %{workflow: name, returns: line} ->
-              name <> ". " <> line
-
-            %{workflow: name} ->
-              name
+            %{workflow: name} = item ->
+              name |> with_condition(item) |> with_returns(item)
           end)
       end
 
-    rest = Enum.join(sequence ++ [gate_line(stage, people)], ". ")
+    rest =
+      Enum.join(
+        Enum.reject(
+          sequence ++ [gate_line(stage, people), doc && offers(stage, doc)],
+          &(&1 in [nil, false])
+        ),
+        ". "
+      )
 
-    case label_description(stage) do
-      nil -> stage["name"] <> ". " <> rest
-      text -> stage["name"] <> ". " <> text <> rest
+    condition =
+      case condition(stage, doc, stage["id"], :stage) do
+        nil -> ""
+        text -> String.trim_trailing(text, ".") <> ". "
+      end
+
+    stage["name"] <> ". " <> condition <> (label_description(stage) || "") <> rest
+  end
+
+  # The workflows of a loop, each followed by its condition in brackets where it has one.
+  defp loop_names(names, %{conditions: conditions}) do
+    for {name, condition} <- Enum.zip(names, conditions) do
+      if condition, do: name <> " (" <> String.trim_trailing(condition, ".") <> ")", else: name
     end
   end
+
+  defp loop_names(names, _item), do: names
+
+  defp with_condition(text, %{condition: condition}),
+    do: text <> ", " <> String.trim_trailing(condition, ".")
+
+  defp with_condition(text, _item), do: text
+
+  defp with_returns(text, %{returns: line}), do: text <> ". " <> line
+  defp with_returns(text, _item), do: text
 
   # The stage's description as the document has it, plain text; nil for none or a blank one.
   @doc false
@@ -314,27 +425,43 @@ defmodule ApiaryWeb.StagesLive.Words do
   def change({:outputs_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the outputs of %{name}.", name: name(newer, id))
 
-  def change({:gate_changed, id, _detail}, _older, newer, people) do
-    name = name(newer, id)
+  def change({:tracks_changed, _id, _detail}, _older, _newer, _people),
+    do: gettext("Tracks changed.")
 
-    case (Processes.stage(newer, id) || %{})["gate"] do
-      %{"kind" => "none"} ->
-        gettext("Changed the gate of %{name}: no gate.", name: name)
+  def change({:condition_changed, id, _detail}, _older, newer, _people),
+    do: gettext("%{stage}: condition changed.", stage: name(newer, id))
 
-      %{"approvers" => %{"members" => [person]}} ->
-        gettext("Changed the gate of %{name}: %{person} approves.",
-          name: name,
-          person: person(people, person)
-        )
+  def change({:gate_changed, id, _detail}, older, newer, people) do
+    stage = Processes.stage(newer, id) || %{}
+    name = stage["name"]
 
-      %{"approvers" => %{"members" => ids}} ->
-        gettext("Changed the gate of %{name}: one of %{people} approves.",
-          name: name,
-          people: people(people, ids)
-        )
+    line =
+      case stage["gate"] do
+        %{"kind" => "none"} ->
+          gettext("Changed the gate of %{name}: no gate.", name: name)
 
-      _members ->
-        gettext("Changed the gate of %{name}: any member approves.", name: name)
+        %{"approvers" => %{"members" => [person]}} ->
+          gettext("Changed the gate of %{name}: %{person} approves.",
+            name: name,
+            person: person(people, person)
+          )
+
+        %{"approvers" => %{"members" => ids}} ->
+          gettext("Changed the gate of %{name}: one of %{people} approves.",
+            name: name,
+            people: people(people, ids)
+          )
+
+        _members ->
+          gettext("Changed the gate of %{name}: any member approves.", name: name)
+      end
+
+    # A gate that offers tracks adds them: "... any member approves. Offers: A, B."; a gate
+    # that stops offering them says so.
+    case {offers(stage, newer), offers(Processes.stage(older, id) || %{}, older)} do
+      {nil, nil} -> line
+      {nil, _before} -> line <> " " <> gettext("Offers no track.")
+      {offers, _before} -> line <> " " <> offers <> "."
     end
   end
 
@@ -374,13 +501,14 @@ defmodule ApiaryWeb.StagesLive.Words do
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")
 
-  # A condition whose input type no earlier stage lists as an output, on a workflow entry
-  # or an output, at a place such as `#/stages/1/sequence/0/loop/body/1/when/input`.
+  # A condition that no earlier stage can meet, in `when` or `unless` on a stage, an input,
+  # a loop or a workflow entry, or in `when` on an output, at a place such as
+  # `#/stages/1/sequence/0/loop/body/1/when/input` or `#/stages/2/unless/track`.
   def refusal(%{error: :condition_input, path: path, detail: type}, doc) when is_binary(path) do
     {stage, _field} = place(path, doc)
 
-    case conditioned(doc, path) do
-      %{"workflow" => workflow} when is_binary(workflow) ->
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
         gettext(
           "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}.",
           workflow: workflow,
@@ -388,7 +516,7 @@ defmodule ApiaryWeb.StagesLive.Words do
           type: type
         )
 
-      %{"type" => output} when is_binary(output) ->
+      {:output, output} ->
         gettext(
           "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}.",
           output: output,
@@ -396,11 +524,122 @@ defmodule ApiaryWeb.StagesLive.Words do
           type: type
         )
 
+      {:input, input} ->
+        gettext(
+          "Remove the condition on the input %{input} in %{stage}, or add an earlier stage that makes %{type}.",
+          input: input,
+          stage: stage,
+          type: type
+        )
+
+      :loop ->
+        gettext(
+          "Remove the condition on a loop in %{stage}, or add an earlier stage that makes %{type}.",
+          stage: stage,
+          type: type
+        )
+
+      :stage ->
+        gettext(
+          "Remove the condition on %{stage}, or add an earlier stage that makes %{type}.",
+          stage: stage,
+          type: type
+        )
+
+      nil ->
+        gettext("%{stage}: a value is not valid. Check the stage, then save again.",
+          stage: stage
+        )
+    end
+  end
+
+  def refusal(%{error: :condition_track, path: path, detail: track}, doc) when is_binary(path) do
+    {stage, _field} = place(path, doc)
+
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
+        gettext(
+          "Remove the condition on %{workflow} in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          workflow: workflow,
+          stage: stage,
+          track: track
+        )
+
+      {:input, input} ->
+        gettext(
+          "Remove the condition on the input %{input} in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          input: input,
+          stage: stage,
+          track: track
+        )
+
+      :loop ->
+        gettext(
+          "Remove the condition on a loop in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          stage: stage,
+          track: track
+        )
+
+      :stage ->
+        gettext(
+          "Remove the condition on %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          stage: stage,
+          track: track
+        )
+
       _other ->
         gettext("%{stage}: a value is not valid. Check the stage, then save again.",
           stage: stage
         )
     end
+  end
+
+  # A stage, an input, a loop or a workflow entry with both `when` and `unless`, at its place.
+  def refusal(%{error: :condition_both, path: path}, doc) when is_binary(path) do
+    {stage, _field} = place(path, doc)
+
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
+        gettext(
+          "Keep one condition on %{workflow} in %{stage}: remove its when or its unless.",
+          workflow: workflow,
+          stage: stage
+        )
+
+      {:input, input} ->
+        gettext(
+          "Keep one condition on the input %{input} in %{stage}: remove its when or its unless.",
+          input: input,
+          stage: stage
+        )
+
+      :loop ->
+        gettext("Keep one condition on a loop in %{stage}: remove its when or its unless.",
+          stage: stage
+        )
+
+      :stage ->
+        gettext("Keep one condition on %{stage}: remove its when or its unless.", stage: stage)
+
+      _other ->
+        gettext("%{stage}: a value is not valid. Check the stage, then save again.",
+          stage: stage
+        )
+    end
+  end
+
+  def refusal(%{error: :duplicate_track_id, detail: track}, _doc),
+    do: gettext("Give each track a different id. Two tracks have the id %{track}.", track: track)
+
+  # A gate that offers a track id the process does not declare in its `tracks`.
+  def refusal(%{error: :gate_track, path: path, detail: track}, doc) do
+    {stage, _field} = place(path, doc)
+
+    gettext(
+      "Remove the track %{track} from the gate of %{stage}, or add it to the tracks of the process.",
+      track: track,
+      stage: stage
+    )
   end
 
   def refusal(%{error: error, path: path} = refused, doc) do
@@ -419,8 +658,45 @@ defmodule ApiaryWeb.StagesLive.Words do
       field == "name" ->
         gettext("Give every stage a name of 1 to 60 characters.")
 
+      field == "sequence" and bad_entry_name?(doc, path) ->
+        gettext(
+          "Give a workflow in %{stage} a name of 1 to 60 characters, or remove its name.",
+          stage: stage
+        )
+
       String.contains?(path, "machine") ->
         machine_refused()
+
+      path == "#/tracks" and error_detail == :maxItems ->
+        gettext("Keep at most 10 tracks in the process.")
+
+      String.starts_with?(path, "#/tracks") and String.ends_with?(path, "/description") ->
+        gettext("Shorten the description of %{track} to at most 500 characters.",
+          track: track_at(doc, path)
+        )
+
+      String.starts_with?(path, "#/tracks") ->
+        gettext(
+          "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
+        )
+
+      error == :gate_none_tracks ->
+        gettext(
+          "Remove the tracks from the gate of %{stage}, or let a person approve at it. A gate with no approval offers no track.",
+          stage: stage
+        )
+
+      String.ends_with?(path, "/gate/tracks") and error_detail == :uniqueItems ->
+        gettext("List each track once in the gate of %{stage}.", stage: stage)
+
+      String.ends_with?(path, "/gate/tracks") and error_detail == :maxItems ->
+        gettext("Offer at most 10 tracks at the gate of %{stage}.", stage: stage)
+
+      String.contains?(path, "/gate/tracks") ->
+        gettext(
+          "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change.",
+          stage: stage
+        )
 
       String.contains?(path, "approvers") ->
         gettext("%{stage}: choose at least one member who approves, or let any member approve.",
@@ -439,6 +715,21 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # Whether the entry at `path`, or a workflow in the loop there, has a `name` that is not a
+  # text of 1 to 60 characters.
+  defp bad_entry_name?(doc, path) do
+    case Draft.entry_at(doc, path) do
+      %{"loop" => %{"body" => body}} -> Enum.any?(body, &bad_name?/1)
+      %{} = entry -> bad_name?(entry)
+      _other -> false
+    end
+  end
+
+  defp bad_name?(%{"name" => name}),
+    do: not (is_binary(name) and length(String.codepoints(name)) in 1..60 and name =~ ~r/\S/)
+
+  defp bad_name?(_entry), do: false
 
   # The banner's line for a stage with rows that show a refused machine type
   # (`Editor.banner/1`).
@@ -498,6 +789,15 @@ defmodule ApiaryWeb.StagesLive.Words do
   def return_line(8), do: gettext("At the ninth return, Qory Apiary escalates to a member.")
   def return_line(9), do: gettext("At the tenth return, Qory Apiary escalates to a member.")
   def return_line(10), do: gettext("At the eleventh return, Qory Apiary escalates to a member.")
+
+  # Remove loop refused: the loop's condition cannot move onto `workflow`, which has one.
+  @doc false
+  def loop_kept(workflow),
+    do:
+      gettext(
+        "Keep this loop. Its condition cannot move to %{workflow}, which has a condition already.",
+        workflow: workflow
+      )
 
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
@@ -575,6 +875,19 @@ defmodule ApiaryWeb.StagesLive.Words do
         stage: stage
       )
 
+  # The name of the track at a place such as `#/tracks/1/description`, else its id, else
+  # "a track".
+  defp track_at(doc, path) do
+    with [_all, index] <- Regex.run(~r{^#/tracks/(\d+)}, path),
+         %{} = track <- Enum.at(doc["tracks"] || [], String.to_integer(index)) do
+      [track["name"], track["id"]]
+      |> Enum.find(&(is_binary(&1) and String.trim(&1) != ""))
+      |> Kernel.||(gettext("a track"))
+    else
+      _none -> gettext("a track")
+    end
+  end
+
   # The stage's name and the field under it, of a place such as `#/stages/1/name`.
   defp place(path, doc) when is_binary(path) do
     case Regex.run(~r{^#/stages/(\d+)(?:/([a-z_]+))?}, path) do
@@ -591,11 +904,36 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   defp place(_path, _doc), do: {gettext("The process"), nil}
 
-  # The workflow entry or the output that has the condition at `path`, a place such as
-  # `#/stages/1/outputs/0/when/input`; nil where the document has none there.
-  defp conditioned(doc, path) do
-    path
-    |> String.replace_suffix("/when/input", "")
+  # What has the condition at `path`, a place such as `#/stages/1/outputs/0/when/input`:
+  # `{:workflow, name}`, `{:output, type}`, `{:input, type}`, `:loop` or `:stage`; nil where the
+  # document has nothing there.
+  defp condition_subject(doc, path) do
+    holder = String.replace(path, ~r{/(when|unless)/(input|track)$}, "")
+
+    case {document_at(doc, holder), String.contains?(holder, "/outputs/"),
+          String.contains?(holder, "/inputs/")} do
+      {%{"workflow" => workflow}, _output, _input} when is_binary(workflow) ->
+        {:workflow, workflow}
+
+      {%{"type" => type}, true, _input} when is_binary(type) ->
+        {:output, type}
+
+      {%{"type" => type}, _output, true} when is_binary(type) ->
+        {:input, type}
+
+      {%{"loop" => _loop}, _output, _input} ->
+        :loop
+
+      {%{"sequence" => _sequence}, _output, _input} ->
+        :stage
+
+      _other ->
+        nil
+    end
+  end
+
+  defp document_at(doc, place) do
+    place
     |> String.replace_prefix("#/", "")
     |> String.split("/")
     |> Enum.reduce_while(doc, fn key, at ->

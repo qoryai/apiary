@@ -35,10 +35,10 @@ export const SIDE = 16
 const CARD_FRAME = 34
 const NAME_LINE = 26
 const LINE = 24
+const CONDITION_LINE = 20
+const CONDITION_GAP = 2
 const ROW_GAP = 8
 const LOOP_FRAME = 38
-// The line under a workflow with a return to an earlier stage, 14 px type on a 20 px line.
-const RETURN_LINE = 20
 // A description is at most DESCRIPTION_LINES lines of DESCRIPTION_LINE px, about
 // DESCRIPTION_CHARS characters each.
 const DESCRIPTION_LINE = 20
@@ -53,21 +53,24 @@ export const descriptionLines = text =>
     text.split("\n").reduce((lines, part) => lines + Math.max(1, Math.ceil(part.length / DESCRIPTION_CHARS)), 0),
   )
 
-// The estimated height of a card with `data` (layout's card data).
+// The estimated height of a card with `data` (layout's card data). A line of condition
+// under a workflow, in a loop or under the gate line adds CONDITION_GAP and CONDITION_LINE.
 export const estimateHeight = data => {
   const sequence = data?.sequence || []
+  const under = condition => (condition ? CONDITION_GAP + CONDITION_LINE : 0)
   const steps =
     sequence.length === 0
       ? [LINE]
-      : sequence.flatMap(item =>
+      : sequence.map(item =>
           "loop" in item
-            ? [LOOP_FRAME + item.workflows.length * LINE]
-            : item.returns
-              ? [LINE, RETURN_LINE]
-              : [LINE],
+            ? LOOP_FRAME +
+              item.workflows.reduce((sum, _name, i) => sum + LINE + under(item.conditions?.[i]), 0) +
+              under(item.condition)
+            : LINE + under(item.condition) + under(item.returns),
         )
   const description = data?.description ? [descriptionLines(data.description) * DESCRIPTION_LINE] : []
-  const rows = [...description, ...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
+  const condition = data?.condition ? [CONDITION_LINE] : []
+  const rows = [...condition, ...description, ...steps, LINE + under(data?.offers), ...(data?.alerts || []).map(() => LINE)]
   return CARD_FRAME + NAME_LINE + rows.reduce((sum, row) => sum + ROW_GAP + row, 0)
 }
 
@@ -133,13 +136,19 @@ export const revealY = (start, end, viewport, size, length) => {
 
 const text = value => String(value ?? "")
 
-// One step of a stage's sequence: a workflow, with the line of its return to an earlier
-// stage if it has one, or a loop with its label and workflows.
+// One step of a stage's sequence: a workflow, or a loop with its label and workflows, and
+// the words of its condition on a track, if it has one; a loop also has the words of each
+// workflow's condition, "" for none. A workflow also has the line of its return to an
+// earlier stage, if it has one.
 const step = item => {
-  if (item && typeof item === "object" && "loop" in item)
-    return {loop: text(item.loop), workflows: (item.workflows || []).map(text)}
-  const returns = text(item?.returns)
-  return returns === "" ? {workflow: text(item?.workflow)} : {workflow: text(item?.workflow), returns}
+  const condition = item?.condition ? {condition: text(item.condition)} : {}
+  if (item && typeof item === "object" && "loop" in item) {
+    const workflows = (item.workflows || []).map(text)
+    const inner = Array.isArray(item.conditions) ? {conditions: workflows.map((_, i) => text(item.conditions[i]))} : {}
+    return {loop: text(item.loop), workflows, ...inner, ...condition}
+  }
+  const returns = item?.returns ? {returns: text(item.returns)} : {}
+  return {workflow: text(item?.workflow), ...condition, ...returns}
 }
 
 // Each workflow's mark, by name: whether the harness lists it, and its label as text.
@@ -166,6 +175,8 @@ export const layout = (view, heights = {}) => {
   const data = stages.map(stage => ({
     name: text(stage.name),
     description: text(stage.description),
+    condition: text(stage.condition),
+    offers: text(stage.offers),
     sequence: (stage.sequence || []).map(step),
     gate: text(stage.gate),
     alerts: (stage.alerts || []).map(text),

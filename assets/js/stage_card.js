@@ -38,12 +38,15 @@ const markOf = (marks, name) => (marks && Object.hasOwn(marks, name) ? marks[nam
 const returns = (h, text, key, marked) =>
   line(h, text, key, ["break-words text-[14px]/5 text-muted", marked ? "pl-5" : ""].join(" ").trim())
 
+// The words of a condition on a track, under a workflow or inside a loop's bracket.
+const condition = (h, text, key) => h("p", {key, className: "text-[14px]/5 text-muted"}, text)
+
 const steps = (h, sequence, words, marks) =>
   sequence.length === 0
     ? [line(h, words.no_workflow, "none", "text-muted")]
     : sequence.flatMap((item, i) =>
         "loop" in item
-          ? // A loop: a bracket around its workflows, labelled with its rounds.
+          ? // A loop: a bracket around its workflows, labelled with its rounds, and its condition.
             h(
               "div",
               {
@@ -53,13 +56,28 @@ const steps = (h, sequence, words, marks) =>
                 className: "grid gap-0.5 rounded-[6px] border border-dashed border-base-content/35 px-2.5 pb-2 pt-1.5",
               },
               h("p", {className: "text-[14px]/5 text-muted", "aria-hidden": "true"}, item.loop),
-              ...item.workflows.map((name, j) => workflow(h, name, `w${j}`, markOf(marks, name))),
+              ...item.workflows.map((name, j) =>
+                item.conditions?.[j]
+                  ? h(
+                      "div",
+                      {key: `w${j}`, className: "grid gap-0.5"},
+                      workflow(h, name, "w", markOf(marks, name)),
+                      condition(h, item.conditions[j], "c"),
+                    )
+                  : workflow(h, name, `w${j}`, markOf(marks, name)),
+              ),
+              item.condition ? condition(h, item.condition, "c") : null,
             )
-          : item.returns
-            ? [
-                workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
-                returns(h, item.returns, `r${i}`, markOf(marks, item.workflow) !== undefined),
-              ]
+          : item.condition || item.returns
+            ? h(
+                "div",
+                {key: `s${i}`, className: "grid gap-0.5"},
+                ...[
+                  workflow(h, item.workflow, "w", markOf(marks, item.workflow)),
+                  item.condition && condition(h, item.condition, "c"),
+                  item.returns && returns(h, item.returns, "r", markOf(marks, item.workflow) !== undefined),
+                ].filter(Boolean),
+              )
             : workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
       )
 
@@ -77,13 +95,23 @@ export const stageCard = (h, {data, selected, words, handle}) =>
     },
     handle("target"),
     line(h, data.name, "name", "truncate text-[18px]/[26px] font-semibold text-base-content"),
+    // The stage's condition on a track, if any, under the name.
+    ...(data.condition ? [line(h, data.condition, "condition", "text-[14px]/5 font-medium text-muted")] : []),
     // The description, if any: plain text with its line breaks, wrapped, at most three
     // lines; in full in its title.
     data.description
       ? line(h, data.description, "description", "line-clamp-3 whitespace-pre-line break-words text-[14px]/5 text-muted")
       : null,
     ...steps(h, data.sequence, words, data.marks),
-    line(h, data.gate, "gate", "text-muted"),
+    // The gate line, and under it the tracks the gate offers, if any.
+    data.offers
+      ? h(
+          "div",
+          {key: "gate", className: "grid gap-0.5"},
+          line(h, data.gate, "g", "text-muted"),
+          line(h, data.offers, "o", "text-muted"),
+        )
+      : line(h, data.gate, "gate", "text-muted"),
     ...data.alerts.map((text, i) => line(h, text, `a${i}`, "text-error")),
     handle("source"),
   )

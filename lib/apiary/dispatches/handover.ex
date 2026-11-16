@@ -154,6 +154,11 @@ defmodule Apiary.Dispatches.Handover do
   # made from (`Apiary.Processes.harness_template/1`), with no read, and its walk's pin
   # records that commit.
   #
+  # A run with a workflow, a target and write access, once lowered, whose process version
+  # has a submit step has `submit` in its documents, and `submit_module` too where the
+  # adapter of its forge declared one (`submitted/4`). A claim never ends a run because
+  # no adapter declared a submit_module.
+  #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
   # of the queue leaves `claimed` other than by its handover, in the same transaction:
@@ -195,6 +200,7 @@ defmodule Apiary.Dispatches.Handover do
     Dispatches,
     Gateways,
     Nodes,
+    Processes,
     PublicId,
     Repo,
     Runs,
@@ -775,9 +781,20 @@ defmodule Apiary.Dispatches.Handover do
 
   # The run's work credential entry, formed from what the run is formed from
   # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
-  # queue ends for.
+  # queue ends for. An explore run's entry comes from the collection the claim read once
+  # (`work_collection/3`), from which `submitted/4` takes the submit_module, and which
+  # `with_collection/2` puts in the formed run; a prebuild's from the collection it builds.
   defp with_work({:ok, %{answer: answer} = formed}) do
-    case RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target) do
+    work =
+      case formed do
+        %{work_collection: collection} ->
+          RunCredentials.work_from(answer.dispatch_run, collection, answer.target)
+
+        _prebuild ->
+          RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target)
+      end
+
+    case work do
       {:ok, work} -> {:ok, Map.put(formed, :work, work)}
       {:end, _cause} = ended -> ended
     end
@@ -816,7 +833,9 @@ defmodule Apiary.Dispatches.Handover do
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
-         harness = lowered_access(harness, dispatch_run),
+         collection = RunCredentials.work_collection(dispatch_run, work_item, target),
+         harness =
+           harness |> lowered_access(dispatch_run) |> submitted(dispatch_run, target, collection),
          {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
       dispatch_run
       |> formed(workspace, target, work_item, settings, harness, fn domain ->
@@ -833,6 +852,7 @@ defmodule Apiary.Dispatches.Handover do
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
       end)
       |> with_cooling(cooling)
+      |> with_collection(collection)
     else
       true -> {:end, :inputs_invalid}
       {:end, _cause} = ended -> ended
@@ -851,6 +871,13 @@ defmodule Apiary.Dispatches.Handover do
 
   defp with_cooling({:ok, formed}, cooling), do: {:ok, Map.put(formed, :cooling, cooling)}
   defp with_cooling(not_formed, _cooling), do: not_formed
+
+  # The collection the run's work entry comes from, as the claim read it once for the
+  # run's submit_module (`submitted/4`), so `with_work/1` forms the entry from it too.
+  defp with_collection({:ok, formed}, collection),
+    do: {:ok, Map.put(formed, :work_collection, collection)}
+
+  defp with_collection(not_formed, _collection), do: not_formed
 
   # The bytes of the documents' limit that the rest of the run's documents leave its
   # input: the limit less the documents encoded with an empty input.
@@ -1015,6 +1042,36 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp lowered_access(harness, _dispatch_run), do: harness
+
+  # The submit step of a run with a workflow, a target and the access level `write`, once
+  # lowered (`lowered_access/2`): `submit`, `%{type:, send:}`, from the template record of
+  # the run's process version (`Apiary.Processes.harness_template/1`), where it has one;
+  # and `submit_module`, the harness module with the submit program that the latest
+  # start-up of the adapter of the run's forge declared, nil for none: the adapter of
+  # `collection`, the collection the run's work entry comes from
+  # (`Apiary.Runs.RunCredentials.submit_module/1`). A claim never ends a run for having
+  # no submit_module. Any other run, a run lowered to `read` and a run whose process
+  # version has no submit get neither.
+  defp submitted(
+         %{workflow: workflow, access: :write} = harness,
+         dispatch_run,
+         target,
+         collection
+       )
+       when is_binary(workflow) and is_map(target) do
+    case Processes.harness_template(dispatch_run.process_version_id) do
+      %{"submit" => %{"type" => type, "send" => send}} ->
+        Map.merge(harness, %{
+          submit: %{type: type, send: send},
+          submit_module: RunCredentials.submit_module(collection)
+        })
+
+      _none ->
+        harness
+    end
+  end
+
+  defp submitted(harness, _dispatch_run, _target, _collection), do: harness
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.

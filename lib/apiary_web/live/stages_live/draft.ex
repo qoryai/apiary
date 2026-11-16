@@ -102,16 +102,39 @@ defmodule ApiaryWeb.StagesLive.Draft do
     %{stage | "sequence" => stage["sequence"] ++ [loop]}
   end
 
-  # Removes the loop at `at` and keeps its workflows in its place, in order.
+  # Removes the loop at `at` and keeps its workflows in its place, in order. The loop's
+  # `when` and `unless` move onto each workflow, so they run on the tracks the loop ran on;
+  # a loop with such a condition and a workflow that has a condition already stays
+  # (`loop_blocker/2`).
   @doc false
   def remove_loop(stage, at) do
-    case Enum.at(stage["sequence"], at) do
-      %{"loop" => %{"body" => body}} ->
+    case {Enum.at(stage["sequence"], at), loop_blocker(stage, at)} do
+      {%{"loop" => %{"body" => body}} = loop, nil} ->
         {before, [_loop | rest]} = Enum.split(stage["sequence"], at)
-        %{stage | "sequence" => before ++ body ++ rest}
+        condition = Map.take(loop, ["when", "unless"])
+        %{stage | "sequence" => before ++ Enum.map(body, &Map.merge(&1, condition)) ++ rest}
+
+      _blocked_or_none ->
+        stage
+    end
+  end
+
+  # The workflow that stops the removal of the loop at `at`: the first of its workflows that
+  # has a `when` or an `unless` where the loop has one too, since an entry takes one
+  # condition. nil where the removal can go on.
+  @doc false
+  def loop_blocker(stage, at) do
+    case Enum.at(stage["sequence"], at) do
+      %{"loop" => %{"body" => body}} = loop ->
+        if Enum.any?(["when", "unless"], &Map.has_key?(loop, &1)) do
+          entry =
+            Enum.find(body, &Enum.any?(["when", "unless"], fn key -> Map.has_key?(&1, key) end))
+
+          entry && entry["workflow"]
+        end
 
       _other ->
-        stage
+        nil
     end
   end
 
@@ -369,8 +392,9 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp merge_artifacts(list, _params), do: list
 
+  # A gate with no approval offers no track (`priv/schemas/process/v1.schema.json`, `gate`).
   defp merge_gate(gate, %{"kind" => "none"}),
-    do: gate |> Map.put("kind", "none") |> Map.delete("approvers")
+    do: gate |> Map.put("kind", "none") |> Map.drop(["approvers", "tracks"])
 
   defp merge_gate(gate, %{"kind" => "person"} = p) do
     approvers =

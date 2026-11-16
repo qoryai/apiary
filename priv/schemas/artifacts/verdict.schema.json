@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/harness/v1/verdict.schema.json",
   "title": "The verdict format, version 1",
-  "description": "A run's verdict on the work of its round: the file of a version of the artifact type verdict, which qory run verdict stores. passed: the work meets the bar. changes-requested: the work needs another round. escalate: a person must act, and points lists what is wrong or missing and what the person can do. changes-requested may have points too, each a run_again point: what is wrong or missing, for the next round. The question of an answer point is open in the work item's newest questions version, which a JSON Schema cannot check. No object has a member this schema does not define.",
+  "description": "A run's verdict on the work of its round: the file of a version of the artifact type verdict, which qory run verdict stores. passed: the work meets the bar. changes-requested: the work needs another round. escalate: a person must act, and points lists what is wrong or missing and what the person can do. changes-requested may have points too, each a run_again point: what is wrong or missing, for the next round. A verdict of any kind may have a track: the track the run proposes for the work item, where the gate of the run's stage offers tracks; Qory Apiary refuses a track the gate does not offer. The question of an answer point is open in the work item's newest questions version, which a JSON Schema cannot check. No object has a member this schema does not define.",
   "type": "object",
   "required": ["verdict"],
   "additionalProperties": false,
@@ -14,7 +14,8 @@
       "minItems": 1,
       "maxItems": 20,
       "items": {"$ref": "#/$defs/point"}
-    }
+    },
+    "track": {"$ref": "#/$defs/track"}
   },
   "allOf": [
     {
@@ -31,6 +32,16 @@
     }
   ],
   "$defs": {
+    "track": {
+      "description": "The track the run proposes, with the reason in one sentence on one line. id is the id of a track that the gate of the run's stage offers: one lower-case word, or lower-case words joined by hyphens, such as small-change, at most 40 characters. A verdict with no track proposes none.",
+      "type": "object",
+      "required": ["id", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$", "maxLength": 40},
+        "reason": {"description": "Why the run proposes this track, 1 to 300 characters.", "$ref": "#/$defs/line", "minLength": 1, "maxLength": 300}
+      }
+    },
     "point": {
       "description": "One point: what is wrong or missing and its action. question is required when action is answer, and absent when action is run_again. An answer point comes only with escalate.",
       "type": "object",

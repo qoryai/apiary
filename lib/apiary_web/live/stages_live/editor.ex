@@ -101,8 +101,19 @@ defmodule ApiaryWeb.StagesLive.Editor do
   def edit_event("add_loop", _params, socket, refresh),
     do: edit_selected(socket, &Draft.add_loop(&1, first_workflow(socket)), refresh)
 
-  def edit_event("remove_loop", %{"at" => at}, socket, refresh),
-    do: edit_selected(socket, &Draft.remove_loop(&1, at(at)), refresh)
+  # A loop whose condition cannot move onto a workflow that has one stays, with the reason
+  # above the canvas (`Draft.loop_blocker/2`).
+  def edit_event("remove_loop", %{"at" => at}, socket, refresh) do
+    stage = Enum.find(socket.assigns.draft["stages"], &(&1["id"] == socket.assigns.selected))
+
+    case stage && Draft.loop_blocker(stage, at(at)) do
+      workflow when is_binary(workflow) ->
+        socket |> assign(save_errors: [Words.loop_kept(workflow)], notice: nil) |> refresh.()
+
+      _none ->
+        edit_selected(socket, &Draft.remove_loop(&1, at(at)), refresh)
+    end
+  end
 
   def edit_event("add_artifact", %{"key" => key}, socket, refresh)
       when key in ["inputs", "outputs"],

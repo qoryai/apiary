@@ -463,9 +463,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             <input type="hidden" name="seen" value={@page.stage.id} />
             <input type="hidden" name="note" value="" />
             <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
-              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve %{stage}",
-                stage: @page.stage.name
-              )}
+              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve")}
             </.button>
           </form>
           <div :if={@decides} class="q-wi-acts">

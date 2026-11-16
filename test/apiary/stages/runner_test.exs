@@ -676,6 +676,8 @@ defmodule Apiary.Stages.RunnerTest do
          %{
            workflow: workflow,
            input: "demo-scenarios",
+           track: nil,
+           negated: false,
            entry: entry,
            loop_entry: loop_entry,
            round: round
@@ -915,6 +917,177 @@ defmodule Apiary.Stages.RunnerTest do
 
       assert Runner.condition_inputs(seq) == ["demo-scenarios"]
       assert Runner.condition_inputs(build()) == []
+    end
+  end
+
+  describe "tracks and unless (A-23)" do
+    @fast %{"track" => "fast-track"}
+
+    defp track_skip(workflow, track, negated, entry, loop_entry \\ nil),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: nil,
+           track: track,
+           negated: negated,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: 1
+         }}
+
+    test "unmet/2 is the reason: a when held back while its condition is not met, an unless while it is met" do
+      standard = %{track: "standard", counted: []}
+      fast = %{track: "fast-track", counted: ["spec"]}
+      none = %{counted: []}
+
+      when_fast = %{"when" => @fast}
+      unless_fast = %{"unless" => @fast}
+
+      assert Runner.unmet(when_fast, standard) == %{
+               kind: :track,
+               value: "fast-track",
+               negated: false
+             }
+
+      assert Runner.unmet(when_fast, none) == %{kind: :track, value: "fast-track", negated: false}
+      assert Runner.unmet(when_fast, fast) == nil
+
+      assert Runner.unmet(unless_fast, fast) == %{
+               kind: :track,
+               value: "fast-track",
+               negated: true
+             }
+
+      assert Runner.unmet(unless_fast, standard) == nil
+      assert Runner.unmet(unless_fast, none) == nil
+
+      assert Runner.unmet(%{"unless" => %{"input" => "spec"}}, fast) ==
+               %{kind: :input, value: "spec", negated: true}
+
+      assert Runner.unmet(%{"when" => %{"input" => "spec"}}, standard) ==
+               %{kind: :input, value: "spec", negated: false}
+
+      assert Runner.unmet(%{"workflow" => "x"}, fast) == nil
+    end
+
+    test "a stage with a condition that holds it back is passed over when it is entered, before it waits" do
+      shape = stage([wf("write-specs")]) |> Map.put("when", %{"track" => "standard"})
+      facts = %{track: "fast-track", missing_inputs: ["proposal"], undeclared: ["write-specs"]}
+
+      outcome = Runner.step(shape, nil, :enter, facts)
+
+      assert %{state: :done, actions: [{:skip_stage, spec}, :advance]} = outcome
+      assert spec == %{input: nil, track: "standard", negated: false}
+
+      # With the condition met, it waits as before.
+      assert %{state: :waiting_inputs, actions: []} =
+               Runner.step(shape, nil, :enter, %{facts | track: "standard"})
+    end
+
+    test "an unless on a stage passes it over while its condition is met" do
+      shape = stage([wf("write-specs")]) |> Map.put("unless", @fast)
+
+      assert %{actions: [{:skip_stage, %{track: "fast-track", negated: true}}, :advance]} =
+               Runner.step(shape, nil, :enter, %{track: "fast-track"})
+
+      assert %{actions: [{:queue, %{workflow: "write-specs"}}]} =
+               Runner.step(shape, nil, :enter, %{track: "standard"})
+    end
+
+    test "a person's move runs the stage whatever its condition (forced)" do
+      shape = stage([wf("write-specs")]) |> Map.put("when", %{"track" => "standard"})
+
+      assert %{state: :running, actions: [{:queue, %{workflow: "write-specs"}}]} =
+               Runner.step(shape, nil, :enter, %{track: "fast-track", forced: true})
+    end
+
+    test "an entry with a track condition is passed over, and the next entry starts" do
+      seq = stage([wf("write-specs", %{"when" => @fast}), wf("review")])
+      outcome = Runner.step(seq, nil, :enter, %{track: "standard"})
+
+      assert outcome.position == pos(1, nil, 1)
+      assert [skip, {:queue, %{workflow: "review"}}] = outcome.actions
+      assert skip == track_skip("write-specs", "fast-track", false, 0)
+
+      assert [{:queue, %{workflow: "write-specs"}}] =
+               Runner.step(seq, nil, :enter, %{track: "fast-track"}).actions
+
+      outcome =
+        Runner.step(stage([wf("a", %{"unless" => @fast}), wf("b")]), nil, :enter, %{
+          track: "fast-track"
+        })
+
+      unless_skip = track_skip("a", "fast-track", true, 0)
+
+      assert [^unless_skip, {:queue, %{workflow: "b"}}] =
+               outcome.actions
+    end
+
+    test "a loop with a condition that holds it back is passed over whole, each entry with the reason" do
+      seq =
+        stage([
+          Map.put(loop([wf("fix"), wf("check")], 2), "unless", @fast),
+          wf("verify")
+        ])
+
+      outcome = Runner.step(seq, nil, :enter, %{track: "fast-track"})
+
+      assert [
+               {:skip, %{workflow: "fix", loop_entry: 0, track: "fast-track", negated: true}},
+               {:skip, %{workflow: "check", loop_entry: 1, track: "fast-track", negated: true}},
+               {:queue, %{workflow: "verify"}}
+             ] = outcome.actions
+
+      assert [{:queue, %{workflow: "fix", loop_entry: 0}}] =
+               Runner.step(seq, nil, :enter, %{track: "standard"}).actions
+    end
+
+    test "a loop passed over by its condition is not run again by Request changes" do
+      seq = stage([Map.put(loop([wf("fix")], 2), "when", @fast), wf("verify")])
+      outcome = Runner.step(seq, pos(1, nil, 1), :request_changes, %{track: "standard"})
+
+      assert outcome.position == pos(1, nil, 1)
+      assert [{:skip, %{workflow: "fix"}}, {:queue, %{workflow: "verify"}}] = outcome.actions
+    end
+
+    test "a stage does not wait for an undeclared workflow that a track holds back" do
+      seq = stage([wf("write-specs", %{"when" => @fast}), wf("review")])
+
+      assert %{state: :running} =
+               Runner.step(seq, nil, :enter, %{track: "standard", undeclared: ["write-specs"]})
+
+      assert %{state: :waiting_workflow} =
+               Runner.step(seq, nil, :enter, %{track: "fast-track", undeclared: ["write-specs"]})
+
+      assert Runner.workflows(seq, [], "standard") == ["review"]
+      assert Runner.workflows(seq, [], "fast-track") == ["write-specs", "review"]
+    end
+
+    test "an input is waited for only while its condition does not hold it back" do
+      required = %{"type" => "spec", "required" => true}
+      optional = %{"type" => "spec", "required" => false}
+      held = Map.put(required, "when", %{"track" => "standard"})
+      unless_fast = Map.put(required, "unless", @fast)
+
+      assert Runner.input_required?(required, %{})
+      refute Runner.input_required?(optional, %{})
+      assert Runner.input_required?(held, %{track: "standard"})
+      refute Runner.input_required?(held, %{track: "fast-track"})
+      refute Runner.input_required?(unless_fast, %{track: "fast-track"})
+      assert Runner.input_required?(unless_fast, %{track: "standard"})
+    end
+
+    test "condition_inputs/1 lists the input types of a stage, a loop and an input as well" do
+      seq =
+        stage([
+          Map.put(loop([wf("fix")]), "unless", %{"input" => "a"}),
+          wf("b", %{"when" => %{"input" => "b"}})
+        ])
+        |> Map.put("when", %{"input" => "c"})
+        |> Map.put("inputs", [%{"type" => "d", "required" => true, "unless" => %{"input" => "d"}}])
+
+      assert Enum.sort(Runner.condition_inputs(seq)) == ["a", "b", "c", "d"]
     end
   end
 
