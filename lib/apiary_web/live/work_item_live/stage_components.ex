@@ -397,12 +397,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         # At a Confirm gate the proposal can exist with no artifact, so an output with no
         # version is not shown as missing.
         shown: shown,
+        drafts: Map.get(assigns.page, :drafts, []),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none"
       )
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
+      <p :for={{draft, i} <- Enum.with_index(@drafts)} id={"#{@id}-draft-#{i}"}>
+        {gettext("Submission:")}
+        <.external_link href={draft.url}>
+          {gettext("the draft in %{repository}", repository: draft.path)}
+        </.external_link>
+      </p>
       <h3 :if={@shown != [] or @page.outputs == []} class="text-sm font-semibold">
         {gettext("Outputs")}
       </h3>

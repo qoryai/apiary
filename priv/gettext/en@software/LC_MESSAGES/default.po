@@ -19749,6 +19749,11 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Submission:"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Succeeded"
@@ -26486,6 +26491,11 @@ msgstr ""
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
 msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "the draft in %{repository}"
 msgstr ""
 
 #: lib/apiary/artifacts/template_types.ex

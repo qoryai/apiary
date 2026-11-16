@@ -2581,6 +2581,47 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
+    test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+      push!({:person, scope}, work_item, "submission", @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-draft-0", "Submission:")
+
+      assert has_element?(
+               view,
+               ~s|#work-item-stage-gate-draft-0 a[href="https://forge.example.com/example/shop/pull/4"][target="_blank"]|,
+               "the draft in example/shop"
+             )
+    end
+
+    test "a submission with no draft shows no line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      submission =
+        json("submission.json", %{
+          "ref" => "qory/wi_example",
+          "verdict" => "changes-requested",
+          "repositories" => [
+            %{
+              "system" => "forge.example.com",
+              "path" => "example/shop",
+              "commit" => String.duplicate("a", 40),
+              "draft" => %{"none" => "not-passed"}
+            }
+          ]
+        })
+
+      {:ok, _version} =
+        Artifacts.push({:person, scope}, work_item, "submission", [submission], stage_id: @build)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+      refute render(view) =~ "Submission:"
+    end
+
     test "each output with its version and its check", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
       push!({:person, scope}, work_item, "demo-video", @build)
