@@ -487,8 +487,10 @@ defmodule Apiary.Stacks.Document do
   @bind_kinds ~w(agents commands skills)
 
   # A schema refusal under `bind` in words that start with the fix: a flat key such as
-  # `agents/developer`, a kind the contract does not define, or a list of names for one
-  # role. Any other refusal, such as a name's pattern, keeps the schema's words.
+  # `agents/developer`, a kind the contract does not define, or a list of names for a
+  # role of the kind commands or skills. A role of the kind agents may be a group, bound
+  # to a list of at least one agent (`harness_bind_agent_roles`). Any other refusal, such
+  # as a name's pattern or an empty list of agents, keeps the schema's words.
   defp bind_refusal(_section, ["bind", key]) when key not in @bind_kinds do
     if String.contains?(key, "/"),
       do:
@@ -510,7 +512,7 @@ defmodule Apiary.Stacks.Document do
         )
   end
 
-  defp bind_refusal(%{"bind" => bind}, ["bind", kind, role]) when kind in @bind_kinds do
+  defp bind_refusal(%{"bind" => bind}, ["bind", kind, role]) when kind in ~w(commands skills) do
     case bind do
       %{^kind => %{^role => names}} when is_list(names) ->
         refuse(dgettext_noop("errors", "Give one name per role: %{place} is a list."),

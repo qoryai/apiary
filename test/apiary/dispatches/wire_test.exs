@@ -106,13 +106,14 @@ defmodule Apiary.Dispatches.WireTest do
     "reason" => "The job could not start."
   }
   # Every vendored contract is at the integrations `main` commit that has machine types,
-  # but the integration contract, at the later commit that adds a model provider's limit
+  # but the run contract, at the later commit that adds a run's submit and submit_module,
+  # the integration contract, at the later commit that adds a model provider's limit
   # windows, and the diagnostics contract, at the later commit that adds the machine type
   # to the run diagnostics, after the run list.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
-          {"run/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
+          {"run/v1", "b00f97dd91034da0b647986950594bb559fe896b"},
           {"integration/v1", "60db48f49556183e8c760ddb9ed15feb84f34dd6"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
@@ -128,8 +129,8 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     valid = Path.wildcard(Path.join(fixtures, "documents/*.json"))
     invalid = Path.wildcard(Path.join(fixtures, "invalid/*.json"))
-    assert length(valid) == 22 and length(invalid) == 89
-    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 22 + 89
+    assert length(valid) == 28 and length(invalid) == 116
+    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 28 + 116
 
     for path <- valid ++ invalid do
       relative = Path.relative_to(path, fixtures)
@@ -159,7 +160,7 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   @tag :contract
-  test "a run's harness binds by kind, then by role, one name per role" do
+  test "a run's harness binds by kind, then by role, one name per role or a list of agents" do
     documents = Path.join(@vendored, "run/v1/fixtures")
     read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
     valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
@@ -170,7 +171,15 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert valid?.(nested)
 
-    for name <- ~w(flat list name-slash role-dot unknown-kind) do
+    # A group role of the kind agents is bound to a list of at least one agent.
+    for name <- ~w(list list-one list-duplicate) do
+      bound = read.("documents/explore-harness-bind-#{name}.json")
+      assert [_ | _] = bound["harness"]["harness"]["bind"]["agents"]["reviewers"]
+      assert valid?.(bound), name
+    end
+
+    for name <-
+          ~w(flat list-commands list-empty list-name-slash list-skills name-slash role-dot unknown-kind) do
       refute valid?.(read.("invalid/documents-harness-bind-#{name}.json")), name
     end
   end

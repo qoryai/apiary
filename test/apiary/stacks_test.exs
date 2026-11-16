@@ -354,7 +354,19 @@ defmodule Apiary.StacksTest do
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
-    test "refuse a flat bind, an unknown kind and a list of names in bind, fix first", ctx do
+    test "take a group role of the kind agents bound to a list of agents", ctx do
+      document = """
+      extends: {git: #{@stacks}, ref: v2}
+      bind:
+        agents: {developer: web-developer, reviewers: [copy-reviewer, legal-reviewer]}
+      """
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "refuse a flat bind, an unknown kind and a list of commands or skills, fix first",
+         ctx do
       base = "extends: {git: #{@stacks}, ref: v2}\n"
 
       for {bind, message} <- [
@@ -366,8 +378,8 @@ defmodule Apiary.StacksTest do
                "bind: {agents: {developer: web-developer}}: commands/ship is a flat key."},
             {"{tools: {developer: web-developer}}",
              "Use agents, commands or skills under bind: tools is not a kind."},
-            {"{agents: {reviewer: [web-reviewer, brand-review]}}",
-             "Give one name per role: bind.agents.reviewer is a list."},
+            {"{commands: {ship: [web-ship, brand-ship]}}",
+             "Give one name per role: bind.commands.ship is a list."},
             {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."}
           ] do
         assert refused(ctx, base <> "bind: #{bind}\n") == [message], bind
@@ -382,6 +394,7 @@ defmodule Apiary.StacksTest do
             {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
             {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"},
             {"{agents: {developer: {name: web-developer}}}", "#/bind/agents/developer"},
+            {"{agents: {reviewers: []}}", "#/bind/agents/reviewers"},
             {"[agents]", "#/bind"}
           ] do
         assert [error] = refused(ctx, base <> "bind: #{bind}\n"), bind
