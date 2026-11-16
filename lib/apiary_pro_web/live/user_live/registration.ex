@@ -153,11 +153,6 @@ defmodule ApiaryProWeb.UserLive.Registration do
         </:context>
         <:context :if={@form_shown} about={gettext("About accounts")}>
           <p :if={!@invitation} id="sign-up-owner">{owner_line(@kind)}</p>
-          <p :if={!@invitation and @kind == :operator} id="sign-up-operator">
-            {gettext(
-              "An operator creates clients. Each client is a separate organisation; its people belong to it, not to the operator."
-            )}
-          </p>
           <p id="sign-up-context">{mail_line(@mail?)}</p>
         </:context>
       </SetUpComponents.frame>

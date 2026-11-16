@@ -176,37 +176,20 @@ defmodule ApiaryProWeb.PolicyLive.Words do
   def floor_now(false, _name), do: mode_line("own")
 
   @doc """
-  only_owners/2 is who changes the organisation's policy, said to a reader who may not, in
-  the mode card and where a change is refused: the owners of `operator`, where the
-  operator's owners alone change the policy of its client `name`; an owner otherwise,
-  where `operator` is nil.
+  only_owners/0 is who changes the organisation's policy, said to a reader who may not, in
+  the mode card and where a change is refused.
   """
-  @spec only_owners(%{name: String.t()} | nil, String.t()) :: String.t()
-  def only_owners(nil, _name), do: gettext("Only an owner changes the organisation's policy.")
-
-  def only_owners(%{name: operator}, name),
-    do:
-      gettext("Only owners of %{operator}, the operator of %{name}, change its policy.",
-        operator: operator,
-        name: name
-      )
+  @spec only_owners() :: String.t()
+  def only_owners, do: gettext("Only an owner changes the organisation's policy.")
 
   @doc """
-  owners_line/2 is the line above the settings, for a reader who may not change them:
-  who changes the policy of `name`, as `only_owners/2` names them, and what it holds.
+  owners_line/1 is the line above the settings, for a reader who may not change them:
+  who changes the policy of `name`, and what that policy contains.
   """
-  @spec owners_line(%{name: String.t()} | nil, String.t()) :: String.t()
-  def owners_line(nil, name),
+  @spec owners_line(String.t()) :: String.t()
+  def owners_line(name),
     do:
       gettext("Only owners of %{name} change its policy: these settings and its rules.",
-        name: name
-      )
-
-  def owners_line(%{name: operator}, name),
-    do:
-      gettext(
-        "Only owners of %{operator}, the operator of %{name}, change its policy: these settings and its rules.",
-        operator: operator,
         name: name
       )
 

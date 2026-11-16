@@ -30,37 +30,39 @@ defmodule ApiaryProWeb.MemberLive.ReadersTest do
   defp membership(user, organisation),
     do: Repo.get_by!(Membership, user_id: user.id, organisation_id: organisation.id)
 
-  describe "a client's People page" do
+  describe "an operated organisation's People page" do
     setup do
       admin = instance_admin_fixture()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      member = client_member_fixture(client, :member)
+      operated = operated_fixture(operator.scope, "Acme")
+      member = organisation_member_fixture(operated, :member)
 
       %{
         instance_admin: admin.user,
         operator: operator,
-        client: client,
-        memberships: [member.membership, membership(client.owner.user, client.organisation)]
+        operated: operated,
+        memberships: [member.membership, membership(operated.owner.user, operated.organisation)]
       }
     end
 
     test "lists the members for an instance admin, who reads it as a reader", ctx do
-      scope = scope_in(ctx.instance_admin, ctx.client.organisation)
+      scope = scope_in(ctx.instance_admin, ctx.operated.organisation)
       assert Apiary.Access.reach(scope) == :instance
       assert Apiary.Access.level(scope) == nil
 
       ctx.instance_admin
-      |> people(ctx.client.organisation)
+      |> people(ctx.operated.organisation)
       |> assert_members_listed(ctx.memberships)
     end
 
-    test "lists the members for a member of the operator", ctx do
+    # The core's page is not found for a person `member.read` refuses.
+    test "is not found for a member of the operator, who reaches the workspace it operates alone",
+         ctx do
       operator_member = member_fixture(ctx.operator.scope, :member)
 
-      operator_member.user
-      |> people(ctx.client.organisation)
-      |> assert_members_listed(ctx.memberships)
+      assert_raise ApiaryWeb.NotFound, fn ->
+        people(operator_member.user, ctx.operated.organisation)
+      end
     end
   end
 

@@ -348,60 +348,58 @@ defmodule ApiaryPro.SuspensionsTest do
 
     setup do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      client_admin = client_member_fixture(client)
-      %{access_key: client_key, node: client_node} = access_key_fixture(client_admin.scope)
+      operated = operated_fixture(operator.scope)
+      operated_admin = organisation_member_fixture(operated)
+      %{access_key: operated_key, node: operated_node} = access_key_fixture(operated_admin.scope)
       %{access_key: operator_key} = access_key_fixture(operator.scope)
 
       %{
         operator: operator,
-        client: client,
-        client_admin: client_admin,
-        client_key: client_key,
-        client_node: client_node,
+        operated: operated,
+        operated_admin: operated_admin,
+        operated_key: operated_key,
+        operated_node: operated_node,
         operator_key: operator_key,
         instance_admin: instance_admin_fixture().instance_scope
       }
     end
 
-    test "its people read its clients no more, which keep working, their owners with them",
-         ctx do
-      refute ApiaryPro.Suspensions.owner_suspended?(ctx.client.organisation)
+    test "its people reach the workspaces it operates no more; those keep working, their owners with them",
+         %{operator: operator, operated: operated} = ctx do
+      refute ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
 
-      {:ok, _} =
-        Suspensions.suspend_organisation(ctx.instance_admin, ctx.operator.organisation.id)
+      {:ok, _} = Suspensions.suspend_organisation(ctx.instance_admin, operator.organisation.id)
 
-      # The operator's owner reaches the client no more.
-      assert scope_in(ctx.operator.user, ctx.client.organisation) == nil
+      # The operator's owner reaches the operated workspace no more.
+      refute scope_in(operator.user, operated.organisation, operated.workspace)
 
       refute Enum.any?(
-               Organisations.list_places(ctx.operator.user),
-               &(&1.organisation_id == ctx.client.organisation.id)
+               Organisations.list_places(operator.user),
+               &(&1.organisation_id == operated.organisation.id)
              )
 
       assert {:error, :forbidden} =
-               Nodes.create_node(ctx.client.scope, %{"kind" => "node", "name" => "build-01"})
+               Nodes.create_node(operated.scope, %{"kind" => "node", "name" => "build-01"})
 
-      # The client's own admin works, and its keys verify; the operator's own do not.
+      # The operated organisation's admin works, and its keys verify; the operator's keys
+      # do not.
       assert {:ok, _} =
-               AccessKeys.add_access_key(ctx.client_admin.scope, ctx.client_node, new_key())
+               AccessKeys.add_access_key(ctx.operated_admin.scope, ctx.operated_node, new_key())
 
-      assert {:ok, _} = AccessKeys.fetch_for_verification(ctx.client_key.key_id)
+      assert {:ok, _} = AccessKeys.fetch_for_verification(ctx.operated_key.key_id)
       assert AccessKeys.fetch_for_verification(ctx.operator_key.key_id) == :error
 
-      # Its owners are its own: they may act, and nothing of theirs waits.
-      refute ApiaryPro.Suspensions.owner_suspended?(ctx.client.organisation)
+      # Its owners may act, and nothing of theirs waits.
+      refute ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
 
       refute ApiaryPro.Reach.owner_suspended?(
-               scope_in(ctx.client_admin.user, ctx.client.organisation).organisation
+               scope_in(ctx.operated_admin.user, operated.organisation).organisation
              )
 
-      {:ok, _} =
-        Suspensions.activate_organisation(ctx.instance_admin, ctx.operator.organisation.id)
+      {:ok, _} = Suspensions.activate_organisation(ctx.instance_admin, operator.organisation.id)
 
-      # Activated, its people read the client again, and change nothing there.
-      assert %{} =
-               scope = scope_in(ctx.operator.user, ctx.client.organisation, ctx.client.workspace)
+      # Activated, its people read the operated workspace again, and change nothing there.
+      assert %{} = scope = scope_in(operator.user, operated.organisation, operated.workspace)
 
       assert {:error, :forbidden} =
                Nodes.create_node(scope, %{"kind" => "node", "name" => "build-03"})
@@ -427,16 +425,16 @@ defmodule ApiaryPro.SuspensionsTest do
     end
 
     @tag needs: :managed_organisations
-    test "a client runs below the owner level by its own owners alone, not its operator's" do
+    test "an operated organisation runs below the owner level by its owners' accounts alone, not by the operator's" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       admin = instance_admin_fixture()
 
       {:ok, _} = Suspensions.suspend_account(admin.instance_scope, operator.user.id)
-      refute ApiaryPro.Suspensions.owner_suspended?(client.organisation)
+      refute ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
 
-      {:ok, _} = Suspensions.suspend_account(admin.instance_scope, client.owner.user.id)
-      assert ApiaryPro.Suspensions.owner_suspended?(client.organisation)
+      {:ok, _} = Suspensions.suspend_account(admin.instance_scope, operated.owner.user.id)
+      assert ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
     end
   end
 
@@ -445,7 +443,7 @@ defmodule ApiaryPro.SuspensionsTest do
 
     test "names what an account's suspension leaves without an owner who may act" do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       %{scope: shared_scope, organisation: shared} = sign_up_fixture()
       %{membership: joined} = join_fixture(shared_scope, operator.user)
       {:ok, _} = Organisations.set_member_level(shared_scope, joined.id, :owner)
@@ -453,13 +451,13 @@ defmodule ApiaryPro.SuspensionsTest do
       names = operator.user.id |> Suspensions.left_without_owner() |> Enum.map(& &1.id)
 
       assert operator.organisation.id in names
-      # Its operator's clients have owners of their own.
-      refute client.organisation.id in names
+      # An organisation whose workspace the operator operates keeps its owner.
+      refute operated.organisation.id in names
       # An organisation it owns beside an owner who may act is not.
       refute shared.id in names
 
-      assert [only] = Suspensions.left_without_owner(client.owner.user.id)
-      assert only.id == client.organisation.id
+      assert [only] = Suspensions.left_without_owner(operated.owner.user.id)
+      assert only.id == operated.organisation.id
     end
   end
 

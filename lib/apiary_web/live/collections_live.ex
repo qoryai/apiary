@@ -88,7 +88,7 @@ defmodule ApiaryWeb.CollectionsLive do
           into: MapSet.new(),
           do: adapter_id
 
-    connected = WorkspaceSetup.connected_ids(scope.organisation, domain, role)
+    connected = WorkspaceSetup.connected_ids(scope, domain, role)
 
     adapters =
       IntegrationComponents.offered(

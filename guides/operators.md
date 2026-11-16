@@ -1,79 +1,53 @@
-# Operators and their clients
+# Operators
 
-This guide covers operators and their clients, with the `managed_organisations` feature:
-what an operator is, how it creates and reaches its clients, how an organisation becomes a
-client and stops being one, and which features each has.
+This guide covers operators, with the `managed_organisations` feature: what an operator is,
+what its people reach, and which features it has.
 
 <!-- feature: managed_organisations -->
 ## The feature
 
-`managed_organisations` is a feature: operators and their clients, and what an operator
-does for them. Support turns it on for an organisation. It needs `observability`.
+`managed_organisations` is a feature, shown as Operators: operators, and the workspaces
+of other organisations they operate. Support turns it on for an organisation. It needs
+`observability`.
 
 ## Operators
 
-An operator provides a ready harness, its agents, skills and workflows. Its clients run
-the harness of the operator; the operator keeps it working and debugs it, and does not
-manage its clients' people. Support makes an organisation an operator, or creates one, and
-makes an operator without clients an organisation again.
+An operator is an organisation whose people reach the workspaces it operates in other
+organisations. A workspace has one operator at most. Everything else an operator does, it
+does as any organisation.
 
-## Clients
+Support makes an organisation an operator, or creates one, and makes an operator an
+organisation again. An organisation with a workspace that has an operator is not made an
+operator, and an operator that operates a workspace is not made an organisation. Neither
+an operator that operates a workspace nor a workspace with an operator is deleted.
 
-An owner or an admin of the operator creates its clients on its **Clients** page, each
-with a name and the email address of its first owner: each is a separate organisation,
-with no workspace yet, and the person who accepts that invitation becomes its owner and
-creates its first workspace from the kind cards on its overview; any other invitation
-there, as anywhere, makes a member. The invitation is emailed. While a client has no
-owner, the Clients page invites one again, revokes an invitation of its owner, and deletes
-the client, which nobody else is in; once it has an owner, it is dropped instead. From
-then on the client's owners and admins invite and manage its people, its settings and its
-security policy, as in any organisation. An operator with clients is not deleted until
-each client is purged or dropped.
+## What the operator's people reach
 
-Each organisation has a separate daily allowance of invitations, an operator's client as
-any other. The one exception is the invitation of a client's first owner: it counts
-against the operator's allowance, so creating clients does not multiply what an operator
-may invite.
+Every person of the operator, owner, admin or member, reads everything in each workspace
+it operates, the runs and their terminals and the security policy among them, except the
+workspace's secrets and variables. They change nothing there. They reach nothing the
+organisation has as a whole: its people, its policy, its secrets and variables, its
+connections and its other workspaces. Their level in the operator matters only inside the
+operator.
 
-## What the operator's people read
+Someone who is in the operator and also a member of the organisation changes what their
+membership in the organisation allows, and reads the rest of the workspace.
 
-Every person of the operator, owner, admin or member, reads everything in each of its
-clients: every workspace, the runs and their terminals, the security policy, the members
-and the activity. They change nothing there, the policy included; their level in the
-operator matters only inside the operator. Someone who is in the operator and also a member
-of the client changes what their membership in the client allows, and reads the rest.
-<!-- /feature -->
-<!-- feature: managed_organisations, security -->
-What an operator needs of a client's security policy, it asks for with a policy request
-([Policy requests](policy-requests.md)).
-<!-- /feature -->
-<!-- feature: managed_organisations -->
+The organisation menu of the operator's people lists each workspace the operator operates,
+under its organisation.
 
-## Dropping a client
+A suspended operator is read-only, and its people do not reach the workspaces it
+operates. Those workspaces keep running, with their runs, access keys and people, until
+the operator is activated.
 
-An owner of the operator drops a client from the Clients page, typing the client's name to
-confirm. It happens at once: the client is an organisation with no operator from then on,
-which the operator's people no longer read, with its people, workspaces and policy as they
-were.
+## Features of an operator
 
-Each side sees the other: the Clients page names each client, its owners and since when it
-is a client; a client's people see its operator on Ownership in its settings, and
-"Operated by" it in its Organisation settings › People.
+Of the features a grant can name, an operator has only those support grants it. A feature
+a grant can name, added to Qory Apiary later, reaches no operator until it is granted.
+Every other organisation has the features of Qory Apiary but those support takes away. A
+workspace shows the features of its organisation, to the people of its operator too.
 
-A suspended operator is read-only and its people no longer read its clients, which keep
-running, with their runs, access keys, owners, admins and members, until it is activated.
-
-## Features granted down the chain
-
-Of the features a grant can name, an operator has only those support grants it, and a
-client only those its operator grants it, with **Features** on the Clients page, within
-the operator's features. A feature a grant can name, added to Qory Apiary later, reaches
-no operator and no client until it is granted. A client never has `managed_organisations`:
-it manages no one.
-
-An organisation made an operator is granted what it had, and a new client what its
-operator has; a client that is dropped loses what the operator granted it and has what any
-organisation with no operator has. An operator keeps `managed_organisations` until it is
-made an organisation again, which it is only once it has no clients; its features page
-does not take it away.
+An organisation made an operator is granted what it had. An operator keeps
+`managed_organisations` until it is made an organisation again, which it is only once it
+operates no workspace; its features page does not take it away.
 <!-- /feature -->

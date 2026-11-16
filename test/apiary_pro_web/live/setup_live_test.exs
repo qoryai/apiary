@@ -90,7 +90,7 @@ defmodule ApiaryProWeb.SetupLiveTest do
       assert html =~ "Set up Qory Apiary"
 
       assert line(lv) ==
-               "Your account and your operator, to run organisations for clients."
+               "Your account and your operator, to operate workspaces of other organisations."
 
       assert line(lv) == Apiary.Edition.first_sign_up_line()
       refute html =~ "Your account and your organisation."

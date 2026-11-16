@@ -17,7 +17,7 @@ defmodule Apiary.FeatureSetsTagTest do
   # The edition's reads, beside the core's: the features of an organisation, and the parts a grant
   # offers and shows. `of/2` with a second argument is no read.
   @reads [
-    ~r/ApiaryPro\.Features\.(of|of_organisation|of_all|hidden)\(/,
+    ~r/ApiaryPro\.Features\.(of|of_all|hidden)\(/,
     ~r/Grants\.(offered|shown)\(/
   ]
 

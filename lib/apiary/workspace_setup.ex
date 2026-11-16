@@ -27,8 +27,8 @@ defmodule Apiary.WorkspaceSetup do
   #
   # The edition has four rules of the set-up: `c:Apiary.Edition.work_source_ready/1`,
   # `c:Apiary.Edition.machines_ready/1`, `c:Apiary.Edition.model_key_ready?/1` and
-  # `c:Apiary.Edition.test_run_passed?/1`, which may count what serves the workspace from
-  # another organisation. The core's edition answers with the functions here:
+  # `c:Apiary.Edition.test_run_passed?/1`. The core's edition returns the results of the
+  # functions here:
   #
   #   * `work_source/1`: the live collections assigned to the workspace, of a connection
   #     of its organisation that is connected and that an adapter's listing has named
@@ -38,13 +38,9 @@ defmodule Apiary.WorkspaceSetup do
   #     (`Apiary.Gateways.resolve/1`). The pools that serve them (`serving_pools/1`) are
   #     the workspace's pools in use, or, while it has none, the instance's pool, as a
   #     claim takes them (`Apiary.Dispatches.no_pool_in_use/0`);
-  #   * `model_key?/1`, the Model step's rule too: on the chain of model choices that
-  #     resolves for the workspace's runs (`Apiary.ModelChoices.chain_owner/1`), a choice
-  #     that a run reads with a model provider that has at least one key: for the
-  #     organisation's chain, the workspace's choice (level 5,
-  #     `Apiary.ModelChoices.ModelChoice`), whose provider reaches the workspace; for an
-  #     operator's chain, the operator's default (level 6), the one level a run reads of
-  #     it, and a provider of the operator's with a key;
+  #   * `model_key?/1`, the Model step's rule too: on the organisation's chain of model
+  #     choices, the workspace's choice (level 5, `Apiary.ModelChoices.ModelChoice`), with
+  #     a model provider that has at least one key and reaches the workspace;
   #   * `test_passed?/1`: a run of one of the workspace's test work items
   #     (`Apiary.WorkItems.take_in_test/2`) that ended by its exit, `run_ended`, with its
   #     registered run `completed`.
@@ -201,16 +197,25 @@ defmodule Apiary.WorkspaceSetup do
 
   @doc false
   # connected_ids/3 is the ids of the adapters in use with items (`:items`) or with
-  # `targets` true (`:targets`) that serve `domain` and that `organisation` has a
-  # connected connection of.
-  @spec connected_ids(Organisation.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
-  def connected_ids(%Organisation{id: organisation_id}, domain, role),
-    do:
+  # `targets` true (`:targets`) that serve `domain` and that the scope's organisation has
+  # a connected connection of; none for a person who may not read the instance's adapters
+  # there (`adapter.read`).
+  @spec connected_ids(Scope.t(), module, :items | :targets) :: MapSet.t(Ecto.UUID.t())
+  def connected_ids(
+        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+        domain,
+        role
+      ) do
+    if Access.can?(scope, :"adapter.read", organisation) do
       organisation_id
       |> connected_adapters(domain, role)
       |> select([_k, n], n.id)
       |> Repo.all()
       |> MapSet.new()
+    else
+      MapSet.new()
+    end
+  end
 
   defp connected_adapters(organisation_id, domain, role) do
     name = domain.name()
@@ -742,49 +747,24 @@ defmodule Apiary.WorkspaceSetup do
   end
 
   @doc false
-  # model_key?/1 is whether the chain of model choices that resolves for `workspace`'s runs
-  # has a choice a run reads with a model provider that has a key: on the organisation's
-  # chain, the workspace's choice (level 5), whose provider reaches the workspace; on an
-  # operator's, the operator's default (level 6), and a provider of that chain with a key.
-  # False on an operator's chain whose operator the edition does not name.
+  # model_key?/1 is whether the organisation's chain of model choices has, for
+  # `workspace`'s runs, the workspace's choice (level 5) with a model provider that has a
+  # key and reaches the workspace.
   @spec model_key?(Workspace.t()) :: boolean
-  def model_key?(%Workspace{organisation_id: organisation_id} = workspace) do
-    case ModelChoices.chain_owner(organisation_id) do
-      {_chain, nil} ->
-        false
-
-      {"operator", owner_id} ->
-        Repo.exists?(provider_with_key("operator", owner_id)) and
-          Repo.exists?(operator_default(owner_id))
-
-      {chain, owner_id} ->
-        Repo.exists?(workspace_choice(chain, owner_id, workspace))
-    end
-  end
+  def model_key?(%Workspace{} = workspace), do: Repo.exists?(workspace_choice(workspace))
 
   @doc false
   # model_name/1 is the model of the choice `model_key?/1` counts for the scope's
   # workspace, as the Model step shows it chosen (`Apiary.ModelChoices.shown_model/2`), for
-  # a person who may read the choices of that chain as the step reads them
-  # (`Apiary.ModelChoices.list_choices/2`: the features, `connection.read`, and for the
-  # operator's chain `c:Apiary.Edition.operator_chain_writer?/1`); else nil, as without a
-  # choice.
+  # a person who may read the choices as the step reads them
+  # (`Apiary.ModelChoices.list_choices/2`: the features and `connection.read`); else nil,
+  # as without a choice.
   @spec model_name(Scope.t()) :: String.t() | nil
-  def model_name(
-        %Scope{workspace: %Workspace{organisation_id: organisation_id} = workspace} = scope
-      ) do
-    query =
-      case ModelChoices.chain_owner(organisation_id) do
-        {_chain, nil} ->
-          nil
-
-        {chain, owner_id} ->
-          if readable_chain?(scope, chain), do: chain_choice(chain, owner_id, workspace)
-      end
-
-    with %Ecto.Query{} <- query,
+  def model_name(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    with {:ok, _choices} <- ModelChoices.list_choices(scope),
          {%ModelChoice{model_id: model_id}, %ModelProvider{} = provider} <-
-           query
+           workspace
+           |> workspace_choice()
            |> join(:inner, [m], p in ModelProvider, on: p.id == m.connection_id)
            |> select([m, ..., p], {m, p})
            |> limit(1)
@@ -795,32 +775,9 @@ defmodule Apiary.WorkspaceSetup do
     end
   end
 
-  defp readable_chain?(scope, chain),
-    do: match?({:ok, _choices}, ModelChoices.list_choices(scope, chain))
-
-  defp chain_choice("operator", owner_id, _workspace), do: operator_default(owner_id)
-  defp chain_choice(chain, owner_id, workspace), do: workspace_choice(chain, owner_id, workspace)
-
-  # The model providers of `chain` of the organisation `owner_id` that have a key.
-  defp provider_with_key(chain, owner_id) do
-    from c in ModelProvider,
-      join: v in Value,
-      on: v.secret_id == c.secret_id,
-      where: c.organisation_id == ^owner_id and not is_nil(c.provider_kind),
-      where: c.chain == ^chain
-  end
-
-  # The operator's default (level 6) on the operator's chain, of the organisation
-  # `owner_id`.
-  defp operator_default(owner_id) do
-    from m in ModelChoice,
-      where: m.organisation_id == ^owner_id and m.chain == "operator",
-      where: is_nil(m.workspace_id) and is_nil(m.target_id) and is_nil(m.workflow)
-  end
-
-  # The choice of `workspace` (level 5) on `chain` of the organisation `owner_id`, whose
-  # model provider has a key and applies to every workspace or lists `workspace`.
-  defp workspace_choice(chain, owner_id, %Workspace{id: workspace_id}) do
+  # The choice of `workspace` (level 5) on the chain of its organisation, whose model
+  # provider has a key and applies to every workspace or lists `workspace`.
+  defp workspace_choice(%Workspace{id: workspace_id, organisation_id: organisation_id}) do
     from m in ModelChoice,
       join: c in ModelProvider,
       on: c.id == m.connection_id,
@@ -828,10 +785,10 @@ defmodule Apiary.WorkspaceSetup do
       on: v.secret_id == c.secret_id,
       left_join: w in ConnectionWorkspace,
       on: w.connection_id == c.id and w.workspace_id == ^workspace_id,
-      where: m.organisation_id == ^owner_id and m.workspace_id == ^workspace_id,
-      where: is_nil(m.target_id) and is_nil(m.workflow) and m.chain == ^chain,
-      where: c.organisation_id == ^owner_id and not is_nil(c.provider_kind),
-      where: c.chain == ^chain,
+      where: m.organisation_id == ^organisation_id and m.workspace_id == ^workspace_id,
+      where: is_nil(m.target_id) and is_nil(m.workflow) and m.chain == "organisation",
+      where: c.organisation_id == ^organisation_id and not is_nil(c.provider_kind),
+      where: c.chain == "organisation",
       where: c.applies_to == "all" or not is_nil(w.workspace_id)
   end
 

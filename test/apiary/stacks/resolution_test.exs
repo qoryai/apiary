@@ -19,8 +19,7 @@ defmodule Apiary.Stacks.ResolutionTest do
       organisation_id: Keyword.get(opts, :organisation_id, @organisation),
       workspace_id: @workspace,
       target_id: Keyword.get(opts, :target_id, @target),
-      workflow: "explore",
-      operated: Keyword.get(opts, :operated, false)
+      workflow: "explore"
     }
   end
 
@@ -159,11 +158,6 @@ defmodule Apiary.Stacks.ResolutionTest do
       # A run of the instance's organisation, at a row of the run's workspace.
       in_instance = %{instance_owned | organisation_id: @instance}
       refute resolved(input([in_instance], organisation_id: @instance)).harness_hidden
-    end
-
-    test "is true for an operated organisation, whoever owns the document" do
-      owned_by_run = at(:workspace, harness: @document, owner_organisation_id: @organisation)
-      assert resolved(input([owned_by_run], operated: true)).harness_hidden
     end
   end
 end

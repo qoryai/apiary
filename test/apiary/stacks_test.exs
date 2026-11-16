@@ -119,7 +119,6 @@ defmodule Apiary.StacksTest do
 
     test "a member's organisation owns what they save, and its runs are shown it", ctx do
       assert Stacks.saved_by(ctx.scope) == ctx.scope.organisation.id
-      assert Edition.harness_owner(ctx.scope) == ctx.scope.organisation.id
 
       stack = choose!(ctx, {:workspace, ctx.scope.workspace}, doc("core"))
 
@@ -154,7 +153,6 @@ defmodule Apiary.StacksTest do
 
       for scope <- [without_membership, with_other_membership] do
         assert Stacks.saved_by(scope) == nil
-        assert Edition.harness_owner(scope) == instance
 
         {:ok, stack} =
           Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core"),
@@ -171,7 +169,6 @@ defmodule Apiary.StacksTest do
     test "refuses the save of a member who reaches it another way", ctx do
       scope = %{ctx.scope | reach: {:operator, ctx.scope.organisation.id}}
       assert Stacks.saved_by(scope) == nil
-      assert Edition.harness_owner(scope) == nil
 
       assert Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core")) ==
                {:error, :forbidden}
@@ -182,21 +179,11 @@ defmodule Apiary.StacksTest do
     test "refuses the save of the instance acting by itself", ctx do
       scope = Apiary.Accounts.Scope.for_instance(ctx.scope.organisation, ctx.scope.workspace)
       assert Stacks.saved_by(scope) == nil
-      assert Edition.harness_owner(scope) == nil
 
       assert Stacks.put_stack(scope, {:workspace, ctx.scope.workspace}, doc("core")) ==
                {:error, :forbidden}
 
       refute Repo.exists?(Stack)
-    end
-
-    test "refuses a save the edition gives no owner for, and keeps the row as it was", ctx do
-      place = {:workspace, ctx.scope.workspace}
-      before = put!(ctx, place, doc("core"))
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.NoHarnessOwner)
-
-      assert Stacks.put_stack(ctx.scope, place, doc("other")) == {:error, :forbidden}
-      assert Repo.all(Stack) == [before]
     end
 
     test "keeps one row per place", ctx do
@@ -1171,12 +1158,6 @@ defmodule Apiary.StacksTest do
           choice: :repository
         )
 
-      assert {:chosen, %{harness_hidden: true}} = run_harness(ctx)
-    end
-
-    test "is true when the run's organisation is operated", ctx do
-      choose!(ctx, {:organisation, ctx.scope.organisation}, doc("core"), :qory)
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.Operated)
       assert {:chosen, %{harness_hidden: true}} = run_harness(ctx)
     end
   end

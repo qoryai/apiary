@@ -3,7 +3,7 @@ defmodule ApiaryWeb.Edition.Core do
   The core's web edition, and the default (`ApiaryWeb.Edition`): the console's pages as
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
   entry of the organisation menu or the workspace menu, account menu entry, Instance
-  section, group of places or place, settings tab or part of Instance settings ›
+  section, workspace listed under another organisation, settings tab or part of Instance settings ›
   Configuration beyond the core's, every slot empty, no words for a reader, a refusal or
   actions beyond the core's, the core's words for who may take an action, no level above
   a workspace's policy to link to, no reserved name beyond the core's, the product named
@@ -44,7 +44,7 @@ defmodule ApiaryWeb.Edition.Core do
   def nav_sections, do: []
 
   @impl true
-  def place_group(_place), do: nil
+  def switcher_place(place), do: {place.workspaces, []}
 
   @impl true
   def place_scope(_place, _workspace), do: nil

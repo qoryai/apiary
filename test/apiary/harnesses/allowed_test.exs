@@ -1,8 +1,8 @@
 defmodule Apiary.Harnesses.AllowedTest do
-  # The rule that decides which links a run may use for its harness: (a) the run's
-  # organisation's links; (b) the instance's links, for a source an instance assignment
-  # covers; (c) the edition's answer, which is false in the core. The assignments are
-  # written as rows here: `test/apiary/harnesses_test.exs` tests who may write them.
+  # The rule for which links a run may use for its harness: (a) the run's organisation's
+  # links; (b) the instance's links, for a source an instance assignment covers. Any other
+  # link is refused. The assignments are written as rows here:
+  # `test/apiary/harnesses_test.exs` tests who may write them.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -34,8 +34,6 @@ defmodule Apiary.Harnesses.AllowedTest do
 
   describe "(a) the run's organisation's link" do
     test "is allowed for any source, with no assignment", ctx do
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
-
       for source <- [
             @root,
             Map.put(@root, "stack", "web"),
@@ -43,8 +41,6 @@ defmodule Apiary.Harnesses.AllowedTest do
           ] do
         assert allowed?(ctx, ctx.run, source)
       end
-
-      refute_received {:harness_source_allowed?, _run, _owner, _source}
     end
   end
 
@@ -144,40 +140,18 @@ defmodule Apiary.Harnesses.AllowedTest do
   end
 
   describe "an organisation that is nil" do
-    test "is refused, with no edition asked", ctx do
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
+    test "is refused", ctx do
       assign!(@root, nil)
 
       refute Harnesses.allowed?(ctx.run, nil, @root)
       refute Harnesses.allowed?(nil, ctx.instance, @root)
       refute Harnesses.allowed?(nil, nil, @root)
-      refute_received {:harness_source_allowed?, _run, _owner, _source}
     end
   end
 
-  describe "(c) the edition" do
-    test "the core refuses any other link", ctx do
+  describe "a link of a third organisation" do
+    test "is refused", ctx do
       refute allowed?(ctx, ctx.other, @root)
-    end
-
-    test "is asked after (a) and (b) refuse, and its answer counts", ctx do
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
-
-      assert allowed?(ctx, ctx.other, @root)
-      assert_received {:harness_source_allowed?, run, other, @root}
-      assert {run, other} == {ctx.run, ctx.other}
-
-      assert allowed?(ctx, ctx.instance, @root)
-      assert_received {:harness_source_allowed?, _run, instance, @root}
-      assert instance == ctx.instance
-    end
-
-    test "is not asked when an assignment covers the source", ctx do
-      :ok = Edition.put_test_stub(Apiary.EditionStubs.HarnessSourceAllowed)
-      assign!(@root, ctx.run)
-
-      assert allowed?(ctx, ctx.instance, @root)
-      refute_received {:harness_source_allowed?, _run, _owner, _source}
     end
   end
 end

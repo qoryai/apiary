@@ -802,31 +802,7 @@ defmodule ApiaryPro.OrganisationPolicy do
   defp forbidden(_scope, :"organisation_policy.read"),
     do: gettext("Only an owner or an admin reads the organisation's policy.")
 
-  # In a client whose operator owns it, a change is the operator's owners' alone
-  # (`ApiaryPro.Access`): the refusal names them, and the client.
-  defp forbidden(scope, _action) do
-    case owning_operator(scope) do
-      %Organisation{name: operator} ->
-        gettext("Only owners of %{operator}, the operator of %{name}, change its policy.",
-          operator: operator,
-          name: scope.organisation.name
-        )
-
-      nil ->
-        gettext("Only an owner changes the organisation's policy.")
-    end
-  end
-
-  # owning_operator/1 is the operator of the scope's organisation, a client, while the
-  # operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), whose owners
-  # alone change the client's policy; nil otherwise. For the refusals here and the lines
-  # of the organisation's policy page.
-  @doc false
-  @spec owning_operator(Scope.t() | nil) :: %Organisation{} | nil
-  def owning_operator(%Scope{organisation: %Organisation{} = organisation} = scope) do
-    if ApiaryPro.Flags.operator_infrastructure?() and ApiaryPro.Tenants.client?(organisation),
-      do: ApiaryPro.Operators.operator_of(scope)
-  end
-
-  def owning_operator(_scope), do: nil
+  # A change is the organisation's owners' (`ApiaryPro.Access`).
+  defp forbidden(_scope, _action),
+    do: gettext("Only an owner changes the organisation's policy.")
 end

@@ -56,14 +56,6 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
 
-  defmodule OperatorChain do
-    @moduledoc """
-    The operator's rows are the whole chain of model choices of every organisation
-    (`c:Apiary.Edition.model_choice_chain/1`).
-    """
-    def model_choice_chain(_organisation_id), do: "operator"
-  end
-
   defmodule ConnectsLine do
     @moduledoc """
     An edition with its sentence on who connects a system, for each step
@@ -88,48 +80,6 @@ defmodule Apiary.EditionStubs do
     (`c:Apiary.Edition.sign_up_open?/0`), as an edition that opens one does.
     """
     def sign_up_open?, do: true
-  end
-
-  defmodule WritesOperatorChain do
-    @moduledoc """
-    A person of the scope writes the operator's chain of model providers and choices in
-    the scope's organisation (`c:Apiary.Edition.operator_chain_writer?/1`). `writer/1`
-    sets the answer for the test's process, true until it does.
-    """
-
-    @doc "writer/1 sets the answer of `operator_chain_writer?/1` for the test's process."
-    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
-
-    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, true)
-  end
-
-  defmodule Operated do
-    @moduledoc """
-    Every organisation is a client that an operator runs work for
-    (`c:Apiary.Edition.operated?/1`).
-    """
-    def operated?(%Organisation{}), do: true
-  end
-
-  defmodule NoHarnessOwner do
-    @moduledoc """
-    No organisation owns a harness document anyone saves
-    (`c:Apiary.Edition.harness_owner/1`), so every save is refused.
-    """
-    def harness_owner(_scope), do: nil
-  end
-
-  defmodule HarnessSourceAllowed do
-    @moduledoc """
-    A run may use any organisation's links for any harness source
-    (`c:Apiary.Edition.harness_source_allowed?/3`). Each call sends
-    `{:harness_source_allowed?, run_organisation_id, owner_organisation_id, source}` to the
-    process that asks.
-    """
-    def harness_source_allowed?(run_organisation_id, owner_organisation_id, source) do
-      send(self(), {:harness_source_allowed?, run_organisation_id, owner_organisation_id, source})
-      true
-    end
   end
 
   @doc """
@@ -514,54 +464,6 @@ defmodule Apiary.EditionStubs do
     end
   end
 
-  defmodule ServesAcross do
-    @moduledoc """
-    Lets the organisation-level gateways of one organisation serve the workspaces of
-    others, as an edition may (`c:Apiary.Edition.serving_organisations/1`,
-    `c:Apiary.Edition.served_organisations/1`): the pairs `{serving, served}` the test
-    names (`put/1` in the test's process, which the processes it starts read too), the
-    serving organisations of one served organisation in the order the test gives them.
-    Both answers come from the one list, so each is the reverse of the other. It reads
-    nothing and locks nothing. With `out_of_use/1`, it also holds organisations out of use
-    as `OutOfUse` does.
-    """
-
-    @doc "put/1 names the pairs `{serving, served}`, in order, for the test's processes."
-    def put(pairs) when is_list(pairs), do: Process.put(:serves_across, pairs)
-
-    @doc "out_of_use/1 holds the organisations `ids` out of use, as `OutOfUse` reads it."
-    def out_of_use(ids) when is_list(ids), do: Process.put(:out_of_use, ids)
-
-    @doc """
-    switch/1 turns the serving off (`:off`), as an edition whose flag for it is off: both
-    answers are none, whatever `put/1` named, until it is turned `:on` again.
-    """
-    def switch(state) when state in [:on, :off], do: Process.put(:serves_across_switch, state)
-
-    def serving_organisations(id), do: for({serving, ^id} <- pairs(), do: serving)
-
-    def served_organisations(id), do: for({^id, served} <- pairs(), do: served)
-
-    def active_organisations(query, binding), do: OutOfUse.active_organisations(query, binding)
-
-    defp pairs do
-      if read(:serves_across_switch) == :off, do: [], else: read(:serves_across) || []
-    end
-
-    defp read(key) do
-      Enum.find_value([self() | Process.get(:"$callers", [])], fn
-        pid when pid == self() ->
-          Process.get(key)
-
-        pid ->
-          case Process.info(pid, {:dictionary, key}) do
-            {{:dictionary, ^key}, value} -> value
-            _unset -> nil
-          end
-      end)
-    end
-  end
-
   defmodule ManyWorkspaces do
     @moduledoc """
     Lets an organisation have any number of workspaces (`c:Apiary.Edition.limits/0`), as an
@@ -656,16 +558,13 @@ defmodule Apiary.EditionStubs do
 
   defmodule GatewaysWorded do
     @moduledoc """
-    An edition whose organisations have many workspaces and whose organisation-level
-    gateways serve the workspaces of others (`ServesAcross`, whose `put/1` names them), in
-    its own words: whose nodes can use them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`),
-    who manages the nodes (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`) and who sets
-    a pool's instance limit (`c:ApiaryWeb.Edition.who_may_sentence/2`, `node.set_limit`).
+    An edition whose organisations have many workspaces, with sentences in the stub's
+    words: whose nodes can use the organisation-level gateways
+    (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`), who manages the nodes
+    (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`) and who sets a pool's instance limit
+    (`c:ApiaryWeb.Edition.who_may_sentence/2`, `node.set_limit`).
     """
     defdelegate limits, to: ManyWorkspaces
-    defdelegate serving_organisations(id), to: ServesAcross
-    defdelegate served_organisations(id), to: ServesAcross
-    defdelegate active_organisations(query, binding), to: ServesAcross
 
     def gateway_reach_sentence(kind, organisation),
       do: "Edition reach #{kind} of #{organisation.name}."
@@ -1198,105 +1097,6 @@ defmodule Apiary.EditionStubs do
 
     def organisation_secrets(scope, verb),
       do: GrantsOrganisationSecrets.organisation_secrets(scope, verb)
-  end
-
-  defmodule ServesAcrossWithChain do
-    @moduledoc """
-    `ServesAcross`, with the chain of model choices of every organisation
-    (`c:Apiary.Edition.model_choice_chain/1`) that the test sets with `chain/1`:
-    "organisation" until it does, as the core's edition returns; the operator's
-    organisation of that chain, which the test may set with `operator/1`; and whether a
-    scope writes the operator's chain, which the test may set with `writer/1`.
-    """
-
-    @doc "chain/1 sets the chain of model choices for the test's process."
-    def chain(chain) when chain in ["organisation", "operator"],
-      do: Process.put(:model_choice_chain, chain)
-
-    def model_choice_chain(_organisation_id), do: Process.get(:model_choice_chain, "organisation")
-
-    @doc """
-    operator/1 sets the operator's organisation for the test's process
-    (`c:Apiary.Edition.operator_chain_organisation/1`), nil for none. Until it does, the
-    operator is the first organisation that serves the run's.
-    """
-    def operator(id), do: Process.put(:operator_chain_organisation, {:set, id})
-
-    def operator_chain_organisation(id) do
-      case Process.get(:operator_chain_organisation) do
-        {:set, operator} -> operator
-        nil -> List.first(ServesAcross.serving_organisations(id))
-      end
-    end
-
-    @doc """
-    writer/1 sets whether a scope writes the operator's chain
-    (`c:Apiary.Edition.operator_chain_writer?/1`) for the test's process; false until it does,
-    as the core answers.
-    """
-    def writer(answer) when is_boolean(answer), do: Process.put(:operator_chain_writer, answer)
-
-    def operator_chain_writer?(_scope), do: Process.get(:operator_chain_writer, false)
-
-    def serving_organisations(id), do: ServesAcross.serving_organisations(id)
-    def served_organisations(id), do: ServesAcross.served_organisations(id)
-
-    def active_organisations(query, binding),
-      do: ServesAcross.active_organisations(query, binding)
-  end
-
-  defmodule HidesRuns do
-    @moduledoc """
-    A client is shown nothing of the runs and the connections of its workspace
-    (`c:Apiary.Edition.client_reads/4`), as an edition hides what an operator's model
-    provider did: every query narrowed to no row, and no policy.
-    """
-    import Ecto.Query, only: [where: 2]
-
-    def client_reads(_scope, :run_policy, _run, _policy), do: nil
-    def client_reads(_scope, _kind, _run, query), do: where(query, false)
-  end
-
-  defmodule NarrowsRunPolicy do
-    @moduledoc """
-    A reader is shown a run's policy (`c:Apiary.Edition.client_reads/4`, `:run_policy`)
-    without the hosts of the credential named `"model-provider"`: its entry in
-    `credentials`, its hosts in `allow`, `allow_first` and `terminated`, and its hosts in the
-    `hosts` of each tool, with the counts recounted. The tools stay. Every other read is left
-    as it is.
-    """
-
-    @provider "model-provider"
-
-    def client_reads(_scope, :run_policy, _run, %{credentials: credentials} = policy) do
-      hidden =
-        for %{"name" => @provider, "hosts" => hosts} <- credentials, host <- hosts, do: host
-
-      allow = Enum.reject(policy.allow, &(&1 in hidden))
-      allow_first = Enum.reject(policy.allow_first, &(&1 in hidden))
-      kept = Enum.reject(credentials, &(&1["name"] == @provider))
-      terminated = Enum.reject(policy.terminated, &(&1 in hidden))
-
-      tools =
-        for tool <- policy.tools,
-            do: Map.update(tool, "hosts", [], &Enum.reject(&1, fn host -> host in hidden end))
-
-      %{
-        policy
-        | terminated: terminated,
-          terminated_count:
-            policy.terminated_count - (length(policy.terminated) - length(terminated)),
-          tools: tools,
-          allow: allow,
-          allow_count: length(allow),
-          allow_first: allow_first,
-          allow_first_count: length(allow_first),
-          credentials: kept,
-          credentials_count: length(kept)
-      }
-    end
-
-    def client_reads(_scope, _kind, _run, subject), do: subject
   end
 
   defmodule SetUpFinished do

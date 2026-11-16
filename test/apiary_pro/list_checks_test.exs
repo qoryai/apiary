@@ -86,14 +86,15 @@ defmodule ApiaryPro.ListChecksTest do
   end
 
   @tag needs: [:factory, :managed_organisations]
-  test "a client's owner: five rows take the queries of one" do
+  test "the owner of an operated workspace: five rows take the queries of one" do
     operator = operator_fixture()
-    client = client_fixture(operator.scope)
-    rows = rows(client.owner.scope)
+    operated = operated_fixture(operator.scope)
+    rows = rows(operated.owner.scope)
 
-    for loaded <- membership_scopes(client.owner.user, client.organisation, client.workspace) do
-      assert loaded.organisation.id == client.organisation.id
-      assert loaded.workspace.id == client.workspace.id
+    for loaded <-
+          membership_scopes(operated.owner.user, operated.organisation, operated.workspace) do
+      assert loaded.organisation.id == operated.organisation.id
+      assert loaded.workspace.id == operated.workspace.id
       {one, [true]} = check(loaded, Enum.take(rows, 1))
       assert check(loaded, rows) == {one, List.duplicate(true, 5)}
     end

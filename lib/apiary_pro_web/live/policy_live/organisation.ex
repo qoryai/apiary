@@ -172,7 +172,6 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
       workspace_names: Map.new(workspaces, &{&1.id, &1.name}),
       history_total: history_total,
       owner?: owner?(scope),
-      operator: OrganisationPolicy.owning_operator(scope),
       reload_pending: false,
       now: DateTime.utc_now()
     )
@@ -478,10 +477,7 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
   defp event(_event, _params, socket), do: socket
 
   defp only_owners(socket) do
-    sentence =
-      Words.only_owners(socket.assigns.operator, socket.assigns.current_scope.organisation.name)
-
-    assign(socket, :write_error, sentence)
+    assign(socket, :write_error, Words.only_owners())
   end
 
   # The floor as the card's choices name it.
@@ -643,7 +639,6 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
         <.mode_card
           policy={@policy}
           can_change={@owner?}
-          operator={@operator}
           pick={@mode_pick}
           error={@mode_error}
           summary={@summary}
@@ -717,7 +712,7 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
 
     ~H"""
     <p :if={!@owner?} id="policy-owners" class="text-[13px]/5 text-muted">
-      {Words.owners_line(@operator, @current_scope.organisation.name)}
+      {Words.owners_line(@current_scope.organisation.name)}
     </p>
     <%!-- The settings' heading, for a screen reader: the confirm's question under it is an h3. --%>
     <h2 id="policy-settings-h" class="sr-only">{gettext("Settings")}</h2>
@@ -879,10 +874,6 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
   attr :policy, :map, required: true
   attr :can_change, :boolean, required: true
 
-  attr :operator, :map,
-    default: nil,
-    doc: "the operator whose owners alone change its client's policy, or nil"
-
   attr :pick, :string, default: nil, doc: "the choice picked while the card is open"
   attr :error, :string, default: nil, doc: "why the pick was refused, under the question"
   attr :summary, :any, required: true
@@ -931,7 +922,7 @@ defmodule ApiaryProWeb.PolicyLive.Organisation do
           <p id="policy-mode-effect" class="q-modecard-p">
             {Words.floor_now(@current == "enforce", @scope.organisation.name)}
             <span :if={!@can_change} id="policy-mode-owners">
-              {Words.only_owners(@operator, @scope.organisation.name)}
+              {Words.only_owners()}
             </span>
           </p>
         </div>

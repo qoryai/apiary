@@ -4,8 +4,7 @@ defmodule ApiaryPro.OrganisationPolicyShownTest do
   # (`ApiaryPro.OrganisationPolicy.above_workspace/1`,
   # `ApiaryPro.OrganisationVariables.for_above/1`): taken away from the organisation, the
   # feature leaves its pages, and its workspaces' documents and runs keep the policy. A
-  # grant, a client's drop and a client leaving render nothing, and write nothing to a
-  # workspace's History.
+  # grant renders nothing, and writes nothing to a workspace's History.
   # Not async: the instance's features are the node's, and every test here asks on an
   # instance with all of them, or without the feature.
   use Apiary.DataCase, async: false
@@ -23,7 +22,7 @@ defmodule ApiaryPro.OrganisationPolicyShownTest do
   alias Apiary.{Features, Organisations, Policy}
   alias Apiary.Organisations.Organisation
   alias Apiary.Policy.{Above, Serving}
-  alias ApiaryPro.{Flags, Grants, OrganisationPolicy, OrganisationVariables, Transfers}
+  alias ApiaryPro.{Grants, OrganisationPolicy, OrganisationVariables}
 
   @moduletag with_features: Features.all()
 
@@ -142,49 +141,6 @@ defmodule ApiaryPro.OrganisationPolicyShownTest do
         assert %Above{variables: [%{name: "LOG_LEVEL"}]} =
                  Apiary.Edition.above_workspace(workspace)
       end
-    end
-  end
-
-  describe "a client parted from its operator" do
-    # A client its operator granted no organisation's policy: parted, it follows the
-    # instance, which has it.
-    setup do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      {:ok, _} = OrganisationPolicy.deny(client.owner.scope, %{host: "paste.example"})
-
-      {:ok, _} =
-        Grants.set_client(operator.scope, client.organisation.id, [:observability, :security])
-
-      refute has?(client.organisation, :organisation_policy)
-      in_client = client.owner.scope
-
-      %{
-        operator: operator,
-        client: client,
-        in_client: in_client,
-        served: fetched(in_client),
-        changes: history(in_client)
-      }
-    end
-
-    test "dropped, its digest stays the same and its History says nothing more", ctx do
-      client = ctx.client.organisation
-      assert {:ok, _} = Transfers.drop(ctx.operator.scope, client.id, client.name)
-      assert has?(client, :organisation_policy)
-
-      assert fetched(ctx.in_client).digest == ctx.served.digest
-      assert fetched_deny(ctx.in_client) == ["paste.example"]
-      assert history(ctx.in_client) == ctx.changes
-    end
-
-    test "leaving, its digest stays the same and its History says nothing more", ctx do
-      Flags.put_transfers(true)
-      assert {:ok, _} = Transfers.leave(ctx.in_client, ctx.operator.organisation.name)
-      assert has?(ctx.client.organisation, :organisation_policy)
-
-      assert fetched(ctx.in_client).digest == ctx.served.digest
-      assert history(ctx.in_client) == ctx.changes
     end
   end
 

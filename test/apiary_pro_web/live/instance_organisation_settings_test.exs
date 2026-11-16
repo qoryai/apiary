@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.InstanceOrganisationSettingsTest do
   @moduledoc """
   The settings of the instance organisation: its owners manage it as any organisation, and
-  are told why it has no Delete. And an operator with clients, whose owner is told why it
-  is not deleted, and what to do first.
+  are told why it has no Delete. And an operator that operates a workspace, whose owner is
+  told why it is not deleted.
   """
   # Not async: its owners' rows are the suite's instance organisation's, which every test
   # shares.
@@ -60,11 +60,11 @@ defmodule ApiaryProWeb.InstanceOrganisationSettingsTest do
   end
 
   @tag with_features: Apiary.Features.all()
-  test "an operator with clients is not deleted, and its owner is told what to do first", %{
+  test "an operator that operates a workspace is not deleted, and its owner is told why", %{
     conn: conn
   } do
     operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-    ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
+    ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope)
     organisation = operator.organisation
     conn = log_in_user(conn, operator.user)
 
@@ -76,15 +76,11 @@ defmodule ApiaryProWeb.InstanceOrganisationSettingsTest do
 
     assert_patch(lv, ~p"/#{organisation}/settings")
 
-    assert has_element?(lv, "#flash-error", "An operator with clients cannot be deleted.")
-
     assert has_element?(
              lv,
              "#flash-error",
-             "On Clients, delete each client that has no owner and drop each one that has"
+             "An operator that operates a workspace cannot be deleted."
            )
-
-    assert has_element?(lv, "#flash-error", "a deleted client counts until it is purged.")
 
     assert Apiary.Repo.get!(Apiary.Organisations.Organisation, organisation.id).deletion_marked_at ==
              nil

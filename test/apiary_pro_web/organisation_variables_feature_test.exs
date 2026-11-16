@@ -4,10 +4,9 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
   core's `secrets` (`ApiaryPro.Features`). Where `secrets` is off, as a `QORY_FEATURES`
   list without it leaves it, they are absent: their pages answer as paths that do not
   exist, and the settings, the palette and the Audit log's Action filter leave them out.
-  A grant of them kept from before gives nothing there, and stays as it is stored when
-  the client's Features page is saved again. On, each of them has them, and a new client
-  of the instance organisation, which has every feature, is granted them as its operator
-  has them.
+  A grant of them kept from before gives nothing there. On, each of them has them, and an
+  organisation whose workspace the instance organisation operates is shown them, as the
+  instance has them, with no grant written.
   """
   # Not async: the tests switch the instance's features, which are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -184,68 +183,34 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
                "Runs, Security policy, Organisation secrets and variables → Runs, Security policy"
     end
 
-    test "a grant of them kept from before gives a client nothing", %{conn: conn} do
+    test "a grant of them kept from before gives an operated organisation nothing",
+         %{conn: conn} do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
+      operated = operated_fixture(operator.scope, "Acme")
       grant!(operator.organisation)
-      grant!(client.organisation)
+      grant!(operated.organisation)
 
-      refute :organisation_variables in ApiaryPro.Features.of(client.organisation)
-      refute ActivityDescriber.offered?(client.owner.scope, :"organisation_variable.edit")
+      refute :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      refute ActivityDescriber.offered?(operated.owner.scope, :"organisation_variable.edit")
 
-      conn = log_in_user(conn, client.owner.user)
-      unknown = "/#{client.organisation.slug}/settings/no-such-page"
+      conn = log_in_user(conn, operated.owner.user)
+      unknown = "/#{operated.organisation.slug}/settings/no-such-page"
 
-      assert answer(fn -> get(conn, ~p"/#{client.organisation}/settings/variables") end) ==
+      assert answer(fn -> get(conn, ~p"/#{operated.organisation}/settings/variables") end) ==
                answer(fn -> get(conn, unknown) end)
 
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
+      {:ok, view, _html} = live(conn, ~p"/#{operated.organisation}/settings")
       refute has_element?(view, "#settings-tab-secrets")
 
       refute "Organisation settings › Secrets and variables" in go_to(
                conn,
-               client.owner.scope,
+               operated.owner.scope,
                "variables"
              )
 
-      {actions, _view} = audit_actions(conn, client.organisation)
+      {actions, _view} = audit_actions(conn, operated.organisation)
       assert "workspace.rename" in actions
       refute "organisation_variable.edit" in actions
-    end
-
-    test "saving the client's Features page again keeps that grant as it is stored",
-         %{conn: conn} do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      grant!(client.organisation)
-      stored = grants(client.organisation)
-      assert {:organisation_variables, true} in stored
-
-      conn = log_in_user(conn, operator.user)
-
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{operator.organisation}/clients/#{client.organisation.id}/features")
-
-      render_async(lv)
-      refute has_element?(lv, "#client-features-organisation_variables")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{
-          "observability" => "true",
-          "security" => "true",
-          "organisation_policy" => "false"
-        }
-      })
-      |> render_submit()
-
-      assert_patch(lv, ~p"/#{operator.organisation}/clients")
-      refute has_element?(lv, "#flash-error")
-
-      assert grants(client.organisation) ==
-               Enum.sort(List.delete(stored, {:organisation_policy, true}))
-
-      assert {:organisation_variables, true} in grants(client.organisation)
     end
   end
 
@@ -280,20 +245,15 @@ defmodule ApiaryProWeb.OrganisationVariablesFeatureTest do
       assert grant_change(["observability", "secrets"], ["observability"]) == "Runs → Runs"
     end
 
-    test "a new client of the instance organisation is granted them, as its operator has them" do
+    test "an organisation whose workspace the instance organisation operates is shown them, with no grant" do
       admin = instance_admin_fixture()
       instance_scope = make_instance_organisation_an_operator(admin)
       assert :organisation_variables in ApiaryPro.Features.of(instance_scope.organisation)
 
-      client = client_fixture(instance_scope, "Acme")
+      operated = operated_fixture(instance_scope, "Acme")
 
-      assert grants(client.organisation) ==
-               Enum.sort([
-                 {:observability, true},
-                 {:security, true},
-                 {:organisation_policy, true},
-                 {:organisation_variables, true}
-               ])
+      assert :organisation_variables in ApiaryPro.Features.of(operated.organisation)
+      assert grants(operated.organisation) == []
     end
   end
 end
