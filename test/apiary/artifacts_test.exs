@@ -1552,7 +1552,7 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:error,
               {:invalid,
-               {:schema, 0, %{path: "#/points/0", error: "value validated 'if' but not 'then'"}}}} =
+               {:schema, 0, %{path: "#/points/0", error: "property 'fix' is not allowed"}}}} =
                push.("verdict", %{"verdict" => "escalate", "points" => [answer]})
 
       # A fix is a string on one line: no control character, no line feed, 1 to 500

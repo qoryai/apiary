@@ -28,6 +28,28 @@ defmodule Apiary.Artifacts.SchemaErrorTest do
              %{path: "#", error: "property 'gaps' is required"}
   end
 
+  describe "an if error" do
+    @conditional %{
+      "type" => "object",
+      "if" => %{"required" => ["kind"], "properties" => %{"kind" => %{"const" => "a"}}},
+      "then" => %{"properties" => %{"x" => false, "n" => %{"type" => "integer"}}},
+      "else" => %{"required" => ["y"]}
+    }
+
+    test "is the first error of its failed then, at that error's path" do
+      assert first(%{"kind" => "a", "x" => 1}, @conditional) ==
+               %{path: "#", error: "property 'x' is not allowed"}
+
+      assert first(%{"kind" => "a", "n" => "x"}, @conditional) ==
+               %{path: "#/n", error: "value is not of type integer"}
+    end
+
+    test "is the first error of its failed else" do
+      assert first(%{"kind" => "b"}, @conditional) ==
+               %{path: "#", error: "property 'y' is required"}
+    end
+  end
+
   test "cuts the path to 256 bytes and the error to 300 characters on a character" do
     name = String.duplicate("é", 400)
     schema = %{"type" => "object", "additionalProperties" => false}

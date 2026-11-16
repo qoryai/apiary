@@ -1661,7 +1661,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "names" => ["files[0]"],
                "message" =>
                  "Fix verdict.json to match the format of verdict: at #/points/0, " <>
-                   "value validated 'if' but not 'then'."
+                   "property 'fix' is not allowed."
              }
 
       assert RunApiStubs.pushed() == []
