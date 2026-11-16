@@ -64,8 +64,27 @@ defmodule Apiary.Runs.RunCredentials do
           {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
   def form_work(%DispatchRun{}, _work_item, nil), do: {:ok, nil}
 
-  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: path} = target) do
-    case collection(dispatch_run, work_item, target) do
+  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: _path} = target),
+    do: work_from(dispatch_run, collection(dispatch_run, work_item, target), target)
+
+  @doc false
+  # work_collection/3 is the collection the work entry of the run of the queue
+  # `dispatch_run` comes from, `{collection, connection, adapter}`, nil for none (the
+  # moduledoc), read once, without a lock, for both `work_from/3` and `submit_module/1`,
+  # so the run's work entry and its submit_module come from one collection.
+  @spec work_collection(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
+          {Collection.t(), Connection.t(), Node.t()} | nil
+  def work_collection(%DispatchRun{} = dispatch_run, work_item, target),
+    do: collection(dispatch_run, work_item, target)
+
+  @doc false
+  # work_from/3 is `form_work/3` for the collection `work_collection/3` read.
+  @spec work_from(DispatchRun.t(), {Collection.t(), Connection.t(), Node.t()} | nil, map | nil) ::
+          {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
+  def work_from(%DispatchRun{}, _collection, nil), do: {:ok, nil}
+
+  def work_from(%DispatchRun{} = dispatch_run, collection, %{path: path}) do
+    case collection do
       nil ->
         {:ok, nil}
 
@@ -90,18 +109,13 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   @doc false
-  # submit_module/3 is the harness module with the submit program of the forge of
-  # `target` (`%{system:, path:}`), the target of the run of the queue `dispatch_run`,
-  # whose work item is `work_item`, as the latest start-up of the adapter of the
-  # collection `form_work/3` takes declared it (`Apiary.Nodes.Node`'s `submit_module`).
-  # Nil where there is no such collection, and where that start-up declared none.
-  @spec submit_module(DispatchRun.t(), WorkItem.t() | nil, map | nil) :: map | nil
-  def submit_module(%DispatchRun{} = dispatch_run, work_item, target) do
-    case collection(dispatch_run, work_item, target) do
-      {_collection, _connection, %Node{submit_module: %{} = module}} -> module
-      _none -> nil
-    end
-  end
+  # submit_module/1 is the harness module with the submit program of the run's forge: the
+  # one the latest start-up of the adapter of `collection`, which `work_collection/3`
+  # read, declared (`Apiary.Nodes.Node`'s `submit_module`). Nil for no collection, and
+  # where that start-up declared none.
+  @spec submit_module({Collection.t(), Connection.t(), Node.t()} | nil) :: map | nil
+  def submit_module({_collection, _connection, %Node{submit_module: %{} = module}}), do: module
+  def submit_module(_collection), do: nil
 
   @doc false
   # reach/3 is how the run's work entry reaches its target, from the collection
