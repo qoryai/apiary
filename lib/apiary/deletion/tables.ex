@@ -96,6 +96,7 @@ defmodule Apiary.Deletion.Tables do
     {"gate_decisions", :workspace},
     {"escalations", :workspace},
     {"stage_checks", :workspace},
+    {"stage_skips", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},

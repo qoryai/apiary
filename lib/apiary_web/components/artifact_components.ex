@@ -541,7 +541,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
     ~H"""
     <div id={@id} class="grid gap-6">
-      <figure :for={file <- @videos} class="grid gap-2">
+      <figure :for={{file, n} <- Enum.with_index(@videos)} class="grid gap-2">
         <video
           controls
           preload="metadata"
@@ -557,6 +557,32 @@ defmodule ApiaryWeb.ArtifactComponents do
             default={index == 0}
           />
         </video>
+        <%!-- The VideoSpeed hook sets the film's rate and presses its button; a patch keeps both. --%>
+        <div
+          id={"#{@id}-speed-#{n}"}
+          phx-hook="VideoSpeed"
+          phx-update="ignore"
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span id={"#{@id}-speed-#{n}-label"} class="text-[12.5px] text-muted">
+            {gettext("Speed")}
+          </span>
+          <div
+            role="group"
+            aria-labelledby={"#{@id}-speed-#{n}-label"}
+            class="flex items-center gap-1.5"
+          >
+            <button
+              :for={{rate, label} <- speeds()}
+              type="button"
+              data-rate={rate}
+              aria-pressed={to_string(rate == "1")}
+              class="btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2 tabular-nums"
+            >
+              {label}
+            </button>
+          </div>
+        </div>
         <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
       </figure>
     </div>
@@ -584,6 +610,17 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   defp inline_images, do: @inline_images
+
+  # The rates of a film's Speed row, each as the `data-rate` the VideoSpeed hook reads and
+  # its button's label; the film starts at 1x.
+  defp speeds do
+    [
+      {"0.5", gettext("0.5x")},
+      {"1", gettext("1x")},
+      {"1.5", gettext("1.5x")},
+      {"2", gettext("2x")}
+    ]
+  end
 
   defp content(:pending, _file), do: :pending
   defp content(content, file), do: Map.get(content, file.filename)

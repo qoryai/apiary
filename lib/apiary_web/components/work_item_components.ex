@@ -2480,7 +2480,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :stage, :map, required: true, doc: "the stage: `:name` and `:outputs`, its types"
   attr :work_item, :map, required: true, doc: "the work item, with its latest run as `:run`"
   attr :runs, :list, default: [], doc: "the stage's runs of the take in, oldest first"
-  attr :take_ins, :list, default: [], doc: "the earlier take ins with the stage's runs"
+
+  attr :skips, :list,
+    default: [],
+    doc:
+      "the stage's workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`)"
+
+  attr :take_ins, :list,
+    default: [],
+    doc: "the earlier take ins with the stage's runs and the entries the runner passed over"
+
   attr :outputs, :list, default: []
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
@@ -2662,6 +2671,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id="work-item-record"
         number={@work_item.number}
         runs={@runs}
+        skips={@skips}
         latest={@run}
         pieces={@pieces}
         verdicts={@verdicts}
@@ -2831,14 +2841,22 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :number, :integer, required: true
-  attr :output, :map, required: true
+
+  attr :output, :map,
+    required: true,
+    doc:
+      "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
+        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
+
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
   @doc false
   # output_frame/1 is one output of a stage, in a frame with its version, folded but for the
   # first (`open`). A folded frame's
   # text is read when it opens (`"open_frame"`, with its type). The frames keep the state the
-  # reader gave them when the page draws again.
+  # reader gave them when the page draws again. A frame whose version a gate `none`
+  # approved has the Approved badge and, after a check mark, the version, how it was
+  # approved and when, as Explore's approved Proposal frame has them.
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -2852,7 +2870,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         body: %{rendered: body},
         sources: sources,
         count: count,
-        heading: output_heading(assigns.output.type)
+        heading: output_heading(assigns.output.type),
+        approval: assigns.output[:approval]
       )
 
     ~H"""
@@ -2872,8 +2891,13 @@ defmodule ApiaryWeb.WorkItemComponents do
           <div class="q-xp-frame-h">
             <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
             <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
+            <.badge :if={@approval} color="info" class="q-xp-frame-b">{gettext("Approved")}</.badge>
           </div>
-          <p class="q-xp-cap">
+          <p :if={@approval} id={"#{@id}-approval"} class="q-xp-cap">
+            <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
+            <span><.rich text={approval_caption(@output.version, @approval)} /></span>
+          </p>
+          <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
           </p>
@@ -3631,6 +3655,30 @@ defmodule ApiaryWeb.WorkItemComponents do
       true ->
         versioned_caption(Format.number(run.version), by, at)
     end
+  end
+
+  # The caption of a stage output's version that a gate `none` approved: with no member,
+  # or accepted by the member `by` at the escalation that ended the stage.
+  defp approval_caption(version, %{automatic: true, at: at}) do
+    rich_gettext("Version %{version} · Approved automatically · %{when}",
+      version: Format.number(version),
+      when: time_tag(at, Format.day_time(at))
+    )
+  end
+
+  defp approval_caption(version, %{by: by, at: at}) do
+    if you?(by),
+      do:
+        rich_gettext("Version %{version} · Accepted by you · %{when}",
+          version: Format.number(version),
+          when: time_tag(at, Format.day_time(at))
+        ),
+      else:
+        rich_gettext("Version %{version} · Accepted by %{name} · %{when}",
+          version: Format.number(version),
+          name: by.name,
+          when: time_tag(at, Format.day_time(at))
+        )
   end
 
   defp versioned_caption(version, by, at) do
@@ -5047,6 +5095,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :class, :string, default: "q-xp-earlier"
   attr :number, :integer, default: nil, doc: "the work item's number, for `\"open_fold\"`"
   attr :runs, :list, required: true, doc: "the take in's runs, oldest first"
+
+  attr :skips, :list,
+    default: [],
+    doc:
+      "the workflow entries the runner passed over among `runs` (`Apiary.Stages.skips/1`): each a row before the first run after it"
+
   attr :latest, :map, default: nil, doc: "its latest run, where it is among `runs`"
 
   attr :pieces, :list,
@@ -5069,13 +5123,16 @@ defmodule ApiaryWeb.WorkItemComponents do
   # newest proposal's and questions' versions, each where it has a number; opened, each
   # run's line (`run_parts/4`). An earlier run of Explore that wrote a proposal is a fold with
   # that version, one without a result a fold with what happened; the latest run, a run
-  # with nothing to show, and a later stage's run, a row. A proposal the page has not read
+  # with nothing to show, and a later stage's run, a row. A workflow entry the runner passed
+  # over is a row with its workflow and the reason, before the first run queued after it
+  # (`skip_row/1`); the count leaves it out. A proposal the page has not read
   # (`:unread`) is read when its fold opens (`"open_fold"`, with its version). The folds
   # keep the state the reader gave them when the page draws again.
   defp record(assigns) do
     assigns =
       assign(assigns,
         count: length(assigns.runs),
+        rows: record_rows(assigns.runs, assigns.skips),
         pieces: assigns.pieces || explore_pieces(assigns.proposal, assigns.questions_version),
         verdicts:
           for(%{attempt: n} = run <- assigns.verdicts, is_integer(n), into: %{}, do: {n, run})
@@ -5095,8 +5152,10 @@ defmodule ApiaryWeb.WorkItemComponents do
           </span>
         </summary>
         <div class="q-xp-inner">
-          <%= for run <- @runs do %>
-            <%= case run_shows(run, run == @latest) do %>
+          <%= for {kind, run, i} <- @rows do %>
+            <.skip_row :if={kind == :skip} id={"#{@id}-skip-#{i}"} skip={run} />
+            <%= case kind == :run && run_shows(run, run == @latest) do %>
+              <% false -> %>
               <% :row -> %>
                 <div id={"#{@id}-#{run_dom(run)}"} class="q-xp-runrow">
                   <span class="q-xp-parts">
@@ -5140,6 +5199,42 @@ defmodule ApiaryWeb.WorkItemComponents do
         </div>
       </details>
     </section>
+    """
+  end
+
+  # The rows of the record's fold: each run, with each skip before the first run whose
+  # attempt is after the skip's `after_attempt`, and the skips after the last run at the
+  # end, as `{:run | :skip, row, place}`.
+  defp record_rows(runs, skips) do
+    runs = for run <- runs, do: {{run[:attempt] || 0, 1}, :run, run}
+    skips = for skip <- skips, do: {{skip.after_attempt, 2}, :skip, skip}
+
+    (runs ++ skips)
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {{key, _kind, _row}, place} -> {key, place} end)
+    |> Enum.with_index()
+    |> Enum.map(fn {{{_key, kind, row}, _place}, i} -> {kind, row, i} end)
+  end
+
+  attr :id, :string, required: true
+  attr :skip, :map, required: true, doc: "`%{workflow:, input:}`"
+
+  # A workflow entry the runner passed over: its workflow, then why it did not run.
+  defp skip_row(assigns) do
+    ~H"""
+    <div id={@id} class="q-xp-runrow">
+      <div class="grid min-w-0 flex-1 gap-0.5">
+        <span class="q-xp-parts">
+          <span class="q-xp-it"><b>{@skip.workflow}</b></span>
+        </span>
+        <span>
+          {gettext("No %{type}: %{workflow} did not run.",
+            type: StageComponents.type_words(@skip.input),
+            workflow: @skip.workflow
+          )}
+        </span>
+      </div>
+    </div>
     """
   end
 
@@ -5953,7 +6048,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
 
   # The earlier take ins, each folded: who took it in and when, how it ended, how many
-  # runs; inside, its runs, which counted apart from this take in. The proposals of its
+  # runs; inside, its runs, which counted apart from this take in, and the workflow entries
+  # the runner passed over in it (`:skips`), as the record's fold places them
+  # (`record_rows/2`). The proposals of its
   # runs that the page has not read (`:unread`) are read when its fold opens
   # (`"open_fold"`, with its place from 1). The folds keep the state the reader gave them
   # when the page draws again.
@@ -5981,14 +6078,17 @@ defmodule ApiaryWeb.WorkItemComponents do
         </summary>
         <div class="q-xp-inner">
           <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
-          <%= for run <- take_in.runs do %>
-            <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
-            <.run_body
-              id={"#{@id}-#{i}-#{run_dom(run)}-body"}
-              run={run}
-              item={@item}
-              now={@now}
-            />
+          <%= for {kind, run, k} <- record_rows(take_in.runs, Map.get(take_in, :skips, [])) do %>
+            <.skip_row :if={kind == :skip} id={"#{@id}-#{i}-skip-#{k}"} skip={run} />
+            <%= if kind == :run do %>
+              <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
+              <.run_body
+                id={"#{@id}-#{i}-#{run_dom(run)}-body"}
+                run={run}
+                item={@item}
+                now={@now}
+              />
+            <% end %>
           <% end %>
         </div>
       </details>

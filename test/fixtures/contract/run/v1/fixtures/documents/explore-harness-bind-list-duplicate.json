@@ -32,9 +32,9 @@
       ],
       "bind": {
         "agents": {
-          "reviewer": [
-            "a",
-            "b"
+          "reviewers": [
+            "copy-reviewer",
+            "copy-reviewer"
           ]
         }
       }

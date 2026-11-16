@@ -429,12 +429,12 @@
           }
         },
         "bind": {
-          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
+          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind, or, for a group role of the kind agents, to a list of agents. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "agents": {
-              "$ref": "#/$defs/harness_bind_roles"
+              "$ref": "#/$defs/harness_bind_agent_roles"
             },
             "commands": {
               "$ref": "#/$defs/harness_bind_roles"
@@ -640,7 +640,7 @@
       }
     },
     "harness_bind_roles": {
-      "description": "The roles of one kind of a bind, each to the name of the one entry of that kind that fills the role.",
+      "description": "The roles of the kind commands or skills of a bind, each to the name of the one entry of that kind that fills the role. Write one name: only an agents role can be a group, so a list fails here.",
       "type": "object",
       "propertyNames": {
         "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
@@ -648,6 +648,29 @@
       "additionalProperties": {
         "type": "string",
         "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+      }
+    },
+    "harness_bind_agent_roles": {
+      "description": "The roles of the kind agents of a bind, each to the name of the one agent that fills the role, or, for a group role, to the list of the agents that fill it, at least 1, such as reviewers: [copy-reviewer, legal-reviewer]. A name may appear twice in a list, and qory keeps it once. This schema accepts a list for any agents role; qory's compose fails for a list on a role that is not a group in the module manifests, and for a name on a group role.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+          },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+            }
+          }
+        ]
       }
     },
     "harness_names": {

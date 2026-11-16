@@ -354,7 +354,22 @@ defmodule Apiary.StacksTest do
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
-    test "refuse a flat bind, an unknown kind and a list of names in bind, fix first", ctx do
+    test "take a list of 1 or more agents for an agents role", ctx do
+      document = """
+      extends: {git: #{@stacks}, ref: v2}
+      bind:
+        agents:
+          developer: web-developer
+          reviewers: [copy-reviewer, legal-reviewer]
+          writers: [copywriter]
+      """
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
+    end
+
+    test "refuse a flat bind, an unknown kind, a commands or skills list and an empty agents list, fix first",
+         ctx do
       base = "extends: {git: #{@stacks}, ref: v2}\n"
 
       for {bind, message} <- [
@@ -366,9 +381,11 @@ defmodule Apiary.StacksTest do
                "bind: {agents: {developer: web-developer}}: commands/ship is a flat key."},
             {"{tools: {developer: web-developer}}",
              "Use agents, commands or skills under bind: tools is not a kind."},
-            {"{agents: {reviewer: [web-reviewer, brand-review]}}",
-             "Give one name per role: bind.agents.reviewer is a list."},
-            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."}
+            {"{commands: {ship: [web-ship, web-release]}}",
+             "Give one name per role: bind.commands.ship is a list."},
+            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."},
+            {"{agents: {reviewer: []}}",
+             "Give 1 or more agents for bind.agents.reviewer: the list is empty."}
           ] do
         assert refused(ctx, base <> "bind: #{bind}\n") == [message], bind
       end
@@ -382,6 +399,8 @@ defmodule Apiary.StacksTest do
             {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
             {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"},
             {"{agents: {developer: {name: web-developer}}}", "#/bind/agents/developer"},
+            {"{agents: {reviewers: [copy-reviewer, team/legal-reviewer]}}",
+             "#/bind/agents/reviewers"},
             {"[agents]", "#/bind"}
           ] do
         assert [error] = refused(ctx, base <> "bind: #{bind}\n"), bind
