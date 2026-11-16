@@ -571,6 +571,30 @@ defmodule Apiary.Harnesses.ReaderTest do
       end
     end
 
+    test "returns nil for submit when the key is absent" do
+      assert {:ok, %{submit: nil}} = Reader.template(source(@template))
+    end
+
+    test "returns submit as written" do
+      for send <- ["end_of_run", "after_gate"] do
+        assert {:ok, %{submit: %{"type" => "customer-facts", "send" => ^send}}} =
+                 read(with_value("submit", "{type: customer-facts, send: #{send}}"))
+      end
+    end
+
+    test "refuses a submit the schema refuses" do
+      for value <- [
+            "customer-facts",
+            "{type: customer-facts}",
+            "{send: end_of_run}",
+            "{type: customer-facts, send: at_once}",
+            "{type: Customer_Facts, send: end_of_run}",
+            "{type: #{String.duplicate("a", 65)}, send: end_of_run}",
+            "{type: customer-facts, send: end_of_run, command: make}"
+          ],
+          do: assert(read(with_value("submit", value)) == {:error, :invalid_template}, value)
+    end
+
     test "refuses an artifact_types that is not a list" do
       for value <- ["screenshot", "{name: screenshot}", "null", "1"],
           do:

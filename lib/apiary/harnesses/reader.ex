@@ -58,6 +58,11 @@ defmodule Apiary.Harnesses.Reader do
   custom type's full definition. `template/1` returns the list as written, and nil when
   the key is absent. The schema has no list of standard types, so the caller checks what
   the list means for the workspaces made from the template.
+
+  The schema also takes an optional `submit`, with `type` and `send`. `template/1`
+  returns it as written, and nil when the key is absent. The schema cannot check that
+  `type` is a structured entry of `artifact_types`, so the caller checks it
+  (`Apiary.Artifacts.TemplateTypes`).
   """
 
   alias Apiary.Kinds.{Budget, Schema}
@@ -127,8 +132,10 @@ defmodule Apiary.Harnesses.Reader do
 
   @typedoc """
   A factory's `process.yaml`: its texts, the workspace type, the stack its workflows run
-  on, `process`, the `qory.process/v1` document as written, and `artifact_types`, the
-  artifact types its workspaces use as written, nil when the key is absent.
+  on, `process`, the `qory.process/v1` document as written, `artifact_types`, the
+  artifact types its workspaces use as written, nil when the key is absent, and
+  `submit`, the submit step of a run as written, `%{"type" => type, "send" => send}`,
+  nil when the key is absent.
   """
   @type template :: %{
           name: String.t(),
@@ -137,7 +144,8 @@ defmodule Apiary.Harnesses.Reader do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          submit: %{String.t() => String.t()} | nil
         }
 
   # qory's process.schema.json, under the application's priv.
@@ -419,7 +427,8 @@ defmodule Apiary.Harnesses.Reader do
        type: file["type"],
        stack: file["stack"],
        process: Apiary.Processes.with_description_line_breaks(file["process"]),
-       artifact_types: file["artifact_types"]
+       artifact_types: file["artifact_types"],
+       submit: file["submit"]
      }}
   end
 

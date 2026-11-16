@@ -235,7 +235,8 @@ defmodule Apiary.Stacks.Sources do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          submit: %{String.t() => String.t()} | nil
         }
 
   @typedoc """
