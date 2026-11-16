@@ -1812,8 +1812,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: secrets -->
 - A run that stops because its gateway's key does not allow stored secrets now shows
   who adds an allowed key and where, in place of Contact support.
+<!-- /feature -->
 - A run's notes on missing session events sit inside or after the run's steps, never
   above them. Each Claude Code session's **Run the agent** has the note about the wall
   or the hooks, and each session on another runtime the note about its runtime. A run
