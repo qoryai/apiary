@@ -1154,18 +1154,24 @@ defmodule Apiary.Stages do
   end
 
   # The added version counts as existing: as an input of the stage, or as an output at
-  # its gate.
+  # its gate. An output at a gate `none` is also an input of each later stage that the
+  # approval moves the work item to, though it is not read yet (`approved/3`).
   defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type) do
+    added = fn facts -> %{facts | missing_inputs: facts.missing_inputs -- [type]} end
+
     case on_version_added(work_item, stage) do
       :resume ->
-        stepped(work_item, version, stage, :resume, fn facts ->
-          %{facts | missing_inputs: facts.missing_inputs -- [type]}
-        end)
+        stepped(work_item, version, stage, :resume, added)
 
       :version_added ->
-        stepped(work_item, version, stage, :version_added, fn facts ->
-          %{facts | failed_checks: facts.failed_checks -- [type]}
-        end)
+        stepped(
+          work_item,
+          version,
+          stage,
+          :version_added,
+          fn facts -> %{facts | failed_checks: facts.failed_checks -- [type]} end,
+          added
+        )
 
       nil ->
         :none
