@@ -2087,7 +2087,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: workflow_model -->
-- `gate_decisions` (20261116140000 and 20261116140100): a nullable column
+- `gate_decisions` (20261116170000 and 20261116170100): a nullable column
   `to_stage_id`, the stage a move went to, with a check that only a move has one. The
   column has no default, so adding it rewrites no row. The first migration adds the
   check without a scan, and the second validates it with a scan that does not block

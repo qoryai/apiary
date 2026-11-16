@@ -7,7 +7,7 @@ defmodule Apiary.Repo.Migrations.KeepTheStageAMoveEnters do
   # move written before has no `to_stage_id` and stays open.
   #
   # The column has no default, so adding it rewrites no row. The check is added NOT
-  # VALID, so adding it takes no scan of the table under its lock; `20261116140100`
+  # VALID, so adding it takes no scan of the table under its lock; `20261116170100`
   # validates it. It changes no row.
   def up do
     alter table(:gate_decisions) do

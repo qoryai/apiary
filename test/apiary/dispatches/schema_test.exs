@@ -80,7 +80,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @model_keys Apiary.Repo.Migrations.KeepARunSModelKeys
   # The later migration that keeps the stage a move enters, whose column is on the gate
   # decisions: down first, up last.
-  @move_stage_version 20_261_116_140_000
+  @move_stage_version 20_261_116_170_000
   @move_stage Apiary.Repo.Migrations.KeepTheStageAMoveEnters
 
   setup_all do
