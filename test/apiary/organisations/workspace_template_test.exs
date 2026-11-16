@@ -119,6 +119,16 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       select: e.action
   end
 
+  # The Qory harness's main served at a commit whose template has `submit` with `type`.
+  defp qory_submitting!(type) do
+    QoryHarnessFixture.files()
+    |> Map.update!(
+      "modules/software-factory/process.yaml",
+      &(&1 <> "submit:\n  type: #{type}\n  send: end_of_run\n")
+    )
+    |> QoryHarnessFixture.serve!()
+  end
+
   # What the organisation has, to compare before and after a create that fails.
   defp held(%Scope{organisation: %{id: id}}) do
     %{
@@ -184,6 +194,18 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert version.template["commit"] == repository.commit
       assert Processes.stage(version, "st_r79kph11eg")["name"] == "Discover"
       assert Qory.current() == repository.commit
+    end
+
+    test "create_workspace_of_kind/3 records the template's submit in version 1" do
+      scope = scope_fixture()
+      repository = qory_submitting!("submission")
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
+
+      version = first_version(workspace)
+      assert version.template["commit"] == repository.commit
+      assert version.template["submit"] == %{"type" => "submission", "send" => "end_of_run"}
     end
 
     test "a failed read of the Qory harness makes nothing" do
@@ -572,6 +594,41 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert [%{"description" => "Draft an answer.\nCheck its tone.\nSend it."}, _check] =
                first_version(workspace).document["stages"]
+    end
+
+    test "a template's submit passes the schema and is recorded in version 1" do
+      scope = scope_fixture()
+      source = linked!(scope)
+
+      text =
+        File.read!(@file_path) <>
+          """
+          artifact_types:
+            - name: facts
+              base_view: structured
+              size_limit: 65536
+              max_files: 1
+              json_schema: {type: object}
+          submit:
+            type: facts
+            send: after_gate
+          """
+
+      assert {:ok, read} = Reader.template(text)
+      start = %{source: source, commit: @commit, template: Map.put(read, :module, "support-desk")}
+
+      assert {:ok, workspace} = Organisations.create_workspace_from_template(scope, start)
+
+      assert first_version(workspace).template == %{
+               "source" => "repository",
+               "git" => @harness,
+               "commit" => @commit,
+               "module" => "support-desk",
+               "stack" => "support",
+               "type" => read.type,
+               "version" => nil,
+               "submit" => %{"type" => "facts", "send" => "after_gate"}
+             }
     end
 
     test "a process that does not pass the check is refused before the transaction" do

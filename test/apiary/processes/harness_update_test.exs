@@ -56,6 +56,14 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end)
   end
 
+  # `files` with the template's submit step set to `type`, sent after the gate.
+  defp submitting(files \\ QoryHarnessFixture.files(), type) do
+    Map.update!(files, @process, &(&1 <> "submit:\n  type: #{type}\n  send: after_gate\n"))
+  end
+
+  # The template's submit step, named `type`, as a version's record keeps it.
+  defp submit(type), do: %{"type" => type, "send" => "after_gate"}
+
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
   defp calls do
     receive do
@@ -268,6 +276,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                HarnessUpdate.save(ctx.scope, ctx.workspace, update)
 
       assert version.template["commit"] == commit
+      refute Map.has_key?(version.template, "submit")
       assert version.author_id == ctx.scope.user.id
       assert Processes.stage(version, @shape)["description"] == "Plan it."
       assert Processes.harness_template(version)["commit"] == commit
@@ -278,6 +287,25 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                  from e in Entry,
                    where: e.workspace_id == ^ctx.workspace.id and e.action == "process.edit"
                )
+    end
+
+    test "keeps the template's submit in a trial and in the version it saves", ctx do
+      commit = main_at!(submitting("submission"))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.template["submit"] == submit("submission")
+
+      assert {:ok, %Version{status: :trial} = trial} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      assert trial.template["submit"] == submit("submission")
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:ok, %Version{status: :current} = version} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert %{"commit" => ^commit, "submit" => %{"type" => "submission"}} = version.template
+      assert Processes.harness_template(Repo.reload!(version))["submit"] == submit("submission")
     end
 
     test "shows a hidden standard type the template lists, with an audit entry", ctx do
@@ -884,6 +912,16 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert {:error, {:types, [_refusal | _more]}} = HarnessUpdate.follow(ctx.workspace)
       assert :ok = HarnessUpdate.follow_all()
       assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "the refresh keeps the template's submit in the version it saves", ctx do
+      commit = main_at!(submitting("submission"))
+
+      assert {:ok, %Version{number: 2, author_id: nil} = version} =
+               HarnessUpdate.follow(ctx.workspace)
+
+      assert %{"commit" => ^commit, "submit" => %{"send" => "after_gate"}} = version.template
+      assert version.template["submit"] == submit("submission")
     end
 
     test "a machine type key the instance does not have is saved as the file has it", ctx do

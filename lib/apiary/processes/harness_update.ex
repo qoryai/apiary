@@ -478,17 +478,21 @@ defmodule Apiary.Processes.HarnessUpdate do
       added_types: added_types(workspace, template.artifact_types),
       stack: if(chosen.stack != template.stack, do: %{from: chosen.stack, to: template.stack}),
       artifact_types: template.artifact_types,
-      template: %{
-        "source" => Atom.to_string(source),
-        "git" => if(source == :qory, do: Qory.git(), else: chosen.git),
-        "commit" => commit,
-        "module" => template.module,
-        "stack" => template.stack,
-        "type" => template.type,
-        "version" => nil,
-        "ref_kind" => Atom.to_string(kind),
-        "ref" => name
-      }
+      template:
+        Processes.with_submit(
+          %{
+            "source" => Atom.to_string(source),
+            "git" => if(source == :qory, do: Qory.git(), else: chosen.git),
+            "commit" => commit,
+            "module" => template.module,
+            "stack" => template.stack,
+            "type" => template.type,
+            "version" => nil,
+            "ref_kind" => Atom.to_string(kind),
+            "ref" => name
+          },
+          template
+        )
     }
   end
 

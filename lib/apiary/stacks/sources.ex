@@ -2218,16 +2218,18 @@ defmodule Apiary.Stacks.Sources do
              )
            ) do
       {:ok,
-       %{
-         "source" => "repository",
-         "git" => git,
-         "commit" => commit,
-         "module" => template.module,
-         "stack" => template.stack,
-         "type" => template.type,
-         "version" => nil
-       }}
-    end
+       Apiary.Processes.with_submit(
+         %{
+           "source" => "repository",
+           "git" => git,
+           "commit" => commit,
+           "module" => template.module,
+           "stack" => template.stack,
+           "type" => template.type,
+           "version" => nil
+         },
+         template
+       )}    end
   end
 
   # The `ref` of the row of `source`, its options, and the address its record has.
