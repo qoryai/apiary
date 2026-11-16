@@ -411,6 +411,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             work_item={@item}
             runs={@view.runs}
             skips={@view.skips}
+            passed_over={@view.passed_over}
+            viewer={@current_scope.user.id}
+            stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}

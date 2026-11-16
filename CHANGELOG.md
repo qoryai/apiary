@@ -12,6 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- The tab of a stage that a track passed over whole reads "<stage> did not run", with the
+  reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>." The
+  record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not
   offer is `422` `invalid_artifact` with `names` `["track"]`.

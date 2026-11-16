@@ -1637,6 +1637,132 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "a stage passed over whole by a track (A-23)" do
+    # Explore's gate offers Standard and Fast track; Shape runs shape-a-ticket on Standard
+    # only.
+    defp tracked!(scope) do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast-track"])}
+
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{
+              "sequence" => [%{"workflow" => "shape-a-ticket"}],
+              "when" => %{"track" => "standard"}
+            })
+
+          %{"id" => @build} = stage ->
+            %{
+              stage
+              | "sequence" => [
+                  %{"workflow" => "build-it"},
+                  %{"workflow" => "shape-a-ticket", "unless" => %{"track" => "fast-track"}}
+                ]
+            }
+
+          stage ->
+            stage
+        end)
+
+      document =
+        document
+        |> Map.put("stages", stages)
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    end
+
+    defp confirmed!(scope, track) do
+      tracked!(scope)
+      work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    test "the tab says the stage did not run, and which approval skips it", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = confirmed!(scope, "fast-track")
+      assert %WorkItem{stage_id: stage_id} = work_item
+      assert stage_id != @shape
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(view, "#work-item-tab-passed-over-h", "Shape did not run")
+
+      day = ApiaryWeb.Format.day(DateTime.utc_now())
+
+      assert view
+             |> element("#work-item-tab-passed-over-why")
+             |> render() =~
+               "You approved Fast track at Explore&#39;s gate on #{day}. Fast track skips Shape."
+    end
+
+    test "the record of a stage lists an entry the track passed over, with the reason", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> confirmed!("fast-track")
+        |> end_run!(fn run, _registered -> passed!(run) end)
+
+      assert %WorkItem{stage_id: @build} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(
+               view,
+               "#work-item-record-skip-1",
+               "shape-a-ticket did not run: it does not run on Fast track."
+             )
+    end
+
+    test "the tab of a stage the work item went through has no such block", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = confirmed!(scope, "standard")
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+      refute has_element?(view, "#work-item-tab-passed-over")
+    end
+
+    test "a person's move into the stage later removes the block: it runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = confirmed!(scope, "fast-track")
+
+      {:ok, moved} =
+        Stages.move(scope, work_item, @shape, nil, expect_stage: reload(work_item).stage_id)
+
+      assert %WorkItem{stage_id: @shape} = moved
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+      refute has_element?(view, "#work-item-tab-passed-over")
+    end
+
+    test "another member's approval reads A member approved", %{conn: conn, scope: scope} do
+      work_item = confirmed!(scope, "fast-track")
+      %{user: other} = Apiary.OrganisationsFixtures.member_fixture(scope, :admin)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), other), stage(scope, work_item.number, @shape))
+
+      assert view |> element("#work-item-tab-passed-over-why") |> render() =~
+               "A member approved Fast track at Explore&#39;s gate on"
+    end
+  end
+
   describe "an approval with a track (A-23)" do
     test "the gate takes the track through the page's action, and says what a refusal needs" do
       flow = %{stage: %{name: "Shape"}}

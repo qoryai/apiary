@@ -123,6 +123,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       skips: Stages.skips(row),
       # Those of the earlier take ins, each with its take in (`Apiary.Stages.earlier_skips/1`).
       earlier_skips: Stages.earlier_skips(row),
+      # The stages the runner passed over whole in the take in (`Apiary.Stages.stage_skips/1`).
+      stage_skips: Stages.stage_skips(row),
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,

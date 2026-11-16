@@ -1436,13 +1436,18 @@ defmodule Apiary.Stages do
 
   # skips/1 is the workflow entries the stage runner passed over in the work item's
   # current take in, because their condition was not met (`Apiary.Stages.Skip`), oldest
-  # first: each with its stage, workflow, the input type of its condition and
-  # `after_attempt`, the newest attempt of the take in when the runner passed it over (0
-  # for none).
+  # first: each with its stage, workflow, the condition that held it back as `input` (a
+  # type) or `track` (an id, with `track_name`), `negated` (true for an `unless` that was
+  # met) and `after_attempt`, the newest attempt of the take in when the runner passed it
+  # over (0 for none).
   @doc false
   @spec skips(WorkItem.t()) :: [map]
-  def skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
-    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in == ^take_in))
+  def skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in),
+    do:
+      read_skips(
+        from(s in Skip, where: s.work_item_id == ^id and s.take_in == ^take_in),
+        track_names(work_item)
+      )
 
   def skips(%WorkItem{}), do: []
 
@@ -1450,35 +1455,76 @@ defmodule Apiary.Stages do
   # one, each with its `take_in`.
   @doc false
   @spec earlier_skips(WorkItem.t()) :: [map]
-  def earlier_skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
-    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in < ^take_in))
+  def earlier_skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in),
+    do:
+      read_skips(
+        from(s in Skip, where: s.work_item_id == ^id and s.take_in < ^take_in),
+        track_names(work_item)
+      )
 
   def earlier_skips(%WorkItem{}), do: []
 
   # stage_skips/1 is the stages the runner passed over whole in the work item's current take
   # in, because a condition on the stage held them back, oldest first: each with its
   # `stage_id`, the condition as `input` (a type) or `track` (an id), `negated` (true for an
-  # `unless` that was met), and when it was passed over.
+  # `unless` that was met), when it was passed over, and `approved`, the approval that put
+  # the work item on the track that passed it over: the newest approval with a track made
+  # before the stage was passed over, as `%{track_id, track_name, stage_id, user_id, at}`;
+  # nil for none, and for a condition that is no track's. `track_name` is the name the process version declares, else the id.
   @doc false
   @spec stage_skips(WorkItem.t()) :: [map]
-  def stage_skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in) do
+  def stage_skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in) do
+    names = track_names(work_item)
+
     Repo.all(
       from s in Skip,
         where: s.work_item_id == ^id and s.take_in == ^take_in and is_nil(s.workflow),
-        order_by: [s.inserted_at, s.id],
-        select: %{
-          stage_id: s.stage_id,
-          input: s.input,
-          track: s.track,
-          negated: s.negated,
-          inserted_at: s.inserted_at
-        }
+        order_by: [s.inserted_at, s.id]
     )
+    |> Enum.map(fn skip ->
+      %{
+        stage_id: skip.stage_id,
+        input: skip.input,
+        track: skip.track,
+        track_name: names[skip.track] || skip.track,
+        negated: skip.negated,
+        inserted_at: skip.inserted_at,
+        approved: skip.track && approved_track(id, skip.inserted_at, names)
+      }
+    end)
   end
 
   def stage_skips(%WorkItem{}), do: []
 
-  defp read_skips(query) do
+  defp approved_track(work_item_id, before, names) do
+    case Repo.one(
+           from d in GateDecision,
+             where:
+               d.work_item_id == ^work_item_id and d.kind == :approve and not is_nil(d.track) and
+                 d.inserted_at <= ^before,
+             order_by: [desc: d.inserted_at, desc: d.id],
+             limit: 1
+         ) do
+      nil ->
+        nil
+
+      decision ->
+        %{
+          track_id: decision.track,
+          track_name: names[decision.track] || decision.track,
+          stage_id: decision.stage_id,
+          user_id: decision.user_id,
+          at: decision.inserted_at
+        }
+    end
+  end
+
+  # The names of the tracks the work item's process version declares, by id.
+  defp track_names(work_item),
+    do:
+      Map.new(Processes.version_for(work_item).document["tracks"] || [], &{&1["id"], &1["name"]})
+
+  defp read_skips(query, names) do
     Repo.all(
       from s in query,
         where: not is_nil(s.workflow),
@@ -1494,6 +1540,7 @@ defmodule Apiary.Stages do
           after_attempt: s.after_attempt
         }
     )
+    |> Enum.map(&Map.put(&1, :track_name, names[&1.track] || &1.track))
   end
 
   defp proposed(%DispatchRun{result_outcome: :proposal} = run),
