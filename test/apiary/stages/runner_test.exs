@@ -157,12 +157,12 @@ defmodule Apiary.Stages.RunnerTest do
       # One point for each failed check.
       assert %{state: :escalated, actions: [{:escalate, :check_failed, points}]} =
                Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
-                 failed_checks: ["proposal", "change"]
+                 failed_checks: ["proposal", "submission"]
                })
 
       assert points == [
                again("No proposal was stored in this stage."),
-               again("No change was stored in this stage.")
+               again("No submission was stored in this stage.")
              ]
     end
   end
@@ -196,7 +196,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a run with no verdict escalates before the checks read a failed output" do
       outcome =
         Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
-          failed_checks: ["change"]
+          failed_checks: ["submission"]
         })
 
       assert outcome.actions == [{:escalate, :run_stopped, [@no_verdict]}]
@@ -285,7 +285,7 @@ defmodule Apiary.Stages.RunnerTest do
 
       outcome =
         Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
-          failed_checks: ["change"]
+          failed_checks: ["submission"]
         })
 
       assert %{state: :escalated, position: %{entry: 2}, actions: [{:escalate, :check_failed, _}]} =
@@ -433,7 +433,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a failure at the round limit escalates round_limit at the end" do
       outcome =
         Runner.step(build(), pos(1, 0, 3), {:run, {:verdict, :passed, nil}}, %{
-          failed_checks: ["demo-video", "change"]
+          failed_checks: ["demo-video", "submission"]
         })
 
       assert outcome.state == :escalated
@@ -445,7 +445,7 @@ defmodule Apiary.Stages.RunnerTest do
                 [
                   again("3 of 3 rounds ran."),
                   again("No demo-video was stored in this stage."),
-                  again("No change was stored in this stage.")
+                  again("No submission was stored in this stage.")
                 ]}
              ]
     end
@@ -521,7 +521,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "accept of a stopped run at the last entry goes to the gate, with no checks" do
       assert %{state: :at_gate, position: %{entry: 1}} =
                Runner.step(stage([wf("a")]), pos(0, nil, 1), {:accept, :run_stopped}, %{
-                 failed_checks: ["change"]
+                 failed_checks: ["submission"]
                })
     end
 
@@ -531,7 +531,7 @@ defmodule Apiary.Stages.RunnerTest do
                  stage([wf("a")], gate: %{"kind" => "none"}),
                  pos(0, nil, 1),
                  {:accept, :run_stopped},
-                 %{failed_checks: ["change"]}
+                 %{failed_checks: ["submission"]}
                )
     end
 

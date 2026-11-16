@@ -429,7 +429,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert shown_list(workspace) == nil
       assert audit_entries(workspace) == []
-      assert length(Artifacts.types(workspace)) == 11
+      assert length(Artifacts.types(workspace)) == 10
     end
 
     test "leaves types/1 with what the template listed and the always-on types", ctx do

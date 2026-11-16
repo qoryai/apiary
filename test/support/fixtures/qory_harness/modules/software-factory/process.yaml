@@ -51,7 +51,6 @@ artifact_types:
   - name: demo-video
   - name: explainer
   - name: decision-record
-  - name: change
   - name: submission
     base_view: structured
     size_limit: 1048576

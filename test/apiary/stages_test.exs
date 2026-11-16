@@ -1857,7 +1857,11 @@ defmodule Apiary.StagesTest do
           "outputs" => [
             %{"type" => "proposal", "required" => true},
             %{"type" => "mockup", "required" => true},
-            %{"type" => "change", "required" => true, "check" => %{"reported" => "checks-passed"}}
+            %{
+              "type" => "submission",
+              "required" => true,
+              "check" => %{"reported" => "checks-passed"}
+            }
           ]
         })
       ])

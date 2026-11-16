@@ -1108,6 +1108,21 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "change is no standard type: a push of it is 422 unknown_type", ctx do
+      file = {"change.json", "application/json", ~s({"url":"https://forge.example.com/pr/4"})}
+      conn = write(ctx, "/artifacts", push_body("change", [file]))
+
+      assert json_response(conn, 422) == %{
+               "error" => "unknown_type",
+               "type" => "change",
+               "message" =>
+                 "Define the artifact type change in the workspace's Artifact types, " <>
+                   "then run the round again."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "what the push returns is answered with the type, its limit and the member",
          ctx do
       cases = [

@@ -19,7 +19,7 @@ defmodule Apiary.Processes.ExportTest do
   @moduletag with_features: Apiary.Features.all()
 
   # Every standard type no workspace has to show, in Core's order.
-  @seven ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video change)
+  @hideable ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video)
 
   @schema ["contract", "harness", "v1", "process.schema.json"]
 
@@ -106,7 +106,7 @@ defmodule Apiary.Processes.ExportTest do
       assert template.name == workspace.name
       assert template.type == "qory.software"
       assert template.stack == "core"
-      assert Enum.map(template.artifact_types, & &1["name"]) == @seven
+      assert Enum.map(template.artifact_types, & &1["name"]) == @hideable
       assert Enum.all?(template.artifact_types, &(map_size(&1) == 1))
     end
 
@@ -144,7 +144,7 @@ defmodule Apiary.Processes.ExportTest do
       })
 
       assert exported(workspace).artifact_types ==
-               Enum.map(@seven -- ["screenshot", "demo-video"], &%{"name" => &1}) ++
+               Enum.map(@hideable -- ["screenshot", "demo-video"], &%{"name" => &1}) ++
                  [
                    %{
                      "name" => "bid-set",
