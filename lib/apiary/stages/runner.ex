@@ -63,9 +63,11 @@ defmodule Apiary.Stages.Runner do
   #     of `T` that the stage reads has a file of more than 0 bytes (`facts.counted`).
   #     Otherwise the runner starts no run for it and passes it over (`{:skip, spec}`):
   #     outside a loop the sequence goes on with its next entry; in a loop the ring goes
-  #     on, as after a run with no verdict, and a loop whose every workflow is passed over
-  #     is passed over whole. An output with such a condition is required only while `T`
-  #     counts (`required?/2`).
+  #     on, as after a run with no verdict. A loop whose every entry is passed over is
+  #     passed over too: once, with no round counted, and Request changes, Run another
+  #     round and a failed check never start it again. A stage does not wait for an
+  #     undeclared workflow whose condition is not met. An output with such a condition is
+  #     required only while `T` counts (`required?/2`).
   @moduledoc false
 
   alias Apiary.Stages.Points
@@ -200,7 +202,7 @@ defmodule Apiary.Stages.Runner do
   end
 
   def step(stage, _position, :request_changes, facts) do
-    case first_loop(stage) do
+    case List.first(loops(stage, facts)) do
       nil -> start(stage, at(stage, 0, 1), facts)
       index -> start(stage, %{entry: index, loop_entry: 0, round: 1}, facts)
     end
@@ -227,7 +229,7 @@ defmodule Apiary.Stages.Runner do
   def step(stage, position, {:another_round, cause}, facts) do
     cond do
       at_end?(stage, position) ->
-        case last_loop(stage) do
+        case List.last(loops(stage, facts)) do
           nil -> start(stage, at(stage, 0, position.round), facts)
           index -> start(stage, %{entry: index, loop_entry: 0, round: position.round + 1}, facts)
         end
@@ -251,13 +253,13 @@ defmodule Apiary.Stages.Runner do
   end
 
   # Starts at `position` once every required input exists and every workflow of the
-  # stage is declared.
+  # stage whose condition is met is declared.
   defp start_checked(stage, position, facts) do
     cond do
       missing_inputs(facts) != [] ->
         %{state: :waiting_inputs, position: position, actions: []}
 
-      Enum.any?(workflows(stage), &(&1 in undeclared(facts))) ->
+      Enum.any?(workflows(stage, Map.get(facts, :counted, [])), &(&1 in undeclared(facts))) ->
         %{state: :waiting_workflow, position: position, actions: []}
 
       true ->
@@ -288,7 +290,7 @@ defmodule Apiary.Stages.Runner do
       not in_loop?(position) ->
         skipped([skip(stage, position, facts)], start(stage, next(stage, position), facts))
 
-      Enum.all?(body(stage, position.entry), &unmet(&1, facts)) ->
+      passed_over?(stage, position.entry, facts) ->
         skips =
           for j <- 0..(length(body(stage, position.entry)) - 1),
               do: skip(stage, %{position | loop_entry: j}, facts)
@@ -327,13 +329,7 @@ defmodule Apiary.Stages.Runner do
   @doc false
   @spec condition_inputs(map) :: [String.t()]
   def condition_inputs(stage) do
-    entries =
-      Enum.flat_map(sequence(stage), fn
-        %{"loop" => %{"body" => body}} -> body
-        entry -> [entry]
-      end)
-
-    for %{"when" => %{"input" => type}} <- entries ++ (Map.get(stage, "outputs") || []),
+    for %{"when" => %{"input" => type}} <- entries(stage) ++ (Map.get(stage, "outputs") || []),
         is_binary(type),
         uniq: true,
         do: type
@@ -471,7 +467,7 @@ defmodule Apiary.Stages.Runner do
       true ->
         gaps = check_gaps(failed)
 
-        case last_loop(stage) do
+        case List.last(loops(stage, facts)) do
           nil ->
             escalate(:check_failed, Points.check_failed(failed), position)
 
@@ -560,16 +556,41 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # workflows/1 is the stage's workflow names, in order, each once.
+  # loops/2 is the indexes of the stage's loops that are not passed over with `facts`
+  # (`passed_over?/3`), in order.
+  defp loops(stage, facts) do
+    for {%{"loop" => _loop}, index} <- Enum.with_index(sequence(stage)),
+        not passed_over?(stage, index, facts),
+        do: index
+  end
+
+  # Whether the loop at `index` is passed over: the condition of every entry of its body
+  # is not met.
+  defp passed_over?(stage, index, facts) do
+    body = body(stage, index)
+    body != [] and Enum.all?(body, &unmet(&1, facts))
+  end
+
+  # workflows/1 is the stage's workflow names, in order, each once; workflows/2 those of
+  # its entries whose condition is met with the input types that count, `counted`.
   @doc false
   @spec workflows(map) :: [String.t()]
-  def workflows(stage) do
-    stage
-    |> sequence()
-    |> Enum.flat_map(fn
+  def workflows(stage), do: names(entries(stage))
+
+  @doc false
+  @spec workflows(map, [String.t()]) :: [String.t()]
+  def workflows(stage, counted),
+    do: names(Enum.filter(entries(stage), &is_nil(unmet(&1, %{counted: counted}))))
+
+  defp entries(stage) do
+    Enum.flat_map(sequence(stage), fn
       %{"loop" => %{"body" => body}} -> body
       entry -> [entry]
     end)
+  end
+
+  defp names(entries) do
+    entries
     |> Enum.map(& &1["workflow"])
     |> Enum.filter(&is_binary/1)
     |> Enum.uniq()

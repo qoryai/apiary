@@ -2604,7 +2604,8 @@ defmodule Apiary.StagesTest do
       assert [%{workflow: "capture-demos"}] = Stages.skips(work_item)
     end
 
-    test "a skip of another organisation's work item is not this work item's", %{scope: scope} do
+    test "skips/1 lists only the work item's skips, each stored under its work item's organisation",
+         %{scope: scope} do
       work_item = at_verify!(scope, fn _work_item -> :ok end)
       %{scope: other} = sign_up_fixture()
       other_item = at_verify!(other, fn _work_item -> :ok end)

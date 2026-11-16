@@ -1237,7 +1237,8 @@ defmodule Apiary.Stages do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
-      outputs = outputs(work_item, version, stage, artifacts)
+      counted = counted(work_item, version, stage, artifacts)
+      outputs = outputs(work_item, version, stage, artifacts, counted)
       missing = missing(outputs)
 
       %{
@@ -1247,12 +1248,12 @@ defmodule Apiary.Stages do
         rounds: shown_rounds(stage, work_item.stage_entry),
         loop: is_integer(work_item.loop_entry),
         state: state,
-        gaps: shown_gaps(escalation, work_item, stage, artifacts),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts, counted),
         outputs: outputs,
         missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
-        waiting_workflow: waiting_workflow(work_item, stage),
+        waiting_workflow: waiting_workflow(work_item, stage, counted),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
@@ -1374,22 +1375,34 @@ defmodule Apiary.Stages do
   # for none).
   @doc false
   @spec skips(WorkItem.t()) :: [map]
-  def skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in) do
+  def skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
+    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in == ^take_in))
+
+  def skips(%WorkItem{}), do: []
+
+  # earlier_skips/1 is the entries `skips/1` lists, of the take ins before the current
+  # one, each with its `take_in`.
+  @doc false
+  @spec earlier_skips(WorkItem.t()) :: [map]
+  def earlier_skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
+    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in < ^take_in))
+
+  def earlier_skips(%WorkItem{}), do: []
+
+  defp read_skips(query) do
     Repo.all(
-      from s in Skip,
-        where: s.work_item_id == ^id and s.take_in == ^take_in,
-        order_by: [s.after_attempt, s.inserted_at],
+      from s in query,
+        order_by: [s.take_in, s.after_attempt, s.inserted_at],
         select: %{
           stage_id: s.stage_id,
           workflow: s.workflow,
           input: s.input,
           round: s.round,
+          take_in: s.take_in,
           after_attempt: s.after_attempt
         }
     )
   end
-
-  def skips(%WorkItem{}), do: []
 
   defp proposed(%DispatchRun{result_outcome: :proposal} = run),
     do: if(explore_run?(run), do: :passed)
@@ -1637,6 +1650,9 @@ defmodule Apiary.Stages do
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
 
+    # Read once per event: the outputs' checks and the runner both use it.
+    counted = counted(work_item, version, stage, artifacts)
+
     %{
       missing_inputs:
         for(
@@ -1644,10 +1660,10 @@ defmodule Apiary.Stages do
             inputs(work_item, version, stage, artifacts),
           do: type
         ),
-      undeclared: undeclared(workspace, declarations),
+      undeclared: undeclared(workspace, Map.take(declarations, Runner.workflows(stage, counted))),
       declarations: declarations,
-      counted: counted(work_item, version, stage, artifacts),
-      failed_checks: missing(outputs(work_item, version, stage, artifacts)),
+      counted: counted,
+      failed_checks: missing(outputs(work_item, version, stage, artifacts, counted)),
       machine: version.document["machine"],
       test: work_item.test
     }
@@ -2420,9 +2436,9 @@ defmodule Apiary.Stages do
   end
 
   # An output with a condition is required only while its input type counts
-  # (`Runner.required?/2`).
-  defp outputs(work_item, version, stage, artifacts) do
-    counted = counted(work_item, version, stage, artifacts)
+  # (`Runner.required?/2`), with `counted` as `counted/4` reads it, read here for nil.
+  defp outputs(work_item, version, stage, artifacts, counted \\ nil) do
+    counted = counted || counted(work_item, version, stage, artifacts)
 
     for output <- Map.get(stage, "outputs", []) do
       type = output["type"]
@@ -2572,10 +2588,16 @@ defmodule Apiary.Stages do
 
   # A stage that waits for a workflow shows why; any other with no escalation, the gaps
   # of the failed checks that started its round. An escalation has its points instead.
-  defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
+  defp shown_gaps(
+         nil,
+         %WorkItem{stage_state: :waiting_workflow} = work_item,
+         stage,
+         artifacts,
+         counted
+       ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage), Processes.declared_snapshot(workspace)} do
+    case {waiting_workflow(work_item, stage, counted), Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         case Sources.chosen(workspace) do
           %{choice: :qory} -> not_in_qory(stage["name"], workflow)
@@ -2587,7 +2609,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp shown_gaps(escalation, work_item, stage, artifacts),
+  defp shown_gaps(escalation, work_item, stage, artifacts, _counted),
     do: gaps(escalation, work_item, stage, artifacts)
 
   # not_listed/4 is why a stage waits for a workflow its harness did not list.
@@ -2632,16 +2654,20 @@ defmodule Apiary.Stages do
        do: check.gaps
   end
 
-  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
+  # The first undeclared workflow of the stage whose condition is met, with `counted`.
+  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage, counted) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
-      Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
+      Map.new(
+        Runner.workflows(stage, counted),
+        &{&1, Processes.workflow_declaration(workspace, &1)}
+      )
 
     workspace |> undeclared(declarations) |> List.first()
   end
 
-  defp waiting_workflow(_work_item, _stage), do: nil
+  defp waiting_workflow(_work_item, _stage, _counted), do: nil
 
   ## Helpers
 

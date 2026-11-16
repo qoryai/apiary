@@ -69,7 +69,7 @@
           "const": "read"
         },
         "when": {
-          "description": "The entry runs only when its condition is met; otherwise no run starts for it.",
+          "description": "The entry runs only when its condition is met; otherwise no run starts for it. A loop whose every entry is passed over is passed over too.",
           "$ref": "#/$defs/condition"
         }
       }
