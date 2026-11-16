@@ -1707,6 +1707,60 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
+    test "a row's Access fold offers the three levels, and a save keeps the entry's", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, path)
+      explore = id_of("Explore")
+      details = ~s{details#stage-entry-0-access-#{explore}}
+      picker = details <> " select#stage-entry-0-access-level[name='stage[sequence][0][access]']"
+
+      # Closed, after the machine type's fold; an entry with no access has the stack's level.
+      assert has_element?(view, details <> ".q-tool.group:not([open])")
+      assert has_element?(view, details <> " > summary", "Access: Write and push")
+      assert has_element?(view, details <> " > summary .group-open\\:hidden", "Change")
+      assert has_element?(view, details <> " label[for=stage-entry-0-access-level]", "Access")
+
+      # From least to most access.
+      assert view
+             |> element(picker)
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("option")
+             |> Enum.map(&{LazyHTML.attribute(&1, "value"), LazyHTML.text(&1)}) == [
+               {["read"], "Read only"},
+               {["local-write"], "Write, no push"},
+               {["write"], "Write and push"}
+             ]
+
+      assert has_element?(view, picker <> " option[value=write][selected]")
+
+      access = fn ->
+        hd(hd(Processes.current(scope.workspace).document["stages"])["sequence"])["access"]
+      end
+
+      for {level, words} <- [{"local-write", "Write, no push"}, {"read", "Read only"}] do
+        view
+        |> form("#stage-form", stage: %{sequence: %{"0" => %{access: level}}})
+        |> render_change()
+
+        assert has_element?(view, details <> " > summary", "Access: " <> words)
+        view |> element("#stages-save") |> render_click()
+        assert access.() == level
+      end
+
+      # Write and push leaves the stack's level: the entry has no access.
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{access: "write"}}})
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+      assert access.() == nil
+      assert has_element?(view, details <> " > summary", "Access: Write and push")
+    end
+
     test "a type of 64 characters beside an empty stage name has no mark", %{
       conn: conn,
       path: path

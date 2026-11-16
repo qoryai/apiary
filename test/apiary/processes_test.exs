@@ -205,6 +205,16 @@ defmodule Apiary.ProcessesTest do
                []
     end
 
+    test "takes a workflow entry with local-write access, a writable checkout with no push" do
+      document =
+        put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "local-write"}])
+
+      assert Processes.validate(document) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "push"}])) !=
+               []
+    end
+
     test "refuses a stage id or a stage name twice, names compared trimmed and without case" do
       [explore, shape | rest] = default()["stages"]
 

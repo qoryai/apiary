@@ -1006,10 +1006,11 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # Hand-over: with the workflow model, a run the stage runner queued with the access
-  # level `read` (`Apiary.Stages.limits/1`) reads its target, whatever its walk resolved.
+  # level `read` or `local_write` (`Apiary.Stages.limits/1`) has that level, whatever its
+  # walk resolved.
   defp lowered_access(%{access: :write} = harness, dispatch_run) do
     case Apiary.Stages.limits(dispatch_run) do
-      %{access: :read} -> %{harness | access: :read}
+      %{access: level} when level in [:read, :local_write] -> %{harness | access: level}
       _none -> harness
     end
   end

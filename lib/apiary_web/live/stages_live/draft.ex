@@ -232,18 +232,30 @@ defmodule ApiaryWeb.StagesLive.Draft do
         do: %{entry | "workflow" => p["workflow"]},
         else: entry
 
-    case p["machine"] do
-      nil ->
-        entry
+    entry =
+      case p["machine"] do
+        nil ->
+          entry
 
-      text ->
-        if String.trim(text) == "",
-          do: Map.delete(entry, "machine"),
-          else: Map.put(entry, "machine", String.trim(text))
-    end
+        text ->
+          if String.trim(text) == "",
+            do: Map.delete(entry, "machine"),
+            else: Map.put(entry, "machine", String.trim(text))
+      end
+
+    merge_access(entry, p["access"])
   end
 
   defp merge_entry(entry, _p), do: entry
+
+  # The entry's access level from its picker: `read` and `local-write` lower the level the
+  # stack declares, and `write` leaves the stack's level, so the entry has no `access`. Any
+  # other value keeps the entry's.
+  defp merge_access(entry, level) when level in ["read", "local-write"],
+    do: Map.put(entry, "access", level)
+
+  defp merge_access(entry, "write"), do: Map.delete(entry, "access")
+  defp merge_access(entry, _level), do: entry
 
   # Whether `text` is a workflow name the process schema takes
   # (`priv/schemas/process/v1.schema.json`, `workflow_name`): a lower-case letter, then up

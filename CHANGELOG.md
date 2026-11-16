@@ -12,6 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- Each workflow of a stage has an access level on the Workflows page: Read only, Write, no
+  push, or Write and push. In `process.yaml`, Write, no push is `access: local-write`. A
+  run of such a workflow gets a work credential with read access only.
 - A test run with `MIX_TEST_PARTITION` set drops its database when it ends, also after a
   failed migration. `scripts/test-run.sh` runs the tests on a new database and drops it
   after a pass, a failure or an interrupt.

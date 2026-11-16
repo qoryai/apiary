@@ -317,6 +317,15 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     @tag needs: [:factory, :workflow_model]
+    test "a run of a local-write entry gets a read credential, and its documents read", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "local-write"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:local_write, :read}
+      assert ApiaryWeb.Contract.DispatchAnswer.access(%{access: :local_write}) == "read"
+    end
+
+    @tag needs: [:factory, :workflow_model]
     test "a run moved onto an entry of its workflow takes that entry's level", ctx do
       queued =
         moved!(ctx, [%{"workflow" => "build", "access" => "read"}], [%{"workflow" => "build"}])

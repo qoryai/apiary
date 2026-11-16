@@ -508,8 +508,61 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           />
         </div>
       </details>
+      <details
+        id={"#{@id}-access-#{@stage_id}"}
+        class="q-tool group"
+        phx-mounted={JS.ignore_attributes(["open"])}
+      >
+        <summary class="nokey">
+          <span class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10">
+            <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
+            <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              {gettext("Access: %{level}", level: access_words(@entry["access"]))}
+            </span>
+            <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
+              {gettext("Change")}
+            </span>
+            <span class="hidden shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:inline">
+              {gettext("Close")}
+            </span>
+          </span>
+        </summary>
+        <div class="grid gap-3 pt-2 pb-2 pl-5">
+          <.input
+            id={"#{@id}-access-level"}
+            name={"#{@name}[access]"}
+            type="select"
+            value={access_value(@entry["access"])}
+            label={gettext("Access")}
+            options={access_options()}
+            class="w-64"
+          />
+        </div>
+      </details>
     </div>
     """
+  end
+
+  # A workflow entry's access level, from least to most access. An entry with no `access`
+  # has the level the stack declares, which the entry does not lower: "Write and push".
+  defp access_options do
+    [
+      {gettext("Read only"), "read"},
+      {gettext("Write, no push"), "local-write"},
+      {gettext("Write and push"), "write"}
+    ]
+  end
+
+  defp access_value(level) when level in ["read", "local-write"], do: level
+  defp access_value(_none), do: "write"
+
+  defp access_words(level) do
+    value = access_value(level)
+
+    Enum.find_value(access_options(), fn
+      {words, ^value} -> words
+      _other -> nil
+    end)
   end
 
   attr :id, :string, required: true

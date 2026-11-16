@@ -135,7 +135,7 @@ defmodule Apiary.Stages.Runner do
           workflow: String.t(),
           machine_type: String.t(),
           time_limit: pos_integer | nil,
-          access: :read | :write | nil,
+          access: :read | :local_write | :write | nil,
           entry: non_neg_integer,
           loop_entry: non_neg_integer | nil,
           round: pos_integer
@@ -284,7 +284,7 @@ defmodule Apiary.Stages.Runner do
   # entry's, nil for no entry.
   @doc false
   @spec limits(map, position, map | nil, String.t() | nil) ::
-          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+          %{time_limit: pos_integer | nil, access: :read | :local_write | :write | nil} | nil
   def limits(stage, position, declaration, workflow \\ nil) do
     case entry_at(stage, position) do
       %{"workflow" => name} = entry when workflow in [nil, name] -> lowered(entry, declaration)
@@ -530,10 +530,13 @@ defmodule Apiary.Stages.Runner do
   defp lower_time(one, nil), do: one
   defp lower_time(one, other), do: min(one, other)
 
-  # The lower of two access levels: read when either is read.
+  # The lower of two access levels, from lowest to highest read, local-write (a writable
+  # checkout with no push) and write: read when either is read, then local-write when the
+  # entry's is. nil where neither sets a level.
   defp lower_access(entry, declared) do
     cond do
       read?(entry) or read?(declared) -> :read
+      entry == "local-write" -> :local_write
       declared in [:write, "write"] -> :write
       true -> nil
     end

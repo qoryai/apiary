@@ -4675,6 +4675,11 @@ msgstr ""
 msgid "Accepted an invitation"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Access"
+msgstr ""
+
 #: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -4694,6 +4699,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Access key revoked"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Access: %{level}"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -16725,6 +16735,11 @@ msgstr ""
 msgid "Read more"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Read only"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the cause in the log of %{pool} on its host."
@@ -24179,6 +24194,11 @@ msgstr ""
 msgid "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 55 characters."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Write and push"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Write at most %{count} words."
@@ -24203,6 +24223,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Write your reply."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Write, no push"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

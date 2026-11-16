@@ -198,6 +198,8 @@ defmodule Apiary.Runs.RunCredentials do
   # The run's access level: its harness walk's, `:read` for a prebuild and for a run with
   # no walk. With the workflow model, the lower of the walk's and the stage entry's
   # (`Apiary.Stages.limits/1`), as the run's documents have it (`Apiary.Dispatches.Handover`).
+  # A stage entry of `local-write`, a writable checkout with no push, gets `:read`, so the
+  # run's credential from the adapter has read access only.
   defp access(%DispatchRun{step: @prebuild}), do: :read
 
   defp access(%DispatchRun{id: id} = dispatch_run) do
@@ -210,7 +212,7 @@ defmodule Apiary.Runs.RunCredentials do
 
   defp lowered(:write, dispatch_run) do
     case Apiary.Stages.limits(dispatch_run) do
-      %{access: :read} -> :read
+      %{access: level} when level in [:read, :local_write] -> :read
       _none -> :write
     end
   end

@@ -65,8 +65,8 @@
           "pattern": "^(?=.)([0-9]{1,3}h)?([0-9]{1,4}m)?([0-9]{1,5}s)?$"
         },
         "access": {
-          "description": "Lowers the access level the stack declares.",
-          "const": "read"
+          "description": "Lowers the access level the stack declares: read, or local-write, the level of a workflow that writes in its checkout and does not push. A run of either level gets a work credential with read access. Left out, the run has the stack's level.",
+          "enum": ["read", "local-write"]
         }
       }
     },

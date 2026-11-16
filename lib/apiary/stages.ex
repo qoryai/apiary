@@ -430,7 +430,7 @@ defmodule Apiary.Stages do
   # not have counts as a stage with no entry.
   @doc false
   @spec limits(DispatchRun.t()) ::
-          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+          %{time_limit: pos_integer | nil, access: :read | :local_write | :write | nil} | nil
   def limits(%DispatchRun{stage_id: stage_id, process_version_id: version_id} = run)
       when is_binary(stage_id) and is_binary(version_id) do
     with true <- on?(),
