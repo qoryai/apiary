@@ -25061,6 +25061,11 @@ msgstr ""
 msgid "activity history"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "add %{type} to artifact_types as structured"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "alive"
@@ -26279,6 +26284,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a structured type of artifact_types: %{type} is a standard type"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a type whose base_view is structured, not %{view}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
