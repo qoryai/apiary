@@ -1969,10 +1969,11 @@ defmodule Apiary.Stages do
 
   defp open_points(verdict, _open), do: verdict
 
-  # The points of a verdict's file: its list of point objects, nil for none. A run's
-  # point never has `fix`, which only Core writes (`Apiary.Stages.Points`).
+  # The points of a verdict's file: its list of point objects, nil for none. A `run_again`
+  # point may have `fix`, which the page shows in place of "Run another round."
+  # (`Apiary.Stages.Points`).
   defp points(points) when is_list(points),
-    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question)))
+    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question fix)))
 
   defp points(_none), do: nil
 

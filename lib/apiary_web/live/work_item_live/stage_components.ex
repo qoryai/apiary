@@ -596,7 +596,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
   with "question N" linked to the question on the current stage's tab, or "Run another
-  round.", or a stopped run's fix line in its place. While the stage is escalated, a reader who may decide
+  round.", or the point's fix line in its place. While the stage is escalated, a reader who may decide
   finds the note field and Run another round under the points; they belong to the form of
   the escalation card in the rail (`stage_card/1`). While the stage waits for answers, the
   answers run the next round, so the block has no form.
@@ -687,9 +687,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # A point's sentence, escaped, then the sentence of its action. An `answer` point adds
   # "Answer question N.", with "question N" linked to its question; a `run_again` point
-  # adds "Run another round.", or the stop cause's fix line in its place, in which the
-  # words "the set-up step Harness" link to that step where the fix is on it
-  # (`gap_line/1`).
+  # adds "Run another round.", or its fix line, escaped, in its place: a run's or a stop
+  # cause's. In a stop cause's fix line, the words "the set-up step Harness" link to that
+  # step where the fix is on it (`gap_line/1`).
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
     # The sentence is split at a marker, so that the link keeps its place in any locale.

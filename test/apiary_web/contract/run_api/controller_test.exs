@@ -470,7 +470,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "version" => %{"id" => passed.public_id, "number" => 1}
              }
 
-      points = [%{"text" => "The ticket has no test steps.", "action" => "run_again"}]
+      points = [
+        %{"text" => "The ticket has no test steps.", "action" => "run_again"},
+        %{
+          "text" => "The ledger of the run is full.",
+          "action" => "run_again",
+          "fix" => "Close the work item, or take the ticket in again."
+        }
+      ]
+
       assert write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points}).status == 201
 
       body = json_response(read(ctx, "/work-item"), 200)

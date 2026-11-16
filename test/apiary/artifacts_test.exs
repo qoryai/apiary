@@ -1519,6 +1519,52 @@ defmodule Apiary.ArtifactsTest do
       end
     end
 
+    test "takes a fix on a run_again point, on one line of 1 to 500 characters",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
+
+      run_again = %{
+        "text" => "The build is at its limit of 100 steps, so another round stops at once.",
+        "action" => "run_again",
+        "fix" =>
+          "Accept the newest submission, or close this work item and make a new one " <>
+            "for the unfinished criteria."
+      }
+
+      for verdict <- ~w(escalate changes-requested) do
+        assert {:ok, _version} =
+                 push.("verdict", %{"verdict" => verdict, "points" => [run_again]})
+      end
+
+      assert {:ok, _version} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [%{run_again | "fix" => String.duplicate("x", 500)}]
+               })
+
+      # An answer point has no fix: a fix would take the place of "Answer question N.". A
+      # fix is a string on one line: no control character, no line feed, 1 to 500
+      # characters.
+      answer = %{
+        "text" => "Which basket gets the sale?",
+        "action" => "answer",
+        "question" => "q2",
+        "fix" => "Answer it on the Explore tab."
+      }
+
+      for point <- [
+            answer,
+            %{run_again | "fix" => ""},
+            %{run_again | "fix" => String.duplicate("x", 501)},
+            %{run_again | "fix" => "Close the work item.\u0007"},
+            %{run_again | "fix" => "Close the work item.\nTake it in again."},
+            %{run_again | "fix" => 1}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, _error}}} =
+                 push.("verdict", %{"verdict" => "escalate", "points" => [point]})
+      end
+    end
+
     test "takes an answer point only about an open question of the current take in",
          %{run: run} = context do
       push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
