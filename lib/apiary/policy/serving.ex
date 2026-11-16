@@ -156,7 +156,8 @@ defmodule Apiary.Policy.Serving do
             :workspace_id,
             :node_run_id,
             :run_key_payload,
-            :run_code_sha256
+            :run_code_sha256,
+            :run_documents
           ])
     )
   end
