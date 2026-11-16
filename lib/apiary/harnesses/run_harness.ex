@@ -54,9 +54,11 @@ defmodule Apiary.Harnesses.RunHarness do
     field :state, Ecto.Enum, values: [:pending, :resolved, :failed]
     field :origin, Ecto.Enum, values: [:file, :setting, :builtin, :none]
     field :workflow, :string
+
     field :access_level, Ecto.Enum,
       values: [read: "read", write_no_push: "write-no-push", write: "write"],
       default: :read
+
     field :target_version, :string
     field :document, :map
     field :pins, {:array, :map}, default: []

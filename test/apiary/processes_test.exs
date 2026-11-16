@@ -683,6 +683,7 @@ defmodule Apiary.ProcessesTest do
       :ok = Processes.record_declared(scope.workspace, %{"explore-a-ticket" => :write})
 
       assert Processes.declared_access(scope.workspace) == %{"explore-a-ticket" => :read}
+
       assert Sources.chosen_declared(scope, scope.workspace) ==
                {:ok, %{"explore-a-ticket" => :read}}
     end

@@ -157,7 +157,12 @@ defmodule Apiary.Harnesses.ReaderTest do
       }
 
       assert Reader.workflow_levels(workflows) ==
-               %{"explore" => :write, "verify" => :write_no_push, "review" => :read, "fix" => :read}
+               %{
+                 "explore" => :write,
+                 "verify" => :write_no_push,
+                 "review" => :read,
+                 "fix" => :read
+               }
 
       assert Reader.workflow_levels(%{}) == %{}
     end

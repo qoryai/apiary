@@ -471,6 +471,8 @@ defmodule Apiary.Stages do
   @doc false
   @spec run_access(:read | :write_no_push | :write, DispatchRun.t()) ::
           :read | :write_no_push | :write
+  def run_access(:read, %DispatchRun{}), do: :read
+
   def run_access(walk, %DispatchRun{stage_id: stage_id} = run) when is_binary(stage_id) do
     case limits(run) do
       nil -> :read
