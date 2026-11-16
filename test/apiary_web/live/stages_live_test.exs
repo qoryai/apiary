@@ -2575,6 +2575,28 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert access_line(view, 6) == "Access: Write, no push (set by the harness)"
     end
 
+    test "a row has no Access line while the level the harness declares is unknown",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      # A snapshot kept before the levels were: the names, and no level.
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      build_with!(scope, [%{"workflow" => "review"}])
+      serve_calls([adapter], covered: covered, files: @files, down: true)
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      assert has_element?(view, "#stage-entry-0-workflow-mark[data-mark=listed]")
+      refute has_element?(view, "#stage-entry-0-access")
+    end
+
     test "a read that fails keeps the list of the last read, with the cause",
          %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
       :ok = Processes.record_declared(scope.workspace, ["triage"])

@@ -127,7 +127,7 @@ defmodule Apiary.Processes do
   """
   @type declaration :: %{
           name: String.t(),
-          access: :read | :write | nil,
+          access: :read | :write_no_push | :write | nil,
           time_limit: String.t() | nil,
           reads: [String.t()] | nil
         }
@@ -1353,8 +1353,8 @@ defmodule Apiary.Processes do
   declares, or nil before the first. It covers only the workspace's harness as
   Apiary.Stacks.Sources.chosen_declared/2 finds it (the choice, else the harness the
   organisation shares, else the Qory harness): not a harness file of a repository, and not
-  the stack chosen for a target. A snapshot kept before the levels were kept has `:read`
-  for each name.
+  the stack chosen for a target. A snapshot kept before the levels were kept has no level
+  for its names, and `access` is empty.
   """
   @spec declared_snapshot(%Workspace{}) ::
           %{names: [String.t()], access: %{String.t() => atom}, read_at: DateTime.t()} | nil
@@ -1377,7 +1377,10 @@ defmodule Apiary.Processes do
 
         %{
           snapshot
-          | access: Map.new(names, fn name -> {name, level_atom(Map.get(access, name))} end)
+          | access:
+              for name <- names, Map.has_key?(access, name), into: %{} do
+                {name, level_atom(access[name])}
+              end
         }
     end
   end
@@ -1403,7 +1406,7 @@ defmodule Apiary.Processes do
   the workspace's harness, by name: for a workspace on the Qory harness, the levels of
   `qory_workflow_levels/2`; for another harness, the levels of the workspace's snapshot
   (`declared_snapshot/1`). A workflow with no level known, such as the workflow saved on
-  the Harness page, declares `:read`, the level a stack gives a workflow that sets none.
+  the Harness page, or a name of a snapshot kept before the levels were, has no key.
   """
   @spec declared_access(%Workspace{}) :: %{String.t() => :read | :write_no_push | :write}
   def declared_access(%Workspace{} = workspace) do
@@ -1419,9 +1422,10 @@ defmodule Apiary.Processes do
         nil -> %{}
       end
 
-    for name <- declared_workflows(workspace), into: %{} do
-      {name, Map.get(known, name) || Map.get(snapshot, name, :read)}
-    end
+    for name <- declared_workflows(workspace),
+        level = Map.get(known, name) || Map.get(snapshot, name),
+        into: %{},
+        do: {name, level}
   end
 
   # Transition: the saved workflow is added by hand for a workspace with no snapshot or a

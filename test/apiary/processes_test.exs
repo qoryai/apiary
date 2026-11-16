@@ -668,14 +668,29 @@ defmodule Apiary.ProcessesTest do
 
       assert Processes.declared_access(scope.workspace) == levels
 
-      # A workflow the Harness page saved, with no level kept, declares read.
-      assert Processes.declared_access(scope.workspace) |> Map.keys() |> Enum.sort() ==
-               Processes.declared_workflows(scope.workspace)
-
       :ok = Processes.record_declared(scope.workspace, ["review", "plan"])
 
       assert %{names: ["plan", "review"], access: %{"plan" => :read, "review" => :read}} =
                Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a snapshot kept before the levels were has no level for its names" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+      :ok = Processes.record_declared(scope.workspace, %{"implement" => :write})
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      assert %{names: ["implement"], access: access} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert access == %{}
+      assert Processes.declared_workflows(scope.workspace) == ["implement"]
+      assert Processes.declared_access(scope.workspace) == %{}
     end
 
     test "on the Qory harness have the levels of the stack's files, over the snapshot's" do
