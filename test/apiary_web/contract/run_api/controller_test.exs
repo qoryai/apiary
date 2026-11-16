@@ -1415,8 +1415,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context and options of each answered question in " <>
-           "questions.json as the newest version of questions has them."},
+         "Leave question, context, options and criterion of each answered question in " <>
+           "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
            "questions has it."},
@@ -1439,8 +1439,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context while it stays " <>
-           "decided or answered: to change them, withdraw the question and add a new one."},
+           "as the newest version of questions has them, and its context and criterion " <>
+           "while it stays decided or answered: to change them, withdraw the question and " <>
+           "add a new one."},
         {"questions", :decision_changed,
          "Leave the decision of each question in questions.json as the newest version of " <>
            "questions has it, and add none: only the run that adds a question records " <>

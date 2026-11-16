@@ -37,14 +37,15 @@ defmodule Apiary.Explore.Questions do
   #     answer, unchanged, into the end of its `history`;
   #   * `:reopened_run`: the run reopened an answered question with a `reopened.run`
   #     other than the run's number;
-  #   * `:answered_changed`: the run changed the `question`, `context` or `options` of a
-  #     question that stays answered, each option's `recommended` included, so an answer
-  #     keeps the question the member answered;
+  #   * `:answered_changed`: the run changed the `question`, `context`, `options` or
+  #     `criterion` of a question that stays answered, each option's `recommended`
+  #     included, and a `context` or `criterion` added or dropped, so an answer keeps the
+  #     question the member answered;
   #   * `:decided_changed`: the run changed the `question` or `options` of a question
   #     with a `decision`, in any state, a reopen and a withdraw included, or its
-  #     `context` while it stays decided or answered, so a decision keeps the options it
-  #     was chosen from: a run that learns more withdraws the question and adds a new
-  #     one;
+  #     `context` or `criterion` while it stays decided or answered, so a decision keeps
+  #     the options it was chosen from: a run that learns more withdraws the question
+  #     and adds a new one;
   #   * `:new_not_open`: a question the newest version does not have is neither `open`
   #     nor `decided`, or is `open` with a `decision`: a run adds a question open, or
   #     decided with its `decision`;
@@ -64,9 +65,9 @@ defmodule Apiary.Explore.Questions do
   #
   # A decision is checked against its question once, when a run adds the question. After
   # that, the question and options of a question with a decision stay as they are, and
-  # its context while it stays decided or answered (`:decided_changed`); the decision
-  # stays too (`:decision_changed`). The JSON Schema of the format cannot check these
-  # rules.
+  # its context and criterion while it stays decided or answered (`:decided_changed`);
+  # the decision stays too (`:decision_changed`). The JSON Schema of the format cannot
+  # check these rules.
   #
   # An absent `follows` and an empty one are the same: the question follows from none.
   #
@@ -117,8 +118,9 @@ defmodule Apiary.Explore.Questions do
     :decision_changed,
     :decided_changed
   ]
-  # What a run leaves as it is on a question that stays answered or has a decision.
-  @answered_kept ~w(question context options)
+  # What a run leaves as it is on a question that stays answered or has a decision. A
+  # member present on one side only counts as changed.
+  @answered_kept ~w(question context options criterion)
 
   @typedoc "A questions document, decoded: a map with string keys."
   @type document :: %{optional(String.t()) => term}
@@ -428,8 +430,9 @@ defmodule Apiary.Explore.Questions do
   end
 
   # A question with a decision keeps the question and the options the decision was
-  # chosen from, in every state, and its context while it stays decided or answered: a
-  # run that reopens an answer may add to the context what contradicts the answer.
+  # chosen from, in every state, and its context and criterion while it stays decided or
+  # answered: a run that reopens an answer may add to the context what contradicts the
+  # answer.
   defp decision_kept(%{"decision" => _decision} = earlier, given) do
     keys = if stays?(earlier, given), do: @answered_kept, else: ~w(question options)
 
