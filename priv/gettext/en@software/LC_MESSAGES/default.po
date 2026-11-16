@@ -19468,7 +19468,7 @@ msgid "Spec"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Speed"
 msgstr ""
 
