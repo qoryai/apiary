@@ -2341,6 +2341,21 @@ defmodule Apiary.Stages do
 
   ## Escalations
 
+  # accepted/2 is the newest escalation of the work item at the stage `stage_id` that a
+  # member accepted as it is: `%{by:, at:}`, the member's account id and when the member
+  # accepted it; nil for none.
+  @doc false
+  @spec accepted(WorkItem.t(), String.t()) :: %{by: Ecto.UUID.t() | nil, at: DateTime.t()} | nil
+  def accepted(%WorkItem{id: id}, stage_id) when is_binary(stage_id) do
+    Repo.one(
+      from e in Escalation,
+        where: e.work_item_id == ^id and e.stage_id == ^stage_id and e.resolution == :accept,
+        order_by: [desc: e.resolved_at],
+        limit: 1,
+        select: %{by: e.resolved_by_id, at: e.resolved_at}
+    )
+  end
+
   defp open_escalation(work_item) do
     Repo.one(
       from e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)

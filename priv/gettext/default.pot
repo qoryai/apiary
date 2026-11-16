@@ -4686,6 +4686,11 @@ msgstr ""
 msgid "Accept invitation"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Acceptance criteria"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted an escalated stage of a work item as it is"
@@ -4694,6 +4699,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted an invitation"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted as it is by %{member}"
 msgstr ""
 
 #: lib/apiary_web/components/adapter_components.ex
@@ -8291,6 +8301,11 @@ msgstr ""
 msgid "Creating…"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Criterion"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Current"
@@ -9666,6 +9681,11 @@ msgstr ""
 msgid "Everything is kept"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Evidence"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Exit"
@@ -9684,6 +9704,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Expand sidebar"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Expected: %{result}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -11208,6 +11233,7 @@ msgid "Image: %{alt}"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Image: %{filename}"
 msgstr ""
@@ -13105,6 +13131,11 @@ msgstr ""
 msgid "Memory (GiB)"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Met"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Missing"
@@ -13385,6 +13416,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
 msgid "Needs %{features}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Needs a person"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14605,6 +14641,11 @@ msgstr ""
 msgid "Not locked: %{reason}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Not met"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Not posted to %{source}:"
@@ -14700,6 +14741,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not used"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Not verified"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -15991,6 +16037,16 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type: no type has the key %{key}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Picture: %{step}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Pictures, one for each step, 390 px wide."
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex
@@ -18484,6 +18540,16 @@ msgstr ""
 msgid "Say hi to your agent"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Scenario %{number}: %{title}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Scenarios"
+msgstr ""
+
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "Screens"
@@ -19640,6 +19706,7 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/user_live/organisations.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "State"
 msgstr ""
@@ -19657,6 +19724,11 @@ msgstr ""
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "Step %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Step %{number}: %{title}"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -23287,6 +23359,13 @@ msgstr ""
 msgid "Version %{version} of this target's policy; until now it was served the workspace's."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · %{count} scenario"
+msgid_plural "Version %{version} · %{count} scenarios"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · %{title}"
@@ -23305,6 +23384,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · Approved automatically · %{when}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · Model families: %{families}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex

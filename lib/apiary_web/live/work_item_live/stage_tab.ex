@@ -11,8 +11,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
+  alias Apiary.Artifacts
   alias Apiary.Stages.Runner
-  alias ApiaryWeb.WorkItemLive.StageComponents
+  alias ApiaryWeb.WorkItemLive.{StageComponents, VerifyTab}
 
   # tabs/2 is the tabs of `flow` in the process version's order, with every run the page
   # read, of any take in: `%{id:, key:, name:, types:}`, `types` the stage's output types.
@@ -259,16 +260,47 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Enum.filter(index, &MapSet.member?(shown, {&1.type, &1.name}))
   end
 
+  # newest/2 is `newest`, the newest version of each type's `main` (`frames/2`), with each
+  # type of the tab's `artifacts` that has no `main` there: the highest number among the
+  # newest version of each of its names that no cancelled run wrote
+  # (`Apiary.Artifacts.newest_counted/1`).
+  @spec newest(%{String.t() => pos_integer}, [map]) :: %{String.t() => pos_integer}
+  def newest(newest, artifacts) do
+    for artifact <- artifacts,
+        not Map.has_key?(newest, artifact.type),
+        %{number: number} = version <- [Artifacts.newest_counted(artifact)],
+        not Map.get(version, :withdrawn, false),
+        reduce: newest do
+      acc -> Map.update(acc, artifact.type, number, &max(&1, number))
+    end
+  end
+
   # frames/2 is the output frames of `stage`, in its order, with the newest version a run of
-  # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:}`,
-  # the first one `open`. A type with no such version has no frame, nor do the review
-  # comments, the document a review comment is written to.
+  # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:,
+  # kind:}`, the first one `open`. A type with no such version has no frame, nor do the
+  # review comments, the document a review comment is written to. A frame's `kind` is
+  # `:output`; on the tab of a stage with a `verification` output, the scenarios' films and
+  # pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind
+  # `:scenarios`, in the place of the first, with the highest of their versions.
   @spec frames(map, %{String.t() => pos_integer}) :: [map]
   def frames(stage, newest) do
-    stage.outputs
-    |> Enum.filter(&(Map.has_key?(newest, &1) and &1 != "review-comments"))
+    types = Enum.filter(stage.outputs, &(Map.has_key?(newest, &1) and &1 != "review-comments"))
+
+    media =
+      if "verification" in stage.outputs,
+        do: Enum.filter(types, &(&1 in VerifyTab.media())),
+        else: []
+
+    types
+    |> Enum.reject(&(&1 in Enum.drop(media, 1)))
     |> Enum.with_index()
-    |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
+    |> Enum.map(fn {type, place} ->
+      frame = %{type: type, version: newest[type], open: place == 0, kind: :output}
+
+      if type in media,
+        do: %{frame | kind: :scenarios, version: media |> Enum.map(&newest[&1]) |> Enum.max()},
+        else: frame
+    end)
   end
 
   # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for

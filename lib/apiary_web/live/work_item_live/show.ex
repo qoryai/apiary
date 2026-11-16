@@ -128,7 +128,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.ExploreView
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
-  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, View, Workflow}
+  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
   # As on the run's page (`ApiaryWeb.RunLive.Show`).
@@ -445,10 +445,31 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 number={@number}
               />
             </:artifacts>
-            <:row :let={type}>
+            <:row :let={output}>
+              <VerifyTab.verification_body
+                :if={output.kind == :verification}
+                id={"work-item-tab-output-#{output.type}-parts"}
+                verification={elem(output.read, 1)}
+                accepted={output[:accepted]}
+              >
+                <ArtifactComponents.list
+                  id={"work-item-tab-output-#{output.type}-row"}
+                  artifacts={named(@artifacts, output.type)}
+                  scope={@current_scope}
+                  number={@number}
+                />
+              </VerifyTab.verification_body>
+              <VerifyTab.scenarios_body
+                :if={output.kind == :scenarios}
+                id="work-item-tab-scenarios"
+                scenarios={elem(output.read, 1)}
+                scope={@current_scope}
+                number={@number}
+              />
               <ArtifactComponents.list
-                id={"work-item-tab-output-#{type}-row"}
-                artifacts={Enum.filter(@artifacts, &(&1.type == type and &1.name == "main"))}
+                :if={output.kind not in [:verification, :scenarios]}
+                id={"work-item-tab-output-#{output.type}-row"}
+                artifacts={named(@artifacts, output.type)}
                 scope={@current_scope}
                 number={@number}
               />
@@ -2013,16 +2034,22 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
+    newest =
+      assigns.row
+      |> ExploreView.newest_outputs(stage.id, stage.outputs)
+      |> StageTab.newest(assigns.view.artifacts)
+
     frames =
       stage
-      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.frames(newest)
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 
+    # The scenarios are read whatever the frame's fold, so a tab with none has no frame.
     wanted =
-      for %{type: type, version: version, open: open} <- frames,
-          open or MapSet.member?(assigns.opened_frames, type),
-          do: {type, version}
+      for %{type: type, open: open} = frame <- frames,
+          open or frame.kind == :scenarios or MapSet.member?(assigns.opened_frames, type),
+          do: frame_key(frame, assigns)
 
     texts =
       Enum.reduce(wanted, assigns.frame_texts, fn key, texts ->
@@ -2030,8 +2057,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       end)
 
     frames =
-      Enum.map(frames, fn %{type: type, version: version} = frame ->
-        Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
+      Enum.flat_map(frames, fn frame ->
+        frame
+        |> Map.put(:read, Map.get(texts, frame_key(frame, assigns), :unread))
+        |> verify_frame(socket)
       end)
 
     assign(socket, frames: frames, frame_texts: texts)
@@ -2049,8 +2078,114 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp approver(_socket, frame), do: frame
 
-  defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
+  # A frame's key among the texts the page read: its type and version; for the Scenarios
+  # frame, the stage and the newest version of each name of the types its scenarios are
+  # read from, so a new version of any of them reads them again.
+  defp frame_key(%{kind: :scenarios}, %{view: view, artifacts: artifacts}) do
+    ids =
+      for artifact <- artifacts,
+          artifact.type in ["verification", "demo-evidence", "demo-script" | VerifyTab.media()],
+          %{public_id: id} <- [Artifacts.newest_counted(artifact)],
+          do: id
+
+    {:scenarios, view.stage.id, Enum.sort(ids)}
+  end
+
+  defp frame_key(%{type: type, version: version}, _assigns), do: {type, version}
+
+  # A verification is read as its parts (`VerifyTab.verification/1`), else, as any other
+  # output, as Markdown. The scenarios are those of the verified commit, that of the
+  # verification at the stage, where it has one (`VerifyTab.scenarios/4`).
+  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, _ids}) do
+    commit =
+      with version when is_integer(version) <-
+             ExploreView.newest_outputs(assigns.row, stage_id, ["verification"])["verification"],
+           %{message: text} <- ExploreView.output(assigns.row, "verification", version),
+           %{commit: commit} <- VerifyTab.verification(text) do
+        commit
+      else
+        _none -> nil
+      end
+
+    {:scenarios,
+     VerifyTab.scenarios(assigns.artifacts, stage_id, commit, &Stages.Artifacts.read_json/1)}
+  end
+
+  defp read_output(%{assigns: %{row: row}} = socket, {"verification", version} = key) do
+    with %{message: text} <- ExploreView.output(row, "verification", version),
+         %{} = verification <- VerifyTab.verification(text) do
+      {:verification, verification}
+    else
+      _other -> shown_output(socket, key)
+    end
+  end
+
+  defp read_output(socket, key), do: shown_output(socket, key)
+
+  defp shown_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))
+
+  # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
+  # where it has no scenario; a verification read as its parts with the model families and
+  # the member who accepted the stage's escalation (`accepted/3`).
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, []}}, _socket), do: []
+
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, scenarios}} = frame, _socket) do
+    count = length(scenarios)
+
+    caption =
+      ngettext(
+        "Version %{version} · %{count} scenario",
+        "Version %{version} · %{count} scenarios",
+        count,
+        version: ApiaryWeb.Format.number(frame.version)
+      )
+
+    [Map.put(frame, :caption, caption)]
+  end
+
+  defp verify_frame(%{read: {:verification, verification}} = frame, socket) do
+    caption =
+      if verification.families != [],
+        do:
+          gettext("Version %{version} · Model families: %{families}",
+            version: ApiaryWeb.Format.number(frame.version),
+            families: Enum.join(verification.families, " · ")
+          )
+
+    [%{frame | kind: :verification} |> Map.put(:caption, caption) |> accepted(socket)]
+  end
+
+  defp verify_frame(frame, _socket), do: [frame]
+
+  # The member who accepted as it is the newest escalation of the stage after the run
+  # pushed the frame's verification (`Apiary.Stages.accepted/2`), by name, as the page
+  # shows a person (`View.person/2`); nil for none.
+  defp accepted(%{type: type, version: number} = frame, %{assigns: assigns} = socket) do
+    pushed =
+      for %{type: ^type, name: "main"} = artifact <- assigns.view.artifacts,
+          %{number: ^number, inserted_at: at} <- artifact.versions,
+          do: at
+
+    name =
+      with [at] <- pushed,
+           %{by: id, at: accepted} <- Stages.accepted(assigns.row, assigns.view.stage.id),
+           false <- DateTime.before?(accepted, at) do
+        socket |> scope() |> View.people(List.wrap(id)) |> View.person(id) |> Map.get(:name)
+      else
+        _none -> nil
+      end
+
+    Map.put(frame, :accepted, name)
+  end
+
+  # The artifacts of `type`, every name, `main` first and then by name
+  # (`Apiary.Artifacts.name_order/1`).
+  defp named(artifacts, type) do
+    artifacts
+    |> Enum.filter(&(&1.type == type))
+    |> Enum.sort_by(&Artifacts.name_order(&1.name))
+  end
 
   # Every run the page read, of any take in, for which stages have a tab.
   defp every_run(explore) do

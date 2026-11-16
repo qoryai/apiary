@@ -16,6 +16,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The gate card of a stage starts with the draft of the work item's newest submission,
   one line per repository that has one: “Submission: the draft in example/shop”, a link
   that opens the draft in a new tab. A submission with no draft shows no line.
+- The tab of a stage with a `verification` output, such as Verify, shows the run's
+  verification as a table of the acceptance criteria with the columns Criterion, State
+  and Evidence and the states Met, Not met and Needs a person; the list “Not verified”,
+  each item with its reason under it; and the model families after the version, such as
+  “Version 1 · Model families: Build claude · Verify deepseek”, as the run wrote them.
+  When a member accepted the stage's escalation as it is after the run wrote the
+  verification, the frame starts with “Accepted as it is by dana”; the criteria keep the
+  states the run wrote. A verification with no such table shows as its Markdown.
+- On that tab, one frame “Scenarios” has the films and pictures of the verified commit,
+  in scenario order, in place of one frame per type: each film with its file name and
+  its captions and, beside it, the scenario's title, each step with its expected result,
+  and the artifact row; for a pictures scenario, one picture per step, each with the
+  step's title and expected result. A scenario whose name is withdrawn is left out.
+- An output frame on a stage's tab lists the artifact row of each name of its type,
+  `main` first, and an output with only other names has a frame too.
 <!-- /feature -->
 
 - An artifact page that shows videos has a Speed row under each video, with the buttons
