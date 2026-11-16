@@ -15,8 +15,9 @@ defmodule ApiaryWeb.RunApiStubs do
     * `:flag`: whether `workflow_model` is on, true unless set;
     * `:push_error`: an error `Artifacts.push/5` returns in place of a push.
 
-  `Artifacts.push/5` records each version it stored, with the options it was given and
-  the files' contents; `pushed/0` lists them, oldest first.
+  `Artifacts.push/5` and `Artifacts.withdraw/4` record each version they stored, with
+  the options they were given and the files' contents; `pushed/0` lists them, oldest
+  first.
   """
 
   @boundary ApiaryWeb.Contract.RunApi.Boundary
@@ -82,7 +83,8 @@ defmodule ApiaryWeb.RunApiStubs do
 
   defmodule Artifacts do
     @moduledoc """
-    `Apiary.Artifacts`, with `push/5` recorded, or returning the stubs' `:push_error` in its place.
+    `Apiary.Artifacts`, with `push/5` recorded, or returning the stubs' `:push_error` in its place,
+    and `withdraw/4` recorded.
     """
     alias ApiaryWeb.RunApiStubs
 
@@ -101,6 +103,13 @@ defmodule ApiaryWeb.RunApiStubs do
 
         error ->
           {:error, error}
+      end
+    end
+
+    def withdraw(actor, work_item, type, opts) do
+      with {:ok, version} <- Apiary.Artifacts.withdraw(actor, work_item, type, opts) do
+        RunApiStubs.record(version, [actor: actor] ++ opts)
+        {:ok, version}
       end
     end
   end

@@ -1265,7 +1265,8 @@ defmodule Apiary.Stages do
 
   # inputs/1 is, for each input of the work item's stage, the version it reads: a
   # person's version added on the work item in this stage, else the version the gate of
-  # the stage that made it approved; nil for none.
+  # the stage that made it approved; nil for none. A name whose newest version is a
+  # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
   def inputs(%WorkItem{} = work_item) do
@@ -1278,8 +1279,9 @@ defmodule Apiary.Stages do
   end
 
   # artifact_index/1 is every artifact of the work item with its versions, newest first,
-  # their writers, the approvals that cover each and whether a run a member cancelled
-  # wrote it (`Apiary.Artifacts.cancelled?/1`): for each artifact, the public id of
+  # their writers, the approvals that cover each, whether a run a member cancelled
+  # wrote it (`Apiary.Artifacts.cancelled?/1`) and whether it is a withdrawal
+  # (`Apiary.Artifacts.withdraw/4`), a withdrawn name included: for each artifact, the public id of
   # the newest approved version, and whether a version of an earlier stage's artifact was
   # made after that approval ("changed after approval").
   @doc false
@@ -1489,7 +1491,8 @@ defmodule Apiary.Stages do
       inserted_at: version.inserted_at,
       files: Map.get(version, :files, []),
       approvals: Map.get(approvals, version.public_id, []),
-      cancelled: Artifacts.cancelled?(version)
+      cancelled: Artifacts.cancelled?(version),
+      withdrawn: Map.get(version, :withdrawn) == true
     }
   end
 
@@ -2071,15 +2074,27 @@ defmodule Apiary.Stages do
 
   defp shown_state(%WorkItem{stage_state: state}, _stage, _artifacts), do: state
 
+  # A withdrawal is a version too: a name the last approval covered whose newest version is
+  # now a withdrawal reopens the gate. Where another name of the type is left, its version
+  # is not among `covered`, so `newest -- covered` reopens the gate already;
+  # `withdrawn_since?/2` matters only when no other name of the type is left.
   defp reopened?(work_item, stage, artifacts) do
     case last_approval(work_item, stage["id"]) do
       %GateDecision{versions: covered} ->
         newest = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
-        newest -- covered != []
+        newest -- covered != [] or withdrawn_since?(artifacts, covered)
 
       nil ->
         false
     end
+  end
+
+  # Whether an artifact with a version among `covered` now has a withdrawal as its newest
+  # version (`Artifacts.withdrawn?/1`).
+  defp withdrawn_since?(artifacts, covered) do
+    Enum.any?(artifacts, fn artifact ->
+      Artifacts.withdrawn?(artifact) and Enum.any?(artifact.versions, &(&1.public_id in covered))
+    end)
   end
 
   defp last_approval(work_item, stage_id) do
@@ -2339,12 +2354,15 @@ defmodule Apiary.Stages do
         do: version
   end
 
-  # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`).
+  # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),
+  # and neither is a withdrawal or a version of a withdrawn name (`Artifacts.withdrawn?/1`).
   defp newest_made_in(artifacts, type, stage_id) do
     artifacts
-    |> Enum.filter(&(&1.type == type))
+    |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
     |> Enum.flat_map(& &1.versions)
-    |> Enum.filter(&(&1.stage_id == stage_id and not Artifacts.cancelled?(&1)))
+    |> Enum.filter(
+      &(&1.stage_id == stage_id and not &1.withdrawn and not Artifacts.cancelled?(&1))
+    )
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 
@@ -2398,7 +2416,10 @@ defmodule Apiary.Stages do
   defp reported?(%{"check" => %{"reported" => _outcome}}), do: true
   defp reported?(_output), do: false
 
+  # A withdrawn name is no input (`Artifacts.withdrawn?/1`): neither a person's version nor
+  # an approved one of it is taken.
   defp inputs(work_item, version, stage, artifacts) do
+    artifacts = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
     by_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, v}}
 
     for input <- Map.get(stage, "inputs", []) do

@@ -453,6 +453,8 @@ defmodule Apiary.WorkItems.Explore do
   # versions/2 is the type and number of each version of an artifact named `main` that the
   # runs of take in `take_in` of the work item `id` pushed, the versions a review comment
   # of that take in is on. Versions restart per artifact, so a number alone is not enough.
+  # A withdrawal, and every version of an artifact whose newest version is a withdrawal
+  # (`Apiary.Artifacts.withdrawn?/1`), is left out.
   @doc false
   @spec versions(Ecto.UUID.t(), pos_integer) :: MapSet.t({String.t(), pos_integer})
   def versions(id, take_in), do: id |> versions_query(take_in) |> Repo.all() |> MapSet.new()
@@ -491,6 +493,12 @@ defmodule Apiary.WorkItems.Explore do
       on: d.id == v.run_id,
       where: a.work_item_id == ^id and a.name == "main",
       where: d.work_item_id == ^id and d.take_in == ^take_in,
+      where: not v.withdrawn,
+      where:
+        fragment(
+          "NOT coalesce((SELECT n.withdrawn FROM artifact_versions n WHERE n.artifact_id = ? ORDER BY n.number DESC LIMIT 1), false)",
+          a.id
+        ),
       select: {a.type, v.number}
   end
 

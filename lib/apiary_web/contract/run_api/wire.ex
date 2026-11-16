@@ -13,8 +13,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   newest verdict with its points, the stage's gaps (why it waits for a workflow, or
   #   the failed checks that started its round) and the work item's notes.
   # - `index/1`: every artifact of the work item with its versions, each version's files,
-  #   writer, approvals and whether a run a member cancelled wrote it
-  #   (`Apiary.Stages.artifact_index/1`).
+  #   writer, approvals, whether a run a member cancelled wrote it and whether it is a
+  #   withdrawal (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
   #
   # A person is written by name, as Explore's input writes a person
@@ -173,6 +173,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
       {"number", get(version, :number)},
       {"writer", writer(version, context)},
       {"cancelled", get(version, :cancelled) == true},
+      {"withdrawn", get(version, :withdrawn) == true},
       {"stage_id", get(version, :stage_id)},
       {"note", get(version, :note)},
       {"at", time(get(version, :inserted_at))},

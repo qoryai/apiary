@@ -1965,7 +1965,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can: can(scope, row, explore.status, flow),
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
-        artifacts: if(flow, do: Artifacts.list(row), else: []),
+        artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
       )
@@ -2313,6 +2313,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp with_confirmers(%{kind: _other} = event, _confirmers), do: event
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
+
+  # The work item's artifacts that its page lists: every one but a name whose newest
+  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
+  defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
 
   # While the work item's latest run waits in the queue, before a pool claims it (no state
   # yet), whatever Explore's status (a run after a move back to Explore, or a later
