@@ -2152,7 +2152,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   describe "a workflow's return (choice 10)" do
     # Verify with capture-demos, then verify-a-ticket, which returns to Build on changes
-    # requested, with `key` as its return key; saved as the current version.
+    # requested, with `key` as its return key (none for nil); saved as the current version.
     setup %{scope: scope} do
       build = id_of("Build")
       verify = id_of("Verify")
@@ -2167,7 +2167,10 @@ defmodule ApiaryWeb.StagesLiveTest do
                 stage
                 | "sequence" => [
                     %{"workflow" => "capture-demos"},
-                    %{"workflow" => "verify-a-ticket", "return" => key}
+                    Map.merge(
+                      %{"workflow" => "verify-a-ticket"},
+                      if(key, do: %{"return" => key}, else: %{})
+                    )
                   ]
               }
 
@@ -2228,10 +2231,130 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert has_element?(view, "select#stage-entry-1-return option[value='']", "Do not return")
 
-      # An entry with no key, and an entry in a loop, have no such fold.
-      refute has_element?(view, "details[id^=stage-entry-0-return-]")
-      select(view, "Build")
+      # An entry with no key has the fold with Do not return picked, and an entry in a loop
+      # has none (the next tests).
+      assert has_element?(
+               view,
+               "details[id^=stage-entry-0-return-] summary",
+               "On changes requested: do not return"
+             )
+
+      select(view, "Explore")
       refute has_element?(view, "details[id*=-return-]")
+    end
+
+    test "every entry outside a loop, in a stage with an earlier stage, has the select", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      document = Processes.current(scope.workspace).document
+      explore = id_of("Explore")
+      shape = id_of("Shape")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => ^explore} = stage ->
+            %{stage | "sequence" => [%{"workflow" => "plan-a-ticket"}]}
+
+          %{"id" => ^shape} = stage ->
+            %{
+              stage
+              | "sequence" => [
+                  %{"workflow" => "shape-a-ticket"},
+                  %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "check-a-ticket"}]}}
+                ]
+            }
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      {:ok, view, _html} = live(conn, path)
+
+      # The first stage has no earlier stage, so no fold, with or without a loop.
+      select(view, "Explore")
+      refute has_element?(view, "details[id*=-return-]")
+
+      # Shape: Explore is earlier. The workflow has the fold, and the loop's workflow has none.
+      select(view, "Shape")
+      assert has_element?(view, "details[id^=stage-entry-0-return-]")
+      refute has_element?(view, "details[id^=stage-entry-1-return-]")
+      assert workflow_options(view, "stage-entry-0-return") == [{"", true}, {explore, false}]
+
+      # Verify: the entry with no key and the entry with one offer the same options, in order.
+      select(view, "Verify")
+
+      for entry <- 0..1 do
+        assert workflow_options(view, "stage-entry-#{entry}-return") |> Enum.map(&elem(&1, 0)) ==
+                 ["", explore, shape, build]
+      end
+
+      assert has_element?(view, "select#stage-entry-0-return option[value=''][selected]")
+      assert has_element?(view, "select#stage-entry-1-return option[value='#{build}'][selected]")
+    end
+
+    test "with Do not return the fold has only the select; a stage sets the key and the limit 2",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope,
+           build: build,
+           verify: verify,
+           returning: returning
+         } do
+      returning.(nil)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      fold = "details[id^=stage-entry-0-return-]"
+      assert has_element?(view, "#{fold} summary", "On changes requested: do not return")
+
+      assert has_element?(
+               view,
+               "#{fold} label[for=stage-entry-0-return]",
+               "On changes requested, return to"
+             )
+
+      assert has_element?(view, "#{fold} select#stage-entry-0-return")
+      refute has_element?(view, "#{fold} input")
+      refute has_element?(view, "#{fold} label[for=stage-entry-0-returns]")
+      refute has_element?(view, "#{fold} p")
+
+      change_stage(view, %{"sequence" => %{"0" => %{"return" => build}}})
+
+      assert has_element?(
+               view,
+               "#{fold} summary",
+               "On changes requested: return to Build, at most 2 returns"
+             )
+
+      assert has_element?(view, "#{fold} input#stage-entry-0-returns[type=number][value='2']")
+
+      assert has_element?(
+               view,
+               "#{fold} p",
+               "At the third return, Qory Apiary escalates to a member."
+             )
+
+      assert has_element?(view, "select#stage-entry-0-return option[value='#{build}'][selected]")
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version")
+
+      stage = Processes.stage(Processes.current(scope.workspace), verify)
+      assert Enum.at(stage["sequence"], 0)["return"] == %{"stage" => build}
+
+      # Do not return again removes the key and the fold's field and line.
+      select(view, "Verify")
+      change_stage(view, %{"sequence" => %{"0" => %{"return" => ""}}})
+      assert has_element?(view, "#{fold} summary", "On changes requested: do not return")
+      refute has_element?(view, "#{fold} input")
+      refute has_element?(view, "#{fold} p")
     end
 
     test "the key survives an edit of its entry, a rename of its workflow included", %{
@@ -2319,7 +2442,8 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       select(view, "Verify")
       change_stage(view, %{"sequence" => %{"1" => %{"return" => ""}}})
-      refute has_element?(view, fold)
+      assert has_element?(view, fold, "On changes requested: do not return")
+      refute has_element?(view, "#{fold} input")
       view |> element("#stages-save") |> render_click()
       refute Map.has_key?(verify_entry(scope, verify), "return")
     end
@@ -2409,6 +2533,126 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stage-panel select")
       refute has_element?(view, "#stage-panel details")
       refute has_element?(view, "#stage-panel button")
+    end
+  end
+
+  describe "a workflow's return on its card and in a member's panel (choice 10)" do
+    # Verify with capture-demos, then verify-a-ticket, which returns to Build with `key`.
+    setup %{scope: scope} do
+      build = id_of("Build")
+      verify = id_of("Verify")
+
+      returning = fn key ->
+        document = Processes.current(scope.workspace).document
+
+        stages =
+          Enum.map(document["stages"], fn
+            %{"id" => ^verify} = stage ->
+              %{
+                stage
+                | "sequence" => [
+                    %{"workflow" => "capture-demos"},
+                    %{"workflow" => "verify-a-ticket", "return" => key}
+                  ]
+              }
+
+            stage ->
+              stage
+          end)
+
+        {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      end
+
+      %{user: user} = member_fixture(scope)
+      %{build: build, returning: returning, member: log_in_user(build_conn(), user)}
+    end
+
+    @machine "machine type Workspace default (Standard)"
+
+    test "the plural, in the panel and on the card; a workflow with none keeps its line", %{
+      member: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "verify-a-ticket, #{@machine}, returns to Build at most 2 times"
+             )
+
+      assert has_element?(view, "#stage-sequence li", "capture-demos, #{@machine}")
+      refute has_element?(view, "#stage-sequence li", "capture-demos, #{@machine}, returns")
+
+      card = card(view, "Verify")
+
+      assert card["sequence"] == [
+               %{"workflow" => "capture-demos"},
+               %{
+                 "workflow" => "verify-a-ticket",
+                 "returns" => "Returns to Build, at most 2 times"
+               }
+             ]
+
+      assert card["label"] =~ "verify-a-ticket. Returns to Build, at most 2 times."
+
+      # No other card has a line for a return.
+      for other <- canvas_view(view)["stages"], other["name"] != "Verify" do
+        refute Enum.any?(other["sequence"], &Map.has_key?(&1, "returns"))
+      end
+    end
+
+    test "the singular, at a limit of 1", %{
+      member: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build, "limit" => 1})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "verify-a-ticket, #{@machine}, returns to Build at most 1 time"
+             )
+
+      refute has_element?(view, "#stage-sequence li", "1 times")
+
+      assert Enum.at(card(view, "Verify")["sequence"], 1)["returns"] ==
+               "Returns to Build, at most 1 time"
+    end
+
+    test "the card follows the draft, and a return to a removed stage has no line", %{
+      conn: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build, "limit" => 3})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      assert Enum.at(card(view, "Verify")["sequence"], 1)["returns"] ==
+               "Returns to Build, at most 3 times"
+
+      change_stage(view, %{"sequence" => %{"1" => %{"return" => id_of("Shape")}}})
+
+      assert Enum.at(card(view, "Verify")["sequence"], 1)["returns"] ==
+               "Returns to Shape, at most 3 times"
+
+      change_stage(view, %{"sequence" => %{"1" => %{"return" => ""}}})
+      assert card(view, "Verify")["sequence"] |> Enum.at(1) == %{"workflow" => "verify-a-ticket"}
+
+      change_stage(view, %{"sequence" => %{"1" => %{"return" => build}}})
+      select(view, "Build")
+      view |> element("#stage-remove") |> render_click()
+      assert card(view, "Verify")["sequence"] |> Enum.at(1) == %{"workflow" => "verify-a-ticket"}
     end
   end
 

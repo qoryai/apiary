@@ -248,11 +248,12 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp merge_entry(entry, _p), do: entry
 
-  # An entry's return key (choice 10), from the fields of its fold, which only an entry
-  # with the key has (`ApiaryWeb.StagesLive.Inspector`): "Do not return", sent as "",
-  # removes the key; a stage sets its `stage`; "Returns at most" from 1 to 10 sets its
-  # `limit`, which the key leaves out while it is the default. A number outside 1 to 10
-  # keeps the limit the key has. Every other field of the key stays.
+  # An entry's return key (choice 10), from the fields of its fold, which an entry outside
+  # a loop has in a stage with an earlier stage (`ApiaryWeb.StagesLive.Inspector`): "Do
+  # not return", sent as "", removes the key; a stage sets its `stage`, and makes the key
+  # for an entry with none, with the default limit; "Returns at most" from 1 to 10 sets
+  # its `limit`, which the key leaves out while it is the default. A number outside 1 to
+  # 10 keeps the limit the key has. Every other field of the key stays.
   defp merge_return(%{"return" => %{} = key} = entry, p) do
     case p["return"] do
       "" ->
@@ -265,6 +266,9 @@ defmodule ApiaryWeb.StagesLive.Draft do
         %{entry | "return" => put_limit(key, p["returns"])}
     end
   end
+
+  defp merge_return(entry, %{"return" => stage_id}) when is_binary(stage_id) and stage_id != "",
+    do: Map.put(entry, "return", %{"stage" => stage_id})
 
   defp merge_return(entry, _p), do: entry
 

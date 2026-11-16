@@ -110,7 +110,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       </.sect>
       <.sect id="stage-sequence" title={gettext("Sequence")} heading="h3" class="q-sect-side">
         <ul class={read_lines()}>
-          <li :for={{line, workflow} <- sequence_lines(@stage, @machine, @machine_types)}>
+          <li :for={{line, workflow} <- sequence_lines(@stage, @stages, @machine, @machine_types)}>
             {line}<.workflow_mark :if={workflow} workflow={workflow} marks={@marks} class="ml-2" />
           </li>
           <li :if={@stage["sequence"] == []}>{gettext("No workflow")}</li>
@@ -535,7 +535,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         </div>
       </details>
       <.return_fold
-        :if={is_map(@entry["return"]) and @stages != []}
+        :if={return_fold?(@entry, @stage_id, @stages)}
         id={@id}
         name={@name}
         stage_id={@stage_id}
@@ -550,24 +550,24 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :id, :string, required: true
   attr :name, :string, required: true
   attr :stage_id, :string, required: true
-  attr :key, :map, required: true, doc: "the entry's return key"
+  attr :key, :map, default: nil, doc: "the entry's return key; nil for an entry with none"
   attr :stages, :list, required: true
   attr :errors, :list, default: [], doc: "what is wrong with its most returns"
 
   # The fold of a workflow entry's return key (choice 10), under its machine type: the
   # stage to return to on changes requested, "Do not return" or one of the stages before
-  # the entry's, and the most returns, with the line on what happens after them. Only an
-  # entry with the key has it. "Do not return" removes the key (`Draft`), and the fold
-  # with it. A key to a stage that is not earlier, or to a removed stage, keeps its stage
-  # in the field, where it and the fold's line show what to pick, and a save shows the
-  # same refusal.
+  # the entry's, and, with a stage picked, the most returns and the line on what happens
+  # after them. An entry with no key has the fold with "Do not return" picked, and only
+  # the select. Picking a stage sets the key (`Draft`), "Do not return" removes it. A key
+  # to a stage that is not earlier, or to a removed stage, keeps its stage in the field,
+  # where it and the fold's line show what to pick, and a save shows the same error.
   defp return_fold(assigns) do
-    earlier = Enum.take_while(assigns.stages, &(&1["id"] != assigns.stage_id))
-    to = assigns.key["stage"]
-    limit = Runner.returns_limit(assigns.key)
+    earlier = earlier_stages(assigns.stages, assigns.stage_id)
+    to = assigns.key && assigns.key["stage"]
+    limit = assigns.key && Runner.returns_limit(assigns.key)
 
     refused =
-      if not Enum.any?(earlier, &(&1["id"] == to)),
+      if to && not Enum.any?(earlier, &(&1["id"] == to)),
         do: Words.return_refused(stage_name(assigns.stages, assigns.stage_id))
 
     options =
@@ -578,16 +578,24 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       assign(assigns,
         options: options,
         limit: limit,
-        to: to,
+        to: to || "",
         summary:
-          refused ||
-            ngettext(
-              "On changes requested: return to %{stage}, at most %{count} return",
-              "On changes requested: return to %{stage}, at most %{count} returns",
-              limit,
-              stage: stage_name(assigns.stages, to)
-            ),
-        line: Words.return_line(limit)
+          cond do
+            is_nil(assigns.key) ->
+              gettext("On changes requested: do not return")
+
+            refused ->
+              refused
+
+            true ->
+              ngettext(
+                "On changes requested: return to %{stage}, at most %{count} return",
+                "On changes requested: return to %{stage}, at most %{count} returns",
+                limit,
+                stage: stage_name(assigns.stages, to)
+              )
+          end,
+        line: limit && Words.return_line(limit)
       )
 
     ~H"""
@@ -618,7 +626,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           options={@options}
           class="w-64"
         />
-        <div class="q-stage-rounds">
+        <div :if={@key} class="q-stage-rounds">
           <.input
             id={"#{@id}-returns"}
             name={"#{@name}[returns]"}
@@ -631,11 +639,18 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             class="w-14"
           />
         </div>
-        <p class="text-[13px]/5 text-muted">{@line}</p>
+        <p :if={@key} class="text-[13px]/5 text-muted">{@line}</p>
       </div>
     </details>
     """
   end
+
+  # Whether a workflow entry has the return fold: it has a key, or it is outside a loop
+  # (`stages` is empty in a loop) in a stage that has an earlier stage.
+  defp return_fold?(entry, stage_id, stages),
+    do: stages != [] and (is_map(entry["return"]) or earlier_stages(stages, stage_id) != [])
+
+  defp earlier_stages(stages, stage_id), do: Enum.take_while(stages, &(&1["id"] != stage_id))
 
   # The name of the stage `id` in `stages`; the id itself for a stage that is not there.
   defp stage_name(stages, id) do
@@ -809,28 +824,47 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   # Each line of a member's Sequence, with the workflow a line runs, nil for a loop's
   # label. A machine type is the default's words of the picker or a type's name
-  # (`MachineTypeWords.entry_words/3`).
-  defp sequence_lines(stage, machine, types) do
+  # (`MachineTypeWords.entry_words/3`). A workflow with a return to an earlier stage
+  # (choice 10) says to which stage and how many times at most.
+  defp sequence_lines(stage, stages, machine, types) do
     Enum.flat_map(stage["sequence"], fn
       %{"loop" => %{"rounds" => rounds, "body" => body}} ->
         [
           {ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
              number: rounds
            ), nil}
-          | Enum.map(body, &entry_line(&1, machine, types))
+          | Enum.map(body, &entry_line(&1, stage, stages, machine, types))
         ]
 
       entry ->
-        [entry_line(entry, machine, types)]
+        [entry_line(entry, stage, stages, machine, types)]
     end)
   end
 
-  defp entry_line(entry, machine, types),
-    do:
-      {gettext("%{workflow}, machine type %{machine}",
-         workflow: entry["workflow"],
-         machine: MachineTypeWords.entry_words(types, machine, entry["machine"])
-       ), entry["workflow"]}
+  defp entry_line(entry, stage, stages, machine, types) do
+    words = MachineTypeWords.entry_words(types, machine, entry["machine"])
+
+    line =
+      case Words.earlier_return(entry, stage, stages) do
+        {to, limit} ->
+          ngettext(
+            "%{workflow}, machine type %{machine}, returns to %{stage} at most %{count} time",
+            "%{workflow}, machine type %{machine}, returns to %{stage} at most %{count} times",
+            limit,
+            workflow: entry["workflow"],
+            machine: words,
+            stage: to
+          )
+
+        nil ->
+          gettext("%{workflow}, machine type %{machine}",
+            workflow: entry["workflow"],
+            machine: words
+          )
+      end
+
+    {line, entry["workflow"]}
+  end
 
   defp artifact_line(%{"type" => type, "required" => true}),
     do: gettext("%{type}, required", type: type)

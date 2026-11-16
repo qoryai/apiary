@@ -9,6 +9,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   alias Apiary.Processes
+  alias Apiary.Stages.Runner
   alias ApiaryWeb.StagesLive.Draft
 
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
@@ -48,9 +49,10 @@ defmodule ApiaryWeb.StagesLive.Words do
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
-  # its label and its workflows. Text only.
+  # its label and its workflows. A workflow with a return to an earlier stage (choice 10)
+  # also has the line `returns`, in `stages`, the document's stages. Text only.
   @doc false
-  def card_sequence(stage) do
+  def card_sequence(stage, stages) do
     for entry <- stage["sequence"] do
       case entry do
         %{"loop" => %{"rounds" => rounds, "body" => body}} ->
@@ -63,17 +65,47 @@ defmodule ApiaryWeb.StagesLive.Words do
           }
 
         entry ->
-          %{workflow: to_string(entry["workflow"])}
+          item = %{workflow: to_string(entry["workflow"])}
+
+          case earlier_return(entry, stage, stages) do
+            {name, limit} -> Map.put(item, :returns, card_return(name, limit))
+            nil -> item
+          end
       end
     end
   end
 
-  # The words a screen reader reads for a card: its name, its description, its workflows
-  # and loops, its gate, each in full.
+  # The stage that a workflow entry's return key is set to, by name, and the most returns,
+  # when the stage is before `stage` in `stages`; nil for an entry with no key, and for a
+  # key to a stage that is not before it, which the editor shows as an error.
   @doc false
-  def card_label(stage, people) do
+  def earlier_return(%{"return" => %{"stage" => id} = key}, stage, stages) do
+    earlier = Enum.take_while(stages, &(&1["id"] != stage["id"]))
+
+    case Enum.find(earlier, &(&1["id"] == id)) do
+      %{"name" => name} -> {name, Runner.returns_limit(key)}
+      nil -> nil
+    end
+  end
+
+  def earlier_return(_entry, _stage, _stages), do: nil
+
+  # The line under a workflow on its card, and in the card's label.
+  defp card_return(name, limit),
+    do:
+      ngettext(
+        "Returns to %{stage}, at most %{count} time",
+        "Returns to %{stage}, at most %{count} times",
+        limit,
+        stage: name
+      )
+
+  # The words a screen reader reads for a card: its name, its description, its workflows
+  # and loops, each workflow's return, its gate, each in full.
+  @doc false
+  def card_label(stage, stages, people) do
     sequence =
-      case card_sequence(stage) do
+      case card_sequence(stage, stages) do
         [] ->
           [gettext("No workflow")]
 
@@ -84,6 +116,9 @@ defmodule ApiaryWeb.StagesLive.Words do
                 workflows: Enum.join(names, ", "),
                 rounds: loop
               )
+
+            %{workflow: name, returns: line} ->
+              name <> ". " <> line
 
             %{workflow: name} ->
               name
@@ -473,7 +508,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def returns_refused, do: gettext("Enter 1 to 10 returns.")
 
   # A return key set to a stage that is not before the entry's stage `stage`, by name, or
-  # to a removed stage (choice 10): in the return field, and for a refused save.
+  # to a removed stage (choice 10): in the return field, and for a save that fails.
   @doc false
   def return_refused(stage),
     do: gettext("Pick a stage before %{stage} to return to.", stage: stage)

@@ -3859,6 +3859,13 @@ msgstr[1] ""
 msgid "%{workflow}, machine type %{machine}"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow}, machine type %{machine}, returns to %{stage} at most %{count} time"
+msgid_plural "%{workflow}, machine type %{machine}, returns to %{stage} at most %{count} times"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow}: a stage can run it"
@@ -15071,6 +15078,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
+msgid "On changes requested: do not return"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
 msgid "On changes requested: return to %{stage}, at most %{count} return"
 msgid_plural "On changes requested: return to %{stage}, at most %{count} returns"
 msgstr[0] ""
@@ -17686,6 +17698,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Returns at most"
 msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Returns to %{stage}, at most %{count} time"
+msgid_plural "Returns to %{stage}, at most %{count} times"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format

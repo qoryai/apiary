@@ -157,9 +157,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with the member's action, the count of returns and the run's points; the escalation's
   **Move back** offers the return's stage first. **Request changes** at the gate of the
   entry's stage also returns the work item to that stage's first entry, and is not
-  counted. The stage editor shows the key under the entry: **On changes requested, return
-  to** and **Returns at most**, with an error for a number outside 1 to 10 and for a
-  stage that is not earlier.
+  counted. The stage editor shows the return under every workflow outside a loop, in a
+  stage that has an earlier stage: **On changes requested, return to** offers **Do not
+  return** and each earlier stage by name. With **Do not return** the fold shows only the
+  select (`On changes requested: do not return`); picking a stage sets **Returns at most**
+  to 2. The editor shows an error for a number outside 1 to 10 and for a stage that is
+  not earlier. A workflow with a return reads `returns to <stage> at most <n> times` in a
+  member's Sequence box, and its card on the canvas has the line `Returns to <stage>, at
+  most <n> times` under its name.
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
