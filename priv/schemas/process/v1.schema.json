@@ -67,6 +67,10 @@
         "access": {
           "description": "Lowers the access level the stack declares.",
           "const": "read"
+        },
+        "when": {
+          "description": "The entry runs only when its condition is met; otherwise no run starts for it.",
+          "$ref": "#/$defs/condition"
         }
       }
     },
@@ -105,6 +109,10 @@
       "properties": {
         "type": {"$ref": "#/$defs/artifact_type"},
         "required": {"type": "boolean"},
+        "when": {
+          "description": "The output is required only when its condition is met.",
+          "$ref": "#/$defs/condition"
+        },
         "check": {
           "description": "How the output is checked: it exists, the default, or an adapter reported an outcome for it. A reported check is stored and not checked in this version.",
           "oneOf": [
@@ -149,6 +157,13 @@
           ]
         }
       }
+    },
+    "condition": {
+      "description": "Met when the version of the type `input` that the stage reads has a file of more than 0 bytes. `input` is an output of an earlier stage.",
+      "type": "object",
+      "required": ["input"],
+      "additionalProperties": false,
+      "properties": {"input": {"$ref": "#/$defs/artifact_type"}}
     },
     "workflow_name": {
       "type": "string",
