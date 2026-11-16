@@ -23,7 +23,13 @@ defmodule Apiary.Stages.Runner do
   #     stage escalates, `round_limit`, with a point that says so
   #     (`Apiary.Stages.Points`).
   #   * Outside a loop, the sequence goes on after a run with `passed` or
-  #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with a point
+  #     `changes-requested`, except on an entry with a return key (`return`, choice 10):
+  #     its `changes-requested` returns the work item to the key's stage, an earlier stage
+  #     (`facts.earlier`), which it enters at its first entry (`{:return, stage_id}`).
+  #     The entry's runs that returned it before count (`facts.returns`); at the key's
+  #     `limit`, 2 by default, the stage escalates, `return_limit`, with a point that
+  #     says what the member does and how many returns ran, then the verdict's points.
+  #     A run with no verdict escalates, `run_stopped`, with a point
   #     that says so, on a first run and on a rerun. A test work item's run with no verdict
   #     goes on (`facts.test`): the built-in `hello` writes no verdict
   #     (`Apiary.Harnesses.Builtin`). So does a run of Explore whose take in has a
@@ -48,7 +54,9 @@ defmodule Apiary.Stages.Runner do
   #     a person adds in the stage (`:version_added`) runs the checks again: once every
   #     required output passes, a gate `none` passes on and a person gate keeps waiting.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
-  #     start when it has no loop.
+  #     start when it has no loop. At the gate of a stage with an entry that has a return
+  #     key, it returns the work item to that key's stage instead, at its first entry, and
+  #     counts no return.
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
   #     next workflow, or, after its last, to the gate without the Exists checks, where
   #     a failed check stays shown (§ 6); an escalation at the end of the sequence goes to
@@ -64,6 +72,7 @@ defmodule Apiary.Stages.Runner do
   alias Apiary.Stages.Points
 
   @default_rounds 3
+  @default_returns 2
 
   @typedoc "Where a work item is in its stage's sequence."
   @type position :: %{
@@ -83,7 +92,7 @@ defmodule Apiary.Stages.Runner do
           | :done
 
   @typedoc "Why a stage escalates."
-  @type cause :: :round_limit | :escalate | :check_failed | :run_stopped
+  @type cause :: :round_limit | :escalate | :check_failed | :run_stopped | :return_limit
 
   @typedoc "A point of an escalation (`Apiary.Stages.Points`)."
   @type point :: %{required(String.t()) => String.t()}
@@ -117,7 +126,9 @@ defmodule Apiary.Stages.Runner do
   (`declarations`), whether the work item is a test work item (`test`) and, at a run's
   end, whether the run is a run of Explore whose take in has a proposal, or that left open
   questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
-  `changes-requested` (`explore_verdict`).
+  `changes-requested` (`explore_verdict`); the stages before this one in the document, by
+  id with their names (`earlier`), and the runs of the entry at the work item's position
+  that returned the work item to an earlier stage (`returns`).
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
@@ -127,7 +138,9 @@ defmodule Apiary.Stages.Runner do
           optional(:declarations) => %{String.t() => map | nil},
           optional(:test) => boolean,
           optional(:explore_result) => boolean,
-          optional(:explore_verdict) => boolean
+          optional(:explore_verdict) => boolean,
+          optional(:earlier) => %{String.t() => String.t()},
+          optional(:returns) => non_neg_integer
         }
 
   @typedoc "A run to queue, at the position it runs at."
@@ -146,6 +159,7 @@ defmodule Apiary.Stages.Runner do
           {:queue, run_spec}
           | {:escalate, cause, [point]}
           | {:checks_failed, pos_integer, String.t()}
+          | {:return, String.t()}
           | :advance
 
   @typedoc "The stage's next state, its position and the actions to apply."
@@ -176,10 +190,11 @@ defmodule Apiary.Stages.Runner do
       else: start(stage, position, facts)
   end
 
-  def step(stage, _position, :request_changes, facts) do
-    case first_loop(stage) do
-      nil -> start(stage, at(stage, 0, 1), facts)
-      index -> start(stage, %{entry: index, loop_entry: 0, round: 1}, facts)
+  def step(stage, position, :request_changes, facts) do
+    case {gate_return(stage, facts), first_loop(stage)} do
+      {stage_id, _loop} when is_binary(stage_id) -> leave(position, stage_id)
+      {nil, nil} -> start(stage, at(stage, 0, 1), facts)
+      {nil, index} -> start(stage, %{entry: index, loop_entry: 0, round: 1}, facts)
     end
   end
 
@@ -310,10 +325,15 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
     do: escalate(:escalate, points || [], position)
 
-  defp run_ended(stage, position, {:verdict, verdict, _points}, facts) do
+  defp run_ended(stage, position, {:verdict, verdict, points}, facts) do
+    key = return_key(stage, position, facts)
+
     cond do
       in_loop?(position) ->
         ring(stage, position, facts)
+
+      verdict == :changes_requested and key != nil ->
+        return_or_escalate(stage, position, key, points, facts)
 
       is_nil(verdict) and not no_verdict_goes_on?(facts) ->
         escalate(:run_stopped, Points.no_verdict(), position)
@@ -359,6 +379,65 @@ defmodule Apiary.Stages.Runner do
         start(stage, %{position | loop_entry: 0, round: position.round + 1}, facts)
     end
   end
+
+  ## The return to an earlier stage (choice 10)
+
+  # A return while the entry's runs returned the work item fewer times than its limit;
+  # at the limit, the escalation.
+  defp return_or_escalate(stage, position, %{"stage" => stage_id} = key, points, facts) do
+    returns = Map.get(facts, :returns, 0)
+
+    if returns < returns_limit(key) do
+      leave(position, stage_id)
+    else
+      to = Map.fetch!(earlier(facts), stage_id)
+      own = Points.return_limit(returns, stage["name"], to)
+      escalate(:return_limit, own ++ (points || []), position)
+    end
+  end
+
+  # The stage is left for the earlier stage `stage_id`, which `Apiary.Stages` enters.
+  defp leave(position, stage_id),
+    do: %{state: :done, position: position, actions: [{:return, stage_id}]}
+
+  # return_key/3 is the return key of the workflow entry at `position`, outside a loop,
+  # where its stage is one of the earlier stages (`facts.earlier`); nil otherwise. A save
+  # refuses a key in a loop's body and a key to a stage that is not earlier
+  # (`Apiary.Processes.validate/1`).
+  @doc false
+  @spec return_key(map, position | nil, facts) :: map | nil
+  def return_key(stage, %{entry: index, loop_entry: nil}, facts) do
+    case Enum.at(sequence(stage), index) do
+      %{"workflow" => _name, "return" => %{"stage" => stage_id} = key} ->
+        if Map.has_key?(earlier(facts), stage_id), do: key
+
+      _other ->
+        nil
+    end
+  end
+
+  def return_key(_stage, _position, _facts), do: nil
+
+  # The stage that Request changes at the gate returns the work item to: the stage of the
+  # first entry with a return key, nil for none.
+  defp gate_return(stage, facts) do
+    stage
+    |> sequence()
+    |> Enum.with_index()
+    |> Enum.find_value(fn {_entry, index} ->
+      case return_key(stage, %{entry: index, loop_entry: nil}, facts) do
+        %{"stage" => stage_id} -> stage_id
+        nil -> nil
+      end
+    end)
+  end
+
+  # returns_limit/1 is the most returns of a return key, 2 by default (choice 22).
+  @doc false
+  @spec returns_limit(map) :: pos_integer
+  def returns_limit(key), do: Map.get(key, "limit") || @default_returns
+
+  defp earlier(facts), do: Map.get(facts, :earlier, %{})
 
   ## The end of the sequence
 

@@ -147,6 +147,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
   a stage.
+- A workflow entry outside a loop may have a `return` key: `stage`, an earlier stage, and
+  `limit`, 1 to 10, 2 by default. When the entry's run asks for changes, the work item
+  returns to that stage and starts at its first entry. After `limit` returns, the next
+  run that asks for changes escalates to a member, with the count of returns and the
+  run's points. **Request changes** at the gate of the entry's stage also returns the work
+  item to that stage's first entry, and is not counted. The stage editor shows the key
+  under the entry: **On changes requested, return to** and **Returns at most**.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -2030,6 +2037,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `dispatch_runs` and `escalations` (20261116120000 and 20261116120100): a nullable
+  column `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
+  check that it is a stage id; and the check on `escalations.cause` takes `return_limit`.
+  The column has no default, so adding it rewrites no row. The first migration adds both
+  checks without a scan, and the second validates them with scans that do not block
+  writes. It changes no row. Rolling back drops `dispatch_runs.returned_to` and sets the
+  cause of each `return_limit` escalation to `escalate`.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.

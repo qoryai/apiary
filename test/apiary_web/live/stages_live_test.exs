@@ -2075,6 +2075,181 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a workflow's return (choice 10)" do
+    # Verify with capture-demos, then verify-a-ticket, which returns to Build on changes
+    # requested, with `key` as its return key; saved as the current version.
+    setup %{scope: scope} do
+      build = id_of("Build")
+      verify = id_of("Verify")
+
+      returning = fn key ->
+        document = Processes.current(scope.workspace).document
+
+        stages =
+          Enum.map(document["stages"], fn
+            %{"id" => ^verify} = stage ->
+              %{
+                stage
+                | "sequence" => [
+                    %{"workflow" => "capture-demos"},
+                    %{"workflow" => "verify-a-ticket", "return" => key}
+                  ]
+              }
+
+            stage ->
+              stage
+          end)
+
+        {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      end
+
+      %{build: build, verify: verify, returning: returning}
+    end
+
+    defp verify_entry(scope, verify) do
+      stage = Processes.stage(Processes.current(scope.workspace), verify)
+      Enum.at(stage["sequence"], 1)
+    end
+
+    test "the fold of an entry with the key: its stage, its most returns and the line", %{
+      conn: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      fold = "details[id^=stage-entry-1-return-]"
+      assert has_element?(view, fold, "On changes requested: return to Build, at most 2 returns")
+
+      assert has_element?(
+               view,
+               "#{fold} label[for=stage-entry-1-return]",
+               "On changes requested, return to"
+             )
+
+      assert has_element?(view, "#{fold} label[for=stage-entry-1-returns]", "Returns at most")
+
+      assert has_element?(
+               view,
+               "#{fold} p",
+               "At the third return, Qory Apiary escalates to a member."
+             )
+
+      assert has_element?(
+               view,
+               "input#stage-entry-1-returns[type=number][min='1'][max='10'][value='2']"
+             )
+
+      # The stages before Verify, in order, after Do not return.
+      assert workflow_options(view, "stage-entry-1-return") == [
+               {"", false},
+               {id_of("Explore"), false},
+               {id_of("Shape"), false},
+               {build, true}
+             ]
+
+      assert has_element?(view, "select#stage-entry-1-return option[value='']", "Do not return")
+
+      # An entry with no key, and an entry in a loop, have no such fold.
+      refute has_element?(view, "details[id^=stage-entry-0-return-]")
+      select(view, "Build")
+      refute has_element?(view, "details[id*=-return-]")
+    end
+
+    test "the key survives an edit of its entry, a rename of its workflow included", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      build: build,
+      verify: verify,
+      returning: returning
+    } do
+      returning.(%{"stage" => build, "limit" => 2})
+      machine_type_fixture(key: "large")
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      change_stage(view, %{
+        "sequence" => %{
+          "0" => %{"workflow" => "capture-demos"},
+          "1" => %{"workflow" => "check-a-ticket", "machine" => "large"}
+        }
+      })
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version")
+
+      assert verify_entry(scope, verify) == %{
+               "workflow" => "check-a-ticket",
+               "machine" => "large",
+               "return" => %{"stage" => build, "limit" => 2}
+             }
+
+      # A draft that Draft edits keeps the key too.
+      doc = Processes.current(scope.workspace).document
+      stage = Processes.stage(doc, verify)
+
+      edited =
+        Draft.apply_form(stage, %{
+          "sequence" => %{"0" => %{"workflow" => "a"}, "1" => %{"workflow" => "b"}}
+        })
+
+      assert Enum.at(edited["sequence"], 1)["return"] == %{"stage" => build, "limit" => 2}
+    end
+
+    test "Returns at most and the stage change the key; Do not return removes it", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      build: build,
+      verify: verify,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      change_stage(view, %{
+        "sequence" => %{"1" => %{"return" => id_of("Shape"), "returns" => "3"}}
+      })
+
+      fold = "details[id^=stage-entry-1-return-]"
+      assert has_element?(view, fold, "On changes requested: return to Shape, at most 3 returns")
+
+      assert has_element?(
+               view,
+               "#{fold} p",
+               "At the fourth return, Qory Apiary escalates to a member."
+             )
+
+      # A number outside 1 to 10 keeps the most returns the key has.
+      change_stage(view, %{"sequence" => %{"1" => %{"returns" => "11"}}})
+      assert has_element?(view, fold, "at most 3 returns")
+
+      change_stage(view, %{"sequence" => %{"1" => %{"returns" => "1"}}})
+      assert has_element?(view, fold, "On changes requested: return to Shape, at most 1 return")
+
+      assert has_element?(
+               view,
+               "#{fold} p",
+               "At the second return, Qory Apiary escalates to a member."
+             )
+
+      view |> element("#stages-save") |> render_click()
+
+      assert verify_entry(scope, verify)["return"] == %{"stage" => id_of("Shape"), "limit" => 1}
+
+      select(view, "Verify")
+      change_stage(view, %{"sequence" => %{"1" => %{"return" => ""}}})
+      refute has_element?(view, fold)
+      view |> element("#stages-save") |> render_click()
+      refute Map.has_key?(verify_entry(scope, verify), "return")
+    end
+  end
+
   describe "a member's panel" do
     setup %{scope: scope} do
       %{user: user} = member_fixture(scope)

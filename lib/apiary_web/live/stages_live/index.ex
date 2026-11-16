@@ -666,6 +666,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 stage={@stage}
                 may={@may}
                 last={length(@draft["stages"]) == 1}
+                stages={@draft["stages"]}
                 declared={@declared}
                 types={@types}
                 members={@members}

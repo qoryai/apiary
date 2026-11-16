@@ -11,6 +11,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   import ApiaryWeb.PolicyComponents, only: [sect: 1]
 
+  alias Apiary.Stages.Runner
   alias ApiaryWeb.MachineTypeWords
   alias ApiaryWeb.StagesLive.Words
 
@@ -35,6 +36,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :stage, :map, required: true
   attr :may, :boolean, required: true
   attr :last, :boolean, default: false, doc: "whether the stage is the only one"
+
+  attr :stages, :list,
+    default: [],
+    doc: "the document's stages, for the stages a workflow's return may go to"
+
   attr :declared, :list, required: true
   attr :types, :list, required: true
   attr :members, :list, required: true
@@ -252,6 +258,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   name={"stage[sequence][#{i}]"}
                   id={"stage-entry-#{i}"}
                   stage_id={@stage["id"]}
+                  stages={@stages}
                   declared={@declared}
                   machine={@machine}
                   machine_types={@machine_types}
@@ -378,6 +385,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :from_update, :boolean, required: true
   attr :remove, :any, required: true
   attr :rule, :boolean, required: true, doc: "whether a line separates the row from the one above"
+
+  attr :stages, :list,
+    default: [],
+    doc: "the document's stages; only a workflow outside a loop has them, for its return"
 
   # A workflow's row: its name, its check or cross and Remove, and under them one line with
   # its settings, which opens them in place. The whole line is the `summary`, so a key or a
@@ -508,8 +519,109 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           />
         </div>
       </details>
+      <.return_fold
+        :if={is_map(@entry["return"]) and @stages != []}
+        id={@id}
+        name={@name}
+        stage_id={@stage_id}
+        key={@entry["return"]}
+        stages={@stages}
+      />
     </div>
     """
+  end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :stage_id, :string, required: true
+  attr :key, :map, required: true, doc: "the entry's return key"
+  attr :stages, :list, required: true
+
+  # The fold of a workflow entry's return key (choice 10), under its machine type: the
+  # stage to return to on changes requested, "Do not return" or one of the stages before
+  # the entry's, and the most returns, with the line on what happens after them. Only an
+  # entry with the key has it. "Do not return" removes the key (`Draft`), and the fold
+  # with it. A key to a stage that is not earlier keeps its stage in the field, by name,
+  # so a save shows the refusal.
+  defp return_fold(assigns) do
+    earlier = Enum.take_while(assigns.stages, &(&1["id"] != assigns.stage_id))
+    to = assigns.key["stage"]
+    limit = Runner.returns_limit(assigns.key)
+
+    options =
+      [{gettext("Do not return"), ""} | Enum.map(earlier, &{&1["name"], &1["id"]})] ++
+        if(Enum.any?(earlier, &(&1["id"] == to)),
+          do: [],
+          else: [{stage_name(assigns.stages, to), to}]
+        )
+
+    assigns =
+      assign(assigns,
+        options: options,
+        limit: limit,
+        to: to,
+        summary:
+          ngettext(
+            "On changes requested: return to %{stage}, at most %{count} return",
+            "On changes requested: return to %{stage}, at most %{count} returns",
+            limit,
+            stage: stage_name(assigns.stages, to)
+          ),
+        line: Words.return_line(limit)
+      )
+
+    ~H"""
+    <details
+      id={"#{@id}-return-#{@stage_id}"}
+      class="q-tool group"
+      phx-mounted={JS.ignore_attributes(["open"])}
+    >
+      <summary class="nokey">
+        <span class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10">
+          <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
+          <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{@summary}</span>
+          <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
+            {gettext("Change")}
+          </span>
+          <span class="hidden shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:inline">
+            {gettext("Close")}
+          </span>
+        </span>
+      </summary>
+      <div class="grid gap-3 pt-2 pb-2 pl-5">
+        <.input
+          id={"#{@id}-return"}
+          name={"#{@name}[return]"}
+          type="select"
+          value={@to}
+          label={gettext("On changes requested, return to")}
+          options={@options}
+          class="w-64"
+        />
+        <div class="q-stage-rounds">
+          <.input
+            id={"#{@id}-returns"}
+            name={"#{@name}[returns]"}
+            type="number"
+            min="1"
+            max="10"
+            value={@limit}
+            label={gettext("Returns at most")}
+            class="w-14"
+          />
+        </div>
+        <p class="text-[13px]/5 text-muted">{@line}</p>
+      </div>
+    </details>
+    """
+  end
+
+  # The name of the stage `id` in `stages`; the id itself for a stage that is not there.
+  defp stage_name(stages, id) do
+    case Enum.find(stages, &(&1["id"] == id)) do
+      %{"name" => name} -> name
+      nil -> to_string(id)
+    end
   end
 
   attr :id, :string, required: true

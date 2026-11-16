@@ -51,7 +51,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     "round_limit" => :round_limit,
     "escalate" => :escalate,
     "check_failed" => :check_failed,
-    "run_stopped" => :run_stopped
+    "run_stopped" => :run_stopped,
+    "return_limit" => :return_limit
   }
 
   @doc false

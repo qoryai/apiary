@@ -345,6 +345,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
                 may={true}
                 named={false}
                 last={length(@draft["stages"]) == 1}
+                stages={@draft["stages"]}
                 declared={@declared}
                 types={@types}
                 members={[]}

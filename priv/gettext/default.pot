@@ -3442,6 +3442,13 @@ msgstr[1] ""
 msgid "%{stage} · round %{round}"
 msgstr ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}'s run asked for changes again after %{count} return to %{to}, the most that %{stage} allows."
+msgid_plural "%{stage}'s run asked for changes again after %{count} returns to %{to}, the most that %{stage} allows."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
@@ -6212,9 +6219,59 @@ msgstr ""
 msgid "At most 80 words, on the type's page. A blank line starts a new paragraph."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the eighth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the eleventh return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the fifth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the fourth return, Qory Apiary escalates to a member."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "At the gate"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the ninth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the second return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the seventh return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the sixth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the tenth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the third return, Qory Apiary escalates to a member."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -8979,6 +9036,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Dismiss"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Do not return"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -14972,6 +15034,18 @@ msgstr ""
 msgid "On Forager's deny list"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "On changes requested, return to"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "On changes requested: return to %{stage}, at most %{count} return"
+msgid_plural "On changes requested: return to %{stage}, at most %{count} returns"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "On port 465, TLS from the start, whatever this says."
@@ -15955,6 +16029,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Per version, 1 to %{number}."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -17551,6 +17630,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention saved."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Returns at most"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

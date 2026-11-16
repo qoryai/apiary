@@ -417,6 +417,21 @@ defmodule ApiaryWeb.StagesLive.Words do
         fallback: fallback
       )
 
+  # The line under a workflow's "Returns at most" (choice 10): the return after `limit`
+  # returns escalates, named by its place, from the second (a limit of 1) to the eleventh
+  # (a limit of 10, the schema's most).
+  @doc false
+  def return_line(1), do: gettext("At the second return, Qory Apiary escalates to a member.")
+  def return_line(2), do: gettext("At the third return, Qory Apiary escalates to a member.")
+  def return_line(3), do: gettext("At the fourth return, Qory Apiary escalates to a member.")
+  def return_line(4), do: gettext("At the fifth return, Qory Apiary escalates to a member.")
+  def return_line(5), do: gettext("At the sixth return, Qory Apiary escalates to a member.")
+  def return_line(6), do: gettext("At the seventh return, Qory Apiary escalates to a member.")
+  def return_line(7), do: gettext("At the eighth return, Qory Apiary escalates to a member.")
+  def return_line(8), do: gettext("At the ninth return, Qory Apiary escalates to a member.")
+  def return_line(9), do: gettext("At the tenth return, Qory Apiary escalates to a member.")
+  def return_line(10), do: gettext("At the eleventh return, Qory Apiary escalates to a member.")
+
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
   def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")

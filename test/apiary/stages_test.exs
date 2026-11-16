@@ -3050,6 +3050,216 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the return from Verify to Build (choice 10)" do
+    @verify "st_m1mqbeywdg"
+    @findings [
+      %{"text" => "Criterion 2 is not met: the export has no PDF.", "action" => "run_again"}
+    ]
+
+    # Build: `first` before a loop of implement-changes and review-changes, gate none.
+    # Verify: verify-a-ticket, which returns to Build on changes-requested, at most 2 times.
+    defp returning!(scope, first \\ []) do
+      loop = %{
+        "loop" => %{
+          "rounds" => 3,
+          "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+        }
+      }
+
+      save!(scope, [
+        stage(@build, "Build", first ++ [loop], %{"gate" => %{"kind" => "none"}}),
+        stage(@verify, "Verify", [
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
+        ])
+      ])
+    end
+
+    # Build's loop passes on its first run, and Verify's run starts.
+    defp through_build!(work_item) do
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+      work_item
+    end
+
+    defp returned(work_item),
+      do:
+        Repo.all(
+          from d in DispatchRun,
+            where: d.work_item_id == ^work_item.id and not is_nil(d.returned_to),
+            select: d.returned_to
+        )
+
+    test "a first and a second return start Build's loop; a third escalates", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      for count <- 1..2 do
+        work_item = end_run!(work_item, verdict("changes-requested", @findings))
+
+        assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0, loop_entry: 0} =
+                 work_item
+
+        assert %DispatchRun{workflow: "implement-changes", stage_id: @build, round: 1} =
+                 newest_run(work_item)
+
+        assert returned(work_item) == List.duplicate(@build, count)
+        refute escalation(work_item)
+        through_build!(work_item)
+      end
+
+      work_item = end_run!(reload(work_item), verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert returned(work_item) == [@build, @build]
+
+      assert %Escalation{cause: :return_limit, stage_id: @verify, points: points} =
+               escalation(work_item)
+
+      assert points == [
+               %{
+                 "text" =>
+                   "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+               }
+               | @findings
+             ]
+
+      assert %{escalation: %{cause: :return_limit, points: ^points}} =
+               Stages.status(reload(work_item), scope)
+    end
+
+    test "a person's Request changes starts Build's first entry and counts no return", %{
+      scope: scope
+    } do
+      returning!(scope, [%{"workflow" => "triage-review"}])
+      work_item = take_in!(scope) |> end_run!(verdict("passed")) |> through_build!()
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      assert Stages.starts(work_item, :request_changes) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0}} =
+               Stages.request_changes(scope, work_item, "Drop the CSV option.", nil,
+                 expect_stage: @verify
+               )
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @build} = newest_run(work_item)
+      assert returned(work_item) == []
+
+      assert [%GateDecision{kind: :request_changes, stage_id: @verify}] =
+               Enum.filter(decisions(work_item), &(&1.kind == :request_changes))
+
+      # Two returns of Verify's run still follow before the limit.
+      work_item = reload(work_item)
+
+      for count <- 1..2 do
+        work_item = work_item |> end_run!(verdict("passed")) |> through_build!()
+        work_item = end_run!(work_item, verdict("changes-requested", @findings))
+        assert %WorkItem{stage_id: @build, stage_entry: 0} = work_item
+        assert %DispatchRun{workflow: "triage-review"} = newest_run(work_item)
+        assert length(returned(work_item)) == count
+      end
+
+      work_item = reload(work_item) |> end_run!(verdict("passed")) |> through_build!()
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+    end
+
+    test "at the limit, Move back returns once more and the next changes escalate again", %{
+      scope: scope
+    } do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_entry: 0}} =
+               Stages.resolve_escalation(scope, work_item, {:move_back, @build}, nil,
+                 expect_stage: @verify
+               )
+
+      work_item = reload(work_item) |> through_build!()
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+      assert length(returned(work_item)) == 2
+    end
+
+    test "accept at the limit opens Verify's gate", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+
+      assert {:ok, %WorkItem{stage_id: @verify, stage_state: :at_gate}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @verify)
+    end
+
+    test "a save refuses a return to a stage that is not earlier, in a loop, or over 10" do
+      document = &%{"schema" => "qory.process/v1", "stages" => &1}
+      returning = &%{"workflow" => "check", "return" => Map.merge(%{"stage" => &1}, &2)}
+
+      assert Processes.validate(
+               document.([
+                 stage(@build, "Build", []),
+                 stage(@verify, "Verify", [returning.(@build, %{})])
+               ])
+             ) == :ok
+
+      assert {:error, [%{path: "#/stages/0/sequence/0/return/stage", error: :return_not_earlier}]} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", [returning.(@verify, %{})]),
+                   stage(@verify, "Verify", [])
+                 ])
+               )
+
+      assert {:error, [%{path: "#/stages/1/sequence/0/return/stage", error: :return_not_earlier}]} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", []),
+                   stage(@verify, "Verify", [returning.(@verify, %{})])
+                 ])
+               )
+
+      in_loop = %{"loop" => %{"rounds" => 2, "body" => [returning.(@build, %{})]}}
+
+      assert {:error, [_ | _] = errors} =
+               Processes.validate(
+                 document.([stage(@build, "Build", []), stage(@verify, "Verify", [in_loop])])
+               )
+
+      assert Enum.all?(errors, &(&1.error == :schema))
+
+      assert {:error, [_ | _] = errors} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", []),
+                   stage(@verify, "Verify", [returning.(@build, %{"limit" => 11})])
+                 ])
+               )
+
+      assert Enum.all?(errors, &(&1.error == :schema))
+    end
+  end
+
   describe "a work item that is not live" do
     defp closed_waiting_workflow!(scope) do
       :ok = Processes.record_declared(scope.workspace, ["review"])

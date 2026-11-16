@@ -94,7 +94,8 @@ defmodule Apiary.Processes do
   the document, `#/stages/1/name` for the name of the second stage), and why. `:too_large` for a document over the limits; `:schema` for one the
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
-  (names compared trimmed and without case); `:unchanged` for a save of the document of
+  (names compared trimmed and without case); `:return_not_earlier` for a workflow entry's
+  `return` whose stage is not one before the entry's stage; `:unchanged` for a save of the document of
   the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -260,7 +261,8 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, and the stage of
+  each workflow entry's `return` before the entry's stage. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -273,7 +275,7 @@ defmodule Apiary.Processes do
       true ->
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
-            case duplicates(document["stages"]) do
+            case duplicates(document["stages"]) ++ returns_not_earlier(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -307,6 +309,20 @@ defmodule Apiary.Processes do
     end)
     |> elem(0)
     |> Enum.reverse()
+  end
+
+  # The return key of each workflow entry (choice 10) names a stage before the entry's
+  # stage; the schema refuses the key in a loop's body.
+  defp returns_not_earlier(stages) do
+    for {stage, index} <- Enum.with_index(stages),
+        earlier = MapSet.new(Enum.take(stages, index), & &1["id"]),
+        {%{"return" => %{"stage" => stage_id}}, at} <- Enum.with_index(stage["sequence"] || []),
+        not MapSet.member?(earlier, stage_id),
+        do: %{
+          path: "#/stages/#{index}/sequence/#{at}/return/stage",
+          error: :return_not_earlier,
+          detail: nil
+        }
   end
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]

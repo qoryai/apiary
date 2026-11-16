@@ -947,7 +947,9 @@ defmodule Apiary.Stages do
 
   # request_changes/4 runs the stage's sequence again from its first loop, or from its
   # start, with the person's note, which may point at one artifact version of the work
-  # item (`av_…`).
+  # item (`av_…`). At the gate of a stage with an entry that has a return key, the work
+  # item enters that key's earlier stage at its first entry instead, and no return is
+  # counted (`Apiary.Stages.Runner`).
   @doc false
   @spec request_changes(Scope.t(), WorkItem.t(), String.t() | nil, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1194,6 +1196,9 @@ defmodule Apiary.Stages do
 
       :advance, _none ->
         {:halt, entered(work_item, version, next_stage(version, stage), later)}
+
+      {:return, stage_id}, _none ->
+        {:halt, entered(work_item, version, Processes.stage(version, stage_id), later)}
 
       _other, none ->
         {:cont, none}
@@ -1554,7 +1559,25 @@ defmodule Apiary.Stages do
 
       :advance, {work_item, _run} ->
         advance(work_item, version, stage)
+
+      {:return, stage_id}, {work_item, _run} ->
+        returned!(run_id, stage_id)
+        enter_locked(work_item, version, Processes.stage(version, stage_id))
     end)
+  end
+
+  # The run whose end returned the work item to the stage `stage_id` keeps it, so the
+  # stage runner counts its entry's returns (`returns/2`). A person's Request changes has
+  # no run, and counts none.
+  defp returned!(nil, _stage_id), do: :ok
+
+  defp returned!(run_id, stage_id) do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run_id),
+        set: [returned_to: stage_id]
+      )
+
+    :ok
   end
 
   # The next stage of the version after `stage`, entered; after the last, the stage is
@@ -1605,8 +1628,35 @@ defmodule Apiary.Stages do
       declarations: declarations,
       failed_checks: missing(outputs(work_item, stage, artifacts)),
       machine: version.document["machine"],
-      test: work_item.test
+      test: work_item.test,
+      earlier: Map.new(earlier_stages(version, stage), &{&1["id"], &1["name"]}),
+      returns: returns(work_item, stage)
     }
+  end
+
+  # The stages of the version before `stage`, in order.
+  defp earlier_stages(version, stage) do
+    stages = version.document["stages"] || []
+    Enum.take_while(stages, &(&1["id"] != stage["id"]))
+  end
+
+  # The runs of the work item's entry, at its position in `stage`, that returned the work
+  # item to an earlier stage (`returned!/2`), in any take in; 0 for an entry with no
+  # return key.
+  defp returns(work_item, stage) do
+    with %{entry: entry, loop_entry: nil} <- position(work_item),
+         true <- work_item.stage_id == stage["id"],
+         %{"return" => %{}} <- Enum.at(stage["sequence"] || [], entry) do
+      Repo.aggregate(
+        from(d in DispatchRun,
+          where: d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"],
+          where: d.stage_entry == ^entry and not is_nil(d.returned_to)
+        ),
+        :count
+      )
+    else
+      _other -> 0
+    end
   end
 
   # The stage's workflows that hold it back: with a snapshot of the names the workspace's
