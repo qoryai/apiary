@@ -90,6 +90,20 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   @doc false
+  # submit_module/3 is the harness module with the submit program of the forge of
+  # `target` (`%{system:, path:}`), the target of the run of the queue `dispatch_run`,
+  # whose work item is `work_item`, as the latest start-up of the adapter of the
+  # collection `form_work/3` takes declared it (`Apiary.Nodes.Node`'s `submit_module`).
+  # Nil where there is no such collection, and where that start-up declared none.
+  @spec submit_module(DispatchRun.t(), WorkItem.t() | nil, map | nil) :: map | nil
+  def submit_module(%DispatchRun{} = dispatch_run, work_item, target) do
+    case collection(dispatch_run, work_item, target) do
+      {_collection, _connection, %Node{submit_module: %{} = module}} -> module
+      _none -> nil
+    end
+  end
+
+  @doc false
   # reach/3 is how the run's work entry reaches its target, from the collection
   # `form_work/3` takes: `{:gone, adapter}` for a collection that ended or a connection
   # not connected, `{:path_refused, adapter}` for a target path its adapter's apply items

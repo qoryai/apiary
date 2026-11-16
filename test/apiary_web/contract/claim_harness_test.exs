@@ -12,13 +12,15 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
   import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 2]
-  import Apiary.NodesFixtures, only: [collection_fixture: 1]
+  import Apiary.NodesFixtures, only: [collection_fixture: 1, collection_fixture: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, Repo, Stacks, WorkItems}
   alias Apiary.Harnesses.{Builtin, Reader}
+  alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
+  alias Apiary.Processes.Version
   alias Apiary.QoryHarnessFixture
   alias Apiary.Runs.RunCredential
   alias ApiaryWeb.Contract.SignedRequest
@@ -273,6 +275,168 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     end
   end
 
+  describe "a run's submit step" do
+    @describetag needs: [:factory, :workflow_model]
+
+    @submit %{"type" => "code-change", "send" => "end_of_run"}
+    @submit_module %{
+      "name" => "forge-submit",
+      "source" => %{
+        "git" => "https://modules.example.org/example-org/forge-module",
+        "ref" => "3f2a91c4d5e6f708192a3b4c5d6e7f8091a2b3c4",
+        "module" => "forge-submit"
+      }
+    }
+
+    # The workspace's process: one stage whose sequence runs `explore-a-ticket`, with
+    # `access` when given. Its version's template record has `submit`, none for nil. The
+    # runs queued after it are of this version.
+    defp process!(ctx, submit, access \\ nil) do
+      workflow!(ctx)
+      entry = %{"workflow" => "explore-a-ticket"}
+      entry = if access, do: Map.put(entry, "access", access), else: entry
+
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [entry],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+      if submit do
+        template =
+          (version.template || %{})
+          |> Map.put_new("commit", @version)
+          |> Map.put("submit", submit)
+
+        {1, _rows} =
+          Repo.update_all(from(v in Version, where: v.id == ^version.id),
+            set: [template: template]
+          )
+      end
+
+      version
+    end
+
+    # A collection of the workspace that can change the target of `work_item`, as a
+    # forge's is, whose adapter's latest start-up declared `module`, none for nil.
+    defp forge!(ctx, work_item, module) do
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: work_item.target_system,
+          target_path: work_item.target_path,
+          environment_ref: nil
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true, submit_module: module]
+        )
+
+      collection
+    end
+
+    # A work item's explore run whose walk resolved `access`, from the stacks' document.
+    defp walked!(ctx, access) do
+      explore!(ctx,
+        origin: :setting,
+        document: section(),
+        target_version: @version,
+        access_level: access
+      )
+    end
+
+    test "of a write run has submit, and the submit_module of the forge's adapter, after harness",
+         ctx do
+      process!(ctx, @submit)
+      work_item = walked!(ctx, :write)
+      forge!(ctx, work_item, @submit_module)
+      stored = stored(claim(ctx))
+      documents = Jason.decode!(stored)
+
+      assert %{
+               "access" => "write",
+               "workflow" => "explore-a-ticket",
+               "submit" => @submit,
+               "submit_module" => @submit_module
+             } = documents
+
+      assert stored |> members() |> Enum.filter(&(&1 in ~w(harness submit_module submit inputs))) ==
+               ~w(harness submit_module submit inputs)
+
+      valid!(documents)
+    end
+
+    test "of a write run whose forge's adapter declared no submit_module is submit alone",
+         ctx do
+      process!(ctx, @submit)
+      work_item = walked!(ctx, :write)
+      forge!(ctx, work_item, nil)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "submit" => @submit} = documents
+      refute Map.has_key?(documents, "submit_module")
+    end
+
+    test "of a write run with no forge's collection for its target is submit alone", ctx do
+      process!(ctx, @submit)
+      walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "submit" => @submit} = documents
+      refute Map.has_key?(documents, "submit_module")
+    end
+
+    test "is absent where the process version has no submit", ctx do
+      process!(ctx, nil)
+      work_item = walked!(ctx, :write)
+      forge!(ctx, work_item, @submit_module)
+      documents = documents(claim(ctx))
+
+      assert documents["access"] == "write"
+      refute Map.has_key?(documents, "submit")
+      refute Map.has_key?(documents, "submit_module")
+    end
+
+    test "is absent from a read run", ctx do
+      process!(ctx, @submit)
+      work_item = walked!(ctx, :read)
+      forge!(ctx, work_item, @submit_module)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
+      refute Map.has_key?(documents, "submit")
+      refute Map.has_key?(documents, "submit_module")
+    end
+
+    test "is absent from a write run that a stage entry with read access lowers", ctx do
+      process!(ctx, @submit, "read")
+      work_item = walked!(ctx, :write)
+      forge!(ctx, work_item, @submit_module)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
+      refute Map.has_key?(documents, "submit")
+      refute Map.has_key?(documents, "submit_module")
+    end
+
+    test "is absent from a run with no workflow", ctx do
+      process!(ctx, @submit)
+      work_item = explore!(ctx, access_level: :write)
+      forge!(ctx, work_item, @submit_module)
+      documents = documents(claim(ctx))
+
+      assert Map.take(documents, @harness) == %{}
+      refute Map.has_key?(documents, "submit")
+      refute Map.has_key?(documents, "submit_module")
+    end
+  end
+
   describe "a test work item's explore run" do
     # The run the claim registered.
     defp registered(claim) do
@@ -341,6 +505,21 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert Map.take(documents, @harness) == %{}
       assert documents["access"] == "read"
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
+    end
+
+    test "has no submit and no submit_module, where its collection's adapter declares one",
+         ctx do
+      workflow!(ctx)
+      collection = collection_fixture(ctx.scope)
+
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true, submit_module: @submit_module]
+        )
+
+      documents = prebuild_documents(ctx, collection)
+      refute Map.has_key?(documents, "submit")
+      refute Map.has_key?(documents, "submit_module")
     end
 
     test "has its destinations in the registry under the organisation's place, valid", ctx do
