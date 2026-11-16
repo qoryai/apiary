@@ -3606,6 +3606,7 @@ msgid "%{tool} failed: %{summary}"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{type} %{name} v%{number}"
 msgstr ""

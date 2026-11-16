@@ -1230,6 +1230,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: workflow_model -->
+- An approval at a stage's gate covers the newest version of each name of each output
+  type, such as one demo video per scenario, in place of only the newest version of each
+  type. The gate card lists one row per name, such as “demo video scenario-2 v1”, in the
+  order of the names, and **Request changes** offers each of them.
+- A version that a run a member cancelled wrote no longer counts as an artifact's newest
+  version: the work item's artifact list shows the newest version that counts, and the
+  approval marks show no “v2 is newer” or “Changed after approval” for it. In the run
+  API's artifact index, `newest_version` and `changed_after_approval` leave such
+  versions out too.
+<!-- /feature -->
+
+<!-- feature: workflow_model -->
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change
   it moved on with no approval, so a later stage's input from that stage had no version,

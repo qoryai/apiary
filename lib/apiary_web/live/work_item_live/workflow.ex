@@ -403,9 +403,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       required: get(output, :required) == true,
       version: number_of(get(output, :version)),
       version_id: id_of(get(output, :version)),
+      names: for(named <- get(output, :names) || [], do: named_output(named)),
       check: if(check in @checks, do: check, else: :missing)
     }
   end
+
+  # The newest version of one name of an output type (`Apiary.Stages.status/2`).
+  defp named_output(named),
+    do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
   defp escalation(_scope, nil, _runs, _outputs), do: nil
 
@@ -461,7 +466,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp indexed(artifact) do
     versions = get(artifact, :versions) || []
     approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
-    newest = List.first(versions)
+    # A version of a run a member cancelled is never the newer one.
+    newest = Enum.find(versions, &(get(&1, :cancelled) != true))
     approval = approved && List.last(get(approved, :approvals) || [])
     approved = approved && get(approved, :number)
     newest = newest && get(newest, :number)
@@ -694,7 +700,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp checked({:request_changes, _note, id} = action, page),
     do:
-      if(Enum.any?(page.outputs, &(&1.version_id == id)),
+      if(
+        Enum.any?(
+          page.outputs,
+          &(&1.version_id == id or Enum.any?(&1.names, fn named -> named.version_id == id end))
+        ),
         do: {:ok, action},
         else: {:error, :invalid}
       )

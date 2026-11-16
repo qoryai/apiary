@@ -122,7 +122,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   list/1 is the plain list of a work item's artifacts: one row per artifact, with its
   type, its name where it is not `main`, its newest version's number, file count and
   writer, the check result where the caller passes one, and a link to the newest
-  version's page.
+  version's page. The newest version is the newest that no run a member cancelled wrote,
+  where the artifact has one.
 
   For the work item page (`ApiaryWeb.WorkItemLive.Show`, piece W), under the feature
   `workflow_model`:
@@ -227,7 +228,11 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp check_word(assigns), do: ~H""
 
-  defp newest(%Artifact{versions: [newest | _older]}), do: newest
+  # The version a row shows: the newest that no run a member cancelled wrote, else, where
+  # cancelled runs wrote every version, the newest, marked as not counted (`writer/2`).
+  defp newest(%Artifact{versions: [newest | _older]} = artifact),
+    do: Apiary.Artifacts.newest_counted(artifact) || newest
+
   defp newest(_artifact), do: nil
 
   @doc """

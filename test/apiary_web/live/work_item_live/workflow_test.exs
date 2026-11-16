@@ -2525,6 +2525,62 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "at Build's gate" do
+    test "one output row for each name, in name order, each in the change request's list",
+         %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      [main, ten, two] =
+        for name <- ["main", "scenario-10", "scenario-2"] do
+          {:ok, version} =
+            Artifacts.push({:person, scope}, work_item, "demo-video", [sample("demo-video")],
+              stage_id: @build,
+              name: name
+            )
+
+          version
+        end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-output-demo-video", "demo video v1")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-output-demo-video-scenario-2",
+               "demo video scenario-2 v1"
+             )
+
+      assert has_element?(view, "#work-item-stage-gate-check-demo-video-scenario-10", "Passed")
+
+      ids =
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#work-item-stage-gate-outputs li")
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+        |> Enum.filter(&String.starts_with?(&1, "work-item-stage-gate-output-demo-video"))
+
+      assert ids == [
+               "work-item-stage-gate-output-demo-video",
+               "work-item-stage-gate-output-demo-video-scenario-2",
+               "work-item-stage-gate-output-demo-video-scenario-10"
+             ]
+
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      for {version, words} <- [
+            {main, "demo video v1"},
+            {two, "demo video scenario-2 v1"},
+            {ten, "demo video scenario-10 v1"}
+          ] do
+        assert has_element?(
+                 view,
+                 ~s|#work-item-stage-gate-changes-version option[value="#{version.public_id}"]|,
+                 words
+               )
+      end
+    end
+
     test "each output with its version and its check", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
       push!({:person, scope}, work_item, "demo-video", @build)

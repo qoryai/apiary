@@ -388,13 +388,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
+    shown = assigns.page |> shown_outputs() |> Enum.flat_map(&named_rows/1)
+
     assigns =
       assign(assigns,
-        marks: Map.new(assigns.page.index, &{&1.type, &1}),
-        versions: Enum.filter(assigns.page.outputs, & &1.version_id),
+        marks: Map.new(assigns.page.index, &{{&1.type, &1.name}, &1}),
+        versions: Enum.filter(shown, & &1.version_id),
         # At a Confirm gate the proposal can exist with no artifact, so an output with no
         # version is not shown as missing.
-        shown: shown_outputs(assigns.page),
+        shown: shown,
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none"
       )
@@ -406,10 +408,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </h3>
       <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
       <ul :if={@shown != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
-        <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
-          <span>{version_words(output.type, output.version)}</span>
-          · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
-          <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
+        <li :for={output <- @shown} id={"#{@id}-output-#{output.key}"}>
+          <span>{version_words(output.type, output.name, output.version)}</span>
+          · <span id={"#{@id}-check-#{output.key}"}>{check_words(output)}</span>
+          <.approval_mark
+            id={"#{@id}-mark-#{output.key}"}
+            mark={@marks[{output.type, output.name}]}
+          />
         </li>
       </ul>
       <.needs
@@ -441,7 +446,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             <select id={"#{@id}-changes-version"} name="version">
               <option value="">{gettext("The whole stage")}</option>
               <option :for={output <- @versions} value={output.version_id}>
-                {version_words(output.type, output.version)}
+                {version_words(output.type, output.name, output.version)}
               </option>
             </select>
             <.note
@@ -488,6 +493,21 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     do: Enum.filter(outputs, & &1.version_id)
 
   defp shown_outputs(%{outputs: outputs}), do: outputs
+
+  # An output's rows on the gate card: one for the newest version of each of its names
+  # (`names`), or one for the output where it has none, its version nil or `main`'s. A
+  # row's `key` is its type, with the name after it where the name is not `main`.
+  defp named_rows(%{names: [_ | _] = names} = output) do
+    for named <- names do
+      key = if named.name == "main", do: output.type, else: "#{output.type}-#{named.name}"
+
+      output
+      |> Map.merge(Map.take(named, [:name, :version, :version_id]))
+      |> Map.put(:key, key)
+    end
+  end
+
+  defp named_rows(output), do: [output |> Map.put(:name, "main") |> Map.put(:key, output.type)]
 
   defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
   defp check_words(%{check: :passed}), do: gettext("Passed")
@@ -992,6 +1012,21 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp version_words(type, number),
     do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
+
+  # A version of a named artifact in today's plain form: the type's words, the name where
+  # it is not `main`, and the number, such as "demo video scenario-1 v1".
+  defp version_words(type, name, number) when name in [nil, "main"],
+    do: version_words(type, number)
+
+  defp version_words(type, _name, nil), do: type_words(type)
+
+  defp version_words(type, name, number),
+    do:
+      gettext("%{type} %{name} v%{number}",
+        type: type_words(type),
+        name: name,
+        number: Format.number(number)
+      )
 
   @doc false
   # output_versions/1 is the summary's pieces of the record block at a stage after Explore:

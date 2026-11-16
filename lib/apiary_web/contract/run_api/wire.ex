@@ -161,8 +161,10 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
+  # The newest version that no run a member cancelled wrote.
   defp newest_number(versions) do
     versions
+    |> Enum.reject(&(get(&1, :cancelled) == true))
     |> Enum.map(&get(&1, :number))
     |> Enum.filter(&is_integer/1)
     |> Enum.max(fn -> nil end)
