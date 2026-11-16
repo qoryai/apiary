@@ -8,11 +8,12 @@ import assert from "node:assert/strict"
 
 import {VideoSpeed, mark, setRate} from "../hooks/video_speed.js"
 
-// A button with what the hook reads: its `data-rate` and its `aria-pressed`.
+// A button with what the hook reads: its `data-rate` and its `aria-pressed`, which
+// starts "false", so that a test shows which button the hook presses.
 const button = rate => {
   const el = {
     dataset: {rate},
-    attributes: {"aria-pressed": rate === "1" ? "true" : "false"},
+    attributes: {"aria-pressed": "false"},
     setAttribute: (name, value) => (el.attributes[name] = value),
     closest: selector => (selector === "button[data-rate]" ? el : null),
   }
@@ -35,25 +36,29 @@ const film = () => {
       listeners.ratechange?.()
     },
     addEventListener: (type, fn) => (listeners[type] = fn),
-    removeEventListener: type => delete listeners[type],
+    removeEventListener: (type, fn) => {
+      if (listeners[type] === fn) delete listeners[type]
+    },
     listeners,
   }
   return video
 }
 
-// The Speed row inside a `<figure>` with `video`, and the hook mounted on it.
+// The Speed row inside a `<figure>` with `video`, and the hook mounted on it. With no
+// video, the row is in no figure. A click reaches the row's click listener, if it has one.
 const row = video => {
   const buttons = ["0.5", "1", "1.5", "2"].map(button)
   const listeners = {}
+  const figure = {querySelector: selector => (selector === "video" ? video : null)}
   const el = {
-    closest: selector => (selector === "figure" ? {querySelector: () => video} : null),
-    querySelectorAll: () => buttons,
+    closest: selector => (selector === "figure" && video ? figure : null),
+    querySelectorAll: selector => (selector === "button[data-rate]" ? buttons : []),
     addEventListener: (type, fn) => (listeners[type] = fn),
   }
   const hook = Object.create(VideoSpeed)
   hook.el = el
   hook.mounted()
-  const click = target => listeners.click({target})
+  const click = target => listeners.click?.({target})
   return {hook, buttons, click}
 }
 
@@ -77,6 +82,13 @@ test("a film starts at 1x with the 1x button pressed", () => {
   const {buttons} = row(video)
   assert.equal(video.playbackRate, 1)
   assert.deepEqual(pressed(buttons), ["false", "true", "false", "false"])
+})
+
+test("a film already at 1.5x when the hook mounts has the 1.5x button pressed", () => {
+  const video = film()
+  video.playbackRate = 1.5
+  const {buttons} = row(video)
+  assert.deepEqual(pressed(buttons), ["false", "false", "true", "false"])
 })
 
 test("a click on 2x plays the film at 2x and presses 2x", () => {
@@ -113,4 +125,11 @@ test("the hook stops listening to the film once removed", () => {
   const {hook} = row(video)
   hook.destroyed()
   assert.equal(video.listeners.ratechange, undefined)
+})
+
+test("a row with no video mounts, takes a click and is removed without an error", () => {
+  const {hook, buttons, click} = row(null)
+  assert.doesNotThrow(() => click(buttons[3]))
+  assert.doesNotThrow(() => hook.destroyed())
+  assert.deepEqual(pressed(buttons), ["false", "false", "false", "false"])
 })
