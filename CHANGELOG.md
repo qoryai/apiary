@@ -17,6 +17,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
   refused when a loop's body has the key.
+- An output takes `when` and `unless` with `{track: <id>}` or `{input: <type>}`, as an
+  input does, and the stage runner evaluates it the way it does any other condition. An
+  output whose condition holds it back is not required: its Exists check does not fail the
+  stage, so the stage goes on to its gate, and the work item page lists it as not required.
+  A save is refused for a track that no earlier gate offers, a type that no earlier stage
+  makes, and both keys on one output. A Verify stage whose entries are all passed over on
+  the fast track, with `verification` set to `unless: {track: fast-track}`, starts no run
+  and opens its gate without `verification`; on the standard track `verification` is still
+  required.
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on

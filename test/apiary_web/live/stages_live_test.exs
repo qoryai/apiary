@@ -1042,6 +1042,9 @@ defmodule ApiaryWeb.StagesLiveTest do
         |> Map.put("inputs", [
           %{"type" => "proposal", "required" => true, "unless" => @fast}
         ])
+        |> Map.put("outputs", [
+          %{"type" => "demo-video", "required" => true, "unless" => @fast}
+        ])
         |> Map.put("sequence", [
           %{"workflow" => "capture-demos", "unless" => @fast},
           %{
@@ -1081,6 +1084,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert build["name"] == "Build it"
       assert build["when"] == @fast
       assert build["inputs"] == [%{"type" => "proposal", "required" => true, "unless" => @fast}]
+
+      assert build["outputs"] == [
+               %{"type" => "demo-video", "required" => true, "unless" => @fast}
+             ]
 
       assert build["sequence"] == [
                %{"workflow" => "record-demos", "machine" => "default", "unless" => @fast},

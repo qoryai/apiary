@@ -2853,10 +2853,11 @@ defmodule Apiary.Stages do
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 
-  # An output with a condition is required only while its input type counts
+  # An output with a condition is required only while its condition does not hold it back
   # (`Runner.required?/2`), with `counted` as `counted/4` reads it, read here for nil.
   defp outputs(work_item, version, stage, artifacts, counted \\ nil) do
     counted = counted || counted(work_item, version, stage, artifacts)
+    facts = %{counted: counted, track: track(work_item)}
 
     for output <- Map.get(stage, "outputs", []) do
       type = output["type"]
@@ -2871,7 +2872,7 @@ defmodule Apiary.Stages do
 
       %{
         type: type,
-        required: Runner.required?(output, counted),
+        required: Runner.required?(output, facts),
         version: version && %{id: version.public_id, number: version.number},
         check: check
       }

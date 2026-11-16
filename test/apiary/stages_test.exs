@@ -4635,4 +4635,143 @@ defmodule Apiary.StagesTest do
                reload(work_item)
     end
   end
+
+  describe "a first attempt, and Verify with no run" do
+    @verify "st_m1mqbeywdg"
+    @fast_on %{"track" => "fast-track"}
+    @tracks_of_process [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast track"}
+    ]
+
+    # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
+    # ends its sequence when it passes, then plan-the-build; Verify, whose run and whose
+    # output `verification` Fast track does without.
+    defp first_attempt_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          stage(@build, "Build", [
+            %{"workflow" => "make-a-small-change", "when" => @fast_on, "first_attempt" => true},
+            %{"workflow" => "plan-the-build"}
+          ]),
+          stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket", "unless" => @fast_on}], %{
+            "outputs" => [
+              %{"type" => "verification", "required" => true, "unless" => @fast_on}
+            ]
+          })
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    end
+
+    defp in_build!(scope, track) do
+      first_attempt_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    defp verified_with(type) do
+      fn run, registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            type,
+            [%{filename: "#{type}.md", content_type: "text/markdown", binary: "# Checked"}],
+            name: "main",
+            stage_id: run.stage_id
+          )
+
+        verdict("passed").(run, registered)
+      end
+    end
+
+    test "a passed first attempt ends Build's sequence, and Verify's gate opens with no run and no verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast-track")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "make-a-small-change", stage_entry: 0} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+
+      assert Enum.map(runs(work_item), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = verifying
+
+      assert Enum.map(runs(verifying), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      refute escalation(verifying)
+      assert Stages.missing_outputs(verifying) == []
+
+      assert %{state: :at_gate, outputs: [%{type: "verification", required: false}]} =
+               Stages.status(verifying, scope)
+
+      assert {:ok, %WorkItem{state: :closed}} =
+               Stages.approve(scope, verifying, nil, expect_stage: @verify)
+    end
+
+    test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
+      work_item = in_build!(scope, "fast-track")
+      work_item = end_run!(work_item, verdict("changes-requested"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+    end
+
+    test "on Standard the first attempt does not run, and Verify still needs verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "standard")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = verifying
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(verifying)
+
+      ended = end_run!(verifying, verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = ended
+      assert %Escalation{cause: :check_failed} = escalation(ended)
+      assert Stages.missing_outputs(ended) == ["verification"]
+
+      assert %{outputs: [%{type: "verification", required: true, check: :missing}]} =
+               Stages.status(ended, scope)
+    end
+
+    test "on Standard, Verify's gate opens once verification is stored", %{scope: scope} do
+      work_item = in_build!(scope, "standard") |> end_run!(verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      ended = end_run!(verifying, verified_with("verification"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = ended
+      assert Stages.missing_outputs(ended) == []
+    end
+  end
 end

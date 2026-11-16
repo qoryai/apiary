@@ -670,7 +670,9 @@ defmodule Apiary.Stages.RunnerTest do
       film = Map.merge(%{"type" => "demo-video", "required" => true}, @demos)
 
       # The failed checks as `Apiary.Stages` reads them: each required output, missing.
-      failed = fn counted -> for o <- [film], Runner.required?(o, counted), do: o["type"] end
+      failed = fn counted ->
+        for o <- [film], Runner.required?(o, %{counted: counted}), do: o["type"]
+      end
 
       assert failed.([]) == []
 
@@ -870,10 +872,13 @@ defmodule Apiary.Stages.RunnerTest do
     test "an output with a condition is required only while its input counts" do
       output = %{"type" => "demo-video", "required" => true} |> Map.merge(@demos)
 
-      refute Runner.required?(output, [])
-      assert Runner.required?(output, ["demo-scenarios"])
-      assert Runner.required?(%{"type" => "verification", "required" => true}, [])
-      refute Runner.required?(%{"type" => "explainer", "required" => false}, ["demo-scenarios"])
+      refute Runner.required?(output, %{counted: []})
+      assert Runner.required?(output, %{counted: ["demo-scenarios"]})
+      assert Runner.required?(%{"type" => "verification", "required" => true}, %{counted: []})
+
+      refute Runner.required?(%{"type" => "explainer", "required" => false}, %{
+               counted: ["demo-scenarios"]
+             })
     end
 
     test "condition_inputs/1 lists the input types of the stage's conditions once" do

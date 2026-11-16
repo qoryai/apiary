@@ -169,10 +169,13 @@
         "type": {"$ref": "#/$defs/artifact_type"},
         "required": {"type": "boolean"},
         "when": {
-          "description": "The output is required only when its condition is met. Only an input condition: an output has no track condition, and a save with an `unless` on an output is refused.",
-          "$ref": "#/$defs/input_condition"
+          "description": "The output is required only when its condition is met; otherwise the stage does not check it.",
+          "$ref": "#/$defs/condition"
         },
-        "unless": false,
+        "unless": {
+          "description": "The output is not required when its condition is met.",
+          "$ref": "#/$defs/condition"
+        },
         "check": {
           "description": "How the output is checked: it exists, the default, or an adapter reported an outcome for it. A reported check is stored and not checked in this version.",
           "oneOf": [
