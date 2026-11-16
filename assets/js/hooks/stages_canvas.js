@@ -35,6 +35,7 @@ export const SIDE = 16
 const CARD_FRAME = 34
 const NAME_LINE = 26
 const LINE = 24
+const CONDITION_LINE = 20
 const ROW_GAP = 8
 const LOOP_FRAME = 38
 // A description is at most DESCRIPTION_LINES lines of DESCRIPTION_LINE px, about
@@ -57,9 +58,14 @@ export const estimateHeight = data => {
   const steps =
     sequence.length === 0
       ? [LINE]
-      : sequence.map(item => ("loop" in item ? LOOP_FRAME + item.workflows.length * LINE : LINE))
+      : sequence.map(item => {
+          const condition = item.condition ? CONDITION_LINE : 0
+          return "loop" in item ? LOOP_FRAME + item.workflows.length * LINE + condition : LINE + condition
+        })
   const description = data?.description ? [descriptionLines(data.description) * DESCRIPTION_LINE] : []
-  const rows = [...description, ...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
+  const condition = data?.condition ? [CONDITION_LINE] : []
+  const offers = data?.offers ? [CONDITION_LINE] : []
+  const rows = [...condition, ...description, ...steps, LINE, ...offers, ...(data?.alerts || []).map(() => LINE)]
   return CARD_FRAME + NAME_LINE + rows.reduce((sum, row) => sum + ROW_GAP + row, 0)
 }
 
@@ -125,11 +131,14 @@ export const revealY = (start, end, viewport, size, length) => {
 
 const text = value => String(value ?? "")
 
-// One step of a stage's sequence: a workflow, or a loop with its label and workflows.
-const step = item =>
-  item && typeof item === "object" && "loop" in item
-    ? {loop: text(item.loop), workflows: (item.workflows || []).map(text)}
-    : {workflow: text(item?.workflow)}
+// One step of a stage's sequence: a workflow, or a loop with its label and workflows, and
+// the words of its condition on a track, if it has one.
+const step = item => {
+  const condition = item?.condition ? {condition: text(item.condition)} : {}
+  return item && typeof item === "object" && "loop" in item
+    ? {loop: text(item.loop), workflows: (item.workflows || []).map(text), ...condition}
+    : {workflow: text(item?.workflow), ...condition}
+}
 
 // Each workflow's mark, by name: whether the harness lists it, and its label as text.
 // None for a page with no list of the harness's workflows.
@@ -155,6 +164,8 @@ export const layout = (view, heights = {}) => {
   const data = stages.map(stage => ({
     name: text(stage.name),
     description: text(stage.description),
+    condition: text(stage.condition),
+    offers: text(stage.offers),
     sequence: (stage.sequence || []).map(step),
     gate: text(stage.gate),
     alerts: (stage.alerts || []).map(text),

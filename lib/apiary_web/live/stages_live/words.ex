@@ -48,9 +48,10 @@ defmodule ApiaryWeb.StagesLive.Words do
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
-  # its label and its workflows. Text only.
+  # its label and its workflows. Text only. With the process document `doc`, an entry or a
+  # loop that has a condition on a track also has `condition`, its words (`condition/3`).
   @doc false
-  def card_sequence(stage) do
+  def card_sequence(stage, doc \\ nil) do
     for entry <- stage["sequence"] do
       case entry do
         %{"loop" => %{"rounds" => rounds, "body" => body}} ->
@@ -61,42 +62,135 @@ defmodule ApiaryWeb.StagesLive.Words do
               ),
             workflows: Enum.map(body, &to_string(&1["workflow"]))
           }
+          |> put_condition(condition(entry, doc, stage["id"]))
 
         entry ->
           %{workflow: to_string(entry["workflow"])}
+          |> put_condition(condition(entry, doc, stage["id"]))
       end
     end
+  end
+
+  defp put_condition(map, nil), do: map
+  defp put_condition(map, text), do: Map.put(map, :condition, text)
+
+  # The name the process document `doc` gives the track `id`, else the id.
+  @doc false
+  def track_name(doc, id) do
+    case Enum.find(doc["tracks"] || [], &(&1["id"] == id)) do
+      %{"name" => name} -> name
+      _none -> id
+    end
+  end
+
+  # "Offers: Standard, Fast track" for a stage whose gate offers tracks, in the gate's
+  # order; nil for a stage that offers none, or with no document.
+  @doc false
+  def offers(%{"gate" => %{"tracks" => [_ | _] = ids}}, %{} = doc),
+    do: gettext("Offers: %{tracks}", tracks: Enum.map_join(ids, ", ", &track_name(doc, &1)))
+
+  def offers(_stage, _doc), do: nil
+
+  # The words of a condition on a track in `when` or `unless` of `item`, a stage, a loop or a
+  # workflow entry of the stage `stage_id` in `doc`; nil for an item with none, for a
+  # condition on an input (no words here), and with no document.
+  #
+  #   * a stage: "Skipped on Fast track" for `unless`, "Runs on Fast track." for `when`;
+  #   * a loop or entry: "Runs on Fast track." for `when`; for `unless`, "Runs on Standard
+  #     only.", with the other tracks that the gates before the stage offer, in the
+  #     document's order, and "Skipped on Fast track" when there is none.
+  @doc false
+  def condition(item, doc, stage_id, kind \\ :part)
+
+  def condition(%{"when" => %{"track" => id}}, %{} = doc, _stage_id, _kind),
+    do: gettext("Runs on %{track}.", track: track_name(doc, id))
+
+  def condition(%{"unless" => %{"track" => id}}, %{} = doc, stage_id, kind) do
+    others =
+      if kind == :part, do: Enum.reject(offered_before(doc, stage_id), &(&1 == id)), else: []
+
+    case others do
+      [] ->
+        gettext("Skipped on %{track}", track: track_name(doc, id))
+
+      _others ->
+        gettext("Runs on %{tracks} only.",
+          tracks: Enum.map_join(others, ", ", &track_name(doc, &1))
+        )
+    end
+  end
+
+  def condition(_item, _doc, _stage_id, _kind), do: nil
+
+  # The ids of the tracks that the gates before the stage `stage_id` offer, in the order of
+  # the document's `tracks`.
+  defp offered_before(doc, stage_id) do
+    offered =
+      (doc["stages"] || [])
+      |> Enum.take_while(&(&1["id"] != stage_id))
+      |> Enum.flat_map(&((&1["gate"] || %{})["tracks"] || []))
+
+    for %{"id" => id} <- doc["tracks"] || [], id in offered, do: id
+  end
+
+  # The lines under a workflow entry's row in the editor and the member's panel: "Name: ..."
+  # for an entry with a name, then its condition.
+  @doc false
+  def entry_notes(entry, doc, stage_id) do
+    name =
+      case entry["name"] do
+        name when is_binary(name) and name != "" -> gettext("Name: %{name}", name: name)
+        _none -> nil
+      end
+
+    Enum.reject([name, condition(entry, doc, stage_id)], &is_nil/1)
   end
 
   # The words a screen reader reads for a card: its name, its description, its workflows
   # and loops, its gate, each in full.
   @doc false
-  def card_label(stage, people) do
+  def card_label(stage, people, doc \\ nil) do
     sequence =
-      case card_sequence(stage) do
+      case card_sequence(stage, doc) do
         [] ->
           [gettext("No workflow")]
 
         items ->
           Enum.map(items, fn
-            %{loop: loop, workflows: names} ->
+            %{loop: loop, workflows: names} = item ->
               gettext("a loop of %{workflows}, %{rounds}",
                 workflows: Enum.join(names, ", "),
                 rounds: loop
               )
+              |> with_condition(item)
 
-            %{workflow: name} ->
-              name
+            %{workflow: name} = item ->
+              with_condition(name, item)
           end)
       end
 
-    rest = Enum.join(sequence ++ [gate_line(stage, people)], ". ")
+    condition = condition(stage, doc, stage["id"], :stage)
+
+    rest =
+      Enum.join(
+        Enum.reject(
+          [condition && String.trim_trailing(condition, ".")] ++
+            sequence ++ [gate_line(stage, people), doc && offers(stage, doc)],
+          &(&1 in [nil, false])
+        ),
+        ". "
+      )
 
     case label_description(stage) do
       nil -> stage["name"] <> ". " <> rest
       text -> stage["name"] <> ". " <> text <> rest
     end
   end
+
+  defp with_condition(text, %{condition: condition}),
+    do: text <> ", " <> String.trim_trailing(condition, ".")
+
+  defp with_condition(text, _item), do: text
 
   # The stage's description as the document has it, plain text; nil for none or a blank one.
   @doc false
@@ -278,6 +372,12 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   def change({:outputs_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the outputs of %{name}.", name: name(newer, id))
+
+  def change({:tracks_changed, _id, _detail}, _older, _newer, _people),
+    do: gettext("Tracks changed.")
+
+  def change({:condition_changed, id, _detail}, _older, newer, _people),
+    do: gettext("%{stage}: condition changed.", stage: name(newer, id))
 
   def change({:gate_changed, id, _detail}, _older, newer, people) do
     name = name(newer, id)

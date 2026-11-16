@@ -20,6 +20,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   condition that no earlier gate offers, an item with both `when` and `unless`, and any other
   key on an input or a loop. A process
   without `tracks` is saved as before. The runner does not use the conditions yet.
+- The Workflows page shows the tracks and conditions of a process, read-only. A stage's card
+  and its Gate section show `Offers: ...` when its gate offers tracks. A stage, a loop or a
+  workflow entry with a condition on a track shows it on its card and in its panel (`Skipped
+  on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`); a workflow entry with a
+  `name` shows `Name: ...`. The Details tab lists the tracks. The History says `Tracks
+  changed.` and `<stage>: condition changed.` for a save that changes only those.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.

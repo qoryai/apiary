@@ -3454,6 +3454,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "%{stage}: condition changed."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "%{stage}: fix the fields marked below."
 msgstr ""
 
@@ -7718,6 +7723,11 @@ msgstr ""
 msgid "Compose the harness"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Condition"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
@@ -9634,6 +9644,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every type exists, and every input is an output of an earlier stage. The workflows are checked once the harness is read."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every work item of %{workspace} goes through these stages in order, except a stage that its track skips. Each save makes a new version."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -13397,6 +13412,11 @@ msgstr ""
 msgid "Name this workspace"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Name: %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Named members"
@@ -14952,6 +14972,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Off: the saved password cannot be read. Enter it again and save."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Offers: %{tracks}"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -18281,6 +18306,16 @@ msgstr ""
 msgid "Runs of this target start in the pool's default image."
 msgstr "Runs of this repository start in the pool's default image."
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Runs on %{tracks} only."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Runs on %{track}."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Runs on this type can start virtual machines inside the machine (KVM)."
@@ -19477,6 +19512,11 @@ msgstr ""
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Skipped"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Skipped on %{track}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -22739,6 +22779,16 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Tracks"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Tracks changed."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
