@@ -2105,7 +2105,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   back drops the column; the approvals a gate `none` recorded stay, with no member.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- `run_harnesses` and `workspaces` (20261116140000): the check on `run_harnesses.access_level`
+- `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`
   takes `write-no-push` besides `read` and `write`, and `workspaces` gets a nullable column
   `declared_access`, the access level each workflow of the harness declares at its last
   read. The new check scans `run_harnesses` under a lock that blocks reads and writes, and
