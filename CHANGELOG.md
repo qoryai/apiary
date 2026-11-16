@@ -1226,9 +1226,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
   400 `invalid_request`, and nothing is stored. The run and the integration contracts are
   vendored at integrations `5d456eb`.
-- A custom type of a template's `artifact_types` may set `withdrawable: false`. A run
-  cannot then withdraw a name of that type, and it cannot withdraw a name whose newest
-  version a member approved at a gate: the run API returns `422` `type_not_withdrawable`.
+- An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
+  type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
+  of that type, and it cannot withdraw a name whose newest version a member approved at a
+  gate: the run API returns `422` `type_not_withdrawable`.
 
 ### Changed
 

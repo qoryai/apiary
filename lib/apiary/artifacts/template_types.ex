@@ -1,33 +1,36 @@
 defmodule Apiary.Artifacts.TemplateTypes do
   # TemplateTypes reads the `artifact_types` list of a factory's `process.yaml`, as
-  # `Apiary.Harnesses.Reader.template/1` returns it. An entry with a name alone is a
-  # standard type (`Apiary.Artifacts.Type`), and any other entry is a custom type's
-  # definition. A definition may have `withdrawable`, a boolean, true when it has none:
-  # with false, a run cannot withdraw a name of the type (`Apiary.Artifacts.withdraw/4`).
+  # `Apiary.Harnesses.Reader.template/1` returns it. An entry with a name alone, or with a
+  # name and `withdrawable` alone, is a standard type (`Apiary.Artifacts.Type`), and any
+  # other entry is a custom type's definition. An entry may have `withdrawable`, a boolean,
+  # true when it has none: with false, a run cannot withdraw a name of the type
+  # (`Apiary.Artifacts.withdraw/4`).
   #
   # `check/1` is `:ok`, or `{:error, refusals}` with a list of these, in this order:
   #
-  #   1. `{:not_standard, type}`: an entry with a name alone is no standard type;
+  #   1. `{:not_standard, type}`: a standard entry is no standard type;
   #   2. `{:standard_name, type}`: a custom type has a standard type's name;
   #   3. `{:not_listed, stage, type}`: a stage has a type in its inputs or outputs that
   #      the list does not have and that is not always on (`Type.always_on/0`);
-  #   4. `{:repeated, type}`: an entry with a name alone has a standard name that another
-  #      such entry has, one refusal per name;
+  #   4. `{:repeated, type}`: a standard entry has a standard name that another standard
+  #      entry has, one refusal per name;
   #   5. `{:invalid, type, :repeated}`: the list has a custom name more than once, one
   #      refusal per name. A custom type with a standard name is only
   #      `{:standard_name, type}`;
-  #   6. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2`, such as a
+  #   6. `{:invalid, type, :withdrawable}`: a standard entry whose `withdrawable` is not a
+  #      boolean, one refusal per entry, checked before the definitions;
+  #   7. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2`, such as a
   #      `withdrawable` that is not a boolean, or `Apiary.Artifacts.CustomSchema.check/1`.
   #      `error` is the field that failed, with
   #      the base view for a limit. The check stops at the first such definition;
-  #   7. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
+  #   8. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
   #      template (`@total`), which `Apiary.Artifacts.CustomSchema.check_within/2` counts.
   #      A file of 64 KiB fits about 800 definitions, each with a budget of up to 10 s, so
   #      the total bounds how long one template holds a caller. A schema over its single
   #      budget stays `{:invalid, type, :json_schema}`. A template with no JSON Schema
   #      does no such work, and `check/2` is `check/1` with another total. `total/1` is
   #      the total for a caller with less time than `@total`;
-  #   8. `{:submit, type, why}`: the template's `submit.type` is not a custom entry of the
+  #   9. `{:submit, type, why}`: the template's `submit.type` is not a custom entry of the
   #      list with `base_view: structured`, as qory requires. `why` is `:missing` for a
   #      name no entry has, `:standard` for an entry with a standard name alone, and
   #      `{:base_view, view}` for a custom type of another base view. For an entry with
@@ -37,7 +40,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      `check_submit/1` makes this refusal alone, for a caller that runs no other check
   #      of the types.
   #
-  # `{:schema, type}` is a ninth refusal, which `check/1` does not make: the entry `type`
+  # `{:schema, type}` is a tenth refusal, which `check/1` does not make: the entry `type`
   # did not pass the schema of `process.yaml`, so `Apiary.Harnesses.Reader.template/1`
   # returned no template to check, and `Apiary.Stacks.Sources` makes the refusal.
   #
@@ -60,7 +63,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # `check/1` before the transaction. A nil list writes nothing, so the workspace shows
   # every standard type. Any other list inserts each custom type with one audit entry and
   # writes `shown_standard_types`: the listed standard types less the always-on ones, in
-  # the order of `Type.standard/0`. An `{:error, reason}` leaves rows written, so the
+  # the order of `Type.standard/0`, and `locked_standard_types`: the standard entries with
+  # `withdrawable: false`, in that order. An `{:error, reason}` leaves rows written, so the
   # caller rolls back. Given a list `check/1` did not pass, the second insert of a repeated
   # name fails with `{:error, {:invalid, type, :repeated}}`.
   #
@@ -127,7 +131,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
         standard_names(custom) ++
         not_listed(process, listed) ++
         repeated_standard(alone) ++
-        repeated(custom) ++ invalid(custom, total) ++ submit(template)
+        repeated(custom) ++
+        standard_withdrawable(alone) ++ invalid(custom, total) ++ submit(template)
     )
   end
 
@@ -174,7 +179,16 @@ defmodule Apiary.Artifacts.TemplateTypes do
   def total(left),
     do: [reductions: @total[:reductions], ms: left |> min(@total[:ms]) |> max(0)]
 
-  defp alone?(entry), do: map_size(entry) == 1
+  # A standard entry: a name alone, or a name and `withdrawable` alone.
+  defp alone?(entry), do: (Map.keys(entry) -- ["name"]) in [[], ["withdrawable"]]
+
+  # One refusal per standard entry of a standard name whose `withdrawable` is not a boolean.
+  defp standard_withdrawable(alone) do
+    for %{"name" => name, "withdrawable" => value} <- alone,
+        name in Type.standard_names(),
+        not is_boolean(value),
+        do: {:invalid, name, :withdrawable}
+  end
 
   defp not_standard(alone) do
     for %{"name" => name} <- alone, name not in Type.standard_names(), do: {:not_standard, name}
@@ -338,9 +352,19 @@ defmodule Apiary.Artifacts.TemplateTypes do
       when is_list(listed) do
     with :ok <- insert_custom(workspace, Enum.reject(listed, &alone?/1), scope) do
       workspace
-      |> Ecto.Changeset.change(shown_standard_types: shown(listed))
+      |> Ecto.Changeset.change(
+        shown_standard_types: shown(listed),
+        locked_standard_types: locked(listed)
+      )
       |> Repo.update()
     end
+  end
+
+  # The standard names of the entries with `withdrawable: false`, in the order of
+  # `Type.standard/0`.
+  defp locked(listed) do
+    names = for %{"name" => name, "withdrawable" => false} <- listed, do: name
+    Enum.filter(Type.standard_names(), &(&1 in names))
   end
 
   defp insert_custom(workspace, custom, scope) do

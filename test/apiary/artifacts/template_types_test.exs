@@ -129,6 +129,39 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       end
     end
 
+    test "takes a standard type with withdrawable alone beside its name" do
+      for value <- [true, false] do
+        entry = %{"name" => "mockup", "withdrawable" => value}
+        assert :ok = TemplateTypes.check(template([entry, @document]))
+      end
+    end
+
+    test "refuses a standard entry whose withdrawable is not a boolean, once per entry" do
+      for value <- ["false", 0, nil, []] do
+        entry = %{"name" => "mockup", "withdrawable" => value}
+
+        assert TemplateTypes.check(template([entry])) ==
+                 {:error, [{:invalid, "mockup", :withdrawable}]}
+      end
+    end
+
+    test "an entry with another key beside the name of a standard type is a custom type" do
+      for extra <- [%{"base_view" => "image"}, %{"size_limit" => 10}, %{"max_files" => 1}] do
+        entry = Map.merge(%{"name" => "mockup", "withdrawable" => false}, extra)
+        assert TemplateTypes.check(template([entry])) == {:error, [{:standard_name, "mockup"}]}
+      end
+    end
+
+    test "a name that is no standard type is not standard with withdrawable beside it" do
+      entry = %{"name" => "reply-draft", "withdrawable" => false}
+      assert TemplateTypes.check(template([entry])) == {:error, [{:not_standard, "reply-draft"}]}
+    end
+
+    test "refuses a standard name listed with withdrawable and without, once" do
+      listed = [%{"name" => "mockup"}, %{"name" => "mockup", "withdrawable" => false}]
+      assert TemplateTypes.check(template(listed)) == {:error, [{:repeated, "mockup"}]}
+    end
+
     test "refuses a schema CustomSchema refuses" do
       for schema <- [%{"type" => 5}, %{"$ref" => "https://example.com/remote.json"}] do
         entry = %{@structured | "json_schema" => schema}
@@ -611,6 +644,34 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert %Type{withdrawable: false} = Artifacts.type(workspace, "reply-draft")
       assert %Type{withdrawable: true} = Artifacts.type(workspace, "customer-facts")
+    end
+
+    test "locks a standard type that has withdrawable false, and no other", ctx do
+      listed = [
+        %{"name" => "screenshot"},
+        %{"name" => "mockup", "withdrawable" => false},
+        %{"name" => "demo-video", "withdrawable" => true}
+      ]
+
+      assert {:ok, workspace} = applied(ctx.workspace, template(listed), ctx.scope)
+      assert Repo.get!(Workspace, workspace.id).locked_standard_types == ["mockup"]
+      assert shown_list(workspace) == ["mockup", "screenshot", "demo-video"]
+
+      assert %Type{withdrawable: false, standard: true} = Artifacts.type(workspace, "mockup")
+      assert %Type{withdrawable: true} = Artifacts.type(workspace, "screenshot")
+      assert %Type{withdrawable: true} = Artifacts.type(workspace, "demo-video")
+
+      locked =
+        for %Type{withdrawable: false} = type <- Artifacts.all_types(workspace), do: type.name
+
+      assert locked == ["mockup"]
+      assert Enum.find(Artifacts.types(workspace), &(&1.name == "mockup")).withdrawable == false
+    end
+
+    test "a template with no withdrawable locks no standard type", ctx do
+      assert {:ok, workspace} = applied(ctx.workspace, template(names(["mockup"])), ctx.scope)
+      assert Repo.get!(Workspace, workspace.id).locked_standard_types == []
+      assert %Type{withdrawable: true} = Artifacts.type(workspace, "mockup")
     end
 
     test "fails on a withdrawable that is not a boolean", ctx do

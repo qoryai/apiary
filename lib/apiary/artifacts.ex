@@ -17,7 +17,9 @@ defmodule Apiary.Artifacts do
   # contains. `types/1` and `all_types/1` read the list from the database by the
   # workspace's id, and `type/2` reads it the same way for a standard type that can be
   # hidden and for no other name: a caller's struct can have the field unset, or be older
-  # than a change of the list.
+  # than a change of the list. A workspace's `locked_standard_types` is the list of the
+  # standard types a run cannot withdraw a name of, which the same three functions read
+  # into each type's `withdrawable`.
   #
   # `create_type/3`, `update_type/3` and `delete_type/2` edit a workspace's custom types,
   # the Artifact types section of its settings: each checks `artifact_type.edit` with
@@ -176,7 +178,7 @@ defmodule Apiary.Artifacts do
   # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
   # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
   # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
-  # `{:error, {:withdraw, :type}}`, and a custom type with `withdrawable` false is
+  # `{:error, {:withdraw, :type}}`, and a type with `withdrawable` false is
   # `{:error, {:withdraw, :type_off}}`. Then, in the transaction, with the locks and the
   # reads of a push's transaction, the artifact's newest version, leaving out versions by a
   # run a member cancelled, is read, and the withdrawal is refused, as
@@ -275,9 +277,12 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec types(Workspace.t()) :: [Type.t()]
   def types(%Workspace{id: workspace_id}) do
-    shown = shown_standard_types(workspace_id)
+    {shown, locked} = standard_state(workspace_id)
 
-    Enum.filter(Type.standard(), &shown?(&1.name, shown)) ++ custom_types(workspace_id)
+    shown_types =
+      for type <- Type.standard(), shown?(type.name, shown), do: with_lock(type, locked)
+
+    shown_types ++ custom_types(workspace_id)
   end
 
   # member_types/0 is the names of the types a person writes only through a member
@@ -296,9 +301,9 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
   def all_types(%Workspace{id: workspace_id}) do
-    shown = shown_standard_types(workspace_id)
+    {shown, locked} = standard_state(workspace_id)
 
-    Enum.map(Type.standard(), &%{&1 | shown: shown?(&1.name, shown)}) ++
+    Enum.map(Type.standard(), &%{with_lock(&1, locked) | shown: shown?(&1.name, shown)}) ++
       custom_types(workspace_id)
   end
 
@@ -307,8 +312,13 @@ defmodule Apiary.Artifacts do
   def type(%Workspace{id: workspace_id}, name) when is_binary(name) do
     case Enum.find(Type.standard(), &(&1.name == name)) do
       %Type{} = standard ->
-        if name in Type.always_on() or shown?(name, shown_standard_types(workspace_id)),
-          do: standard
+        # An always-on type reads no list: a run cannot withdraw it by name anyway.
+        if name in Type.always_on() do
+          standard
+        else
+          {shown, locked} = standard_state(workspace_id)
+          if shown?(name, shown), do: with_lock(standard, locked)
+        end
 
       nil ->
         if Type.name?(name),
@@ -321,9 +331,18 @@ defmodule Apiary.Artifacts do
   defp custom_types(workspace_id),
     do: Repo.all(from t in Type, where: t.workspace_id == ^workspace_id, order_by: t.name)
 
-  defp shown_standard_types(workspace_id) do
-    Repo.one(from w in Workspace, where: w.id == ^workspace_id, select: w.shown_standard_types)
+  # The workspace's `shown_standard_types` and `locked_standard_types`; nil and no names for
+  # a workspace that is gone.
+  defp standard_state(workspace_id) do
+    Repo.one(
+      from w in Workspace,
+        where: w.id == ^workspace_id,
+        select: {w.shown_standard_types, w.locked_standard_types}
+    ) || {nil, []}
   end
+
+  # The standard type `type` with `withdrawable` false where the workspace locks it.
+  defp with_lock(%Type{name: name} = type, locked), do: %{type | withdrawable: name not in locked}
 
   defp shown?(_name, nil), do: true
   defp shown?(name, shown), do: name in Type.always_on() or name in shown

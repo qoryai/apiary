@@ -1884,6 +1884,37 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "refuses a standard type its template sets withdrawable false for", ctx do
+      store!(ctx, "mockup", [file("one.png", "image/png", @png)], name: "home")
+
+      # Before the lock, a run withdraws the name; a lock on another name leaves it.
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["screenshot"]]
+        )
+
+      assert write(ctx, "/artifacts", withdrawal("mockup", "home")).status == 201
+      store!(ctx, "mockup", [file("two.png", "image/png", @png)], name: "home")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["mockup"]]
+        )
+
+      conn = write(ctx, "/artifacts", withdrawal("mockup", "home"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "mockup",
+               "message" =>
+                 "Push a new version of mockup instead. The artifact type mockup has " <>
+                   "withdrawable set to false, so a run cannot withdraw its names."
+             }
+    end
+
     test "withdraws a name of a custom type that sets no withdrawable", ctx do
       file_type!(ctx, "demo-script", 1000, 2)
       store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")

@@ -35,7 +35,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      written as an integer (`1e3` as `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
-  #      reads itself, and a custom type with `withdrawable` false, `422`
+  #      reads itself, and a type with `withdrawable` false, `422`
   #      `type_not_withdrawable`, then files with it `422` `withdrawal_with_files`, then
   #      what `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name
   #      whose newest version a person approved at a gate `422` `type_not_withdrawable`,

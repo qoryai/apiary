@@ -23,10 +23,11 @@ defmodule Apiary.Artifacts.Type do
   # `max_files` the most files of one version; a structured type has exactly one file.
   # `json_schema` is the JSON Schema a structured type's file is validated against: a
   # custom type's in its row, a standard type's under `priv/schemas/artifacts/`
-  # (`schema_path`). `withdrawable` is false for a custom type whose template sets it, and
-  # then a run cannot withdraw a name of the type (`Apiary.Artifacts.withdraw/4`); it is
-  # true for every other custom type and set at creation only. A standard type is always
-  # true here: the types Qory Apiary reads itself are refused by name.
+  # (`schema_path`). `withdrawable` is false for a type whose template sets it, and then a
+  # run cannot withdraw a name of the type (`Apiary.Artifacts.withdraw/4`); a custom type
+  # has it in its row, set at creation only, and a standard type has it from its
+  # workspace's `locked_standard_types` (`Apiary.Artifacts.type/2`). It is true for every
+  # other type, but the four that Qory Apiary reads itself are refused by name.
   #
   # The name and the base view of a custom type are fixed once it is made, since the
   # artifacts of its name were checked against its base view; its size limit, its most
