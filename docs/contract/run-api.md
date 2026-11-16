@@ -131,14 +131,14 @@ Returns `200` with the work item snapshot:
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
-  `notes` contains only open notes. A note closes once the stage `stage_id` passes its
-  gate after `at`, and a `move` once the stage it moved to passes its gate after `at`: a
-  person approves the gate, or a gate `none` passes on. An `answer` whose `stage_id` is
-  null stays open. A move that resolves an open escalation is one `move` note, with no
+  `notes` contains only open notes. A note closes once the stage `stage_id` has an
+  approval after `at`, and a `move` once the stage it moved to has one: a member's, or
+  the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
+  open. A move that resolves an open escalation is one `move` note, with no
   `escalation` note. Two records are missing from before Qory Apiary kept them: a
   `move` written then has no stage it moved to, so it stays open; and a gate `none`
-  that passed on then left no record, so the notes of that stage stay open until the
-  stage passes its gate again.
+  that passed on then recorded no approval, so the notes of that stage stay open until
+  the stage passes its gate again.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
@@ -194,8 +194,11 @@ the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
 a member cancelled the run that wrote the version, and false for a version of any other
 run or of a person. An approval is
-`{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
-file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+`{"by": {"name": "dana"}, "automatic": false, "stage_id": "st_...", "at": "..."}`. A
+gate `none` records an approval of the stage's newest versions when the stage passes it:
+`{"by": null, "automatic": true, ...}`. When a member accepted the escalation that ended
+such a stage, the approval has the member in `by` and `automatic` false. The index
+contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 

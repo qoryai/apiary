@@ -497,8 +497,13 @@ the demo (`mix apiary.demo.console`, which stores one for the workspace Main); n
 endpoint sets one. A stored document's `bind` is set by kind, then by role, as the run
 contract's `harness_section` has it: `agents`, `commands` or `skills`, each with its roles
 set to the name of one entry of that kind, such as
-`bind: {agents: {developer: web-developer}}`. The save fails for a flat key such as
-`agents/developer`, for another kind, and for a list of names.
+`bind: {agents: {developer: web-developer}}`. An `agents` role may be set instead to a
+list of 1 or more agents, for a group role, such as
+`reviewers: [copy-reviewer, legal-reviewer]`. The save fails for a flat key such as
+`agents/developer`, for another kind, for a list on a `commands` or `skills` role, and
+for an empty list. A list on an `agents` role that is not a group passes the save and
+fails when the machine composes the harness: only the module manifests define which
+roles are groups.
 
 The starter says it started the machine for the dispatch (`dispatched.schema.json`)
 before the dispatch's `lease_until`, and that hands the dispatch over; so does the first

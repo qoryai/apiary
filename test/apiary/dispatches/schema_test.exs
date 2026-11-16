@@ -78,10 +78,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # that keeps a run whose start failed clears: down first, up last.
   @model_keys_version 20_261_111_100_000
   @model_keys Apiary.Repo.Migrations.KeepARunSModelKeys
-  # The later migration that keeps the stage a move went to and a gate's pass, whose
-  # columns are on the gate decisions: down first, up last.
-  @move_stage_version 20_261_116_100_000
-  @move_stage Apiary.Repo.Migrations.KeepAMoveSStageAndAGateSPass
+  # The later migration that keeps the stage a move enters, whose column is on the gate
+  # decisions: down first, up last.
+  @move_stage_version 20_261_116_140_000
+  @move_stage Apiary.Repo.Migrations.KeepTheStageAMoveEnters
 
   setup_all do
     for {version, migration, name} <- [
@@ -98,7 +98,7 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@machine_end_version, @machine_end, "keep_what_a_starter_reports_of_a_machine_s_end"},
           {@declined_version, @declined, "close_every_declined_work_item"},
           {@model_keys_version, @model_keys, "keep_a_run_s_model_keys"},
-          {@move_stage_version, @move_stage, "keep_a_move_s_stage_and_a_gate_s_pass"}
+          {@move_stage_version, @move_stage, "keep_the_stage_a_move_enters"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")

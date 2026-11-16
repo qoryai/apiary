@@ -458,7 +458,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
-    test "has only the open notes: a later approval or pass of the stage closes them", ctx do
+    test "has only the open notes: a later approval of the stage closes them", ctx do
       place!(ctx)
       shape = "st_p9w5cvh311"
       time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
@@ -488,9 +488,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           inserted_at: time.(3)
         )
 
-      # Shape's request, then Shape's gate none passing on.
+      # Shape's request, then the automatic approval of Shape's gate none.
       decide!(ctx, :request_changes, stage_id: shape, note: "Split it.", inserted_at: time.(4))
-      decide!(ctx, :pass, stage_id: shape, user_id: nil, inserted_at: time.(5))
+
+      decide!(ctx, :approve,
+        stage_id: shape,
+        user_id: nil,
+        automatic: true,
+        inserted_at: time.(5)
+      )
+
       open = decide!(ctx, :request_changes, note: "Keep the coupon.", inserted_at: time.(6))
 
       body = json_response(read(ctx, "/work-item"), 200)
@@ -516,7 +523,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
-    test "keeps a move with no stage it went to open, whatever passes after it", ctx do
+    test "keeps a move with no stage it went to open, whatever is approved after it", ctx do
       place!(ctx)
       shape = "st_p9w5cvh311"
       time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
@@ -530,12 +537,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{"kind" => "move", "note" => "Back to Explore."}] = body["notes"]
     end
 
-    test "keeps a note open beside a pass of its stage at the same time", ctx do
+    test "keeps a note open beside an approval of its stage at the same time", ctx do
       place!(ctx)
       at = DateTime.add(DateTime.utc_now(), -60, :second)
 
       decide!(ctx, :request_changes, note: "Add the empty cart.", inserted_at: at)
-      decide!(ctx, :pass, user_id: nil, inserted_at: at)
+      decide!(ctx, :approve, inserted_at: at)
 
       body = json_response(read(ctx, "/work-item"), 200)
       assert [%{"kind" => "request_changes", "note" => "Add the empty cart."}] = body["notes"]
@@ -654,6 +661,35 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert approved["approvals"] == [
                %{
                  "by" => %{"name" => Inputs.person_name(ctx.scope.user.id)},
+                 "automatic" => false,
+                 "stage_id" => @explore,
+                 "at" => at(approval.inserted_at)
+               }
+             ]
+    end
+
+    test "has an approval a gate none recorded with no member as by null, automatic", ctx do
+      place!(ctx)
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png <> "auto"}])
+             ).status == 201
+
+      [pushed] = RunApiStubs.pushed()
+
+      approval =
+        decide!(ctx, :approve, versions: [pushed.public_id], user_id: nil, automatic: true)
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert artifact["approved_version"] == pushed.public_id
+      [version] = artifact["versions"]
+
+      assert version["approvals"] == [
+               %{
+                 "by" => nil,
+                 "automatic" => true,
                  "stage_id" => @explore,
                  "at" => at(approval.inserted_at)
                }
