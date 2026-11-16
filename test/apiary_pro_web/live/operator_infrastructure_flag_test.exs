@@ -1,9 +1,8 @@
 defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
   @moduledoc """
-  An operator's people and its clients while `ApiaryPro.Flags.operator_infrastructure?/0`
-  is off: everything as it was. The operator's people read its clients and change nothing
-  there, a client's first person is its owner, the actions of the first admin's invitation
-  are not found, and Drop is offered.
+  An operator's people and the workspaces it operates while
+  `ApiaryPro.Flags.operator_infrastructure?/0` is off: the operator's people read a
+  workspace it operates and change nothing there.
   """
   # The flag is set for this process (`ApiaryPro.Flags.put_operator_infrastructure/1`).
   use ApiaryWeb.ConnCase, async: true
@@ -15,7 +14,7 @@ defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Access, Features}
-  alias ApiaryPro.{Flags, Operators}
+  alias ApiaryPro.Flags
 
   @moduletag with_features: Features.all()
 
@@ -50,92 +49,18 @@ defmodule ApiaryProWeb.OperatorInfrastructureFlagTest do
   end
 
   describe "while it is off" do
-    test "the first admin's invitation is not found, and the first owner's is offered",
+    test "the operator's owner reads a workspace it operates and changes nothing there",
          %{conn: conn} do
       operator = operator_fixture()
+      operated = operated_fixture(operator.scope, "Acme")
 
-      {%{organisation: client}, _token} =
-        create_client_fixture(operator.scope, %{
-          "name" => "Acme",
-          "email" => Apiary.AccountsFixtures.unique_user_email()
-        })
+      {:ok, _lv, _html} =
+        live(
+          log_in_user(conn, operator.user),
+          ~p"/#{operated.organisation}/#{operated.workspace}"
+        )
 
-      for action <- [
-            :"client.invite_admin",
-            :"client.revoke_admin_invitation",
-            :"client.renew_admin_invitation"
-          ] do
-        assert Access.authorize(operator.scope, action, operator.organisation) ==
-                 {:error, :not_found}
-      end
-
-      assert Access.authorize(operator.scope, :"client.invite_owner", operator.organisation) ==
-               :ok
-
-      assert Operators.invite_admin(
-               operator.scope,
-               client.id,
-               %{"email" => Apiary.AccountsFixtures.unique_user_email()},
-               &"http://localhost/invitations/#{&1}"
-             ) == {:error, :not_found}
-
-      conn = log_in_user(conn, operator.user)
-
-      assert_raise ApiaryWeb.NotFound, fn ->
-        live(conn, ~p"/#{operator.organisation}/clients/#{client.id}/admin")
-      end
-
-      {:ok, lv, _html} = live(conn, ~p"/#{operator.organisation}/clients")
-      render_async(lv)
-      assert has_element?(lv, "#client-#{client.id}-invite-owner")
-      refute has_element?(lv, "#client-#{client.id}-invite-admin")
-      assert has_element?(lv, "#client-#{client.id}-owners", "No owner yet")
-    end
-
-    test "a client's first person is its owner, and Drop is offered once it has one",
-         %{conn: conn} do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      assert client.owner.membership.level == :owner
-
-      {:ok, lv, _html} =
-        live(log_in_user(conn, operator.user), ~p"/#{operator.organisation}/clients")
-
-      render_async(lv)
-      assert has_element?(lv, "#client-#{client.organisation.id}-drop")
-      assert has_element?(lv, "th", "Owner")
-    end
-
-    test "the Action filter leaves out the first admin's invitation" do
-      operator = operator_fixture()
-
-      for action <- [
-            :"client.invite_admin",
-            :"client.revoke_admin_invitation",
-            :"client.renew_admin_invitation"
-          ] do
-        refute ApiaryProWeb.ActivityDescriber.offered?(operator.scope, action)
-      end
-
-      assert ApiaryProWeb.ActivityDescriber.offered?(operator.scope, :"client.invite_owner")
-    end
-
-    test "the operator's people read a client, and are told so", %{conn: conn} do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      name = operator.organisation.name
-
-      {:ok, lv, _html} =
-        live(log_in_user(conn, operator.user), ~p"/#{client.organisation}/#{client.workspace}")
-
-      assert has_element?(lv, "#operator-reader", "and nothing changed")
-      refute has_element?(lv, "#operator-owner")
-
-      owner = log_in_user(build_conn(), client.owner.user)
-      {:ok, lv, _html} = live(owner, ~p"/#{client.organisation}/settings/ownership")
-      assert has_element?(lv, "#operator", "to support its harness, and change nothing")
-      {:ok, lv, _html} = live(owner, ~p"/#{client.organisation}/settings/people")
-      assert has_element?(lv, "#operated-by", "Operated by #{name}")
+      refute Access.can?(operated.scope, :"node.create", operated.workspace)
     end
   end
 end

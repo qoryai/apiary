@@ -37,7 +37,6 @@ defmodule Apiary.Runs.Record.Timeline do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
-  alias Apiary.Edition
   alias Apiary.Runs
   alias Apiary.Runs.Fold
 
@@ -822,18 +821,14 @@ defmodule Apiary.Runs.Record.Timeline do
 
   `full:` is a list of item sequences whose events were read with the larger cap.
 
-  `scope:` and `run:`, given together, are the reader and the run: the policy of each
-  `policy.applied` line, and the previous one the delta is taken from, is first read
-  through `client_reads/4`, so the counts and the delta are of what the
-  edition leaves the reader. Without them, no policy is narrowed. A paused end of a run
-  that is `completed` is the end of a completed run, with no reason.
+  `run:` is the run: a paused end of a run that is `completed` is the end of a completed
+  run, with no reason.
   """
   def build(light, events, opts \\ []) when is_list(light) do
     full = opts |> Keyword.get(:full, []) |> MapSet.new()
 
     for item <- light, event = events[first_sequence(item)], is_map(event) do
       limit = if item.seq in full, do: @full_limit, else: @well_limit
-      {event, events} = narrowed(item, event, events, opts[:scope], opts[:run])
 
       item
       |> Map.take([
@@ -872,62 +867,6 @@ defmodule Apiary.Runs.Record.Timeline do
     do: Map.merge(item, %{state: "completed", reason: nil})
 
   defp settled(item, _run), do: item
-
-  # A `policy.applied` line shows counts and a delta of its lists. They are taken from the
-  # policy as the edition leaves it to the reader, for the event and for the previous event
-  # the delta is taken from: the host lists, the hosts of the tools and the counts of both are
-  # replaced by the narrowed ones, and `body/4` reads them as it reads any event's.
-  defp narrowed(%{kind: :policy_applied} = item, event, events, %{} = scope, run) do
-    previous = item[:previous_seq]
-
-    events =
-      if is_map(events[previous]),
-        do: Map.put(events, previous, narrow(events[previous], scope, run)),
-        else: events
-
-    {narrow(event, scope, run), events}
-  end
-
-  defp narrowed(_item, event, events, _scope, _run), do: {event, events}
-
-  defp narrow(event, scope, run) do
-    narrowed = Edition.client_reads(scope, :run_policy, run, policy_of(event)) || %{}
-
-    Map.merge(event, %{
-      allow: narrowed[:allow] || [],
-      allow_count: narrowed[:allow_count] || 0,
-      deny: narrowed[:deny] || [],
-      deny_count: narrowed[:deny_count] || 0,
-      terminated: narrowed[:terminated] || [],
-      terminated_count: narrowed[:terminated_count] || 0,
-      tools: narrowed[:tools] || []
-    })
-  end
-
-  # The event in the shape of `Apiary.Runs.Record.policy/2`, which `client_reads/4` narrows
-  # as `:run_policy`: the same members, the lists as the timeline reads them.
-  defp policy_of(event) do
-    credentials = event.credentials || []
-
-    %{
-      sequence: event.sequence,
-      time: event.time,
-      mode: event.mode,
-      source: event.source,
-      allow: event.allow || [],
-      allow_count: event.allow_count || 0,
-      allow_first: event.allow_first || [],
-      allow_first_count: event.allow_first_count || 0,
-      deny: event.deny || [],
-      deny_count: event.deny_count || 0,
-      terminated: event.terminated || [],
-      terminated_count: event.terminated_count || 0,
-      credentials: credentials,
-      credentials_count: credentials |> Enum.uniq_by(&{&1["name"], &1["argument"]}) |> length(),
-      tools: event.tools || [],
-      tools_count: (event.tools || []) |> Enum.uniq_by(&{&1["name"], &1["argument"]}) |> length()
-    }
-  end
 
   @doc "The sequences `build/3` needs for these light items: at most #{@max_inner + 2} each."
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()

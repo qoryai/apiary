@@ -199,9 +199,9 @@ defmodule Apiary.Nodes do
 
   @doc """
   list_serving_gateways/2 is the organisation-level gateways in use that may serve the
-  scope's workspace (`Apiary.Access.may_serve?/2`): its organisation's, then those of
-  the organisations that serve it, as `Apiary.Gateways.gateway_choices/1` orders them,
-  narrowed by `filters` as `list_nodes/2` narrows the workspace's nodes.
+  scope's workspace (`Apiary.Access.may_serve?/2`): its organisation's, as
+  `Apiary.Gateways.gateway_choices/1` orders them, narrowed by `filters` as
+  `list_nodes/2` narrows the workspace's nodes.
   """
   @spec list_serving_gateways(Scope.t(), filters) :: [Node.t()]
   def list_serving_gateways(%Scope{} = scope, filters \\ %{}) do
@@ -1160,7 +1160,7 @@ defmodule Apiary.Nodes do
 
   @doc """
   activity/3 is what each of `nodes`, nodes the caller read under the scope (of its
-  workspace, or gateways of its organisation or of one that serves it), is doing at `now`
+  workspace, or gateways of its organisation), is doing at `now`
   (`t:activity/0`), by node id: its instances running now, those with a run alive by the
   lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; the instance
   seen last; and when one of its keys was last used, which still says the node was seen
@@ -1237,14 +1237,11 @@ defmodule Apiary.Nodes do
     end)
   end
 
-  # The rows of nodes the scope reads: of its workspace, of its organisation's own
-  # gateways, and of the gateways of the organisations that serve it; for `:instance`,
-  # those of no organisation.
+  # The rows of nodes the scope reads: of its workspace, and of its organisation's
+  # organisation-level gateways; for `:instance`, those of no organisation.
   defp of_scope(:instance), do: dynamic([r], is_nil(r.organisation_id) and is_nil(r.workspace_id))
 
   defp of_scope(%Scope{organisation: %Organisation{id: organisation_id}, workspace: workspace}) do
-    serving = Gateways.serving_organisations(organisation_id)
-
     own =
       case workspace do
         %Workspace{id: workspace_id} ->
@@ -1254,11 +1251,7 @@ defmodule Apiary.Nodes do
           dynamic([r], is_nil(r.workspace_id))
       end
 
-    dynamic(
-      [r],
-      (r.organisation_id == ^organisation_id and ^own) or
-        (r.organisation_id in ^serving and is_nil(r.workspace_id))
-    )
+    dynamic([r], r.organisation_id == ^organisation_id and ^own)
   end
 
   # When each node's keys were last used, revoked keys too, by node id: a node none of

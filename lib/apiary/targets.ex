@@ -43,7 +43,7 @@ defmodule Apiary.Targets do
   import Apiary.Days, only: [sql_day: 2]
   import Apiary.Runs.Place, only: [shown_host: 1]
 
-  alias Apiary.{Access, Audit, Edition, PublicId}
+  alias Apiary.{Access, Audit, PublicId}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
@@ -574,14 +574,9 @@ defmodule Apiary.Targets do
         }
   def denied_destinations(%Scope{} = scope, %Target{} = target, since, limit \\ 6) do
     connections =
-      Edition.client_reads(
-        scope,
-        :workspace_connections,
-        nil,
-        from(c in Connection,
-          join: r in Run,
-          on: r.id == c.run_id and r.workspace_id == c.workspace_id
-        )
+      from(c in Connection,
+        join: r in Run,
+        on: r.id == c.run_id and r.workspace_id == c.workspace_id
       )
 
     grouped =

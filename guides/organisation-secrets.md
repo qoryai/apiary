@@ -67,13 +67,6 @@ and note, add a value, change, rename or delete one, and delete the secret. Owne
 admins read them, and so does support, who changes nothing: names, notes and value IDs,
 never a value. A member does not read them; a member reads the secrets of the workspaces
 they reach. A suspended organisation is read-only.
-<!-- /feature -->
-<!-- feature: organisation_variables, managed_organisations -->
-
-In a client, the people of its operator read its secrets and variables as support does,
-and change nothing.
-<!-- /feature -->
-<!-- feature: organisation_variables -->
 
 Each change is in the organisation's audit log (Audit log, in the organisation sidebar's
 first group), as a stored secret's, by its name and value IDs and never a value: who

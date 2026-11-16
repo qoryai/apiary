@@ -12,23 +12,16 @@ defmodule ApiaryPro.OrganisationPolicyRacesTest do
   # ids, so the second waits on the first's workspace row and holds nothing the first's
   # second half needs: nothing deadlocks, which Postgres's own count of deadlocks shows,
   # and the second write resolves against what the first wrote.
-  #
-  # While the operator owns its clients (`ApiaryPro.Flags.operator_infrastructure?/0`), a
-  # lock of a client's rule by the operator's owner and a change of it by the client's
-  # admin are two writes of the workspace's policy: whichever holds the workspace first,
-  # the other waits, and then reads the rule as the first left it.
   use ExUnit.Case, async: false
   @before_compile Apiary.TestSetup
 
   import Ecto.Query
   import Apiary.Races
 
-  alias Apiary.{Organisations, Policy, Repo}
+  alias Apiary.{Policy, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Policy.{Error, Rule}
-  alias ApiaryPro.{Flags, Grants, OrganisationPolicy}
-  alias ApiaryPro.Tenants.Tenant
+  alias Apiary.Organisations.Workspace
+  alias ApiaryPro.OrganisationPolicy
 
   @moduletag needs: :organisation_policy
 
@@ -94,75 +87,6 @@ defmodule ApiaryPro.OrganisationPolicyRacesTest do
                %{action: "first_version"}
              ]
            } = Policy.list_changes(owner, nil, 1)
-  end
-
-  describe "a client's rule while the operator owns its clients" do
-    # An operator is `managed_organisations`'; its client's rule, the workspace's
-    # `security`'s.
-    @describetag needs: [:managed_organisations, :security]
-
-    # An operator, made one as the product makes one, with a client, whose first person,
-    # invited while the flag is on, is its admin; a rule of the client's workspace.
-    setup do
-      Flags.put_operator_infrastructure(true)
-
-      %{scope: operator_owner, organisation: operator} = sign_up()
-
-      Repo.update_all(from(t in Tenant, where: t.organisation_id == ^operator.id),
-        set: [kind: :operator]
-      )
-
-      operator = Repo.get!(Organisation, operator.id)
-      {:ok, _features} = Grants.written_out(operator, :operator)
-
-      {:ok, in_operator} =
-        Organisations.resolve_scope(Scope.for_user(operator_owner.user), operator.slug)
-
-      client = ApiaryPro.Races.client(in_operator)
-      {:ok, rule} = Policy.allow(client.owner.scope, nil, %{host: "cdn.example"})
-
-      %{operator_owner: client.scope, client_admin: client.owner.scope, rule: rule}
-    end
-
-    test "the operator's lock first: the client's change of the rule waits, then is refused",
-         ctx do
-      before = deadlocks()
-
-      {write, write_pid} = hold(fn -> policy_write_first_half(ctx.operator_owner) end)
-
-      theirs = start(fn -> Policy.deny(ctx.client_admin, nil, %{host: "cdn.example"}) end)
-      await_blocked(theirs.backend, write_pid)
-
-      assert {:ok, %Rule{locked: true}} =
-               continue(write, fn -> Policy.lock(ctx.operator_owner, ctx.rule) end)
-
-      commit(write)
-
-      assert {:error, %Error{reason: :forbidden}} = Task.await(theirs.task)
-      assert deadlocks() == before
-      assert %Rule{action: "allow", locked: true} = Repo.get!(Rule, ctx.rule.id)
-    end
-
-    test "the client's change first: the operator's lock waits, then locks the rule as changed",
-         ctx do
-      before = deadlocks()
-
-      {write, write_pid} = hold(fn -> policy_write_first_half(ctx.client_admin) end)
-
-      ours = start(fn -> Policy.lock(ctx.operator_owner, ctx.rule) end)
-      await_blocked(ours.backend, write_pid)
-
-      assert {:ok, %Rule{action: "deny"}} =
-               continue(write, fn ->
-                 Policy.deny(ctx.client_admin, nil, %{host: "cdn.example"})
-               end)
-
-      commit(write)
-
-      assert {:ok, %Rule{action: "deny", locked: true}} = Task.await(ours.task)
-      assert deadlocks() == before
-      assert %Rule{action: "deny", locked: true} = Repo.get!(Rule, ctx.rule.id)
-    end
   end
 
   # The organisation's write, up to its question: the organisation's rows, then every

@@ -44,7 +44,7 @@ defmodule Apiary.Runs.ProviderCredential do
 
   require Logger
 
-  alias Apiary.{Connections, Edition, Features, Gateways, Repo}
+  alias Apiary.{Connections, Features, Gateways, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Endpoint, Provider}
   alias Apiary.Nodes.Node
@@ -96,12 +96,10 @@ defmodule Apiary.Runs.ProviderCredential do
           %{host: String.t(), connection: map}
         ]
   def workspace_hosts(%Apiary.Organisations.Workspace{} = workspace) do
-    {chain, owner} = Apiary.ModelChoices.chain_owner(workspace.organisation_id)
-
-    if applies?() and is_binary(owner) do
+    if applies?() do
       places =
         from m in Apiary.ModelChoices.ModelChoice,
-          where: m.organisation_id == ^owner and m.chain == ^chain,
+          where: m.organisation_id == ^workspace.organisation_id and m.chain == "organisation",
           where: is_nil(m.workspace_id) or m.workspace_id == ^workspace.id
 
       chosen =
@@ -123,7 +121,7 @@ defmodule Apiary.Runs.ProviderCredential do
       ids = Enum.uniq(chosen ++ fallbacks)
 
       from(c in Connection,
-        where: c.id in ^ids and not is_nil(c.provider_kind) and c.chain == ^chain,
+        where: c.id in ^ids and not is_nil(c.provider_kind) and c.chain == "organisation",
         order_by: [asc: c.id]
       )
       |> Repo.all()
@@ -179,54 +177,38 @@ defmodule Apiary.Runs.ProviderCredential do
     do: Features.on?(:factory, recorded) and Features.on?(:secrets, recorded)
 
   @doc false
-  # sealable_to?/3 is whether the key of a provider of `chain`, of the run's organisation
-  # `run_organisation_id`, may be sealed for `gateway`, by the level it lives at
-  # (`Apiary.Gateways.level/1`). The instance's gateway serves every organisation, so it
-  # may receive a key of either chain. A provider of the organisation's chain: only for a
-  # gateway of the run's organisation, or the instance's. A provider of an operator's
-  # chain: only while the edition returns "operator" for the run's organisation
-  # (`c:Apiary.Edition.model_choice_chain/1`) and names the operator's organisation
-  # (`c:Apiary.Edition.operator_chain_organisation/1`), and only for a gateway of that
-  # organisation whose gateways serve the run's
-  # (`Apiary.Gateways.serving_organisations/1`), or the instance's. The claim
+  # sealable_to?/3 is whether the key of a provider of `chain`, of a run in the workspace
+  # `workspace_id` of the organisation `organisation_id`, may be sealed for `gateway`, by
+  # the level it lives at (`Apiary.Gateways.level/1`). Only a key of the organisation's
+  # chain: for a gateway of the run's organisation, and a gateway made in a workspace
+  # only for a run of that workspace; or for the instance's gateway, which serves every
+  # organisation. A key of any other chain is never sealed, and neither is a key for a run
+  # map without both `organisation_id` and `workspace_id`. The claim
   # (`Apiary.Dispatches.Handover`) and the secrets request
   # (`Apiary.Runs.SecretsRequest`) both check it.
-  @spec sealable_to?(String.t(), Node.t(), Ecto.UUID.t()) :: boolean
-  def sealable_to?(chain, %Node{kind: :gateway} = gateway, run_organisation_id)
-      when is_binary(run_organisation_id) do
-    sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, run_organisation_id)
+  @spec sealable_to?(String.t(), Node.t(), %{
+          organisation_id: Ecto.UUID.t(),
+          workspace_id: Ecto.UUID.t()
+        }) :: boolean
+  def sealable_to?(
+        chain,
+        %Node{kind: :gateway} = gateway,
+        %{organisation_id: organisation_id, workspace_id: workspace_id}
+      )
+      when is_binary(organisation_id) do
+    (is_nil(gateway.workspace_id) or gateway.workspace_id == workspace_id) and
+      sealable_at?(chain, Gateways.level(gateway), gateway.organisation_id, organisation_id)
   end
 
-  def sealable_to?(_chain, _gateway, _run_organisation_id), do: false
+  def sealable_to?(_chain, _gateway, _run), do: false
 
   defp sealable_at?("organisation", :instance, nil, _run_organisation_id), do: true
 
   defp sealable_at?("organisation", _level, gateway_organisation_id, run_organisation_id),
     do: gateway_organisation_id == run_organisation_id
 
-  defp sealable_at?("operator", level, gateway_organisation_id, run_organisation_id) do
-    operator = operator_of(run_organisation_id)
-
-    is_binary(operator) and
-      (level == :instance or
-         (gateway_organisation_id == operator and
-            operator in Gateways.serving_organisations(run_organisation_id)))
-  end
-
   defp sealable_at?(_chain, _level, _gateway_organisation_id, _run_organisation_id),
     do: false
-
-  @doc false
-  # operator_of/1 is the operator's organisation whose chain of model choices the runs of
-  # `run_organisation_id` take: the one the edition names
-  # (`c:Apiary.Edition.operator_chain_organisation/1`) while it returns "operator" for the
-  # run's organisation (`c:Apiary.Edition.model_choice_chain/1`); nil otherwise, and in the
-  # core's edition.
-  @spec operator_of(Ecto.UUID.t()) :: Ecto.UUID.t() | nil
-  def operator_of(run_organisation_id) do
-    if Edition.model_choice_chain(run_organisation_id) == "operator",
-      do: Edition.operator_chain_organisation(run_organisation_id)
-  end
 
   defp credential(run, api, keys) do
     with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),

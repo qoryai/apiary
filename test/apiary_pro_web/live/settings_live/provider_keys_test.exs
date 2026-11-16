@@ -18,7 +18,6 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   alias Apiary.{Connections, Features, Repo, Secrets}
   alias Apiary.Connections.Connection
   alias Apiary.Secrets.Secret
-  alias ApiaryPro.Flags
 
   @moduletag with_features: Features.all()
   @moduletag needs: :factory
@@ -337,75 +336,6 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
                |> get("/#{scope.organisation.slug}/settings/variables#{page}")
                |> html_response(404)
       end
-    end
-  end
-
-  describe "in a client whose model chain the operator holds" do
-    @describetag needs: [:managed_organisations, :organisation_variables]
-
-    test "its owner reads the key rows, has no menu on them, and is refused each change" do
-      Flags.put_operator_infrastructure(false)
-      operator = operator_fixture()
-      client = client_fixture(operator.scope)
-
-      {:ok, provider} =
-        Connections.create_provider(client.owner.scope, %{
-          provider: "anthropic",
-          name: "Client keys",
-          keys: [%{value_id: "main", value: @key}, %{value_id: "spare", value: @second}]
-        })
-
-      key_secret = Repo.get!(Secret, provider.secret_id)
-      grant!(operator.organisation, :organisation_variables, true)
-      grant!(client.organisation, :organisation_variables, true)
-
-      Flags.put_operator_infrastructure(true)
-      client = model_chain_fixture(operator.scope, client, :operator)
-      scope = client.owner.scope
-      conn = log_in_user(build_conn(), client.owner.user)
-
-      {:ok, lv, html} = live(conn, secrets_path(scope))
-      refute_keys(html)
-      row = "#secret-#{key_secret.public_id}"
-      assert has_element?(lv, row, "Model provider key · 2 values")
-      refute has_element?(lv, "#{row}-menu")
-      refute has_element?(lv, "#{row}-main-menu")
-
-      held = "Set by your operator, #{operator.organisation.name}. Ask them to change it."
-
-      for rest <- [
-            "/values/main/change",
-            "/values/main/rename",
-            "/add-value",
-            "/values/spare/delete",
-            "/delete"
-          ] do
-        assert {:error, {:live_redirect, %{flash: %{"error" => ^held}}}} =
-                 live(conn, secrets_path(scope, "/#{key_secret.public_id}#{rest}"))
-      end
-
-      entries_before =
-        Repo.aggregate(from(e in Apiary.Audit.Entry, where: e.subject_id == ^provider.id), :count)
-
-      # An event sent to the list changes nothing.
-      for {event, params} <- [
-            {"set_value", %{"secret_value" => %{"value" => "client-value"}}},
-            {"add_value", %{"secret_value" => %{"value_id" => "b", "value" => "client-value"}}},
-            {"rename_value", %{"secret_value" => %{"value_id" => "renamed"}}},
-            {"delete_value", %{}},
-            {"delete_secret", %{}}
-          ] do
-        render_hook(lv, event, params)
-      end
-
-      assert reveal(provider, "main") == {:ok, @key}
-      assert reveal(provider, "spare") == {:ok, @second}
-      assert reveal(provider, "b") == {:error, :not_found}
-
-      assert Repo.aggregate(
-               from(e in Apiary.Audit.Entry, where: e.subject_id == ^provider.id),
-               :count
-             ) == entries_before
     end
   end
 

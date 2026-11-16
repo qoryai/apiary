@@ -9,17 +9,17 @@ defmodule ApiaryPro.AuditTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Audit, Organisations}
+  alias Apiary.Organisations
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias ApiaryPro.{Transfers, WorkspaceAccess}
+  alias ApiaryPro.WorkspaceAccess
 
   # Every action, the core's and the edition's, made and refused by the case: the core's changes
   # again, under the edition, and the edition's.
@@ -92,28 +92,6 @@ defmodule ApiaryPro.AuditTest do
       assert entry.subject_id == access.id
       assert entry.workspace_id == second.id
       assert user_id == user.id
-    end
-  end
-
-  describe "reading the trail" do
-    test "an operator in its client's trail, and the client in its operator's, are named as they are now" do
-      operator = operator_fixture()
-      offered = sign_up_fixture()
-      {:ok, _} = Transfers.offer_to_operator(offered.scope, operator.organisation.slug)
-      {:ok, client} = Transfers.accept_client(operator.scope, offered.organisation.id)
-      {:ok, _} = Organisations.update_organisation(operator.scope, %{name: "Renamed operator"})
-
-      # Each trail names the other organisation by id; the other is not the reader's.
-      client_scope = scope_in(offered.user, client)
-      {:ok, %{entries: entries}} = Audit.list_entries(client_scope)
-
-      assert Audit.names(client_scope, entries).organisations[operator.organisation.id] ==
-               "Renamed operator"
-
-      {:ok, %{entries: entries}} = Audit.list_entries(operator.scope)
-
-      assert Audit.names(operator.scope, entries).organisations[client.id] ==
-               offered.organisation.name
     end
   end
 end

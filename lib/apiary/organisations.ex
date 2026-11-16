@@ -314,8 +314,9 @@ defmodule Apiary.Organisations do
   # The workspaces of the organisation a scope, or a membership, reaches, by name, each as a
   # map with the workspace under `:workspace`: every one where the reach takes them all,
   # and those the edition says otherwise (`c:Apiary.Edition.reached_workspaces/2`), with
-  # what it says of each. One the edition lets in without a membership reads every
-  # workspace. `in_use: false` keeps those marked for deletion too, as a job's scope does.
+  # what it says of each. One the edition lets in without a membership reads the
+  # workspaces the edition says, asked without the membership. `in_use: false` keeps
+  # those marked for deletion too, as a job's scope does.
   defp reached_query(scope_or_membership, opts \\ [])
 
   defp reached_query(
@@ -327,7 +328,7 @@ defmodule Apiary.Organisations do
         organisation_id |> workspaces_query(opts) |> refine_reached(membership, scope)
 
       _none ->
-        workspaces_query(organisation_id, opts)
+        organisation_id |> workspaces_query(opts) |> Edition.reached_workspaces(scope)
     end
   end
 

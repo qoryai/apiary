@@ -61,6 +61,10 @@ defmodule ApiaryWeb.MemberLive.Index do
   """
   use ApiaryWeb, :live_view
 
+  # The page is not found for a person without `member.read`, such as one an edition lets
+  # into some workspaces of the organisation alone.
+  on_mount {ApiaryWeb.Access, :"member.read"}
+
   alias Apiary.{Access, Accounts, Mail, Organisations}
   alias Apiary.Organisations.{Invitation, Membership}
   alias ApiaryWeb.{SettingsComponents, UserAuth}

@@ -10,7 +10,7 @@ defmodule ApiaryProWeb.CssClassesTest do
   A class both stylesheets define holds when every selector of the edition's that styles it is
   scoped: besides that class, the selector names a class only the edition defines or a core
   component's root (`@core_roots`), outside `:not()` and the other functional
-  pseudo-classes. `.q-clients .q-toggle-description` would style the core's switch text
+  pseudo-classes. `.q-parts .q-toggle-description` would style the core's switch text
   inside the edition's block only; `.q-who { ... }` and `.q-who span { ... }` restyle the
   core's lane name everywhere. Or the class is on `@allowed`, with the reason the edition's rule
   is meant.

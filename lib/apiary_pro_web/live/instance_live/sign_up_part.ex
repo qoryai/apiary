@@ -80,7 +80,7 @@ defmodule ApiaryProWeb.InstanceLive.SignUpPart do
         form={@form}
       >
         {gettext(
-          "Whether someone without an invitation may sign up and create an operator, an organisation that provides a harness its clients run, and whether someone signed in may create one from the organisation menu."
+          "Whether someone without an invitation may sign up and create an operator, and whether someone signed in may create one from the organisation menu."
         )}
       </.row>
     </dl>

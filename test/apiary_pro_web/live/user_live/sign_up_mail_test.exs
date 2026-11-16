@@ -138,7 +138,6 @@ defmodule ApiaryProWeb.UserLive.SignUpMailTest do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       assert context(lv) =~ "You become the owner of the operator."
-      assert context(lv) =~ "An operator creates clients."
 
       assert context(lv) =~
                "You sign in with a password."

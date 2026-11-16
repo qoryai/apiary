@@ -698,8 +698,8 @@ defmodule Apiary.Runs.LeakedSecrets do
       it, the secrets of the machine log are left out and not counted.
     * `machine_log`, the machine log's text, for the values; nil once it cannot be read,
       as after the retention deleted it, when its secrets have no value.
-    * `events`, the query of the run's events the reader reads
-      (the edition's `client_reads`): a secret in an event outside it has no value.
+    * `events`, the query of the run's events the reader reads: a secret in an event
+      outside it has no value.
 
   Each secret has its value while its text is kept: a log chunk the retention deleted,
   an event outside `events`, has none.

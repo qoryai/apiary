@@ -15,8 +15,8 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
   **Password links.** While no mail is set (`Apiary.Mail.configured?/0`), the menu of each
   other account that is not suspended has Make a password link
   (`Apiary.Accounts.build_password_link/3`), as the core's People page has for the members
-  of the instance organisation (`ApiaryWeb.MemberLive.Index`): here for any account, a
-  client's owner or a member of any organisation, who would otherwise need a shell on the
+  of the instance organisation (`ApiaryWeb.MemberLive.Index`): here for any account, an
+  owner or a member of any organisation, who would otherwise need a shell on the
   instance's machine. The page calls `Apiary.Access.can?/3` with `account.password_link`
   for each account. It is the core's link, and only the core's checks apply to it:
   an instance admin's, while no mail is set, never for their account nor for one that
@@ -302,8 +302,8 @@ defmodule ApiaryProWeb.InstanceLive.Accounts do
 
   defp apply_action(socket, :index, _params), do: assign(socket, account_id: nil, sole_owned: [])
 
-  # The organisations its suspension leaves without an owner who may act, an owned
-  # operator's clients among them: the confirmation says so first.
+  # The organisations its suspension leaves without an owner who may act: the
+  # confirmation says so first.
   defp apply_action(socket, :suspend, %{"id" => id}) do
     assign(socket, account_id: id, sole_owned: Suspensions.left_without_owner(id))
   end

@@ -1,10 +1,10 @@
 defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   # What a node is served follows the instance's features alone, whatever an organisation
-  # or a client is granted (an access key asks `Apiary.Features.on?/1`): a client whose
-  # Runs are taken away still has its runs registered, attached, their events and their
+  # is granted (an access key asks `Apiary.Features.on?/1`): an organisation whose Runs
+  # are taken away still has its runs registered, attached, their events and their
   # outcome stored; an organisation whose security policy is taken away is still served
-  # its policy and the organisation's, at registration, reload and with each batch; and a
-  # client without the security policy, narrowed or dropped, is served the same document.
+  # its policy and the organisation's, at registration, reload and with each batch, and
+  # so is one whose workspace an operator operates.
   # Not async: an operator is made by an instance admin, and the instance's features are
   # the node's.
   use ApiaryWeb.ConnCase, async: false
@@ -26,7 +26,7 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   alias Apiary.Organisations.Organisation
   alias Apiary.Policy.Serving
   alias Apiary.Runs.{Event, Run}
-  alias ApiaryPro.{Grants, OrganisationPolicy, Transfers}
+  alias ApiaryPro.{Grants, OrganisationPolicy}
 
   @moduletag with_features: Features.all()
 
@@ -86,24 +86,24 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
          else: (_none -> nil)
   end
 
-  describe "a client whose Runs are taken away" do
+  describe "an organisation an operator operates in, whose Runs are taken away" do
     setup ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      in_client = client.owner.scope
+      operated = operated_fixture(operator.scope, "Acme")
+      in_operated = operated.owner.scope
 
       # The workspace's first gateway is its default: a node made after it goes through it.
-      gateway = gateway_fixture(in_client)
+      gateway = gateway_fixture(in_operated)
 
       %{access_key: gateway_key, secret: gateway_secret} =
-        contract_key_fixture(in_client, node: gateway)
+        contract_key_fixture(in_operated, node: gateway)
 
-      %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_client)
-      {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
-      {:ok, %{digest: baseline}} = Policy.current_configuration(in_client, nil)
+      %{access_key: key, secret: secret, node: node} = contract_key_fixture(in_operated)
+      {:ok, _rule} = Policy.deny(in_operated, nil, %{host: "ads.example"})
+      {:ok, %{digest: baseline}} = Policy.current_configuration(in_operated, nil)
 
-      assert {:ok, []} = Grants.set_client(operator.scope, client.organisation.id, [])
-      refute has?(client.organisation, :observability)
+      assert {:ok, _} = Grants.set_organisation(ctx.admin, operated.organisation.id, [])
+      refute has?(operated.organisation, :observability)
 
       Map.merge(ctx, %{
         node: node,
@@ -198,36 +198,24 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
     end
   end
 
-  describe "a client without the security policy" do
+  describe "an organisation an operator operates in, without the security policy" do
     setup ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      in_client = client.owner.scope
-      %{access_key: key, secret: secret} = contract_key_fixture(in_client)
-      {:ok, _rule} = Policy.deny(in_client, nil, %{host: "ads.example"})
+      operated = operated_fixture(operator.scope, "Acme")
+      in_operated = operated.owner.scope
+      %{access_key: key, secret: secret} = contract_key_fixture(in_operated)
+      {:ok, _rule} = Policy.deny(in_operated, nil, %{host: "ads.example"})
       key = {key, secret}
       served = digest(key)
       assert served
 
-      Map.merge(ctx, %{operator: operator, client: client, key: key, served: served})
+      Map.merge(ctx, %{operated: operated, key: key, served: served})
     end
 
-    test "narrowed with its operator keeps the same digest", ctx do
-      operator = ctx.operator.organisation
-      assert {:ok, _} = Grants.set_organisation(ctx.admin, operator.id, [:observability])
-      refute has?(ctx.client.organisation, :security)
-
-      assert digest(ctx.key) == ctx.served
-    end
-
-    test "keeps the same digest, and keeps it once dropped", ctx do
-      client = ctx.client.organisation
-      assert {:ok, _} = Grants.set_client(ctx.operator.scope, client.id, [:observability])
-      refute has?(client, :security)
-      assert digest(ctx.key) == ctx.served
-
-      assert {:ok, _} = Transfers.drop(ctx.operator.scope, client.id, client.name)
-      assert has?(client, :security)
+    test "keeps the same digest", ctx do
+      operated = ctx.operated.organisation
+      assert {:ok, _} = Grants.set_organisation(ctx.admin, operated.id, [:observability])
+      refute has?(operated, :security)
       assert digest(ctx.key) == ctx.served
     end
   end

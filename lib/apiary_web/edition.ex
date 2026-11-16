@@ -30,9 +30,10 @@ defmodule ApiaryWeb.Edition do
     `c:instance_sections/1`, the Instance level's before the core's, each an
     `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's groups of
     the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
-    `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_group/1`, the heading the organisation
-    menu lists a place the edition lists (`c:Apiary.Edition.places/1`) under;
-    `c:place_scope/2`, which the core no longer asks.
+    `ApiaryWeb.UserAuth.nav_counts/1`; `c:switcher_place/1`, which workspaces of a place
+    the organisation menu lists under it, and which under another organisation of the
+    menu;
+    `c:place_scope/2`, which the core does not call.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
@@ -136,11 +137,16 @@ defmodule ApiaryWeb.Edition do
   @callback nav_sections() :: [{atom, String.t() | nil}]
 
   @doc """
-  The heading the organisation menu lists a place under (`c:Apiary.Edition.places/1`),
-  translated, such as the clients a person reaches through their operator; nil for the
-  organisations the person is a member of, which the menu lists first.
+  How the organisation menu lists a place (`c:Apiary.Edition.places/1`):
+  `{workspaces, elsewhere}`. `workspaces` is the place's workspaces the menu lists under the
+  place, or nil to leave the place out. `elsewhere` is its workspaces the menu lists under
+  another organisation of the menu instead, each as `{organisation_id, workspace}`, such as
+  a workspace that an operator the person belongs to operates. The menu leaves out an
+  entry whose `organisation_id` is that of no place it lists.
   """
-  @callback place_group(place :: term) :: String.t() | nil
+  @callback switcher_place(place :: term) ::
+              {[%Apiary.Organisations.Workspace{}] | nil,
+               [{Ecto.UUID.t(), %Apiary.Organisations.Workspace{}}]}
 
   @doc """
   The scope a place of the edition's (`c:Apiary.Edition.places/1`), or a membership the
@@ -230,14 +236,12 @@ defmodule ApiaryWeb.Edition do
     default;
   - `:empty`, the body of the Gateways page's empty state, under No gateways yet.
 
-  The core's sentences name the workspaces of `organisation` alone, as the core's
-  gateways serve no other organisation's: "Machines and pools in any workspace of Acme
-  can use the gateways added here. A workspace can also add gateways that only its
-  machines and pools use.", "Machines and pools in any workspace of Acme can use it." and
-  "The default gateway for workspaces in Acme that don't set one.", and for `:empty`,
-  "Add one so the machines and pools in Acme's workspaces can send runs through it.". An edition whose organisation-level gateways also serve the
-  workspaces of other organisations (`c:Apiary.Edition.served_organisations/1`) says so
-  in its answer.
+  The core's sentences contain the workspaces' names of `organisation` alone: "Machines and pools
+  in any workspace of Acme can use the gateways added here. A workspace can also add
+  gateways that only its machines and pools use.", "Machines and pools in any workspace
+  of Acme can use it." and "The default gateway for workspaces in Acme that don't set
+  one.", and for `:empty`, "Add one so the machines and pools in Acme's workspaces can
+  send runs through it."
   """
   @callback gateway_reach_sentence(
               kind :: :intro | :who_can_use | :default_row | :empty,
@@ -383,7 +387,7 @@ defmodule ApiaryWeb.Edition do
     account_menu_entries: 1,
     instance_sections: 1,
     nav_sections: 0,
-    place_group: 1,
+    switcher_place: 1,
     place_scope: 2,
     reader_sentence: 2,
     level_refusal_sentence: 2,

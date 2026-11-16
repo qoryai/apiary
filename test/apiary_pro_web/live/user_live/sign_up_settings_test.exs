@@ -169,7 +169,7 @@ defmodule ApiaryProWeb.UserLive.SignUpSettingsTest do
     refute has_element?(lv, "#registration_form [name='user[kind]']")
     refute html =~ "Start an operator"
     assert context(lv) =~ "You become the owner of the operator."
-    assert context(lv) =~ "An operator creates clients."
+    refute has_element?(lv, "#sign-up-operator")
 
     email = submit(lv, %{})
 
@@ -188,7 +188,7 @@ defmodule ApiaryProWeb.UserLive.SignUpSettingsTest do
     # Main, the workspace it starts with, takes the one domain there is: nothing asks it.
     assert field_names(lv) == ["user[email]", "user[kind]", "user[organisation_name]"]
     assert html =~ "For a team that works in workspaces."
-    assert html =~ "Creates and runs organisations for clients."
+    assert html =~ "Operates workspaces of other organisations."
     refute html =~ "What are you creating?"
 
     email = submit(lv, %{})

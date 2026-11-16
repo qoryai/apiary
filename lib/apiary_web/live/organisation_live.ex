@@ -230,8 +230,7 @@ defmodule ApiaryWeb.OrganisationLive do
         <dl class="q-kvl">
           <dt>{gettext("Address")}</dt>
           <dd class="q-mono">{~p"/#{@current_scope.organisation}"}</dd>
-          <%!-- No Owners row for an organisation without an owner, such as an operator's
-               client in an edition. --%>
+          <%!-- No Owners row for an organisation without an owner. --%>
           <dt :if={@people.owners != []}>{gettext("Owners")}</dt>
           <dd
             :if={@people.owners != []}

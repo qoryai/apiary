@@ -6,18 +6,14 @@ defmodule ApiaryPro.Transfers.Transfer do
   - `:to_admin`: the ownership of an organisation whose owners are all suspended offered
     to one of its admins, `recipient_id`, who becomes an owner on accepting; always an
     instance admin's, the arbiter's (`arbitrated`, with its `reason`), for any
-    organisation but the instance organisation. It names no operator: a client's is in the
-    entry of the offer alone, so the purge of an operator a client has left takes no
-    offer of it with it.
+    organisation but the instance organisation. It names no operator.
 
   `organisation_id` is the organisation key, and unique: one pending offer per organisation.
   Nothing is cast from a form: `ApiaryPro.Transfers` sets every field.
   """
-  # Hidden (`ApiaryPro.Flags.transfers?/0`), so not in the published documentation:
-  #
-  # - `:to_operator`: an organisation that is no client offered to the operator
-  #   `operator_id` by its owner; an owner of the operator accepts, and it becomes the
-  #   operator's client.
+  # `:to_operator` is a kind nothing writes any more: an organisation that was offered to
+  # the operator `operator_id` by its owner. It stays a value of `kind`, so a row of it
+  # that a database still has loads; `ApiaryPro.Transfers.pending/1` reads none.
   use Ecto.Schema
 
   @kinds [:to_admin, :to_operator]
@@ -37,7 +33,7 @@ defmodule ApiaryPro.Transfers.Transfer do
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
-  # A kind of `kinds/0`. Hidden, as `:to_operator` is.
+  # A kind of `kinds/0`. Hidden from the published documentation.
   @typedoc false
   @type kind :: :to_admin | :to_operator
 

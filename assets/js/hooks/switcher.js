@@ -2,22 +2,21 @@
 // organisation menu beside the organisation, the workspace menu beside the workspace.
 //
 // The organisation menu has two panels under its search: the organisations on the left,
-// and on the right the workspaces of the one pointed at. On opening, the page's
-// organisation is pointed at and scrolled to; after that the one with focus, or the one
-// under a mouse once it has rested there (REST), so a pointer crossing other rows on its
-// way to the right panel points at none of them. A row's › points at it too, and moves
-// into its workspaces; on a phone, where one panel shows at a time, it shows them in place
-// of the organisations, with a button back.
+// and on the right the workspaces of the one pointed at. On opening, the organisation
+// marked current (`aria-current`) is pointed at and scrolled to; after that the one with
+// focus, or the one under a mouse once it has rested there (REST), so a pointer crossing
+// other rows on its way to the right panel points at none of them. A row's › points at it
+// too, and moves into its workspaces; on a phone, where one panel shows at a time, it
+// shows them in place of the organisations, with a button back.
 //
 // The search filters as the reader types: the organisation menu by an organisation's name
 // and slug, keeping one whose workspace matches with only those workspaces; the workspace
-// menu by a workspace's name and slug. A search opens every folded group it finds an
-// organisation in, and an empty search folds them back as they were. ↓ from the search goes
-// to the first row, ↑ and ↓ move within a panel, Enter in the search follows the first
-// match; → and ← move between an organisation and its workspaces; Escape closes and gives
-// focus back to the chevron. Focus or a pointer leaving the open menu and the chevrons
-// closes it, the breadcrumb's own segments included; a tap on a button of the menu that
-// takes no focus (Safari, iOS) does not, and focus goes back into the menu.
+// menu by a workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓
+// move within a panel, Enter in the search follows the first match; → and ← move between
+// an organisation and its workspaces; Escape closes and gives focus back to the chevron.
+// Focus or a pointer leaving the open menu and the chevrons closes it, the breadcrumb's
+// own segments included; a tap on a button of the menu that takes no focus (Safari, iOS)
+// does not, and focus goes back into the menu.
 //
 // Below 768 px the bar names the page alone, and the drawer's head holds a chevron for each
 // menu too: the drawer closes (the NavDrawer hook), the menu opens as the sheet under the
@@ -184,13 +183,6 @@ export const Switcher = {
   },
 
   onClick(e) {
-    const fold = e.target.closest("button[data-fold]")
-    if (fold) {
-      e.preventDefault()
-      fold.setAttribute("aria-expanded", String(fold.getAttribute("aria-expanded") !== "true"))
-      this.filter()
-      return
-    }
     const trigger = e.target.closest("[data-switcher-open]")
     if (trigger) {
       e.preventDefault()
@@ -256,7 +248,7 @@ export const Switcher = {
     return this.menu.querySelector(".q-switcher-side")
   },
 
-  // The organisations shown: not left out by the search, nor in a folded group.
+  // The organisations shown: those the search does not leave out.
   orgs() {
     return [...this.menu.querySelectorAll("li[data-org]")].filter(row => !row.closest("[hidden]"))
   },
@@ -359,11 +351,6 @@ export const Switcher = {
       count = result.filter(r => r.show).length
       menu.querySelectorAll("[data-group]").forEach(group => {
         group.hidden = ![...group.querySelectorAll("li[data-org]")].some(row => !row.hidden)
-        // A folded group shows its organisations while a search finds one in it.
-        const list = group.querySelector("[data-fold-list]")
-        const fold = group.querySelector("button[data-fold]")
-        if (list && fold)
-          list.hidden = q === "" ? fold.getAttribute("aria-expanded") !== "true" : false
       })
       const visible = this.orgs()
       if (!visible.includes(this.pointed())) this.point(visible[0])
@@ -379,13 +366,11 @@ export const Switcher = {
     if (status) status.textContent = statusWords(q, count, status.dataset)
   },
 
-  // The rows ↑ and ↓ move between in a panel: the left one's links and fold buttons, then
-  // the foot's; the right one's way back and workspaces.
+  // The rows ↑ and ↓ move between in a panel: the left one's links, then the foot's; the
+  // right one's way back and workspaces.
   rows(panel) {
     const foot = panel === this.side() ? [] : [...this.menu.querySelectorAll(".q-switcher-foot a")]
-    return [...panel.querySelectorAll("a, button[data-fold], button[data-back]"), ...foot].filter(
-      shown,
-    )
+    return [...panel.querySelectorAll("a, button[data-back]"), ...foot].filter(shown)
   },
 
   // The first match: the first organisation shown, or its first workspace shown where the

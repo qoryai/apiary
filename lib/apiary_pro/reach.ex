@@ -4,28 +4,30 @@ defmodule ApiaryPro.Reach do
   there, and which workspaces a member reaches. What `Apiary.Access` asks of the edition
   about reach is answered here (`c:Apiary.Edition.reach/1`, `reload/2`,
   `places_to_lock/1`, `every_workspace_levels/0`, `reaches_workspace?/3`,
-  `reached_workspaces/2`).
+  `reached_workspaces/2`, `reaches_all_workspaces?/1`).
 
   A person reaches an organisation in one of three ways, which the scope's `reach`
   carries:
 
   1. **Their membership there**, at its level (`reach` nil): what they may change there is
      its role's.
-  2. **Their membership in its operator**, when it is a client (`{:operator, membership}`,
-     with their membership in the operator): an operator provides a harness its clients
-     run, and keeps it working, so its people read everything in each client, at any
-     level they hold in the operator: every workspace, the runs, their terminals, the
-     policy and the trail. They change nothing there: the role `reader`
-     (`ApiaryPro.Access`). A person of the operator who holds a membership in the client
-     too changes what that membership's role allows, in the workspaces it reaches, and
-     reads every workspace besides.
+  2. **Their membership in the operator of some of its workspaces**
+     (`{:operator, operated}`, `operated` a map of each such workspace's id to their
+     membership in its operator, `ApiaryPro.WorkspaceOperators`): an operator operates
+     single workspaces of an organisation, and its people reach those workspaces alone,
+     at any level they hold in the operator, and no other workspace of it. What they may
+     there is `ApiaryPro.Access`'s answer. A person of the operator who holds a membership
+     in the organisation too reaches the workspaces that membership reaches besides.
   3. **As an instance admin** (`:instance`), in an organisation other than the instance
-     organisation they reach neither way: the role `reader` too. They change another
-     organisation only by the instance actions, in the instance organisation, whatever
-     its kind.
+     organisation they reach neither way: the role `reader`, in every workspace. They
+     change another organisation only by the instance actions, in the instance
+     organisation, whatever its kind. An instance admin who reaches some workspaces of it
+     through their operators, with no membership there, keeps both: the reach
+     `{:operator, operated}`, and `instance_reach: true` in the scope's `edition` map, so
+     they read every workspace (`instance_reach?/1`).
 
-  A suspended operator's people do not read its clients, and a suspended membership in
-  the operator, or a suspended account, is no source of reach.
+  A suspended operator's people reach none of its workspaces, and a suspended membership
+  in the operator, or a suspended account, is no source of reach.
 
   **Workspace access.** An owner and an admin reach every workspace of their organisation
   (`every_workspace_levels/0`); a member reaches the workspaces they were added to, each a
@@ -34,15 +36,17 @@ defmodule ApiaryPro.Reach do
   (`ApiaryPro.WorkspaceAccess.of/1`). A reader reaches every workspace.
 
   `reload/2` reads each source again, and fails closed: a person removed from the operator
-  reads its clients no more, and a client that was dropped is read by its people no more.
+  reaches its workspaces no more, and a workspace whose link ended is reached by the
+  operator's people no more.
   """
 
   import Ecto.Query, warn: false
 
   alias Apiary.Repo
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Organisations.{Membership, Organisation}
-  alias ApiaryPro.{Suspensions, Tenants, WorkspaceAccess}
+  alias Apiary.Organisations.{Membership, Organisation, Workspace}
+  alias ApiaryPro.{Suspensions, Tenants, WorkspaceAccess, WorkspaceOperators}
+  alias ApiaryPro.Operators.WorkspaceOperator
   alias ApiaryPro.Tenants.Tenant
 
   @every_workspace [:owner, :admin]
@@ -57,22 +61,26 @@ defmodule ApiaryPro.Reach do
 
   @doc """
   reach/1 finds how the scope's person reaches the organisation just put into the scope
-  (`c:Apiary.Edition.reach/1`): their membership in its operator when it is a client, which
-  wins over a membership there for what they read; their membership there alone; or, with
-  neither, as an instance admin, in an organisation other than the instance organisation.
-  The organisation is put in carrying its tenant (`ApiaryPro.Tenants.put/1`) and, in its
-  `edition` under `:owner_suspended`, whether no owner of it may act
-  (`ApiaryPro.Suspensions.owner_suspended?/1`). `:error` when they reach it no way.
+  (`c:Apiary.Edition.reach/1`): their membership in the operators of some of its
+  workspaces, which wins over a membership there for what they read in those workspaces;
+  their membership there alone; or, with neither, as an instance admin, in an organisation
+  other than the instance organisation. An instance admin with no membership there keeps
+  that reach beside the reach through the operators, as `instance_reach: true` in the
+  scope's `edition` map. The organisation put into the scope has its tenant
+  (`ApiaryPro.Tenants.put/1`), the links of its workspaces
+  (`ApiaryPro.WorkspaceOperators.put/1`) and, in its `edition` under `:owner_suspended`,
+  whether no owner of it may act (`ApiaryPro.Suspensions.owner_suspended?/1`). `:error`
+  when they reach it no way.
   """
   @spec reach(Scope.t()) :: {:ok, Scope.t()} | :error
   def reach(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope) do
-    organisation = Tenants.put(scope.organisation)
+    organisation = scope.organisation |> Tenants.put() |> WorkspaceOperators.put()
     own = scope.membership
-    via = operator_membership(organisation, user_id, preload: true)
+    via = operator_memberships(organisation, user_id, preload: true)
 
     reach =
       cond do
-        via ->
+        via != %{} ->
           {:operator, via}
 
         own ->
@@ -96,11 +104,25 @@ defmodule ApiaryPro.Reach do
           put_owner_suspended(organisation, Suspensions.owner_suspended?(organisation))
 
         own = own && %{own | organisation: organisation}
-        {:ok, %{scope | organisation: organisation, membership: own, reach: reach}}
+        scope = %{scope | organisation: organisation, membership: own, reach: reach}
+        {:ok, put_instance_reach(scope, via != %{} and is_nil(own) and instance_admin?(scope))}
     end
   end
 
   def reach(_scope), do: :error
+
+  # Whether the person is an instance admin in an organisation other than the instance
+  # organisation. In this order: `Apiary.Access.instance_admin?/1` calls `reach/1` again,
+  # for the instance organisation, where the first test stops it.
+  defp instance_admin?(%Scope{organisation: organisation} = scope),
+    do: not Tenants.instance_organisation?(organisation) and Apiary.Access.instance_admin?(scope)
+
+  # The scope with `instance_reach` in its `edition` map set, or removed.
+  defp put_instance_reach(%Scope{edition: edition} = scope, true),
+    do: %{scope | edition: Map.put(edition || %{}, :instance_reach, true)}
+
+  defp put_instance_reach(%Scope{edition: edition} = scope, false),
+    do: %{scope | edition: Map.delete(edition || %{}, :instance_reach)}
 
   @doc """
   owner_suspended?/1 says whether no owner may act in `organisation`, as `reach/1` put it
@@ -116,16 +138,17 @@ defmodule ApiaryPro.Reach do
   @doc """
   reload/2 reads again what the edition put on the scope (`c:Apiary.Edition.reload/2`), after
   `Apiary.Access.reload/2` has read the membership and the marks: the organisation's
-  tenant, its kind, whether it is the instance organisation, its operator and its
-  suspension, which under `lock: :share` the organisation's row, held `FOR SHARE` already,
-  keeps as it is read (`ApiaryPro.Tenants`, Locks); the reach, for a client or a person
-  without a membership there, from each source: their membership in the operator, read
-  without a lock, and under `lock: :share` once the operator's people lock is held
-  `FOR SHARE` (`ApiaryPro.Tenants.lock_rows/1`), so a change of the operator's people
-  waits for the write, or came first and is read here; and with neither membership
-  whether they are an instance admin; and their workspace access to the scope's
-  workspace, where their level needs one, `FOR SHARE` under `lock: :share`, which a
-  removal from the workspace waits for.
+  tenant, its kind, whether it is the instance organisation, its suspension and the links
+  of its workspaces, which under `lock: :share` the organisation's row, held `FOR SHARE`
+  already, keeps as they are read (`ApiaryPro.Tenants`, Locks;
+  `ApiaryPro.WorkspaceOperators`, Locks); the reach, for an organisation with operated
+  workspaces or a person without a membership there, from each source: their memberships
+  in the operators of its workspaces, read without a lock, and under `lock: :share` once
+  the operators' people locks are held `FOR SHARE` (`ApiaryPro.Tenants.lock_rows/1`), so a
+  change of an operator's people waits for the write, or came first and is read here; and
+  with neither membership whether they are an instance admin; and their workspace access
+  to the scope's workspace, where their level needs one, `FOR SHARE` under `lock: :share`,
+  which a removal from the workspace waits for.
   """
   @spec reload(Scope.t(), keyword) :: Scope.t()
   def reload(%Scope{user: %User{}, organisation: %Organisation{id: id}} = scope, opts) do
@@ -143,7 +166,9 @@ defmodule ApiaryPro.Reach do
 
       {_id, tenant} ->
         organisation =
-          Tenants.put_tenant(scope.organisation, tenant || %Tenant{organisation_id: id})
+          scope.organisation
+          |> Tenants.put_tenant(tenant || %Tenant{organisation_id: id})
+          |> WorkspaceOperators.put()
 
         %{scope | organisation: organisation}
         |> reach_now()
@@ -153,24 +178,29 @@ defmodule ApiaryPro.Reach do
 
   def reload(scope, _opts), do: scope
 
-  # An organisation with no operator, reached through a membership alone, has no reach of
-  # the edition's to read again.
+  # An organisation with no operated workspace, reached through a membership alone, has
+  # no reach of the edition's to read again.
   defp reach_now(%Scope{user: %User{id: user_id}, organisation: organisation} = scope) do
     if is_nil(scope.reach) and match?(%Membership{}, scope.membership) and
-         not Tenants.client?(organisation) do
+         WorkspaceOperators.operated(organisation) == %{} do
       scope
     else
-      via = operator_membership(organisation, user_id)
+      via = operator_memberships(organisation, user_id)
 
       reach =
         cond do
-          via -> {:operator, via}
+          via != %{} -> {:operator, via}
           scope.membership -> nil
           Apiary.Access.instance_admin?(scope) -> :instance
           true -> nil
         end
 
-      %{scope | reach: reach}
+      scope = %{scope | reach: reach}
+
+      put_instance_reach(
+        scope,
+        via != %{} and is_nil(scope.membership) and instance_admin?(scope)
+      )
     end
   end
 
@@ -197,45 +227,46 @@ defmodule ApiaryPro.Reach do
   defp share(query, true), do: lock(query, "FOR SHARE")
   defp share(query, false), do: query
 
-  # operator_membership/3 is the person's membership in the organisation's operator, when
-  # it is a client, and the operator is an operator, in use and not suspended, while
-  # neither the membership nor the account is suspended: a suspended operator's people
-  # reach none of its clients. Read without a lock: under `lock: :share` the operator's
-  # people lock covers it (`reload/2`). For `ApiaryPro.Features.hidden/1` too, which asks
-  # it of a scope that carries no reach.
+  # operator_memberships/3 is the person's memberships in the operators of the
+  # organisation's workspaces, by the id of each workspace such an operator operates
+  # (`ApiaryPro.WorkspaceOperators`), where the operator is an operator, in use and not
+  # suspended, while neither the membership nor the account is suspended: a suspended
+  # operator's people reach none of its workspaces. Read without a lock: under
+  # `lock: :share` the operators' people locks cover it (`reload/2`).
   @doc false
-  @spec operator_membership(%Organisation{}, Ecto.UUID.t(), keyword) :: %Membership{} | nil
-  def operator_membership(organisation, user_id, opts \\ []) do
-    case Tenants.operator_id(organisation) do
-      nil -> nil
-      operator_id -> operator_membership_in(operator_id, user_id, opts)
+  @spec operator_memberships(%Organisation{}, Ecto.UUID.t(), keyword) :: %{
+          Ecto.UUID.t() => %Membership{}
+        }
+  def operator_memberships(%Organisation{id: organisation_id} = organisation, user_id, opts \\ []) do
+    if is_nil(organisation_id) or WorkspaceOperators.operated(organisation) == %{} do
+      %{}
+    else
+      query =
+        from l in WorkspaceOperator,
+          join: m in Membership,
+          on: m.organisation_id == l.operator_id,
+          join: o in Organisation,
+          as: :operator,
+          on: o.id == m.organisation_id,
+          join: t in Tenant,
+          on: t.organisation_id == o.id,
+          join: u in User,
+          as: :account,
+          on: u.id == m.user_id,
+          where: l.organisation_id == ^organisation_id and m.user_id == ^user_id,
+          where: t.kind == :operator and is_nil(o.deletion_marked_at),
+          where: is_nil(m.suspended_at),
+          select: {l.workspace_id, m, o}
+
+      query
+      |> Suspensions.active_organisations(:operator)
+      |> Suspensions.active_accounts(:account)
+      |> Repo.all()
+      |> Map.new(fn {workspace_id, membership, operator} ->
+        {workspace_id,
+         if(opts[:preload], do: %{membership | organisation: operator}, else: membership)}
+      end)
     end
-  end
-
-  defp operator_membership_in(operator_id, user_id, opts) do
-    query =
-      from m in Membership,
-        join: o in Organisation,
-        as: :operator,
-        on: o.id == m.organisation_id,
-        join: t in Tenant,
-        on: t.organisation_id == o.id,
-        join: u in User,
-        as: :account,
-        on: u.id == m.user_id,
-        where: m.organisation_id == ^operator_id and m.user_id == ^user_id,
-        where: t.kind == :operator and is_nil(o.deletion_marked_at),
-        where: is_nil(m.suspended_at)
-
-    query =
-      if opts[:preload],
-        do: from([m, operator: o] in query, preload: [organisation: o]),
-        else: query
-
-    query
-    |> Suspensions.active_organisations(:operator)
-    |> Suspensions.active_accounts(:account)
-    |> Repo.one()
   end
 
   @doc """
@@ -248,129 +279,178 @@ defmodule ApiaryPro.Reach do
 
   @doc """
   places_to_lock/1 is the organisations a write in `organisation` holds `FOR SHARE`
-  (`c:Apiary.Edition.places_to_lock/1`), in the lock order: the organisation, then its
-  operator when it is a client, a client before its operator.
+  (`c:Apiary.Edition.places_to_lock/1`), in the lock order: the organisation, then the
+  operators of its workspaces, read now, in the order of their ids: an organisation
+  before the operators of its workspaces.
   """
   @spec places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
-  def places_to_lock(%Organisation{id: id} = organisation) do
-    case Tenants.operator_id(organisation) do
-      nil -> [id]
-      operator_id -> [id, operator_id]
-    end
-  end
+  def places_to_lock(%Organisation{id: id}),
+    do: [id | WorkspaceOperators.operator_ids_of(id)]
 
   @doc """
   reaches_workspace?/3 says whether the scope's person, a member, reaches the workspace
-  `workspace_id` (`c:Apiary.Edition.reaches_workspace?/3`), as the scope carries it: through
-  the organisation's operator, which reads every workspace, or by the row of workspace
-  access the scope carries for it, which must be theirs, in this organisation.
+  `workspace_id` (`c:Apiary.Edition.reaches_workspace?/3`), from the scope as it is: through
+  the operator of that workspace, or by the row of workspace access the scope has for
+  it, which must be theirs, in this organisation.
   """
   @spec reaches_workspace?(Scope.t(), Ecto.UUID.t(), keyword) :: boolean
   def reaches_workspace?(scope, workspace_id, _opts),
-    do: operator_level(scope) != nil or access?(scope, workspace_id)
+    do: operator_level(scope, workspace_id) != nil or access?(scope, workspace_id)
 
   @doc """
-  reached_workspaces/2 narrows a query over the workspaces, each asked for a membership
-  at member (`c:Apiary.Edition.reached_workspaces/2`), to those it was added to, with the row
-  of workspace access merged into each under `:workspace_access`; for a scope that reads
-  every workspace through the organisation's operator, every workspace stays, with the
-  row where there is one.
+  reached_workspaces/2 narrows a query over the workspaces to those the person reaches
+  (`c:Apiary.Edition.reached_workspaces/2`). Asked for a membership at member, the
+  workspaces it was added to, with the row of workspace access merged into each under
+  `:workspace_access`, and, for a scope that reaches workspaces through their operators,
+  those workspaces too, with the row where there is one. Asked with no membership, for a
+  scope that reaches the organisation through the operators of some of its workspaces,
+  those workspaces alone; for any other such scope, every workspace.
   """
   @spec reached_workspaces(Ecto.Queryable.t(), Scope.t() | nil) :: Ecto.Query.t()
   def reached_workspaces(query, scope) do
-    if operator_level(scope) do
-      from [workspace: w, membership: m] in query,
-        left_join: a in ApiaryPro.WorkspaceAccess.Row,
-        as: :workspace_access,
-        on:
-          a.organisation_id == w.organisation_id and a.workspace_id == w.id and
-            a.user_id == m.user_id,
-        select_merge: %{workspace_access: a}
-    else
-      from [workspace: w, membership: m] in query,
-        join: a in ApiaryPro.WorkspaceAccess.Row,
-        as: :workspace_access,
-        on:
-          a.organisation_id == w.organisation_id and a.workspace_id == w.id and
-            a.user_id == m.user_id,
-        select_merge: %{workspace_access: a}
+    query = Ecto.Queryable.to_query(query)
+    operated = limited_to(scope)
+
+    cond do
+      not has_named_binding?(query, :membership) and operated == nil ->
+        query
+
+      not has_named_binding?(query, :membership) ->
+        from [workspace: w] in query, where: w.id in ^operated
+
+      operated == nil ->
+        from [workspace: w, membership: m] in query,
+          join: a in ApiaryPro.WorkspaceAccess.Row,
+          as: :workspace_access,
+          on:
+            a.organisation_id == w.organisation_id and a.workspace_id == w.id and
+              a.user_id == m.user_id,
+          select_merge: %{workspace_access: a}
+
+      true ->
+        from [workspace: w, membership: m] in query,
+          left_join: a in ApiaryPro.WorkspaceAccess.Row,
+          as: :workspace_access,
+          on:
+            a.organisation_id == w.organisation_id and a.workspace_id == w.id and
+              a.user_id == m.user_id,
+          where: not is_nil(a.user_id) or w.id in ^operated,
+          select_merge: %{workspace_access: a}
     end
   end
+
+  @doc """
+  reaches_all_workspaces?/1 says whether the reach in the scope, without a membership
+  that reaches them all, lets its person into every workspace of the organisation
+  (`c:Apiary.Edition.reaches_all_workspaces?/1`): an instance admin's does; the reach
+  through the operators of some of its workspaces does not.
+  """
+  @spec reaches_all_workspaces?(Scope.t() | nil) :: boolean
+  def reaches_all_workspaces?(scope), do: limited_to(scope) == nil
+
+  # The ids of the workspaces the scope's reach is limited to: those it reaches through
+  # their operators, but for an instance admin's, who reaches every workspace; nil for a
+  # reach limited to none.
+  defp limited_to(scope) do
+    if instance_reach?(scope), do: nil, else: operated_ids(scope)
+  end
+
+  # The ids of the workspaces the scope reaches through their operators, for a scope that
+  # has that reach for its organisation; nil for any other.
+
+  defp operated_ids(%Scope{
+         organisation: %Organisation{},
+         reach: {:operator, operated}
+       })
+       when is_map(operated),
+       do: Map.keys(operated)
+
+  defp operated_ids(_scope), do: nil
+
+  @doc """
+  operator_membership/1 is the scope's person's membership in the operator of the scope's
+  workspace, through which they reach it; nil where the scope has no such reach for
+  its workspace, or has no workspace.
+  """
+  @spec operator_membership(Scope.t() | nil) :: %Membership{} | nil
+  def operator_membership(%Scope{workspace: %Workspace{id: workspace_id}} = scope),
+    do: operator_membership_for(scope, workspace_id)
+
+  def operator_membership(_scope), do: nil
 
   @doc """
   operator_level/1 is the level of the scope's person in the operator of the scope's
-  organisation, a client, through which they read it; nil where the scope carries no such
-  reach. It counts only inside the operator.
+  workspace, through which they reach it; nil where the scope has no such reach for
+  its workspace, or has no workspace. It counts only inside the operator.
   """
   @spec operator_level(Scope.t() | nil) :: Membership.level() | nil
-  def operator_level(%Scope{
-        user: %User{id: user_id},
-        organisation: %Organisation{} = organisation,
-        reach: {:operator, %Membership{organisation_id: via_id, user_id: user_id} = via}
-      }) do
-    if via_id == Tenants.operator_id(organisation), do: via.level
-  end
-
-  def operator_level(_scope), do: nil
-
-  # in_client/2 is `Apiary.Accounts.Scope.in_organisation/2` for an entry the scope's
-  # person writes in `client` from its operator's pages: the membership they act from goes
-  # with it, in the scope's `edition` under `:acted_from`, for the entry to say they acted
-  # through the operator (`acted_through_operator?/1`). A scope already moved into the
-  # client keeps the one it carries.
-  @doc false
-  @spec in_client(Scope.t(), %Organisation{}) :: Scope.t()
-  def in_client(%Scope{} = scope, %Organisation{} = client) do
-    acted_from = scope.membership || scope.edition[:acted_from]
-    scoped = Scope.in_organisation(scope, client)
-
-    case acted_from do
-      %Membership{} -> %{scoped | edition: %{acted_from: acted_from}}
-      nil -> scoped
+  def operator_level(scope) do
+    case operator_membership(scope) do
+      %Membership{level: level} -> level
+      nil -> nil
     end
   end
-
-  # acted_through_operator?/1 says whether the person of a scope `in_client/2` made acted
-  # in the client through its operator (`ApiaryPro.Access.through_operator?/1`): from the
-  # membership in the operator they acted from and their membership in the client, read
-  # without a lock, none where they have none or it is suspended. False for any other
-  # scope, and for a membership in another organisation than the client's operator. It
-  # reads the two levels alone, so no scope with the operator's reach leaves it.
-  @doc false
-  @spec acted_through_operator?(Scope.t()) :: boolean
-  def acted_through_operator?(%Scope{
-        user: %User{id: user_id},
-        organisation: %Organisation{id: client_id} = client,
-        membership: nil,
-        reach: nil,
-        edition: %{acted_from: %Membership{user_id: user_id, organisation_id: via_id} = via}
-      }) do
-    if is_binary(via_id) and via_id == Tenants.operator_id(client) do
-      own =
-        Repo.one(
-          from m in Membership,
-            where: m.organisation_id == ^client_id and m.user_id == ^user_id,
-            where: is_nil(m.suspended_at),
-            select: m.level
-        )
-
-      ApiaryPro.Access.through_operator_at?(via.level, own)
-    else
-      false
-    end
-  end
-
-  def acted_through_operator?(_scope), do: false
 
   @doc """
-  instance_reach?/1 says whether the scope carries an instance admin's reach, in an
-  organisation other than the instance organisation, which they reach neither through a
-  membership there nor through its operator.
+  operator_level/2 is `operator_level/1` for the workspace `workspace_id` of the scope's
+  organisation; nil for nil.
+  """
+  @spec operator_level(Scope.t() | nil, Ecto.UUID.t() | nil) :: Membership.level() | nil
+  def operator_level(scope, workspace_id) do
+    case operator_membership_for(scope, workspace_id) do
+      %Membership{level: level} -> level
+      nil -> nil
+    end
+  end
+
+  @doc """
+  operator_reach?/1 says whether the scope has a reach through the operators of some
+  workspaces of its organisation, whatever its workspace.
+  """
+  @spec operator_reach?(Scope.t() | nil) :: boolean
+  def operator_reach?(scope), do: operated_ids(scope) not in [nil, []]
+
+  # The person's membership in the operator of the workspace `workspace_id`, as it is in
+  # the scope: theirs, and in the operator that operates it as the scope's organisation
+  # has its links.
+  defp operator_membership_for(
+         %Scope{
+           user: %User{id: user_id},
+           organisation: %Organisation{} = organisation,
+           reach: {:operator, operated}
+         },
+         workspace_id
+       )
+       when is_map(operated) and is_binary(workspace_id) do
+    with %Membership{user_id: ^user_id, organisation_id: via_id} = via <-
+           Map.get(operated, workspace_id),
+         ^via_id <- WorkspaceOperators.operator_id(organisation, workspace_id) do
+      via
+    else
+      _none -> nil
+    end
+  end
+
+  defp operator_membership_for(_scope, _workspace_id), do: nil
+
+  @doc """
+  instance_reach?/1 says whether the scope has an instance admin's reach, in an
+  organisation other than the instance organisation where they have no membership:
+  `:instance`, or the reach through the operators of some of its workspaces with
+  `instance_reach: true` in the scope's `edition` map.
   """
   @spec instance_reach?(Scope.t() | nil) :: boolean
   def instance_reach?(%Scope{
         user: %User{},
         reach: :instance,
+        organisation: %Organisation{} = organisation
+      }),
+      do: not Tenants.instance_organisation?(organisation)
+
+  def instance_reach?(%Scope{
+        user: %User{},
+        reach: {:operator, _operated},
+        edition: %{instance_reach: true},
         organisation: %Organisation{} = organisation
       }),
       do: not Tenants.instance_organisation?(organisation)

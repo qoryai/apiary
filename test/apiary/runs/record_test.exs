@@ -28,31 +28,6 @@ defmodule Apiary.Runs.RecordTest do
     %{scope: scope_fixture()}
   end
 
-  # A target of the scope's workspace that `run` belongs to, with one of its connections
-  # denied once, written past the record's fold.
-  defp denied_target!(scope, run) do
-    target =
-      Repo.insert!(%Apiary.Runs.Target{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        system: "github.example",
-        path: "acme/record",
-        first_seen_at: DateTime.utc_now()
-      })
-
-    {1, _rows} =
-      Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [target_id: target.id])
-
-    [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
-
-    {1, _rows} =
-      Repo.update_all(from(c in Apiary.Runs.Connection, where: c.id == ^connection.id),
-        set: [denied: 1, last_seen_at: DateTime.utc_now()]
-      )
-
-    target
-  end
-
   describe "fetch_run/2" do
     test "finds a run of the workspace by its `rn_` id", %{scope: scope} do
       run = run_fixture(scope)
@@ -205,44 +180,6 @@ defmodule Apiary.Runs.RecordTest do
 
       assert %{outcome: "dial_failed", decision: "allowed"} =
                Enum.find(connections, &(&1.host == "cdn.packages.example.com"))
-    end
-  end
-
-  describe "what the edition leaves out" do
-    test "the core leaves out nothing; an edition narrows each read", %{scope: scope} do
-      run = demo(scope, "session-with-subagents")
-      assert %{total: total} = Record.connections(scope, run)
-      assert total > 0
-      assert Record.timeline(scope, run).items != []
-      assert %{} = Record.policy(scope, run)
-
-      assert Apiary.Edition.Core.client_reads(scope, :run_policy, run, %{a: 1}) == %{a: 1}
-
-      filters = Apiary.Runs.Filters.parse(%{}, :connections)
-      assert %{rows: [_ | _]} = Apiary.Runs.page_destinations(scope, filters)
-      [connection | _] = Repo.all(from c in Apiary.Runs.Connection, where: c.run_id == ^run.id)
-      assert {:ok, _connection} = Apiary.Runs.fetch_connection(scope, connection.id)
-
-      denied_target = denied_target!(scope, run)
-      since = DateTime.add(DateTime.utc_now(), -365, :day)
-
-      assert %{rows: [_ | _]} =
-               Apiary.Targets.denied_destinations(scope, denied_target, since)
-
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesRuns)
-
-      assert %{rows: [], destinations: 0, attempts: 0} =
-               Apiary.Targets.denied_destinations(scope, denied_target, since)
-
-      assert %{rows: []} = Apiary.Runs.page_destinations(scope, filters)
-      assert Apiary.Runs.fetch_connection(scope, connection.id) == :error
-
-      assert %{rows: [], total: 0} = Record.connections(scope, run)
-      assert %{all: 0, attempts: 0} = Record.connection_counts(scope, run)
-      assert Record.timeline(scope, run).items == []
-      assert Record.policy(scope, run) == nil
-
-      assert {:ok, []} = Apiary.Policy.Activity.denied_destinations(scope, since)
     end
   end
 
@@ -951,9 +888,7 @@ defmodule Apiary.Runs.RecordTest do
       for %{kind: :policy_applied} = line <- Record.items(scope, run, index.items), do: line
     end
 
-    test "under the core's edition, a line shows the counts and the delta of the event", %{
-      scope: scope
-    } do
+    test "a line shows the counts and the delta of the event", %{scope: scope} do
       run = projected(scope, applied_record())
       index = Record.timeline(scope, run)
 
@@ -964,12 +899,12 @@ defmodule Apiary.Runs.RecordTest do
       assert %{added: ["cdn.example.com", "m2.example.net"], added_count: 2, removed: []} =
                again.delta
 
-      # The members read to narrow a policy are not on the line.
+      # These members of the event are not on the line.
       for key <- ~w(credentials allow allow_first allow_first_count)a do
         refute Map.has_key?(again, key)
       end
 
-      # The line is what building it from whole events, with no edition asked, makes of it.
+      # The line is what building it from whole events makes of it.
       whole =
         Repo.all(
           from e in Apiary.Runs.Event,
@@ -981,25 +916,8 @@ defmodule Apiary.Runs.RecordTest do
       assert Record.items(scope, run, index.items) == Timeline.build(index.items, whole)
     end
 
-    test "under an edition that narrows the policy, the counts and the delta leave out its hosts",
-         %{scope: scope} do
-      run = projected(scope, applied_record())
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
-
-      assert [first, again] = policy_lines(scope, run)
-      assert first.allowed_hosts == 1 and first.denied_hosts == 1
-      assert again.allowed_hosts == 2
-
-      # The previous line is narrowed too: the delta is of the two narrowed lists.
-      assert %{added: ["cdn.example.com"], added_count: 1, removed: [], removed_count: 0} =
-               again.delta
-
-      refute inspect(again) =~ "example.net"
-      refute inspect(first) =~ "example.net"
-    end
-
-    # The record of `applied_record/0` with a host that the model provider is read through,
-    # in `terminated` and in the hosts of a tool, beside the ones a reader may see.
+    # The record of `applied_record/0` with hosts in `terminated` and in the hosts of its
+    # tools.
     defp terminated_record do
       for {sequence, type, data} <- applied_record() do
         if type == "run.policy_applied" do
@@ -1021,9 +939,7 @@ defmodule Apiary.Runs.RecordTest do
       end
     end
 
-    test "under the core's edition, a line shows the hosts it terminates and its tools serve", %{
-      scope: scope
-    } do
+    test "a line shows the hosts it terminates and its tools serve", %{scope: scope} do
       run = projected(scope, terminated_record())
 
       assert [first, _again] = policy_lines(scope, run)
@@ -1034,25 +950,6 @@ defmodule Apiary.Runs.RecordTest do
                first.tools
 
       assert hosts == ["models.example.net"]
-    end
-
-    test "under an edition that narrows the policy, the line leaves out its hosts of the tools and terminated",
-         %{scope: scope} do
-      run = projected(scope, terminated_record())
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NarrowsRunPolicy)
-
-      assert [first, again] = policy_lines(scope, run)
-
-      for line <- [first, again] do
-        assert line.terminated == ["files.example.com"]
-        assert line.terminated_count == 1
-
-        # The tools stay, and so do the hosts that are not the model provider's.
-        assert [%{name: "files", hosts: ["files.example.com"]}, %{name: "models", hosts: []}] =
-                 line.tools
-
-        refute inspect(line) =~ "example.net"
-      end
     end
   end
 

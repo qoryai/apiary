@@ -184,20 +184,6 @@ defmodule Apiary.Policy.RuntimeHostsTest do
                Policy.deny(scope, nil, %{host: @host})
     end
 
-    test "through a request of changes is refused", %{scope: scope} do
-      {:ok, requested} =
-        Policy.requested_changes(%{
-          "rules" => [
-            %{"change" => "rule_added", "rule" => %{"action" => "deny", "host" => @host}}
-          ]
-        })
-
-      assert {:error, %Error{reason: :runtime_host}} =
-               Repo.transact(fn ->
-                 Policy.apply_requested(scope, [scope.workspace], requested)
-               end)
-    end
-
     test "with a *. suffix saves: it blocks a sibling and the runtime's host stays first", %{
       scope: scope
     } do
@@ -239,25 +225,6 @@ defmodule Apiary.Policy.RuntimeHostsTest do
       end
 
       assert Policy.list_rules(scope, nil) == []
-    end
-
-    test "through a request of changes is refused", %{scope: scope} do
-      {:ok, requested} =
-        Policy.requested_changes(%{
-          "rules" => [
-            %{
-              "change" => "rule_added",
-              "rule" => %{"action" => "allow", "host" => @host, "paths" => ["/v1/*"]}
-            }
-          ]
-        })
-
-      assert {:error, %Error{reason: :runtime_host, message: message}} =
-               Repo.transact(fn ->
-                 Policy.apply_requested(scope, [scope.workspace], requested)
-               end)
-
-      assert message =~ @paths_sentence
     end
 
     test "check_paths/1 is what an edition calls at the level above" do
