@@ -571,6 +571,30 @@ defmodule Apiary.Harnesses.ReaderTest do
       end
     end
 
+    test "returns nil for submit when the key is absent" do
+      assert {:ok, %{submit: nil}} = Reader.template(source(@template))
+    end
+
+    test "returns submit as written" do
+      for send <- ["end_of_run", "after_gate"] do
+        assert {:ok, %{submit: %{"type" => "customer-facts", "send" => ^send}}} =
+                 read(with_value("submit", "{type: customer-facts, send: #{send}}"))
+      end
+    end
+
+    test "refuses a submit the schema refuses" do
+      for value <- [
+            "customer-facts",
+            "{type: customer-facts}",
+            "{send: end_of_run}",
+            "{type: customer-facts, send: at_once}",
+            "{type: Customer_Facts, send: end_of_run}",
+            "{type: #{String.duplicate("a", 65)}, send: end_of_run}",
+            "{type: customer-facts, send: end_of_run, command: make}"
+          ],
+          do: assert(read(with_value("submit", value)) == {:error, :invalid_template}, value)
+    end
+
     test "refuses an artifact_types that is not a list" do
       for value <- ["screenshot", "{name: screenshot}", "null", "1"],
           do:
@@ -582,10 +606,10 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "173471878608f4d7f9de2b3eaf8b21c6715adbac"
+  @qory_ref "c0184bd720732a9ff8d8cff8be36e30077d19421"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "7a9087ce63e4f070269835f79783205e8970f9a3dfc56a066cff99a4f23d479a"
+    "process.schema.json" => "fc2e475e64a13f2549f7b72f86f477794a0cb766b5b2b426fa283b9a652dc28e"
   }
 
   describe "the file vendored from qory" do

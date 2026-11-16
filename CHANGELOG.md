@@ -12,6 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- An artifact page that shows videos has a Speed row under each video, with the buttons
+  0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
+  shows the speed.
 - A test run with `MIX_TEST_PARTITION` set drops its database when it ends, also after a
   failed migration. `scripts/test-run.sh` runs the tests on a new database and drops it
   after a pass, a failure or an interrupt.
@@ -147,6 +150,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
   a stage.
+- A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
+  runs only when the version of that type that the stage reads has a file of more than
+  0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
+  with the reason, such as “No demo scenarios: capture-demos did not run.”, also in an
+  earlier take in's fold. An output with the key is then not required. A loop whose every
+  entry is passed over is passed over too, and a stage does not wait for an undeclared
+  workflow whose entry is passed over. A save is refused where the type is no output of
+  an earlier stage, with the entry or output, the stage and the type in the message.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -1200,9 +1211,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   saves its features.
 - A switch on that page, off by default: **Features by person**. Where the server's
   config turned it on, the first start after the upgrade saves it on.
+- A template's `process.yaml` may declare the submit step of a run, `submit: {type,
+  send}`, as qory's harness contract v1 has it since qory `c0184bd`. A process version
+  made from the template keeps it in its template record. Qory Apiary refuses a template
+  whose `submit.type` is not a structured type that its `artifact_types` defines, with
+  the fix first: "set submit.type to a structured type of artifact_types: mockup is a
+  standard type".
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- A stage whose gate is **No gate** records an approval of the newest version of each
+  of its outputs when its sequence ends, then the work item moves on. Up to this change
+  it moved on with no approval, so a later stage's input from that stage had no version,
+  and a required one stopped the later stage. The approval has no member, and the
+  stage's tab shows on its first output “Approved” and “Version 2 · Approved
+  automatically · 15 Nov, 14:20”. When a member accepts the escalation that ends such a
+  stage, the approval has that member: “Accepted by Dana”. In the run API's artifact
+  index, an approval has `automatic`, and one a gate `none` recorded with no member has
+  `"by": null`. The stage form says under **No gate**: “Recorded as approved
+  automatically, with the time. At the round limit, a member decides.”
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
   (`workspace_operators`). No screen starts or ends such a link. In an operated
@@ -1447,11 +1476,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 - A harness document's `bind`, in Workspace settings › Harness and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
-  the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
-  of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
-  {developer: web-developer}}: agents/developer is a flat key.”, of another kind with
-  “Use agents, commands or skills under bind: tools is not a kind.”, and of a list of
-  names with “Give one name per role: bind.agents.reviewer is a list.”
+  the kinds `agents`, `commands` and `skills` are taken. An agents role takes one name
+  or a list of 1 or more; a commands or skills role takes one name. A save of a flat key
+  fails with “Write bind by kind, then by role, such as bind: {agents: {developer:
+  web-developer}}: agents/developer is a flat key.”, of another kind with “Use agents,
+  commands or skills under bind: tools is not a kind.”, of a list for a commands or
+  skills role with “Give one name per role: bind.commands.ship is a list.”, and of an
+  empty agents list with “Give 1 or more agents for bind.agents.reviewer: the list is
+  empty.”
 - The pages people in an organisation read no longer contain “instance”, “instance admin”
   or “this server”. Where only support can fix a case, the page shows “Contact support”,
   which links to the support address where one is set, and what Qory Apiary offers is
@@ -1789,6 +1821,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Removed
 
+- The standard artifact type `change`, with its JSON Schema and its view, which showed a
+  change's `url` as a link. The type `submission` of the software factory template
+  replaces it (vault decision 0216). A run's push of `change` now gets `422`
+  `unknown_type`, as any type the workspace does not have, and **Artifact types** no
+  longer lists `change`. Stored versions of `change` stay, and their page has a download
+  link for the file.
+
 <!-- feature: managed_organisations -->
 - An operator relates only to the workspaces it operates (under Changed), not to whole
   organisations. These parts of the earlier model are gone:
@@ -1812,6 +1851,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: secrets -->
+- A run that stops because its gateway's key does not allow stored secrets now shows
+  who adds an allowed key and where, in place of Contact support.
+<!-- /feature -->
 - A run's notes on missing session events sit inside or after the run's steps, never
   above them. Each Claude Code session's **Run the agent** has the note about the wall
   or the hooks, and each session on another runtime the note about its runtime. A run
@@ -2030,12 +2073,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
+  default, true for an approval that a gate `none` recorded with no member, with a check
+  that such a row is an approval with no `user_id`. The default is a constant, so adding
+  the column rewrites no row. The first migration adds the check without a scan, and the
+  second validates it with a scan that does not block writes. It changes no row. Rolling
+  back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
+  passed over because their `when` condition was not met, with the organisation keys and a
+  foreign key to `work_items` and `process_versions`. It changes no existing table.
+  Rolling back drops the table, with every record of a passed-over entry.
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no
   default, so adding it rewrites no row; the check scans `model_key_settings` under a

@@ -30,6 +30,14 @@ defmodule Apiary.Stages do
   #   * `confirmed/2`, from `Apiary.WorkItems.confirm/3`: a confirmation of Explore's
   #     proposal approves Explore's gate.
   #
+  # ## A gate `none`
+  #
+  # A gate `none` records the approval of the stage's newest outputs, then the work item
+  # enters the next stage (vault 0252), so a later stage reads those versions as its
+  # inputs. The approval has no member and is `automatic` when the stage passed its gate;
+  # it has the member who accepted the escalation that ended the stage otherwise. It
+  # writes no entry in the audit trail: no person acted, or the accept wrote its entry.
+  #
   # ## After the last stage
   #
   # A work item closes when its last stage finishes, in the same transaction, as the
@@ -123,6 +131,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
+  alias Apiary.Stages.Skip
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -899,7 +908,7 @@ defmodule Apiary.Stages do
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
-           :ok <- outputs_exist(work_item, stage),
+           :ok <- outputs_exist(work_item, version, stage),
            {:ok, confirmed?} <- confirm_explore(scope, work_item, stage) do
         # A confirmation already wrote the act's entry in the audit trail.
         approve_locked(scope, lock!(work_item.id), version, stage, note, not confirmed?)
@@ -1007,11 +1016,14 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # An accept that passes a gate `none` is the approval, recorded with the member
+  # (`approve_none!/4`).
   defp resolve(scope, work_item, version, stage, escalation, resolution, note)
        when resolution in [:accept, :another_round] do
     :ok = resolve!(escalation, resolution, scope, note)
     event = {resolution, escalation.cause}
-    {work_item, _run} = apply_event(work_item, version, stage, event)
+    by = if resolution == :accept, do: scope && scope.user && scope.user.id
+    {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
     {:ok, work_item}
   end
 
@@ -1076,8 +1088,9 @@ defmodule Apiary.Stages do
   #     back that resolves an escalation);
   #   * `:found` - a stage that waits for a workflow, once the harness lists it
   #     (`check_workflows/3`);
-  #   * `{:version_added, type}` - a version of `type` added in the stage
-  #     (`add_version/5`), counted as existing;
+  #   * `{:version_added, type}`, `{:version_added, type, sizes}` - a version of `type`
+  #     added in the stage (`add_version/5`), counted as existing; with `sizes`, the sizes
+  #     of its files in bytes, it counts for a condition when one is more than 0;
   #   * `:next_run` - the next round of the stage (`next_run/2`).
   @doc false
   @spec starts(WorkItem.t(), term) :: {:run, String.t()} | :none
@@ -1105,13 +1118,9 @@ defmodule Apiary.Stages do
   # stage passing on enters.
   defp would_start(work_item, version, stage, :approve) do
     with :ok <- at_gate(work_item, stage),
-         :ok <- outputs_exist(work_item, stage),
+         :ok <- outputs_exist(work_item, version, stage),
          %{} = next <- next_stage(version, stage) do
-      artifacts = Artifacts.list(work_item)
-      ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
-      covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
-      approved = &%{&1 | missing_inputs: &1.missing_inputs -- covered}
-
+      approved = approved(work_item, stage, & &1)
       stepped(work_item, version, next, :enter, approved, approved)
     else
       _no_run -> :none
@@ -1146,18 +1155,37 @@ defmodule Apiary.Stages do
   end
 
   # The added version counts as existing: as an input of the stage, or as an output at
-  # its gate.
-  defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type) do
+  # its gate. An output at a gate `none` is also an input of each later stage that the
+  # approval moves the work item to, though it is not read yet (`approved/4`). With the
+  # sizes of its files, it counts for a condition when one is more than 0 bytes
+  # (`counts?/1`); with nil, the input types that count are those read now.
+  defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type),
+    do: would_start(work_item, version, stage, {:version_added, type, nil})
+
+  defp would_start(work_item, version, stage, {:version_added, type, sizes})
+       when is_binary(type) do
+    added = fn facts ->
+      %{
+        facts
+        | missing_inputs: facts.missing_inputs -- [type],
+          counted: added_counted(facts.counted, type, sizes)
+      }
+    end
+
     case on_version_added(work_item, stage) do
       :resume ->
-        stepped(work_item, version, stage, :resume, fn facts ->
-          %{facts | missing_inputs: facts.missing_inputs -- [type]}
-        end)
+        stepped(work_item, version, stage, :resume, added)
 
       :version_added ->
-        stepped(work_item, version, stage, :version_added, fn facts ->
-          %{facts | failed_checks: facts.failed_checks -- [type]}
-        end)
+        stepped(
+          work_item,
+          version,
+          stage,
+          :version_added,
+          fn facts -> %{facts | failed_checks: facts.failed_checks -- [type]} end,
+          & &1,
+          added
+        )
 
       nil ->
         :none
@@ -1171,6 +1199,16 @@ defmodule Apiary.Stages do
 
   defp would_start(_work_item, _version, _stage, _act), do: :none
 
+  # The input types that count, `counted`, with a version of `type` added whose files have
+  # `sizes` (`counts?/1`); as they are for nil.
+  defp added_counted(counted, _type, nil), do: counted
+
+  defp added_counted(counted, type, sizes) when is_list(sizes) do
+    if counts?(%{files: Enum.map(sizes, &%{size: &1})}),
+      do: Enum.uniq(counted ++ [type]),
+      else: counted -- [type]
+  end
+
   # The run that entering `stage` queues, on the facts read now as `later` changes them;
   # none for no stage.
   defp entered(work_item, version, stage, later \\ & &1)
@@ -1181,22 +1219,53 @@ defmodule Apiary.Stages do
 
   # The run that the runner's outcome of `event` queues, on the facts read now as `adjust`
   # changes them: its first `:queue`, or what its `:advance` enters, in the order
-  # `apply_outcome/5` applies them. Each stage that an `:advance` enters reads its facts
-  # as `later` changes them.
-  defp stepped(work_item, version, stage, event, adjust, later \\ & &1) do
+  # `apply_outcome/6` applies them. Each stage that an `:advance` enters reads its facts
+  # as `later` changes them, and as an `:approve` before it does: the approval's outputs
+  # count as approved, then `own` changes them, the change of the version added in this
+  # stage, which that approval covers (`approved/4`).
+  defp stepped(work_item, version, stage, event, adjust, later \\ & &1, own \\ & &1) do
     facts = adjust.(facts(work_item, version, stage))
     %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
 
-    Enum.reduce_while(actions, :none, fn
-      {:queue, %{workflow: workflow}}, _none ->
-        {:halt, {:run, workflow}}
+    Enum.reduce_while(actions, {:none, later}, fn
+      {:queue, %{workflow: workflow}}, _acc ->
+        {:halt, {{:run, workflow}, later}}
 
-      :advance, _none ->
-        {:halt, entered(work_item, version, next_stage(version, stage), later)}
+      :approve, {none, later} ->
+        {:cont, {none, approved(work_item, stage, later, own)}}
 
-      _other, none ->
-        {:cont, none}
+      :advance, {_none, later} ->
+        {:halt, {entered(work_item, version, next_stage(version, stage), later), later}}
+
+      _other, acc ->
+        {:cont, acc}
     end)
+    |> elem(0)
+  end
+
+  # `later`, then the types of the stage's newest outputs taken out of the missing inputs:
+  # an approval covers them (`approve_locked/6`, `approve_none!/4`), and each later stage
+  # reads them as its inputs of those types. Of those types, each whose covered version has
+  # a file of more than 0 bytes counts for a later stage's conditions, and the others do
+  # not (`counted/4`). Then `own`. `later` holds the approvals of earlier stages: applied
+  # first, so the nearest approval wins, as a stage reads its inputs (`read_version/5`).
+  defp approved(work_item, stage, later, own \\ & &1) do
+    artifacts = Artifacts.list(work_item)
+    ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+    covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
+
+    counting =
+      for a <- artifacts, v <- a.versions, v.public_id in ids, counts?(v), uniq: true, do: a.type
+
+    fn facts ->
+      facts = later.(facts)
+
+      own.(%{
+        facts
+        | missing_inputs: facts.missing_inputs -- covered,
+          counted: Enum.uniq((facts.counted -- covered) ++ counting)
+      })
+    end
   end
 
   ## Reading
@@ -1221,7 +1290,8 @@ defmodule Apiary.Stages do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
-      outputs = outputs(work_item, stage, artifacts)
+      counted = counted(work_item, version, stage, artifacts)
+      outputs = outputs(work_item, version, stage, artifacts, counted)
       missing = missing(outputs)
 
       %{
@@ -1231,12 +1301,12 @@ defmodule Apiary.Stages do
         rounds: shown_rounds(stage, work_item.stage_entry),
         loop: is_integer(work_item.loop_entry),
         state: state,
-        gaps: shown_gaps(escalation, work_item, stage, artifacts),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts, counted),
         outputs: outputs,
         missing_outputs: missing,
         inputs: inputs(work_item, version, stage, artifacts),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
-        waiting_workflow: waiting_workflow(work_item, stage),
+        waiting_workflow: waiting_workflow(work_item, stage, counted),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
@@ -1349,6 +1419,42 @@ defmodule Apiary.Stages do
         ended_at: ended_at(dispatch_run, run)
       }
     end)
+  end
+
+  # skips/1 is the workflow entries the stage runner passed over in the work item's
+  # current take in, because their condition was not met (`Apiary.Stages.Skip`), oldest
+  # first: each with its stage, workflow, the input type of its condition and
+  # `after_attempt`, the newest attempt of the take in when the runner passed it over (0
+  # for none).
+  @doc false
+  @spec skips(WorkItem.t()) :: [map]
+  def skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
+    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in == ^take_in))
+
+  def skips(%WorkItem{}), do: []
+
+  # earlier_skips/1 is the entries `skips/1` lists, of the take ins before the current
+  # one, each with its `take_in`.
+  @doc false
+  @spec earlier_skips(WorkItem.t()) :: [map]
+  def earlier_skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in),
+    do: read_skips(from(s in Skip, where: s.work_item_id == ^id and s.take_in < ^take_in))
+
+  def earlier_skips(%WorkItem{}), do: []
+
+  defp read_skips(query) do
+    Repo.all(
+      from s in query,
+        order_by: [s.take_in, s.after_attempt, s.inserted_at],
+        select: %{
+          stage_id: s.stage_id,
+          workflow: s.workflow,
+          input: s.input,
+          round: s.round,
+          take_in: s.take_in,
+          after_attempt: s.after_attempt
+        }
+    )
   end
 
   defp proposed(%DispatchRun{result_outcome: :proposal} = run),
@@ -1493,16 +1599,33 @@ defmodule Apiary.Stages do
   end
 
   # The approvals of the work item by the public id of each version they cover, oldest
-  # first.
+  # first. `gate_none` is whether the stage's gate was `none` in the process version the
+  # approval was recorded under, which a later version may change. The query reads only
+  # that stage's gate kind, not the process document.
   defp approvals_by_version(work_item) do
     Repo.all(
       from d in GateDecision,
+        join: v in Processes.Version,
+        on: v.id == d.process_version_id,
         where: d.work_item_id == ^work_item.id and d.kind == :approve,
-        order_by: d.inserted_at
+        order_by: d.inserted_at,
+        select:
+          {d,
+           fragment(
+             """
+             COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                       FROM jsonb_array_elements(? -> 'stages') AS s
+                       WHERE s ->> 'id' = ? LIMIT 1), false)
+             """,
+             v.document,
+             d.stage_id
+           )}
     )
-    |> Enum.flat_map(fn decision ->
+    |> Enum.flat_map(fn {decision, gate_none} ->
       approval = %{
         user_id: decision.user_id,
+        automatic: decision.automatic,
+        gate_none: gate_none,
         stage_id: decision.stage_id,
         inserted_at: decision.inserted_at
       }
@@ -1516,20 +1639,25 @@ defmodule Apiary.Stages do
 
   defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
 
-  # `more` is facts of the run that ended, beside the stage's (`facts/3`).
-  defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}) do
+  # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
+  # member who accepted an escalation, for the approval at a gate `none`; nil for none.
+  defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}, by \\ nil) do
     facts = Map.merge(facts(work_item, version, stage), more)
     outcome = Runner.step(stage, position(work_item), event, facts)
-    apply_outcome(work_item, version, stage, outcome, run_id)
+    apply_outcome(work_item, version, stage, outcome, run_id, by)
   end
 
-  defp apply_outcome(work_item, version, stage, outcome, run_id) do
+  defp apply_outcome(work_item, version, stage, outcome, run_id, by) do
     %{state: state, position: position, actions: actions} = outcome
     work_item = place!(work_item, version, stage["id"], state, position)
 
     Enum.reduce(actions, {work_item, nil}, fn
       {:queue, spec}, {work_item, _run} ->
         {:ok, run} = queue!(work_item, version, stage, spec)
+        {work_item, run}
+
+      {:skip, spec}, {work_item, run} ->
+        skip!(work_item, version, stage, spec)
         {work_item, run}
 
       {:escalate, cause, points}, {work_item, run} ->
@@ -1551,9 +1679,35 @@ defmodule Apiary.Stages do
 
         {work_item, run}
 
+      :approve, {work_item, run} ->
+        :ok = approve_none!(work_item, version, stage, by)
+        {work_item, run}
+
       :advance, {work_item, _run} ->
         advance(work_item, version, stage)
     end)
+  end
+
+  # A gate `none` records the approval of the stage's newest outputs (vault 0252): with no
+  # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
+  # the escalation that ended the stage. The accept approves the newest versions that
+  # exist, as the stage's checks did not run.
+  defp approve_none!(work_item, version, stage, by) do
+    %GateDecision{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: stage["id"],
+      process_version_id: version.id,
+      user_id: by,
+      automatic: is_nil(by),
+      kind: :approve,
+      versions: Enum.map(newest_outputs(work_item, stage), & &1.public_id),
+      inserted_at: DateTime.utc_now()
+    }
+    |> Repo.insert!()
+
+    :ok
   end
 
   # The next stage of the version after `stage`, entered; after the last, the stage is
@@ -1593,6 +1747,9 @@ defmodule Apiary.Stages do
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
 
+    # Read once per event: the outputs' checks and the runner both use it.
+    counted = counted(work_item, version, stage, artifacts)
+
     %{
       missing_inputs:
         for(
@@ -1600,9 +1757,10 @@ defmodule Apiary.Stages do
             inputs(work_item, version, stage, artifacts),
           do: type
         ),
-      undeclared: undeclared(workspace, declarations),
+      undeclared: undeclared(workspace, Map.take(declarations, Runner.workflows(stage, counted))),
       declarations: declarations,
-      failed_checks: missing(outputs(work_item, stage, artifacts)),
+      counted: counted,
+      failed_checks: missing(outputs(work_item, version, stage, artifacts, counted)),
       machine: version.document["machine"],
       test: work_item.test
     }
@@ -1674,6 +1832,33 @@ defmodule Apiary.Stages do
       ),
       :count
     )
+  end
+
+  # A workflow entry the runner passed over, after the newest run of the take in.
+  defp skip!(work_item, version, stage, spec) do
+    newest =
+      Repo.one(
+        from r in DispatchRun,
+          where: r.work_item_id == ^work_item.id and r.take_in == ^work_item.take_in,
+          select: max(r.attempt)
+      )
+
+    %Skip{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: stage["id"],
+      process_version_id: version.id,
+      take_in: work_item.take_in,
+      stage_entry: spec.entry,
+      loop_entry: spec.loop_entry,
+      round: spec.round,
+      workflow: spec.workflow,
+      input: spec.input,
+      after_attempt: newest || 0,
+      inserted_at: DateTime.utc_now()
+    }
+    |> Repo.insert!()
   end
 
   defp escalate!(work_item, version, stage, position, cause, points, run_id) do
@@ -2347,7 +2532,11 @@ defmodule Apiary.Stages do
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 
-  defp outputs(work_item, stage, artifacts) do
+  # An output with a condition is required only while its input type counts
+  # (`Runner.required?/2`), with `counted` as `counted/4` reads it, read here for nil.
+  defp outputs(work_item, version, stage, artifacts, counted \\ nil) do
+    counted = counted || counted(work_item, version, stage, artifacts)
+
     for output <- Map.get(stage, "outputs", []) do
       type = output["type"]
       version = newest_made_in(artifacts, type, stage["id"])
@@ -2361,7 +2550,7 @@ defmodule Apiary.Stages do
 
       %{
         type: type,
-        required: output["required"] == true,
+        required: Runner.required?(output, counted),
         version: version && %{id: version.public_id, number: version.number},
         check: check
       }
@@ -2376,17 +2565,21 @@ defmodule Apiary.Stages do
     work_item = Repo.get!(WorkItem, work_item.id)
 
     case placed(work_item) do
-      {:ok, _version, stage} -> missing(outputs(work_item, stage, Artifacts.list(work_item)))
-      :not_placed -> []
+      {:ok, version, stage} ->
+        missing(outputs(work_item, version, stage, Artifacts.list(work_item)))
+
+      :not_placed ->
+        []
     end
   end
 
   defp missing(outputs), do: for(%{required: true, check: :missing, type: t} <- outputs, do: t)
 
   # A stage with no workflow is approved only once every required output exists (§ 4).
-  defp outputs_exist(work_item, stage) do
+  defp outputs_exist(work_item, version, stage) do
     with true <- Runner.people?(stage),
-         [_one | _more] = types <- missing(outputs(work_item, stage, Artifacts.list(work_item))) do
+         [_one | _more] = types <-
+           missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
       {:error, {:outputs_missing, types}}
     else
       _none -> :ok
@@ -2398,36 +2591,9 @@ defmodule Apiary.Stages do
   defp reported?(_output), do: false
 
   defp inputs(work_item, version, stage, artifacts) do
-    by_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, v}}
-
     for input <- Map.get(stage, "inputs", []) do
       type = input["type"]
-
-      person =
-        artifacts
-        |> Enum.filter(&(&1.type == type))
-        |> Enum.flat_map(& &1.versions)
-        |> Enum.filter(&(&1.writer == :person and &1.stage_id in [nil, stage["id"]]))
-        |> Enum.max_by(& &1.number, fn -> nil end)
-
-      gated =
-        earlier_stage_ids(version, stage)
-        |> Enum.find_value(fn stage_id ->
-          case last_approval(work_item, stage_id) do
-            %GateDecision{versions: covered} ->
-              Enum.find_value(covered, fn id ->
-                case by_id[id] do
-                  {^type, found} -> found
-                  _other -> nil
-                end
-              end)
-
-            nil ->
-              nil
-          end
-        end)
-
-      chosen = person || gated
+      chosen = read_version(work_item, version, stage, artifacts, type)
 
       %{
         type: type,
@@ -2436,6 +2602,50 @@ defmodule Apiary.Stages do
       }
     end
   end
+
+  # The version of `type` that `stage` reads, whether or not the stage lists it as an
+  # input: a person's version added on the work item in this stage, else the version the
+  # gate of the nearest earlier stage that approved one approved; nil for none.
+  defp read_version(work_item, version, stage, artifacts, type) do
+    by_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, v}}
+
+    person =
+      artifacts
+      |> Enum.filter(&(&1.type == type))
+      |> Enum.flat_map(& &1.versions)
+      |> Enum.filter(&(&1.writer == :person and &1.stage_id in [nil, stage["id"]]))
+      |> Enum.max_by(& &1.number, fn -> nil end)
+
+    gated =
+      earlier_stage_ids(version, stage)
+      |> Enum.find_value(fn stage_id ->
+        case last_approval(work_item, stage_id) do
+          %GateDecision{versions: covered} ->
+            Enum.find_value(covered, fn id ->
+              case by_id[id] do
+                {^type, found} -> found
+                _other -> nil
+              end
+            end)
+
+          nil ->
+            nil
+        end
+      end)
+
+    person || gated
+  end
+
+  # The input types of the conditions of `stage` that count: each whose version the stage
+  # reads has a file of more than 0 bytes (`Runner.condition_inputs/1`).
+  defp counted(work_item, version, stage, artifacts) do
+    for type <- Runner.condition_inputs(stage),
+        read = read_version(work_item, version, stage, artifacts, type),
+        read != nil and counts?(read),
+        do: type
+  end
+
+  defp counts?(version), do: Enum.any?(version.files, &(&1.size > 0))
 
   # The ids of the stages before `stage`, nearest first.
   defp earlier_stage_ids(version, stage) do
@@ -2463,6 +2673,7 @@ defmodule Apiary.Stages do
     |> Enum.map(fn decision ->
       %{
         user_id: decision.user_id,
+        automatic: decision.automatic,
         note: decision.note,
         inserted_at: decision.inserted_at,
         versions:
@@ -2475,10 +2686,16 @@ defmodule Apiary.Stages do
 
   # A stage that waits for a workflow shows why; any other with no escalation, the gaps
   # of the failed checks that started its round. An escalation has its points instead.
-  defp shown_gaps(nil, %WorkItem{stage_state: :waiting_workflow} = work_item, stage, artifacts) do
+  defp shown_gaps(
+         nil,
+         %WorkItem{stage_state: :waiting_workflow} = work_item,
+         stage,
+         artifacts,
+         counted
+       ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage), Processes.declared_snapshot(workspace)} do
+    case {waiting_workflow(work_item, stage, counted), Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         case Sources.chosen(workspace) do
           %{choice: :qory} -> not_in_qory(stage["name"], workflow)
@@ -2490,7 +2707,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp shown_gaps(escalation, work_item, stage, artifacts),
+  defp shown_gaps(escalation, work_item, stage, artifacts, _counted),
     do: gaps(escalation, work_item, stage, artifacts)
 
   # not_listed/4 is why a stage waits for a workflow its harness did not list.
@@ -2535,16 +2752,20 @@ defmodule Apiary.Stages do
        do: check.gaps
   end
 
-  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage) do
+  # The first undeclared workflow of the stage whose condition is met, with `counted`.
+  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage, counted) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
-      Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
+      Map.new(
+        Runner.workflows(stage, counted),
+        &{&1, Processes.workflow_declaration(workspace, &1)}
+      )
 
     workspace |> undeclared(declarations) |> List.first()
   end
 
-  defp waiting_workflow(_work_item, _stage), do: nil
+  defp waiting_workflow(_work_item, _stage, _counted), do: nil
 
   ## Helpers
 

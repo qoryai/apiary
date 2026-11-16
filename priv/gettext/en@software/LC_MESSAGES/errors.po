@@ -155,6 +155,11 @@ msgstr ""
 
 #: lib/apiary/stacks/document.ex
 #, elixir-autogen, elixir-format
+msgid "Give 1 or more agents for %{place}: the list is empty."
+msgstr ""
+
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
 msgid "Give one name per role: %{place} is a list."
 msgstr ""
 
