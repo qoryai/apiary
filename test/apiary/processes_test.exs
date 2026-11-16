@@ -758,7 +758,7 @@ defmodule Apiary.ProcessesTest do
         ])
 
       assert {:error, found} = Processes.validate(document)
-      line = "Shape: write the name of a workflow with 1 to 60 characters, or remove the name."
+      line = "Give a workflow in Shape a name of 1 to 60 characters, or remove its name."
 
       assert line in Enum.map(found, &ApiaryWeb.StagesLive.Words.refusal(&1, document))
     end

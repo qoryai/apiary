@@ -620,7 +620,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       field == "sequence" and bad_entry_name?(doc, path) ->
         gettext(
-          "%{stage}: write the name of a workflow with 1 to 60 characters, or remove the name.",
+          "Give a workflow in %{stage} a name of 1 to 60 characters, or remove its name.",
           stage: stage
         )
 

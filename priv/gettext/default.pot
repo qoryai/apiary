@@ -3472,11 +3472,6 @@ msgstr ""
 msgid "%{stage}: keep at most 20 entries in each list."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage}: write the name of a workflow with 1 to 60 characters, or remove the name."
-msgstr ""
-
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "%{step} failed (%{detail})."
@@ -10761,6 +10756,11 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give a workflow in %{stage} a name of 1 to 60 characters, or remove its name."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
