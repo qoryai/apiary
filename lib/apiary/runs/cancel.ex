@@ -147,14 +147,18 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   Whether `run` writes changes that its end pushes: a run of a software workspace
-  (`workspace`) whose access level is `write`. The level is the `access` of the documents
-  the claim sent the run (`runs.run_documents`). For a run without them, it is the level
-  of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage entry
+  (`workspace`) whose access level is `write`, as its claim recorded it. The level is the
+  `access` of the run's work credential entry (`Apiary.Runs.RunCredential`), which a run
+  has only where its adapter declares apply items; else the top-level `access` of the
+  documents the claim sent the run (`runs.run_documents`), read in the database, so the
+  documents do not leave it; else, for a run with neither, the level of its harness walk
+  (`Apiary.Harnesses.RunHarness`) lowered by its stage entry
   (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
-  def write_run?(%{domain: "software"}, %Run{dispatch_run_id: id} = run) when is_binary(id) do
-    case sent_access(run) do
+  def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})
+      when is_binary(id) do
+    case recorded_access(run_id) do
       nil -> computed_access(id) == :write
       access -> access == "write"
     end
@@ -162,15 +166,27 @@ defmodule Apiary.Runs.Cancel do
 
   def write_run?(_workspace, _run), do: false
 
-  # The `access` of the run's documents, nil for a run with no documents or none in them.
-  defp sent_access(%Run{run_documents: documents}) when is_binary(documents) do
-    case Jason.decode(documents) do
-      {:ok, %{"access" => access}} when is_binary(access) -> access
-      _other -> nil
-    end
+  # The run's level as its claim recorded it: its work entry's `access`, else its
+  # documents' `access`; nil for a run with neither.
+  defp recorded_access(run_id) do
+    entry =
+      Repo.one(
+        from c in Apiary.Runs.RunCredential,
+          where: c.run_id == ^run_id and c.purpose == :work,
+          select: c.access,
+          limit: 1
+      )
+
+    if entry, do: Atom.to_string(entry), else: sent_access(run_id)
   end
 
-  defp sent_access(_run), do: nil
+  defp sent_access(run_id) do
+    Repo.one(
+      from r in Run,
+        where: r.id == ^run_id and not is_nil(r.run_documents),
+        select: fragment("convert_from(?, 'UTF8')::jsonb ->> 'access'", r.run_documents)
+    )
+  end
 
   defp computed_access(id) do
     walk =

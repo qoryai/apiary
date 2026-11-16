@@ -83,7 +83,7 @@ defmodule Apiary.Dispatches.Handover do
   #      nobody chose. Before that check, a run whose work entry comes from a collection
   #      of an adapter that declares apply items, while the collection ended, its
   #      connection is not connected, or the target path is one the apply items refuse,
-  #      ends `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/3`, which picks
+  #      ends `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/4`, which picks
   #      that collection: a prebuild's, or one that can change the run's target). A run
   #      with a work credential entry also ends `secrets_not_allowed` when one of those
   #      keys was made without `allow_secrets`, whatever the features and its model
@@ -773,11 +773,14 @@ defmodule Apiary.Dispatches.Handover do
   # skipped.
   def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
 
-  # The run's work credential entry, formed from what the run is formed from
-  # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
-  # queue ends for.
+  # The run's work credential entry, formed from what the run is formed from, with the
+  # access level its documents have (`Apiary.Runs.RunCredentials.form_work/4`): nil for
+  # none, or the cause its run of the queue ends for. A prebuild has no level in its
+  # answer, and reads.
   defp with_work({:ok, %{answer: answer} = formed}) do
-    case RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target) do
+    level = Map.get(answer, :access, :read)
+
+    case RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target, level) do
       {:ok, work} -> {:ok, Map.put(formed, :work, work)}
       {:end, _cause} = ended -> ended
     end
@@ -816,7 +819,8 @@ defmodule Apiary.Dispatches.Handover do
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
-         harness = lowered_access(harness, dispatch_run),
+         level = RunCredentials.run_access(dispatch_run),
+         harness = with_level(harness, level),
          {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
       dispatch_run
       |> formed(workspace, target, work_item, settings, harness, fn domain ->
@@ -832,6 +836,7 @@ defmodule Apiary.Dispatches.Handover do
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
       end)
+      |> answer_level(level)
       |> with_cooling(cooling)
     else
       true -> {:end, :inputs_invalid}
@@ -1005,13 +1010,15 @@ defmodule Apiary.Dispatches.Handover do
     {:end, {:harness_unresolved, code}}
   end
 
-  # Hand-over: with the workflow model, a run the stage runner queued with the access
-  # level `read` or `local_write` has that level, whatever its walk resolved
-  # (`Apiary.Stages.run_access/2`).
-  defp lowered_access(%{access: walk} = harness, dispatch_run),
-    do: %{harness | access: Apiary.Stages.run_access(walk, dispatch_run)}
+  # Hand-over: the run's documents and its work entry get one access level, read once
+  # (`Apiary.Runs.RunCredentials.run_access/1`): with the workflow model, a run the stage
+  # runner queued with the level `read` or `local_write` has that level, whatever its walk
+  # resolved. A run with no harness members has no level in its documents (read).
+  defp with_level(nil, _level), do: nil
+  defp with_level(harness, level), do: %{harness | access: level}
 
-  defp lowered_access(nil, _dispatch_run), do: nil
+  defp answer_level({:ok, formed}, level), do: {:ok, put_in(formed, [:answer, :access], level)}
+  defp answer_level(not_formed, _level), do: not_formed
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain.

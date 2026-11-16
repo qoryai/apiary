@@ -331,7 +331,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
     # Cancel run's confirm says a write run's changes are not pushed
     # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
-    # by the documents the claim sent it and, for a run without them, by its entry.
+    # by its work entry, then by the documents the claim sent it, then by its stage entry.
     for {access, write?} <- [{"local-write", false}, {"read", false}, {nil, true}] do
       @tag needs: [:factory, :workflow_model]
       test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
@@ -346,8 +346,37 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
         assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
 
-        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, %{run | run_documents: nil}) ==
-                 unquote(write?)
+        Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        set!(Run, run.id, run_documents: nil)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+      end
+    end
+
+    # The claim reads the run's level once, for its documents and its work entry: the entry
+    # takes the level it is given, not one read again.
+    test "form_work/4 gives the work entry the access of the level it is given", ctx do
+      {work_item, queued} = queued!(ctx)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: :write
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: :write)
+      end
+
+      assert RunCredentials.run_access(queued) == :write
+
+      for {level, access} <- [read: :read, local_write: :read, write: :write] do
+        assert {:ok, %RunCredential{access: ^access}} =
+                 RunCredentials.form_work(queued, work_item, @target, level)
       end
     end
 
