@@ -32,7 +32,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
   #      the rule it breaks; and a version of `questions` or `review-comments` whose file
   #      is over the size limit as stored, with each number that is an integer in value
-  #      written as an integer (`1e3` as `1000`), `422` `too_large`.
+  #      written as an integer (`1e3` as `1000`), `422` `too_large`;
+  #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
+  #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
+  #      reads itself, `422` `type_not_withdrawable`, then files with it `422`
+  #      `withdrawal_with_files`, then what
+  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name with no
+  #      version `409` `no_version`, a name whose newest version is a withdrawal `409`
+  #      `already_withdrawn`, and one whose newest version a person wrote `409`
+  #      `person_version`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -51,6 +59,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   require Logger
 
   alias Apiary.Artifacts.Format
+  alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
@@ -116,27 +125,45 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     with {:ok, run} <- run(conn, run_id),
          :ok <- live(run),
          {:ok, push} <- Body.push(conn.assigns.raw_body),
-         workspace = run.work_item.workspace,
-         {:ok, type} <- known_type(workspace, push.type),
-         :ok <- within(type, push),
-         {:ok, files} <- Body.decode_files(push.files),
-         {:ok, version} <-
-           Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
-             name: push.name,
-             stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
-             note: push.note
-           )
-           |> pushed(%{
-             name: push.type,
-             type: type,
-             filenames: Enum.map(files, & &1.filename)
-           }) do
+         {:ok, version} <- store(run, push) do
       answer(conn, 201, Wire.version(version, push.type, push.name))
     else
       error -> write_error(conn, error)
     end
   rescue
     exception -> unavailable(conn, exception)
+  end
+
+  # A withdrawal: the type, whether a run may withdraw it, then no files, then what
+  # `Apiary.Artifacts.withdraw/4` returns.
+  defp store(run, %{withdraw: true} = push) do
+    with {:ok, _type} <- known_type(run.work_item.workspace, push.type),
+         :ok <- withdrawable_type(push),
+         :ok <- no_files(push) do
+      Boundary.withdraw({:run, run.dispatch_run}, run.work_item, push.type,
+        name: push.name,
+        stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
+        note: push.note
+      )
+      |> withdrawn(push)
+    end
+  end
+
+  defp store(run, push) do
+    with {:ok, type} <- known_type(run.work_item.workspace, push.type),
+         :ok <- within(type, push),
+         {:ok, files} <- Body.decode_files(push.files) do
+      Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
+        name: push.name,
+        stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
+        note: push.note
+      )
+      |> pushed(%{
+        name: push.type,
+        type: type,
+        filenames: Enum.map(files, & &1.filename)
+      })
+    end
   end
 
   def verdict(conn, %{"run_id" => run_id}) do
@@ -322,6 +349,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   ## Pushes
+
+  defp withdrawable_type(push) do
+    if Boundary.withdrawable_type?(push.type),
+      do: :ok,
+      else: {:error, {:withdraw, :type, push.type, push.name}}
+  end
+
+  defp no_files(%{files: []}), do: :ok
+
+  defp no_files(push),
+    do: {:error, {:withdrawal_with_files, push.type, push.name, length(push.files)}}
+
+  # What `Apiary.Artifacts.withdraw/4` returns, turned into the run API's errors: a refusal
+  # by the artifact's newest version with the type and the name; any other as a push's.
+  defp withdrawn({:error, {:withdraw, reason}}, push),
+    do: {:error, {:withdraw, reason, push.type, push.name}}
+
+  defp withdrawn(result, push), do: pushed(result, %{name: push.type, type: nil, filenames: []})
 
   defp known_type(workspace, name) do
     case Boundary.type(workspace, name) do
@@ -696,6 +741,51 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           else:
             "Shrink the files of one version of #{type}; together they are over its size limit."
         )
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdrawal_with_files, type, name, count}}) do
+    error(conn, 422, "withdrawal_with_files",
+      type: type,
+      message:
+        "Push either files or a withdrawal. A withdrawal of #{type}/#{name} stores no " <>
+          "files, and the push has #{file_count(count)}."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, :type, type, _name}}) do
+    error(conn, 422, "type_not_withdrawable",
+      type: type,
+      message:
+        "Push a new version of #{type} instead. Qory Apiary reads questions, " <>
+          "review-comments, verdict and proposal itself, so a run cannot withdraw them."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, :no_version, type, name}}) do
+    error(conn, 409, "no_version",
+      type: type,
+      message:
+        "Withdraw only a stored artifact. #{type}/#{name} has no version outside cancelled runs."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, {:withdrawn, number}, type, name}}) do
+    error(conn, 409, "already_withdrawn",
+      type: type,
+      message:
+        "Leave #{type}/#{name} as it is. Its newest version, v#{number}, is already a " <>
+          "withdrawal."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, {:person, number, user_id}, type, name}}) do
+    error(conn, 409, "person_version",
+      type: type,
+      message:
+        "Leave #{type}/#{name} to a member. Its newest version, v#{number}, is a version " <>
+          "by #{Inputs.person_name(user_id)}, and a run withdraws only a name whose newest " <>
+          "version a run wrote."
     )
   end
 

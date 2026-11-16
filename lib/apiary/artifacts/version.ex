@@ -8,7 +8,8 @@ defmodule Apiary.Artifacts.Version do
   # `run_id` (`Apiary.Dispatches.DispatchRun`), or `:person` for one a person made,
   # `user_id`; each link is nil once its row is gone. `stage_id` is the stage it was made
   # in, nil for none, and `note` what the writer added, nil for nothing, at most 4,000
-  # characters.
+  # characters. `withdrawn` is true for a withdrawal, a run's version with no files that
+  # withdraws its artifact's name (`Apiary.Artifacts.withdraw/4`), false for every other.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -27,6 +28,7 @@ defmodule Apiary.Artifacts.Version do
     field :writer, Ecto.Enum, values: [:run, :person]
     field :stage_id, :string
     field :note, :string
+    field :withdrawn, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
