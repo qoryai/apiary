@@ -12,8 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
-- A demo video's page has a Speed row under each video, with the buttons 0.5x, 1x, 1.5x
-  and 2x: a click plays the video at that speed, and the pressed button shows the speed.
+- An artifact page that shows videos has a Speed row under each video, with the buttons
+  0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
+  shows the speed.
 - A test run with `MIX_TEST_PARTITION` set drops its database when it ends, also after a
   failed migration. `scripts/test-run.sh` runs the tests on a new database and drops it
   after a pass, a failure or an interrupt.
