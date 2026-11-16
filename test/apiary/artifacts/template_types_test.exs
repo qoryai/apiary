@@ -668,6 +668,20 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       assert Enum.find(Artifacts.types(workspace), &(&1.name == "mockup")).withdrawable == false
     end
 
+    test "locks the standard type of a harness file read by the Reader", ctx do
+      path = Path.join(@sources, "factory/modules/support-desk/process.yaml")
+
+      yaml =
+        File.read!(path) <>
+          "\nartifact_types:\n  - name: mockup\n    withdrawable: false\n  - name: screenshot\n"
+
+      assert {:ok, template} = Reader.template(yaml)
+      assert {:ok, workspace} = applied(ctx.workspace, template, ctx.scope)
+
+      assert %Type{withdrawable: false} = Artifacts.type(workspace, "mockup")
+      assert %Type{withdrawable: true} = Artifacts.type(workspace, "screenshot")
+    end
+
     test "a template with no withdrawable locks no standard type", ctx do
       assert {:ok, workspace} = applied(ctx.workspace, template(names(["mockup"])), ctx.scope)
       assert Repo.get!(Workspace, workspace.id).locked_standard_types == []
