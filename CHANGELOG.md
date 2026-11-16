@@ -1459,11 +1459,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 - A harness document's `bind`, in Workspace settings › Harness and the set-up's Harness
   step, is set by kind, then by role: `bind: {agents: {developer: web-developer}}`. Only
-  the kinds `agents`, `commands` and `skills` are taken, with one name per role. A save
-  of a flat key fails with “Write bind by kind, then by role, such as bind: {agents:
-  {developer: web-developer}}: agents/developer is a flat key.”, of another kind with
-  “Use agents, commands or skills under bind: tools is not a kind.”, and of a list of
-  names with “Give one name per role: bind.agents.reviewer is a list.”
+  the kinds `agents`, `commands` and `skills` are taken. An agents role takes one name
+  or a list of 1 or more; a commands or skills role takes one name. A save of a flat key
+  fails with “Write bind by kind, then by role, such as bind: {agents: {developer:
+  web-developer}}: agents/developer is a flat key.”, of another kind with “Use agents,
+  commands or skills under bind: tools is not a kind.”, of a list for a commands or
+  skills role with “Give one name per role: bind.commands.ship is a list.”, and of an
+  empty agents list with “Give 1 or more agents for bind.agents.reviewer: the list is
+  empty.”
 - The pages people in an organisation read no longer contain “instance”, “instance admin”
   or “this server”. Where only support can fix a case, the page shows “Contact support”,
   which links to the support address where one is set, and what Qory Apiary offers is
