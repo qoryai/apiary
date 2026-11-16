@@ -16,6 +16,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   alias Apiary.Artifacts
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.Markdown
+  alias ApiaryWeb.WorkItemLive.{StageComponents, StageTab}
 
   # The types whose versions are a scenario's film or pictures, in one Scenarios frame.
   @media ~w(demo-video screenshot)
@@ -24,6 +25,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   @images ~w(image/png image/jpeg image/gif image/webp)
 
   @states %{"Met" => :met, "Not met" => :not_met, "Needs a person" => :needs_person}
+
+  # A reference to a scenario in an Evidence cell, the whole of a part
+  # (`evidence_parts/2`).
+  @reference ~r/^(?:(?:Demo video|Pictures): )?scenario[ -]([0-9]+)$/i
 
   @doc false
   # media/0 is the types of a scenario's film or pictures.
@@ -40,11 +45,14 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # `## Not verified`, each `%{item:, reason:}`, the item's criterion and the reason
   # after it, or the line as written with no reason; and `families`, the lines of
   # `## Model families`. Nil for a text with no table of the columns Criterion, State and
-  # Evidence under `## Matrix`, or one the page cannot read within the budget of a
-  # Markdown render (`ApiaryWeb.ArtifactLive.Markdown.budget/0`).
+  # Evidence under `## Matrix`, and for a text that a Markdown render does not format: over
+  # `ApiaryWeb.ArtifactLive.Markdown.max_bytes/0` bytes, not UTF-8, with tables that could
+  # have more cells than `Markdown.max_cells/0` (`Markdown.formattable?/1`, checked before
+  # the parser builds any cell), or one the page cannot read within the budget of a
+  # Markdown render (`Markdown.budget/0`).
   @spec verification(String.t() | nil) :: map | nil
   def verification(text) when is_binary(text) do
-    if byte_size(text) <= Markdown.max_bytes() and String.valid?(text) do
+    if byte_size(text) <= Markdown.max_bytes() and Markdown.formattable?(text) do
       case Apiary.Kinds.Budget.run(fn -> parse(text) end, Markdown.budget()) do
         {:ok, parsed} -> parsed
         {:error, _passed} -> nil
@@ -126,15 +134,22 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     end
   end
 
-  # The model families as the run wrote them, one line of the section each: "Build:
-  # claude. Verify: deepseek." is "Build claude" and "Verify deepseek".
+  # The model families as the run wrote them, one sentence or line of the section each:
+  # "Build: claude. Verify: gpt-5.1." is "Build claude" and "Verify gpt-5.1". A sentence
+  # ends at a "." before a space or the end of the text, so a "." inside a model's name
+  # stays in it.
   defp families(nodes) do
     text = nodes |> plain() |> String.trim()
 
-    case Regex.scan(~r/([^:.\n]+): *([^.\n]+)\./, text) do
-      [] when text == "" -> []
-      [] -> [text]
-      pairs -> for [_pair, stage, family] <- pairs, do: "#{String.trim(stage)} #{family}"
+    pairs =
+      for part <- String.split(text, ~r/\.(?=\s|$)|\n/, trim: true),
+          [_part, stage, family] <- [Regex.run(~r/^\s*([^:]+?): *(.+?)\s*$/, part)],
+          do: "#{stage} #{family}"
+
+    cond do
+      pairs != [] -> pairs
+      text == "" -> []
+      true -> [text]
     end
   end
 
@@ -149,28 +164,73 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   ## The scenarios
 
   @doc false
-  # scenarios/4 is the stage `stage_id`'s scenarios, in scenario order, from `artifacts`
-  # (`Apiary.Artifacts.list/1`, without a withdrawn name): `%{key:, number:, title:,
-  # steps:, kind:, artifact:, version:}`, `kind` `:film` for a `demo-video` version and
-  # `:pictures` for a `screenshot` one, `steps` each `%{title:, expected:}`.
+  # scenarios/5 is the stage `stage_id`'s scenarios of the take in `take_in`, in scenario
+  # order, from `artifacts` (`Apiary.Artifacts.list/1`, without a withdrawn name):
+  # `%{key:, number:, title:, steps:, kind:, artifact:, version:}`, `kind` `:film` for a
+  # `demo-video` version and `:pictures` for a `screenshot` one, `steps` each `%{title:,
+  # expected:}`, `artifact` with `version` as its one version, so its row shows that
+  # version. `key` is the scenario's name, unique among the scenarios.
   #
   # Each `demo-evidence` name's newest version at the stage gives one scenario: its film or
   # pictures (`media`), title and steps; with `commit`, only the evidence of that commit.
   # At a stage with no `demo-evidence`, each `demo-video` and `screenshot` name's newest
   # version is a scenario, with the title and steps of the newest `demo-script` of the same
-  # name. A version a cancelled run wrote counts for none (`Apiary.Artifacts.cancelled?/1`).
-  # `read_json` reads a version's JSON document, nil for none.
-  @spec scenarios([map], String.t(), String.t() | nil, (map -> map | nil)) :: [map]
-  def scenarios(artifacts, stage_id, commit, read_json) do
-    evidence =
-      for %{type: "demo-evidence"} = artifact <- artifacts,
-          version = at_stage(artifact, stage_id),
-          version != nil,
-          do: {artifact.name, version}
+  # name. Only the versions that a run of the take in wrote count
+  # (`ApiaryWeb.WorkItemLive.StageTab.of_take_in/2`), and a version a cancelled run wrote
+  # counts for none (`Apiary.Artifacts.cancelled?/1`). `read_json` is a version's JSON
+  # document, nil for none, for each version of `documents/3`.
+  @spec scenarios([map], String.t(), integer | nil, String.t() | nil, (map -> map | nil)) ::
+          [map]
+  def scenarios(artifacts, stage_id, take_in, commit, read_json) do
+    artifacts = StageTab.of_take_in(artifacts, take_in)
 
-    if evidence == [],
-      do: media_scenarios(artifacts, stage_id, read_json),
-      else: evidence_scenarios(evidence, artifacts, commit, read_json)
+    case evidence(artifacts, stage_id) do
+      [] -> media_scenarios(artifacts, stage_id, read_json)
+      evidence -> evidence_scenarios(evidence, artifacts, commit, read_json)
+    end
+  end
+
+  @doc false
+  # documents/3 is the versions whose JSON documents `scenarios/5` reads for the same
+  # `artifacts`, `stage_id` and `take_in`: each scenario's demo evidence, or, at a stage
+  # with none, the demo script of each film or pictures.
+  @spec documents([map], String.t(), integer | nil) :: [map]
+  def documents(artifacts, stage_id, take_in) do
+    artifacts = StageTab.of_take_in(artifacts, take_in)
+
+    case evidence(artifacts, stage_id) do
+      [] ->
+        for {artifact, _version} <- media(artifacts, stage_id),
+            script = script(artifacts, artifact.name),
+            script != nil,
+            do: script
+
+      evidence ->
+        for {_name, version} <- evidence, do: version
+    end
+  end
+
+  defp evidence(artifacts, stage_id) do
+    for %{type: "demo-evidence"} = artifact <- artifacts,
+        version = at_stage(artifact, stage_id),
+        version != nil,
+        do: {artifact.name, version}
+  end
+
+  defp media(artifacts, stage_id) do
+    for %{type: type} = artifact <- artifacts,
+        type in @media,
+        version = at_stage(artifact, stage_id),
+        version != nil,
+        do: {artifact, version}
+  end
+
+  # The newest counted version of the demo script `name`, nil for none.
+  defp script(artifacts, name) do
+    case Enum.find(artifacts, &(&1.type == "demo-script" and &1.name == name)) do
+      nil -> nil
+      script -> Artifacts.newest_counted(script)
+    end
   end
 
   defp evidence_scenarios(evidence, artifacts, commit, read_json) do
@@ -181,31 +241,28 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         type in @media,
         artifact = Enum.find(artifacts, &(&1.type == type and &1.name == media_name)),
         media = artifact && Enum.find(artifact.versions, &(&1.number == number)),
-        media != nil and not Artifacts.cancelled?(media) do
-      scenario(name, data, artifact, media)
+        media != nil and not media.withdrawn and not Artifacts.cancelled?(media) do
+      scenario(name, name, data, artifact, media)
     end
     |> ordered()
   end
 
   defp media_scenarios(artifacts, stage_id, read_json) do
-    for %{type: type} = artifact <- artifacts,
-        type in @media,
-        version = at_stage(artifact, stage_id),
-        version != nil do
-      script =
-        case Enum.find(artifacts, &(&1.type == "demo-script" and &1.name == artifact.name)) do
-          nil -> nil
-          script -> script |> Artifacts.newest_counted() |> then(&(&1 && read_json.(&1)))
+    for {artifact, version} <- media(artifacts, stage_id) do
+      data =
+        case script(artifacts, artifact.name) do
+          nil -> %{}
+          script -> read_json.(script) || %{}
         end
 
-      scenario(artifact.name, script || %{}, artifact, version)
+      scenario("#{artifact.type}-#{artifact.name}", artifact.name, data, artifact, version)
     end
     |> ordered()
   end
 
-  defp scenario(name, data, artifact, version) do
+  defp scenario(key, name, data, artifact, version) do
     %{
-      key: "#{artifact.type}-#{artifact.name}",
+      key: key,
       number: number(data["scenario"]) || number(name),
       title: text(data["title"]),
       steps:
@@ -214,7 +271,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           do: %{title: title, expected: text(step["expected"])}
         ),
       kind: if(artifact.type == "screenshot", do: :pictures, else: :film),
-      artifact: artifact,
+      artifact: %{artifact | versions: [version]},
       version: version
     }
   end
@@ -243,11 +300,36 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   defp text(value) when is_binary(value), do: value
   defp text(_value), do: nil
 
+  @doc false
+  # label/2 is an artifact's words in a row on the tab, in today's plain form: the type
+  # with a space for each "-" (`StageComponents.type_words/1`), the name where it is not
+  # `main`, and the version's number, such as "demo video scenario-1 v1".
+  @spec label(map, map) :: String.t()
+  def label(%{type: type, name: "main"}, %{number: number}),
+    do:
+      gettext("%{type} v%{number}",
+        type: StageComponents.type_words(type),
+        number: ApiaryWeb.Format.number(number)
+      )
+
+  def label(%{type: type, name: name}, %{number: number}),
+    do:
+      gettext("%{type} %{name} v%{number}",
+        type: StageComponents.type_words(type),
+        name: name,
+        number: ApiaryWeb.Format.number(number)
+      )
+
   ## The frames' bodies
 
   attr :id, :string, required: true
   attr :verification, :map, required: true, doc: "`verification/1`"
   attr :accepted, :string, default: nil, doc: "the member who accepted the escalation"
+
+  attr :anchors, :map,
+    default: %{},
+    doc: "the DOM id of each scenario of the Scenarios frame, by its number"
+
   slot :inner_block, doc: "the verification's artifact row"
 
   @doc false
@@ -277,10 +359,14 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
             <tr :for={{row, i} <- Enum.with_index(@verification.rows)} id={"#{@id}-matrix-#{i}"}>
               <td class="whitespace-normal">
                 {row.criterion}
-                <div class="q-to-sm mt-1 text-[12.5px]/5 text-muted">{row.evidence}</div>
+                <div class="q-to-sm mt-1 text-[12.5px]/5 text-muted">
+                  <.evidence text={row.evidence} anchors={@anchors} />
+                </div>
               </td>
               <td class="whitespace-nowrap"><.state_badge state={row.state} /></td>
-              <td class="q-from-sm whitespace-normal text-[13px]/5">{row.evidence}</td>
+              <td class="q-from-sm whitespace-normal text-[13px]/5">
+                <.evidence text={row.evidence} anchors={@anchors} />
+              </td>
             </tr>
           </tbody>
         </table>
@@ -306,6 +392,60 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       {render_slot(@inner_block)}
     </div>
     """
+  end
+
+  attr :text, :string, required: true
+  attr :anchors, :map, required: true
+
+  # An Evidence cell: its text, each reference to a scenario of the Scenarios frame a link
+  # to that scenario.
+  # The parts are joined with no space between them, which a template would add.
+  defp evidence(assigns), do: ~H"{evidence_html(@text, @anchors)}"
+
+  defp evidence_html(text, anchors) do
+    {:safe,
+     for part <- evidence_parts(text, anchors) do
+       case part do
+         {:link, words, anchor} ->
+           [~s|<a href="#|, escape(anchor), ~s|" class="text-accent">|, escape(words), "</a>"]
+
+         words ->
+           escape(words)
+       end
+     end}
+  end
+
+  defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+  @doc false
+  # evidence_parts/2 is the Evidence cell `text` in parts: each reference to a scenario
+  # whose number has a DOM id in `anchors` is `{:link, words, id}`, and the text around
+  # it is a string. A reference is the scenario's id or its words, "scenario-2" or
+  # "scenario 2", after "Demo video: " or "Pictures: " where the cell has them, so
+  # "Pictures: scenario 2" is one link. A reference to a scenario not in `anchors` stays
+  # text.
+  @spec evidence_parts(String.t(), %{integer => String.t()}) ::
+          [String.t() | {:link, String.t(), String.t()}]
+  def evidence_parts(text, anchors) when map_size(anchors) == 0, do: [text]
+
+  def evidence_parts(text, anchors) do
+    ~r/(?:(?:Demo video|Pictures): )?\bscenario[ -]([0-9]+)\b/i
+    |> Regex.split(text, include_captures: true)
+    |> Enum.flat_map(fn part ->
+      with [_whole, number] <- Regex.run(@reference, part),
+           {number, ""} <- Integer.parse(number),
+           %{^number => anchor} <- anchors do
+        [{:link, part, anchor}]
+      else
+        _text -> [part]
+      end
+    end)
+    |> Enum.chunk_by(&is_binary/1)
+    |> Enum.flat_map(fn
+      [text | _more] = texts when is_binary(text) -> [Enum.join(texts)]
+      links -> links
+    end)
+    |> Enum.reject(&(&1 == ""))
   end
 
   attr :state, :any, required: true
@@ -398,6 +538,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           artifacts={[@scenario.artifact]}
           scope={@scope}
           number={@number}
+          label={&label/2}
         />
       </div>
     </div>
@@ -442,6 +583,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         artifacts={[@scenario.artifact]}
         scope={@scope}
         number={@number}
+        label={&label/2}
       />
     </div>
     """

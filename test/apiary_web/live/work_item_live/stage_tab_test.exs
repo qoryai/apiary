@@ -385,6 +385,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert %{{"spec", 1} => %{}} = :sys.get_state(view.pid).socket.assigns.frame_texts
+      assert has_element?(view, "#work-item-tab-output-spec-fold[open]")
+      refute has_element?(view, "#work-item-tab-output-test-features-fold[open]")
 
       refute Map.has_key?(
                :sys.get_state(view.pid).socket.assigns.frame_texts,

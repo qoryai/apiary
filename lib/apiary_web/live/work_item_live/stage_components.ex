@@ -388,7 +388,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
-    shown = assigns.page |> shown_outputs() |> Enum.flat_map(&named_rows/1)
+    shown = assigns.page |> shown_outputs() |> Enum.flat_map(&named_rows/1) |> by_scenario()
 
     assigns =
       assign(assigns,
@@ -515,6 +515,29 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   defp named_rows(output), do: [output |> Map.put(:name, "main") |> Map.put(:key, output.type)]
+
+  # The gate card's rows at a stage with a `verification` output: the films and pictures
+  # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) together, in the place of the first, in
+  # the order of their names (`Apiary.Artifacts.name_order/1`), so each scenario's film or
+  # pictures follow the one before; the other rows as they are. Elsewhere, `rows`.
+  defp by_scenario(rows) do
+    media = ApiaryWeb.WorkItemLive.VerifyTab.media()
+
+    case Enum.split_with(rows, &(&1.type in media)) do
+      {[], _rows} ->
+        rows
+
+      {films, others} ->
+        if Enum.any?(rows, &(&1.type == "verification")) do
+          at = Enum.find_index(rows, &(&1.type in media))
+          sorted = Enum.sort_by(films, &{Apiary.Artifacts.name_order(&1.name), &1.type})
+          {before, later} = Enum.split(others, at)
+          before ++ sorted ++ later
+        else
+          rows
+        end
+    end
+  end
 
   defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
   defp check_words(%{check: :passed}), do: gettext("Passed")

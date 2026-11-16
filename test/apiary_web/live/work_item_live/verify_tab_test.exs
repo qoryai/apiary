@@ -9,6 +9,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   # not async.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
@@ -17,6 +18,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.ArtifactLive.Markdown
+  alias ApiaryWeb.WorkItemLive.VerifyTab
   alias ApiaryWeb.WorkflowFake
 
   @moduletag needs: [:factory, :workflow_model]
@@ -203,6 +206,78 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   defp verification!(run, work_item, text \\ @verification),
     do: push!(run, work_item, "verification", "main", [{"verification.md", text}])
 
+  # A run of the queue at Verify for `work_item`, of the take in `take_in`, after its
+  # newest run.
+  defp verify_run!(work_item, take_in) do
+    newest = newest_run(work_item)
+
+    %DispatchRun{organisation_id: work_item.organisation_id, workspace_id: work_item.workspace_id}
+    |> DispatchRun.queue_changeset(%{
+      work_item_id: work_item.id,
+      step: newest.step,
+      take_in: take_in,
+      attempt: newest.attempt + 1,
+      of: max(newest.of, newest.attempt + 1),
+      queued_at: DateTime.utc_now()
+    })
+    |> Ecto.Changeset.put_change(:stage_id, @verify)
+    |> Repo.insert!()
+  end
+
+  # The run, cancelled by a member.
+  defp cancel!(scope, run) do
+    Apiary.RunEventsFixtures.run_fixture(scope, %{
+      dispatch_run_id: run.id,
+      cancel_requested_at: DateTime.utc_now()
+    })
+  end
+
+  defp explainer!(run, work_item) do
+    {:ok, version} =
+      Artifacts.push(
+        {:run, run},
+        work_item,
+        "explainer",
+        [
+          %{
+            filename: "explainer.md",
+            content_type: "text/markdown",
+            binary: "Words of the explainer."
+          }
+        ],
+        stage_id: run.stage_id
+      )
+
+    version
+  end
+
+  # A matrix of `rows`, each `{criterion, state, evidence}`, with the commit `@commit`.
+  defp matrix(rows) do
+    """
+    ## Summary
+
+    Commit: #{@commit}.
+
+    ## Matrix
+
+    | Criterion | State | Evidence |
+    |---|---|---|
+    #{Enum.map_join(rows, "\n", fn {criterion, state, evidence} -> "| #{criterion} | #{state} | #{evidence} |" end)}
+
+    ## Model families
+
+    Build: claude.
+    """
+  end
+
+  defp ids(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query(selector)
+    |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+  end
+
   defp tab(conn, scope, work_item) do
     {:ok, view, _html} =
       live(
@@ -358,7 +433,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                "Scenario 10: Title of scenario-10"
              ]
 
-      film = "#work-item-tab-scenarios-demo-video-scenario-1"
+      film = "#work-item-tab-scenarios-scenario-1"
       assert has_element?(view, "#{film} video source[type=\"video/mp4\"]")
 
       assert has_element?(
@@ -373,9 +448,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                "Step 2: Reload scenario-1 Expected: Result 2 of Reload scenario-1."
              ]
 
-      assert has_element?(view, "#{film}-row", "demo-video scenario-1 v1")
+      assert has_element?(view, "#{film}-row", "demo video scenario-1 v1")
 
-      pictures = "#work-item-tab-scenarios-screenshot-scenario-2"
+      pictures = "#work-item-tab-scenarios-scenario-2"
 
       assert has_element?(
                view,
@@ -399,13 +474,11 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert second =~ "scenario-2-step-2.png"
       assert has_element?(view, "#{pictures}-row", "screenshot scenario-2 v1")
 
-      # The demo evidence, once its frame opens, has one row per name, in name order.
-      view |> element("#work-item-tab-output-demo-evidence-s") |> render_click()
-
+      # The demo evidence has one row per name, in name order.
       assert texts(view, "#work-item-tab-output-demo-evidence-row li > div") == [
-               "demo-evidence scenario-1 v1",
-               "demo-evidence scenario-2 v1",
-               "demo-evidence scenario-10 v1"
+               "demo evidence scenario-1 v1",
+               "demo evidence scenario-2 v1",
+               "demo evidence scenario-10 v1"
              ]
     end
 
@@ -547,6 +620,406 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
       refute has_element?(view, "#work-item-marks-proposal-main-m")
       refute has_element?(view, "#work-item-marks", "Changed after approval")
+    end
+  end
+
+  describe "verification/1" do
+    test "a text over the byte limit or not UTF-8 has no parts" do
+      assert %{commit: @commit} = VerifyTab.verification(@verification)
+      assert VerifyTab.verification(String.duplicate("a", Markdown.max_bytes() + 1)) == nil
+      assert VerifyTab.verification(@verification <> <<0xFF, 0xFE>>) == nil
+    end
+
+    test "a text whose tables could pass the cell bound is refused before it is parsed" do
+      # 1,001 cells a line on 101 lines: past the bound, in under 4 KB.
+      text =
+        @verification <> "\n|" <> String.duplicate("|", 1_000) <> String.duplicate("\n|", 100)
+
+      assert byte_size(text) < Markdown.max_bytes()
+      refute Markdown.formattable?(text)
+      assert VerifyTab.verification(text) == nil
+    end
+
+    test "a header with a fourth column is no matrix" do
+      text = """
+      ## Matrix
+
+      | Criterion | State | Evidence | Notes |
+      |---|---|---|---|
+      | #{@ac1} | Met | Tests passed. | None. |
+      """
+
+      assert VerifyTab.verification(text) == nil
+    end
+
+    test "a row with too few cells has empty ones; a row with too many keeps three" do
+      text = """
+      ## Matrix
+
+      | Criterion | State | Evidence |
+      |---|---|---|
+      | #{@ac1} | Met |
+      | #{@ac2} | Not met | The test failed. | An extra cell. |
+      """
+
+      assert %{rows: rows, commit: nil} = VerifyTab.verification(text)
+
+      assert rows == [
+               %{criterion: @ac1, state: :met, evidence: ""},
+               %{criterion: @ac2, state: :not_met, evidence: "The test failed."}
+             ]
+    end
+
+    test "raw HTML in a cell is kept as its text" do
+      text = matrix([{@ac1, "Met", "<script>alert(1)</script> <img src=x onerror=alert(2)>"}])
+
+      assert %{rows: [%{evidence: evidence}]} = VerifyTab.verification(text)
+      assert evidence == "<script>alert(1)</script> <img src=x onerror=alert(2)>"
+    end
+
+    test "a model's name with a dot stays whole" do
+      text = matrix([]) <> "\nVerify: gpt-5.1.\n"
+      assert %{families: ["Build claude", "Verify gpt-5.1"]} = VerifyTab.verification(text)
+
+      text =
+        String.replace(
+          @verification,
+          "Build: claude. Verify: deepseek.",
+          "Build: claude-4.5. Verify: gpt-5.1."
+        )
+
+      assert %{families: ["Build claude-4.5", "Verify gpt-5.1"]} = VerifyTab.verification(text)
+    end
+  end
+
+  describe "the tab's frames" do
+    test "every frame is open; the demo evidence and the explainer have their row only",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          explainer!(run, work_item)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      for type <- ["verification", "demo-video", "demo-evidence", "explainer"] do
+        assert has_element?(view, "#work-item-tab-output-#{type}-fold[open]")
+      end
+
+      explainer = "#work-item-tab-output-explainer"
+      assert has_element?(view, "#{explainer}-s", "Version 1")
+      assert has_element?(view, "#{explainer}-row", "explainer v1")
+      refute has_element?(view, explainer, "Words of the explainer.")
+      refute has_element?(view, "#{explainer}-text")
+      assert has_element?(view, "#work-item-tab-output-demo-evidence-s", "Version 1")
+    end
+
+    test "the rows show the plain label; the Artifacts list keeps the type's id",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-scenarios-scenario-1-row",
+               "demo video scenario-1 v1"
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-demo-evidence-row",
+               "demo evidence scenario-1 v1"
+             )
+
+      assert has_element?(view, "#work-item-artifact-list", "demo-video scenario-1 v1")
+      refute has_element?(view, "#work-item-artifact-list", "demo video scenario-1 v1")
+    end
+
+    test "the gate card lists the films and pictures together, in scenario order",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 10, :film)
+          scenario!(run, work_item, 2, :pictures)
+          scenario!(run, work_item, 1, :film)
+          explainer!(run, work_item)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      assert ids(view, "#work-item-stage-gate-outputs li") ==
+               Enum.map(
+                 ~w(verification demo-video-scenario-1 screenshot-scenario-2
+                    demo-video-scenario-10 demo-evidence-scenario-1 demo-evidence-scenario-2
+                    demo-evidence-scenario-10 explainer),
+                 &"work-item-stage-gate-output-#{&1}"
+               )
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-output-screenshot-scenario-2",
+               "screenshot scenario-2 v1"
+             )
+    end
+  end
+
+  describe "the matrix's evidence" do
+    test "links each scenario of the Scenarios frame; other text stays text, escaped",
+         %{conn: conn, scope: scope} do
+      check =
+        "Check that the voucher line fits in the pictures of scenario 2, because the run could not measure the line."
+
+      text =
+        matrix([
+          {@ac1, "Met", "Demo video: scenario 1"},
+          {@ac2, "Needs a person", check},
+          {@ac3, "Met", "Pictures: scenario 7"},
+          {~s|AC-4, "Raw HTML stays text"|, "Met",
+           "<script>alert(1)</script> <img src=x onerror=alert(2)>"}
+        ])
+
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item, text)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :pictures)
+        end)
+
+      view = tab(conn, scope, work_item)
+      matrix = "#work-item-tab-output-verification-parts-matrix"
+
+      for cell <- ["td.q-from-sm", "td:first-child div"] do
+        assert has_element?(
+                 view,
+                 ~s|#{matrix}-0 #{cell} a[href="#work-item-tab-scenarios-scenario-1"]|,
+                 "Demo video: scenario 1"
+               )
+
+        assert has_element?(
+                 view,
+                 ~s|#{matrix}-1 #{cell} a[href="#work-item-tab-scenarios-scenario-2"]|,
+                 "scenario 2"
+               )
+      end
+
+      assert texts(view, "#{matrix}-1 td.q-from-sm") == [check]
+      assert has_element?(view, "#work-item-tab-scenarios-scenario-1")
+      assert has_element?(view, "#work-item-tab-scenarios-scenario-2")
+
+      assert has_element?(view, "#{matrix}-2 td.q-from-sm", "Pictures: scenario 7")
+      refute has_element?(view, "#{matrix}-2 a")
+
+      assert has_element?(view, "#{matrix}-3 td.q-from-sm", "<script>alert(1)</script>")
+      refute has_element?(view, "#{matrix} script")
+      refute has_element?(view, "#{matrix} img")
+    end
+
+    test "evidence_parts/2 links a scenario's id or words, and no other number" do
+      anchors = %{1 => "a-1", 2 => "a-2"}
+
+      assert VerifyTab.evidence_parts("Film: demo-video scenario-1 v1, scenario-12 too.", anchors) ==
+               ["Film: demo-video ", {:link, "scenario-1", "a-1"}, " v1, scenario-12 too."]
+
+      assert VerifyTab.evidence_parts("Pictures: scenario 2", anchors) ==
+               [{:link, "Pictures: scenario 2", "a-2"}]
+
+      assert VerifyTab.evidence_parts("Pictures: scenario 2", %{}) == ["Pictures: scenario 2"]
+    end
+  end
+
+  describe "the scenarios read" do
+    test "with no Commit line, the evidence of every commit shows", %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item, String.replace(@verification, "Commit: #{@commit}. ", ""))
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :film, @older)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      assert texts(view, "#work-item-tab-scenarios h3") == [
+               "Scenario 1: Title of scenario-1",
+               "Scenario 2: Title of scenario-2"
+             ]
+    end
+
+    test "a cancelled run's verification does not change the verified commit",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      run = verify_run!(work_item, work_item.take_in)
+      verification!(run, work_item, String.replace(@verification, @commit, @older))
+      cancel!(scope, run)
+
+      view = tab(conn, scope, work_item)
+
+      assert texts(view, "#work-item-tab-scenarios h3") == ["Scenario 1: Title of scenario-1"]
+    end
+
+    test "a scenario's row shows the film its evidence names, not a newer one",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          push!(run, work_item, "demo-video", "scenario-1", [{"scenario-1.mp4", @mp4 <> "2"}])
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-scenarios-scenario-1-row",
+               "demo video scenario-1 v1"
+             )
+
+      refute has_element?(view, "#work-item-tab-scenarios-scenario-1-row", "v2")
+    end
+
+    test "two scenarios with one film have one element each", %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          film = scenario!(run, work_item, 1, :film)
+
+          evidence = %{
+            "scenario" => "scenario-3",
+            "title" => "Title of scenario-3",
+            "commit" => @commit,
+            "media" => %{"type" => "demo-video", "name" => "scenario-1", "version" => film.number},
+            "steps" => steps(["Open the cart"])
+          }
+
+          push!(run, work_item, "demo-evidence", "scenario-3", [
+            {"scenario-3.json", Jason.encode!(evidence)}
+          ])
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      assert ids(view, "#work-item-tab-scenarios > div") == [
+               "work-item-tab-scenarios-scenario-1",
+               "work-item-tab-scenarios-scenario-3"
+             ]
+    end
+
+    test "an earlier take in's names and films stay off the tab", %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :film)
+        end)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [take_in: work_item.take_in + 1]
+        )
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+      run = verify_run!(work_item, work_item.take_in)
+      verification!(run, work_item)
+      scenario!(run, work_item, 1, :film)
+
+      view = tab(conn, scope, work_item)
+
+      assert texts(view, "#work-item-tab-scenarios h3") == ["Scenario 1: Title of scenario-1"]
+      refute has_element?(view, "#work-item-tab-scenarios-scenario-2")
+
+      assert texts(view, "#work-item-tab-output-demo-evidence-row li > div") == [
+               "demo evidence scenario-1 v2"
+             ]
+    end
+
+    test "each JSON document and the accepting member are read once",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      view = tab(conn, scope, work_item)
+      assigns = :sys.get_state(view.pid).socket.assigns
+
+      [evidence] =
+        for %{type: "demo-evidence"} = artifact <- assigns.artifacts,
+            do: hd(artifact.versions)
+
+      assert %{"title" => "Title of scenario-1"} =
+               assigns.stored_reads[{:json, evidence.public_id}]
+
+      [accepted] = for {:accepted, _, _, _} = key <- Map.keys(assigns.stored_reads), do: key
+
+      # What the page keeps is what it shows again, when the frames are read again.
+      :sys.replace_state(view.pid, fn state ->
+        update_in(state.socket.assigns, fn assigns ->
+          %{
+            assigns
+            | frame_texts: %{},
+              stored_reads:
+                assigns.stored_reads
+                |> Map.update!({:json, evidence.public_id}, &Map.put(&1, "title", "Kept"))
+                |> Map.put(accepted, "kept-member")
+          }
+        end)
+      end)
+
+      send(view.pid, {:artifact_pushed, work_item.id, evidence.public_id})
+
+      assert texts(view, "#work-item-tab-scenarios h3") == ["Scenario 1: Kept"]
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-verification-parts-accepted",
+               "Accepted as it is by kept-member"
+             )
+    end
+  end
+
+  describe "a verification shown as its Markdown" do
+    test "after a member accepted the escalation: who, above the text",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, &verification!(&1, &2, "## Summary\n\nThe check passed.\n"))
+
+      Repo.insert!(%Escalation{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        stage_id: @verify,
+        process_version_id: work_item.process_version_id,
+        round: 1,
+        cause: :run_stopped,
+        resolution: :accept,
+        resolved_by_id: scope.user.id,
+        resolved_at: DateTime.add(DateTime.utc_now(), 1, :second),
+        inserted_at: DateTime.utc_now()
+      })
+
+      view = tab(conn, scope, work_item)
+      name = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-verification-accepted",
+               "Accepted as it is by #{name}"
+             )
+
+      assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
     end
   end
 end

@@ -42,7 +42,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.Dispatches.Pause
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stages.{Approvers, Runner}
-  alias Apiary.Stages.Artifacts, as: StageArtifacts
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.WorkItemLive.{StageComponents, View}
 
@@ -135,7 +134,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
-      drafts: drafts(version, index),
+      # The newest submission; the work item page fills `drafts` from its document
+      # (`drafts/1`), which it reads once per version.
+      submission: submission(version, index),
+      drafts: [],
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
@@ -410,35 +412,37 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  # drafts/2 is the drafts of the work item's newest submission, the type the process
-  # version's submit step names (`submit.type`, else `submission`), in the order of its
-  # repositories: `%{path:, url:}` for each repository with a draft link. A withdrawn name
-  # and a version a cancelled run wrote count for none; a version that cannot be read
-  # has none.
-  defp drafts(version, index) do
+  # The work item's newest submission, the type the process version's submit step names
+  # (`submit.type`, else `submission`), as the artifact index has it (`id`, its public
+  # id; `files`); nil for none. A withdrawn name and a version a cancelled run wrote count
+  # for none.
+  defp submission(version, index) do
     type =
       case get(version, :template) do
         %{"submit" => %{"type" => type}} when is_binary(type) -> type
         _other -> "submission"
       end
 
-    newest =
-      index
-      |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
-      |> Enum.map(&Artifacts.newest_counted/1)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
-
-    case newest && StageArtifacts.read_json(newest) do
-      %{"repositories" => repositories} when is_list(repositories) ->
-        for %{"path" => path, "draft" => %{"url" => url}} <- repositories,
-            is_binary(path) and is_binary(url),
-            do: %{path: path, url: url}
-
-      _none ->
-        []
-    end
+    index
+    |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
+    |> Enum.map(&Artifacts.newest_counted/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
+
+  # drafts/1 is the drafts of a submission's JSON document (`submission`, read with
+  # `Apiary.Stages.Artifacts.read_json/1`), in the order of its repositories: `%{path:,
+  # url:}` for each repository with a draft link. A document that could not be read, nil,
+  # has none.
+  @doc false
+  @spec drafts(map | nil) :: [%{path: String.t(), url: String.t()}]
+  def drafts(%{"repositories" => repositories}) when is_list(repositories) do
+    for %{"path" => path, "draft" => %{"url" => url}} <- repositories,
+        is_binary(path) and is_binary(url),
+        do: %{path: path, url: url}
+  end
+
+  def drafts(_document), do: []
 
   # The newest version of one name of an output type (`Apiary.Stages.status/2`).
   defp named_output(named),

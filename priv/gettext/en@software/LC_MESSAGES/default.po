@@ -3612,6 +3612,7 @@ msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "%{type} %{name} v%{number}"
 msgstr ""
@@ -3623,6 +3624,7 @@ msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "%{type} v%{number}"
 msgstr ""
@@ -4706,6 +4708,7 @@ msgstr ""
 msgid "Accepted an invitation"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted as it is by %{member}"

@@ -2850,8 +2850,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
         "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); `:kind`, `:scenarios` " <>
         "for the Scenarios frame, `:verification` for a verification the page read as its " <>
-        "parts, whose body is the slot's; and `:caption`, the words after the icon in place " <>
-        "of the version's, nil for those"
+        "parts, whose body is the slot's; `:row` for a frame with its artifact rows and no " <>
+        "text; `:caption`, the words after the icon in place of the version's, nil for those; " <>
+        "and `:accepted`, the member who accepted the stage's escalation as it is, shown " <>
+        "above a text"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
@@ -2911,6 +2913,13 @@ defmodule ApiaryWeb.WorkItemComponents do
             </span>
           </p>
         </summary>
+        <p
+          :if={@text? and @output[:accepted]}
+          id={"#{@id}-accepted"}
+          class="px-3.5 pt-1 text-[12.5px]/5 text-muted"
+        >
+          {gettext("Accepted as it is by %{member}", member: @output[:accepted])}
+        </p>
         <div
           :if={@text?}
           id={"#{@id}-v#{@output.version}"}

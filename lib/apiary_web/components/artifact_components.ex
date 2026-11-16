@@ -151,6 +151,8 @@ defmodule ApiaryWeb.ArtifactComponents do
       Add a version, which needs `scope` and `number`.
     * `round`: whether a run's writer shows its round (`writer/2`); false in the Explore
       tab's fold at the Explore stage, true elsewhere.
+    * `label`: a function of an artifact and the version its row shows to the row's
+      words, in place of `title/2`; nil for `title/2`.
   """
   attr :id, :string, required: true
   attr :artifacts, :list, required: true
@@ -159,6 +161,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :checks, :map, default: %{}
   attr :add, :boolean, default: false
   attr :round, :boolean, default: true
+  attr :label, :any, default: nil
 
   def list(assigns) do
     assigns = assign(assigns, :links?, assigns.scope != nil and assigns.number != nil)
@@ -181,9 +184,9 @@ defmodule ApiaryWeb.ArtifactComponents do
               navigate={version_path(@scope, @number, newest.public_id)}
               class="font-medium text-accent"
             >
-              {title(artifact, newest)}
+              {row_title(@label, artifact, newest)}
             </.link>
-            <span :if={!@links?} class="font-medium">{title(artifact, newest)}</span>
+            <span :if={!@links?} class="font-medium">{row_title(@label, artifact, newest)}</span>
             <.check_word :if={check = Map.get(@checks, artifact.type)} check={check} />
           </div>
           <span class="text-[12.5px]/5 text-muted">
@@ -227,6 +230,11 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   defp check_word(assigns), do: ~H""
+
+  defp row_title(nil, artifact, version), do: title(artifact, version)
+
+  defp row_title(label, artifact, version) when is_function(label, 2),
+    do: label.(artifact, version)
 
   # The version a row shows: the newest that no run a member cancelled wrote, else, where
   # cancelled runs wrote every version, the newest, marked as not counted (`writer/2`).
