@@ -781,8 +781,9 @@ defmodule Apiary.Dispatches.Handover do
 
   # The run's work credential entry, formed from what the run is formed from
   # (`Apiary.Runs.RunCredentials.form_work/3`): nil for none, or the cause its run of the
-  # queue ends for. An explore run's entry comes from the collection its submit_module
-  # came from (`with_collection/2`); a prebuild's from the collection it builds.
+  # queue ends for. An explore run's entry comes from the collection the claim read once
+  # (`work_collection/3`), from which `submitted/4` takes the submit_module, and which
+  # `with_collection/2` puts in the formed run; a prebuild's from the collection it builds.
   defp with_work({:ok, %{answer: answer} = formed}) do
     work =
       case formed do

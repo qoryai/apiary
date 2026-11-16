@@ -834,7 +834,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
     defp pins(count), do: for(n <- 1..count, do: pin("https://git#{n}.example/acme/stack"))
 
-    test "is told the served digest by the events endpoint, which reads the run's row", ctx do
+    test "gets the served digest from the events endpoint, which reads the run's row", ctx do
       %{run: run, document: document, digest: digest, secrets_key: {key, _seed}} =
         pinned_run!(ctx.scope, [], module_documents("https://modules.example.org/acme/m"))
 
@@ -876,6 +876,25 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
         pinned_run!(ctx.scope, pins, module_documents("https://modules.example.org/acme/m"))
 
       assert Jason.decode!(document)["stack_hosts"] == ["modules.example.org", "git.example"]
+    end
+
+    test "after inputs has no stack host: the scan stops at inputs", ctx do
+      module = %{
+        "name" => "forge-submit",
+        "source" => %{"git" => "https://modules.example.org/m"}
+      }
+
+      documents =
+        Jason.encode!(
+          Jason.OrderedObject.new([
+            {"step", "explore"},
+            {"inputs", %{"version" => 1}},
+            {"submit_module", module}
+          ])
+        )
+
+      %{document: document} = pinned_run!(ctx.scope, [], documents)
+      refute Map.has_key?(Jason.decode!(document), "stack_hosts")
     end
   end
 end

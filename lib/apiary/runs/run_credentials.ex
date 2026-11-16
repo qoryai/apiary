@@ -71,9 +71,12 @@ defmodule Apiary.Runs.RunCredentials do
   # work_collection/3 is the collection the work entry of the run of the queue
   # `dispatch_run` comes from, `{collection, connection, adapter}`, nil for none (the
   # moduledoc), read once, without a lock, for both `work_from/3` and `submit_module/1`,
-  # so the run's work entry and its submit_module come from one collection.
+  # so the run's work entry and its submit_module come from one collection. Nil, with no
+  # query, for a run with no target, which has neither.
   @spec work_collection(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
           {Collection.t(), Connection.t(), Node.t()} | nil
+  def work_collection(%DispatchRun{}, _work_item, nil), do: nil
+
   def work_collection(%DispatchRun{} = dispatch_run, work_item, target),
     do: collection(dispatch_run, work_item, target)
 
