@@ -9,7 +9,7 @@ defmodule Apiary.Repo.Migrations.KeepTheSubmitModuleAnAdapterDeclares do
   # other node (`nodes_submit_module_check`).
   #
   # NULL for every row there already, and adding a column with no default rewrites no row.
-  # An adapter's next start stores it.
+  # Apiary stores the module at each adapter's next start-up.
   def up do
     alter table(:nodes) do
       add :submit_module, :jsonb

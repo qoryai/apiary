@@ -106,10 +106,10 @@ defmodule Apiary.Dispatches.WireTest do
     "reason" => "The job could not start."
   }
   # Every vendored contract is at the integrations `main` commit that has machine types,
-  # but the run and the integration contracts, at the later commit that adds a run's
-  # submit and the submit_module an adapter declares, after the commit that binds a group
-  # role to a list of agents, and the diagnostics contract, at the later commit that adds
-  # the machine type to the run diagnostics, after the run list.
+  # with two exceptions. The run and integration contracts are at the commit that adds a
+  # run's submit and the submit_module an adapter declares; that commit comes after the
+  # one that binds a group role to a list of agents. The diagnostics contract is at the
+  # commit that adds the machine type to the run diagnostics, after the run list.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
