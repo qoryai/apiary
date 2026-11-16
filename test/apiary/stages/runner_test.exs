@@ -735,6 +735,67 @@ defmodule Apiary.Stages.RunnerTest do
                outcome.actions
     end
 
+    # Enters `seq` with `facts`, then ends each queued run `passed`, at most `limit` times:
+    # the last outcome and the queued runs as `{workflow, round}`, in order.
+    defp drive(seq, facts, limit) do
+      first = Runner.step(seq, nil, :enter, facts)
+
+      {last, outcomes} =
+        Enum.reduce_while(1..limit, {first, [first]}, fn _step, {outcome, seen} ->
+          if outcome.state == :running do
+            next = Runner.step(seq, outcome.position, {:run, {:verdict, :passed, nil}}, facts)
+            {:cont, {next, [next | seen]}}
+          else
+            {:halt, {outcome, seen}}
+          end
+        end)
+
+      queued =
+        for %{actions: actions} <- Enum.reverse(outcomes),
+            {:queue, %{workflow: workflow, round: round}} <- actions,
+            do: {workflow, round}
+
+      {last, queued}
+    end
+
+    defp round_limit?(%{state: :escalated, actions: actions}),
+      do: Enum.any?(actions, &match?({:escalate, :round_limit, _points}, &1))
+
+    defp round_limit?(_outcome), do: false
+
+    @failing %{counted: [], failed_checks: ["explainer"]}
+
+    test "a loop passed over after a loop keeps that loop's round: a failing check ends in round_limit after round 3" do
+      seq = stage([loop([wf("implement")], 3), loop([wf("capture-demos", @demos)])])
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+      assert last.position.round == 3
+    end
+
+    test "a loop passed over before a loop: a failing check ends in round_limit after round 3" do
+      seq = stage([loop([wf("capture-demos", @demos)]), loop([wf("implement")], 3)])
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+    end
+
+    test "a loop passed over between two loops: the last loop's rounds count, then round_limit" do
+      seq =
+        stage([
+          loop([wf("plan")], 3),
+          loop([wf("capture-demos", @demos)]),
+          loop([wf("implement")], 3)
+        ])
+
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"plan", 1}, {"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+    end
+
     test "Request changes passes over a loop passed over whole, with no round counted" do
       seq = stage([loop([wf("capture-demos", @demos)], 2), wf("verify-a-ticket")])
       outcome = Runner.step(seq, pos(2, nil, 1), :request_changes, %{counted: []})

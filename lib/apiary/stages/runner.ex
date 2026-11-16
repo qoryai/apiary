@@ -203,13 +203,13 @@ defmodule Apiary.Stages.Runner do
 
   def step(stage, _position, :request_changes, facts) do
     case List.first(loops(stage, facts)) do
-      nil -> start(stage, at(stage, 0, 1), facts)
+      nil -> start(stage, at(stage, 0, 1, facts), facts)
       index -> start(stage, %{entry: index, loop_entry: 0, round: 1}, facts)
     end
   end
 
   def step(stage, position, {:accept, _cause}, facts) do
-    next = next(stage, position)
+    next = next(stage, position, facts)
 
     cond do
       at_end?(stage, position) -> gate(stage, position)
@@ -230,7 +230,7 @@ defmodule Apiary.Stages.Runner do
     cond do
       at_end?(stage, position) ->
         case List.last(loops(stage, facts)) do
-          nil -> start(stage, at(stage, 0, position.round), facts)
+          nil -> start(stage, at(stage, 0, position.round, facts), facts)
           index -> start(stage, %{entry: index, loop_entry: 0, round: position.round + 1}, facts)
         end
 
@@ -248,7 +248,7 @@ defmodule Apiary.Stages.Runner do
   ## Entering and starting
 
   defp enter(stage, facts) do
-    position = at(stage, 0, 1)
+    position = at(stage, 0, 1, facts)
     start_checked(stage, position, facts)
   end
 
@@ -288,14 +288,14 @@ defmodule Apiary.Stages.Runner do
   defp pass_over(stage, position, facts) do
     cond do
       not in_loop?(position) ->
-        skipped([skip(stage, position, facts)], start(stage, next(stage, position), facts))
+        skipped([skip(stage, position, facts)], start(stage, next(stage, position, facts), facts))
 
       passed_over?(stage, position.entry, facts) ->
         skips =
           for j <- 0..(length(body(stage, position.entry)) - 1),
               do: skip(stage, %{position | loop_entry: j}, facts)
 
-        skipped(skips, start(stage, next(stage, position), facts))
+        skipped(skips, start(stage, next(stage, position, facts), facts))
 
       true ->
         skipped([skip(stage, position, facts)], ring(stage, position, facts))
@@ -396,7 +396,7 @@ defmodule Apiary.Stages.Runner do
   ## A run's end
 
   defp run_ended(stage, position, {:verdict, :passed, _points}, facts),
-    do: start(stage, next(stage, position), facts)
+    do: start(stage, next(stage, position, facts), facts)
 
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
     do: escalate(:escalate, points || [], position)
@@ -410,7 +410,7 @@ defmodule Apiary.Stages.Runner do
         escalate(:run_stopped, Points.no_verdict(), position)
 
       true ->
-        start(stage, next(stage, position), facts)
+        start(stage, next(stage, position, facts), facts)
     end
   end
 
@@ -507,15 +507,22 @@ defmodule Apiary.Stages.Runner do
   ## The document
 
   # The position that starts the entry at `index`: a loop at its round 1 and its first
-  # workflow, a workflow or the end at `round`.
-  defp at(stage, index, round) do
+  # workflow, a workflow or the end at `round`. A loop passed over with `facts`
+  # (`passed_over?/3`) keeps `round`, so the round of the loop before it reaches the
+  # sequence's end, where a failed check counts it against that loop's limit.
+  defp at(stage, index, round, facts) do
     case Enum.at(sequence(stage), index) do
-      %{"loop" => _loop} -> %{entry: index, loop_entry: 0, round: 1}
-      _workflow_or_end -> %{entry: index, loop_entry: nil, round: round}
+      %{"loop" => _loop} ->
+        if passed_over?(stage, index, facts),
+          do: %{entry: index, loop_entry: 0, round: round},
+          else: %{entry: index, loop_entry: 0, round: 1}
+
+      _workflow_or_end ->
+        %{entry: index, loop_entry: nil, round: round}
     end
   end
 
-  defp next(stage, position), do: at(stage, position.entry + 1, position.round)
+  defp next(stage, position, facts), do: at(stage, position.entry + 1, position.round, facts)
 
   defp entry_at(stage, %{entry: index, loop_entry: loop_entry}) do
     case Enum.at(sequence(stage), index) do
