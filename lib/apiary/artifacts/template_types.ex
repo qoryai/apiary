@@ -27,20 +27,23 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      the total for a caller with less time than `@total`;
   #   8. `{:submit, type, why}`: the template's `submit.type` is not a custom entry of the
   #      list with `base_view: structured`, as qory requires. `why` is `:missing` for a
-  #      name no entry has, `:standard` for an entry with a name alone, and
-  #      `{:base_view, view}` for a custom type of another base view. `check_submit/1`
-  #      makes this refusal alone, for a caller that runs no other check of the types.
+  #      name no entry has, `:standard` for an entry with a standard name alone, and
+  #      `{:base_view, view}` for a custom type of another base view. An entry with a
+  #      name alone that is no standard name gets no such refusal, as refusal 1 covers it.
+  #      `check_submit/1` makes this refusal alone, for a caller that runs no other check
+  #      of the types.
   #
   # `{:schema, type}` is a ninth refusal, which `check/1` does not make: the entry `type`
   # did not pass the schema of `process.yaml`, so `Apiary.Harnesses.Reader.template/1`
   # returned no template to check, and `Apiary.Stacks.Sources` makes the refusal.
   #
   # A nil list is `:ok` with no check of the list, so a template written before the key
-  # works unchanged; its `submit`, where it has one, still gets refusal 8. `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the
-  # time its read has left, last, after `Apiary.Harnesses.Reader.template/1`, the check of
-  # the stack and `Apiary.Processes.validate/1`. A caller that has not validated the process gets no
-  # crash: `check/1` skips a stage that is not a map, a stage whose name is not text, and
-  # an `inputs` or `outputs` that is not a list.
+  # works unchanged; its `submit`, where it has one, still gets refusal 8.
+  # `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the time its
+  # read has left, last, after `Apiary.Harnesses.Reader.template/1`, the check of the
+  # stack and `Apiary.Processes.validate/1`. A caller that has not validated the process
+  # gets no crash: `check/1` skips a stage that is not a map, a stage whose name is not
+  # text, and an `inputs` or `outputs` that is not a list.
   #
   # `message/1` is a refusal's text, translated in the locale of the caller's process.
   # For `{:invalid, type, error}`, the text ends with the line the Artifact types form
@@ -136,19 +139,18 @@ defmodule Apiary.Artifacts.TemplateTypes do
   end
 
   # The refusal of the template's `submit`, as qory checks it: its `type` names a custom
-  # entry of `artifact_types` with `base_view: structured`.
+  # entry of `artifact_types` with `base_view: structured`. An entry with a name alone
+  # that is no standard name gets none, as `{:not_standard, type}` covers it.
   defp submit(%{submit: %{"type" => type}} = template) when is_binary(type) do
     case Enum.find(template.artifact_types || [], &(&1["name"] == type)) do
       nil -> [{:submit, type, :missing}]
       %{"base_view" => "structured"} -> []
-      entry -> [{:submit, type, why(entry)}]
+      %{"base_view" => view} -> [{:submit, type, {:base_view, to_string(view)}}]
+      _alone -> if type in Type.standard_names(), do: [{:submit, type, :standard}], else: []
     end
   end
 
   defp submit(_template), do: []
-
-  defp why(%{"base_view" => view}), do: {:base_view, to_string(view)}
-  defp why(_alone), do: :standard
 
   # total/1 is the total of a caller with `left` ms: the same reductions, and the smaller
   # of `@total`'s time and `left`.

@@ -23,9 +23,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
-  #      `422` `unknown_type`, whose message says to define the type, for a standard
-  #      type to switch it on, and for `submission` to press Update from harness; more
-  #      files than the type takes `422` `too_many_files`; files over the type's size
+  #      `422` `unknown_type`, with a message that starts with the step: define the type;
+  #      for a standard type, switch it on; for `submission`, press Update from harness;
+  #      more files than the type takes `422` `too_many_files`; files over the type's size
   #      limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
   #      the files that do not match the type's format among it, `422` `invalid_artifact`;

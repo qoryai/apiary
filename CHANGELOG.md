@@ -1210,9 +1210,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 - If a run pushes a `submission` to a workspace whose process has no artifact type
-  `submission`, the run API's `422` `unknown_type` now says: "Press Update from harness
-  in the workspace's Harness settings, then run the round again. The workspace's process
-  has no artifact type submission." Every other type keeps its message.
+  `submission`, the run API now answers `422` `unknown_type` with the message: "Press
+  Update from harness in the workspace's Harness settings, then run the round again. The
+  workspace's process has no artifact type submission." Every other type keeps its
+  message.
 
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
@@ -1804,7 +1805,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   change's `url` as a link. The type `submission` of the software factory template
   replaces it (vault decision 0216). A run's push of `change` now gets `422`
   `unknown_type`, as any type the workspace does not have, and **Artifact types** no
-  longer lists `change`.
+  longer lists `change`. Stored versions of `change` stay, and their page offers the file
+  as a download.
 
 <!-- feature: managed_organisations -->
 - An operator relates only to the workspaces it operates (under Changed), not to whole
