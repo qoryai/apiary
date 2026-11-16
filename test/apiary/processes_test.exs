@@ -736,6 +736,84 @@ defmodule Apiary.ProcessesTest do
     end
   end
 
+  describe "diff/2 of tracks and conditions" do
+    @fast %{"track" => "fast"}
+    @tracks [%{"id" => "standard", "name" => "Standard"}, %{"id" => "fast", "name" => "Fast"}]
+
+    test "lists a change of the tracks once, and none for the first version or none against []" do
+      tracked = Map.put(default(), "tracks", @tracks)
+      renamed = Map.put(default(), "tracks", [%{"id" => "standard", "name" => "Normal"}])
+
+      assert Processes.diff(default(), tracked) ==
+               [{:tracks_changed, nil, %{from: nil, to: @tracks}}]
+
+      assert Processes.diff(tracked, renamed) ==
+               [
+                 {:tracks_changed, nil,
+                  %{from: @tracks, to: [%{"id" => "standard", "name" => "Normal"}]}}
+               ]
+
+      assert Processes.diff(tracked, tracked) == []
+      assert Processes.diff(default(), Map.put(default(), "tracks", [])) == []
+      assert [{:stage_added, _id, _detail} | _rest] = Processes.diff(nil, tracked)
+      refute Enum.any?(Processes.diff(nil, tracked), &match?({:tracks_changed, _, _}, &1))
+    end
+
+    test "lists a condition added, changed and removed on a stage, an input, an entry and a loop" do
+      conditioned =
+        edit(fn
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "unless", @fast)
+
+          %{"id" => "st_6ns22c4pav"} = stage ->
+            stage
+            |> Map.put("inputs", [%{"type" => "proposal", "required" => true, "when" => @fast}])
+            |> Map.put("sequence", [
+              %{"workflow" => "write-specs", "unless" => @fast},
+              %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, "when" => @fast}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      assert [
+               {:condition_changed, @shape, %{from: [], to: [{:stage, "unless", @fast}]}},
+               {:sequence_changed, "st_6ns22c4pav", _},
+               {:inputs_changed, "st_6ns22c4pav", _},
+               {:condition_changed, "st_6ns22c4pav", %{from: [], to: to}}
+             ] = Processes.diff(default(), conditioned)
+
+      assert to == [
+               {:input, "when", @fast},
+               {:entry, "unless", @fast},
+               {:loop, "when", @fast}
+             ]
+
+      swapped =
+        edit(conditioned, fn
+          %{"id" => @shape} = stage ->
+            stage |> Map.delete("unless") |> Map.put("when", @fast)
+
+          stage ->
+            stage
+        end)
+
+      assert [{:condition_changed, @shape, _}] = Processes.diff(conditioned, swapped)
+
+      assert {:condition_changed, @shape, %{from: [{:stage, "when", @fast}], to: []}} =
+               hd(Processes.diff(swapped, default()))
+    end
+
+    test "lists no condition for a change that touches none" do
+      renamed = rename(@shape, "Plan")
+
+      assert Processes.diff(default(), renamed) == [
+               {:stage_renamed, @shape, %{from: "Shape", to: "Plan"}}
+             ]
+    end
+  end
+
   describe "placement_check/3" do
     @types ~w(proposal explainer change acceptance-criteria)
 
