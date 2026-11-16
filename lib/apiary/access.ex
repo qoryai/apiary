@@ -967,7 +967,9 @@ defmodule Apiary.Access do
   4. **Whether the person reaches the workspace.** A membership is the organisation's; the
      levels of `c:Apiary.Edition.every_workspace_levels/0` reach every workspace of it, in
      the core's edition all three, and the edition says which workspaces another level
-     reaches (`c:Apiary.Edition.reaches_workspace?/3`), from what the scope carries. A
+     reaches (`c:Apiary.Edition.reaches_workspace?/3`), from the scope; and
+     which workspaces a person it lets in without a membership reaches, where it does not
+     let them into all (`c:Apiary.Edition.reaches_all_workspaces?/1`). A
      subject of a workspace the person does not reach is `{:error, :not_found}` too, as
      a workspace of another organisation would be. What the organisation itself owns, its
      name, its members and its trail, needs no workspace.
@@ -1069,10 +1071,12 @@ defmodule Apiary.Access do
 
   A person reaches an organisation through their membership there, at its level: what
   they may change there is its role's. The edition may give a person another way in
-  (`c:Apiary.Edition.reach/1`), which the scope's `reach` carries, and a role there
-  without a membership (`c:Apiary.Edition.role/1`): such a person reads every workspace of
-  the organisation, and changes there what that role holds. `reach/1` says which way the
-  scope carries, `level/1` the level they act at, which only a membership there gives,
+  (`c:Apiary.Edition.reach/1`), which is the scope's `reach`, and a role there without a
+  membership (`c:Apiary.Edition.role/1`): such a person reads every workspace of the
+  organisation, or those the edition's answer lets them into
+  (`c:Apiary.Edition.reaches_all_workspaces?/1`, `c:Apiary.Edition.reaches_workspace?/3`),
+  and changes there what that role allows. `reach/1` says which way the scope has,
+  `level/1` the level they act at, which only a membership there gives,
   and `reader/1` how one without a membership reaches it while their role there changes
   nothing (`reads_only?/1`). `Apiary.Organisations.resolve_scope/4` finds the reach a page's
   path opens; `reload/2`, in `authorize/3`, reads the membership again, and the edition
@@ -1380,7 +1384,7 @@ defmodule Apiary.Access do
   @doc """
   level/1 is the level the scope's person acts at in the scope's organisation: their
   membership's there. Nil for one the edition reaches there without a membership, who
-  reads it, and for anyone who does not reach it. As the scope carries it.
+  reads it, and for anyone who does not reach it. From the scope as it is.
   """
   @spec level(Scope.t() | nil) :: Membership.level() | nil
   def level(scope), do: own_level(scope)
@@ -1402,7 +1406,7 @@ defmodule Apiary.Access do
 
   @doc """
   reader/1 says how the scope's person reads the scope's organisation when they have no
-  membership there and change nothing in it, as the scope carries it: the edition's name
+  membership there and change nothing in it, from the scope as it is: the edition's name
   for its reach, while the role the edition gives them there (`c:Apiary.Edition.role/1`)
   holds no action that changes anything (`reads_only?/1`). Nil for anyone with a
   membership there, for one whose role there changes something, and for anyone who does
@@ -1432,19 +1436,25 @@ defmodule Apiary.Access do
 
   @doc """
   reaches_every_workspace_in?/1 says whether the scope's person reaches every workspace of
-  the scope's organisation: through the edition's reach, to read, or at a level that
-  reaches them all (`reaches_every_workspace?/1`). As the scope carries it.
+  the scope's organisation: at a level that reaches them all
+  (`reaches_every_workspace?/1`), or through the edition's reach where it lets them into
+  every one (`c:Apiary.Edition.reaches_all_workspaces?/1`). From the scope as it is.
   """
   @spec reaches_every_workspace_in?(Scope.t() | nil) :: boolean
   def reaches_every_workspace_in?(scope) do
     case reach(scope) do
-      nil -> false
-      :membership -> reaches_every_workspace?(own_level(scope))
-      _edition -> true
+      nil ->
+        false
+
+      :membership ->
+        reaches_every_workspace?(own_level(scope))
+
+      _edition ->
+        reaches_every_workspace?(own_level(scope)) or Edition.reaches_all_workspaces?(scope)
     end
   end
 
-  # The name of the way the edition gave the scope's person in, as the scope carries it:
+  # The name of the way the edition gave the scope's person in, from the scope as it is:
   # its `reach`, an atom alone or first in a tuple with what the edition read, while the
   # edition still gives it a role (`c:Apiary.Edition.role/1`).
   defp edition_reach(%Scope{reach: reach} = scope) when reach not in [nil, :membership] do
@@ -1529,7 +1539,7 @@ defmodule Apiary.Access do
   @doc """
   grantable_levels/1 is the levels the scope's person may give in the scope's
   organisation, those `level_refusal/4` refuses none of, in the order of
-  `Apiary.Organisations.Membership.levels/0`, as the scope carries it: what a page offers.
+  `Apiary.Organisations.Membership.levels/0`, from the scope as it is: what a page offers.
   Every level in the core's edition; none for a scope without an organisation.
   """
   @spec grantable_levels(Scope.t() | nil) :: [Membership.level()]
@@ -1647,7 +1657,7 @@ defmodule Apiary.Access do
   defp instance_id_of(_scope), do: Edition.instance_organisation_id()
 
   # The instance step: the instance's scope, or a scope in the instance organisation while
-  # it is not marked for deletion, as the scope carries it.
+  # it is not marked for deletion, from the scope as it is.
   defp at_instance?(scope, instance_id) do
     case {role(scope), scope} do
       {:instance, _scope} ->
@@ -1907,7 +1917,7 @@ defmodule Apiary.Access do
         id == workspace_id and gateway.organisation_id == organisation_id
 
       {:organisation, id} ->
-        id == organisation_id or id in Gateways.serving_organisations(organisation_id)
+        id == organisation_id
 
       :instance ->
         is_binary(workspace_id) and is_binary(organisation_id)
@@ -2505,15 +2515,17 @@ defmodule Apiary.Access do
 
   # Whether a person reaches the workspace of a subject: always, for what the organisation
   # owns; for a workspace's, when their level reaches every workspace, or as the edition
-  # says from what the scope carries. Without a membership the place answers: a key's is
-  # its own workspace, the instance has none, one the edition reaches reads every
-  # workspace, and the role refuses anyone else.
+  # says from what the scope has. Without a membership the place answers: a key's is the
+  # key's workspace, the instance has none, one the edition lets in reaches every
+  # workspace or those the edition's answer lets them into, and anyone else gets the
+  # role's answer.
   defp reaches?(_scope, {_organisation_id, nil}), do: true
 
   defp reaches?(scope, {_organisation_id, workspace_id}) do
     case own_level(scope) do
       nil ->
-        true
+        is_nil(edition_reach(scope)) or Edition.reaches_all_workspaces?(scope) or
+          Edition.reaches_workspace?(scope, workspace_id, [])
 
       level ->
         reaches_every_workspace?(level) or Edition.reaches_workspace?(scope, workspace_id, [])

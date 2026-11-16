@@ -807,11 +807,6 @@ msgstr ""
 msgid "%{gateway} has no active access key, so it isn't connected."
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{gateway} of %{organisation}"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{header} is a header a definition may not set."
@@ -3492,21 +3487,6 @@ msgstr ""
 msgid "%{step} failed."
 msgstr ""
 
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} has a rule here already: it was added after the request was sent."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} has no rule here any more: it was removed after the request was sent."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "%{subject} is named twice: a request changes each host once."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{suffix} leads a host name, never an address."
@@ -3890,6 +3870,11 @@ msgstr ""
 #: lib/apiary_web/components/workspace_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workspace} starts with these stages. After you create it, owners and admins can change them in Workspace settings › %{workflows}."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace} · %{organisation}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4355,21 +4340,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A release image builds it and serves it here. In a checkout, run:"
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A request changes at most %{max} rules."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A request changes something: a rule, or the mode."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "A rule allows or denies."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -5752,11 +5722,6 @@ msgstr ""
 
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
-msgid "An admin of %{operator}"
-msgstr ""
-
-#: lib/apiary/runs/preparation.ex
-#, elixir-autogen, elixir-format
 msgid "An admin of %{workspace}"
 msgstr ""
 
@@ -6093,11 +6058,6 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask %{names} to install one."
-msgstr ""
-
-#: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format
-msgid "Ask an admin of %{operator} for the cause in the log of %{pool}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -11257,11 +11217,6 @@ msgstr ""
 msgid "In %{workspace} (cannot be ticked)"
 msgstr ""
 
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "In %{workspace}: %{reason}"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "In background"
@@ -15559,12 +15514,12 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
-msgid "Operators and clients"
+msgid "Operators"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
-msgid "Operators and their clients, and what an operator does for them."
+msgid "Operators, and the workspaces of other organisations they operate."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18193,11 +18148,6 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of %{name} go through the Qory Gateway, at %{url}."
-msgstr ""
-
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -21455,11 +21405,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "The repository's address, without a password or token in it."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "The request holds a change the policy does not know."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

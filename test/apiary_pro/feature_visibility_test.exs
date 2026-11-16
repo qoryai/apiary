@@ -32,10 +32,11 @@ defmodule ApiaryPro.FeatureVisibilityTest do
     fun.()
   end
 
-  # An operator shown Runs and the security policy, and not the organisation's policy; its
-  # client shown Runs alone, so the client is not shown the security policy, and not the
-  # organisation's policy, which its operator is not shown either.
-  defp chain do
+  # An operator shown Runs and the security policy, and not the organisation's policy; an
+  # organisation whose workspace Main it operates, which an instance admin left Runs alone,
+  # so it is not shown the security policy, the organisation's policy or
+  # `managed_organisations`.
+  defp operator_and_operated do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
 
@@ -45,10 +46,10 @@ defmodule ApiaryPro.FeatureVisibilityTest do
                "security"
              ])
 
-    client = client_fixture(operator.scope, "Acme")
-    assert {:ok, _} = Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+    operated = operated_fixture(operator.scope, "Acme")
+    assert {:ok, _} = Grants.set_organisation(admin, operated.organisation.id, ["observability"])
 
-    %{admin: admin, operator: operator, client: client}
+    %{admin: admin, operator: operator, operated: operated}
   end
 
   # The scope of `user` in `organisation` (and `workspace`), loaded again from the database.
@@ -90,7 +91,7 @@ defmodule ApiaryPro.FeatureVisibilityTest do
 
       test "an operator's people, in the operator, are not shown what it is not (flag #{@on})" do
         with_flag(@on, fn ->
-          %{operator: operator} = chain()
+          %{operator: operator} = operator_and_operated()
           scope = fresh(operator.user, operator.organisation)
 
           assert :organisation_policy in scope.hidden
@@ -100,14 +101,12 @@ defmodule ApiaryPro.FeatureVisibilityTest do
         end)
       end
 
-      test "a client's people are not shown what the client is not, nor what its operator is not (flag #{@on})" do
+      test "the people of an organisation an operator operates in are not shown what it is not (flag #{@on})" do
         with_flag(@on, fn ->
-          %{client: client} = chain()
-          scope = fresh(client.owner.user, client.organisation, client.workspace)
+          %{operated: operated} = operator_and_operated()
+          scope = fresh(operated.owner.user, operated.organisation, operated.workspace)
 
-          # Hidden from the client.
           assert :security in scope.hidden
-          # Hidden from its operator, and never shown to a client.
           assert :organisation_policy in scope.hidden
           assert :managed_organisations in scope.hidden
           refute :observability in scope.hidden
@@ -116,80 +115,65 @@ defmodule ApiaryPro.FeatureVisibilityTest do
     end
   end
 
-  describe "the operator's people in a client" do
-    setup do: chain()
+  describe "the operator's people in a workspace it operates" do
+    setup do: operator_and_operated()
 
-    test "see the client's set with the flag off", %{client: client, operator: operator} do
+    test "see what the organisation is shown, with the flag off",
+         %{operated: operated, operator: operator} do
       with_flag(false, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
+        scope = fresh(operator.user, operated.organisation, operated.workspace)
         assert {:operator, _via} = scope.reach
 
-        owner = fresh(client.owner.user, client.organisation, client.workspace)
+        owner = fresh(operated.owner.user, operated.organisation, operated.workspace)
         assert scope.hidden == owner.hidden
         assert :security in scope.hidden
       end)
     end
 
-    test "see what the operator is shown with the flag on", %{client: client, operator: operator} do
+    test "see what the organisation is shown, with the flag on: never more",
+         %{operated: operated, operator: operator} do
       with_flag(true, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
+        scope = fresh(operator.user, operated.organisation, operated.workspace)
         assert {:operator, _via} = scope.reach
 
-        assert scope.hidden == fresh(operator.user, operator.organisation).hidden
-        refute :security in scope.hidden
-        assert :organisation_policy in scope.hidden
+        owner = fresh(operated.owner.user, operated.organisation, operated.workspace)
+        assert scope.hidden == owner.hidden
+        assert :security in scope.hidden
 
-        # The client's people still are not shown it.
-        assert :security in fresh(client.owner.user, client.organisation, client.workspace).hidden
+        # The operator itself is shown it.
+        refute :security in fresh(operator.user, operator.organisation).hidden
       end)
     end
 
-    test "with the flag on, read the client's hidden security policy and its people do not",
-         %{client: client, operator: operator} do
-      with_flag(true, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
-        assert :ok = Access.authorize(scope, :"security_policy.read", client.workspace)
+    test "with the flag on or off, do not read the organisation's hidden security policy",
+         %{operated: operated, operator: operator} do
+      for on? <- [true, false] do
+        with_flag(on?, fn ->
+          scope = fresh(operator.user, operated.organisation, operated.workspace)
 
-        owner = fresh(client.owner.user, client.organisation, client.workspace)
-
-        assert {:error, :not_found} =
-                 Access.authorize(owner, :"security_policy.read", client.workspace)
-      end)
-
-      with_flag(false, fn ->
-        scope = fresh(operator.user, client.organisation, client.workspace)
-
-        assert {:error, :not_found} =
-                 Access.authorize(scope, :"security_policy.read", client.workspace)
-      end)
+          assert {:error, :not_found} =
+                   Access.authorize(scope, :"security_policy.read", operated.workspace)
+        end)
+      end
     end
 
-    test "a person who is a member of the client too sees the operator's set where their reach is read",
-         %{client: client, operator: operator} do
+    test "a person who is a member of the organisation too sees what it is shown, however their scope is read",
+         %{operated: operated, operator: operator} do
       with_flag(true, fn ->
-        _joined = join_fixture(client.owner.scope, operator.user)
+        _joined = join_fixture(operated.owner.scope, operator.user)
 
-        # resolve_scope/4, as a page's path loads it, reads their reach through the
-        # operator.
-        scope = fresh(operator.user, client.organisation, client.workspace)
+        scope = fresh(operator.user, operated.organisation, operated.workspace)
         assert {:operator, _via} = scope.reach
         assert scope.membership
-        refute :security in scope.hidden
+        assert :security in scope.hidden
 
-        # load_scope/2 puts their membership in the client without the edition's reach:
-        # what the client is not shown is hidden from them there too, more hidden, never
-        # less.
-        loaded = Organisations.load_scope(Scope.for_user(operator.user), client.organisation.id)
-        assert loaded.organisation.id == client.organisation.id
+        loaded = Organisations.load_scope(Scope.for_user(operator.user), operated.organisation.id)
         assert loaded.reach == nil
         assert :security in loaded.hidden
-        assert :organisation_policy in loaded.hidden
 
-        # Read again, their reach through the operator is back, and with it the operator's
-        # set.
         reloaded = Access.reload(loaded)
         assert {:operator, _via} = reloaded.reach
-        refute :security in reloaded.hidden
+        assert :security in reloaded.hidden
       end)
     end
   end
@@ -271,7 +255,7 @@ defmodule ApiaryPro.FeatureVisibilityTest do
   # shown, two links down the needs. A list and an organisation's page say the same.
   test "a list and one organisation agree where the rows break the needs two links down" do
     operator = operator_fixture()
-    client = client_fixture(operator.scope, "Acme")
+    operated = operated_fixture(operator.scope, "Acme")
     %{organisation: organisation} = sign_up_fixture()
 
     rows = fn id, features, granted ->
@@ -293,10 +277,10 @@ defmodule ApiaryPro.FeatureVisibilityTest do
       true
     )
 
-    rows.(client.organisation.id, [:security, :organisation_policy], true)
+    rows.(operated.organisation.id, [:observability], false)
     rows.(organisation.id, [:observability], false)
 
-    organisations = [operator.organisation, client.organisation, organisation]
+    organisations = [operator.organisation, operated.organisation, organisation]
     listed = ApiaryPro.Features.of_all(organisations)
 
     for o <- organisations do

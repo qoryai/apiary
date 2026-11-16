@@ -19,7 +19,7 @@ defmodule ApiaryProWeb.InstanceLive.SignUpPartTest do
   alias ApiaryPro.SignUp
 
   @organisations "Whether someone without an invitation may sign up and create an organisation, and whether someone signed in may create one from the organisation menu."
-  @operators "Whether someone without an invitation may sign up and create an operator, an organisation that provides a harness its clients run, and whether someone signed in may create one from the organisation menu."
+  @operators "Whether someone without an invitation may sign up and create an operator, and whether someone signed in may create one from the organisation menu."
   @sudo "You must re-authenticate to access this page."
 
   defp text(view, selector),

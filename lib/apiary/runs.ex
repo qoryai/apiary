@@ -32,7 +32,6 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Days
-  alias Apiary.Edition
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -1501,17 +1500,12 @@ defmodule Apiary.Runs do
   def fetch_target(%Scope{}, _system, _path), do: nil
 
   # The connections joined to their runs, the connection the first binding and the run
-  # the second, as the edition narrows what the scope's person reads of them.
-  defp client_connections(scope),
+  # the second.
+  defp connections_with_runs,
     do:
-      Edition.client_reads(
-        scope,
-        :workspace_connections,
-        nil,
-        from(c in Connection,
-          join: r in Run,
-          on: r.id == c.run_id and r.workspace_id == c.workspace_id
-        )
+      from(c in Connection,
+        join: r in Run,
+        on: r.id == c.run_id and r.workspace_id == c.workspace_id
       )
 
   @doc """
@@ -1522,14 +1516,14 @@ defmodule Apiary.Runs do
         %Scope{
           organisation: %Organisation{id: organisation_id},
           workspace: %Workspace{id: workspace_id}
-        } = scope,
+        },
         id
       ) do
     with <<_::binary-size(36)>> <- id,
          {:ok, id} <- Ecto.UUID.cast(id),
          %Connection{} = connection <-
            Repo.one(
-             from [c, _r] in client_connections(scope),
+             from [c, _r] in connections_with_runs(),
                where:
                  c.id == ^id and c.organisation_id == ^organisation_id and
                    c.workspace_id == ^workspace_id
@@ -1694,8 +1688,7 @@ defmodule Apiary.Runs do
         where: c.channel == ^channel
       )
 
-    scope
-    |> Edition.client_reads(:workspace_connections, nil, connections)
+    connections
     |> where_if(f.host, connection_host(f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))

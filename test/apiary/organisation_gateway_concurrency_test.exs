@@ -3,14 +3,14 @@ defmodule Apiary.OrganisationGatewayConcurrencyTest do
   # change of an organisation-level gateway and a change at a workspace it may serve take
   # turns on the organisation's row (`Apiary.Gateways.lock/1`). Each test holds one side's
   # transaction open, uncommitted, until the other side waits on a lock, then commits it.
-  # What the test commits goes with its organisations and their users when it ends.
+  # What the test commits goes with its organisation and its user when it ends.
   use ExUnit.Case, async: false
 
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Ecto.Query
 
-  alias Apiary.{Edition, EditionStubs, Gateways, Nodes, Repo}
+  alias Apiary.{Gateways, Nodes, Repo}
   alias Apiary.Nodes.Node
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -19,19 +19,16 @@ defmodule Apiary.OrganisationGatewayConcurrencyTest do
     on_exit(fn -> Sandbox.mode(Repo, :manual) end)
 
     %{scope: scope, user: user} = sign_up_fixture()
-    %{scope: other, user: other_user} = sign_up_fixture()
 
     on_exit(fn ->
       Sandbox.mode(Repo, :auto)
-      ids = [scope.organisation.id, other.organisation.id]
-      Repo.delete_all(from o in Apiary.Organisations.Organisation, where: o.id in ^ids)
-
-      Repo.delete_all(from u in Apiary.Accounts.User, where: u.id in ^[user.id, other_user.id])
-
+      id = scope.organisation.id
+      Repo.delete_all(from o in Apiary.Organisations.Organisation, where: o.id == ^id)
+      Repo.delete_all(from u in Apiary.Accounts.User, where: u.id == ^user.id)
       Sandbox.mode(Repo, :manual)
     end)
 
-    %{scope: scope, other: other}
+    %{scope: scope}
   end
 
   defp reload(node), do: Repo.get!(Node, node.id)
@@ -151,55 +148,6 @@ defmodule Apiary.OrganisationGatewayConcurrencyTest do
 
     assert {:ok, %Node{default_gateway: true}} = commit(first)
     assert %Node{default_gateway: false} = Task.await(second, 10_000)
-  end
-
-  describe "across organisations, through the edition's seams" do
-    setup %{scope: scope, other: other} do
-      Edition.put_test_stub(EditionStubs.ServesAcross)
-      EditionStubs.ServesAcross.put([{other.organisation.id, scope.organisation.id}])
-      :ok
-    end
-
-    test "a node made while a serving organisation's gateway is deleted does not start on it",
-         %{scope: scope, other: other} do
-      gateway = organisation_gateway_fixture(other)
-      deletion = held_deletion(other, gateway)
-      assert_receive :held, 10_000
-
-      creation = new_node(scope)
-      await_lock_wait(1)
-      assert {:ok, :ok} = commit(deletion)
-
-      assert {:ok, %Node{gateway_choice: :direct}} = Task.await(creation, 10_000)
-    end
-
-    test "a deletion that waits on a served workspace's node finds it", %{
-      scope: scope,
-      other: other
-    } do
-      gateway = organisation_gateway_fixture(other)
-      test = self()
-
-      creation =
-        Task.async(fn ->
-          Repo.transaction(fn ->
-            assert {:ok, %Node{gateway_choice: :default} = node} =
-                     Nodes.create_node(scope, %{kind: "node", name: unique_node_name()})
-
-            send(test, :held)
-            receive do: (:commit -> node)
-          end)
-        end)
-
-      assert_receive :held, 10_000
-
-      deletion = Task.async(fn -> Nodes.delete_node(other, gateway) end)
-      await_lock_wait(1)
-      assert {:ok, %Node{id: id}} = commit(creation)
-
-      assert {:error, {:gateway_in_use, %{nodes: [%Node{id: ^id}]}}} =
-               Task.await(deletion, 10_000)
-    end
   end
 
   # Until `count` backends of this database wait on a lock: the sides held by the others.

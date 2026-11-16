@@ -18,7 +18,6 @@ defmodule Apiary.Runs.Record do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.Edition
   alias Apiary.Accounts.Scope
   alias Apiary.Harnesses.WorkflowGap
   alias Apiary.Organisations.{Workspace, Organisation}
@@ -220,33 +219,30 @@ defmodule Apiary.Runs.Record do
   run has none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
-    policy =
-      Repo.one(
-        from e in events(scope, run),
-          where: e.type == ^@policy_applied,
-          order_by: [desc: e.sequence],
-          limit: 1,
-          select: %{
-            sequence: e.sequence,
-            time: e.time,
-            mode: fragment("left(? ->> 'mode', 40)", e.data),
-            source: fragment("left(? ->> 'source', 40)", e.data),
-            allow: strings(e.data, "allow", 50, 255),
-            allow_count: array_length(e.data, "allow"),
-            allow_first: strings(e.data, "allow_first", 50, 255),
-            allow_first_count: array_length(e.data, "allow_first"),
-            deny: strings(e.data, "deny", 50, 255),
-            deny_count: array_length(e.data, "deny"),
-            terminated: strings(e.data, "terminated", 50, 255),
-            terminated_count: array_length(e.data, "terminated"),
-            credentials: named_hosts(e.data, "credentials"),
-            credentials_count: named_count(e.data, "credentials"),
-            tools: named_hosts(e.data, "tools"),
-            tools_count: named_count(e.data, "tools")
-          }
-      )
-
-    Edition.client_reads(scope, :run_policy, run, policy)
+    Repo.one(
+      from e in events(scope, run),
+        where: e.type == ^@policy_applied,
+        order_by: [desc: e.sequence],
+        limit: 1,
+        select: %{
+          sequence: e.sequence,
+          time: e.time,
+          mode: fragment("left(? ->> 'mode', 40)", e.data),
+          source: fragment("left(? ->> 'source', 40)", e.data),
+          allow: strings(e.data, "allow", 50, 255),
+          allow_count: array_length(e.data, "allow"),
+          allow_first: strings(e.data, "allow_first", 50, 255),
+          allow_first_count: array_length(e.data, "allow_first"),
+          deny: strings(e.data, "deny", 50, 255),
+          deny_count: array_length(e.data, "deny"),
+          terminated: strings(e.data, "terminated", 50, 255),
+          terminated_count: array_length(e.data, "terminated"),
+          credentials: named_hosts(e.data, "credentials"),
+          credentials_count: named_count(e.data, "credentials"),
+          tools: named_hosts(e.data, "tools"),
+          tools_count: named_count(e.data, "tools")
+        }
+    )
   end
 
   @doc "The runtime's session id, from the run's last `runtime.started`; nil without one."
@@ -450,7 +446,7 @@ defmodule Apiary.Runs.Record do
         slim(scope, run, Timeline.needed(whole), Timeline.full_limit())
       )
 
-    Timeline.build(light, events, full: MapSet.to_list(full), scope: scope, run: run)
+    Timeline.build(light, events, full: MapSet.to_list(full), run: run)
   end
 
   # The columns of the statement below, by name: its own names, never an event's.
@@ -666,14 +662,11 @@ defmodule Apiary.Runs.Record do
   defp cast_uuid(_other), do: :error
 
   defp connections_of(scope, run) do
-    query =
-      from c in Connection,
-        where:
-          c.organisation_id == ^organisation_id(scope) and
-            c.workspace_id == ^workspace_id(scope),
-        where: c.run_id == ^run.id
-
-    Edition.client_reads(scope, :run_connections, run, query)
+    from c in Connection,
+      where:
+        c.organisation_id == ^organisation_id(scope) and
+          c.workspace_id == ^workspace_id(scope),
+      where: c.run_id == ^run.id
   end
 
   ## The steps
@@ -1316,15 +1309,12 @@ defmodule Apiary.Runs.Record do
         r.organisation_id == ^organisation_id(scope) and r.workspace_id == ^workspace_id(scope)
   end
 
-  defp events(%Scope{} = scope, %Run{id: id} = run) do
-    query =
-      from e in Event,
-        where:
-          e.organisation_id == ^organisation_id(scope) and
-            e.workspace_id == ^workspace_id(scope),
-        where: e.run_id == ^id
-
-    Edition.client_reads(scope, :run_events, run, query)
+  defp events(%Scope{} = scope, %Run{id: id}) do
+    from e in Event,
+      where:
+        e.organisation_id == ^organisation_id(scope) and
+          e.workspace_id == ^workspace_id(scope),
+      where: e.run_id == ^id
   end
 
   defp log_chunks(%Scope{} = scope, %Run{id: id}) do

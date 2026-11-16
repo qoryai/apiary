@@ -14,13 +14,9 @@ defmodule Apiary.Policy.Suggestions do
   each and whether it is the workspace's or the target's, at most 20.
   """
 
-  # With the `factory` feature: every read of events
-  # and connections goes through the edition's narrowing of what the scope's person reads
-  # of the workspace's runs (`c:Apiary.Edition.client_reads/4`).
-
   import Ecto.Query, warn: false
 
-  alias Apiary.{Edition, Repo}
+  alias Apiary.Repo
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Effective, Grammar, Resolution, Rule}
@@ -42,7 +38,7 @@ defmodule Apiary.Policy.Suggestions do
 
   @doc false
   def report(
-        %Scope{workspace: %Workspace{id: workspace_id}} = scope,
+        %Scope{workspace: %Workspace{id: workspace_id}},
         target_id,
         %Effective{allow: allow, entries: entries},
         since
@@ -55,14 +51,14 @@ defmodule Apiary.Policy.Suggestions do
           into: %{},
           do: {entry.host, entry}
 
-    declared = declared(scope, workspace_id, target_id)
+    declared = declared(workspace_id, target_id)
 
     {covered, open} =
       declared
       |> Enum.reject(fn {host, _seen} -> Grammar.covers_any?(denied, host) end)
       |> Enum.split_with(fn {host, _seen} -> Grammar.covers_any?(allow, host) end)
 
-    attempts = attempts(scope, workspace_id, target_id, since)
+    attempts = attempts(workspace_id, target_id, since)
 
     suggested =
       open
@@ -99,7 +95,7 @@ defmodule Apiary.Policy.Suggestions do
   # and targets (the hosts declared, and each target's own mode), one read of the
   # workspace's rules, and the workspace's mode; each target's effective policy is
   # resolved once, under `above`, the level above the workspace or nil.
-  def counts(%Scope{workspace: %Workspace{id: workspace_id}} = scope, since, above \\ nil) do
+  def counts(%Scope{workspace: %Workspace{id: workspace_id}}, since, above \\ nil) do
     runs =
       from r in Run,
         where: r.workspace_id == ^workspace_id and not is_nil(r.target_id),
@@ -110,7 +106,7 @@ defmodule Apiary.Policy.Suggestions do
 
     declared =
       Repo.all(
-        from([e, r] in events(scope),
+        from([e, r] in events(),
           join: p in Target,
           on: p.id == r.target_id,
           where:
@@ -168,7 +164,7 @@ defmodule Apiary.Policy.Suggestions do
   end
 
   # host => [{run id, received at}], from the newest runs' policy applied events.
-  defp declared(scope, workspace_id, target_id) do
+  defp declared(workspace_id, target_id) do
     runs =
       from r in Run,
         where: r.workspace_id == ^workspace_id and r.target_id == ^target_id,
@@ -177,7 +173,7 @@ defmodule Apiary.Policy.Suggestions do
         select: r.id
 
     Repo.all(
-      from([e, _r] in events(scope),
+      from([e, _r] in events(),
         where:
           e.workspace_id == ^workspace_id and e.run_id in subquery(runs) and
             e.type == @policy_applied,
@@ -198,10 +194,10 @@ defmodule Apiary.Policy.Suggestions do
   # with it: a count of a part would read as the whole. Only the `session` channel's
   # connections count: the stack proxy decides by the run configuration's `stack_hosts`,
   # never by the rules.
-  defp attempts(scope, workspace_id, target_id, since) do
+  defp attempts(workspace_id, target_id, since) do
     rows =
       Repo.all(
-        from [c, r] in connections(scope),
+        from [c, r] in connections(),
           where:
             c.workspace_id == ^workspace_id and c.last_seen_at >= ^since and
               r.target_id == ^target_id and c.channel == "session",
@@ -214,24 +210,10 @@ defmodule Apiary.Policy.Suggestions do
   end
 
   # The workspace's events joined to their runs, the event the first binding and the run
-  # the second, and its connections joined the same way, as the edition narrows them.
-  defp events(scope),
-    do:
-      Edition.client_reads(
-        scope,
-        :workspace_events,
-        nil,
-        from(e in Event, join: r in Run, on: r.id == e.run_id)
-      )
+  # the second, and its connections joined the same way.
+  defp events, do: from(e in Event, join: r in Run, on: r.id == e.run_id)
 
-  defp connections(scope),
-    do:
-      Edition.client_reads(
-        scope,
-        :workspace_connections,
-        nil,
-        from(c in Connection, join: r in Run, on: r.id == c.run_id)
-      )
+  defp connections, do: from(c in Connection, join: r in Run, on: r.id == c.run_id)
 
   defp attempt_counts(nil, _host), do: {nil, nil}
 

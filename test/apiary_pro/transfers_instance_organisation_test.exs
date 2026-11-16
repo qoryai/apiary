@@ -1,9 +1,7 @@
 defmodule ApiaryPro.TransfersInstanceOrganisationTest do
   # The tests of transfers that lock the suite's instance organisation, committed once
-  # outside the sandbox: the arbiter's, whose account suspensions lock its owners, and the
-  # refused withdrawal of its ownership, which locks its row. Not async
-  # (docs/conventions.md, Tests); the other tests of transfers are in
-  # `ApiaryPro.TransfersTest`.
+  # outside the sandbox: the arbiter's, whose account suspensions lock its owners. Not async
+  # (docs/conventions.md, Tests).
   use Apiary.DataCase, async: false
 
   # The edition's switch `feature_visibility` is an opt-in feature, on with every feature:
@@ -12,8 +10,8 @@ defmodule ApiaryPro.TransfersInstanceOrganisationTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Apiary.OrganisationsFixtures
@@ -24,31 +22,11 @@ defmodule ApiaryPro.TransfersInstanceOrganisationTest do
   alias Apiary.Organisations.{Membership, Organisation}
   alias ApiaryPro.{Suspensions, Transfers}
   alias ApiaryPro.Transfers.Transfer
-  alias ApiaryPro.Tenants.Tenant
 
-  describe "an organisation to an operator" do
-    @describetag needs: :managed_organisations
-
-    setup do
-      operator = operator_fixture()
-      offered = sign_up_fixture()
-      second_owner = member_fixture(offered.scope, :owner)
-
-      %{
-        operator: operator,
-        offered: offered,
-        second_owner: second_owner,
-        operator_admin: member_fixture(operator.scope, :admin),
-        operator_member: member_fixture(operator.scope, :member),
-        instance_admin: instance_admin_fixture().instance_scope
-      }
-    end
-
-    test "nobody offers or withdraws the instance organisation's ownership", ctx do
+  describe "the instance organisation" do
+    test "nobody withdraws an offer of its ownership" do
       io = ApiaryPro.Organisations.instance_organisation()
       assert Access.refused_on?(:"organisation.withdraw_transfer", io)
-      assert Access.refused_on?(:"organisation.transfer", io)
-      assert {:error, :forbidden} = Transfers.withdraw(%{ctx.instance_admin | organisation: io})
     end
   end
 
@@ -58,93 +36,74 @@ defmodule ApiaryPro.TransfersInstanceOrganisationTest do
     end
 
     @tag needs: :managed_organisations
-    test "offers a client whose owners are all suspended to one of its admins; it stays its operator's",
+    test "offers an operated organisation whose owners are all suspended to one of its admins, whatever the operator",
          ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      chosen = client_member_fixture(client, :admin)
+      operated = operated_fixture(operator.scope)
+      chosen = organisation_member_fixture(operated, :admin)
 
       # Its owner may act: the instance does not overrule them.
       assert {:error, :has_owner} =
                Transfers.arbitrate(
                  ctx.instance_admin,
-                 client.organisation.id,
+                 operated.organisation.id,
                  chosen.membership.id,
                  "Stuck."
                )
 
-      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, client.owner.user.id)
-      assert ApiaryPro.Suspensions.owner_suspended?(client.organisation)
+      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, operated.owner.user.id)
+      assert ApiaryPro.Suspensions.owner_suspended?(operated.organisation)
 
       assert {:ok, [_]} =
-               Transfers.arbitration_candidates(ctx.instance_admin, client.organisation.id)
+               Transfers.arbitration_candidates(ctx.instance_admin, operated.organisation.id)
 
       assert {:ok, %Transfer{arbitrated: true, reason: "The owner is away."} = transfer} =
                Transfers.arbitrate(
                  ctx.instance_admin,
-                 client.organisation.id,
+                 operated.organisation.id,
                  chosen.membership.id,
                  "  The owner is away.  "
                )
 
       assert transfer.recipient_id == chosen.user.id
-      # It names no operator but in its entry.
       assert transfer.operator_id == nil
 
       assert %Entry{action: "instance.transfer", subject_kind: "transfer"} = entry = last()
-      assert entry.organisation_id == client.organisation.id
-      assert entry.details["operator_id"] == operator.organisation.id
+      assert entry.organisation_id == operated.organisation.id
+      refute Map.has_key?(entry.details, "operator_id")
       assert {entry.actor_kind, entry.actor_id} == {:person, ctx.instance_admin.user.id}
       assert entry.details["reason"] == "The owner is away."
 
-      # Nobody withdraws it here; accepted whatever its operator is.
-      assert {:error, :forbidden} = Transfers.withdraw(chosen.scope)
+      # The operator's suspension changes nothing for the acceptance.
       {:ok, _} = Suspensions.suspend_organisation(ctx.instance_admin, operator.organisation.id)
 
-      assert {:ok, %Organisation{edition: %{tenant: %Tenant{operator_id: operator_id}}}} =
-               Transfers.accept(chosen.scope)
-
-      assert operator_id == operator.organisation.id
+      assert {:ok, %Organisation{}} = Transfers.accept(chosen.scope)
       assert %Membership{level: :owner} = Repo.get!(Membership, chosen.membership.id)
 
       assert %Entry{action: "organisation.accept_transfer", details: %{"arbitrated" => true}} =
                Repo.one!(
                  from e in Entry,
                    where:
-                     e.organisation_id == ^client.organisation.id and
+                     e.organisation_id == ^operated.organisation.id and
                        e.action == "organisation.accept_transfer"
                )
     end
 
-    @tag needs: :managed_organisations
-    test "offers a former client's ownership, and the offer outlives the purge of the operator it left",
-         ctx do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope)
-      admin = client_member_fixture(client, :admin)
-      name = client.organisation.name
-      {:ok, _} = Transfers.drop(operator.scope, client.organisation.id, name)
-      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, client.owner.user.id)
+    test "an offer is reached from its organisation only", ctx do
+      %{scope: owner, user: owner_user, organisation: organisation} = sign_up_fixture()
+      %{membership: admin} = member_fixture(owner, :admin)
+      {:ok, _} = Suspensions.suspend_account(ctx.instance_admin, owner_user.id)
 
       {:ok, transfer} =
-        Transfers.arbitrate(
-          ctx.instance_admin,
-          client.organisation.id,
-          admin.membership.id,
-          "The owner is away."
-        )
+        Transfers.arbitrate(ctx.instance_admin, organisation.id, admin.id, "The owner is away.")
 
-      assert {:ok, :purged} =
-               ApiaryPro.Deletion.purge_on_request(
-                 ctx.instance_admin,
-                 operator.organisation.id,
-                 operator.organisation.slug
-               )
+      %{scope: other} = sign_up_fixture()
 
-      assert %Transfer{id: id} = Repo.get(Transfer, transfer.id)
-      assert id == transfer.id
-      assert {:ok, %Organisation{}} = Transfers.accept(admin.scope)
-      assert Repo.get!(Membership, admin.membership.id).level == :owner
+      assert Transfers.pending(other) == nil
+      assert {:error, :not_found} = Transfers.accept(other)
+
+      assert {:error, :not_found} =
+               Access.check(other, :"organisation.accept_transfer", transfer)
     end
 
     test "does not overrule an organisation with an owner who may act, and never the instance organisation",

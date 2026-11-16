@@ -32,180 +32,39 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
     end
   end
 
-  describe "a client's features, on its operator's Clients page" do
+  describe "a feature taken away from an organisation, for the people of its operator" do
     setup %{conn: conn} do
+      %{instance_scope: admin} = suite_instance_admin()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      %{conn: log_in_user(conn, operator.user), operator: operator, client: client}
+      operated = operated_fixture(operator.scope, "Acme")
+      %{conn: log_in_user(conn, operator.user), admin: admin, operated: operated}
     end
 
-    test "an owner of the operator grants a client its features", ctx do
-      %{operator: operator, client: client} = ctx
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{operator.organisation}/clients")
-      render_async(lv)
-
-      assert has_element?(lv, "#client-#{client.organisation.id}-features", "Security policy")
-      words = lv |> element("#client-#{client.organisation.id}-features") |> render()
-      refute words =~ ~r/,\s*<\/span>/
-
-      lv |> element("#client-#{client.organisation.id}-features-button") |> render_click()
-      assert_patch(lv, ~p"/#{operator.organisation}/clients/#{client.organisation.id}/features")
-      # A page of the clients, never a dialog: the list is not under it.
-      refute has_element?(lv, "#clients")
-      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Features")
-      assert has_element?(lv, "#client-features-save a#client-features-save-cancel", "Cancel")
-
-      # Each box is named by its feature.
-      assert has_element?(
-               lv,
-               "label[for=client-features-organisation_policy]",
-               "Organisation policy"
-             )
-
-      # A client is never offered what makes an operator.
-      assert has_element?(lv, "#client-features-observability")
-      refute has_element?(lv, "#client-features-managed_organisations")
-      # The organisation's variables have a box, as every feature a grant names.
-      assert has_element?(lv, "#client-features-organisation_variables")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{
-          "observability" => "true",
-          "security" => "false",
-          "organisation_policy" => "false",
-          "organisation_variables" => "false"
-        }
-      })
-      |> render_submit()
-
-      assert_patch(lv, ~p"/#{operator.organisation}/clients")
-      assert built_of(client.organisation) == [:observability]
-      render_async(lv)
-      refute has_element?(lv, "#client-#{client.organisation.id}-features", "Security policy")
-    end
-
-    test "a save that would leave a feature without Runs stays, why under the checkboxes",
-         ctx do
-      %{operator: operator, client: client} = ctx
-      id = client.organisation.id
-      path = ~p"/#{operator.organisation}/clients/#{id}/features"
-      {:ok, lv, _html} = live(ctx.conn, path)
-      render_async(lv)
-
-      # Nothing refused yet: the group is neither invalid nor described by an error.
-      refute has_element?(lv, "fieldset#client-features[aria-invalid]")
-      refute has_element?(lv, "fieldset#client-features[aria-describedby]")
-      refute has_element?(lv, "#client-features-error")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{
-          "observability" => "false",
-          "security" => "true",
-          "organisation_policy" => "false",
-          "organisation_variables" => "false"
-        }
-      })
-      |> render_submit()
-
-      # Refused, it stays: why is said under the checkboxes, not in a flash, and the group
-      # is marked invalid and described by it, so the failed submit puts the caret in its
-      # first checkbox and a screen reader reads why with the group.
-      assert has_element?(
-               lv,
-               "fieldset#client-features > p#client-features-error:last-child",
-               "Every other feature needs Runs: keep it, or take them all away."
-             )
-
-      assert has_element?(
-               lv,
-               ~s|fieldset#client-features[aria-invalid="true"][aria-describedby="client-features-error"]|
-             )
-
-      refute has_element?(lv, "#flash-error")
-      assert has_element?(lv, "#client-features-form")
-      # The boxes stay as they were sent, and nothing is saved.
-      refute has_element?(lv, "#client-features-observability[checked]")
-      assert has_element?(lv, "#client-features-security[checked]")
-      refute has_element?(lv, "#client-features-organisation_policy[checked]")
-
-      assert built_of(client.organisation) ==
-               [:observability, :security, :organisation_policy, :organisation_variables]
-
-      # The error stays until the next save: the client's row read again keeps it.
-      send(lv.pid, {:membership_changed, operator.organisation.id})
-      render_async(lv)
-      assert has_element?(lv, "#client-features-error")
-      refute has_element?(lv, "#client-features-observability[checked]")
-
-      # Left and opened again, the page starts afresh.
-      lv |> element("#client-features-save-cancel") |> render_click()
-      assert_patch(lv, ~p"/#{operator.organisation}/clients")
-      lv |> element("#client-#{id}-features-button") |> render_click()
-      assert_patch(lv, path)
-      refute has_element?(lv, "#client-features-error")
-      assert has_element?(lv, "#client-features-observability[checked]")
-
-      # Sent again as it should be, it saves and leaves.
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{
-          "observability" => "true",
-          "security" => "true",
-          "organisation_policy" => "false",
-          "organisation_variables" => "false"
-        }
-      })
-      |> render_submit()
-
-      assert_patch(lv, ~p"/#{operator.organisation}/clients")
-      assert built_of(client.organisation) == [:observability, :security]
-    end
-
-    test "a feature taken away is absent in the client: its page answers not found", ctx do
-      %{operator: operator, client: client} = ctx
+    test "is absent in the operated workspace: its page answers not found", ctx do
+      %{admin: admin, operated: operated} = ctx
 
       {:ok, _} =
-        ApiaryPro.Grants.set_client(operator.scope, client.organisation.id, [
+        ApiaryPro.Grants.set_organisation(admin, operated.organisation.id, [
           "observability"
         ])
 
       assert_raise ApiaryWeb.Features.NotFound, fn ->
-        live(ctx.conn, ~p"/#{client.organisation}/#{client.workspace}/policy")
+        live(ctx.conn, ~p"/#{operated.organisation}/#{operated.workspace}/policy")
       end
     end
 
-    test "a client's page open on a feature taken away meanwhile says so and leaves", ctx do
-      %{operator: operator, client: client} = ctx
+    test "a page open on it meanwhile says so and leaves", ctx do
+      %{admin: admin, operated: operated} = ctx
 
       {:ok, policy, _html} =
-        live(ctx.conn, ~p"/#{client.organisation}/#{client.workspace}/policy")
+        live(ctx.conn, ~p"/#{operated.organisation}/#{operated.workspace}/policy")
 
       {:ok, _} =
-        ApiaryPro.Grants.set_client(operator.scope, client.organisation.id, ["observability"])
+        ApiaryPro.Grants.set_organisation(admin, operated.organisation.id, ["observability"])
 
       assert {path, flash} = assert_redirect(policy)
-      assert path == ~p"/#{client.organisation}"
+      assert path == ~p"/#{operated.organisation}"
       assert flash["error"] =~ "is no longer shown in"
-    end
-
-    test "an admin of the operator sees no Features button, and is refused the event", ctx do
-      %{operator: operator, client: client} = ctx
-      %{user: admin} = member_fixture(operator.scope, :admin)
-      conn = log_in_user(build_conn(), admin)
-
-      {:ok, lv, _html} = live(conn, ~p"/#{operator.organisation}/clients")
-      render_async(lv)
-      refute has_element?(lv, "#client-#{client.organisation.id}-features-button")
-
-      render_click(lv, "save_client_features", %{
-        "client_id" => client.organisation.id,
-        "features" => %{"observability" => "true"}
-      })
-
-      assert built_of(client.organisation) ==
-               [:observability, :security, :organisation_policy, :organisation_variables]
     end
   end
 
@@ -317,15 +176,16 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       assert built_of(organisation) == [:observability, :security]
     end
 
-    test "a client offers no Features button: its operator grants it", ctx do
+    test "an organisation an operator operates in offers a Features button; the instance organisation none",
+         ctx do
       operator = operator_fixture()
-      client = client_fixture(operator.scope)
+      operated = operated_fixture(operator.scope)
       here = ctx.admin.instance_scope.organisation
 
       {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations")
       render_async(lv)
       assert has_element?(lv, "#organisation-#{operator.organisation.id}-features-button")
-      refute has_element?(lv, "#organisation-#{client.organisation.id}-features-button")
+      assert has_element?(lv, "#organisation-#{operated.organisation.id}-features-button")
       refute has_element?(lv, "#organisation-#{here.id}-features-button")
     end
 
@@ -357,7 +217,7 @@ defmodule ApiaryProWeb.FeatureGrantsLiveTest do
       refute has_element?(lv, "#workspace-#{workspace.id}-features-button")
       refute has_element?(lv, "#workspace-#{platform.id}-features-button")
 
-      # No route has its address any more: the router's own answer, not found.
+      # No route has its address any more: the router answers not found.
       assert conn
              |> get("/#{organisation.slug}/settings/workspaces/#{workspace.id}/features")
              |> html_response(404)

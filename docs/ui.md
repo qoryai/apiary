@@ -53,29 +53,35 @@ page and an Instance page, the one the person came from (Two levels, below).
   organisation and one workspace shows neither, and the segments are links and nothing
   more.
   The organisation menu has a search, then two panels that each scroll separately: on the
-  left the organisations the person reaches, by name, the ones they are a member of first
-  and the edition's groups of places under their headings
-  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
-  group's count, unless the page's organisation is in it; on the right, under a heading that
-  names it, the workspaces of the organisation pointed at, by name. On opening, the page's
-  organisation is pointed at and scrolled to; then the one with focus, or the one under the
-  mouse once it has rested there for 100 ms, so a pointer crossing others on its way to the
-  right panel changes nothing. Each organisation's `›` shows its workspaces. An
-  organisation's link lands in the workspace the person last used there; a workspace's lands
-  in that workspace. At its foot are Your organisations and the edition's entries.
+  left, under Your organisations, the organisations the person reaches, by name; on the
+  right, under a heading that names it, the workspaces of the organisation pointed at, by
+  name. After an operator's workspaces come the workspaces it operates in other
+  organisations, as "workspace · organisation", by organisation and then by name
+  (`ApiaryWeb.Edition.switcher_place/1`), for a person who reaches them through the
+  operator alone. A person who reaches such a workspace through its organisation finds it
+  under the organisation only, and an organisation is listed only for its members. The menu
+  opens on the page's organisation where that organisation lists the page's workspace, else
+  on the organisation that lists it, else on the page's organisation, and marks that
+  organisation and the page's workspace current. That organisation is pointed at and
+  scrolled to; then the one with focus, or the one under the mouse once it has rested there
+  for 100 ms, so a pointer crossing others on its way to the right panel changes nothing.
+  Each organisation's `›` shows its workspaces. An organisation's link lands in the
+  workspace the person last used there; a workspace's lands in that workspace. At its foot
+  are Your organisations and the edition's entries.
   The workspace menu has a search, then this organisation's workspaces by name, and no
   other organisation's; at its foot, the edition's entries for it.
   Every link goes through `/:org/:workspace/switch/:section` or `/:org/-/switch/:section`
   (`ApiaryWeb.SwitchController`), which asks the destination's scope when it is
   followed and lands on the reader's page there, its list page where the page names one
   thing by its id, else the section, else the overview; from an organisation's
-  page, on the overview. The search filters as the reader types: the organisation menu by an
-  organisation's name and slug, keeping one with a matching workspace with only those
-  workspaces, and opening every group it finds one in; the workspace menu by a
-  workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓ move within
-  a panel, → and ← between an organisation and its workspaces, Enter in the search follows
-  the first match, Escape closes and gives focus back. On a phone a menu is a sheet under
-  the bar showing one panel at a time: `›` shows an organisation's workspaces in place of
+  page, on the overview. The search filters as the reader types: the organisation menu by
+  an organisation's name and slug, keeping one with a matching workspace with only those
+  workspaces, a workspace listed with its organisation matching by that organisation's
+  name and slug too; the workspace menu by a workspace's name and slug. ↓ from the search
+  goes to the first row, ↑ and ↓ move within a panel, → and ← between an organisation and
+  its workspaces, Enter in the search follows the first match, Escape closes and gives
+  focus back. On a phone a menu is a sheet under the bar showing one panel at a time: `›`
+  shows an organisation's workspaces in place of
   the organisations, under a button back to them, Organisations. A phone's bar names the
   page alone, so there the drawer's head holds, where either has a menu, the organisation
   and, on a workspace's page, the workspace (`#drawer-place`), each a button that opens
@@ -1210,18 +1216,16 @@ address under `/machines`, with what followed `/nodes` and the query.
   (`NodeComponents.in_use_words/3`).
 - **A workspace's Machines and an organisation's gateways.** Machines lists the
   organisation's gateways under the heading Gateways, after the workspace's, each with
-  "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway the workspace's default resolves to. A
-  gateway of another organisation that serves the workspace is no row of it. A machine's or pool's
-  Gateway select groups the gateways by level where there is more than one, "This
-  workspace" first, then its organisation, then each organisation that serves it,
-  named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
-  whose default it is. Where a machine or pool uses a gateway of another organisation, its About,
-  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
-  to its page under that organisation's Gateways only where the reader reads it there
-  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the machines is the core's sentence unless
-  the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
-  machine limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
-  `node.set_limit`, "You can't change the machine limit." when it gives none.
+  "Set for Acme" (`#node-<id>-level`), linked to its page, and Default beside the gateway
+  the workspace's default resolves to. A machine's or pool's Gateway select groups the
+  gateways by level where there is more than one, "This workspace" first, then its
+  organisation, then the instance, in the order their defaults resolve
+  (`Apiary.Gateways.levels/1`), and its hint shows whose default it is: "this workspace's
+  default", the organisation's name, or Qory Apiary for the instance's. Who manages the
+  machines is the core's sentence unless the edition gives one
+  (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the machine limit's refusal and
+  hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for `node.set_limit`, "You can't
+  change the machine limit." when it gives none.
 - **Access key**, a tab of a machine, pool or gateway. A machine or a pool whose choice
   leads to a gateway (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the
   command's page, Key for a machine and a key's Forager file, an info notice: "Runs of build-01 go through the
@@ -1980,13 +1984,12 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   percentage." where no run continues it; and, once the provider is deleted, "Paused: a
   model key reached its limit or its Use up to percentage. It continues in run 15.", or
   "Paused: a model key reached its limit or its Use up to percentage." where no run
-  continues it. A provider that the
-  instance admin set up, outside the run's organisation, is not named: "Paused: every
-  model key is in cooldown until Fri 14:00. It continues in run 15." while that time is
-  still to come, else the lines of a deleted provider. On the work item's page, the
-  run's row on Explore and the stage's round show the same line in place of the run's
-  state, the number a link where the reader may read the workspace of the run that
-  continues it. For a run that a failed step of its preparation stopped, the line states
+  continues it. A provider of another organisation than the run's, left from when an
+  operator managed whole organisations, is not named: "Paused: every model key is in
+  cooldown until Fri 14:00. It continues in run 15." while that time is still to come, else the lines
+  of a deleted provider. On the work item's page, the run's row on Explore and the stage's round
+  show the same line in place of the run's state, the number a link where the reader
+  may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
   what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
   timeline that was no success, else its
@@ -2121,7 +2124,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   it ended; any other run has its timeline alone. The list is not drawn when it has no
   row. The whole list shows even when the loaded events start later in the run, such as
   for a `?seq=` link to a late event. Every reader sees the same list, on every pool: the
-  workspace's pool, the Qory Pool and another organisation's pool.
+  workspace's pool and the Qory Pool.
 
   The heading is "Run on" and the pool's name, then the run's state in the word of the
   run's badge: "Run on Qory Pool · Completed", or Pending, Running, Failed, Cancelled,
@@ -2143,8 +2146,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      settings › Machine types, or the admin of build-pool adds an offer that fits." with
      the first such pool, "Qory Pool" for the instance's pool. Anyone else reads, in
      plain text, "Contact support with run rn_…, or ask the admin of build-pool to add
-     an offer that fits." where the first such pool is a pool of the workspace or of
-     another organisation, and "Contact support with run rn_…." where it is the
+     an offer that fits." where the first such pool is a pool of the workspace, and
+     "Contact support with run rn_…." where it is the
      instance's pool, whose admins are the instance admins. The header has the cause
      too, after "Why it waits". "Waiting: no pool can start machine type large", under
      the fold, where the run has no spec.
@@ -2156,9 +2159,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      model provider stores them again from the choice in effect, and the line reads them
      (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
      first, and when, the time as a key's row on Model providers shows it. For a
-     provider that the instance admin set up, outside the run's organisation, the line
-     has no name: "Waiting for a model key: every model key is in cooldown until 14:00."
-     Nothing runs when the cooldown ends: the first claim after that time takes the run.
+     provider of another organisation than the run's, left from when an operator
+     managed whole organisations, the line has no name: "Waiting for a model key: every
+     model key is in cooldown until 14:00." Nothing runs when the cooldown ends: the first claim
+     after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
      no build live, while it is held for its target's build.

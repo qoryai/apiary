@@ -52,24 +52,4 @@ defmodule ApiaryProWeb.FeaturesRoutesTest do
 
     assert :secrets in Apiary.Features.needs(:organisation_variables)
   end
-
-  test "an operator's clients belong to managed_organisations, their policy requests to security" do
-    routes = RoutesFeaturesCase.routes(ApiaryProWeb.Router)
-
-    clients = for {_verb, "/:org/clients" <> rest, module} <- routes, do: {rest, module}
-    assert clients != []
-
-    for {rest, module} <- clients do
-      if String.starts_with?(rest, "/requests"),
-        do: assert(module.__feature__() == :security),
-        else: assert(module.__feature__() == :managed_organisations)
-    end
-
-    requests = for {_verb, "/:org/policy-requests" <> _, module} <- routes, do: module
-    assert requests != []
-
-    for module <- requests do
-      assert module.__feature__() == :security
-    end
-  end
 end

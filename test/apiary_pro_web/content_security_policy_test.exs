@@ -18,16 +18,12 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
-  setup do: ApiaryPro.Flags.put_transfers(true)
-
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Features, Policy}
-  alias ApiaryPro.{OrganisationVariables, PolicyRequests, Suspensions, Transfers}
+  alias Apiary.Features
+  alias ApiaryPro.{OrganisationVariables, Suspensions}
 
   @moduletag with_features: Features.all()
 
@@ -55,7 +51,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
            "the edition's routes this test does not open; fill them in page/1, or list them under " <>
              "@exceptions with the reason:\n" <> Enum.map_join(unknown, "\n", & &1.path)
 
-    answers = for route <- known, do: flagged(route, fn -> check(route, world) end)
+    answers = for route <- known, do: check(route, world)
 
     problems = Enum.flat_map(answers, &elem(&1, 1))
 
@@ -65,8 +61,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     # A nonce is never used twice.
     nonces = Enum.map(answers, &elem(&1, 0))
     assert length(Enum.uniq(nonces)) == length(nonces)
-    # The edition's pages were loaded: the instance's, the organisation's and the operator's.
-    assert length(known) >= 40
+    # The edition's pages were loaded: the instance's and the organisation's.
+    assert length(known) >= 30
   end
 
   test "the markup check refuses an inline style, a handler and a script without the nonce" do
@@ -89,22 +85,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
       assert violations(LazyHTML.from_fragment(markup), "n") == [], markup
     end
   end
-
-  # The pages there are only while the operator owns its clients
-  # (`ApiaryPro.Flags.operator_infrastructure?/0`) are opened with it on, and only they.
-  @operator_owns ["/:org/clients/:id/admin"]
-
-  defp flagged(%{path: path}, fun) when path in @operator_owns do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-
-    try do
-      fun.()
-    after
-      ApiaryPro.Flags.put_operator_infrastructure(false)
-    end
-  end
-
-  defp flagged(_route, fun), do: fun.()
 
   # Requests the route's page as the person it is for, and returns the answer's nonce and
   # what is wrong with it.
@@ -277,11 +257,8 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/instance/accounts/:id/suspend"), do: {:instance_admin, nil, :member_user_id}
 
   defp page("/:org/settings/people/:id/workspaces"), do: {:owner, :org, :membership_id}
-  defp page("/:org/settings/ownership"), do: {:owner, :org, nil}
-  defp page("/:org/settings/ownership/transfer"), do: {:owner, :org, nil}
-  # The withdrawal of a pending offer, and the leaving of an operator, by a client.
-  defp page("/:org/settings/ownership/withdraw"), do: {:offering_owner, :offering, nil}
-  defp page("/:org/settings/ownership/leave"), do: {:client_owner, :client, nil}
+  # Ownership is listed for the admin offered the ownership.
+  defp page("/:org/settings/ownership"), do: {:offered_admin, :offered, nil}
   defp page("/:org/settings/variables"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/new"), do: {:owner, :org, nil}
   defp page("/:org/settings/variables/:id/change"), do: {:owner, :org, :variable_id}
@@ -304,26 +281,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
   defp page("/:org/policy/history"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/new"), do: {:owner, :org, nil}
   defp page("/:org/policy/rules/:id/edit"), do: {:owner, :org, :org_rule_id}
-  defp page("/:org/policy-requests"), do: {:client_owner, :client, nil}
-  defp page("/:org/policy-requests/:id"), do: {:client_owner, :client, :answer_id}
-  defp page("/:org/policy-requests/:id/decline"), do: {:client_owner, :client, :answer_id}
-  defp page("/:org/clients"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/new"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests/new"), do: {:operator_owner, :operator, nil}
-  defp page("/:org/clients/requests/:id"), do: {:operator_owner, :operator, :request_id}
-
-  defp page("/:org/clients/requests/:id/withdraw"),
-    do: {:operator_owner, :operator, :request_id}
-
-  # An owner is invited to a client that has none.
-  defp page("/:org/clients/:id/owner"), do: {:operator_owner, :operator, :ownerless_client_id}
-  defp page("/:org/clients/:id/admin"), do: {:operator_owner, :operator, :ownerless_client_id}
-  defp page("/:org/clients/:id/features"), do: {:operator_owner, :operator, :client_id}
-  defp page("/:org/clients/:id/drop"), do: {:operator_owner, :operator, :client_id}
-  defp page("/:org/clients/:id/delete"), do: {:operator_owner, :operator, :client_id}
-  # The organisation offered to the operator.
-  defp page("/:org/clients/offers/:id/accept"), do: {:operator_owner, :operator, :offering_id}
   defp page(_path), do: nil
 
   # The route's address, its parameters filled from the world, and who opens it.
@@ -348,10 +305,9 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
 
   # The people each page is for, logged in, and the records the pages are about, in the
   # states they open in: an owner's organisation with a member, a second workspace, its
-  # variables, its secrets and its policy; an organisation offered to an operator; the
-  # operator, with a client whose owner signed up, one with no owner yet, and a request of
-  # the operator's to the client, pending; an organisation suspended; and one whose
-  # owner's account is, with an admin.
+  # variables, its secrets and its policy; an organisation suspended; one whose owner's
+  # account is, with an admin; and one whose admin the instance admins offer the
+  # ownership to.
   defp world do
     admin = suite_instance_admin()
 
@@ -386,36 +342,6 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
 
     {:ok, org_rule} = ApiaryPro.OrganisationPolicy.deny(owner.scope, %{host: "org.example"})
 
-    operator = operator_fixture(%{organisation_name: "Hive Ops"})
-    client = client_fixture(operator.scope, "Acme")
-
-    {%{organisation: ownerless}, _token} =
-      create_client_fixture(operator.scope, %{
-        "name" => "Shop",
-        "email" => "dana@example.com"
-      })
-
-    {:ok, _rule} = Policy.deny(client.owner.scope, nil, %{host: "locked.example", locked: true})
-
-    {:ok, request} =
-      PolicyRequests.send_request(operator.scope, %{
-        "changes" => %{
-          "rules" => [
-            %{"change" => "rule_changed", "action" => "allow", "host" => "locked.example"}
-          ]
-        },
-        "note" => "The build calls it."
-      })
-
-    answer =
-      Apiary.Repo.get_by!(PolicyRequests.Answer,
-        request_id: request.id,
-        organisation_id: client.organisation.id
-      )
-
-    offering = sign_up_fixture()
-    {:ok, _} = Transfers.offer_to_operator(offering.scope, operator.organisation.slug)
-
     suspended = sign_up_fixture()
     {:ok, _} = Suspensions.suspend_organisation(admin.instance_scope, suspended.organisation.id)
 
@@ -423,24 +349,29 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
     member_fixture(arbitrated.scope, :admin)
     {:ok, _} = Suspensions.suspend_account(admin.instance_scope, arbitrated.user.id)
 
+    offered = sign_up_fixture()
+    %{user: offered_admin, membership: offered_membership} = member_fixture(offered.scope, :admin)
+    {:ok, _} = Suspensions.suspend_account(admin.instance_scope, offered.user.id)
+
+    {:ok, _} =
+      ApiaryPro.Transfers.arbitrate(
+        admin.instance_scope,
+        offered.organisation.id,
+        offered_membership.id,
+        "The owner is away."
+      )
+
     %{
       conns: %{
         owner: log_in_user(build_conn(), owner.user),
         signed_out: build_conn(),
         instance_admin: log_in_user(build_conn(), admin.user),
-        offering_owner: log_in_user(build_conn(), offering.user),
-        client_owner: log_in_user(build_conn(), client.owner.user),
-        operator_owner: log_in_user(build_conn(), operator.user)
+        offered_admin: log_in_user(build_conn(), offered_admin)
       },
       values: %{
         org: owner.organisation.slug,
         org_id: owner.organisation.id,
-        offering: offering.organisation.slug,
-        offering_id: offering.organisation.id,
-        client: client.organisation.slug,
-        client_id: client.organisation.id,
-        ownerless_client_id: ownerless.id,
-        operator: operator.organisation.slug,
+        offered: offered.organisation.slug,
         suspended_id: suspended.organisation.id,
         arbitrated_id: arbitrated.organisation.id,
         member_user_id: member.user.id,
@@ -451,9 +382,7 @@ defmodule ApiaryProWeb.ContentSecurityPolicyTest do
         secret_id: secret.public_id,
         values_secret_id: values_secret.public_id,
         value_id: "main-app",
-        org_rule_id: org_rule.id,
-        request_id: request.id,
-        answer_id: answer.id
+        org_rule_id: org_rule.id
       }
     }
   end

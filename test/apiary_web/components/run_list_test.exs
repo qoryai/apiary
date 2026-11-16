@@ -22,7 +22,7 @@ defmodule ApiaryWeb.RunListTest do
     Map.merge(
       %{
         dispatch_id: "dp_0123456789abcdef",
-        pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace, operator: nil},
+        pool: %{id: "np_0123456789abcdef", name: "build-pool", place: :workspace},
         queued_at: @queued,
         machine_type: nil,
         requested_at: at(12),
@@ -1101,61 +1101,56 @@ defmodule ApiaryWeb.RunListTest do
     end
   end
 
-  describe "a run on the Qory Pool or on another organisation's pool" do
+  describe "a run on the Qory Pool" do
     test "has every row of the pool, with Started as and the machine log" do
-      for {place, name, operator} <- [
-            {:instance, "Qory Pool", nil},
-            {:operator, "Northwind pool", "Northwind"}
-          ] do
-        pool = %{id: "np_0123456789abcdef", name: name, place: place, operator: operator}
-        image = step(3, "image", "registry.example.com/web:1", 61, 2)
+      pool = %{id: "np_0123456789abcdef", name: "Qory Pool", place: :instance}
+      image = step(3, "image", "registry.example.com/web:1", 61, 2)
 
-        html =
-          list(
-            preparation(%{
-              machine: machine(%{pool: pool, started_as: "standard-4"}),
-              steps: [
-                step(1, "fetch", "Fetch", 56, 4),
-                image,
-                step(2, "join", "Join session 1", 64, 6)
-              ]
-            }),
-            clean_up: {:report, :gone, at(430)},
-            machine_log: {:ok, "Docker started\n", false},
-            run_state: "completed"
-          )
+      html =
+        list(
+          preparation(%{
+            machine: machine(%{pool: pool, started_as: "standard-4"}),
+            steps: [
+              step(1, "fetch", "Fetch", 56, 4),
+              image,
+              step(2, "join", "Join session 1", 64, 6)
+            ]
+          }),
+          clean_up: {:report, :gone, at(430)},
+          machine_log: {:ok, "Docker started\n", false},
+          run_state: "completed"
+        )
 
-        assert rows(html) == [
-                 "prepare-machine-queue",
-                 "prepare-machine-request",
-                 "prepare-machine-start",
-                 "prepare-machine-prepare",
-                 "prepare-machine-session",
-                 "prepare-machine-remove"
-               ]
+      assert rows(html) == [
+               "prepare-machine-queue",
+               "prepare-machine-request",
+               "prepare-machine-start",
+               "prepare-machine-prepare",
+               "prepare-machine-session",
+               "prepare-machine-remove"
+             ]
 
-        assert text(LazyHTML.query(html, "#prepare-machine-h")) == "Run on #{name} · Completed"
+      assert text(LazyHTML.query(html, "#prepare-machine-h")) == "Run on Qory Pool · Completed"
 
-        assert children(html, "prepare-machine-prepare") == [
-                 "prepare-machine-step-1",
-                 "prepare-machine-step-3"
-               ]
+      assert children(html, "prepare-machine-prepare") == [
+               "prepare-machine-step-1",
+               "prepare-machine-step-3"
+             ]
 
-        assert text(LazyHTML.query(html, "#prepare-machine-start #prepare-machine-started-as")) ==
-                 "Started as (instance admins) standard-4"
+      assert text(LazyHTML.query(html, "#prepare-machine-start #prepare-machine-started-as")) ==
+               "Started as (instance admins) standard-4"
 
-        assert html
-               |> LazyHTML.query("#prepare-machine-start #prepare-machine-machine-log-lines")
-               |> LazyHTML.query(".q-log-x")
-               |> Enum.map(&text/1) == ["Docker started"]
+      assert html
+             |> LazyHTML.query("#prepare-machine-start #prepare-machine-machine-log-lines")
+             |> LazyHTML.query(".q-log-x")
+             |> Enum.map(&text/1) == ["Docker started"]
 
-        # From the queue at 0 s to the removal report at 430 s.
-        assert text(LazyHTML.query(html, "#prepare-machine-total")) == "7 m 10 s"
-      end
+      # From the queue at 0 s to the removal report at 430 s.
+      assert text(LazyHTML.query(html, "#prepare-machine-total")) == "7 m 10 s"
     end
 
     test "with no step, has the machine's rows" do
-      pool = %{id: "np_0123456789abcdef", name: "Qory Pool", place: :instance, operator: nil}
+      pool = %{id: "np_0123456789abcdef", name: "Qory Pool", place: :instance}
 
       html =
         list(
@@ -1433,8 +1428,6 @@ defmodule ApiaryWeb.RunListTest do
       for {fix, step} <- [
             {:machine_log, "Read the machine log under Start the machine for the cause."},
             {{:pool_log, "build-pool"}, "Read the cause in the log of build-pool on its host."},
-            {{:operator_log, "Northwind", "partner-pool"},
-             "Ask an admin of Northwind for the cause in the log of partner-pool."},
             {{:support, "rn_0123456789abcdef"}, "Contact support with run rn_0123456789abcdef."}
           ] do
         assert line(:not_sent, fix) == {what <> " " <> step, []}

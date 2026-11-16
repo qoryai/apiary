@@ -7,6 +7,9 @@ defmodule Apiary.TestSetup do
 
   `start!/1` does, in order:
 
+  - **The drop of the test database.** A run with MIX_TEST_PARTITION set drops its
+    database as the VM exits, whether the suite passed or failed
+    (`Apiary.TestDatabase.drop_at_exit/0`). A run without one keeps `apiary_test`.
   - **The features.** The suite with QORY_FEATURES unset or blank, CI's "every feature",
     runs with every feature (`Apiary.Features.all/0`): the opt-in ones too
     (`Apiary.Features.opt_in/0`), which an instance launched so may leave off.
@@ -82,6 +85,7 @@ defmodule Apiary.TestSetup do
   """
   @spec start!(keyword) :: :ok
   def start!(opts \\ []) do
+    :ok = Apiary.TestDatabase.drop_at_exit()
     {exclude, opts} = Keyword.pop(opts, :exclude, [])
 
     if String.trim(Application.get_env(:apiary, :features_setting) || "") == "" do

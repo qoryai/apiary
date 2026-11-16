@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.FeaturePartsLiveTest do
   # A part of a feature hidden from a person, the run's Terminal,
   # `:"observability.terminal"` (`ApiaryPro.Features.hidden/1`): while
-  # `ApiaryPro.Flags.feature_visibility?/0` is on, the Features pages show or hide it
-  # under Runs, and a person it is hidden from finds the run's log nowhere, as the core
+  # `ApiaryPro.Flags.feature_visibility?/0` is on, Instance settings › Organisations ›
+  # Features shows or hides it under Runs, and a person it is hidden from finds the run's log nowhere, as the core
   # gates it, while the organisation's nodes still record it. With the switch off no page
   # offers it and no row hides it.
   use ApiaryWeb.ConnCase, async: true
@@ -30,9 +30,9 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   @terminal :"observability.terminal"
   @description "The run's log: the Terminal tab, the last lines on the Runs list, Raw log and Download log. Runs still record it while it is hidden."
 
-  # An operator shown Runs, the security policy and the run's Terminal; its client, whose
-  # workspace has a node, shown what the operator is, and a run of that node with a line
-  # in its terminal, as the node posted it.
+  # An operator shown Runs, the security policy and the run's Terminal; an organisation
+  # whose workspace Main it operates, which follows the instance, with a node in Main, and
+  # a run of that node with a line in its terminal, as the node posted it.
   defp chain do
     %{instance_scope: admin} = suite_instance_admin()
     operator = operator_fixture()
@@ -46,8 +46,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
                "observability.terminal"
              ])
 
-    client = client_fixture(operator.scope, "Acme")
-    %{access_key: key, secret: secret, node: node} = contract_key_fixture(client.owner.scope)
+    operated = operated_fixture(operator.scope, "Acme")
+    %{access_key: key, secret: secret, node: node} = contract_key_fixture(operated.owner.scope)
 
     Repo.update_all(from(n in Node, where: n.id == ^node.id), set: [gateway_choice: :direct])
 
@@ -71,18 +71,19 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     %{
       admin: admin,
       operator: operator,
-      client: client,
+      operated: operated,
       key: {key, secret},
       run: run
     }
   end
 
   defp run_path(ctx, tail \\ ""),
-    do: ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}/runs/#{ctx.run}" <> tail
+    do: ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}/runs/#{ctx.run}" <> tail
 
-  defp hide_from_client(ctx) do
+  # The instance admin leaves the organisation Runs alone, without the run's Terminal.
+  defp hide_from_organisation(ctx) do
     assert {:ok, _} =
-             Grants.set_client(ctx.operator.scope, ctx.client.organisation.id, ["observability"])
+             Grants.set_organisation(ctx.admin, ctx.operated.organisation.id, ["observability"])
   end
 
   defp events_of(run), do: Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count)
@@ -90,12 +91,12 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   describe "a person the run's Terminal is hidden from" do
     setup do
       ctx = chain()
-      hide_from_client(ctx)
+      hide_from_organisation(ctx)
       ctx
     end
 
     test "finds no Terminal tab, no log in the more menu, and no /terminal", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, html} = live(conn, run_path(ctx))
 
       refute has_element?(lv, "#run-tab-terminal")
@@ -109,7 +110,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     end
 
     test "is answered not found at the log's address, every stream and the download", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
 
       for query <- ~w(? ?stream=terminal ?stream=stdout ?stream=stderr ?download=1) do
         answer = get(conn, run_path(ctx, "/log") <> query)
@@ -120,12 +121,12 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
     end
 
     test "sees no last lines of the log on the Runs list", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
 
       {:ok, lv, _html} =
         live(
           conn,
-          ~p"/#{ctx.client.organisation}/#{ctx.client.workspace}/runs?run=#{ctx.run.number}"
+          ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}/runs?run=#{ctx.run.number}"
         )
 
       render_hook(lv, "viewport", %{"wide" => true})
@@ -136,7 +137,8 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute render(lv) =~ "hello from the node"
     end
 
-    test "while the node still records the log, which the operator's people read", ctx do
+    test "while the node still records the log, which the operator's people there do not read",
+         ctx do
       {key, secret} = ctx.key
       before = events_of(ctx.run)
 
@@ -152,20 +154,17 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       assert events_of(ctx.run) == before + 1
       {:ok, _run} = Projector.project(ctx.run)
 
-      # The operator's people, in the client, see what the operator sees: the log.
+      # The operator's people, in the workspace the operator operates, see what the
+      # organisation's people see: no log.
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
-      assert has_element?(lv, "#run-tab-terminal")
-
-      answer = get(conn, run_path(ctx, "/log") <> "?stream=terminal")
-      assert answer.status == 200
-      assert answer.resp_body =~ "hello from the node"
-      assert answer.resp_body =~ "still recorded"
+      refute has_element?(lv, "#run-tab-terminal")
+      assert get(conn, run_path(ctx, "/log") <> "?stream=terminal").status == 404
     end
 
-    test "with the switch off, the client's row hides nothing", ctx do
+    test "with the switch off, the organisation's row hides nothing", ctx do
       Flags.put_feature_visibility(false)
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx))
 
       assert has_element?(lv, "#run-tab-terminal")
@@ -177,12 +176,13 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
   describe "an open Terminal tab" do
     setup do: chain()
 
-    test "leaves for the Timeline once the operator hides the Terminal from the client", ctx do
-      conn = log_in_user(build_conn(), ctx.client.owner.user)
+    test "leaves for the Timeline once the instance hides the Terminal from the organisation",
+         ctx do
+      conn = log_in_user(build_conn(), ctx.operated.owner.user)
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
 
-      hide_from_client(ctx)
+      hide_from_organisation(ctx)
 
       assert_patch(lv, run_path(ctx))
       refute has_element?(lv, "#terminal")
@@ -190,28 +190,25 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       assert has_element?(lv, "#run-tab-timeline[aria-current]")
     end
 
-    test "leaves for the operator's people once the instance hides it from the operator", ctx do
+    test "leaves for the operator's people there once the instance hides it from the organisation",
+         ctx do
       conn = log_in_user(build_conn(), ctx.operator.user)
       {:ok, lv, _html} = live(conn, run_path(ctx, "/terminal"))
       assert has_element?(lv, "#terminal[data-src]")
 
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin, ctx.operator.organisation.id, [
-                 "observability",
-                 "security"
-               ])
+      hide_from_organisation(ctx)
 
       assert_patch(lv, run_path(ctx))
       refute has_element?(lv, "#run-tab-terminal")
     end
   end
 
-  describe "the Terminal tab on the Features pages" do
+  describe "the Terminal tab on the Features page" do
     setup do
       admin = suite_instance_admin()
       operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      %{admin: admin, operator: operator, client: client}
+      operated = operated_fixture(operator.scope, "Acme")
+      %{admin: admin, operator: operator, operated: operated}
     end
 
     test "is a checkbox under Runs on Instance settings › Organisations, with the switch on",
@@ -265,46 +262,7 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute has_element?(lv, "#organisation-features-observability-terminal:checked")
     end
 
-    test "is a checkbox under Runs on a client's Features page, with the switch on", ctx do
-      Flags.put_feature_visibility(true)
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      path = ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-      {:ok, lv, _html} = live(conn, path)
-      render_async(lv)
-
-      assert has_element?(lv, "#client-features-observability-terminal:checked")
-      assert has_element?(lv, "label[for=client-features-observability-terminal]", "Terminal tab")
-      assert has_element?(lv, "#client-features-observability-terminal-description", @description)
-      assert ["observability", "observability-terminal" | _] = box_ids(lv, "#client-features")
-
-      lv
-      |> form("#client-features-form", %{
-        "features" => %{"observability.terminal" => "false"}
-      })
-      |> render_submit()
-
-      assert_patch(lv, ~p"/#{ctx.operator.organisation}/clients")
-      assert @terminal in ApiaryPro.Features.hidden_parts([ctx.client.organisation.id])
-    end
-
-    test "is not on a client's page where the operator is not shown it", ctx do
-      Flags.put_feature_visibility(true)
-
-      assert {:ok, _} =
-               Grants.set_organisation(ctx.admin.instance_scope, ctx.operator.organisation.id, [
-                 "observability"
-               ])
-
-      conn = log_in_user(build_conn(), ctx.operator.user)
-      path = ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-      {:ok, lv, _html} = live(conn, path)
-      render_async(lv)
-
-      assert has_element?(lv, "#client-features-observability")
-      refute has_element?(lv, "#client-features-observability-terminal")
-    end
-
-    test "is on neither page with the switch off", ctx do
+    test "is not on Instance settings › Organisations with the switch off", ctx do
       Flags.put_feature_visibility(false)
 
       conn = log_in_user(build_conn(), ctx.admin.user)
@@ -317,19 +275,6 @@ defmodule ApiaryProWeb.FeaturePartsLiveTest do
       refute has_element?(lv, "#organisation-features-observability-terminal")
       refute render(lv) =~ "Terminal tab"
       refute html =~ "Terminal tab"
-
-      conn = log_in_user(build_conn(), ctx.operator.user)
-
-      {:ok, lv, _html} =
-        live(
-          conn,
-          ~p"/#{ctx.operator.organisation}/clients/#{ctx.client.organisation.id}/features"
-        )
-
-      render_async(lv)
-      assert has_element?(lv, "#client-features-observability")
-      refute has_element?(lv, "#client-features-observability-terminal")
-      refute render(lv) =~ "Terminal tab"
     end
   end
 

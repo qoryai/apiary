@@ -166,7 +166,7 @@ defmodule Apiary.Stacks.Sources do
 
   require Logger
 
-  alias Apiary.{Access, Edition, Features, Harnesses, Repo, Stacks}
+  alias Apiary.{Access, Features, Harnesses, Repo, Stacks}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.{CallAddress, CallFailure, Calls, CallWire, Collection, Connection, Grant}
   alias Apiary.Artifacts.TemplateTypes
@@ -366,10 +366,12 @@ defmodule Apiary.Stacks.Sources do
 
   @doc false
   # repositories/1 is the organisation's connected repositories, by name (the moduledoc),
-  # each a source of the kind `:linked` at `HEAD`. It makes no call.
+  # each a source of the kind `:linked` at `HEAD`: all of them for a person who may read
+  # the instance's adapters there (`adapter.read`), else those assigned to the scope's
+  # workspace (`connected/1`). It makes no call.
   @spec repositories(Scope.t()) :: [source]
-  def repositories(%Scope{organisation: %Organisation{} = organisation}) do
-    organisation
+  def repositories(%Scope{organisation: %Organisation{}} = scope) do
+    scope
     |> collections()
     |> Enum.uniq_by(fn {collection, _adapter} -> collection.url end)
     |> Enum.map(fn {collection, _adapter} ->
@@ -410,20 +412,21 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The organisation's live collections of a connected connection, whose adapter has a
-  # call address Qory Apiary calls, checked without a lookup
-  # (`Apiary.Adapters.CallAddress.placed?/1`), with an address a document's source may
-  # have, by title.
-  defp collections(%Organisation{} = organisation),
+  # The live collections of `connected/1`, whose adapter has a call address Qory Apiary
+  # calls, checked without a lookup (`Apiary.Adapters.CallAddress.placed?/1`).
+  defp collections(scope),
     do:
-      organisation
+      scope
       |> connected()
       |> Enum.filter(fn {_c, adapter} -> CallAddress.placed?(adapter) end)
 
-  # The organisation's live collections of a connected connection and their adapters,
-  # with an address a document's source may have, by title.
-  defp connected(%Organisation{id: organisation_id}) do
-    Repo.all(
+  # The scope's organisation's live collections of a connected connection and their
+  # adapters, with an address a document's source may have, by title: all of them for a
+  # person who may read the instance's adapters there (`adapter.read`); for anyone else,
+  # such as a person of the operator of the scope's workspace, those assigned to that
+  # workspace, and none without a workspace.
+  defp connected(%Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope) do
+    query =
       from c in Collection,
         join: n in Connection,
         on: n.id == c.connection_id,
@@ -434,7 +437,22 @@ defmodule Apiary.Stacks.Sources do
         where: a.kind == :adapter and is_nil(a.deleted_at),
         order_by: [asc: c.title, asc: c.id],
         select: {c, a}
-    )
+
+    cond do
+      Access.can?(scope, :"adapter.read", organisation) ->
+        read_connected(query)
+
+      match?(%Workspace{organisation_id: ^organisation_id}, scope.workspace) ->
+        read_connected(where(query, [c], c.workspace_id == ^scope.workspace.id))
+
+      true ->
+        []
+    end
+  end
+
+  defp read_connected(query) do
+    query
+    |> Repo.all()
     |> Enum.filter(fn {collection, _adapter} -> address_error(collection.url) == nil end)
   end
 
@@ -452,18 +470,18 @@ defmodule Apiary.Stacks.Sources do
         }
 
   @doc false
-  # unplaced/1 is each adapter of the organisation's connected repositories whose call
-  # address Qory Apiary does not call, checked without a lookup
+  # unplaced/1 is each adapter of the connected repositories `repositories/1` reads whose
+  # call address Qory Apiary does not call, checked without a lookup
   # (`Apiary.Adapters.CallAddress.placed?/1`), by its shown name (`t:unplaced/0`). The
   # repositories of such an adapter are not in `repositories/1`. It makes no call.
   # `:instance_host` in `opts` replaces the host of `PUBLIC_URL`, for a test: with none,
   # no adapter is called, as `placed?/1` has it. It writes one warning for each, with the
   # adapter's public id and the cause, which the page does not show.
   @spec unplaced(Scope.t(), keyword) :: [unplaced]
-  def unplaced(%Scope{organisation: %Organisation{} = organisation}, opts \\ []) do
+  def unplaced(%Scope{organisation: %Organisation{}} = scope, opts \\ []) do
     host = Keyword.get_lazy(opts, :instance_host, &CallAddress.instance_host/0)
 
-    organisation
+    scope
     |> connected()
     |> Enum.map(fn {_collection, adapter} -> adapter end)
     |> Enum.uniq_by(& &1.id)
@@ -676,11 +694,7 @@ defmodule Apiary.Stacks.Sources do
   defp shared_listed(%Organisation{} = organisation) do
     with %{choice: :repository, git: git} = chosen when is_binary(git) <- shared(organisation),
          %Stack{owner_organisation_id: owner} <- Stacks.shared(organisation) do
-      hidden =
-        Resolution.hidden?(owner, %{
-          organisation_id: organisation.id,
-          operated: Edition.operated?(organisation)
-        })
+      hidden = Resolution.hidden?(owner, %{organisation_id: organisation.id})
 
       [
         %{
@@ -2250,12 +2264,7 @@ defmodule Apiary.Stacks.Sources do
     if Harnesses.assigned?(id, %{"git" => git, "ref" => ref, "stack" => stack}), do: ref
   end
 
-  defp hides?(owner, %Organisation{id: id} = organisation) do
-    Resolution.hidden?(owner, %{
-      operated: Edition.operated?(organisation),
-      organisation_id: id
-    })
-  end
+  defp hides?(owner, %Organisation{id: id}), do: Resolution.hidden?(owner, %{organisation_id: id})
 
   @doc false
   # save_qory_start/2 saves the harness of `workspace`, new, made from the Qory template,

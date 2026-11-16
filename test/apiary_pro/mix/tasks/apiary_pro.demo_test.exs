@@ -1,7 +1,7 @@
 defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
   # The demo world (`Mix.Tasks.ApiaryPro.Demo`): organisations the owner owns and joins, an
-  # operator and its clients, runs in every workspace with an owner, and the requests,
-  # offers and suspensions after. Not async: it fills workspaces from several processes at
+  # operator, runs in every workspace with an owner, and the arbitration and suspensions
+  # after. Not async: it fills workspaces from several processes at
   # once, so the sandbox is shared, and it writes through the suite's instance
   # organisation, committed once outside the sandbox (docs/conventions.md, Tests). The
   # instance has every feature while it runs.
@@ -13,15 +13,14 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     ApiaryPro.Flags.put_feature_visibility(false)
   end
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.Run
-  alias ApiaryPro.PolicyRequests.{Answer, Request}
   alias ApiaryPro.Suspensions.AccountSuspension
   alias ApiaryPro.Tenants.Tenant
   alias ApiaryPro.Transfers.Transfer
@@ -39,7 +38,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
   end
 
   defp build(admin, extra \\ []) do
-    Demo.run(["--owner", admin.user.email, "--clients", "6", "--scale", "0.001"] ++ extra)
+    Demo.run(["--owner", admin.user.email, "--scale", "0.001"] ++ extra)
   end
 
   defp organisation(name), do: Repo.get_by!(Organisation, name: name)
@@ -108,35 +107,12 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
            )
   end
 
-  test "the operator's clients, most with an owner and runs, one invited only", %{admin: admin} do
+  test "an operator that operates no workspace, and runs in every workspace with an owner",
+       %{admin: admin} do
     build(admin)
     operator = organisation("Zentrevo Works")
     assert Repo.get!(Tenant, operator.id).kind == :operator
-
-    clients =
-      Repo.all(
-        from o in Organisation,
-          join: t in Tenant,
-          on: t.organisation_id == o.id,
-          where: t.operator_id == ^operator.id
-      )
-
-    assert length(clients) == 6
-
-    {owned, pending} =
-      Enum.split_with(clients, fn client ->
-        Repo.exists?(
-          from m in Membership, where: m.organisation_id == ^client.id and m.level == :owner
-        )
-      end)
-
-    assert length(owned) == 5
-    assert [waiting] = pending
-    assert Repo.exists?(from i in Invitation, where: i.organisation_id == ^waiting.id)
-    refute Enum.any?(workspaces(waiting), &runs?/1)
-
-    # Every workspace with an owner has a history.
-    for client <- owned, workspace <- workspaces(client), do: assert(runs?(workspace))
+    refute ApiaryPro.WorkspaceOperators.operates_workspaces?(operator)
 
     for name <- ["Vellorin Analytics", "Ostrevane Robotics", "Zentrevo Works"],
         workspace <- workspaces(organisation(name)),
@@ -151,10 +127,9 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
     assert length(Enum.uniq(numbers)) == length(numbers)
   end
 
-  test "features narrowed, requests answered, an offer, an arbitration and suspensions",
+  test "features narrowed, an arbitration and suspensions",
        %{admin: admin} do
     build(admin, ["--skip-runs"])
-    operator = organisation("Zentrevo Works")
     marrowick = organisation("Marrowick & Pend")
 
     assert :observability in ApiaryPro.Features.of(marrowick)
@@ -170,24 +145,7 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
            }) ==
              ApiaryPro.Features.hidden(%Apiary.Accounts.Scope{organisation: vellorin})
 
-    requests = Repo.all(from r in Request, where: r.organisation_id == ^operator.id)
-    assert length(requests) == 3
-    assert [_withdrawn] = Enum.filter(requests, & &1.withdrawn_at)
-
-    states =
-      Repo.all(
-        from a in Answer,
-          where: a.request_id in ^Enum.map(requests, & &1.id),
-          distinct: true,
-          select: a.state
-      )
-
-    assert Enum.sort(states) == Enum.sort([:accepted, :declined, :pending, :withdrawn])
-
-    assert %Transfer{kind: :to_operator, operator_id: operator_id} =
-             Repo.get_by!(Transfer, organisation_id: organisation("Quistral Studio").id)
-
-    assert operator_id == operator.id
+    refute Repo.get_by(Transfer, organisation_id: organisation("Quistral Studio").id)
 
     ines = Apiary.Accounts.get_user_by_email("ines.moreau@example.com")
     kofi = Apiary.Accounts.get_user_by_email("kofi.mensah@example.com")
@@ -197,53 +155,6 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
              Repo.get_by!(Transfer, organisation_id: marrowick.id)
 
     assert recipient == kofi.id
-
-    assert [_suspended] =
-             Repo.all(
-               from t in Tenant,
-                 where: t.operator_id == ^operator.id and not is_nil(t.suspended_at)
-             )
-  end
-
-  test "the operator owning its clients: admins first, no runs, no policy requests",
-       %{admin: admin} do
-    ApiaryPro.Flags.put_operator_infrastructure(true)
-    build(admin)
-    operator = organisation("Zentrevo Works")
-
-    clients =
-      Repo.all(
-        from o in Organisation,
-          join: t in Tenant,
-          on: t.organisation_id == o.id,
-          where: t.operator_id == ^operator.id
-      )
-
-    levels =
-      for client <- clients,
-          do:
-            Repo.all(
-              from m in Membership, where: m.organisation_id == ^client.id, select: m.level
-            )
-
-    assert Enum.frequencies(levels) == %{[:admin] => 5, [] => 1}
-
-    # Five Main workspaces with four more among them, and none for the one waiting.
-    client_workspaces = Enum.flat_map(clients, &workspaces/1)
-    assert length(client_workspaces) == 9
-    refute Enum.any?(client_workspaces, &runs?/1)
-
-    for workspace <- workspaces(operator), do: assert(runs?(workspace))
-
-    refute Repo.exists?(from r in Request, where: r.organisation_id == ^operator.id)
-
-    assert [_narrowed] = Enum.reject(clients, &(:security in ApiaryPro.Features.of(&1)))
-
-    assert [_suspended] =
-             Repo.all(
-               from t in Tenant,
-                 where: t.operator_id == ^operator.id and not is_nil(t.suspended_at)
-             )
   end
 
   test "an instance set up with no workspace yet gets Main from the demo", %{admin: admin} do
@@ -275,6 +186,6 @@ defmodule ApiaryPro.Mix.Tasks.ApiaryPro.DemoTest do
       Apiary.Features.all() -- [:managed_organisations]
     )
 
-    assert_raise Mix.Error, ~r/QORY_FEATURES=all/, fn -> Demo.run(["--clients", "1"]) end
+    assert_raise Mix.Error, ~r/QORY_FEATURES=all/, fn -> Demo.run(["--skip-runs"]) end
   end
 end

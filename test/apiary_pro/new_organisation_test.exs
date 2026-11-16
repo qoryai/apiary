@@ -45,8 +45,7 @@ defmodule ApiaryPro.NewOrganisationTest do
 
       assert %Organisation{name: "Quorvane Labs"} = organisation
 
-      assert %Tenant{kind: :organisation, instance_organisation: false, operator_id: nil} =
-               tenant_of(organisation)
+      assert %Tenant{kind: :organisation, instance_organisation: false} = tenant_of(organisation)
 
       assert organisation.slug =~ ~r/\Aquorvane-labs(-[a-z0-9]+)?\z/
       refute Organisations.has_workspace?(organisation)

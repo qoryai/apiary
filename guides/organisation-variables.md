@@ -73,13 +73,6 @@ Owners and admins of the organisation change its variables: they create one, cha
 value, lock it, unlock it and delete it. Owners and admins read them, and so does support,
 who changes nothing. A member does not read the organisation's variables, only the
 workspace's they reach. A suspended organisation is read-only.
-<!-- /feature -->
-<!-- feature: organisation_variables, managed_organisations -->
-
-In a client, the people of its operator read its secrets and variables as support does,
-and change nothing.
-<!-- /feature -->
-<!-- feature: organisation_variables -->
 
 Each change is in the organisation's audit log (Audit log, in the organisation sidebar's
 first group), by the variable's name and never its value: who set, changed, locked,

@@ -10,10 +10,9 @@ defmodule ApiaryWeb.NodeComponents do
   that machines can't reach a loopback address (`unreachable_server/1`). And what a node
   that chose a gateway is told wherever it is told how to connect: the gateway its runs go
   through, at its URL (`through_gateway/1`). And what the pages say of a gateway wherever
-  it lives: where its page is (`gateway_path/2`), its name, with its organisation's where
-  that is not the node's (`gateway_name/2`), whether the console offers gateways at the
-  organisation (`organisation_gateways?/0`), and who uses an organisation's gateway now
-  (`using_words/2`).
+  it lives: where its page is (`gateway_path/2`), its name (`gateway_name/2`), whether
+  the console offers gateways at the organisation (`organisation_gateways?/0`), and who
+  uses an organisation's gateway now (`using_words/2`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -403,11 +402,6 @@ defmodule ApiaryWeb.NodeComponents do
   attr :gateway, :any, required: true, doc: "the gateway the node's runs go through, or nil"
   attr :connected, :boolean, required: true, doc: "whether the gateway holds an active key"
 
-  attr :path, :string,
-    default: nil,
-    doc:
-      "the page of a gateway of another organisation, where the reader opens it (`gateway_path/2`)"
-
   def through_gateway(assigns) do
     assigns =
       assign(assigns,
@@ -439,22 +433,6 @@ defmodule ApiaryWeb.NodeComponents do
             )
           }
         />
-        <.rich
-          :if={@gateway.organisation_id != @node.organisation_id and !instance_node?(@gateway)}
-          text={
-            rich_gettext(
-              "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}.",
-              name: @node.name,
-              gateway:
-                if(@path,
-                  do: {:link, @path, shown_name(@gateway)},
-                  else: shown_name(@gateway)
-                ),
-              organisation: organisation_name(@gateway),
-              url: {:m, @gateway.url}
-            )
-          }
-        />
         <span :if={!@connected} id={"#{@id}-unconnected"}>
           {gettext("%{gateway} has no active access key, so it isn't connected.",
             gateway: in_text(@gateway, :start)
@@ -474,8 +452,8 @@ defmodule ApiaryWeb.NodeComponents do
   resolves for the workspace, or the node is on it already, which keeping asks nothing
   of); Direct; and each gateway the node may name, by name (`Apiary.Gateways.gateway_choices/1`,
   by level). Where the gateways are of more than one level, they are grouped by it: "This
-  workspace", then the node's organisation, then each organisation that serves it in the
-  order their defaults resolve (`Apiary.Gateways.levels/1`), each named. It shows the errors
+  workspace", then the node's organisation, then the instance, in the order their
+  defaults resolve (`Apiary.Gateways.levels/1`). It shows the errors
   `Apiary.Nodes` gives `gateway_choice` and `gateway_id` once the form was sent.
   `choice_params/1` turns what it sends into those two fields.
   """
@@ -763,10 +741,8 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   gateway_path/2 is the page of `gateway` the reader of `scope` opens: a workspace's
-  gateway under the workspace's Nodes, an organisation's under its Gateways. A gateway of
-  another organisation, whose organisation must be loaded, is under that organisation's
-  Gateways where the reader may read it there (`node.read` at that organisation, their
-  membership of it read from the database); nil where they may not.
+  gateway under the workspace's Nodes, an organisation's under its Gateways; nil for any
+  other gateway, the instance's among them.
   """
   @spec gateway_path(Scope.t(), Node.t()) :: String.t() | nil
   def gateway_path(%Scope{organisation: %{id: id} = organisation}, %Node{
@@ -783,43 +759,19 @@ defmodule ApiaryWeb.NodeComponents do
       when not is_nil(workspace),
       do: ~p"/#{organisation}/#{workspace}/machines/#{public_id}"
 
-  def gateway_path(
-        %Scope{user: %Apiary.Accounts.User{}} = scope,
-        %Node{workspace_id: nil, organisation: %Organisation{} = organisation} = gateway
-      ) do
-    if organisation_gateways?() and reads_gateway_at?(scope, organisation, gateway),
-      do: ~p"/#{organisation}/gateways/#{gateway.public_id}"
-  end
-
   def gateway_path(_scope, _gateway), do: nil
 
-  # Whether the person of `scope` reads `gateway` at its organisation, another than the
-  # scope's, as their membership of that organisation stands.
-  defp reads_gateway_at?(scope, organisation, gateway) do
-    scope
-    |> Scope.in_organisation(organisation)
-    |> Apiary.Access.reload()
-    |> Apiary.Access.can?(:"node.read", gateway)
-  end
-
   @doc """
-  gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
-  names it: its name alone, "edge-1 of Acme" for a gateway of another organisation,
-  whose organisation must be loaded, or "Qory Gateway" for the instance's gateway.
+  gateway_name/2 is `gateway`'s name as the page of a node of the organisation
+  `organisation_id` shows it: its name, or "Qory Gateway" for the instance's gateway.
+  A node's gateway is of the node's organisation or the instance's
+  (`Apiary.Gateways.chosen/1`).
   """
   @spec gateway_name(Ecto.UUID.t(), Node.t()) :: String.t()
   def gateway_name(organisation_id, %Node{organisation_id: organisation_id, name: name}),
     do: name
 
-  def gateway_name(_organisation_id, %Node{organisation_id: nil, workspace_id: nil} = gateway),
-    do: shown_name(gateway)
-
-  def gateway_name(_organisation_id, %Node{} = gateway),
-    do:
-      gettext("%{gateway} of %{organisation}",
-        gateway: shown_name(gateway),
-        organisation: organisation_name(gateway)
-      )
+  def gateway_name(_organisation_id, %Node{} = gateway), do: shown_name(gateway)
 
   @doc """
   managed_by/3 is what a nodes' page says, to a person of `scope` who may not take
