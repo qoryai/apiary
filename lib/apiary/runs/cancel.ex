@@ -150,9 +150,9 @@ defmodule Apiary.Runs.Cancel do
   (`workspace`) whose access level is `write`, as its claim recorded it. The level is the
   `access` of the run's work credential entry (`Apiary.Runs.RunCredential`), which a run
   has only where its adapter declares apply items; else the top-level `access` of the
-  documents the claim sent the run (`runs.run_documents`); else, for a run with neither, the level of its harness walk
-  (`Apiary.Harnesses.RunHarness`) lowered by its stage entry
-  (`Apiary.Stages.run_access/2`), as the claim computes it.
+  documents the claim sent the run (`runs.run_documents`); else, for a run with neither,
+  the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
+  entry (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
   def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})
