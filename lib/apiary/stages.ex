@@ -1157,7 +1157,7 @@ defmodule Apiary.Stages do
 
   # The added version counts as existing: as an input of the stage, or as an output at
   # its gate. An output at a gate `none` is also an input of each later stage that the
-  # approval moves the work item to, though it is not read yet (`approved/3`). With the
+  # approval moves the work item to, though it is not read yet (`approved/4`). With the
   # sizes of its files, it counts for a condition when one is more than 0 bytes
   # (`counts?/1`); with nil, the input types that count are those read now.
   defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type),
@@ -1184,6 +1184,7 @@ defmodule Apiary.Stages do
           stage,
           :version_added,
           fn facts -> %{facts | failed_checks: facts.failed_checks -- [type]} end,
+          & &1,
           added
         )
 
@@ -1221,8 +1222,9 @@ defmodule Apiary.Stages do
   # changes them: its first `:queue`, or what its `:advance` enters, in the order
   # `apply_outcome/6` applies them. Each stage that an `:advance` enters reads its facts
   # as `later` changes them, and as an `:approve` before it does: the approval's outputs
-  # count as approved.
-  defp stepped(work_item, version, stage, event, adjust, later \\ & &1) do
+  # count as approved, then `own` changes them, the change of the version added in this
+  # stage, which that approval covers (`approved/4`).
+  defp stepped(work_item, version, stage, event, adjust, later \\ & &1, own \\ & &1) do
     facts = adjust.(facts(work_item, version, stage))
     %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
 
@@ -1231,7 +1233,7 @@ defmodule Apiary.Stages do
         {:halt, {{:run, workflow}, later}}
 
       :approve, {none, later} ->
-        {:cont, {none, approved(work_item, stage, later)}}
+        {:cont, {none, approved(work_item, stage, later, own)}}
 
       :advance, {_none, later} ->
         {:halt, {entered(work_item, version, next_stage(version, stage), later), later}}
@@ -1242,12 +1244,13 @@ defmodule Apiary.Stages do
     |> elem(0)
   end
 
-  # `later` with the types of the stage's newest outputs taken out of the missing inputs:
+  # `later`, then the types of the stage's newest outputs taken out of the missing inputs:
   # an approval covers them (`approve_locked/6`, `approve_none!/4`), and each later stage
   # reads them as its inputs of those types. Of those types, each whose covered version has
   # a file of more than 0 bytes counts for a later stage's conditions, and the others do
-  # not (`counted/4`).
-  defp approved(work_item, stage, later) do
+  # not (`counted/4`). Then `own`. `later` holds the approvals of earlier stages: applied
+  # first, so the nearest approval wins, as a stage reads its inputs (`read_version/5`).
+  defp approved(work_item, stage, later, own \\ & &1) do
     artifacts = Artifacts.list(work_item)
     ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
     covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
@@ -1256,7 +1259,9 @@ defmodule Apiary.Stages do
       for a <- artifacts, v <- a.versions, v.public_id in ids, counts?(v), uniq: true, do: a.type
 
     fn facts ->
-      later.(%{
+      facts = later.(facts)
+
+      own.(%{
         facts
         | missing_inputs: facts.missing_inputs -- covered,
           counted: Enum.uniq((facts.counted -- covered) ++ counting)

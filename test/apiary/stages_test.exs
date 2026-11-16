@@ -2634,6 +2634,62 @@ defmodule Apiary.StagesTest do
       assert [%{workflow: "capture-demos"}] = Stages.skips(work_item)
     end
 
+    # Explore; Shape, worked by people, with the gate `shape_gate`; Review (`@build`),
+    # worked by people, with a gate none; both require demo scenarios; then Verify.
+    defp two_gates!(scope, shape_gate) do
+      verify_process!(scope)
+      outputs = %{"outputs" => [%{"type" => "demo-scenarios", "required" => true}]}
+      [explore, _shape, verify] = Processes.current(scope.workspace).document["stages"]
+
+      save!(scope, [
+        explore,
+        stage(@shape, "Shape", [], Map.put(outputs, "gate", shape_gate)),
+        stage(@build, "Review", [], Map.put(outputs, "gate", %{"kind" => "none"})),
+        verify
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      # Review's version from an earlier pass: 0 bytes.
+      {:ok, _version} =
+        Artifacts.push({:person, scope}, work_item, "demo-scenarios", scenarios(""),
+          stage_id: @build
+        )
+
+      work_item
+    end
+
+    test "after two approvals, Verify reads the nearer one: Review's empty version does not count",
+         %{scope: scope} do
+      work_item = two_gates!(scope, %{"kind" => "person", "approvers" => "members"})
+
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "demo-scenarios", scenarios("# Scenario 1"))
+
+      assert Stages.starts(work_item, :approve) == {:run, "verify-a-ticket"}
+
+      {:ok, _work_item} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+
+      assert %WorkItem{stage_id: @verify} = reload(work_item)
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+    end
+
+    test "a version added before a later gate none: the later approval wins", %{scope: scope} do
+      work_item = two_gates!(scope, %{"kind" => "none"})
+
+      assert Stages.starts(work_item, {:version_added, "demo-scenarios", [12]}) ==
+               {:run, "verify-a-ticket"}
+
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "demo-scenarios", scenarios("# Scenario 1"))
+
+      assert %WorkItem{stage_id: @verify} = reload(work_item)
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+    end
+
     test "skips/1 lists only the work item's skips, each stored under its work item's organisation",
          %{scope: scope} do
       work_item = at_verify!(scope, fn _work_item -> :ok end)
