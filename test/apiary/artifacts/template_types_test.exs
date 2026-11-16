@@ -445,13 +445,16 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       assert TemplateTypes.message({:submit, "reply-draft", {:base_view, "document"}}) ==
                "set submit.type to a type whose base_view is structured, not document"
 
-      first_line =
-        {:submit, String.duplicate("a", 64), {:base_view, "spreadsheet"}}
-        |> TemplateTypes.message()
-        |> String.split("\n")
-        |> hd()
+      # The text prints the base view, not the type name, so each view bounds its length.
+      for view <- Type.base_views() -- [:structured] do
+        first_line =
+          {:submit, String.duplicate("a", 64), {:base_view, Atom.to_string(view)}}
+          |> TemplateTypes.message()
+          |> String.split("\n")
+          |> hd()
 
-      assert String.length(first_line) <= 100
+        assert String.length(first_line) <= 100
+      end
     end
 
     test "ends an invalid definition's text with the Artifact types form's line" do
