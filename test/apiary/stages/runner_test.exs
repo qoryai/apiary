@@ -594,10 +594,10 @@ defmodule Apiary.Stages.RunnerTest do
     test "with no demo scenarios, capture-demos starts no run and verify-a-ticket starts" do
       outcome = Runner.step(verify(), nil, :enter, %{counted: []})
 
-      assert %{state: :running, position: pos(1, nil, 1)} = outcome
-
-      assert [skip("capture-demos", 0, nil, 1), {:queue, %{workflow: "verify-a-ticket"}}] =
-               outcome.actions
+      capture = skip("capture-demos", 0, nil, 1)
+      assert %{state: :running} = outcome
+      assert outcome.position == pos(1, nil, 1)
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] = outcome.actions
 
       # With no facts on the input, the condition is not met either.
       assert [{:skip, _spec}, {:queue, _run}] = Runner.step(verify(), nil, :enter).actions
@@ -618,20 +618,24 @@ defmodule Apiary.Stages.RunnerTest do
     test "a skip at the sequence's end goes to the gate; a gate none passes on" do
       seq = stage([wf("verify-a-ticket"), wf("capture-demos", @demos)])
 
-      assert %{state: :at_gate, actions: [skip("capture-demos", 1, nil, 1)]} =
+      capture = skip("capture-demos", 1, nil, 1)
+
+      assert %{state: :at_gate, actions: [^capture]} =
                Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{})
 
       none = Map.put(seq, "gate", %{"kind" => "none"})
 
-      assert %{state: :done, actions: [skip("capture-demos", 1, nil, 1), :advance]} =
+      assert %{state: :done, actions: [^capture, :advance]} =
                Runner.step(none, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{})
     end
 
     test "Request changes and Run another round pass over the entry again" do
-      assert [skip("capture-demos", 0, nil, 1), {:queue, %{workflow: "verify-a-ticket"}}] =
+      capture = skip("capture-demos", 0, nil, 1)
+
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
                Runner.step(verify(), pos(2, nil, 1), :request_changes, %{}).actions
 
-      assert [skip("capture-demos", 0, nil, 1), {:queue, %{workflow: "verify-a-ticket"}}] =
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
                Runner.step(verify(), pos(2, nil, 1), {:another_round, :check_failed}, %{}).actions
     end
 
@@ -643,18 +647,19 @@ defmodule Apiary.Stages.RunnerTest do
 
       assert outcome.position == pos(0, 0, 2)
 
-      assert [skip("capture-demos", 0, 1, 1), {:queue, %{workflow: "implement"}}] =
-               outcome.actions
+      capture = skip("capture-demos", 0, 1, 1)
+      assert [^capture, {:queue, %{workflow: "implement"}}] = outcome.actions
     end
 
     test "a loop whose every workflow is passed over is passed over whole" do
       seq = stage([loop([wf("capture-demos", @demos), wf("fix", @demos)]), wf("verify-a-ticket")])
       outcome = Runner.step(seq, nil, :enter, %{})
+      capture = skip("capture-demos", 0, 0, 1)
 
       assert outcome.position == pos(1, nil, 1)
 
       assert [
-               skip("capture-demos", 0, 0, 1),
+               ^capture,
                {:skip, %{workflow: "fix", loop_entry: 1}},
                {:queue, %{workflow: "verify-a-ticket"}}
              ] = outcome.actions
