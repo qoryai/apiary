@@ -222,7 +222,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert held(scope) == before
     end
 
-    test "a template whose submit names a listed type with no base view makes nothing" do
+    test "a template whose submit.type is a listed type with no base view makes nothing" do
       scope = scope_fixture()
       before = held(scope)
       entry = "  - name: decision-record\n"

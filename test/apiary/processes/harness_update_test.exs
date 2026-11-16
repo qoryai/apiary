@@ -290,7 +290,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                nil
              ) ==
                "Correct the process.yaml of the harness, then press Update from harness again: " <>
-                 "set submit.type to a structured type of artifact_types: spec has base_view document."
+                 "set submit.type to a structured type, not a document type."
     end
 
     test "a harness repository refuses it as a template that is not readable", ctx do

@@ -434,16 +434,24 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                "the custom type reply-draft is not valid: Choose a base view."
 
       assert TemplateTypes.message({:submit, "reply-draft", :missing}) ==
-               "add structured type reply-draft for submit.type"
+               "add reply-draft to artifact_types as structured"
 
-      assert String.length(TemplateTypes.message({:submit, String.duplicate("a", 64), :missing})) ==
+      assert String.length(TemplateTypes.message({:submit, String.duplicate("a", 64), :missing})) <=
                100
 
       assert TemplateTypes.message({:submit, "mockup", :standard}) ==
                "set submit.type to a structured type of artifact_types: mockup is a standard type"
 
       assert TemplateTypes.message({:submit, "reply-draft", {:base_view, "document"}}) ==
-               "set submit.type to a structured type of artifact_types: reply-draft has base_view document"
+               "set submit.type to a structured type, not a document type"
+
+      first_line =
+        {:submit, String.duplicate("a", 64), {:base_view, "spreadsheet"}}
+        |> TemplateTypes.message()
+        |> String.split("\n")
+        |> hd()
+
+      assert String.length(first_line) <= 100
     end
 
     test "ends an invalid definition's text with the Artifact types form's line" do

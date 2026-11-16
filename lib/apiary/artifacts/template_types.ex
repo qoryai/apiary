@@ -30,7 +30,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      name no entry has, `:standard` for an entry with a standard name alone, and
   #      `{:base_view, view}` for a custom type of another base view. For an entry with
   #      no `base_view` whose name is no standard name, the refusal is
-  #      `{:not_standard, type}`, so that `check_submit/1` refuses it too; `check/1` makes
+  #      `{:not_standard, type}`, so that `check_submit/1` returns it too; `check/1` makes
   #      that refusal once.
   #      `check_submit/1` makes this refusal alone, for a caller that runs no other check
   #      of the types.
@@ -297,7 +297,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
 
   # At most 100 characters for a type name of 64 bytes, the longest a type may have.
   def message({:submit, type, :missing}),
-    do: gettext("add structured type %{type} for submit.type", type: type)
+    do: gettext("add %{type} to artifact_types as structured", type: type)
 
   def message({:submit, type, :standard}),
     do:
@@ -306,13 +306,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
         type: type
       )
 
-  def message({:submit, type, {:base_view, view}}),
-    do:
-      gettext(
-        "set submit.type to a structured type of artifact_types: %{type} has base_view %{view}",
-        type: type,
-        view: view
-      )
+  def message({:submit, _type, {:base_view, view}}),
+    do: gettext("set submit.type to a structured type, not a %{view} type", view: view)
 
   def message({:invalid, type, error}),
     do:

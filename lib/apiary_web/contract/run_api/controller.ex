@@ -639,7 +639,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp limit(limit, _type, _key) when is_integer(limit), do: limit
   defp limit(_limit, type, key), do: field(type, key)
 
-  # The step that adds a type a push named.
+  # The step that adds the type of a push.
   defp unknown_type_message(type) do
     if Boundary.standard?(type),
       do:
