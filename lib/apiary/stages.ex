@@ -743,7 +743,7 @@ defmodule Apiary.Stages do
         :ok = close_open(work_item, :move_back, nil, nil)
 
         {work_item, _run} =
-          enter_locked(%{work_item | process_version_id: version.id}, version, stage)
+          enter_locked(%{work_item | process_version_id: version.id}, version, stage, true)
 
         {:ok, work_item}
       end
@@ -1043,7 +1043,7 @@ defmodule Apiary.Stages do
   defp resolve(scope, work_item, version, stage, escalation, {:move_back, stage_id}, note) do
     with {:ok, target} <- earlier(version, stage, stage_id) do
       :ok = resolve!(escalation, :move_back, scope, note)
-      {work_item, _run} = enter_locked(work_item, version, target)
+      {work_item, _run} = enter_locked(work_item, version, target, true)
       {:ok, work_item}
     end
   end
@@ -1079,7 +1079,7 @@ defmodule Apiary.Stages do
                "note" => note
              }) do
         :ok = close_open(work_item, :move_back, scope, note)
-        {work_item, _run} = enter_locked(work_item, version, target)
+        {work_item, _run} = enter_locked(work_item, version, target, true)
         {:ok, work_item}
       end
     end)
@@ -1455,14 +1455,40 @@ defmodule Apiary.Stages do
 
   def earlier_skips(%WorkItem{}), do: []
 
+  # stage_skips/1 is the stages the runner passed over whole in the work item's current take
+  # in, because a condition on the stage held them back, oldest first: each with its
+  # `stage_id`, the condition as `input` (a type) or `track` (an id), `negated` (true for an
+  # `unless` that was met), and when it was passed over.
+  @doc false
+  @spec stage_skips(WorkItem.t()) :: [map]
+  def stage_skips(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in) do
+    Repo.all(
+      from s in Skip,
+        where: s.work_item_id == ^id and s.take_in == ^take_in and is_nil(s.workflow),
+        order_by: [s.inserted_at, s.id],
+        select: %{
+          stage_id: s.stage_id,
+          input: s.input,
+          track: s.track,
+          negated: s.negated,
+          inserted_at: s.inserted_at
+        }
+    )
+  end
+
+  def stage_skips(%WorkItem{}), do: []
+
   defp read_skips(query) do
     Repo.all(
       from s in query,
+        where: not is_nil(s.workflow),
         order_by: [s.take_in, s.after_attempt, s.inserted_at],
         select: %{
           stage_id: s.stage_id,
           workflow: s.workflow,
           input: s.input,
+          track: s.track,
+          negated: s.negated,
           round: s.round,
           take_in: s.take_in,
           after_attempt: s.after_attempt
@@ -1650,7 +1676,10 @@ defmodule Apiary.Stages do
 
   ## Applying the runner's rules
 
-  defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
+  # `forced` is true where a person moved the work item into `stage`: the stage's own
+  # condition then does not pass it over (`Runner`, `facts.forced`).
+  defp enter_locked(work_item, version, stage, forced? \\ false),
+    do: apply_event(work_item, version, stage, :enter, nil, %{forced: forced?})
 
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
@@ -1671,6 +1700,21 @@ defmodule Apiary.Stages do
 
       {:skip, spec}, {work_item, run} ->
         skip!(work_item, version, stage, spec)
+        {work_item, run}
+
+      {:skip_stage, spec}, {work_item, run} ->
+        skip!(
+          work_item,
+          version,
+          stage,
+          Map.merge(spec, %{
+            workflow: nil,
+            entry: nil,
+            loop_entry: nil,
+            round: 1
+          })
+        )
+
         {work_item, run}
 
       {:escalate, cause, points}, {work_item, run} ->
@@ -1890,17 +1934,20 @@ defmodule Apiary.Stages do
 
     # Read once per event: the outputs' checks and the runner both use it.
     counted = counted(work_item, version, stage, artifacts)
+    track = track(work_item)
 
     %{
       missing_inputs:
         for(
           %{required: true, version: nil, type: type} <-
-            inputs(work_item, version, stage, artifacts),
+            inputs(work_item, version, stage, artifacts, %{counted: counted, track: track}),
           do: type
         ),
-      undeclared: undeclared(workspace, Map.take(declarations, Runner.workflows(stage, counted))),
+      undeclared:
+        undeclared(workspace, Map.take(declarations, Runner.workflows(stage, counted, track))),
       declarations: declarations,
       counted: counted,
+      track: track,
       failed_checks: missing(outputs(work_item, version, stage, artifacts, counted)),
       machine: version.document["machine"],
       test: work_item.test
@@ -1996,6 +2043,8 @@ defmodule Apiary.Stages do
       round: spec.round,
       workflow: spec.workflow,
       input: spec.input,
+      track: spec.track,
+      negated: spec.negated,
       after_attempt: newest || 0,
       inserted_at: DateTime.utc_now()
     }
@@ -2742,14 +2791,21 @@ defmodule Apiary.Stages do
   defp reported?(%{"check" => %{"reported" => _outcome}}), do: true
   defp reported?(_output), do: false
 
-  defp inputs(work_item, version, stage, artifacts) do
+  # `required` is false for an input whose condition holds it back (`Runner.unmet/2`): the
+  # stage does not wait for it. `facts` has the input types that count and the track, read
+  # here for nil.
+  defp inputs(work_item, version, stage, artifacts, facts \\ nil) do
+    facts =
+      facts ||
+        %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
+
     for input <- Map.get(stage, "inputs", []) do
       type = input["type"]
       chosen = read_version(work_item, version, stage, artifacts, type)
 
       %{
         type: type,
-        required: input["required"] == true,
+        required: Runner.input_required?(input, facts),
         version: chosen && version_map(chosen, approvals_by_version(work_item))
       }
     end
@@ -2910,7 +2966,7 @@ defmodule Apiary.Stages do
 
     declarations =
       Map.new(
-        Runner.workflows(stage, counted),
+        Runner.workflows(stage, counted, track(work_item)),
         &{&1, Processes.workflow_declaration(workspace, &1)}
       )
 

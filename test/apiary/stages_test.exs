@@ -3016,6 +3016,129 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the runner on tracks (A-23)" do
+    @fast_track %{"track" => "fast-track"}
+    @standard_track %{"track" => "standard"}
+
+    # Explore, whose gate offers Standard and Fast track; Shape, worked by people, which only
+    # Standard goes through; Build, whose input `spec` and whose entry `review` Fast track
+    # does without.
+    defp runner_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          stage(@shape, "Shape", [], %{
+            "when" => @standard_track,
+            "outputs" => [%{"type" => "spec", "required" => false}]
+          }),
+          stage(
+            @build,
+            "Build",
+            [%{"workflow" => "implement"}, %{"workflow" => "review", "unless" => @fast_track}],
+            %{"inputs" => [%{"type" => "spec", "required" => true, "unless" => @fast_track}]}
+          )
+        ]
+      }
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      version
+    end
+
+    defp confirmed_on!(scope, track) do
+      runner_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    test "Fast track passes Shape over and Build runs with no spec", %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+
+      assert Stages.track(work_item) == "fast-track"
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "implement", stage_id: @build} = newest_run(work_item)
+
+      # Shape has no gate decision: nobody approved it.
+      assert Enum.map(decisions(work_item), & &1.stage_id) == [@explore]
+
+      assert [%{stage_id: @shape, track: "standard", negated: false, input: nil}] =
+               Stages.stage_skips(work_item)
+
+      # Build's input is not required on Fast track, so it shows as not required.
+      assert [%{type: "spec", required: false, version: nil}] = Stages.inputs(work_item)
+    end
+
+    test "Standard goes through Shape, and Build waits for its spec", %{scope: scope} do
+      work_item = confirmed_on!(scope, "standard")
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      assert Stages.stage_skips(work_item) == []
+
+      {:ok, built} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build, stage_state: :waiting_inputs} = built
+      assert [%{type: "spec", required: true, version: nil}] = Stages.inputs(built)
+    end
+
+    test "an entry with an unless on the track is passed over on Fast track, with its reason",
+         %{scope: scope} do
+      fast = confirmed_on!(scope, "fast-track")
+      assert %DispatchRun{workflow: "implement"} = newest_run(fast)
+
+      fast = end_run!(fast, verdict("passed"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = fast
+
+      assert [%{workflow: "review", track: "fast-track", negated: true, input: nil}] =
+               Stages.skips(fast)
+    end
+
+    test "a person's move runs a stage whatever its condition", %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert %WorkItem{stage_id: @build} = work_item
+
+      assert {:ok, %WorkItem{stage_id: @shape, stage_state: :at_gate}} =
+               Stages.move(scope, work_item, @shape, "Shape it anyway", expect_stage: @build)
+
+      # The stage the move enters records no skip: it was not passed over.
+      assert [%{stage_id: @shape}] = Stages.stage_skips(work_item)
+    end
+
+    test "a later approval at Explore's gate with another track changes the stages after it",
+         %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert %WorkItem{stage_id: @build} = work_item
+
+      {:ok, back} = Stages.move(scope, work_item, @explore, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: @explore} = back
+
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "standard")
+
+      assert Stages.track(again) == "standard"
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = again
+    end
+
+    test "a process with no tracks runs as before", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+
+      assert %WorkItem{stage_id: @shape} = moved
+      assert Stages.stage_skips(moved) == []
+      assert Stages.track(moved) == nil
+    end
+  end
+
   describe "a gate none (vault 0252)" do
     # A stage with a loop of two workflows and a gate none, as Build, then a stage that
     # reads its outputs, as Verify. `explainer` stands for Build's submission.

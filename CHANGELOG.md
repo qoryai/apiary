@@ -21,8 +21,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   track, else none. An approval with a track that the gate does not offer is refused. A
   process with no tracks records none. `Stages.track/1` is the track of a work item: the
   track of its newest approval that has one. `stage_skips` can record the condition that
-  passed an entry over as `input` or `track`, with `negated` for an `unless`. The runner
-  does not use tracks yet.
+  passed an entry over as `input` or `track`, with `negated` for an `unless`.
 - A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
   example Standard and Fast track. A gate lists the track ids it offers in `tracks`, and
   a gate of kind `none` offers none. A stage, a loop, a workflow entry and an input take
@@ -30,7 +29,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   save is refused for a track id twice, a gate that offers an undeclared track, a `{track}`
   condition that no earlier gate offers, an item with both `when` and `unless`, and any other
   key on an input or a loop. A process
-  without `tracks` is saved as before. The runner does not use the conditions yet.
+  without `tracks` is saved as before. The stage runner follows the conditions: a stage whose
+  condition holds it back is passed over when the work item enters it, before it waits for
+  anything, with no run and no gate, and a record of the condition. A loop or an entry held
+  back starts no run. A required input held back is not waited for. A person's move into
+  a stage runs it whatever its condition. A later approval with another track changes the
+  stages that come after it.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.
