@@ -1782,58 +1782,73 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
-    test "a row's Access fold offers the three levels, and a save keeps the entry's", %{
+    # A stage Build whose sequence is `entries`, saved as the current version.
+    defp build_with!(scope, entries) do
+      document = Processes.default_document("software")
+      at = Enum.find_index(document["stages"], &(&1["name"] == "Build"))
+      document = put_in(document, ["stages", Access.at(at), "sequence"], entries)
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      :ok
+    end
+
+    defp access_line(view, entry),
+      do:
+        view
+        |> element("#stage-entry-#{entry}-access")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.trim()
+
+    test "a row shows the harness's access level as one read-only line", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      render_async(view)
+
+      # The Explore stage's first workflow, which the Qory harness's stack declares read.
+      assert has_element?(
+               view,
+               "p#stage-entry-0-access",
+               "Access: Read only (set by the harness)"
+             )
+
+      assert access_line(view, 0) == "Access: Read only (set by the harness)"
+
+      # No fold, no Change, no field: the level is set by the harness, or in process.yaml.
+      refute has_element?(view, ~s{details[id^="stage-entry-0-access"]})
+      refute has_element?(view, "#stage-entry-0-access button, #stage-entry-0-access a")
+      refute has_element?(view, ~s{select[name$="[access]"]})
+      refute has_element?(view, ~s{[name$="[access]"]})
+    end
+
+    test "a save writes no access of its own, and keeps the entry's from process.yaml", %{
       conn: conn,
       path: path,
       scope: scope
     } do
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"}
+      ])
+
       {:ok, view, _html} = live(conn, path)
-      explore = id_of("Explore")
-      details = ~s{details#stage-entry-0-access-#{explore}}
-      picker = details <> " select#stage-entry-0-access-level[name='stage[sequence][0][access]']"
+      select(view, "Build")
 
-      # Closed, after the machine type's fold; an entry with no access has the stack's level.
-      assert has_element?(view, details <> ".q-tool.group:not([open])")
-      assert has_element?(view, details <> " > summary", "Access: Write and push")
-      assert has_element?(view, details <> " > summary .group-open\\:hidden", "Change")
-      assert has_element?(view, details <> " label[for=stage-entry-0-access-level]", "Access")
-
-      # From least to most access.
-      assert view
-             |> element(picker)
-             |> render()
-             |> LazyHTML.from_fragment()
-             |> LazyHTML.query("option")
-             |> Enum.map(&{LazyHTML.attribute(&1, "value"), LazyHTML.text(&1)}) == [
-               {["read"], "Read only"},
-               {["local-write"], "Write, no push"},
-               {["write"], "Write and push"}
-             ]
-
-      assert has_element?(view, picker <> " option[value=write][selected]")
-
-      access = fn ->
-        hd(hd(Processes.current(scope.workspace).document["stages"])["sequence"])["access"]
-      end
-
-      for {level, words} <- [{"local-write", "Write, no push"}, {"read", "Read only"}] do
-        view
-        |> form("#stage-form", stage: %{sequence: %{"0" => %{access: level}}})
-        |> render_change()
-
-        assert has_element?(view, details <> " > summary", "Access: " <> words)
-        view |> element("#stages-save") |> render_click()
-        assert access.() == level
-      end
-
-      # Write and push leaves the stack's level: the entry has no access.
       view
-      |> form("#stage-form", stage: %{sequence: %{"0" => %{access: "write"}}})
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "standard"}}})
       |> render_change()
 
       view |> element("#stages-save") |> render_click()
-      assert access.() == nil
-      assert has_element?(view, details <> " > summary", "Access: Write and push")
+
+      build =
+        Enum.find(Processes.current(scope.workspace).document["stages"], &(&1["name"] == "Build"))
+
+      assert build["sequence"] == [
+               %{"workflow" => "plan-the-build", "access" => "read", "machine" => "standard"},
+               %{"workflow" => "write-checks"}
+             ]
     end
 
     test "a type of 64 characters beside an empty stage name has no mark", %{
@@ -2507,6 +2522,57 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       # The same read as Check again on a work item.
       assert Apiary.Stacks.Sources.chosen_workflows(scope, scope.workspace) == {:ok, ["review"]}
+    end
+
+    test "a row shows the level the harness's stack declares, and the lower level its entry sets",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      stack =
+        @stack <>
+          """
+          workflows:
+            plan-the-build: {access: write}
+            write-checks: {access: write}
+            verify: {access: write}
+            capture-demos: {access: write-no-push}
+            implement: {access: write-no-push}
+            explore-a-ticket: {access: read}
+          """
+
+      files = Map.put(@files, {"R_harness", "stacks/other/qory-stack.yaml"}, stack)
+
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"},
+        %{"workflow" => "verify", "access" => "write-no-push"},
+        %{"workflow" => "capture-demos", "access" => "write-no-push"},
+        %{"workflow" => "unlisted-one"},
+        %{"workflow" => "explore-a-ticket", "access" => "write-no-push"},
+        %{"workflow" => "implement"}
+      ])
+
+      serve_calls([adapter], covered: covered, files: files)
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      # A stage lowers the level in process.yaml, and the line gives both levels.
+      assert access_line(view, 0) ==
+               "Access: Read only (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 1) == "Access: Write and push (set by the harness)"
+
+      assert access_line(view, 2) ==
+               "Access: Write, no push (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 3) == "Access: Write, no push (set by the harness)"
+
+      # A workflow the harness does not list has no line, and its row has the mark.
+      refute has_element?(view, "#stage-entry-4-access")
+      assert has_element?(view, "#stage-entry-4-workflow-mark[data-mark=missing]")
+
+      # An entry never raises the level: Write, no push under a harness that declares read.
+      assert access_line(view, 5) == "Access: Read only (set by the harness)"
+      assert access_line(view, 6) == "Access: Write, no push (set by the harness)"
     end
 
     test "a read that fails keeps the list of the last read, with the cause",

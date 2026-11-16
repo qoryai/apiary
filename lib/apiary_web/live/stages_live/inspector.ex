@@ -36,6 +36,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :may, :boolean, required: true
   attr :last, :boolean, default: false, doc: "whether the stage is the only one"
   attr :declared, :list, required: true
+
+  attr :declared_access, :map,
+    default: %{},
+    doc:
+      "the access level each workflow the harness lists declares, by name; a workflow with none has no Access line"
+
   attr :types, :list, required: true
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
@@ -229,6 +235,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                       id={"stage-entry-#{i}-#{j}"}
                       stage_id={@stage["id"]}
                       declared={@declared}
+                      declared_access={@declared_access}
                       machine={@machine}
                       machine_types={@machine_types}
                       marks={@marks}
@@ -253,6 +260,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   id={"stage-entry-#{i}"}
                   stage_id={@stage["id"]}
                   declared={@declared}
+                  declared_access={@declared_access}
                   machine={@machine}
                   machine_types={@machine_types}
                   marks={@marks}
@@ -378,6 +386,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :id, :string, required: true
   attr :stage_id, :string, required: true
   attr :declared, :list, required: true
+  attr :declared_access, :map, required: true
   attr :machine, :string, required: true
   attr :machine_types, :list, required: true
   attr :marks, :list, required: true
@@ -517,62 +526,55 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           />
         </div>
       </details>
-      <details
-        id={"#{@id}-access-#{@stage_id}"}
-        class="q-tool group"
-        phx-mounted={JS.ignore_attributes(["open"])}
+      <p
+        :if={access = access_line(@entry, @marks, @declared_access)}
+        id={"#{@id}-access"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10"
       >
-        <summary class="nokey">
-          <span class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10">
-            <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
-            <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">
-              {gettext("Access: %{level}", level: access_words(@entry["access"]))}
-            </span>
-            <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
-              {gettext("Change")}
-            </span>
-            <span class="hidden shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:inline">
-              {gettext("Close")}
-            </span>
-          </span>
-        </summary>
-        <div class="grid gap-3 pt-2 pb-2 pl-5">
-          <.input
-            id={"#{@id}-access-level"}
-            name={"#{@name}[access]"}
-            type="select"
-            value={access_value(@entry["access"])}
-            label={gettext("Access")}
-            options={access_options()}
-            class="w-64"
-          />
-        </div>
-      </details>
+        <span class="size-3.5 shrink-0" aria-hidden="true"></span>
+        <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{access}</span>
+      </p>
     </div>
     """
   end
 
-  # A workflow entry's access level, from least to most access. An entry with no `access`
-  # has the level the stack declares, which the entry does not lower: "Write and push".
-  defp access_options do
-    [
-      {gettext("Read only"), "read"},
-      {gettext("Write, no push"), "local-write"},
-      {gettext("Write and push"), "write"}
-    ]
+  # The line under a workflow's machine type: the access level of the runs of the entry.
+  # The harness sets the level (`Apiary.Processes.declared_access/1`); the entry in
+  # `process.yaml` may lower it, never raise it (`Apiary.Stages.Runner.limits/4`). nil, so
+  # no line, for a workflow the harness does not list.
+  defp access_line(entry, marks, declared_access) do
+    with true <- listed?(entry, marks),
+         {:ok, harness} <- Map.fetch(declared_access, entry["workflow"]) do
+      level = entry_level(entry["access"])
+
+      if level != nil and rank(level) < rank(harness) do
+        gettext("Access: %{level} (set for this stage; the harness allows %{harness})",
+          level: level_words(level),
+          harness: level_words(harness)
+        )
+      else
+        gettext("Access: %{level} (set by the harness)", level: level_words(harness))
+      end
+    else
+      _not_listed -> nil
+    end
   end
 
-  defp access_value(level) when level in ["read", "local-write"], do: level
-  defp access_value(_none), do: "write"
+  # The entry's level: nil for none. A value other than `write-no-push` counts as read, as
+  # the runner counts it.
+  defp entry_level(nil), do: nil
+  defp entry_level("write-no-push"), do: :write_no_push
+  defp entry_level(_read), do: :read
 
-  defp access_words(level) do
-    value = access_value(level)
+  # From the lowest level to the highest: read, write-no-push (a writable checkout that
+  # has no push credential), write.
+  defp rank(:read), do: 0
+  defp rank(:write_no_push), do: 1
+  defp rank(:write), do: 2
 
-    Enum.find_value(access_options(), fn
-      {words, ^value} -> words
-      _other -> nil
-    end)
-  end
+  defp level_words(:read), do: gettext("Read only")
+  defp level_words(:write_no_push), do: gettext("Write, no push")
+  defp level_words(:write), do: gettext("Write and push")
 
   attr :id, :string, required: true
   attr :key, :string, required: true

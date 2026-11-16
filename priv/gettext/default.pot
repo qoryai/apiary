@@ -4695,11 +4695,6 @@ msgstr ""
 msgid "Accepted an invitation"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/inspector.ex
-#, elixir-autogen, elixir-format
-msgid "Access"
-msgstr ""
-
 #: lib/apiary_web/components/adapter_components.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
@@ -4723,7 +4718,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
-msgid "Access: %{level}"
+msgid "Access: %{level} (set by the harness)"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Access: %{level} (set for this stage; the harness allows %{harness})"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
