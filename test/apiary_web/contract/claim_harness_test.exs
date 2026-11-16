@@ -405,6 +405,34 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       refute Map.has_key?(documents, "submit_module")
     end
 
+    test "takes no submit_module from a tracker's adapter or another workspace's", ctx do
+      process!(ctx, @submit)
+      work_item = walked!(ctx, :write)
+      target = [target_system: work_item.target_system, target_path: work_item.target_path]
+
+      # A tracker's collection on the run's target, whose adapter declares a module but
+      # did not say its collections have targets.
+      tracker = collection_fixture(ctx.scope, target ++ [environment_ref: nil])
+
+      # A forge's collection on the same target, in another workspace of the organisation.
+      other = workspace_fixture(ctx.scope.organisation)
+
+      elsewhere =
+        collection_fixture(ctx.scope, target ++ [environment_ref: nil, workspace_id: other.id])
+
+      for {collection, targets?} <- [{tracker, false}, {elsewhere, true}] do
+        {1, _rows} =
+          Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+            set: [targets: targets?, submit_module: @submit_module]
+          )
+      end
+
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "submit" => @submit} = documents
+      refute Map.has_key?(documents, "submit_module")
+    end
+
     test "of a write run with no forge's collection for its target is submit alone", ctx do
       process!(ctx, @submit)
       walked!(ctx, :write)
