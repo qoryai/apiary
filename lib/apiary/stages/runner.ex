@@ -59,6 +59,13 @@ defmodule Apiary.Stages.Runner do
   #   * A queued run's time limit and access level are the lower of the entry's and the
   #     workflow's declaration (addition 10); its machine type is the entry's, else the
   #     document's.
+  #   * A workflow entry with `when: {input: T}` runs only while `T` counts: the version
+  #     of `T` that the stage reads has a file of more than 0 bytes (`facts.counted`).
+  #     Otherwise the runner starts no run for it and passes it over (`{:skip, spec}`):
+  #     outside a loop the sequence goes on with its next entry; in a loop the ring goes
+  #     on, as after a run with no verdict, and a loop whose every workflow is passed over
+  #     is passed over whole. An output with such a condition is required only while `T`
+  #     counts (`required?/2`).
   @moduledoc false
 
   alias Apiary.Stages.Points
@@ -117,10 +124,13 @@ defmodule Apiary.Stages.Runner do
   (`declarations`), whether the work item is a test work item (`test`) and, at a run's
   end, whether the run is a run of Explore whose take in has a proposal, or that left open
   questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
-  `changes-requested` (`explore_verdict`).
+  `changes-requested` (`explore_verdict`); and the input types of the stage's conditions
+  that count, each whose version the stage reads has a file of more than 0 bytes
+  (`counted`).
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
+          optional(:counted) => [String.t()],
           optional(:undeclared) => [String.t()],
           optional(:failed_checks) => [String.t()],
           optional(:machine) => String.t() | nil,
@@ -128,6 +138,18 @@ defmodule Apiary.Stages.Runner do
           optional(:test) => boolean,
           optional(:explore_result) => boolean,
           optional(:explore_verdict) => boolean
+        }
+
+  @typedoc """
+  A workflow entry passed over, at the position it would run at: its workflow and the input
+  type of its condition.
+  """
+  @type skip_spec :: %{
+          workflow: String.t(),
+          input: String.t(),
+          entry: non_neg_integer,
+          loop_entry: non_neg_integer | nil,
+          round: pos_integer
         }
 
   @typedoc "A run to queue, at the position it runs at."
@@ -144,6 +166,7 @@ defmodule Apiary.Stages.Runner do
   @typedoc "An action for `Apiary.Stages` to apply."
   @type action ::
           {:queue, run_spec}
+          | {:skip, skip_spec}
           | {:escalate, cause, [point]}
           | {:checks_failed, pos_integer, String.t()}
           | :advance
@@ -243,13 +266,85 @@ defmodule Apiary.Stages.Runner do
   end
 
   # Runs what is at `position`: a workflow, the workflow of a loop's body, or, past the
-  # sequence's end, the checks.
+  # sequence's end, the checks. A workflow whose condition is not met is passed over.
   defp start(stage, position, facts) do
     case entry_at(stage, position) do
-      nil -> finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts)
-      entry -> queue(entry, position, facts)
+      nil ->
+        finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts)
+
+      entry ->
+        if unmet(entry, facts),
+          do: pass_over(stage, position, facts),
+          else: queue(entry, position, facts)
     end
   end
+
+  # Passes over the workflow at `position`, whose condition is not met: outside a loop the
+  # sequence goes on with its next entry; in a loop the ring goes on, as after a run with
+  # no verdict. A loop whose every workflow is passed over is passed over whole, so a
+  # ring of skips never counts its rounds.
+  defp pass_over(stage, position, facts) do
+    cond do
+      not in_loop?(position) ->
+        skipped([skip(stage, position, facts)], start(stage, next(stage, position), facts))
+
+      Enum.all?(body(stage, position.entry), &unmet(&1, facts)) ->
+        skips =
+          for j <- 0..(length(body(stage, position.entry)) - 1),
+              do: skip(stage, %{position | loop_entry: j}, facts)
+
+        skipped(skips, start(stage, next(stage, position), facts))
+
+      true ->
+        skipped([skip(stage, position, facts)], ring(stage, position, facts))
+    end
+  end
+
+  defp skip(stage, position, facts) do
+    entry = entry_at(stage, position)
+
+    {:skip,
+     %{
+       workflow: entry["workflow"],
+       input: unmet(entry, facts),
+       entry: position.entry,
+       loop_entry: position.loop_entry,
+       round: position.round
+     }}
+  end
+
+  defp skipped(skips, outcome), do: %{outcome | actions: skips ++ outcome.actions}
+
+  # unmet/2 is the input type of the condition of `item`, a workflow entry or an output,
+  # where it is not met with `facts`; nil for one that is met or that has none.
+  defp unmet(%{"when" => %{"input" => type}}, facts) when is_binary(type),
+    do: if(type in Map.get(facts, :counted, []), do: nil, else: type)
+
+  defp unmet(_item, _facts), do: nil
+
+  # condition_inputs/1 is the input types that the conditions of `stage` name, on its
+  # workflow entries, those in a loop included, and on its outputs, each once.
+  @doc false
+  @spec condition_inputs(map) :: [String.t()]
+  def condition_inputs(stage) do
+    entries =
+      Enum.flat_map(sequence(stage), fn
+        %{"loop" => %{"body" => body}} -> body
+        entry -> [entry]
+      end)
+
+    for %{"when" => %{"input" => type}} <- entries ++ (Map.get(stage, "outputs") || []),
+        is_binary(type),
+        uniq: true,
+        do: type
+  end
+
+  # required?/2 is whether `output`, an output of a stage, is required, with the input
+  # types that count, `counted`: its `required`, while its condition is met.
+  @doc false
+  @spec required?(map, [String.t()]) :: boolean
+  def required?(output, counted),
+    do: output["required"] == true and is_nil(unmet(output, %{counted: counted}))
 
   defp queue(%{"workflow" => workflow} = entry, position, facts) do
     if workflow in undeclared(facts) do
