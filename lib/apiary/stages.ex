@@ -1523,7 +1523,8 @@ defmodule Apiary.Stages do
 
   # The approvals of the work item by the public id of each version they cover, oldest
   # first. `gate_none` is whether the stage's gate was `none` in the process version the
-  # approval was recorded under, which a later version may change.
+  # approval was recorded under, which a later version may change. The query reads only
+  # that stage's gate kind, not the process document.
   defp approvals_by_version(work_item) do
     Repo.all(
       from d in GateDecision,
@@ -1531,13 +1532,23 @@ defmodule Apiary.Stages do
         on: v.id == d.process_version_id,
         where: d.work_item_id == ^work_item.id and d.kind == :approve,
         order_by: d.inserted_at,
-        select: {d, v.document}
+        select:
+          {d,
+           fragment(
+             """
+             COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                       FROM jsonb_array_elements(? -> 'stages') AS s
+                       WHERE s ->> 'id' = ? LIMIT 1), false)
+             """,
+             v.document,
+             d.stage_id
+           )}
     )
-    |> Enum.flat_map(fn {decision, document} ->
+    |> Enum.flat_map(fn {decision, gate_none} ->
       approval = %{
         user_id: decision.user_id,
         automatic: decision.automatic,
-        gate_none: gate_none?(document, decision.stage_id),
+        gate_none: gate_none,
         stage_id: decision.stage_id,
         inserted_at: decision.inserted_at
       }
@@ -1545,11 +1556,6 @@ defmodule Apiary.Stages do
       for id <- decision.versions, do: {id, approval}
     end)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-  end
-
-  defp gate_none?(document, stage_id) do
-    stage = Enum.find(document["stages"] || [], &(&1["id"] == stage_id))
-    get_in(stage || %{}, ["gate", "kind"]) == "none"
   end
 
   ## Applying the runner's rules
