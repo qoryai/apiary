@@ -368,7 +368,8 @@ defmodule Apiary.StacksTest do
                Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
-    test "refuse a flat bind, an unknown kind and a commands or skills list, fix first", ctx do
+    test "refuse a flat bind, an unknown kind, a commands or skills list and an empty agents list, fix first",
+         ctx do
       base = "extends: {git: #{@stacks}, ref: v2}\n"
 
       for {bind, message} <- [
