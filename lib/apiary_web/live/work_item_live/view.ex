@@ -444,6 +444,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   defp take_in(take_in, ctx) do
     %{
+      take_in: take_in.take_in,
       taken_in_by: person(ctx.people, take_in.taken_in_by_id),
       taken_in_at: take_in.taken_in_at,
       ended: take_in.ended,

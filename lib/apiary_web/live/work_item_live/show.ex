@@ -410,6 +410,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage={@view.stage}
             work_item={@item}
             runs={@view.runs}
+            skips={@view.skips}
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}

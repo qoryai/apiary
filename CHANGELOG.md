@@ -150,6 +150,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
   a stage.
+- A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
+  runs only when the version of that type that the stage reads has a file of more than
+  0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
+  with the reason, such as “No demo scenarios: capture-demos did not run.”, also in an
+  earlier take in's fold. An output with the key is then not required. A loop whose every
+  entry is passed over is passed over too, and a stage does not wait for an undeclared
+  workflow whose entry is passed over. A save is refused where the type is no output of
+  an earlier stage, with the entry or output, the stage and the type in the message.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -2066,6 +2074,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
+  passed over because their `when` condition was not met, with the organisation keys and a
+  foreign key to `work_items` and `process_versions`. It changes no existing table.
+  Rolling back drops the table, with every record of a passed-over entry.
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no
   default, so adding it rewrites no row; the check scans `model_key_settings` under a

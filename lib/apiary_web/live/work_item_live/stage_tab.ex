@@ -97,8 +97,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #
   #   * `stage`: the tab's stage, on a stage tab, else nil;
   #   * `runs`: the stage's runs of the take in, oldest first;
-  #   * `take_ins`: the earlier take ins with the stage's runs, each with its `place` among
-  #     all of them, from 1;
+  #   * `skips`: the stage's workflow entries the runner passed over in the take in;
+  #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
+  #     `place` among all of them, from 1;
   #   * `questions`: on the current stage's tab, every open question and the closed ones the
   #     stage's runs wrote; on another tab, the closed ones its runs wrote;
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
@@ -111,6 +112,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: nil,
       runs: [],
+      skips: [],
       take_ins: read.earlier_take_ins,
       questions: read.questions,
       questions_version: read.questions_version,
@@ -134,11 +136,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     view(flow, read.item.run, stage, read)
   end
 
-  defp view(_flow, _run, nil, read) do
+  defp view(flow, _run, nil, read) do
     %{
       stage: nil,
       runs: read.earlier_runs,
-      take_ins: read.earlier_take_ins,
+      skips: Map.get(flow, :skips, []),
+      take_ins: Enum.map(read.earlier_take_ins, &with_skips(&1, flow, nil)),
       questions: read.questions,
       questions_version: read.questions_version,
       review_comments: read.review_comments,
@@ -156,6 +159,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: stage,
       runs: runs,
+      skips: Enum.filter(Map.get(flow, :skips, []), &(&1.stage_id == stage.id)),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),
@@ -175,8 +179,20 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     for {take_in, place} <- Enum.with_index(take_ins, 1),
         runs = runs(flow, stage, take_in.runs),
         runs != [] do
-      take_in |> Map.put(:runs, runs) |> Map.put(:place, place)
+      take_in |> Map.put(:runs, runs) |> Map.put(:place, place) |> with_skips(flow, stage.id)
     end
+  end
+
+  # The take in with the workflow entries the runner passed over in it, of the stage
+  # `stage_id`, or of every stage for nil (`Apiary.Stages.earlier_skips/1`).
+  defp with_skips(take_in, flow, stage_id) do
+    skips =
+      for skip <- Map.get(flow, :earlier_skips, []),
+          skip.take_in == take_in[:take_in],
+          stage_id in [nil, skip.stage_id],
+          do: skip
+
+    Map.put(take_in, :skips, skips)
   end
 
   defp questions(flow, stage, questions) do
