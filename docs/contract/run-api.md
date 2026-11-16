@@ -186,8 +186,11 @@ the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
 a member cancelled the run that wrote the version, and false for a version of any other
 run or of a person. An approval is
-`{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
-file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+`{"by": {"name": "dana"}, "automatic": false, "stage_id": "st_...", "at": "..."}`. A
+gate `none` records an approval of the stage's newest versions when the stage passes it:
+`{"by": null, "automatic": true, ...}`. When a member accepted the escalation that ended
+such a stage, the approval has the member in `by` and `automatic` false. The index
+contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 

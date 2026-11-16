@@ -37,7 +37,8 @@ defmodule Apiary.Stages.Runner do
   #     questions come first: a run that asked them and escalated waits for answers, and
   #     its escalation is kept with its points (`{:questions, texts, points}`).
   #   * At the end of the sequence the Exists checks run. When every required output
-  #     passes, a person gate waits (`:at_gate`) and a gate `none` passes on (`:advance`).
+  #     passes, a person gate waits (`:at_gate`) and a gate `none` records its approval
+  #     (`:approve`) and passes on (`:advance`).
   #     On a failure, a stage with a loop starts another round of its last loop, with the
   #     failed checks as the gaps of that round (`{:checks_failed, round, gaps}`), and the
   #     round counts; at the limit it escalates, `round_limit`, with the point of the
@@ -52,7 +53,8 @@ defmodule Apiary.Stages.Runner do
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
   #     next workflow, or, after its last, to the gate without the Exists checks, where
   #     a failed check stays shown (§ 6); an escalation at the end of the sequence goes to
-  #     the gate too. Another round runs
+  #     the gate too. At a gate `none` the accept is the approval: `Apiary.Stages`
+  #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
   #     start for a stage with no loop.
@@ -146,6 +148,7 @@ defmodule Apiary.Stages.Runner do
           {:queue, run_spec}
           | {:escalate, cause, [point]}
           | {:checks_failed, pos_integer, String.t()}
+          | :approve
           | :advance
 
   @typedoc "The stage's next state, its position and the actions to apply."
@@ -400,7 +403,7 @@ defmodule Apiary.Stages.Runner do
 
   defp gate(stage, position) do
     case get_in(stage, ["gate", "kind"]) do
-      "none" -> %{state: :done, position: position, actions: [:advance]}
+      "none" -> %{state: :done, position: position, actions: [:approve, :advance]}
       _person -> %{state: :at_gate, position: position, actions: []}
     end
   end

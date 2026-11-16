@@ -30,6 +30,14 @@ defmodule Apiary.Stages do
   #   * `confirmed/2`, from `Apiary.WorkItems.confirm/3`: a confirmation of Explore's
   #     proposal approves Explore's gate.
   #
+  # ## A gate `none`
+  #
+  # A gate `none` records the approval of the stage's newest outputs, then the work item
+  # enters the next stage (vault 0252), so a later stage reads those versions as its
+  # inputs. The approval has no member and is `automatic` when the stage passed its gate;
+  # it has the member who accepted the escalation that ended the stage otherwise. It
+  # writes no entry in the audit trail: no person acted, or the accept wrote its entry.
+  #
   # ## After the last stage
   #
   # A work item closes when its last stage finishes, in the same transaction, as the
@@ -1008,11 +1016,14 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # An accept that passes a gate `none` is the approval, recorded with the member
+  # (`approve_none!/4`).
   defp resolve(scope, work_item, version, stage, escalation, resolution, note)
        when resolution in [:accept, :another_round] do
     :ok = resolve!(escalation, resolution, scope, note)
     event = {resolution, escalation.cause}
-    {work_item, _run} = apply_event(work_item, version, stage, event)
+    by = if resolution == :accept, do: scope.user.id
+    {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
     {:ok, work_item}
   end
 
@@ -1108,11 +1119,7 @@ defmodule Apiary.Stages do
     with :ok <- at_gate(work_item, stage),
          :ok <- outputs_exist(work_item, stage),
          %{} = next <- next_stage(version, stage) do
-      artifacts = Artifacts.list(work_item)
-      ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
-      covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
-      approved = &%{&1 | missing_inputs: &1.missing_inputs -- covered}
-
+      approved = approved(work_item, stage, & &1)
       stepped(work_item, version, next, :enter, approved, approved)
     else
       _no_run -> :none
@@ -1182,22 +1189,37 @@ defmodule Apiary.Stages do
 
   # The run that the runner's outcome of `event` queues, on the facts read now as `adjust`
   # changes them: its first `:queue`, or what its `:advance` enters, in the order
-  # `apply_outcome/5` applies them. Each stage that an `:advance` enters reads its facts
-  # as `later` changes them.
+  # `apply_outcome/6` applies them. Each stage that an `:advance` enters reads its facts
+  # as `later` changes them, and as an `:approve` before it does: the approval's outputs
+  # count as approved.
   defp stepped(work_item, version, stage, event, adjust, later \\ & &1) do
     facts = adjust.(facts(work_item, version, stage))
     %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
 
-    Enum.reduce_while(actions, :none, fn
-      {:queue, %{workflow: workflow}}, _none ->
-        {:halt, {:run, workflow}}
+    Enum.reduce_while(actions, {:none, later}, fn
+      {:queue, %{workflow: workflow}}, _acc ->
+        {:halt, {{:run, workflow}, later}}
 
-      :advance, _none ->
-        {:halt, entered(work_item, version, next_stage(version, stage), later)}
+      :approve, {none, later} ->
+        {:cont, {none, approved(work_item, stage, later)}}
 
-      _other, none ->
-        {:cont, none}
+      :advance, {_none, later} ->
+        {:halt, {entered(work_item, version, next_stage(version, stage), later), later}}
+
+      _other, acc ->
+        {:cont, acc}
     end)
+    |> elem(0)
+  end
+
+  # `later` with the types of the stage's newest outputs taken out of the missing inputs:
+  # an approval covers them (`approve_locked/6`, `approve_none!/4`), and each later stage
+  # reads them as its inputs of those types.
+  defp approved(work_item, stage, later) do
+    artifacts = Artifacts.list(work_item)
+    ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+    covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
+    fn facts -> later.(%{facts | missing_inputs: facts.missing_inputs -- covered}) end
   end
 
   ## Reading
@@ -1504,6 +1526,7 @@ defmodule Apiary.Stages do
     |> Enum.flat_map(fn decision ->
       approval = %{
         user_id: decision.user_id,
+        automatic: decision.automatic,
         stage_id: decision.stage_id,
         inserted_at: decision.inserted_at
       }
@@ -1517,14 +1540,15 @@ defmodule Apiary.Stages do
 
   defp enter_locked(work_item, version, stage), do: apply_event(work_item, version, stage, :enter)
 
-  # `more` is facts of the run that ended, beside the stage's (`facts/3`).
-  defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}) do
+  # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
+  # member who accepted an escalation, for the approval at a gate `none`; nil for none.
+  defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}, by \\ nil) do
     facts = Map.merge(facts(work_item, version, stage), more)
     outcome = Runner.step(stage, position(work_item), event, facts)
-    apply_outcome(work_item, version, stage, outcome, run_id)
+    apply_outcome(work_item, version, stage, outcome, run_id, by)
   end
 
-  defp apply_outcome(work_item, version, stage, outcome, run_id) do
+  defp apply_outcome(work_item, version, stage, outcome, run_id, by) do
     %{state: state, position: position, actions: actions} = outcome
     work_item = place!(work_item, version, stage["id"], state, position)
 
@@ -1552,9 +1576,35 @@ defmodule Apiary.Stages do
 
         {work_item, run}
 
+      :approve, {work_item, run} ->
+        :ok = approve_none!(work_item, version, stage, by)
+        {work_item, run}
+
       :advance, {work_item, _run} ->
         advance(work_item, version, stage)
     end)
+  end
+
+  # A gate `none` records the approval of the stage's newest outputs (vault 0252): with no
+  # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
+  # the escalation that ended the stage. The accept approves the newest versions that
+  # exist, as the stage's checks did not run.
+  defp approve_none!(work_item, version, stage, by) do
+    %GateDecision{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: stage["id"],
+      process_version_id: version.id,
+      user_id: by,
+      automatic: is_nil(by),
+      kind: :approve,
+      versions: Enum.map(newest_outputs(work_item, stage), & &1.public_id),
+      inserted_at: DateTime.utc_now()
+    }
+    |> Repo.insert!()
+
+    :ok
   end
 
   # The next stage of the version after `stage`, entered; after the last, the stage is
@@ -2464,6 +2514,7 @@ defmodule Apiary.Stages do
     |> Enum.map(fn decision ->
       %{
         user_id: decision.user_id,
+        automatic: decision.automatic,
         note: decision.note,
         inserted_at: decision.inserted_at,
         versions:
