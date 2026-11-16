@@ -382,7 +382,9 @@ defmodule Apiary.StacksTest do
              "Use agents, commands or skills under bind: tools is not a kind."},
             {"{commands: {ship: [web-ship, web-release]}}",
              "Give one name per role: bind.commands.ship is a list."},
-            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."}
+            {"{skills: {review: []}}", "Give one name per role: bind.skills.review is a list."},
+            {"{agents: {reviewer: []}}",
+             "Give 1 or more agents for bind.agents.reviewer: the list is empty."}
           ] do
         assert refused(ctx, base <> "bind: #{bind}\n") == [message], bind
       end
@@ -396,7 +398,6 @@ defmodule Apiary.StacksTest do
             {"{agents: {developer: team/web-developer}}", "#/bind/agents/developer"},
             {"{agents: {.developer: web-developer}}", "#/bind/agents/.developer"},
             {"{agents: {developer: {name: web-developer}}}", "#/bind/agents/developer"},
-            {"{agents: {reviewers: []}}", "#/bind/agents/reviewers"},
             {"{agents: {reviewers: [copy-reviewer, team/legal-reviewer]}}",
              "#/bind/agents/reviewers"},
             {"[agents]", "#/bind"}
