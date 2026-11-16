@@ -307,7 +307,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
       )
 
   def message({:submit, _type, {:base_view, view}}),
-    do: gettext("set submit.type to a structured type, not a %{view} type", view: view)
+    do:
+      gettext("set submit.type to a type whose base_view is structured, not %{view}", view: view)
 
   def message({:invalid, type, error}),
     do:

@@ -26233,7 +26233,7 @@ msgstr ""
 
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
-msgid "set submit.type to a structured type, not a %{view} type"
+msgid "set submit.type to a type whose base_view is structured, not %{view}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

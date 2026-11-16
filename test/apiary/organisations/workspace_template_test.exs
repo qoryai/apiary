@@ -208,7 +208,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert version.template["submit"] == %{"type" => "submission", "send" => "end_of_run"}
     end
 
-    test "a template whose submit names no structured type makes nothing" do
+    test "a template whose submit.type is no structured type makes nothing" do
       scope = scope_fixture()
       before = held(scope)
 
@@ -663,7 +663,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
              }
     end
 
-    test "a template whose submit names no structured type is refused, and nothing is made" do
+    test "a template whose submit.type is no structured type is refused, and nothing is made" do
       scope = scope_fixture()
       source = linked!(scope)
       before = held(scope)

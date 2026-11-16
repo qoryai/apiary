@@ -64,7 +64,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   # The template's submit step, named `type`, as a version's record keeps it.
   defp submit(type), do: %{"type" => type, "send" => "after_gate"}
 
-  # A template whose submit names no structured type of its artifact_types, with the
+  # A template whose submit.type is no structured type of its artifact_types, with the
   # refusal: a name no entry has, a standard type, and spec, a document type.
   defp refused_submits do
     [
@@ -290,7 +290,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                nil
              ) ==
                "Correct the process.yaml of the harness, then press Update from harness again: " <>
-                 "set submit.type to a structured type, not a document type."
+                 "set submit.type to a type whose base_view is structured, not document."
     end
 
     test "a harness repository refuses it as a template that is not readable", ctx do

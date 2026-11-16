@@ -443,7 +443,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                "set submit.type to a structured type of artifact_types: mockup is a standard type"
 
       assert TemplateTypes.message({:submit, "reply-draft", {:base_view, "document"}}) ==
-               "set submit.type to a structured type, not a document type"
+               "set submit.type to a type whose base_view is structured, not document"
 
       first_line =
         {:submit, String.duplicate("a", 64), {:base_view, "spreadsheet"}}

@@ -951,7 +951,7 @@ defmodule Apiary.Stacks.SourcesTest do
             {"mockup", {:submit, "mockup", :standard},
              "set submit.type to a structured type of artifact_types: mockup is a standard type"},
             {"draft", {:submit, "draft", {:base_view, "document"}},
-             "set submit.type to a structured type, not a document type"}
+             "set submit.type to a type whose base_view is structured, not document"}
           ] do
         file =
           template_file() <> submit_types() <> "submit:\n  type: #{type}\n  send: end_of_run\n"
