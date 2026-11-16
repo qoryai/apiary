@@ -12,6 +12,7 @@ defmodule Apiary.Stages.StopCause do
   import Ecto.Query
 
   alias Apiary.Adapters.Collection
+  alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Gateways
   alias Apiary.Harnesses.{Qory, RunHarness, Walk, WorkflowGap}
@@ -29,8 +30,14 @@ defmodule Apiary.Stages.StopCause do
   # The walk failures whose fix is on the set-up step Harness.
   @harness_step_failures ~w(no_harness scp_form credential_in_address too_many ref_missing)
 
-  @typedoc "What a claim knew when it ended a run: its gateway and the gateway's keys."
-  @type context :: %{optional(:gateway) => Node.t(), optional(:keys) => [map]}
+  @typedoc """
+  What a claim knew when it ended a run: its gateway and the gateway's keys, as
+  `Apiary.Dispatches.Handover.gateway/1` returns them, the gateway with the claim's workspace.
+  """
+  @type context :: %{
+          optional(:gateway) => {Node.t(), Workspace.t() | nil},
+          optional(:keys) => [map]
+        }
 
   # text/3 is why `run` stopped: one line for a run that started, two for one that ended
   # before it started.
@@ -417,25 +424,34 @@ defmodule Apiary.Stages.StopCause do
   end
 
   # A gateway that may not receive the run's secrets: one of its keys was made without
-  # stored secrets, or the model key may not be sealed for it.
-  # No run matches this head: the claim and `Apiary.Stages.claim_context/1` set
-  # `gateway:` to the tuple `Apiary.Dispatches.Handover.gateway/1` returns, not to a
-  # `%Node{}`, so the next clause returns the support line instead.
-  defp secrets(n, %{gateway: %Node{} = gateway} = ctx) do
+  # stored secrets, or the model key may not be sealed for it. The claim passes its keys;
+  # the stage sweep reads them again when it acts on the end (`Apiary.Stages.claim_context/1`).
+  # A gateway of the run's organisation, or one made in the run's workspace, may receive
+  # the model key, so when every key of that gateway read now allows stored secrets, a key
+  # changed after the claim.
+  defp secrets(n, %{gateway: {%Node{} = gateway, _workspace}} = ctx) do
     cond do
       # The instance's gateway: the person sees neither it nor its keys.
       Gateways.level(gateway) == :instance ->
         secrets(n, %{})
 
-      Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) ->
-        {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
-         "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
-
-      true ->
+      not Enum.all?(Map.get(ctx, :keys, []), & &1.allow_secrets) ->
         {who, page} = gateway_fixer(gateway, n)
 
         {"The run did not start, because gateway #{gateway.name} is not allowed to receive the run's secrets.",
          "#{who} an access key for #{gateway.name} with stored secrets allowed, on #{page}."}
+
+      # A provider whose key is never sealed for a gateway: another round ends the same way.
+      of_run?(gateway, n.run) and not organisation_chain?(n.run) ->
+        secrets(n, %{})
+
+      of_run?(gateway, n.run) ->
+        {"The run did not start, because the access key of gateway #{gateway.name} changed after the run was claimed.",
+         "Run another round. It then uses the current access key of #{gateway.name}."}
+
+      true ->
+        {"The run did not start, because the model key of its model choice may not be sent to gateway #{gateway.name}, which belongs to another organisation.",
+         "Owners and admins of #{n.workspace} choose a model provider of #{n.organisation} in Workspace settings › Model."}
     end
   end
 
@@ -443,6 +459,20 @@ defmodule Apiary.Stages.StopCause do
     do:
       {"The run did not start, because its gateway is not allowed to receive the run's secrets.",
        support(n)}
+
+  # Whether `gateway` lives at the organisation of `run`, the run of the queue, or at its
+  # workspace.
+  defp of_run?(gateway, %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}),
+       do:
+         gateway.organisation_id == organisation_id and
+           (is_nil(gateway.workspace_id) or gateway.workspace_id == workspace_id)
+
+  # Whether every model provider of `run` that still exists is of the organisation's
+  # chain, the only chain whose key may be sealed for a gateway of the organisation
+  # (`Apiary.Runs.ProviderCredential.sealable_to?/3`).
+  defp organisation_chain?(%DispatchRun{model_provider_ids: ids}) do
+    not Repo.exists?(from c in Connection, where: c.id in ^ids and c.chain != "organisation")
+  end
 
   defp gateway_fixer(gateway, n) do
     case Gateways.level(gateway) do

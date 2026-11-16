@@ -1661,17 +1661,67 @@ defmodule Apiary.StagesTest do
       assert [_] = Stages.claim_ended([newest_run(by_claim).id], %{gateway: through, keys: keys})
       assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
 
-      # The same text, but the work item's number.
-      texts =
-        for work_item <- [by_claim, by_sweep] do
-          assert %Escalation{cause: :run_stopped, points: [%{"text" => text}]} =
-                   escalation(work_item)
+      # The same text and fix: who adds a key that allows stored secrets, and where.
+      for work_item <- [by_claim, by_sweep] do
+        assert %Escalation{cause: :run_stopped, points: [%{"text" => text, "fix" => fix}]} =
+                 escalation(work_item)
 
-          String.replace(text, "##{reload(work_item).number}", "#N")
-        end
+        assert text ==
+                 "The run stopped: it did not start, because gateway #{gateway.name} is not allowed to receive the run's secrets."
 
-      assert [text, text] = texts
-      assert text =~ "allowed to receive the run's secrets"
+        assert fix ==
+                 "Owners and admins of #{scope.workspace.name} add an access key for #{gateway.name} with stored secrets allowed, on Machines › #{gateway.name} › Access key."
+      end
+    end
+
+    test "the stage sweep writes that a gateway's key changed after the claim",
+         %{scope: scope} do
+      gateway = Apiary.NodesFixtures.gateway_fixture(scope)
+
+      %{access_key: key} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, gateway, %{allow_secrets: false})
+
+      pool =
+        Apiary.NodesFixtures.pool_fixture(scope, %{gateway_choice: :named, gateway_id: gateway.id})
+
+      %{access_key: pool_key} = Apiary.AccessKeysFixtures.browser_key_fixture(scope, pool)
+
+      # A claim through the pool ended the run `secrets_not_allowed`.
+      work_item = take_in!(scope)
+      run = newest_run(work_item)
+      now = DateTime.utc_now()
+
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+        set: [state: :ended, end_cause: :secrets_not_allowed, result_outcome: :error]
+      )
+
+      %Apiary.Dispatches.Dispatch{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id
+      }
+      |> Apiary.Dispatches.Dispatch.claim_changeset(%{
+        dispatch_run_id: run.id,
+        pool_id: pool.id,
+        access_key_id: pool_key.id,
+        claimed_at: now,
+        lease_until: Apiary.Dispatches.lease_until(now)
+      })
+      |> Apiary.PublicId.Insert.insert!()
+
+      # Before the sweep acts on the end, the gateway's key is replaced by one that allows
+      # stored secrets.
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, gateway, %{allow_secrets: true})
+      assert {:ok, _revoked} = Apiary.AccessKeys.revoke_access_key(scope, key)
+
+      assert {[_], nil} = Stages.sweep(DateTime.utc_now(), nil)
+
+      assert %Escalation{cause: :run_stopped, points: [%{"text" => text, "fix" => fix}]} =
+               escalation(work_item)
+
+      assert text ==
+               "The run stopped: it did not start, because the access key of gateway #{gateway.name} changed after the run was claimed."
+
+      assert fix == "Run another round. It then uses the current access key of #{gateway.name}."
     end
 
     test "the stage sweep reads after where the sweep before stopped", %{scope: scope} do
