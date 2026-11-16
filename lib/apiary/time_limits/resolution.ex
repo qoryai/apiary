@@ -5,7 +5,7 @@ defmodule Apiary.TimeLimits.Resolution do
   #
   # **The order.** The target's limit for the workflow, then the workspace's. A run with
   # no target has the workspace's alone. No limit at either place resolves to `:none`: the
-  # run takes the default of the workflow's stack, which the machine applies.
+  # run takes the default, `Apiary.TimeLimits.default_minutes/0`.
   @moduledoc false
 
   alias Apiary.TimeLimits.TimeLimit

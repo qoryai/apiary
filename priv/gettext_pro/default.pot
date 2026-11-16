@@ -2098,6 +2098,11 @@ msgstr ""
 msgid "Set a variable of the organisation, for every workspace"
 msgstr ""
 
+#: lib/apiary_pro_web/edition.ex
+#, elixir-autogen, elixir-format
+msgid "Set by your operator, %{operator}. Ask them to change it."
+msgstr ""
+
 #: lib/apiary_pro_web/live/policy_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Set per workspace"

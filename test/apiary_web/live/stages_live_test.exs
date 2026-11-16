@@ -23,6 +23,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   alias Apiary.Processes
   alias Apiary.Repo
+  alias Apiary.TimeLimits
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.StagesLive.{Draft, Words}
 
@@ -2072,6 +2073,172 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-sequence", "No workflow")
       assert has_element?(view, "#stage-sequence #stage-add-entry")
       refute has_element?(view, "#stage-sequence details")
+    end
+  end
+
+  describe "a workflow's time limit" do
+    # The field of Explore's first row, explore-a-ticket, with its form, its button and its
+    # lines.
+    @field "#stage-entry-0-time-limit"
+    @form "#stage-entry-0-time-limit-form"
+    @hint "15 to 1440 minutes. If you leave it empty, each session of this workflow stops after 180 minutes."
+    @error "Enter 15 to 1440 minutes, or leave the field empty."
+
+    defp limit(scope) do
+      {:ok, limits} = TimeLimits.list_limits(scope)
+      for %{target_id: nil} = l <- limits, into: %{}, do: {l.workflow, l.minutes}
+    end
+
+    defp change_limit(view, minutes),
+      do: view |> element(@form) |> render_change(%{"time_limit" => %{"minutes" => minutes}})
+
+    defp save_limit(view, minutes),
+      do: view |> element(@form) |> render_submit(%{"time_limit" => %{"minutes" => minutes}})
+
+    defp leave_limit(view, minutes),
+      do: view |> element(@field) |> render_blur(%{"value" => minutes})
+
+    test "with none saved: the default, an empty field, its hint, and nothing to save", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      summary = ~s{details[id^="stage-entry-0-settings-"] > summary}
+
+      assert has_element?(view, summary, "Machine type: Workspace default (Standard)")
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      assert has_element?(
+               view,
+               ~s{label[for="stage-entry-0-time-limit"]},
+               "Time limit, in minutes"
+             )
+
+      assert has_element?(view, ~s{#{@field}[type="number"][value=""][min="15"][max="1440"]})
+      assert has_element?(view, ~s{#{@field}[form="stage-entry-0-time-limit-form"]})
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]", "Save time limit")
+
+      # The field is not in the stage's form: a change of it changes no draft.
+      refute has_element?(view, "#stage-form #{@form}")
+      change_limit(view, "240")
+      assert has_element?(view, "#stages-save[disabled]")
+      refute has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+    end
+
+    test "Save time limit writes the limit at once, outside the process, and an empty field clears it",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, view, _html} = live(conn, path)
+      versions = length(Processes.list_versions(scope.workspace))
+
+      change_limit(view, "240")
+      save_limit(view, "240")
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
+      assert length(Processes.list_versions(scope.workspace)) == versions
+      assert has_element?(view, "#stages-save[disabled]")
+      assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+      refute has_element?(view, "#stage-entry-0-time-limit-line", "default")
+      assert has_element?(view, "#stage-entry-0-time-limit-saved[role=status]", "Saved.")
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+
+      # The page loaded again shows the saved minutes in the field.
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, ~s{#{@field}[value="240"]})
+      refute has_element?(view, "#stage-entry-0-time-limit-saved")
+
+      change_limit(view, "")
+      refute has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+      save_limit(view, "")
+
+      assert limit(scope) == %{}
+      assert length(Processes.list_versions(scope.workspace)) == versions
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      assert has_element?(view, "#stage-entry-0-time-limit-saved", "Saved.")
+    end
+
+    test "14 and 1441 minutes are refused with the panel's text, and nothing is saved", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _} = TimeLimits.put_limit(scope, :workspace, "explore-a-ticket", 240)
+      {:ok, view, _html} = live(conn, path)
+
+      # Until the field first loses the focus, the disabled button alone shows the value is
+      # not one to save; from then on, the error shows as the value changes.
+      change_limit(view, "14")
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+      refute has_element?(view, "#stage-entry-0-time-limit-error")
+
+      for minutes <- ~w(14 1441 90.5) do
+        change_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+        leave_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-error", @error)
+        assert has_element?(view, ~s{#{@field}.input-error[aria-invalid="true"]})
+        refute has_element?(view, "#stage-entry-0-time-limit-hint")
+
+        save_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-error", @error)
+        refute has_element?(view, "#stage-entry-0-time-limit-saved")
+        assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+        assert limit(scope) == %{"explore-a-ticket" => 240}
+      end
+
+      change_limit(view, "15")
+      refute has_element?(view, "#stage-entry-0-time-limit-error")
+      save_limit(view, "15")
+      assert limit(scope) == %{"explore-a-ticket" => 15}
+    end
+
+    test "a member reads the limit on the row's line, and a save is refused", %{scope: scope} do
+      %{user: user} = member_fixture(scope)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), user), workspace_path(scope, "/settings/workflows"))
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "explore-a-ticket, machine type Workspace default (Standard), time limit 180 minutes (default)"
+             )
+
+      {:ok, _} = TimeLimits.put_limit(scope, :workspace, "explore-a-ticket", 240)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), user), workspace_path(scope, "/settings/workflows"))
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "explore-a-ticket, machine type Workspace default (Standard), time limit 240 minutes"
+             )
+
+      refute has_element?(view, "#stage-sequence li", "default)")
+      refute has_element?(view, "#stage-panel input")
+
+      render_hook(view, "time_limit_save", %{
+        "time_limit" => %{
+          "row" => "x/stage-entry-0",
+          "workflow" => "explore-a-ticket",
+          "minutes" => "30"
+        }
+      })
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
     end
   end
 

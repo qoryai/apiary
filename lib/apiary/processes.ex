@@ -119,14 +119,12 @@ defmodule Apiary.Processes do
           | {:input_not_output, String.t(), String.t()}
 
   @typedoc """
-  What the harness declares of a workflow: its name, its access level and time limit
-  (nil where Qory Apiary does not keep them), and the artifact types it reads (nil for
-  any type).
+  What the harness declares of a workflow: its name, its access level (nil where Qory
+  Apiary does not keep it), and the artifact types it reads (nil for any type).
   """
   @type declaration :: %{
           name: String.t(),
           access: :read | :write | nil,
-          time_limit: String.t() | nil,
           reads: [String.t()] | nil
         }
 
@@ -1317,8 +1315,8 @@ defmodule Apiary.Processes do
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
   the level recorded with the saved workflow where one is, else nil: the level the
-  workflow declares in its stack. `time_limit` and `reads` are nil, since Qory Apiary
-  keeps neither of them: nil `reads` means any type.
+  workflow declares in its stack. `reads` is nil, since Qory Apiary does not keep it: nil
+  `reads` means any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
@@ -1331,7 +1329,7 @@ defmodule Apiary.Processes do
         |> Enum.sort_by(&(not is_nil(&1.target_id)))
         |> Enum.find_value(& &1.access)
 
-      %{name: name, access: access, time_limit: nil, reads: nil}
+      %{name: name, access: access, reads: nil}
     end
   end
 

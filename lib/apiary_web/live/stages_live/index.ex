@@ -32,6 +32,13 @@ defmodule ApiaryWeb.StagesLive.Index do
   # in the inspector has a check when `declared_workflows/1` has it, else a cross, the
   # workflow a stage waits for (`Apiary.Stages`); before the first read, no workflow has a
   # mark and no stage waits.
+  #
+  # With the feature `factory`, each workflow's fold in the inspector has its time limit,
+  # the workspace's limit for that workflow in `Apiary.TimeLimits`, outside the process:
+  # **Save time limit** writes it at once, under `time_limit.edit`, and makes no version.
+  # An empty field removes the limit, and the workflow's sessions then stop after the
+  # default, 180 minutes. Where the edition shows a sentence in place of the field
+  # (`c:ApiaryWeb.Edition.operator_sentence/2`), the field is disabled and nothing saves.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -39,7 +46,7 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Organisations, Processes, Repo, WorkItems}
+  alias Apiary.{Organisations, Processes, Repo, TimeLimits, WorkItems}
   alias Apiary.Stacks.Sources
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{MachineTypeWords, People, SettingsComponents}
@@ -88,7 +95,11 @@ defmodule ApiaryWeb.StagesLive.Index do
         rounds_errors: %{},
         workflow_errors: %{},
         assigned: nil,
-        notice: nil
+        notice: nil,
+        time_limits: saved_limits(scope),
+        time_limit_rows: %{},
+        time_limit_editable: Apiary.Access.can?(scope, :"time_limit.edit", workspace),
+        time_limit_note: ApiaryWeb.Edition.operator_sentence(:"time_limit.edit", scope)
       )
       |> load(current)
       |> load_work_items()
@@ -275,6 +286,36 @@ defmodule ApiaryWeb.StagesLive.Index do
       else: {:noreply, socket}
   end
 
+  # A time-limit field changed, or lost the focus: its value, kept for its row. An error
+  # shows once the field has lost the focus, or after Save time limit.
+  def handle_event("time_limit_change", %{"time_limit" => %{} = params}, socket),
+    do: {:noreply, put_row(socket, params, params["minutes"], :change)}
+
+  def handle_event("time_limit_blur", %{"row" => _row} = params, socket),
+    do: {:noreply, put_row(socket, params, params["value"], :blur)}
+
+  # Save time limit: the field's minutes as the workspace's limit for the workflow, or,
+  # for an empty field, no limit. It writes `time_limits` alone, never the process.
+  def handle_event("time_limit_save", %{"time_limit" => %{} = params}, socket) do
+    %{current_scope: scope} = socket.assigns
+    workflow = params["workflow"]
+
+    with true <- time_limits_editable?(socket.assigns),
+         true <- is_binary(workflow) and is_binary(params["row"]),
+         {:ok, minutes} <- save_minutes(params["minutes"]),
+         :ok <- save_limit(scope, workflow, minutes) do
+      value = if minutes, do: Integer.to_string(minutes), else: ""
+
+      {:noreply,
+       socket
+       |> assign(time_limits: saved_limits(scope))
+       |> put_row(params, value, :saved)}
+    else
+      :invalid -> {:noreply, put_row(socket, params, params["minutes"], :refused)}
+      _refused -> {:noreply, put_flash(socket, :error, Words.refusal(:forbidden, nil))}
+    end
+  end
+
   def handle_event(_event, _params, %{assigns: %{may: false}} = socket) do
     {:noreply, put_flash(socket, :error, Words.refusal(:forbidden, nil))}
   end
@@ -414,6 +455,99 @@ defmodule ApiaryWeb.StagesLive.Index do
         end
     end
   end
+
+  ## Time limits
+
+  # The workspace's time limits by workflow, the limits of its targets left out; nil
+  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`).
+  defp saved_limits(scope) do
+    case TimeLimits.list_limits(scope) do
+      {:ok, limits} ->
+        for %{target_id: nil} = limit <- limits, into: %{}, do: {limit.workflow, limit.minutes}
+
+      {:error, :not_found} ->
+        nil
+    end
+  end
+
+  defp time_limits_editable?(assigns),
+    do:
+      assigns.time_limits != nil and assigns.time_limit_editable and
+        is_nil(assigns.time_limit_note)
+
+  # The state of a time-limit field, by its row, after `event`: the workflow it is of, the
+  # value it shows, whether it has lost the focus or been saved with an error since the
+  # page loaded, and whether its value is the one just saved.
+  defp put_row(socket, params, value, event) do
+    case params do
+      %{"row" => row, "workflow" => workflow} when is_binary(row) and is_binary(workflow) ->
+        value = to_string(value || "")
+
+        old =
+          case socket.assigns.time_limit_rows[row] do
+            %{workflow: ^workflow} = old -> old
+            _none -> %{workflow: workflow, value: nil, touched: false, done: false}
+          end
+
+        same = old.done and old.value == value
+
+        state =
+          case event do
+            :change -> %{old | value: value, done: same}
+            :blur -> %{old | value: value, touched: true, done: same}
+            :refused -> %{old | value: value, touched: true, done: false}
+            :saved -> %{old | value: value, done: true}
+          end
+
+        update(socket, :time_limit_rows, &Map.put(&1, row, state))
+
+      _other ->
+        socket
+    end
+  end
+
+  defp save_minutes(value) do
+    case Inspector.minutes(value || "") do
+      {:ok, minutes} -> {:ok, minutes}
+      :empty -> {:ok, nil}
+      :error -> :invalid
+    end
+  end
+
+  # The limit written, or removed for nil; a removal where none is saved changes nothing.
+  # A refusal of the minutes is the field's error.
+  defp save_limit(scope, workflow, nil) do
+    case TimeLimits.delete_limit(scope, :workspace, workflow) do
+      {:ok, _limit} -> :ok
+      {:error, :not_found} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp save_limit(scope, workflow, minutes) do
+    case TimeLimits.put_limit(scope, :workspace, workflow, minutes) do
+      {:ok, _limit} ->
+        :ok
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        if errors[:minutes], do: :invalid, else: :refused
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # What the inspector shows of the time limits (`ApiaryWeb.StagesLive.Inspector`), nil
+  # where they are not shown.
+  defp time_limit(%{time_limits: nil}), do: nil
+
+  defp time_limit(assigns),
+    do: %{
+      saved: assigns.time_limits,
+      rows: assigns.time_limit_rows,
+      editable: time_limits_editable?(assigns),
+      note: assigns.time_limit_note
+    }
 
   # The accounts of the versions' authors, by user id (`ApiaryWeb.People.accounts/1`).
   defp authors(socket),
@@ -681,6 +815,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 from_update={from_update?(@base)}
                 marks={marks(assigns)}
                 read_failed={@declared_error && Words.read_failed(@declared_error, @snapshot)}
+                time_limit={time_limit(assigns)}
               />
             </div>
           </div>

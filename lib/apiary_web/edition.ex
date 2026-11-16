@@ -39,7 +39,9 @@ defmodule ApiaryWeb.Edition do
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
     `c:level_refusal_sentence/2`, what a page says of a level the edition refused;
     `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
-    the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
+    the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`);
+    `c:operator_sentence/2`, what a page shows in place of a setting the workspace's
+    operator changes.
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:configuration_parts/1`, the parts the edition adds to Instance settings ›
     Configuration, after the core's;
@@ -226,6 +228,17 @@ defmodule ApiaryWeb.Edition do
   @callback who_may_sentence(about :: atom, Scope.t()) :: String.t() | nil
 
   @doc """
+  What a page shows in place of the way to take `about`, an action of `Apiary.Access`, in
+  the workspace of `scope`, where the workspace's operator takes that action and the
+  person of `scope` acts there as a person of the organisation: one sentence, translated,
+  such as "Set by your operator, Contoso. Ask them to change it."; nil where the
+  person takes the action as `Apiary.Access` allows. The stage panel of Workspace
+  settings › Workflows asks it of `:"time_limit.edit"`: while it is a sentence, a
+  workflow's time limit shows with no way to change it, and the sentence under it.
+  """
+  @callback operator_sentence(about :: atom, Scope.t()) :: String.t() | nil
+
+  @doc """
   What the pages of an organisation's gateways say of the workspaces whose nodes and node
   pools can use them, of `organisation`, the gateways' organisation: one sentence,
   translated. `kind` says where it stands:
@@ -393,6 +406,7 @@ defmodule ApiaryWeb.Edition do
     level_refusal_sentence: 2,
     refusal_sentence: 1,
     who_may_sentence: 2,
+    operator_sentence: 2,
     settings_tabs: 1,
     configuration_parts: 1,
     slot: 2,

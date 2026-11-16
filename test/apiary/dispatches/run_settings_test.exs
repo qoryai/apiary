@@ -150,13 +150,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      assert settings(handed) == %{"runtime" => @runtime}
+      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
     end
 
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{"runtime" => @runtime}
+      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
 
       assert %Run{
                run_settings: %{"runtime" => @runtime},
@@ -199,13 +199,14 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "model" => "claude-opus-5-5",
                "effort" => "high",
                "provider_models" => models(@efforts),
-               "tiers" => %{"fast" => "claude-haiku-5-5"}
+               "tiers" => %{"fast" => "claude-haiku-5-5"},
+               "time_limit_minutes" => 180
              }
 
       ordered = handed.run_settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
 
       assert Enum.map(ordered.values, &elem(&1, 0)) ==
-               ~w(runtime model effort provider_models tiers)
+               ~w(runtime model effort provider_models tiers time_limit_minutes)
     end
 
     test "of a run with a target reads the target's level first", ctx do
@@ -250,7 +251,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert settings(handed) == %{
                "runtime" => @runtime,
                "model" => "claude-opus-5-5",
-               "provider_models" => models(@efforts)
+               "provider_models" => models(@efforts),
+               "time_limit_minutes" => 180
              }
     end
 
@@ -300,7 +302,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                  "light" => "claude-haiku-5-5",
                  "fast" => "acme-small",
                  "thinking" => "acme-large"
-               }
+               },
+               "time_limit_minutes" => 180
              }
     end
   end

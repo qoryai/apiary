@@ -361,10 +361,10 @@ the type that was the default then (`dispatch_runs.machine_type_was_default`), o
 queued before machine types, and the answer has neither, so the starter uses its default
 machine type. A run queued before machine types has no spec and is of the default type. An
 explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after
-its other members, when a time limit resolves for the run's workflow
-(`Apiary.Stacks.workflow/2`): the limit set for that workflow at the run's target, else
-the one set at its workspace (`Apiary.TimeLimits`). With no limit at either place, or no
-workflow for the run, the member is absent, and the run takes the default of the
+its other members, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the
+workflow model, the workflow of its stage entry): the limit set for that workflow at the
+run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
+With no workflow for the run, the member is absent, and the run takes the default of the
 workflow's stack, which the machine applies. The claim registers the run, and the run
 endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
 waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
