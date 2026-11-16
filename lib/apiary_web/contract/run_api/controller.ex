@@ -765,7 +765,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp write_error(conn, {:error, {:withdraw, :no_version, type, name}}) do
     error(conn, 409, "no_version",
       type: type,
-      message: "Withdraw only a stored artifact. #{type}/#{name} has no version."
+      message:
+        "Withdraw only a stored artifact. #{type}/#{name} has no version outside cancelled runs."
     )
   end
 

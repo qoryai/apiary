@@ -2419,6 +2419,19 @@ defmodule Apiary.StagesTest do
                )
     end
 
+    test "a name with versions only by a run a member cancelled has no version to withdraw",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, [])
+      cancelled = live_run!(work_item)
+      {:ok, %{number: 1}} = push_explainer(cancelled, "main")
+      cancel_run!(scope, cancelled)
+
+      assert {:error, {:withdraw, :no_version}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
     test "a run does not withdraw a person's upload under a cancelled run's version",
          %{scope: scope} do
       work_item = done_with_explainers!(scope, [])

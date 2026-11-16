@@ -1651,7 +1651,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "error" => "no_version",
                "type" => "screenshot",
                "message" =>
-                 "Withdraw only a stored artifact. screenshot/scenario-2 has no version."
+                 "Withdraw only a stored artifact. screenshot/scenario-2 has no version outside cancelled runs."
              }
 
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")

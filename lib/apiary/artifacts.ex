@@ -169,17 +169,19 @@ defmodule Apiary.Artifacts do
   #
   # `withdraw({:run, run}, work_item, type, opts)` stores a withdrawal: a version of the
   # work item's artifact of `type` and `opts[:name]` with no files and `withdrawn` true,
-  # by the run, with `opts[:stage_id]` and `opts[:note]` as a push takes them. A name whose
-  # newest version that no cancelled run wrote is a withdrawal is withdrawn
-  # (`withdrawn?/1`): the stages and the work item's pages leave it out, and the next
-  # version with files lists it again. Only a run withdraws a name; any other actor is
-  # `{:error, :not_found}`. The checks of the actor, the type and the options are those of
-  # a push, 1 to 3. A type Qory Apiary reads itself, `questions`, `review-comments`,
-  # `verdict` or `proposal` (`withdrawable_type?/1`), is `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
-  # of a push's transaction, the artifact's newest version that no cancelled run wrote is
-  # read, and the withdrawal is refused, as `{:error, {:withdraw, reason}}`, when it is:
+  # by the run, with `opts[:stage_id]` and `opts[:note]` as a push takes them. A name is
+  # withdrawn when its newest version, leaving out versions by a run a member cancelled, is
+  # a withdrawal (`withdrawn?/1`): the stages and the work item's pages leave it out, and
+  # the next version with files lists it again. Only a run withdraws a name; any other
+  # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
+  # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
+  # `review-comments`, `verdict` or `proposal` (`withdrawable_type?/1`), is
+  # `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
+  # of a push's transaction, the artifact's newest version, leaving out versions by a run a
+  # member cancelled, is read, and the withdrawal is refused, as
+  # `{:error, {:withdraw, reason}}`, when it is:
   #
-  #   - none, as the name has no version: `:no_version`;
+  #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
   #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
   #     whose newest version a run wrote.
