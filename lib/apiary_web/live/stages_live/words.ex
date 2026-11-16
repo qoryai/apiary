@@ -396,7 +396,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   def change({:condition_changed, id, _detail}, _older, newer, _people),
     do: gettext("%{stage}: condition changed.", stage: name(newer, id))
 
-  def change({:gate_changed, id, _detail}, _older, newer, people) do
+  def change({:gate_changed, id, _detail}, older, newer, people) do
     stage = Processes.stage(newer, id) || %{}
     name = stage["name"]
 
@@ -421,10 +421,12 @@ defmodule ApiaryWeb.StagesLive.Words do
           gettext("Changed the gate of %{name}: any member approves.", name: name)
       end
 
-    # A gate that offers tracks adds them: "... any member approves. Offers: A, B."
-    case offers(stage, newer) do
-      nil -> line
-      offers -> line <> " " <> offers <> "."
+    # A gate that offers tracks adds them: "... any member approves. Offers: A, B."; a gate
+    # that stops offering them says so.
+    case {offers(stage, newer), offers(Processes.stage(older, id) || %{}, older)} do
+      {nil, nil} -> line
+      {nil, _before} -> line <> " " <> gettext("Offers no track.")
+      {offers, _before} -> line <> " " <> offers <> "."
     end
   end
 

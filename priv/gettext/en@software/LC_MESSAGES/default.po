@@ -14981,6 +14981,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Offers no track."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Offers: %{tracks}"
 msgstr ""
 

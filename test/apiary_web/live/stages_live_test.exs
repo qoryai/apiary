@@ -3654,6 +3654,29 @@ defmodule ApiaryWeb.StagesLiveTest do
   end
 
   describe "the words" do
+    test "a gate that stops offering tracks says so" do
+      offering = shown_document()
+      explore = id_of("Explore")
+
+      offering_none =
+        Draft.update_stage(offering, explore, fn stage ->
+          Map.update!(stage, "gate", &Map.delete(&1, "tracks"))
+        end)
+
+      gate_line = fn older, newer ->
+        for {:gate_changed, _id, _detail} = change <- Processes.diff(older, newer),
+            do: Words.change(change, older, newer)
+      end
+
+      assert gate_line.(offering, offering_none) ==
+               ["Changed the gate of Explore: any member approves. Offers no track."]
+
+      assert gate_line.(offering_none, offering) ==
+               [
+                 "Changed the gate of Explore: any member approves. Offers: Standard, Fast track."
+               ]
+    end
+
     test "each change of a version reads in plain words" do
       old = Processes.default_document("software")
 
