@@ -1228,7 +1228,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       track = Map.put(doc, "tracks", [%{"id" => "Fast", "name" => "Fast track"}])
 
       text =
-        "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
+        "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
 
       assert text in refusals(track)
 
@@ -1237,7 +1237,7 @@ defmodule ApiaryWeb.StagesLiveTest do
           %{stage | "gate" => Map.put(stage["gate"], "tracks", ["Small Change"])}
         end)
 
-      assert "Write each track of the gate of Explore as lower-case words joined by hyphens, such as small-change." in refusals(
+      assert "Write each track of the gate of Explore as an id of lower-case words joined by hyphens, such as small-change." in refusals(
                gate
              )
     end

@@ -498,7 +498,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       String.starts_with?(path, "#/tracks") ->
         gettext(
-          "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
+          "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
         )
 
       error == :gate_none_tracks ->
@@ -509,7 +509,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       String.contains?(path, "/gate/tracks") ->
         gettext(
-          "Write each track of the gate of %{stage} as lower-case words joined by hyphens, such as small-change.",
+          "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change.",
           stage: stage
         )
 

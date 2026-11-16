@@ -10755,7 +10755,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Give every track an id of lower-case words joined by hyphens, such as small-change, and a name of 1 to 60 characters."
+msgid "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -24323,7 +24323,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Write each track of the gate of %{stage} as lower-case words joined by hyphens, such as small-change."
+msgid "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
