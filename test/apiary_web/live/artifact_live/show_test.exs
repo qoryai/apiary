@@ -633,6 +633,23 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
     end
 
+    test "lists a withdrawal as Withdrew, with its artifact and version", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               "#artifact-history-#{withdrawal.public_id} a",
+               "Withdrew explainer/scenario-2 (version 2)"
+             )
+
+      assert has_element?(view, "#artifact-history-#{version.public_id} a", "Version 1")
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))

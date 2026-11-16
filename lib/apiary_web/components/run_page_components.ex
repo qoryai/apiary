@@ -1103,7 +1103,34 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # A version of an artifact the run pushed: the artifact's type and name, the type alone
   # while it has no name, and the version's number, marked when a member cancelled the
-  # run. No event has its place, so it has no event number.
+  # run; a withdrawal reads "Withdrew demo-script/scenario-2 (version 3)". No event has its
+  # place, so it has no event number.
+  defp item_body(%{item: %{kind: :pushed, withdrawn: true}} = assigns) do
+    assigns =
+      assign(assigns,
+        artifact: Enum.join(Enum.reject([assigns.item.type, assigns.item[:name]], &is_nil/1), "/")
+      )
+
+    ~H"""
+    <div class="q-hd">
+      <span class="q-k">{gettext("Withdrew")}</span>
+      <span class="q-s"><bdi>{ApiaryWeb.ArtifactComponents.pushed_not_counted(
+        gettext("%{artifact} (version %{number})",
+          artifact: @artifact,
+          number: Format.number(@item.number)
+        ),
+        @item
+      )}</bdi></span>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
+    """
+  end
+
   defp item_body(%{item: %{kind: :pushed}} = assigns) do
     assigns =
       assign(assigns,

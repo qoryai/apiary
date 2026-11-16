@@ -31,6 +31,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   step's title and expected result. A scenario whose name is withdrawn is left out.
 - An output frame on a stage's tab lists the artifact row of each name of its type,
   `main` first, and an output with only other names has a frame too.
+- A run's page and a version page's History show a withdrawal as “Withdrew
+  demo-script/scenario-2 (version 3)” in place of “Pushed”.
 <!-- /feature -->
 
 - An artifact page that shows videos has a Speed row under each video, with the buttons

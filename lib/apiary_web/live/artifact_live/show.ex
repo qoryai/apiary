@@ -150,7 +150,14 @@ defmodule ApiaryWeb.ArtifactLive.Show do
                     version.id != @version.id && "text-accent"
                   ]}
                 >
-                  {gettext("Version %{number}", number: version.number)}
+                  <%= if version.withdrawn do %>
+                    {gettext("Withdrew %{artifact} (version %{number})",
+                      artifact: "#{@version.artifact.type}/#{@version.artifact.name}",
+                      number: version.number
+                    )}
+                  <% else %>
+                    {gettext("Version %{number}", number: version.number)}
+                  <% end %>
                 </.link>
                 <span class="text-[12.5px] text-muted">
                   <ArtifactComponents.made_by version={version} scope={@current_scope} />
