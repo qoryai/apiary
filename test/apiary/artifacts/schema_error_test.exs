@@ -28,6 +28,19 @@ defmodule Apiary.Artifacts.SchemaErrorTest do
              %{path: "#", error: "property 'gaps' is required"}
   end
 
+  test "with unwrap, is the first error inside a failed allOf" do
+    schema = %{
+      "allOf" => [
+        %{"properties" => %{"a" => %{"type" => "string"}, "b" => %{"type" => "string"}}}
+      ]
+    }
+
+    {:error, error} = JSV.validate(%{"a" => 1, "b" => 2}, JSV.build!(schema), cast: false)
+
+    assert SchemaError.first(error, unwrap: true) ==
+             %{path: "#/a", error: "value is not of type string"}
+  end
+
   describe "an if error" do
     @conditional %{
       "type" => "object",

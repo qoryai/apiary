@@ -1517,6 +1517,15 @@ defmodule Apiary.ArtifactsTest do
           ] do
         assert {:error, {:invalid, {:schema, 0, _error}}} = push.("verdict", document)
       end
+
+      # A run_again point with a question is refused at the point, with the member named.
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "property 'question' is not allowed"}}}} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [Map.put(run_again, "question", "q2")]
+               })
     end
 
     test "takes a fix on a run_again point, on one line of 1 to 500 characters",
@@ -1791,6 +1800,37 @@ defmodule Apiary.ArtifactsTest do
                Repo.all(from e in Entry, where: e.action == "artifact.write")
 
       assert subject_id == context.work_item.id
+    end
+
+    test "a custom type's document that fails the then of an if is refused with the inner error",
+         %{scope: scope} = context do
+      member = member_fixture(scope)
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "bids",
+          "base_view" => "structured",
+          "json_schema" => %{
+            "type" => "object",
+            "properties" => %{
+              "kind" => %{"enum" => ["fixed", "open"]},
+              "price" => %{"type" => "number"}
+            },
+            "if" => %{"required" => ["kind"], "properties" => %{"kind" => %{"const" => "fixed"}}},
+            "then" => %{"required" => ["price"]}
+          }
+        })
+
+      push =
+        &Artifacts.push({:person, member.scope}, context.work_item, "bids", [
+          json("bids.json", &1)
+        ])
+
+      assert {:ok, _version} = push.(%{"kind" => "fixed", "price" => 12})
+
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#", error: "property 'price' is required"}}}} =
+               push.(%{"kind" => "fixed"})
     end
 
     test "is not found for a person of another organisation", context do

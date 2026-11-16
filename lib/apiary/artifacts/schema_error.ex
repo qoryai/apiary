@@ -10,10 +10,13 @@ defmodule Apiary.Artifacts.SchemaError do
   # property schema", is passed over while a deeper error exists. An `if` error is the
   # errors of its failed `then` or `else` schema, each with its path, so "value validated
   # 'if' but not 'then'" is replaced by a message such as "property 'fix' is not
-  # allowed"; an `if` error with none keeps its message. With `unwrap: true`, as for the
-  # type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit on its
-  # length makes, is the errors of its schemas that failed, so "value did not conform to
-  # all of the given schemas" is replaced by the failing limit's message.
+  # allowed"; an `if` error with none keeps its message. An `if` inside an `allOf` is
+  # read so only with `unwrap: true`: in `questions.schema.json` and
+  # `review-comments.schema.json`, only the two checks that an answer with option null has
+  # a note are outside an `allOf`. With `unwrap: true`, as for the type `mockup`, an
+  # `allOf` error, which a `$ref` to a definition with a limit on its length makes, is the
+  # errors of its schemas that failed, so "value did not conform to all of the given
+  # schemas" is replaced by the failing limit's message.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
@@ -71,7 +74,7 @@ defmodule Apiary.Artifacts.SchemaError do
   defp failed(%{kind: :allOf, args: args} = error, true) do
     nested =
       for {_index, %{errors: errors}} <- Keyword.get(args, :invalidated, []),
-          error <- errors,
+          error <- :lists.flatten(errors),
           do: error
 
     unwrapped(error, nested, true)
