@@ -52,42 +52,180 @@ artifact_types:
   - name: explainer
   - name: decision-record
   - name: change
-  - name: branch
+  - name: submission
     base_view: structured
-    size_limit: 65536
+    size_limit: 1048576
     max_files: 1
-    # The content of contracts/harness/v1/branch.schema.json in the qory repository.
+    # The same JSON Schema is in running-a-software-workflow/schemas/submission.schema.json.
     json_schema:
       {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://qory.dev/contracts/harness/v1/branch.schema.json",
-        "title": "The branch format, version 1",
-        "description": "A work item's branch and the commit in each repository: the file of a version of a structured artifact type branch.",
+        "title": "Submission, version 1",
+        "description": "A session's branch, commits, draft, text and verdict.",
         "type": "object",
-        "required": ["ref", "repositories"],
+        "required": [
+          "ref",
+          "repositories",
+          "verdict"
+        ],
         "additionalProperties": false,
         "properties": {
-          "ref": {"description": "The branch's name, the same in each repository: qory/ followed by the work item's id.", "type": "string", "pattern": "^qory/wi_[A-Za-z0-9_-]{1,64}$"},
+          "ref": {
+            "title": "Branch",
+            "type": "string",
+            "pattern": "^qory/wi_[A-Za-z0-9_-]{1,64}$"
+          },
+          "verdict": {
+            "enum": [
+              "passed",
+              "changes-requested",
+              "escalate",
+              "none"
+            ]
+          },
           "repositories": {
-            "description": "Each repository with the commit of the branch in it, at least one.",
             "type": "array",
             "minItems": 1,
+            "maxItems": 20,
             "items": {
-              "type": "object",
-              "required": ["system", "path", "commit"],
-              "additionalProperties": false,
-              "properties": {
-                "system": {"description": "The host the repository is on, such as github.com: a lower-case host name of at most 253 characters.", "type": "string", "pattern": "^[a-z0-9.-]{0,252}[a-z0-9-]$"},
-                "path": {
-                  "description": "The repository's path on the host, such as acme/web: at most 200 characters of segments joined by slashes, with no ., .. or .git segment.",
-                  "type": "string",
-                  "maxLength": 200,
-                  "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
-                  "not": {"pattern": "(^|/)(\\.\\.?|\\.[Gg][Ii][Tt])(/|$)"}
-                },
-                "commit": {"description": "A full commit id: 40 or 64 lower-case hexadecimal digits.", "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"}
+              "$ref": "#/$defs/repository"
+            }
+          },
+          "text": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "$defs": {
+          "repository": {
+            "type": "object",
+            "required": [
+              "system",
+              "path",
+              "commit",
+              "draft"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "system": {
+                "type": "string",
+                "pattern": "^[a-z0-9.-]{0,252}[a-z0-9-]$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+                "not": {
+                  "pattern": "(^|/)(\\.\\.?|\\.[Gg][Ii][Tt])(/|$)"
+                }
+              },
+              "commit": {
+                "title": "Commit",
+                "$ref": "#/$defs/commit"
+              },
+              "commit_url": {
+                "title": "Commit link",
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^https://\\S+$"
+              },
+              "draft": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/draft"
+                  },
+                  {
+                    "$ref": "#/$defs/no_draft"
+                  }
+                ]
               }
             }
+          },
+          "draft": {
+            "type": "object",
+            "required": [
+              "number",
+              "url",
+              "title",
+              "state",
+              "action"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "number": {
+                "title": "Draft",
+                "type": "integer",
+                "minimum": 1
+              },
+              "url": {
+                "title": "Draft link",
+                "type": "string",
+                "maxLength": 2048,
+                "pattern": "^https://\\S+$"
+              },
+              "title": {
+                "title": "Draft title",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "state": {
+                "enum": [
+                  "draft",
+                  "open"
+                ]
+              },
+              "action": {
+                "enum": [
+                  "opened",
+                  "updated",
+                  "kept"
+                ]
+              }
+            }
+          },
+          "no_draft": {
+            "type": "object",
+            "required": [
+              "none"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "none": {
+                "title": "No draft",
+                "enum": [
+                  "not-passed",
+                  "no-text",
+                  "escalated",
+                  "no-program"
+                ]
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "required": [
+              "title",
+              "description"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^\\n]+$"
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16384
+              }
+            }
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
           }
         }
       }

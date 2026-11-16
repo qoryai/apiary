@@ -402,7 +402,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
     test "the template's type offers the standard types and the template's custom types" do
       template = Qory.template(Qory.current())
 
-      assert %{name: "branch", base_view: :structured} in TypeTemplates.offered_types(
+      assert %{name: "submission", base_view: :structured} in TypeTemplates.offered_types(
                template.type
              )
 

@@ -95,7 +95,7 @@ defmodule Apiary.ArtifactsTest do
   # The audit entries of a change of a type, but the one of the sign-up's custom type.
   defp type_entries do
     Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
-    |> Enum.reject(&(&1.details["type"] == "branch"))
+    |> Enum.reject(&(&1.details["type"] == "submission"))
   end
 
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>

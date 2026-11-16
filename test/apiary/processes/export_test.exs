@@ -125,7 +125,7 @@ defmodule Apiary.Processes.ExportTest do
                |> Enum.reject(& &1.standard)
                |> Enum.map(& &1.name)
 
-      assert "branch" in Enum.map(template.artifact_types, & &1["name"])
+      assert "submission" in Enum.map(template.artifact_types, & &1["name"])
     end
 
     test "for a workspace with hidden types, with custom types after the shown ones", %{

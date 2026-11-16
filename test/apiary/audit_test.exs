@@ -354,7 +354,7 @@ defmodule Apiary.AuditTest do
       assert %{action: "security_policy.edit", details: %{"change" => "first_version"}} =
                version_1
 
-      assert %{action: "artifact_type.edit", details: %{"type" => "branch"}} = type
+      assert %{action: "artifact_type.edit", details: %{"type" => "submission"}} = type
       assert created.action == "organisation.create"
 
       assert Enum.all?(

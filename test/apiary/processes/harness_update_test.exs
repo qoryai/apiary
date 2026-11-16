@@ -297,8 +297,8 @@ defmodule Apiary.Processes.HarnessUpdateTest do
         )
 
       assert Enum.sort(entries) == [
-               {"create", "branch"},
                {"create", "spec"},
+               {"create", "submission"},
                {"hide", "mockup"},
                {"show", "mockup"}
              ]

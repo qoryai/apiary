@@ -881,7 +881,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
       assert {:ok, %Workspace{shown_standard_types: @standard} = workspace} =
                Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
 
-      assert [%Type{name: "branch", standard: false, base_view: :structured}] =
+      assert [%Type{name: "submission", standard: false, base_view: :structured}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
 
       assert ["workspace.create", "artifact_type.edit", "security_policy.edit"] =
@@ -907,7 +907,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
 
       assert workspace.shown_standard_types == @standard
 
-      assert [%Type{name: "branch"}] =
+      assert [%Type{name: "submission"}] =
                Repo.all(from t in Type, where: t.workspace_id == ^workspace.id)
 
       assert Repo.all(
