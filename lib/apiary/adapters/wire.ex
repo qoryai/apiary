@@ -140,7 +140,8 @@ defmodule Apiary.Adapters.Wire do
           default_interval: pos_integer,
           minimum_interval: pos_integer,
           sends_changes: boolean,
-          description: Apiary.Integrations.Description.t()
+          description: Apiary.Integrations.Description.t(),
+          submit_module: map | nil
         }
 
   @type target :: %{system: String.t(), path: String.t()}
@@ -286,18 +287,22 @@ defmodule Apiary.Adapters.Wire do
   def call_url?(_value), do: false
 
   # The raw body of `POST /v1/adapter`: `{:ok, declaration}` or `:error`. The description
-  # is read last, once every other member is as the contract has it.
+  # is read last, once every other member is as the contract has it. `submit_module` is
+  # the forge's harness module with the submit program, nil where the body has none
+  # (`submit_module/1`).
   @doc false
   @spec declaration(term) :: {:ok, declaration} | :error
   def declaration(raw) when is_binary(raw) do
     with {:ok, body} <- decode(raw),
          true <-
-           Enum.sort(Map.keys(Map.drop(body, ["setup_url", "call_url"]))) == @declaration_keys,
+           Enum.sort(Map.keys(Map.drop(body, ["setup_url", "call_url", "submit_module"]))) ==
+             @declaration_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          true <- url?(body["connect_url"]),
          {:ok, setup_url} <- setup_url(body),
          {:ok, call_url} <- call_url(body),
+         {:ok, submit_module} <- submit_module(body),
          %{} = sync <- body["sync"],
          true <- Enum.sort(Map.keys(sync)) == @sync_keys,
          default when is_integer(default) <- sync["default_interval"],
@@ -317,7 +322,8 @@ defmodule Apiary.Adapters.Wire do
          default_interval: default,
          minimum_interval: minimum,
          sends_changes: sends_changes,
-         description: description
+         description: description,
+         submit_module: submit_module
        }}
     else
       _ -> :error
@@ -325,6 +331,15 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def declaration(_raw), do: :error
+
+  # `submit_module` when the body gives one: the run contract's `submit_module`, a harness
+  # module whose source is pinned to a full commit hash, with no exclude, only or variant,
+  # and whose `git` is an https address, as every harness source Qory Apiary takes is
+  # (`Apiary.Stacks.Document.submit_module?/1`). nil when the body gives none.
+  defp submit_module(%{"submit_module" => module}),
+    do: if(Apiary.Stacks.Document.submit_module?(module), do: {:ok, module}, else: :error)
+
+  defp submit_module(%{}), do: {:ok, nil}
 
   # `setup_url` when the body gives one, held to `setup_url?/1`; nil when it gives none.
   defp setup_url(%{"setup_url" => url}),
