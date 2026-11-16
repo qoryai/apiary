@@ -1841,6 +1841,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A question that was reopened after a decision and then answered is no longer refused
+  as too large.
 <!-- feature: secrets -->
 - A run that stops because its gateway's key does not allow stored secrets now shows
   who adds an allowed key and where, in place of Contact support.
