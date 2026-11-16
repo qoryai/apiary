@@ -976,11 +976,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp stage_spend("stage_approve", params, socket) do
-    stage = socket.assigns.flow.stage.name
-
     ask_if_run("stage_approve", params, socket, :approve,
-      title: gettext("Approve %{stage}?", stage: stage),
-      action: gettext("Approve %{stage}", stage: stage),
+      title: gettext("Approve this stage?"),
+      action: gettext("Approve"),
       return_to: "work-item-stage-gate-approve-go"
     )
   end
@@ -1381,10 +1379,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @doc false
   def refused(:not_earlier, flow), do: not_earlier(flow)
 
-  def refused({:outputs_missing, types}, flow) do
-    gettext("Add %{outputs} before you approve %{stage}.",
-      outputs: StageComponents.outputs_words(types),
-      stage: flow.stage.name
+  def refused({:outputs_missing, types}, _flow) do
+    gettext("Add %{outputs} before you approve this stage.",
+      outputs: StageComponents.outputs_words(types)
     )
   end
 

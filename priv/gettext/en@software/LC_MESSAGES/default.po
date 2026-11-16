@@ -4871,7 +4871,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Add %{outputs} before you approve %{stage}."
+msgid "Add %{outputs} before you approve this stage."
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -5961,19 +5961,10 @@ msgid "Applies to"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Approve"
-msgstr ""
-
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
-msgid "Approve %{stage}"
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Approve %{stage}?"
+msgid "Approve"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5986,6 +5977,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approve the proposal, or add a comment and run another round."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Approve this stage?"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
