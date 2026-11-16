@@ -11,6 +11,23 @@ a signature gets the `404` of a path the router does not know.
 
 The code is in `lib/apiary_web/contract/run_api/`.
 
+## The run's access level
+
+The `access` of the run's documents is `read`, `write-no-push` or `write`
+(`documents.schema.json` of the run contract). It sets what the run may do on its target,
+not what it may do through the run API: a run of any level reads its work item and pushes
+artifacts and a verdict. A run with `write-no-push` has a writable checkout and a work
+credential with read access, so it holds no credential that pushes to the target; only a
+run with `write` has `submit`.
+
+Qory Apiary computes the level once, when it claims the run. The level is the lower of two
+levels, from lowest to highest `read`, `write-no-push` and `write`: the level the run's
+workflow declares in the harness's stack (`workflows.<workflow>.access`), and the `access`
+of the workflow's entry in the stage of `process.yaml`, which may be `read` or
+`write-no-push`. An entry with no `access` leaves the stack's level; a workflow that sets
+none declares `read`. A run of a stage whose version has no entry for its workflow has
+`read`.
+
 ## Requests
 
 Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id: `run_id` in

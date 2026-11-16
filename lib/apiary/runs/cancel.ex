@@ -202,8 +202,11 @@ defmodule Apiary.Runs.Cancel do
       )
 
     case {walk, Repo.get(DispatchRun, id)} do
-      {:write, %DispatchRun{} = dispatch_run} -> Apiary.Stages.run_access(:write, dispatch_run)
-      _read_or_none -> :read
+      {walk, %DispatchRun{} = dispatch_run} when not is_nil(walk) ->
+        Apiary.Stages.run_access(walk, dispatch_run)
+
+      _none ->
+        :read
     end
   end
 

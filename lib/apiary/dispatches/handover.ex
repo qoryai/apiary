@@ -1038,9 +1038,9 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # Hand-over: the run's documents and its work entry get one access level, read once
-  # (`Apiary.Runs.RunCredentials.run_access/1`): with the workflow model, a run the stage
-  # runner queued with the level `read` or `local_write` has that level, whatever its walk
-  # resolved. A run with no harness members has no level in its documents (read).
+  # (`Apiary.Runs.RunCredentials.run_access/1`): the lower of the level its harness walk
+  # resolved and its stage entry's, `read` for a run of a stage with no entry for its
+  # workflow. A run with no harness members has no level in its documents (read).
   defp with_level(nil, _level), do: nil
   defp with_level(harness, level), do: %{harness | access: level}
 

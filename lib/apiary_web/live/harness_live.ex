@@ -704,11 +704,12 @@ defmodule ApiaryWeb.HarnessLive do
     {:noreply, assign_form(socket)}
   end
 
-  def handle_async(:declared, {:ok, {chosen, {:ok, names}}}, socket) when is_list(names) do
+  def handle_async(:declared, {:ok, {chosen, {:ok, declared}}}, socket)
+      when is_list(declared) or is_map(declared) do
     workspace = socket.assigns.current_scope.workspace
 
     if Sources.chosen(workspace) == chosen,
-      do: :ok = Apiary.Processes.record_declared(workspace, names)
+      do: :ok = Apiary.Processes.record_declared(workspace, declared)
 
     {:noreply, socket}
   end
@@ -838,7 +839,7 @@ defmodule ApiaryWeb.HarnessLive do
   end
 
   # The workflows of the workspace's harness, read outside the page's process as Check
-  # again on a work item reads them (`Apiary.Stacks.Sources.chosen_workflows/2`) and kept
+  # again on a work item reads them (`Apiary.Stacks.Sources.chosen_declared/2`) and kept
   # as the workspace's snapshot (`Apiary.Processes.record_declared/2`): once the page is
   # connected, and again once a harness choice is saved. A read that fails, or a source
   # only tried in Source, changes no snapshot; a harness chosen while the read ran keeps
@@ -849,7 +850,7 @@ defmodule ApiaryWeb.HarnessLive do
 
     socket
     |> cancel_async(:declared)
-    |> start_async(:declared, fn -> {chosen, Sources.chosen_workflows(scope, scope.workspace)} end)
+    |> start_async(:declared, fn -> {chosen, Sources.chosen_declared(scope, scope.workspace)} end)
   end
 
   # The current workflow, where the chosen source's stacks have it under the current base.

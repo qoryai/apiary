@@ -161,7 +161,7 @@ defmodule Apiary.Stages.Runner do
           workflow: String.t(),
           machine_type: String.t(),
           time_limit: pos_integer | nil,
-          access: :read | :local_write | :write | nil,
+          access: :read | :write_no_push | :write | nil,
           entry: non_neg_integer,
           loop_entry: non_neg_integer | nil,
           round: pos_integer
@@ -378,7 +378,7 @@ defmodule Apiary.Stages.Runner do
   # entry's, nil for no entry.
   @doc false
   @spec limits(map, position, map | nil, String.t() | nil) ::
-          %{time_limit: pos_integer | nil, access: :read | :local_write | :write | nil} | nil
+          %{time_limit: pos_integer | nil, access: :read | :write_no_push | :write | nil} | nil
   def limits(stage, position, declaration, workflow \\ nil) do
     case entry_at(stage, position) do
       %{"workflow" => name} = entry when workflow in [nil, name] -> lowered(entry, declaration)
@@ -656,14 +656,14 @@ defmodule Apiary.Stages.Runner do
   defp lower_time(one, nil), do: one
   defp lower_time(one, other), do: min(one, other)
 
-  # The lower of two access levels, from lowest to highest read, local-write (a writable
-  # checkout with no push) and write: read when either is read, then local-write when the
-  # entry's is. An entry value other than `read` or `local-write` counts as read. nil where
-  # neither sets a level.
+  # The lower of two access levels, from lowest to highest read, write-no-push (a writable
+  # checkout that has no push credential) and write: read when either is read, then
+  # write-no-push when the entry's is. An entry value other than `read` or `write-no-push`
+  # counts as read. nil where neither sets a level.
   defp lower_access(entry, declared) do
     cond do
       read?(declared) -> :read
-      entry == "local-write" -> :local_write
+      entry == "write-no-push" -> :write_no_push
       not is_nil(entry) -> :read
       declared in [:write, "write"] -> :write
       true -> nil

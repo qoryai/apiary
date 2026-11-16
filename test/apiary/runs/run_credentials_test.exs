@@ -289,11 +289,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
       queued
     end
 
-    # The level of the claim of `queued`, whose walk resolved `write`: its documents' and
-    # its token's.
-    defp claimed_levels(ctx, queued) do
+    # The level of the claim of `queued`, whose walk resolved `walk`, `write` unless given:
+    # its documents' and its token's.
+    defp claimed_levels(ctx, queued, walk \\ :write) do
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
-      walk_resolved!(queued, origin: :setting, document: section, access_level: :write)
+      walk_resolved!(queued, origin: :setting, document: section, access_level: walk)
 
       assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
       assert [%RunCredential{access: token}] = entries()
@@ -327,18 +327,46 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     @tag needs: [:factory, :workflow_model]
-    test "a run of a local-write entry gets a read credential, and its documents read", ctx do
-      process!(ctx, [%{"workflow" => "build", "access" => "local-write"}])
+    test "a run of a write-no-push entry gets a read credential, and its documents write-no-push",
+         ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
       {_work_item, queued} = queued!(ctx)
 
-      assert claimed_levels(ctx, queued) == {:local_write, :read}
+      assert claimed_levels(ctx, queued) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose walk resolved write-no-push keeps it where its entry sets no level", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :write_no_push) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an entry never raises the level its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :read) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose stage has no limits reads, whatever its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued, :write) == {:read, :read}
       assert %{"access" => "read"} = sent_documents(queued)
     end
 
     # Cancel run's confirm says a write run's changes are not pushed
     # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
     # by its work entry, then by the documents the claim sent it, then by its stage entry.
-    for {access, write?} <- [{"local-write", false}, {"read", false}, {nil, true}] do
+    for {access, write?} <- [{"write-no-push", false}, {"read", false}, {nil, true}] do
       @tag needs: [:factory, :workflow_model]
       test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
            ctx do
@@ -426,7 +454,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert RunCredentials.run_access(queued) == :write
 
-      for {level, access} <- [read: :read, local_write: :read, write: :write] do
+      for {level, access} <- [read: :read, write_no_push: :read, write: :write] do
         assert {:ok, %RunCredential{access: ^access}} =
                  RunCredentials.form_work(queued, work_item, @target, level)
       end

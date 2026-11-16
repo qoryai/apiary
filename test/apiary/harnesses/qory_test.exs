@@ -103,6 +103,38 @@ defmodule Apiary.Harnesses.QoryTest do
       assert Qory.workflows(commit, "missing") == []
     end
 
+    test "has the access level each workflow of a stack declares" do
+      assert Qory.workflow_levels(Qory.current(), "software") == %{"explore-a-ticket" => :read}
+      assert Qory.workflow_levels(Qory.current(), "core") == %{}
+      assert Qory.workflow_levels(Qory.current(), nil) == %{}
+
+      stack =
+        String.replace(
+          QoryHarnessFixture.files()["stacks/software/qory-stack.yaml"],
+          "  explore-a-ticket: {access: read}\n",
+          "  explore-a-ticket: {access: read}\n  capture-demos: {access: write-no-push}\n" <>
+            "  implement-changes: {access: write}\n"
+        )
+
+      repository =
+        QoryHarnessFixture.serve!(
+          Map.put(QoryHarnessFixture.files(), "stacks/software/qory-stack.yaml", stack)
+        )
+
+      newer = PublicGitServer.commit!(repository.dir, %{"NOTES.md" => "newer"})
+      assert Qory.read(newer) == {:ok, newer}
+
+      assert Qory.workflow_levels(newer, "software") ==
+               %{
+                 "explore-a-ticket" => :read,
+                 "capture-demos" => :write_no_push,
+                 "implement-changes" => :write
+               }
+
+      assert Qory.workflows(newer, "software") ==
+               ["capture-demos", "explore-a-ticket", "implement-changes"]
+    end
+
     test "a commit with no files kept has no template, stacks or workflows" do
       commit = String.duplicate("a", 40)
 
@@ -110,6 +142,7 @@ defmodule Apiary.Harnesses.QoryTest do
       assert Qory.template(commit) == nil
       assert Qory.stacks(commit) == []
       assert Qory.workflows(commit, "software") == []
+      assert Qory.workflow_levels(commit, "software") == %{}
       assert Qory.template(nil) == nil
     end
   end

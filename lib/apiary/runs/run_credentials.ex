@@ -32,7 +32,8 @@ defmodule Apiary.Runs.RunCredentials do
   #     adapter wrote it, a filled path that repeats an earlier one of its item left out;
   #     the collection's id and ref, with that path, as its resource; and the access level
   #     of the run's harness walk (`Apiary.Harnesses.RunHarness`'s `access_level`), `:read`
-  #     for a prebuild and for a run with no walk.
+  #     for a prebuild and for a run with no walk, and for a `:write_no_push` run too: a run
+  #     without push credential has a read work credential.
   #
   # The claim writes the entry with its run (`insert!/2`), once. `work/1` reads it back for
   # the run's documents and its secrets request.
@@ -243,7 +244,7 @@ defmodule Apiary.Runs.RunCredentials do
   # lower of the walk's and the stage entry's (`Apiary.Stages.run_access/2`). The claim
   # computes it once, for the run's documents and its work entry
   # (`Apiary.Dispatches.Handover`).
-  @spec run_access(DispatchRun.t()) :: :read | :local_write | :write
+  @spec run_access(DispatchRun.t()) :: :read | :write_no_push | :write
   def run_access(%DispatchRun{step: @prebuild}), do: :read
 
   def run_access(%DispatchRun{id: id} = dispatch_run) do
@@ -255,10 +256,11 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   # The work entry's access for the run's level: `:write` for `:write` alone. A
-  # `:local_write` run, a writable checkout with no push, gets `:read`, so its credential
-  # from the adapter has read access only.
+  # `:write_no_push` run, a writable checkout that has no push credential, gets `:read`,
+  # so its credential from the adapter has read access only (the integration contract's
+  # run credential rule).
   defp entry_access(:write), do: :write
-  defp entry_access(_read_or_local_write), do: :read
+  defp entry_access(_read_or_write_no_push), do: :read
 
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run

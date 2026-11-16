@@ -406,7 +406,7 @@ run variables come from the target, the work item's or the prebuild's collection
 what it is about from the step and the work item, never from the request; a prebuild's
 input is the `environment_ref` its run of the queue was queued for. The claim encodes
 the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
-`access` and `target` together or neither, `work_item`, `run_settings`, `stack`,
+`access` (`read`, `write-no-push` or `write`) and `target` together or neither, `work_item`, `run_settings`, `stack`,
 `workflow` and `harness_hidden` together or none, and `inputs`) and keeps the bytes on
 the registered run (`runs.run_documents`); every redemption of the run code answers them as they are. The
 201 of that redemption takes at most 1 MiB, what the gateway's relay passes back: the

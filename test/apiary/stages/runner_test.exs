@@ -895,13 +895,13 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
-    test "limits/3 lowers to local-write for an entry of that level, and to read below it" do
-      seq = put_in(build(), ["sequence"], [wf("verify", %{"access" => "local-write"})])
+    test "limits/3 lowers to write-no-push for an entry of that level, and to read below it" do
+      seq = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
 
       assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
-               :local_write
+               :write_no_push
 
-      assert Runner.limits(seq, pos(0, nil, 1), nil).access == :local_write
+      assert Runner.limits(seq, pos(0, nil, 1), nil).access == :write_no_push
       assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :read}).access == :read
 
       # An entry value the schema does not take counts as read.
@@ -915,7 +915,7 @@ defmodule Apiary.Stages.RunnerTest do
           declarations: %{"verify" => %{time_limit: nil, access: :write}}
         }).actions
 
-      assert spec.access == :local_write
+      assert spec.access == :write_no_push
     end
 
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do

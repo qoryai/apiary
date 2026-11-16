@@ -121,7 +121,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
 
   # access/1 is what a run with the harness members `harness` may do on its target: the
   # level its harness walk resolved, lowered by its stage entry: `read`, `write-no-push`
-  # (a writable checkout that holds no push credential) or `write`. A run with no harness
+  # (a writable checkout that has no push credential) or `write`. A run with no harness
   # members, a prebuild or an explore run with no workflow, reads. The work credential of
   # a `write-no-push` run has read access (`Apiary.Runs.RunCredentials`).
   @doc false
