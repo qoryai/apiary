@@ -1164,7 +1164,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "a submission to a workspace without the type is 422 unknown_type, with the step " <>
-           "to update the process from the harness",
+           "to define it",
          ctx do
       {1, _rows} =
         Repo.delete_all(
@@ -1181,8 +1181,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "error" => "unknown_type",
                "type" => "submission",
                "message" =>
-                 "Press Update from harness in the workspace's Harness settings, then run " <>
-                   "the round again. The workspace's process has no artifact type submission."
+                 "Define the artifact type submission in the workspace's Artifact types, " <>
+                   "then run the round again."
              }
 
       assert RunApiStubs.pushed() == []

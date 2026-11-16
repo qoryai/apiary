@@ -1209,12 +1209,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
-- If a run pushes a `submission` to a workspace whose process has no artifact type
-  `submission`, the run API now returns `422` `unknown_type` with the message: "Press
-  Update from harness in the workspace's Harness settings, then run the round again. The
-  workspace's process has no artifact type submission." Every other type keeps its
-  message.
-
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
   (`workspace_operators`). No screen starts or ends such a link. In an operated
