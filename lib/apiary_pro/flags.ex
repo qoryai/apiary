@@ -18,14 +18,11 @@ defmodule ApiaryPro.Flags do
   @operator_infrastructure :operator_infrastructure
   @feature_visibility :feature_visibility
 
-  # transfers?/0 says whether an organisation's owners may offer it to an operator and
-  # withdraw that offer, an operator's owners may accept an organisation offered to it,
-  # and a client's owners may leave its operator (`organisation.transfer`,
-  # `organisation.withdraw_transfer`, `client.accept`, `organisation.leave_operator`). Off
-  # by default: `config :apiary_pro, :transfers, true` turns it on. While it is off,
-  # `ApiaryPro.Access` answers each of these actions not found, for everyone, so no page,
-  # item or path offers them, an offer made before included; their audit entries still
-  # read as they did.
+  # transfers?/0 says whether an organisation's owners read its pending offer of
+  # ownership on Settings › Ownership (`organisation.withdraw_transfer`). Off by default:
+  # `config :apiary_pro, :transfers, true` turns it on. While it is off,
+  # `ApiaryPro.Access` answers that action not found, for everyone; its audit entries
+  # still read as they did.
   #
   # A process may override the config for itself and the processes it starts
   # (`put_transfers/1`): the override is read from the process's dictionary, then from that
@@ -50,25 +47,19 @@ defmodule ApiaryPro.Flags do
     :ok
   end
 
-  # operator_infrastructure?/0 says whether an operator owns its clients: its owners act
-  # as owners in each client and its admins as admins, its members read; a client's first
-  # person is invited as its admin, and nobody in a client is made an owner. The operator
-  # makes and removes a client's nodes and access keys, and removes its workspaces. The
-  # client's owners and admins still make workspaces. Only the operator's owners lock and
-  # unlock a client's workspace rules, change or remove a locked one, and change the
-  # client's organisation policy, refused to its owners made before the switch, and the
-  # refusals name the operator; and Drop is hidden. Off by default:
-  # `config :apiary_pro, :operator_infrastructure, true` turns it on. While it is off,
-  # everything is as it was: the operator's people read its clients and change nothing
-  # there, the first person of a client is its owner, and the actions of the first
-  # admin's invitation are not found, for everyone (`ApiaryPro.Access`).
+  # operator_infrastructure?/0 says whether an operator's people change some settings of
+  # the workspaces it operates. While it is on, the operator's owners and admins act there
+  # as owners and admins for the time limits, the retention, the process, its artifact
+  # types and the model choices (`ApiaryPro.Access`). The organisation's owners and admins
+  # keep every action in the workspace, on or off. While it is off, the operator's people
+  # read those workspaces and change nothing there. Off by default:
+  # `config :apiary_pro, :operator_infrastructure, true` turns it on.
   #
   # The override works as `transfers?/0`'s: for the process that puts it and the
   # processes whose `$callers` name it. What wins: the override the process put, then its
   # callers', then the config. `ApiaryPro.Access.check/3` reads it once and passes it to the
-  # steps of its answer; `ApiaryPro.Access.hidden?/1` reads it for a page;
-  # `ApiaryPro.Access.role/1` reads it again where the core calls for the role, and so does
-  # the check run again for someone in both.
+  # steps of its answer; `ApiaryPro.Access.role/1` reads it again where the core calls for
+  # the role, and so does the check run again for someone in both.
   @doc false
   @spec operator_infrastructure?() :: boolean
   def operator_infrastructure? do
@@ -90,10 +81,9 @@ defmodule ApiaryPro.Flags do
 
   # feature_visibility?/0 says whether a feature below the instance is shown or hidden to
   # people by who they are, not only by where they are (`ApiaryPro.Features.hidden/1`): a
-  # person who holds a level in a client's operator sees in the client what the operator
-  # is shown, and an instance admin who reaches an organisation through the instance sees
-  # every feature the instance has. With it on, the Features pages, the Clients list and
-  # the Activity page say "shown" and "hidden" for what they say "grant" and "take away"
+  # person of the operator of a workspace sees there what the organisation is shown, and
+  # an instance admin who reaches an organisation through the instance sees every feature
+  # the instance has. With it on, the Features pages and the Activity page say "shown" and "hidden" for what they say "grant" and "take away"
   # with it off, and a change of what an organisation is shown is recorded with
   # `shown: true` in its entry's details. It is the opt-in feature `feature_visibility`,
   # off until an instance admin turns it on. While it is off, a person is not shown what

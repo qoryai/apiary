@@ -167,7 +167,14 @@ defmodule ApiaryWeb.Access do
   def on_mount(action, _params, _session, socket) do
     scope = socket.assigns.current_scope
 
-    if Apiary.Access.can?(scope, action, scope.workspace || scope.organisation),
+    # At an organisation's path the check is of the organisation, not of the workspace the
+    # scope keeps from the last visit (`ApiaryWeb.UserAuth`'s `:load_path_scope`).
+    subject =
+      if Map.get(socket.private, :path_workspace?, true),
+        do: scope.workspace || scope.organisation,
+        else: scope.organisation
+
+    if Apiary.Access.can?(scope, action, subject),
       do: {:cont, Phoenix.LiveView.put_private(socket, :access_action, action)},
       else: raise(ApiaryWeb.NotFound)
   end

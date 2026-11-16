@@ -10,7 +10,7 @@ defmodule ApiaryPro.Adoption do
   - **A tenant for every organisation.** The edition reads what it knows of an
     organisation from its tenant (`ApiaryPro.Tenants.Tenant`), which it writes when it
     creates one. Every organisation without a tenant gets one of the kind `organisation`,
-    with no operator and not suspended: what it was in the core; and its people lock
+    not suspended: what it was in the core; and its people lock
     beside it (`ApiaryPro.Tenants.PeopleLock`), as every tenant has.
   - **The instance organisation.** While no tenant is the instance organisation, the
     organisation the release before held as the instance owner, the oldest in use, which
@@ -98,7 +98,7 @@ defmodule ApiaryPro.Adoption do
   # the read found before the rows are locked. The organisations `read` locked
   # `FOR NO KEY UPDATE` at one point, in one statement, in the order of
   # `Apiary.Organisations.lock_order/1` (`ApiaryPro.Tenants.lock_organisations!/2`); an
-  # organisation without a tenant is no client, and holds no other. Then those of them
+  # organisation without a tenant is no operator, and holds no other. Then those of them
   # without a tenant, read again under the lock, since another node may have written one
   # since the read, adopted; `claiming` made the instance organisation, if it is held; and
   # the workspace access and the entries of what was adopted. The ids adopted, in order.
@@ -162,15 +162,14 @@ defmodule ApiaryPro.Adoption do
   # instance organisation made the edition's instance organisation, of the kind it has, its row
   # locked `FOR NO KEY UPDATE` with the rest (`adopt/2`), as a change of a tenant that is
   # no key locks it: its id, or nil when there is one already, or no organisation, or the
-  # one named is a client or suspended, which the edition never made it (the database
-  # would refuse).
+  # one named is suspended, which the edition never made it (the database would refuse).
   defp claim_instance_organisation(nil), do: nil
 
   defp claim_instance_organisation(id) do
     case Repo.update_all(
            from(t in Tenant,
              where: t.organisation_id == ^id,
-             where: is_nil(t.operator_id) and is_nil(t.suspended_at)
+             where: is_nil(t.suspended_at)
            ),
            set: [instance_organisation: true, updated_at: DateTime.utc_now()]
          ) do

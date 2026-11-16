@@ -50,7 +50,6 @@ defmodule Apiary.Policy.Activity do
   import Ecto.Query, warn: false
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Edition
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Above, Effective, Grammar, RequiredHosts, Resolution, Rule}
   alias Apiary.Repo
@@ -68,8 +67,8 @@ defmodule Apiary.Policy.Activity do
   def cap, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :cap, @default_cap)
 
   @doc false
-  def uncovered(%Scope{workspace: %Workspace{} = workspace} = scope, target_id, since, opts \\ []) do
-    with {:ok, rows} <- rows(scope, workspace.id, target_id, since, opts) do
+  def uncovered(%Scope{workspace: %Workspace{} = workspace}, target_id, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
       {:ok, uncovered_from(workspace, rows, policies(workspace, rows), target_id)}
     end
   end
@@ -111,14 +110,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def reached?(%Scope{workspace: %Workspace{id: workspace_id}} = scope, since) do
-    connections =
-      Edition.client_reads(
-        scope,
-        :workspace_connections,
-        nil,
-        from(c in Connection, join: r in Run, on: r.id == c.run_id)
-      )
+  def reached?(%Scope{workspace: %Workspace{id: workspace_id}}, since) do
+    connections = from(c in Connection, join: r in Run, on: r.id == c.run_id)
 
     Repo.exists?(
       from [c, _r] in connections,
@@ -132,8 +125,8 @@ defmodule Apiary.Policy.Activity do
   # out; `:covered` when every connection is of a run whose target follows the workspace's
   # mode and none was denied with no rule (`cover/2`) to a host that not every run is
   # allowed; `:partly` otherwise.
-  def covered(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
-    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
+  def covered(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
       {:ok, covered_from(workspace, rows)}
     end
   end
@@ -158,8 +151,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def denied_destinations(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
-    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
+  def denied_destinations(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
       {:ok, denied_from(workspace, rows, policies(workspace, rows))}
     end
   end
@@ -169,8 +162,8 @@ defmodule Apiary.Policy.Activity do
   # over the wider window: the denied destinations held to today's rules and what enforce
   # would deny, both since `since`, and how many destinations were denied since `window`
   # (the earlier moment). See `Apiary.Policy.overview_activity/3`.
-  def overview(%Scope{workspace: %Workspace{} = workspace} = scope, since, window, opts \\ []) do
-    with {:ok, rows} <- rows(scope, workspace.id, nil, window, opts) do
+  def overview(%Scope{workspace: %Workspace{} = workspace}, since, window, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, window, opts) do
       recent = Enum.filter(rows, &(DateTime.compare(&1.last_seen_at, since) != :lt))
       policies = policies(workspace, recent)
 
@@ -299,8 +292,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def denied_summary(%Scope{workspace: %Workspace{} = workspace} = scope, since, opts \\ []) do
-    with {:ok, rows} <- rows(scope, workspace.id, nil, since, opts) do
+  def denied_summary(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
       denied = Enum.filter(rows, &(&1.denied > 0))
 
       {:ok,
@@ -313,12 +306,12 @@ defmodule Apiary.Policy.Activity do
 
   @doc false
   def rule_activity(
-        %Scope{workspace: %Workspace{} = workspace} = scope,
+        %Scope{workspace: %Workspace{} = workspace},
         target_id,
         since,
         opts \\ []
       ) do
-    with {:ok, rows} <- rows(scope, workspace.id, target_id, since, opts) do
+    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
       policies = policies(workspace, rows)
 
       counts =
@@ -349,16 +342,10 @@ defmodule Apiary.Policy.Activity do
   # says there is more than is read. Only the `session` channel's connections count: the
   # stack proxy decides by the run configuration's `stack_hosts`, never by the rules.
   # `cap:` is for the tests, which cannot afford the real one.
-  defp rows(scope, workspace_id, target_id, since, opts) do
+  defp rows(workspace_id, target_id, since, opts) do
     cap = Keyword.get(opts, :cap, cap())
 
-    connections =
-      Edition.client_reads(
-        scope,
-        :workspace_connections,
-        nil,
-        from(c in Connection, join: r in Run, on: r.id == c.run_id)
-      )
+    connections = from(c in Connection, join: r in Run, on: r.id == c.run_id)
 
     query =
       from [c, r] in connections,

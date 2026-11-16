@@ -1881,4 +1881,50 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Slots.held(ctx.pool.id) == 0
     end
   end
+
+  describe "the seal of a model key at the claim" do
+    @describetag needs: [:factory, :secrets]
+
+    # `Handover.model_sealable/4` checks the seal for the organisation and the workspace of
+    # the run of the queue, read under lock at the claim.
+    test "is checked for the organisation and the workspace of the run of the queue" do
+      organisation_id = Ecto.UUID.generate()
+      workspace_id = Ecto.UUID.generate()
+      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      keys = [%AccessKey{allow_secrets: true}]
+      run = %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
+
+      gateway = %Node{
+        kind: :gateway,
+        organisation_id: organisation_id,
+        workspace_id: workspace_id
+      }
+
+      assert Apiary.Dispatches.Handover.model_sealable(formed, gateway, run, keys) == formed
+
+      for other <- [
+            %{run | workspace_id: Ecto.UUID.generate()},
+            %{run | organisation_id: Ecto.UUID.generate()}
+          ] do
+        assert Apiary.Dispatches.Handover.model_sealable(formed, gateway, other, keys) ==
+                 {:end, :secrets_not_allowed}
+      end
+    end
+
+    # A wrong argument raises, with a model provider or without one, so the seal is not
+    # skipped. `Apiary.Dispatches.RunSettingsTest` checks the seal through the claim.
+    test "raises for a gateway or a run of the queue of another shape" do
+      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      keys = [%AccessKey{allow_secrets: true}]
+      run = %DispatchRun{organisation_id: Ecto.UUID.generate(), workspace_id: nil}
+      gateway = %Node{kind: :gateway, organisation_id: run.organisation_id}
+
+      for formed <- [formed, {:ok, %{settings: %{columns: %{}}}}],
+          {gateway, run} <- [{gateway, %{run_id: "run"}}, {nil, run}] do
+        assert_raise FunctionClauseError, fn ->
+          Apiary.Dispatches.Handover.model_sealable(formed, gateway, run, keys)
+        end
+      end
+    end
+  end
 end

@@ -1,9 +1,8 @@
 defmodule ApiaryPro.SchemaConstraintsTest do
   # The database's rules of the edition's tables, asked in raw SQL so that no
   # changeset stands between the write and the database: a tenant's kind, the instance
-  # organisation, the managing relationship and a suspension, a suspended account's row,
-  # the organisation's policy and its rules, the organisation's variables, and the
-  # features a grant may name.
+  # organisation and a suspension, a suspended account's row, the organisation's policy
+  # and its rules, the organisation's variables, and the features a grant may name.
   #
   # Async: the rules of the instance organisation are asked of a fresh tenant, never of
   # the suite's committed one, whose row no test here locks. Postgres evaluates a check
@@ -25,21 +24,6 @@ defmodule ApiaryPro.SchemaConstraintsTest do
     id = organisation!()
     update!(id, "kind = 'operator'")
     id
-  end
-
-  defp client!(operator) do
-    id = organisation!()
-    make_client!(id, operator)
-    id
-  end
-
-  defp make_client!(id, operator) do
-    assert %{num_rows: 1} =
-             Repo.query!(
-               "UPDATE tenants SET operator_id = $2, operator_since = now() " <>
-                 "WHERE organisation_id = $1",
-               [id, operator]
-             )
   end
 
   # Sets `assignments` on the tenant of the organisation `id`, which must be there.
@@ -98,55 +82,6 @@ defmodule ApiaryPro.SchemaConstraintsTest do
           update!(id, "instance_organisation = true")
         end)
       end
-    end
-
-    test "a client may have an operator, and the instance organisation never" do
-      client = client!(operator!())
-
-      refused("tenants_instance_organisation_not_client", fn ->
-        update!(client, "instance_organisation = true")
-      end)
-    end
-
-    test "a client is of the kind organisation, so no operator is a client" do
-      operator = operator!()
-      client = client!(operator)
-
-      refused("tenants_client_kind_check", fn -> update!(client, "kind = 'operator'") end)
-      refused("tenants_client_kind_check", fn -> make_client!(operator!(), operator) end)
-    end
-
-    test "a client's operator is an organisation of the kind operator" do
-      id = organisation!()
-
-      for operator <- [organisation!(), Ecto.UUID.bingenerate()] do
-        refused("tenants_operator_fkey", fn -> make_client!(id, operator) end)
-      end
-    end
-
-    test "an operator keeps its kind and its row while it has clients" do
-      operator = operator!()
-      client = client!(operator)
-
-      refused("tenants_operator_fkey", fn -> update!(operator, "kind = 'organisation'") end)
-
-      refused("tenants_operator_fkey", fn ->
-        Repo.query!("DELETE FROM organisations WHERE id = $1", [operator])
-      end)
-
-      update!(client, "operator_id = NULL, operator_since = NULL")
-      update!(operator, "kind = 'organisation'")
-    end
-
-    test "operator_since is set exactly while there is an operator" do
-      client = client!(operator!())
-
-      refused("tenants_operator_since_check", fn -> update!(client, "operator_since = NULL") end)
-      refused("tenants_operator_since_check", fn -> update!(client, "operator_id = NULL") end)
-
-      update!(client, "operator_id = NULL, operator_since = NULL")
-
-      refused("tenants_operator_since_check", fn -> update!(client, "operator_since = now()") end)
     end
 
     test "a suspender only with a suspension" do

@@ -8,17 +8,13 @@ defmodule Apiary.Gateways do
 
   - at a workspace, `{:workspace, id}`: it may serve that workspace alone;
   - at an organisation, `{:organisation, id}`, with no workspace: it may serve every
-    workspace of its organisation, and every workspace of the organisations an edition
-    names (`c:Apiary.Edition.served_organisations/1`). The core's edition names none.
+    workspace of its organisation.
   - at the instance, `:instance`, with no organisation and no workspace: it may serve
     every workspace of every organisation. The instance has one such gateway at most,
     which Qory Apiary makes from its settings.
 
   A workspace's levels, most specific first (`levels/1`), are the workspace's, its
-  organisation's, then those of the organisations whose gateways an edition lets serve it
-  (`c:Apiary.Edition.serving_organisations/1`), in the edition's order, and the instance's
-  last. Nothing here assumes that an organisation-level gateway serves its organisation's
-  workspaces alone: each question asks the two seams.
+  organisation's, and the instance's last.
 
   A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
   the default gateway its workspace resolves (`default_gateway_for/1`); or `:named`, one
@@ -49,10 +45,9 @@ defmodule Apiary.Gateways do
   only when no default marked at a workspace's or an organisation's level resolves for it
   at its level or after it (`default_resolves?/1`): for a workspace-level gateway, no
   such default resolves for its workspace at all; for an organisation-level one, its
-  organisation has none, and no workspace it may serve resolves one at a level after its
-  organisation. So making a gateway moves no node off a marked default; the nodes of a
-  workspace whose default was the instance's gateway move to the gateway made. Otherwise
-  a person marks one, and the mark moves (`Apiary.Nodes.make_default_gateway/2`).
+  organisation has none. So making a gateway moves no node off a marked default; the
+  nodes of a workspace whose default was the instance's gateway move to the gateway made.
+  Otherwise a person marks one, and the mark moves (`Apiary.Nodes.make_default_gateway/2`).
 
   A gateway is deleted only when nothing points to it and no run goes through it
   (`delete_blockers/1`): no node names it, wherever the node is; no node on `:default`
@@ -84,11 +79,9 @@ defmodule Apiary.Gateways do
 
   - a change at a workspace (a workspace-level gateway, or a node or node pool, whose
     choice is checked against the gateways of every level of its workspace) holds its
-    organisation and the organisations that serve it (`serving_organisations/1`)
-    `FOR SHARE`, then the workspace's row `FOR NO KEY UPDATE`;
+    organisation `FOR SHARE`, then the workspace's row `FOR NO KEY UPDATE`;
   - a change of an organisation-level gateway holds its organisation
-    `FOR NO KEY UPDATE`, and the organisations it serves (`served_organisations/1`)
-    `FOR SHARE`.
+    `FOR NO KEY UPDATE`.
 
   Each of the two takes a shared transaction-level advisory lock on `apiary:gateways`
   before them, and a change of the instance's gateway takes that lock exclusively, alone
@@ -110,7 +103,7 @@ defmodule Apiary.Gateways do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, AccessKeys, Edition, Organisations, Repo}
+  alias Apiary.{Access, AccessKeys, Organisations, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -145,14 +138,11 @@ defmodule Apiary.Gateways do
 
   @doc """
   levels/1 is the levels of `workspace` whose default its nodes resolve to, most specific
-  first: the workspace's, its organisation's, then those of the organisations an edition
-  names whose organisation-level gateways may serve it
-  (`c:Apiary.Edition.serving_organisations/1`), in its order, then the instance's.
+  first: the workspace's, its organisation's, then the instance's.
   """
   @spec levels(%Workspace{}) :: [level, ...]
-  def levels(%Workspace{id: id, organisation_id: organisation_id}) do
-    [{:workspace, id} | Enum.map(chain(organisation_id), &{:organisation, &1})] ++ [:instance]
-  end
+  def levels(%Workspace{id: id, organisation_id: organisation_id}),
+    do: [{:workspace, id}, {:organisation, organisation_id}, :instance]
 
   @doc """
   level/1 is the level `gateway` lives at: its workspace, its organisation, or the
@@ -180,48 +170,21 @@ defmodule Apiary.Gateways do
     |> Repo.one()
   end
 
-  @doc """
-  serving_organisations/1 is the other organisations whose organisation-level gateways
-  may serve the workspaces of `organisation_id`, in the order their defaults resolve
-  (`c:Apiary.Edition.serving_organisations/1`); none in the core's edition.
-  """
-  @spec serving_organisations(Ecto.UUID.t()) :: [Ecto.UUID.t()]
-  def serving_organisations(organisation_id),
-    do: organisation_id |> Edition.serving_organisations() |> others(organisation_id)
-
-  @doc """
-  served_organisations/1 is the other organisations whose workspaces the
-  organisation-level gateways of `organisation_id` may serve
-  (`c:Apiary.Edition.served_organisations/1`); none in the core's edition.
-  """
-  @spec served_organisations(Ecto.UUID.t()) :: [Ecto.UUID.t()]
-  def served_organisations(organisation_id),
-    do: organisation_id |> Edition.served_organisations() |> others(organisation_id)
-
-  # The edition never names the organisation itself; should it, it is left out.
-  defp others(ids, organisation_id),
-    do: ids |> Enum.reject(&(&1 == organisation_id)) |> Enum.uniq()
-
-  # The organisations whose defaults a workspace of `organisation_id` resolves through,
-  # in order: its own, then those that serve it.
-  defp chain(organisation_id), do: [organisation_id | serving_organisations(organisation_id)]
-
   ## The locks
 
   @doc """
   lock/1 takes the locks of a change of gateways, default marks or nodes' choices, for
   the rest of the transaction, first, before any other row lock (see the moduledoc): for
-  a change at `workspace`, its organisation and those that serve it `FOR SHARE`, then the
-  workspace's row `FOR NO KEY UPDATE`; for a change of an organisation-level gateway,
-  `{:organisation, organisation_id}`, the organisation `FOR NO KEY UPDATE` and those it
-  serves `FOR SHARE`. The organisation rows are taken in one statement
-  (`Apiary.Organisations.lock_organisations/2`). Raises, the transaction usable, when
-  Postgres refuses the lock.
+  a change at `workspace`, its organisation `FOR SHARE`, then the workspace's row
+  `FOR NO KEY UPDATE`; for a change of an organisation-level gateway,
+  `{:organisation, organisation_id}`, the organisation `FOR NO KEY UPDATE`. The
+  organisation row is taken through `Apiary.Organisations.lock_organisations/2`. Raises,
+  the transaction usable, when Postgres refuses the lock.
   """
   @spec lock(%Workspace{} | {:organisation, Ecto.UUID.t()} | :instance) :: :ok
   def lock(%Workspace{id: id, organisation_id: organisation_id}) do
     hold_instance(:shared)
-    hold(chain(organisation_id), :share)
+    hold([organisation_id], :share)
 
     Repo.one(from w in Workspace, where: w.id == ^id, select: w.id, lock: "FOR NO KEY UPDATE")
 
@@ -230,11 +193,7 @@ defmodule Apiary.Gateways do
 
   def lock({:organisation, organisation_id}) when is_binary(organisation_id) do
     hold_instance(:shared)
-
-    hold([organisation_id | served_organisations(organisation_id)], fn
-      ^organisation_id -> :no_key_update
-      _served -> :share
-    end)
+    hold([organisation_id], :no_key_update)
   end
 
   def lock(:instance) do
@@ -274,9 +233,8 @@ defmodule Apiary.Gateways do
 
   @doc """
   serves/1 is the workspaces `gateway` may serve, by name: a workspace-level gateway's
-  workspace; an organisation-level gateway's every workspace of its organisation and of
-  the organisations it serves (`served_organisations/1`); the instance's gateway's every
-  workspace of the instance. None for a gateway that is
+  workspace; an organisation-level gateway's every workspace of its organisation; the
+  instance's gateway's every workspace of the instance. None for a gateway that is
   deleted, or a node that is not a gateway. It is never on the wire: a gateway's
   discovery document lists no workspaces (`ApiaryWeb.Contract.Configuration`).
   """
@@ -296,8 +254,7 @@ defmodule Apiary.Gateways do
         from w in Workspace, where: w.id == ^id and w.organisation_id == ^gateway.organisation_id
 
       {:organisation, organisation_id} ->
-        ids = [organisation_id | served_organisations(organisation_id)]
-        from w in Workspace, where: w.organisation_id in ^ids
+        from w in Workspace, where: w.organisation_id == ^organisation_id
 
       :instance ->
         from(w in Workspace)
@@ -333,9 +290,8 @@ defmodule Apiary.Gateways do
 
   @doc """
   default_gateway_for/1 is the default gateway of `workspace`, most specific level first
-  (`levels/1`): the workspace's default, else its organisation's, else that of each
-  organisation that serves it, in turn, else the instance's gateway. Nil when no level has
-  one.
+  (`levels/1`): the workspace's default, else its organisation's, else the instance's
+  gateway. Nil when no level has one.
   """
   @spec default_gateway_for(%Workspace{}) :: Node.t() | nil
   def default_gateway_for(%Workspace{} = workspace), do: default_for(workspace, levels(workspace))
@@ -419,33 +375,16 @@ defmodule Apiary.Gateways do
   default_resolves?/1 says whether a default resolves for a new gateway at `level`, at
   that level or after it, so that marking it would move a node: for a workspace's level,
   whether any default resolves for the workspace (`default_gateway_for/1`); for an
-  organisation's, whether the organisation has a default, or a workspace it serves (the
-  organisation's, or one of `served_organisations/1`) resolves one at a level after
-  it, with no default before it. The instance's gateway counts at neither level: it is
-  the default only of a workspace that resolves no other. A gateway made at `level` is
-  made its default only when none does (`Apiary.Nodes`).
+  organisation's, whether the organisation has a default. The instance's gateway counts
+  at neither level: it is the default only of a workspace that resolves no other. A
+  gateway made at `level` is made its default only when none does (`Apiary.Nodes`).
   """
   @spec default_resolves?(level | {:workspace, %Workspace{}}) :: boolean
   def default_resolves?({:workspace, %Workspace{} = workspace}),
     do: marked_default_for(workspace) != nil
 
-  def default_resolves?({:organisation, organisation_id}) do
-    served = [organisation_id | served_organisations(organisation_id)]
-    chains = Map.new(served, &{&1, chain(&1)})
-    defaults = with_default(chains |> Map.values() |> List.flatten())
-
-    MapSet.member?(defaults, organisation_id) or
-      Enum.any?(chains, fn {_served, chain} ->
-        case Enum.split_while(chain, &(&1 != organisation_id)) do
-          {before, [_level | later]} ->
-            not Enum.any?(before, &MapSet.member?(defaults, &1)) and
-              Enum.any?(later, &MapSet.member?(defaults, &1))
-
-          {_chain, []} ->
-            false
-        end
-      end)
-  end
+  def default_resolves?({:organisation, organisation_id}),
+    do: MapSet.member?(with_default([organisation_id]), organisation_id)
 
   @doc """
   needs_default_after_deletion?/1 says whether, once `gateway` is deleted, a workspace it
@@ -467,14 +406,8 @@ defmodule Apiary.Gateways do
         workspace != nil and marked_default_for(workspace) == nil
 
       {:organisation, organisation_id} ->
-        served = [organisation_id | served_organisations(organisation_id)]
-        chains = Map.new(served, &{&1, chain(&1)})
-        defaults = with_default(chains |> Map.values() |> List.flatten())
-
-        Enum.any?(chains, fn {served, chain} ->
-          not Enum.any?(chain, &MapSet.member?(defaults, &1)) and
-            has_workspace_without_default?(served)
-        end)
+        not MapSet.member?(with_default([organisation_id]), organisation_id) and
+          has_workspace_without_default?(organisation_id)
     end
   end
 
@@ -642,10 +575,10 @@ defmodule Apiary.Gateways do
   # The nodes on `:default` whose default resolves to `gateway` now: none unless it is its
   # level's default. A workspace-level default holds its workspace's nodes, when the
   # workspace resolves it. An organisation-level default holds the nodes of each workspace
-  # it serves that marks no workspace-level default, in each organisation whose chain of
-  # defaults reaches it first. The instance's gateway, its level's default by rule, holds
-  # the nodes of each workspace that marks no workspace-level default, in each
-  # organisation whose chain reaches no default, and the instance's pool on `:default`.
+  # of its organisation that marks no workspace-level default. The instance's gateway, its
+  # level's default by rule, holds the nodes of each workspace that marks no
+  # workspace-level default, in each organisation with no organisation-level default, and
+  # the instance's pool on `:default`.
   defp defaulting(%Node{kind: :gateway, organisation_id: nil, workspace_id: nil, deleted_at: nil}) do
     organisations =
       from(n in Node,
@@ -656,13 +589,8 @@ defmodule Apiary.Gateways do
       )
       |> Repo.all()
 
-    chains = Map.new(organisations, &{&1, chain(&1)})
-    defaults = with_default(chains |> Map.values() |> List.flatten())
-
-    reached =
-      for {organisation, chain} <- chains,
-          not Enum.any?(chain, &MapSet.member?(defaults, &1)),
-          do: organisation
+    defaults = with_default(organisations)
+    reached = Enum.reject(organisations, &MapSet.member?(defaults, &1))
 
     dynamic(
       [n],
@@ -684,20 +612,14 @@ defmodule Apiary.Gateways do
           else: dynamic(false)
 
       {:organisation, organisation_id} ->
-        served = [organisation_id | served_organisations(organisation_id)]
-        chains = Map.new(served, &{&1, chain(&1)})
-        defaults = with_default(chains |> Map.values() |> List.flatten())
-
-        reached =
-          for {served, chain} <- chains,
-              Enum.find(chain, &MapSet.member?(defaults, &1)) == organisation_id,
-              do: served
-
-        dynamic(
-          [n],
-          n.gateway_choice == :default and n.organisation_id in ^reached and
-            n.workspace_id not in subquery(own_defaults())
-        )
+        if MapSet.member?(with_default([organisation_id]), organisation_id),
+          do:
+            dynamic(
+              [n],
+              n.gateway_choice == :default and n.organisation_id == ^organisation_id and
+                n.workspace_id not in subquery(own_defaults())
+            ),
+          else: dynamic(false)
     end
   end
 

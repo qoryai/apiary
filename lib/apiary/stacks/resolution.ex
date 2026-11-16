@@ -12,17 +12,15 @@ defmodule Apiary.Stacks.Resolution do
   # workflow included, passes to the next. A run with no target has no target levels. No
   # document at any level resolves to `:none`.
   #
-  # **The owner.** A document's owner is its row's owner organisation, which the edition
-  # gives for the person who saved it last (`Apiary.Edition.harness_owner/1`). In the
-  # core, that is the organisation of a member who saved it there through that membership
+  # **The owner.** A document's owner is its row's owner organisation: the organisation of
+  # a member who saved it last there through that membership
   # (`Apiary.Stacks.saved_by/1`). For an instance admin who saved it with no such
   # membership, it is the instance's organisation. A row saved with `owner:`
   # (`Apiary.Stacks.put_stack/4`) has that owner instead: a workspace made from the shared
   # harness's template keeps the shared row's owner. It is nil once that organisation is
   # deleted.
   #
-  # **Hidden.** `harness_hidden` is true when the run's organisation is operated
-  # (`c:Apiary.Edition.operated?/1`), or when the owner is not the run's organisation. A
+  # **Hidden.** `harness_hidden` is true when the owner is not the run's organisation. A
   # document the instance's organisation owns is the run's organisation's only for a run
   # of the instance's organisation: a run of any other organisation hides it, whether the
   # instance has one organisation or several. A nil owner is never the run's
@@ -34,15 +32,14 @@ defmodule Apiary.Stacks.Resolution do
   @typedoc """
   What a resolution reads: the stacks of the run's organisation (rows of other places and
   workflows are left out here), the run's organisation, workspace, target (nil for none)
-  and workflow, and whether the run's organisation is operated.
+  and workflow.
   """
   @type input :: %{
           required(:stacks) => [Stack.t()],
           required(:organisation_id) => Ecto.UUID.t(),
           required(:workspace_id) => Ecto.UUID.t(),
           required(:target_id) => Ecto.UUID.t() | nil,
-          required(:workflow) => String.t(),
-          required(:operated) => boolean
+          required(:workflow) => String.t()
         }
 
   @typedoc "The level a resolved document came from."
@@ -151,7 +148,6 @@ defmodule Apiary.Stacks.Resolution do
 
   @doc false
   # hidden?/2 is `harness_hidden` for a document of `owner` (the moduledoc).
-  @spec hidden?(owner, %{operated: boolean, organisation_id: Ecto.UUID.t()}) :: boolean
-  def hidden?(_owner, %{operated: true}), do: true
+  @spec hidden?(owner, %{organisation_id: Ecto.UUID.t()}) :: boolean
   def hidden?(owner, %{organisation_id: organisation_id}), do: owner != organisation_id
 end

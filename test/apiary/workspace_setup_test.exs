@@ -350,50 +350,6 @@ defmodule Apiary.WorkspaceSetupTest do
       # Another workspace has no choice.
       refute WorkspaceSetup.model_key?(workspace_fixture(ctx.scope.organisation))
     end
-
-    test "on an operator's chain, the operator's provider with a key and its default", ctx do
-      %{scope: operator} = sign_up_fixture()
-      :ok = Edition.put_test_stub(EditionStubs.ServesAcrossWithChain)
-      EditionStubs.ServesAcross.put([{operator.organisation.id, ctx.scope.organisation.id}])
-      EditionStubs.ServesAcrossWithChain.writer(true)
-
-      provider = fn scope, chain ->
-        {:ok, provider} =
-          Connections.create_provider(scope, %{
-            provider: "anthropic",
-            chain: chain,
-            keys: [%{value_id: "main", value: "sk-setup-operator-1"}]
-          })
-
-        provider
-      end
-
-      # The client's own provider and choice of the workspace, on its own chain.
-      own = provider.(ctx.scope, "organisation")
-      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: own.public_id})
-      assert Edition.model_key_ready?(ctx.workspace)
-
-      # On the operator's chain, the client's rows are not read.
-      EditionStubs.ServesAcrossWithChain.chain("operator")
-      refute Edition.model_key_ready?(ctx.workspace)
-
-      theirs = provider.(operator, "operator")
-      refute WorkspaceSetup.model_key?(ctx.workspace)
-
-      {:ok, _} =
-        ModelChoices.put_choice(
-          operator,
-          :organisation,
-          %{provider: theirs.public_id, key: "main"},
-          "operator"
-        )
-
-      assert Edition.model_key_ready?(ctx.workspace)
-
-      # An operator's chain whose operator the edition does not name has no key.
-      EditionStubs.ServesAcrossWithChain.operator(nil)
-      refute WorkspaceSetup.model_key?(ctx.workspace)
-    end
   end
 
   describe "the test run" do
@@ -521,32 +477,32 @@ defmodule Apiary.WorkspaceSetupTest do
     defp targets!(adapter_id), do: set!(Node, adapter_id, targets: true)
 
     test "connected_ids/3: the adapters for the type with a connected connection", ctx do
-      organisation = ctx.scope.organisation
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      scope = ctx.scope
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       # Pending is not connected.
       %{adapter: pending} = connectable_adapter_fixture()
       {_connection, _nonce} = connection_fixture(ctx.scope, pending, :pending)
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       %{adapter: adapter} = connectable_adapter_fixture()
       {connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) ==
                MapSet.new([adapter.id])
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :targets) == MapSet.new()
 
       targets!(adapter.id)
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :targets) ==
+      assert WorkspaceSetup.connected_ids(scope, @software, :targets) ==
                MapSet.new([adapter.id])
 
       # An adapter that serves another type counts for that type alone.
       set!(Node, adapter.id, domains: ["example"])
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
-      assert WorkspaceSetup.connected_ids(organisation, Apiary.Lingo.Domain.Example, :items) ==
+      assert WorkspaceSetup.connected_ids(scope, Apiary.Lingo.Domain.Example, :items) ==
                MapSet.new([adapter.id])
 
       # An ended connection counts for none.
@@ -558,11 +514,22 @@ defmodule Apiary.WorkspaceSetupTest do
         ended_reason: "adapter_reported"
       )
 
-      assert WorkspaceSetup.connected_ids(organisation, @software, :items) == MapSet.new()
+      assert WorkspaceSetup.connected_ids(scope, @software, :items) == MapSet.new()
 
       # Another organisation's connection counts for none.
-      assert WorkspaceSetup.connected_ids(sign_up_fixture().organisation, @software, :items) ==
+      assert WorkspaceSetup.connected_ids(sign_up_fixture().scope, @software, :items) ==
                MapSet.new()
+    end
+
+    test "connected_ids/3: none for a person who may not read the instance's adapters", ctx do
+      %{adapter: adapter} = connectable_adapter_fixture()
+      {_connection, _nonce} = connection_fixture(ctx.scope, adapter, :connected)
+
+      assert WorkspaceSetup.connected_ids(ctx.scope, @software, :items) ==
+               MapSet.new([adapter.id])
+
+      :ok = Edition.put_test_stub(NoAdapterRead)
+      assert WorkspaceSetup.connected_ids(ctx.scope, @software, :items) == MapSet.new()
     end
 
     @tag needs: [:factory, :secrets]

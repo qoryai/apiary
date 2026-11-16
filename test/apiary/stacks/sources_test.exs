@@ -12,6 +12,7 @@ defmodule Apiary.Stacks.SourcesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.Adapters.Collection
   alias Apiary.Artifacts.TemplateTypes
   alias Apiary.Harnesses.{Assignment, PublicGit, Qory, Reader, Walk}
   alias Apiary.Lingo.Domain
@@ -24,6 +25,12 @@ defmodule Apiary.Stacks.SourcesTest do
 
   @moduletag needs: :factory
   @moduletag :capture_log
+
+  defmodule NoAdapterRead do
+    # Nobody reads the instance's adapters in an organisation (`adapter.read`).
+    def check(_scope, :"adapter.read", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
 
   @harness "https://code.example.com/acme/harness"
   @app "https://code.example.com/acme/app"
@@ -357,6 +364,31 @@ defmodule Apiary.Stacks.SourcesTest do
       for host <- [nil, ""] do
         assert Sources.unplaced(ctx.scope, instance_host: host) == unplaced
       end
+    end
+
+    test "a person who may not read the instance's adapters gets the repositories of the scope's workspace alone",
+         ctx do
+      :ok = Apiary.Edition.put_test_stub(NoAdapterRead)
+      assert Sources.repositories(ctx.scope) == []
+      assert Sources.unplaced(ctx.scope, instance_host: "") == []
+
+      {1, _} =
+        Repo.update_all(
+          from(c in Collection,
+            where: c.organisation_id == ^ctx.scope.organisation.id and c.title == "acme/app"
+          ),
+          set: [workspace_id: ctx.scope.workspace.id]
+        )
+
+      assert [%{label: "acme/app"}] = Sources.repositories(ctx.scope)
+
+      assert [%{id: id, cause: :no_instance_host}] =
+               Sources.unplaced(ctx.scope, instance_host: "")
+
+      assert id == ctx.adapter.adapter.public_id
+
+      # Without a workspace in the scope, none.
+      assert Sources.repositories(%{ctx.scope | workspace: nil}) == []
     end
 
     test "one another organisation's grant covers is not covered; reads count toward the limit",

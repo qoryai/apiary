@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
   # The organisation's gateways in the console: offered only where an organisation may have
   # more than one workspace; the list, New gateway, a gateway's page and its tabs; the
-  # workspace's Nodes list and a node's choice with the organisation's gateways; a gateway
-  # of another organisation named as a node uses it; and the edition's words for them.
+  # workspace's Nodes list and a node's choice with the organisation's gateways; and the
+  # edition's words for them.
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -29,7 +29,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
   defp nodes_path(scope, rest \\ ""),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/machines" <> rest
 
-  defp node_path(scope, node, rest \\ ""),
+  defp node_path(scope, node, rest),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/machines/#{node}" <> rest
 
   defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim()
@@ -98,7 +98,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
              )
     end
 
-    test "an owner adds one on its own page, and lands on its Access key tab", %{
+    test "an owner adds one on the New gateway page, and lands on its Access key tab", %{
       conn: conn,
       scope: scope
     } do
@@ -413,12 +413,9 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
   end
 
   describe "through the edition" do
-    setup %{scope: scope} do
-      %{scope: other} = sign_up_fixture(%{organisation_name: "Hive Ops"})
+    setup do
       Edition.put_test_stub(EditionStubs.GatewaysWorded)
-      EditionStubs.ServesAcross.put([{other.organisation.id, scope.organisation.id}])
-      gateway = organisation_gateway_fixture(other, name: "edge-1", url: "https://edge-1.example")
-      %{other: other, gateway: gateway}
+      :ok
     end
 
     test "the Gateways page and a gateway's say whose nodes can use them in its words", %{
@@ -426,7 +423,7 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       scope: scope
     } do
       own = organisation_gateway_fixture(scope, name: "edge-own")
-      {:ok, own} = Nodes.make_default_gateway(scope, own)
+      assert own.default_gateway
       name = scope.organisation.name
 
       {:ok, lv, _html} = live(conn, gateways_path(scope))
@@ -435,78 +432,6 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       {:ok, lv, _html} = live(conn, gateway_path(scope, own))
       assert has_element?(lv, "#gateway-who-can-use", "Edition reach who_can_use of #{name}.")
       assert has_element?(lv, "#gateway-default", "Edition reach default_row of #{name}.")
-    end
-
-    test "another organisation's gateway is no row of the Nodes list", %{
-      conn: conn,
-      scope: scope,
-      gateway: gateway
-    } do
-      node_fixture(scope)
-      {:ok, lv, _html} = live(conn, nodes_path(scope))
-      refute has_element?(lv, "#node-#{gateway.public_id}")
-    end
-
-    test "a node that uses it names it of its organisation, unlinked, with its URL", %{
-      conn: conn,
-      scope: scope,
-      other: other
-    } do
-      node = node_fixture(scope, name: "build-01")
-      assert node.gateway_choice == :default
-
-      {:ok, lv, _html} = live(conn, node_path(scope, node))
-      assert has_element?(lv, "#node-about-gateway", "Default gateway")
-      assert has_element?(lv, "#node-about-gateway", "edge-1 of Hive Ops")
-      assert has_element?(lv, "#node-about-gateway", "https://edge-1.example")
-      refute has_element?(lv, "#node-about-gateway a")
-
-      refute render(lv) =~ "/#{other.organisation.slug}/"
-
-      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
-
-      assert has_element?(
-               lv,
-               "#node-gateway",
-               "Runs of build-01 go through the gateway edge-1 of Hive Ops, at https://edge-1.example."
-             )
-
-      refute has_element?(lv, "#node-gateway a")
-      refute render(lv) =~ "/#{other.organisation.slug}/"
-    end
-
-    test "a reader of both organisations is led to its page there", %{
-      scope: scope,
-      other: other,
-      gateway: gateway
-    } do
-      node = node_fixture(scope, name: "build-01")
-      # The other organisation's owner joins this one as a member.
-      join_fixture(scope, other.user)
-      conn = log_in_user(build_conn(), other.user)
-      href = ~p"/#{other.organisation}/gateways/#{gateway}"
-
-      {:ok, lv, _html} = live(conn, node_path(scope, node))
-      assert has_element?(lv, ~s{#node-about-gateway a[href="#{href}"]}, "edge-1 of Hive Ops")
-
-      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
-      assert has_element?(lv, ~s{#node-gateway a[href="#{href}"]}, "edge-1")
-
-      {:ok, lv, _html} = live(conn, href)
-      assert has_element?(lv, "main h1", "edge-1")
-    end
-
-    test "the node's choice groups the other organisation's gateways under its name", %{
-      conn: conn,
-      scope: scope
-    } do
-      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))
-
-      assert has_element?(
-               lv,
-               "#new-node-form",
-               "On Default gateway, runs go through edge-1, the default for Hive Ops."
-             )
     end
 
     test "who manages the nodes is said in its words, where a member may not change them", %{

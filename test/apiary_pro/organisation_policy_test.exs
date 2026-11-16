@@ -485,37 +485,4 @@ defmodule ApiaryPro.OrganisationPolicyTest do
       assert is_binary(rule.id)
     end
   end
-
-  describe "a policy request" do
-    test "accepted under the floor keeps its rules and refuses a mode of observe", _ctx do
-      operator = operator_fixture()
-      client = client_fixture(operator.scope, "Acme")
-      owner = client.owner.scope
-
-      {:ok, _} = OrganisationPolicy.set_floor(owner, true)
-
-      {:ok, request} =
-        ApiaryPro.PolicyRequests.send_request(operator.scope, %{
-          "changes" => %{
-            "mode" => "observe",
-            "rules" => [
-              %{"change" => "rule_added", "action" => "allow", "host" => "api.harness.example"}
-            ]
-          },
-          "note" => "The harness calls its API."
-        })
-
-      answer =
-        Repo.get_by!(ApiaryPro.PolicyRequests.Answer,
-          request_id: request.id,
-          organisation_id: client.organisation.id
-        )
-
-      assert {:error, %Error{reason: :fixed, message: message}} =
-               ApiaryPro.PolicyRequests.accept(owner, answer.id, [client.workspace.id])
-
-      assert message =~ "Enforce is required by"
-      assert Policy.list_rules(owner, nil) == []
-    end
-  end
 end

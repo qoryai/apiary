@@ -16,7 +16,6 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
 
   @owner_organisation "You become the owner of the organisation. Owners rename it later in Organisation settings."
   @owner_operator "You become the owner of the operator. Owners rename it later in Organisation settings."
-  @operator "An operator creates clients. Each client is a separate organisation; its people belong to it, not to the operator."
   @with_mail "You sign in with a link we email you and need no password."
   @without_mail "You sign in with a password."
 
@@ -120,7 +119,7 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
       assert has_element?(
                lv,
                "#registration_form #user_kind-options label",
-               "Creates and runs organisations for clients."
+               "Operates workspaces of other organisations."
              )
 
       assert has_element?(lv, "#registration_form input[type=radio][value=organisation]")
@@ -142,7 +141,7 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
       choose(lv, "operator")
 
       assert has_element?(lv, "button#user_kind", "Operator")
-      assert has_element?(lv, "button#user_kind", "Creates and runs organisations for clients.")
+      assert has_element?(lv, "button#user_kind", "Operates workspaces of other organisations.")
       assert has_element?(lv, "input[type=radio][value=operator][checked]")
     end
   end
@@ -161,7 +160,7 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
       choose(lv, "operator")
-      assert context(lv) == [@owner_operator, @operator, @with_mail]
+      assert context(lv) == [@owner_operator, @with_mail]
 
       choose(lv, "organisation")
       assert context(lv) == [@owner_organisation, @with_mail]
@@ -171,7 +170,7 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
       open!([:operator])
       {:ok, lv, _html} = live(conn, ~p"/users/register")
 
-      assert context(lv) == [@owner_operator, @operator, @with_mail]
+      assert context(lv) == [@owner_operator, @with_mail]
     end
 
     test "says nothing under the title and the name", %{conn: conn} do
@@ -198,7 +197,7 @@ defmodule ApiaryProWeb.UserLive.SetUpFrameTest do
       assert context(lv) == [@owner_organisation, @without_mail]
 
       choose(lv, "operator")
-      assert context(lv) == [@owner_operator, @operator, @without_mail]
+      assert context(lv) == [@owner_operator, @without_mail]
     end
   end
 

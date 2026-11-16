@@ -5,7 +5,7 @@ made when the instance was set up with its set-up link. The Install guide says w
 are, how the release commands `Apiary.Release.grant_instance_admin/2` and
 `revoke_instance_admin/1` make and unmake one, and what an owner does inside an
 organisation. This guide covers sign-up beyond invitations, **Instance settings** and what
-the instance admins do there, a client's first invitation without mail, rendering the
+the instance admins do there, rendering the
 organisations' policies again, the grace period of a deletion, purging an organisation at
 once on an erasure request, and what becomes of an instance upgraded from a release
 without operators.
@@ -24,7 +24,7 @@ then shows them read only:
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SIGNUP_ORGANISATIONS` | `closed` | Whether someone without an invitation may sign up and create an organisation, to work in, and whether someone signed in may create another from the organisation switcher: `open` or `closed`. Not set, or empty, the page's setting applies. |
-| `SIGNUP_OPERATORS` | `closed` | Whether someone without an invitation may sign up and create an operator, an organisation that provides a harness its clients run, and whether someone signed in may create one from the organisation switcher: `open` or `closed`. Not set, or empty, the page's setting applies. |
+| `SIGNUP_OPERATORS` | `closed` | Whether someone without an invitation may sign up and create an operator, an organisation whose people reach the workspaces it operates, and whether someone signed in may create one from the organisation switcher: `open` or `closed`. Not set, or empty, the page's setting applies. |
 
 The instance owner is made by its set-up link, which the instance writes to
 its log at each start until the link is used, or from a shell, whatever the two settings
@@ -33,10 +33,9 @@ say, as the Install guide describes
 the sign-up and log-in pages say "This Qory Apiary is not set up yet: use the set-up link
 from its install."
 <!-- feature: managed_organisations -->
-On an instance with `managed_organisations` it is an operator from the start, so its
-owners may create clients at once; without the feature it is an organisation like any
-other. An instance admin changes its kind under Instance settings › Organisations as any other
-organisation's.
+On an instance with `managed_organisations` it is an operator from the start; without
+the feature it is an organisation like any other. An instance admin changes its kind
+under Instance settings › Organisations as any other organisation's.
 <!-- /feature -->
 
 After set-up, both settings are `closed` unless you open them on Instance settings ›
@@ -68,10 +67,6 @@ kind, or of the kind they choose when both are, and is its first owner. As after
 the organisation has no workspace yet: the person is taken to its overview, where
 the kind cards create its first workspace. With both closed the entry is not there, and nobody
 but the instance admins, under Instance settings › Organisations, creates an organisation.
-<!-- feature: managed_organisations -->
-The one exception is an operator's clients, which its owners and admins create on its
-**Clients** page ([Operators and their clients](operators.md)).
-<!-- /feature -->
 Opening sign-up of organisations on an instance you host for your colleagues
 therefore lets them start organisations too.
 
@@ -94,7 +89,7 @@ SIGNUP_ORGANISATIONS=open
 The instance admins have separate pages, **Instance settings**, in the Qory Apiary menu:
 General, then Features, then Organisations and Accounts, then the other sections, with
 Mail and Configuration last. **Organisations**, `/instance/organisations`, lists every organisation
-on the instance, with its slug, its kind, its operator, its features and its status: in
+on the instance, with its slug, its kind, its features and its status: in
 use, suspended, without an owner who may act, or deleted, with the day it is purged.
 **Accounts**, `/instance/accounts`, lists every account, with how many organisations it is
 in and whether it is suspended. Instance settings' former addresses, under the instance's
@@ -102,7 +97,7 @@ organisation (`/<its slug>/instance`), lead there.
 
 While the instance has no mail, an instance admin makes a password link on Accounts,
 with **Make a password link** in the ⋯ menu of the account's row, for any other account,
-except a suspended one: a client's owner or a member of any organisation, as well
+except a suspended one: an owner or a member of any organisation, as well
 as a person of the instance's organisation, whose People page offers it too. It needs a
 recent sign-in, as **Account** settings do: an admin who signed in more than 20 minutes
 ago logs in again first. The page shows the link once, to copy and send to the person; it
@@ -127,8 +122,8 @@ owner** leading there. They purge an organisation at once on an erasure request
 owner is offered neither, and is never purged.
 <!-- feature: managed_organisations -->
 They also make an organisation an operator there, or create one, and make an operator
-without clients an organisation again, the instance owner as any other
-([Operators and their clients](operators.md)).
+that operates no workspace an organisation again, the instance owner as any other
+([Operators](operators.md)).
 <!-- /feature -->
 
 An instance admin opens any other organisation from there and reads everything in it, its
@@ -136,7 +131,7 @@ runs, terminals, policy, members and activity, and changes nothing in it. The in
 organisation's admins and members see no such page; they reach that organisation, at their
 level, and nothing beyond.
 <!-- feature: managed_organisations -->
-Once it is an operator, they read its clients as any operator's people read theirs.
+Once it is an operator, they reach the workspaces it operates as any operator's people do.
 <!-- /feature -->
 
 ## Suspending and activating
@@ -162,13 +157,13 @@ out, `Apiary.Release.grant_instance_admin/2` is the way back.
 
 ## Transfer ownership
 
-An instance admin who suspends the account of an organisation's only owner, an operator's
-client as any other, leaves it without an owner who may act: its admins and members work,
+An instance admin who suspends the account of an organisation's only owner leaves it
+without an owner who may act: its admins and members work,
 its runs continue, and what only an owner does waits, until the owner is activated again
 or an instance admin offers the ownership to one of its admins with **Transfer ownership**
 under Instance settings › Organisations, giving a reason. Every page of the organisation tells the admin of
 the offer, and they accept it on **Ownership** in the organisation's settings and
-become an owner; a client stays its operator's. This is the only transfer of ownership an
+become an owner. This is the only transfer of ownership an
 instance admin makes, and the offer lapses once one of the organisation's owners may act
 again.
 
@@ -182,8 +177,8 @@ is not shown to its people, in the organisation and its workspaces, and still wo
 its machines: its runs are recorded and served their policy. The documentation at `/docs`,
 the sign-in page and the landing page follow the instance only.
 <!-- feature: managed_organisations -->
-Of the features a grant can name, an operator other than the instance owner, and every
-client, have only what is granted to them ([Operators and their clients](operators.md)).
+Of the features a grant can name, an operator other than the instance owner has only
+what is granted to it ([Operators](operators.md)).
 <!-- /feature -->
 <!-- feature: organisation_policy -->
 `organisation_policy`, the organisation's policy above its workspaces'
@@ -198,17 +193,6 @@ its variables above its workspaces' variables
 `secrets`, and is granted like the others.
 <!-- /feature -->
 
-<!-- feature: managed_organisations -->
-## Operators: a client's first invitation without mail
-
-This section is for operators and their clients ([Operators and their
-clients](operators.md)). Until the instance has mail, nothing is emailed when an operator
-creates a client: the Clients page shows the invitation's link once, to copy and send
-yourself, and while it is pending, **Make a new link** in the client's row menu replaces a
-lost one, and the old link stops working. Once the instance has mail, the invitation is
-emailed. The invitation of a client's first owner, emailed or copied, and each new link
-made for it, count against the operator's allowance of invitations a day.
-<!-- /feature -->
 <!-- feature: organisation_policy -->
 
 ## Rendering the organisations' policies again
@@ -269,7 +253,7 @@ once and purges it for good. The row the instance keeps says it was an erasure r
 by whom. The address must be an instance admin's account. It refuses the instance
 owner,
 <!-- feature: managed_organisations -->
-and an operator that still has clients, each of which is deleted first,
+and an operator that still operates a workspace,
 <!-- /feature -->
 and says what it did. Should it stop half way, running it again goes on where it stopped.
 
@@ -300,7 +284,7 @@ until the next upgrade:
 - each organisation's secrets and variables;
 <!-- /feature -->
 <!-- feature: managed_organisations -->
-- the relationships between operators and their clients;
+- the operators of workspaces;
 <!-- /feature -->
 - the features an instance admin took away from an organisation or granted to it: every
   organisation has every feature the instance has;

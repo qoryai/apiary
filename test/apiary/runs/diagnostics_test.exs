@@ -142,21 +142,14 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert Map.has_key?(document, "log") and Map.has_key?(document, "events")
     end
 
-    test "reads a person's events as the edition narrows them, and a key's as the instance's",
-         %{schema: schema, scope: scope, run: run} do
+    test "reads every event for a key, and the value of a leaked secret",
+         %{schema: schema, run: run} do
       events_fixture(run, [
         {1, "run.started", %{"token" => @github}},
         {2, "run.exited", %{"exit_code" => 0}}
       ])
 
       {:ok, run} = Apiary.Runs.Projector.project(run)
-      :ok = Apiary.Edition.put_test_stub(__MODULE__.NarrowsPeople)
-
-      person = valid!(schema, Diagnostics.document(run, scope))
-      assert person["events"] == [] and person["events_omitted"] == 0
-      # The secret is listed, without the value of an event the person does not read.
-      assert [%{"place" => "event", "sequence" => 1} = leaked] = person["leaked_secrets"]
-      refute Map.has_key?(leaked, "value")
 
       key = valid!(schema, Diagnostics.document(run, :instance))
       assert [%{"sequence" => 1}, %{"sequence" => 2}] = key["events"]
@@ -339,18 +332,6 @@ defmodule Apiary.Runs.DiagnosticsTest do
       refute Map.has_key?(document, "events")
       refute Map.has_key?(document, "events_omitted")
     end
-  end
-
-  defmodule NarrowsPeople do
-    @moduledoc false
-    # A person reads no event of a run; the instance reads every one
-    # (`c:Apiary.Edition.client_reads/4`).
-    import Ecto.Query, only: [where: 2]
-
-    def client_reads(%Apiary.Accounts.Scope{user: %{}}, :run_events, _run, query),
-      do: where(query, false)
-
-    def client_reads(_scope, _kind, _run, subject), do: subject
   end
 
   describe "a run's preparation" do

@@ -200,17 +200,19 @@ defmodule Apiary.Runs.WaitingTest do
     assert DateTime.compare(until, first) == :eq
   end
 
+  # A provider of another organisation than the run's, left from when an operator
+  # managed whole organisations.
   @tag needs: [:factory, :secrets]
-  test "while every key of an operator's provider is in cooldown, the first end alone",
+  test "while every key of another organisation's provider is in cooldown, the first end alone",
        %{scope: scope} do
     {_pool, _key} = ready_pool!(scope)
-    %{scope: operator} = sign_up_fixture()
+    %{scope: other} = sign_up_fixture()
 
     {:ok, theirs} =
-      Apiary.Connections.create_provider(operator, %{
+      Apiary.Connections.create_provider(other, %{
         provider: "anthropic",
-        name: "Operator keys",
-        keys: [%{value_id: "main", value: "sk-ant-waiting-operator"}]
+        name: "Other keys",
+        keys: [%{value_id: "main", value: "sk-ant-waiting-other"}]
       })
 
     run = queue!(scope)

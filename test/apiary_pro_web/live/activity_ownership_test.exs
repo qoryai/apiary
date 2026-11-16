@@ -4,8 +4,8 @@ defmodule ApiaryProWeb.ActivityOwnershipTest do
   # suspension, and an owner's filter, are the core's (`ApiaryWeb.ActivityLiveTest`).
   use ApiaryWeb.ConnCase, async: true
 
-  # Offers to an operator and leaving one are shown here, for this process and those it
-  # starts (`ApiaryPro.Flags.put_transfers/1`).
+  # The lapse of the arbiter's offer (`organisation.withdraw_transfer`) is found here, for
+  # this process and those it starts (`ApiaryPro.Flags.put_transfers/1`).
   setup do: ApiaryPro.Flags.put_transfers(true)
 
   import Phoenix.LiveViewTest
@@ -99,55 +99,6 @@ defmodule ApiaryProWeb.ActivityOwnershipTest do
     suspended = entry(instance_organisation, :"instance.suspend_account")
     assert text(view, "#entry-#{suspended.id}-action") =~ "Suspended an account"
     assert text(view, "#entry-#{suspended.id}-subject") =~ owner.email
-  end
-
-  test "an organisation accepted by an operator, and a client leaving it, name each other",
-       %{conn: conn} do
-    operator = operator_fixture()
-    %{scope: owner, organisation: organisation} = sign_up_fixture()
-    {:ok, _} = Transfers.offer_to_operator(owner, operator.organisation.slug)
-    {:ok, client} = Transfers.accept_client(operator.scope, organisation.id)
-
-    operator_conn = log_in_user(conn, operator.user)
-
-    view = open(operator_conn, client)
-    joined = entry(client, :"client.accept")
-
-    assert text(view, "#entry-#{joined.id}-action") =~
-             "#{operator.organisation.name} became its operator"
-
-    view = open(operator_conn, operator.organisation)
-    accepted = entry(operator.organisation, :"client.accept")
-    assert text(view, "#entry-#{accepted.id}-action") =~ "Accepted #{client.name} as a client"
-
-    # Its owner takes it away from the operator.
-    {:ok, _} = Transfers.leave(scope_in(owner.user, client), operator.organisation.name)
-
-    view = open(operator_conn, operator.organisation)
-    left = entry(operator.organisation, :"organisation.leave_operator")
-    assert text(view, "#entry-#{left.id}-action") =~ "#{client.name} left as a client"
-
-    view = open(log_in_user(build_conn(), owner.user), client)
-    left = entry(client, :"organisation.leave_operator")
-
-    assert text(view, "#entry-#{left.id}-action") =~
-             "Left #{operator.organisation.name}: it has no operator now"
-  end
-
-  test "a client dropped by its operator, named on each side", %{conn: conn} do
-    operator = operator_fixture()
-    client = client_fixture(operator.scope, "Acme")
-    {:ok, _} = Transfers.drop(operator.scope, client.organisation.id, "Acme")
-
-    view = open(log_in_user(conn, operator.user), operator.organisation)
-    dropped = entry(operator.organisation, :"client.drop")
-    assert text(view, "#entry-#{dropped.id}-action") =~ "Dropped Acme as a client"
-
-    view = open(log_in_user(build_conn(), client.owner.user), client.organisation)
-    dropped = entry(client.organisation, :"client.drop")
-
-    assert text(view, "#entry-#{dropped.id}-action") =~
-             "#{operator.organisation.name} dropped it as a client: it has no operator now"
   end
 
   test "no action in the filter is shown by its code name", %{conn: conn} do

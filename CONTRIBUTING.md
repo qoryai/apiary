@@ -94,6 +94,7 @@ in `mise.local.toml`, which is not tracked, or in the shell.
 ```sh
 mix setup                          # dependencies, database, assets
 mix test                           # creates and migrates the test database, then runs everything
+scripts/test-run.sh                # the same on a database for this run, dropped when it ends
 mix format                         # CI runs mix format --check-formatted
 mix compile --warnings-as-errors
 mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
@@ -107,6 +108,29 @@ The tests tagged `:contract` replay Forager's contract fixtures at the commit in
 `.forager-contract-ref`. They take them from `FORAGER_CONTRACT_DIR`, set to
 `contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
 left out, and a line says so.
+
+A run with `MIX_TEST_PARTITION` set uses the database `apiary_test` followed by the
+variable's value (`config/test.exs`), and drops that database as it ends, whether the
+tests pass or fail (`Apiary.TestDatabase`). A run without it uses `apiary_test` and keeps
+it. Some runs keep the partition's database:
+
+- a plain `MIX_TEST_PARTITION=x mix test` stopped by a signal, by SIGKILL or by a break of
+  the VM (Ctrl-C, then `a`);
+- `iex -S mix test`, because the VM does not halt and its exit hooks do not run;
+- a plain `mix test --listen-on-stdin` with a partition, which runs until you stop it, and
+  stopping it skips the exit hooks.
+
+Two runs that share one partition share one database, and the first to end drops it under
+the other. Give each run a new partition.
+
+`scripts/test-run.sh` takes the arguments of `mix test` and sets a new partition and a new
+`TMPDIR` for each run. It runs `mix test` with 4 schedulers and `--max-cases 4`, and drops
+the run's database after INT, TERM or HUP too. Full suites run one at a time on the
+machine: a run waits for the lock directory `/tmp/apiary-test-full-suite.lock`, or the one
+in `APIARY_TEST_LOCK`. If SIGKILL stops `mix test`, its database stays. The script's next
+run drops such a database once it is more than 24 hours old and has no connection, and
+only when its name has the script's form, `apiary_testrun<digits>p<digits>`. A database
+left by a plain `mix test` stays until you drop it. The script's header lists the details.
 
 CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
 do not depend on the features, runs once: the formatting check, the compile with warnings

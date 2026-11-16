@@ -947,102 +947,46 @@ defmodule ApiaryProWeb.PolicyLive.OrganisationTest do
       refute has_element?(view, "#new-menu-organisation_rule")
     end
 
-    test "the operator of a client changes its rules only while the operator owns it" do
-      ApiaryPro.Flags.put_operator_infrastructure(false)
+    test "the policy of an organisation whose workspace an operator operates is not found for the operator's people, with the flag on or off" do
       operator = ApiaryPro.OperatorsFixtures.operator_fixture()
-      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope)
+      operated = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope)
       conn = log_in_user(build_conn(), operator.user)
-      path = "/#{client.organisation.slug}/policy"
+      path = "/#{operated.organisation.slug}/policy"
 
-      # Off: the operator's people read the client, and change nothing.
-      view = open(conn, path)
-      refute has_element?(view, "#policy-rules-add")
-      view = open(conn, path <> "/rules/new")
-      assert text(view, "#flash-error") == "You can read this policy but not change it."
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
-      refute has_element?(view, "#new-menu-organisation_rule")
+      for on? <- [false, true] do
+        ApiaryPro.Flags.put_operator_infrastructure(on?)
+        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
 
-      # On: the operator's owner changes them, as the client's owner.
-      ApiaryPro.Flags.put_operator_infrastructure(true)
-      view = open(conn, path)
-      assert has_element?(view, "#policy-rules-add")
-      view = open(conn, path <> "/rules/new?host=api.example")
-      type(view, %{host: "api.example", paths: ""})
-      add(view)
-      assert_patch(view, path <> "?rule=api.example")
+        assert {:error, %Policy.Error{reason: :not_found}} =
+                 OrganisationPolicy.allow(operated.scope, %{host: "api.example"})
+      end
 
-      assert {:ok, %{rules: [%{host: "api.example"}]}} = OrganisationPolicy.get(client.scope)
-
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
-      assert has_element?(view, "#new-menu-organisation_rule")
+      assert {:ok, %{rules: []}} = OrganisationPolicy.get(operated.owner.scope)
     end
 
-    test "while the operator owns its client, the client's owner reads its policy, told who changes it" do
+    test "while the operator's owners and admins act in the workspace it operates, the organisation's owner changes its policy as any owner does" do
       ApiaryPro.Flags.put_operator_infrastructure(false)
       operator = ApiaryPro.OperatorsFixtures.operator_fixture(%{organisation_name: "Hive Ops"})
-      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Acme")
+      operated = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Acme")
       operator_admin = member_fixture(operator.scope, :admin)
-      {:ok, rule} = OrganisationPolicy.allow(client.owner.scope, %{host: "api.example"})
       ApiaryPro.Flags.put_operator_infrastructure(true)
 
-      owner = client.owner.scope
-      conn = log_in_user(build_conn(), client.owner.user)
-      path = "/#{client.organisation.slug}/policy"
-      only = "Only owners of Hive Ops, the operator of Acme, change its policy."
+      conn = log_in_user(build_conn(), operated.owner.user)
+      path = "/#{operated.organisation.slug}/policy"
 
-      # The owner made while the flag was off reads it, and changes nothing.
-      view = open(conn, path)
-      refute has_element?(view, "#policy-rules-add")
-      refute has_element?(view, "##{row(view, "api.example")}-menu")
-      assert has_element?(view, "#policy-switch-switch[disabled]")
-      refute has_element?(view, "#policy-mode-change")
-
-      assert text(view, "#policy-owners") ==
-               "Only owners of Hive Ops, the operator of Acme, change its policy: these settings and its rules."
-
-      assert text(view, "#policy-mode-owners") == only
-
-      # A crafted change is refused in the same words.
-      for event <- ["mode_open", "switch_ask"] do
-        render_hook(view, event, %{})
-        assert text(view, "#policy-write-error") == only, event
-      end
-
-      # And by the policy itself.
-      for refused <- [
-            OrganisationPolicy.set_floor(owner, true),
-            OrganisationPolicy.set_switch(owner, false),
-            OrganisationPolicy.deny(owner, %{host: "paste.example"}),
-            OrganisationPolicy.remove_rule(owner, rule)
-          ] do
-        assert {:error, %Policy.Error{reason: :forbidden, message: ^only}} = refused
-      end
-
-      assert {:ok, %{policy: %{enforce_everywhere: false, own_allows: true}, rules: [%{id: id}]}} =
-               OrganisationPolicy.get(owner)
-
-      assert id == rule.id
-
-      # New rule sends them back, and New offers no network access rule.
-      view = open(conn, path <> "/rules/new")
-      assert text(view, "#flash-error") == "You can read this policy but not change it."
-      refute has_element?(view, "#policy-rule-form")
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
-      refute has_element?(view, "#new-menu-organisation_rule")
-
-      # The operator's admin is told the same.
-      view = open(log_in_user(build_conn(), operator_admin.user), path)
-      refute has_element?(view, "#policy-rules-add")
-      assert text(view, "#policy-mode-owners") == only
-
-      # With the flag off, the client's owner changes it, as before.
-      ApiaryPro.Flags.put_operator_infrastructure(false)
       view = open(conn, path)
       assert has_element?(view, "#policy-rules-add")
       assert has_element?(view, "#policy-mode-change")
       refute has_element?(view, "#policy-owners")
-      {:ok, view, _html} = live(conn, ~p"/#{client.organisation}/settings")
+      {:ok, view, _html} = live(conn, ~p"/#{operated.organisation}/settings")
       assert has_element?(view, "#new-menu-organisation_rule")
+
+      assert {:ok, _} = OrganisationPolicy.allow(operated.owner.scope, %{host: "api.example"})
+
+      # The page is not found for the operator's admin.
+      assert_raise ApiaryWeb.NotFound, fn ->
+        live(log_in_user(build_conn(), operator_admin.user), path)
+      end
     end
   end
 
@@ -1210,44 +1154,37 @@ defmodule ApiaryProWeb.PolicyLive.OrganisationTest do
     # Who made a rule or a change is named by their account, member or not: the local
     # part of their address beside a rule, their letter and address in History, "Former
     # member" only for a deleted account.
-    test "the operator's owner is named in a client's rules and History; a deleted account is a former member" do
+    test "a member of an organisation whose workspace an operator operates is named in its rules and History; a deleted account is a former member" do
       ApiaryPro.Flags.put_operator_infrastructure(false)
       operator = ApiaryPro.OperatorsFixtures.operator_fixture(%{organisation_name: "Hive Ops"})
-      client = ApiaryPro.OperatorsFixtures.client_fixture(operator.scope, "Acme")
-      co_owner = member_fixture(operator.scope, :owner)
-      {:ok, _} = OrganisationPolicy.allow(client.owner.scope, %{host: "cdn.example"})
+      operated = ApiaryPro.OperatorsFixtures.operated_fixture(operator.scope, "Acme")
+      co_owner = member_fixture(operated.owner.scope, :owner)
+      {:ok, _} = OrganisationPolicy.allow(operated.owner.scope, %{host: "cdn.example"})
 
       ApiaryPro.Flags.put_operator_infrastructure(true)
-      in_client = &ApiaryPro.OperatorsFixtures.scope_in(&1, client.organisation)
-      {:ok, _} = OrganisationPolicy.allow(in_client.(operator.user), %{host: "api.example"})
-      {:ok, _} = OrganisationPolicy.deny(in_client.(co_owner.user), %{host: "paste.example"})
+      {:ok, _} = OrganisationPolicy.deny(co_owner.scope, %{host: "paste.example"})
       {:ok, _} = Apiary.Accounts.delete_user(co_owner.scope)
 
-      conn = log_in_user(build_conn(), client.owner.user)
-      path = "/#{client.organisation.slug}/policy"
+      conn = log_in_user(build_conn(), operated.owner.user)
+      path = "/#{operated.organisation.slug}/policy"
       by = &text(&1, "##{row(&1, &2)} .q-pr-by")
-      operator_owner = ApiaryWeb.People.short(operator.user.email)
-      client_owner = ApiaryWeb.People.short(client.owner.user.email)
+      owner_name = ApiaryWeb.People.short(operated.owner.user.email)
       letter = &"#{String.upcase(String.first(&1.email))} #{&1.email}"
 
       view = open(conn, path)
-      assert by.(view, "api.example") =~ operator_owner
-      refute by.(view, "api.example") =~ "Former member"
-      assert by.(view, "cdn.example") =~ client_owner
+      assert by.(view, "cdn.example") =~ owner_name
       assert by.(view, "paste.example") =~ "Former member"
 
       view = open(conn, path <> "/history")
       history = text(view, "#policy-history")
-      assert history =~ "#{letter.(operator.user)} allowed api.example"
-      refute history =~ "Former member allowed api.example"
-      assert history =~ "#{letter.(client.owner.user)} (you) allowed cdn.example"
+      assert history =~ "#{letter.(operated.owner.user)} (you) allowed cdn.example"
       assert history =~ "Former member denied paste.example"
       refute history =~ co_owner.user.email
 
       # With the switch off, a member is named beside their rule as before.
       ApiaryPro.Flags.put_operator_infrastructure(false)
       view = open(conn, path)
-      assert by.(view, "cdn.example") =~ client_owner
+      assert by.(view, "cdn.example") =~ owner_name
     end
   end
 

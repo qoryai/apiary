@@ -82,7 +82,7 @@ defmodule Apiary.Runs.Preparation do
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Nodes.Node
-  alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Record, Run, Step, Waiting}
 
   # The most of a step's output that is kept, in bytes of UTF-8, and in lines: the page
@@ -101,7 +101,7 @@ defmodule Apiary.Runs.Preparation do
   @after_kinds ~w(push copy)
 
   @typedoc "Where the cause of a failure lies, by who can fix it."
-  @type fixer :: :support | :operator_admin | :workspace_admin
+  @type fixer :: :support | :workspace_admin
 
   @typedoc "Why a preparation failed."
   @type cause ::
@@ -109,15 +109,9 @@ defmodule Apiary.Runs.Preparation do
 
   @typedoc """
   The pool that claimed the run: its public id, its name, and where it lives:
-  `:instance` for the instance's pool, `:workspace` for a pool of the run's workspace,
-  `:operator` for a pool of another organisation, whose name is `operator`.
+  `:instance` for the instance's pool, `:workspace` for a pool of the run's workspace.
   """
-  @type pool :: %{
-          id: String.t(),
-          name: String.t(),
-          place: :instance | :workspace | :operator,
-          operator: String.t() | nil
-        }
+  @type pool :: %{id: String.t(), name: String.t(), place: :instance | :workspace}
 
   @typedoc """
   What the pool's starter last reported about the removal of the machine, at
@@ -319,8 +313,6 @@ defmodule Apiary.Runs.Preparation do
       arrived is in the machine log, under Start the machine.
     * `{:pool_log, pool}`: for anyone else, on a pool of the run's workspace, it is in
       the log of the pool named `pool` on its host.
-    * `{:operator_log, operator, pool}`: on a pool of another organisation, named
-      `operator`, an admin of it reads that log.
     * `{:support, run}`: on the instance's pool, and for a report whose form or run does
       not pass the check, support, given the run's public id `run`.
     * `{:rebuild, target}`: for a run whose documents have no destination, a reader who
@@ -334,7 +326,6 @@ defmodule Apiary.Runs.Preparation do
   @type built_fix ::
           :machine_log
           | {:pool_log, String.t()}
-          | {:operator_log, String.t(), String.t()}
           | {:support, String.t()}
           | {:rebuild, String.t()}
           | {:ask_rebuild, String.t(), String.t()}
@@ -498,7 +489,7 @@ defmodule Apiary.Runs.Preparation do
   defp dispatches(%Scope{organisation: organisation, workspace: workspace}) do
     from d in Dispatch,
       where: d.organisation_id == ^organisation.id and d.workspace_id == ^workspace.id,
-      preload: [:dispatch_run, pool: :organisation]
+      preload: [:dispatch_run, :pool]
   end
 
   defp failure(%Run{start_failure: "machine_not_made", start_failed_at: at}),
@@ -552,7 +543,7 @@ defmodule Apiary.Runs.Preparation do
 
     %{
       dispatch_id: dispatch.public_id,
-      pool: pool(dispatch.pool, run),
+      pool: pool(dispatch.pool),
       queued_at: queued_at,
       machine_type:
         if(dispatch.machine_type,
@@ -624,14 +615,12 @@ defmodule Apiary.Runs.Preparation do
   defp started_by(%Run{run_code_expires_at: nil}, %Dispatch{handed_over_at: at}), do: at
   defp started_by(_run, _dispatch), do: nil
 
-  defp pool(%Node{organisation_id: nil} = pool, _run),
-    do: %{id: pool.public_id, name: pool.name, place: :instance, operator: nil}
+  # A pool's key claims only the runs of its workspace, or of any workspace for the
+  # instance's pool (`Apiary.Access`).
+  defp pool(%Node{organisation_id: nil} = pool),
+    do: %{id: pool.public_id, name: pool.name, place: :instance}
 
-  defp pool(%Node{organisation_id: id} = pool, %Run{organisation_id: id}),
-    do: %{id: pool.public_id, name: pool.name, place: :workspace, operator: nil}
-
-  defp pool(%Node{organisation: %Organisation{name: operator}} = pool, _run),
-    do: %{id: pool.public_id, name: pool.name, place: :operator, operator: operator}
+  defp pool(%Node{} = pool), do: %{id: pool.public_id, name: pool.name, place: :workspace}
 
   defp between(%DateTime{} = from, %DateTime{} = to),
     do: max(DateTime.diff(to, from, :millisecond), 0)
@@ -904,7 +893,6 @@ defmodule Apiary.Runs.Preparation do
     else
       case machine && machine.pool do
         %{place: :workspace, name: pool} -> {:pool_log, pool}
-        %{place: :operator, operator: operator, name: pool} -> {:operator_log, operator, pool}
         _instance -> {:support, run.public_id}
       end
     end
@@ -1352,13 +1340,9 @@ defmodule Apiary.Runs.Preparation do
   defp pool_name(%{name: name}), do: name
 
   # Who fixes a cause in the pool: support for the instance's pool, an admin of the
-  # operator for an operator's, an admin of the workspace for the workspace's and for a
-  # pool that is not known.
+  # workspace for the workspace's and for a pool that is not known.
   defp pool_fixer(_scope, %{place: :instance}, %Run{public_id: run}),
     do: {:support, {:support, gettext("Contact support with run %{run}.", run: run)}}
-
-  defp pool_fixer(_scope, %{place: :operator, operator: operator}, _run),
-    do: {:operator_admin, gettext("An admin of %{operator}", operator: operator)}
 
   defp pool_fixer(scope, _pool, _run), do: workspace_fixer(scope)
 
