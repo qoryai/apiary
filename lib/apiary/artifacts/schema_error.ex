@@ -11,9 +11,10 @@ defmodule Apiary.Artifacts.SchemaError do
   # errors of its failed `then` or `else` schema, each with its path, so "value validated
   # 'if' but not 'then'" is replaced by a message such as "property 'fix' is not
   # allowed"; an `if` error with none keeps its message. An `if` inside an `allOf` is
-  # read so only with `unwrap: true`: in `questions.schema.json` and
-  # `review-comments.schema.json`, only the two checks that an answer with option null has
-  # a note are outside an `allOf`. With `unwrap: true`, as for the type `mockup`, an
+  # read so only with `unwrap: true`. Outside an `allOf` are the check on a verdict's
+  # point (`verdict.schema.json`) and, in `questions.schema.json` and
+  # `review-comments.schema.json`, the two checks that an answer with option null has a
+  # note; a verdict's top-level checks sit inside an `allOf`. With `unwrap: true`, as for the type `mockup`, an
   # `allOf` error, which a `$ref` to a definition with a limit on its length makes, is the
   # errors of its schemas that failed, so "value did not conform to all of the given
   # schemas" is replaced by the failing limit's message.
