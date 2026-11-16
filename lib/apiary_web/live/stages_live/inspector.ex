@@ -369,6 +369,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       <form
         :for={{id, workflow} <- time_limit_rows(@time_limit, @stage)}
         id={"#{id}-time-limit-form"}
+        novalidate
         phx-change="time_limit_change"
         phx-submit="time_limit_save"
         class="hidden"
