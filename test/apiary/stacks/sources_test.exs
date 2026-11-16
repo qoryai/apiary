@@ -947,10 +947,11 @@ defmodule Apiary.Stacks.SourcesTest do
 
     test "a submit that names no structured type of the file is not readable", ctx do
       for {type, refusal, text} <- [
-            {"other", {:submit, "other", :missing}, "no entry is named other"},
-            {"mockup", {:submit, "mockup", :standard}, "mockup is a standard type"},
+            {"other", {:submit, "other", :missing}, "add other to artifact_types as structured"},
+            {"mockup", {:submit, "mockup", :standard},
+             "set submit.type to a structured type of artifact_types: mockup is a standard type"},
             {"draft", {:submit, "draft", {:base_view, "document"}},
-             "draft has base_view document"}
+             "set submit.type to a type whose base_view is structured, not document"}
           ] do
         file =
           template_file() <> submit_types() <> "submit:\n  type: #{type}\n  send: end_of_run\n"
@@ -961,8 +962,7 @@ defmodule Apiary.Stacks.SourcesTest do
         assert [%{module: "b"}] = read.templates
         assert read.not_readable == [%{module: "a", reason: {:types, [refusal]}}]
 
-        assert TemplateTypes.message(refusal) ==
-                 "set submit.type to a structured type of artifact_types: " <> text
+        assert TemplateTypes.message(refusal) == text
       end
     end
 

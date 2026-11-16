@@ -16,6 +16,7 @@ defmodule Apiary.WorkItems.FinishedTest do
   alias Apiary.{Processes, Repo, Sources, Stages, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Sources.{Backlog, Item}
+  alias Apiary.Stages.GateDecision
   alias Apiary.WorkItems.{Finished, WorkItem, WorkItemEvent, WorkList}
 
   @moduletag needs: [:factory, :workflow_model]
@@ -112,6 +113,12 @@ defmodule Apiary.WorkItems.FinishedTest do
 
       assert %WorkItem{state: :closed, closed_by_id: nil, stage_state: :done} = closed
       assert closed_event(closed).data["reason"] == "last_stage_done"
+
+      # The gate's approval is recorded before the close.
+      assert [%GateDecision{kind: :approve, automatic: true, user_id: nil, inserted_at: at}] =
+               Repo.all(from d in GateDecision, where: d.work_item_id == ^closed.id)
+
+      assert DateTime.compare(at, closed.closed_at) in [:lt, :eq]
     end
 
     test "a stage before the last leaves it live", ctx do

@@ -107,8 +107,9 @@ defmodule Apiary.Dispatches.WireTest do
   }
   # Every vendored contract is at the integrations `main` commit that has machine types,
   # but the run and the integration contracts, at the later commit that adds a run's
-  # submit and the submit_module an adapter declares, and the diagnostics contract, at the
-  # later commit that adds the machine type to the run diagnostics, after the run list.
+  # submit and the submit_module an adapter declares, after the commit that binds a group
+  # role to a list of agents, and the diagnostics contract, at the later commit that adds
+  # the machine type to the run diagnostics, after the run list.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
@@ -159,7 +160,7 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   @tag :contract
-  test "a run's harness binds by kind, then by role, one name per role or a list of agents" do
+  test "a run's harness binds by kind, then by role, one name per role" do
     documents = Path.join(@vendored, "run/v1/fixtures")
     read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
     valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
@@ -170,15 +171,29 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert valid?.(nested)
 
-    # A group role of the kind agents is bound to a list of at least one agent.
-    for name <- ~w(list list-one list-duplicate) do
-      bound = read.("documents/explore-harness-bind-#{name}.json")
-      assert [_ | _] = bound["harness"]["harness"]["bind"]["agents"]["reviewers"]
-      assert valid?.(bound), name
+    for name <- ~w(flat name-slash role-dot unknown-kind) do
+      refute valid?.(read.("invalid/documents-harness-bind-#{name}.json")), name
+    end
+  end
+
+  @tag :contract
+  test "a run's harness binds an agents role to a list of 1 or more agents" do
+    documents = Path.join(@vendored, "run/v1/fixtures")
+    read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
+    valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
+
+    group = read.("documents/explore-harness-bind-list.json")
+
+    assert %{"agents" => %{"reviewers" => ["copy-reviewer", "legal-reviewer"]}} =
+             group["harness"]["harness"]["bind"]
+
+    assert valid?.(group)
+
+    for name <- ~w(list-one list-duplicate) do
+      assert valid?.(read.("documents/explore-harness-bind-#{name}.json")), name
     end
 
-    for name <-
-          ~w(flat list-commands list-empty list-name-slash list-skills name-slash role-dot unknown-kind) do
+    for name <- ~w(list-commands list-skills list-empty list-name-slash) do
       refute valid?.(read.("invalid/documents-harness-bind-#{name}.json")), name
     end
   end

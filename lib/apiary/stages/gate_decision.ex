@@ -3,7 +3,10 @@ defmodule Apiary.Stages.GateDecision do
   # `:approve`, which covers the artifact versions in `versions` (their public ids,
   # `av_…`), a request for changes, `:request_changes`, which may point at one version,
   # `artifact_version_id`, or a move of the work item from the stage to another, `:move`.
-  # `note` is what the person wrote, nil for nothing. `stage_id`
+  # A gate `none` records an approval too: `automatic` true, with no `user_id`, when the
+  # runner passed the gate, and the member's `user_id` when they accepted the escalation
+  # that ended the stage. A nil `user_id` with `automatic` false is a member whose account
+  # is gone. `note` is what the person wrote, nil for nothing. `stage_id`
   # and `process_version_id` are the stage and the version of the process it was made
   # under. Nothing changes a decision once it is written.
   @moduledoc false
@@ -20,6 +23,7 @@ defmodule Apiary.Stages.GateDecision do
     field :versions, {:array, :string}, default: []
     field :artifact_version_id, :string
     field :note, :string
+    field :automatic, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation

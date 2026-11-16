@@ -208,7 +208,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert version.template["submit"] == %{"type" => "submission", "send" => "end_of_run"}
     end
 
-    test "a template whose submit names no structured type makes nothing" do
+    test "a template whose submit.type is no structured type makes nothing" do
       scope = scope_fixture()
       before = held(scope)
 
@@ -218,6 +218,24 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
         assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
                  {:error, {:qory, {:unreadable, :invalid, nil}}}
       end
+
+      assert held(scope) == before
+    end
+
+    test "a template whose submit.type is a listed type with no base view makes nothing" do
+      scope = scope_fixture()
+      before = held(scope)
+      entry = "  - name: decision-record\n"
+      submit = "submit:\n  type: reply-draft\n  send: end_of_run\n"
+
+      QoryHarnessFixture.files()
+      |> Map.update!("modules/software-factory/process.yaml", fn process ->
+        String.replace(process, entry, entry <> "  - name: reply-draft\n") <> submit
+      end)
+      |> QoryHarnessFixture.serve!()
+
+      assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
+               {:error, {:qory, {:unreadable, :invalid, nil}}}
 
       assert held(scope) == before
     end
@@ -645,7 +663,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
              }
     end
 
-    test "a template whose submit names no structured type is refused, and nothing is made" do
+    test "a template whose submit.type is no structured type is refused, and nothing is made" do
       scope = scope_fixture()
       source = linked!(scope)
       before = held(scope)

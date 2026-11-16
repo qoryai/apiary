@@ -186,8 +186,11 @@ the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
 a member cancelled the run that wrote the version, and false for a version of any other
 run or of a person. An approval is
-`{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no
-file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+`{"by": {"name": "dana"}, "automatic": false, "stage_id": "st_...", "at": "..."}`. A
+gate `none` records an approval of the stage's newest versions when the stage passes it:
+`{"by": null, "automatic": true, ...}`. When a member accepted the escalation that ended
+such a stage, the approval has the member in `by` and `automatic` false. The index
+contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 
@@ -538,10 +541,6 @@ The messages:
   workspace's Artifact types, then run the round again."
 - `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type
   mockup in the workspace's Artifact types, then run the round again."
-- `unknown_type`, for `submission`: "Press Update from harness in the workspace's Harness
-  settings, then run the round again. The workspace's process has no artifact type
-  submission." A workspace lacks `submission` when its process was made from a template
-  before the template had the type, or when "Keep the process at the latest" is off.
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a
   limit of 1)
 - `too_large`: "Shrink the files of one version of demo-video to at most 209715200 bytes

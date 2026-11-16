@@ -1806,9 +1806,9 @@ defmodule Apiary.Organisations do
   (`Apiary.Lingo.Domain.known_type?/1`) or whose `submit` names no structured entry of its
   `artifact_types` (Apiary.Artifacts.TemplateTypes.check_submit/1), or a row the save
   rules refuse; `{:error, errors}` for a process Apiary.Processes.validate/1 refuses;
-  `{:error, {:invalid, type, error}}` for a custom type the database refuses; and `{:error, :not_found}` where the
-  feature is off, or the source is the shared harness and the organisation no longer
-  shares that repository. Nothing is made on any error.
+  `{:error, {:invalid, type, error}}` for a custom type the database refuses; and
+  `{:error, :not_found}` where the feature is off, or the source is the shared harness and
+  the organisation no longer shares that repository. Nothing is made on any error.
   """
   @spec create_workspace_from_template(Scope.t(), map, :first | :any) ::
           {:ok, %Workspace{}}

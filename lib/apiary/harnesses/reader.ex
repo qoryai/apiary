@@ -61,8 +61,8 @@ defmodule Apiary.Harnesses.Reader do
 
   The schema also takes an optional `submit`, with `type` and `send`. `template/1`
   returns it as written, and nil when the key is absent. The schema cannot check that
-  `type` is a structured entry of `artifact_types`, so the caller checks it
-  (`Apiary.Artifacts.TemplateTypes`).
+  `type` is a structured entry of `artifact_types`, so the caller checks `type` before it
+  records a process version from the template.
   """
 
   alias Apiary.Kinds.{Budget, Schema}

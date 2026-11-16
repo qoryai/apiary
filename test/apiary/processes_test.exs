@@ -205,6 +205,66 @@ defmodule Apiary.ProcessesTest do
                []
     end
 
+    test "takes a when condition on an output of an earlier stage, on an entry and an output" do
+      shaped =
+        default()
+        |> put_sequence(@shape, [
+          %{"workflow" => "write-specs", "when" => %{"input" => "proposal"}},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [%{"workflow" => "review", "when" => %{"input" => "proposal"}}]
+            }
+          }
+        ])
+        |> edit(fn
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "outputs", [
+              %{"type" => "mockup", "required" => true, "when" => %{"input" => "proposal"}}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      assert Processes.validate(shaped) == :ok
+    end
+
+    test "refuses a condition whose input is no output of an earlier stage (:condition_input)" do
+      on = &%{"workflow" => &1, "when" => %{"input" => &2}}
+
+      # The first stage has no earlier stage.
+      assert errors(put_sequence(default(), @explore, [on.("explore-a-ticket", "proposal")])) ==
+               [{"#/stages/0/sequence/0/when/input", :condition_input}]
+
+      assert {:error, [%{detail: "demo-scenarios"}]} =
+               Processes.validate(
+                 put_sequence(default(), @shape, [on.("write-specs", "demo-scenarios")])
+               )
+
+      in_loop = %{"loop" => %{"rounds" => 2, "body" => [on.("review", "demo-scenarios")]}}
+
+      assert errors(put_sequence(default(), @shape, [in_loop])) ==
+               [{"#/stages/1/sequence/0/loop/body/0/when/input", :condition_input}]
+
+      output = %{"type" => "mockup", "required" => true, "when" => %{"input" => "mockup"}}
+
+      assert errors(edit(&if(&1["id"] == @shape, do: Map.put(&1, "outputs", [output]), else: &1))) ==
+               [{"#/stages/1/outputs/0/when/input", :condition_input}]
+    end
+
+    test "refuses a when key other than one input condition" do
+      for condition <- [
+            %{},
+            %{"input" => "proposal", "value" => "short"},
+            [%{"input" => "proposal"}],
+            %{"input" => "Proposal"}
+          ] do
+        entry = %{"workflow" => "write-specs", "when" => condition}
+        assert errors(put_sequence(default(), @shape, [entry])) != []
+      end
+    end
+
     test "refuses a stage id or a stage name twice, names compared trimmed and without case" do
       [explore, shape | rest] = default()["stages"]
 

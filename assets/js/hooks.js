@@ -24,6 +24,7 @@ import {SecretValues} from "./hooks/secret_values"
 import {GenerateKey} from "./hooks/generate_key"
 import {Mermaid} from "./hooks/mermaid"
 import {SpendDialog} from "./hooks/spend_dialog"
+import {VideoSpeed} from "./hooks/video_speed"
 
 export {autoDismiss}
 
@@ -54,4 +55,5 @@ export const hooks = {
   GenerateKey,
   Mermaid,
   SpendDialog,
+  VideoSpeed,
 }

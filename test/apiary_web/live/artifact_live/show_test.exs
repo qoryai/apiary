@@ -342,6 +342,38 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
              )
     end
 
+    test "shows a Speed row under each video, with 1x pressed", ctx do
+      version =
+        pushed!(ctx, "demo-video", [
+          {"demo.mp4", @mp4},
+          {"other.mp4", @mp4},
+          {"en.vtt", "WEBVTT\n"}
+        ])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      id = "artifact-view-#{version.public_id}-speed-0"
+      row = "##{id}"
+
+      assert has_element?(view, "figure video + #{row}[phx-hook=VideoSpeed][phx-update=ignore]")
+      assert has_element?(view, "#{row} + figcaption", "demo.mp4")
+      assert has_element?(view, "#{row}-label", "Speed")
+      assert has_element?(view, ~s(#{row} [role=group][aria-labelledby="#{id}-label"]))
+
+      buttons =
+        view
+        |> element(row)
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[role=group] button[type=button]")
+
+      assert Enum.map(buttons, &String.trim(LazyHTML.text(&1))) == ["0.5x", "1x", "1.5x", "2x"]
+      assert LazyHTML.attribute(buttons, "data-rate") == ["0.5", "1", "1.5", "2"]
+      assert LazyHTML.attribute(buttons, "aria-pressed") == ["false", "true", "false", "false"]
+
+      second = "#artifact-view-#{version.public_id}-speed-1"
+      assert has_element?(view, "#{second}[phx-hook=VideoSpeed] + figcaption", "other.mp4")
+    end
+
     test "shows structured JSON as a table of text, a URL as text", ctx do
       point = %{"text" => "<b>Gift cards</b> https://example.com/pr/7", "action" => "run_again"}
 
