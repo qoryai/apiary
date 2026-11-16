@@ -3472,6 +3472,11 @@ msgstr ""
 msgid "%{stage}: keep at most 20 entries in each list."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}: write the name of a workflow with 1 to 60 characters, or remove the name."
+msgstr ""
+
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "%{step} failed (%{detail})."

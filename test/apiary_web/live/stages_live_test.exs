@@ -1131,7 +1131,9 @@ defmodule ApiaryWeb.StagesLiveTest do
       |> Draft.update_stage(id_of("Explore"), fn stage ->
         %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard", "fast-track"])}
       end)
-      |> Draft.update_stage(id_of("Shape"), &Map.put(&1, "unless", @on_fast))
+      |> Draft.update_stage(id_of("Shape"), fn stage ->
+        stage |> Map.put("unless", @on_fast) |> Map.put("description", "Plan it.")
+      end)
       |> Draft.update_stage(id_of("Build"), fn stage ->
         Map.put(stage, "sequence", [
           %{"workflow" => "make-a-small-change", "name" => "Quick change", "when" => @on_fast},
@@ -1139,7 +1141,14 @@ defmodule ApiaryWeb.StagesLiveTest do
           %{
             "loop" => %{
               "rounds" => 3,
-              "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+              "body" => [
+                %{"workflow" => "implement-changes"},
+                %{
+                  "workflow" => "review-changes",
+                  "name" => "Review round",
+                  "when" => %{"track" => "standard"}
+                }
+              ]
             },
             "unless" => @on_fast
           }
@@ -1163,7 +1172,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       shape = card(view, "Shape")
       assert shape["condition"] == "Skipped on Fast track"
       assert shape["offers"] == nil
-      assert shape["label"] =~ ~r/\AShape\. .*Skipped on Fast track\. /
+      assert shape["label"] =~ ~r/\AShape\. Skipped on Fast track\. Plan it\. /
 
       build = card(view, "Build")
 
@@ -1173,13 +1182,16 @@ defmodule ApiaryWeb.StagesLiveTest do
                %{
                  "loop" => "at most 3 rounds",
                  "workflows" => ["implement-changes", "review-changes"],
+                 "conditions" => [nil, "Runs on Standard."],
                  "condition" => "Runs on Standard only."
                }
              ]
 
       assert build["label"] =~ "make-a-small-change, Runs on Fast track"
       assert build["label"] =~ "plan-the-build, Runs on Standard only"
-      assert build["label"] =~ "at most 3 rounds, Runs on Standard only"
+
+      assert build["label"] =~
+               "a loop of implement-changes, review-changes (Runs on Standard), at most 3 rounds, Runs on Standard only"
     end
 
     test "Explore's gate and Shape's condition show in the editor's panel, with no field",
@@ -1216,6 +1228,8 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-entry-1", "Runs on Standard only.")
       assert has_element?(view, "#stage-loop-2-condition", "Runs on Standard only.")
       refute has_element?(view, "#stage-entry-2-0", "Runs on")
+      assert has_element?(view, "#stage-entry-2-1", "Name: Review round")
+      assert has_element?(view, "#stage-entry-2-1", "Runs on Standard.")
       refute has_element?(view, "#stage-condition")
 
       # The conditions are text: the form has no field for a track or a condition.
@@ -1262,7 +1276,24 @@ defmodule ApiaryWeb.StagesLiveTest do
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
       {:ok, view, _html} = live(conn, path)
 
-      assert [_, %{"condition" => "Runs on Standard, Slow only."} | _] =
+      assert [_, %{"condition" => "Runs on Standard or Slow only."} | _] =
+               card(view, "Build")["sequence"]
+
+      urgent =
+        document
+        |> Map.update!("tracks", &(&1 ++ [%{"id" => "urgent", "name" => "Urgent"}]))
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{
+            stage
+            | "gate" =>
+                Map.put(stage["gate"], "tracks", ["standard", "fast-track", "slow", "urgent"])
+          }
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, urgent)
+      {:ok, view, _html} = live(conn, path)
+
+      assert [_, %{"condition" => "Runs on Standard, Slow or Urgent only."} | _] =
                card(view, "Build")["sequence"]
     end
 
@@ -1343,6 +1374,13 @@ defmodule ApiaryWeb.StagesLiveTest do
       details(view, path)
 
       assert has_element?(view, "#stages-version-2", "Tracks changed.")
+
+      assert has_element?(
+               view,
+               "#stages-version-2",
+               "Changed the gate of Explore: any member approves. Offers: Standard, Fast track."
+             )
+
       assert has_element?(view, "#stages-version-3", "Tracks changed.")
       assert has_element?(view, "#stages-version-4", "Shape: condition changed.")
       refute has_element?(view, "#stages-version-4", "Tracks changed.")

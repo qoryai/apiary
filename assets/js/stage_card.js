@@ -51,7 +51,16 @@ const steps = (h, sequence, words, marks) =>
                 className: "grid gap-0.5 rounded-[6px] border border-dashed border-base-content/35 px-2.5 pb-2 pt-1.5",
               },
               h("p", {className: "text-[14px]/5 text-muted", "aria-hidden": "true"}, item.loop),
-              ...item.workflows.map((name, j) => workflow(h, name, `w${j}`, markOf(marks, name))),
+              ...item.workflows.map((name, j) =>
+                item.conditions?.[j]
+                  ? h(
+                      "div",
+                      {key: `w${j}`, className: "grid gap-0.5"},
+                      workflow(h, name, "w", markOf(marks, name)),
+                      condition(h, item.conditions[j], "c"),
+                    )
+                  : workflow(h, name, `w${j}`, markOf(marks, name)),
+              ),
               item.condition ? condition(h, item.condition, "c") : null,
             )
           : item.condition

@@ -92,8 +92,8 @@ defmodule ApiaryWeb.StagesLive.Canvas do
   @doc false
   # view/3 is what the canvas draws for `document` in `mode`: each stage's name, its
   # description (nil for none), the words of its condition on a track (nil for none), and
-  # lines, as text, with `offers`, the tracks its gate offers (nil for none). `opts`: `selected`, `people`, `alerts`,
-  # `marks` and `selectable`, as the component's attributes.
+  # lines, as text, with `offers`, the tracks its gate offers (nil for none). `opts`:
+  # `selected`, `people`, `alerts`, `marks` and `selectable`, as the component's attributes.
   def view(document, mode, opts \\ []) when mode in [:edit, :view] do
     people = Keyword.get(opts, :people, %{})
     alerts = Keyword.get(opts, :alerts, %{})

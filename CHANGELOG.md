@@ -23,9 +23,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The Workflows page shows the tracks and conditions of a process, read-only. A stage's card
   and its Gate section show `Offers: ...` when its gate offers tracks. A stage, a loop or a
   workflow entry with a condition on a track shows it on its card and in its panel (`Skipped
-  on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`); a workflow entry with a
-  `name` shows `Name: ...`. The Details tab lists the tracks. The History says `Tracks
-  changed.` and `<stage>: condition changed.` for a save that changes only those.
+  on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`, `Runs on Standard or
+  Slow only.`), and so does a workflow in a loop. A workflow entry takes an optional `name`
+  of 1 to 60 characters, shown as `Name: ...` under its row. The Details tab lists the tracks,
+  and for a process that declares tracks its line reads "Every work item of <workspace> goes
+  through these stages in order, except a stage that its track skips." The History says
+  `Tracks changed.` when the tracks change, `<stage>: condition changed.` when a stage's own
+  `when` or `unless` changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's
+  tracks change. A change to the condition of an input, a loop or an entry shows as a change
+  of the inputs or the sequence.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.

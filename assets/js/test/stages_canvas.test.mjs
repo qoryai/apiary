@@ -187,7 +187,12 @@ test("a workflow and a loop draw their condition under them, and the layout keep
         offers: "Offers: A, B",
         sequence: [
           {workflow: "make", condition: "Runs on Fast track."},
-          {loop: "at most 2 rounds", workflows: ["a", "b"], condition: "Runs on Standard only."},
+          {
+            loop: "at most 2 rounds",
+            workflows: ["a", "b"],
+            conditions: ["Runs on Fast track.", null],
+            condition: "Runs on Standard only.",
+          },
           {workflow: "plain"},
         ],
       },
@@ -198,16 +203,29 @@ test("a workflow and a loop draw their condition under them, and the layout keep
   assert.equal(data.offers, "Offers: A, B")
   assert.equal(data.sequence[0].condition, "Runs on Fast track.")
   assert.equal(data.sequence[1].condition, "Runs on Standard only.")
+  assert.deepEqual(data.sequence[1].conditions, ["Runs on Fast track.", ""])
   assert.equal("condition" in data.sequence[2], false)
+  assert.equal("conditions" in data.sequence[2], false)
 
   const card = drawn(data)
   const group = card.children.find(child => child?.props?.key === "s0")
   assert.equal(group.children.length, 2)
   const loop = card.children.find(child => child?.props?.key === "s1")
   assert.deepEqual(loop.children.at(-1).children, ["Runs on Standard only."])
+  const inner = loop.children.find(child => child?.props?.key === "w0")
+  assert.equal(inner.type, "div")
+  assert.deepEqual(inner.children.at(-1).children, ["Runs on Fast track."])
+  assert.equal(loop.children.find(child => child?.props?.key === "w1").type, "p")
 
-  // A condition adds a line to the estimate of a card not measured yet.
-  assert.ok(estimateHeight(data) > estimateHeight({...data, condition: "", offers: "", sequence: [{workflow: "make"}, {loop: "x", workflows: ["a", "b"]}, {workflow: "plain"}]}))
+  // The estimate of a card not measured yet: a line of condition adds 20 px and the 2 px gap
+  // of its group, except the stage's own, which is a row of the card (8 px gap, 20 px line).
+  const bare = {
+    ...data,
+    condition: "",
+    offers: "",
+    sequence: [{workflow: "make"}, {loop: "x", workflows: ["a", "b"]}, {workflow: "plain"}],
+  }
+  assert.equal(estimateHeight(data) - estimateHeight(bare), 28 + 22 + 22 + 22 + 22)
 })
 
 test("each workflow's mark reaches the card as text, and a card with none has no marks", () => {

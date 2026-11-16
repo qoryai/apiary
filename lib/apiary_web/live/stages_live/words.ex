@@ -49,7 +49,8 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
   # its label and its workflows. Text only. With the process document `doc`, an entry or a
-  # loop that has a condition on a track also has `condition`, its words (`condition/3`).
+  # loop that has a condition on a track also has `condition`, its words (`condition/4`),
+  # and a loop has `conditions`, the words of each workflow's condition, nil for none.
   @doc false
   def card_sequence(stage, doc \\ nil) do
     for entry <- stage["sequence"] do
@@ -62,6 +63,7 @@ defmodule ApiaryWeb.StagesLive.Words do
               ),
             workflows: Enum.map(body, &to_string(&1["workflow"]))
           }
+          |> put_conditions(Enum.map(body, &condition(&1, doc, stage["id"])))
           |> put_condition(condition(entry, doc, stage["id"]))
 
         entry ->
@@ -69,6 +71,12 @@ defmodule ApiaryWeb.StagesLive.Words do
           |> put_condition(condition(entry, doc, stage["id"]))
       end
     end
+  end
+
+  # `conditions`, one place for each workflow of a loop, nil for a workflow with none; no key
+  # where none of them has one.
+  defp put_conditions(map, conditions) do
+    if Enum.all?(conditions, &is_nil/1), do: map, else: Map.put(map, :conditions, conditions)
   end
 
   defp put_condition(map, nil), do: map
@@ -115,7 +123,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       _others ->
         gettext("Runs on %{tracks} only.",
-          tracks: Enum.map_join(others, ", ", &track_name(doc, &1))
+          tracks: ApiaryWeb.SourceComponents.joined(Enum.map(others, &track_name(doc, &1)), :or)
         )
     end
   end
@@ -146,8 +154,8 @@ defmodule ApiaryWeb.StagesLive.Words do
     Enum.reject([name, condition(entry, doc, stage_id)], &is_nil/1)
   end
 
-  # The words a screen reader reads for a card: its name, its description, its workflows
-  # and loops, its gate, each in full.
+  # The words a screen reader reads for a card, in the card's order: its name, its condition,
+  # its description, its workflows and loops, its gate and the tracks it offers, each in full.
   @doc false
   def card_label(stage, people, doc \\ nil) do
     sequence =
@@ -159,7 +167,7 @@ defmodule ApiaryWeb.StagesLive.Words do
           Enum.map(items, fn
             %{loop: loop, workflows: names} = item ->
               gettext("a loop of %{workflows}, %{rounds}",
-                workflows: Enum.join(names, ", "),
+                workflows: Enum.join(loop_names(names, item), ", "),
                 rounds: loop
               )
               |> with_condition(item)
@@ -169,23 +177,32 @@ defmodule ApiaryWeb.StagesLive.Words do
           end)
       end
 
-    condition = condition(stage, doc, stage["id"], :stage)
-
     rest =
       Enum.join(
         Enum.reject(
-          [condition && String.trim_trailing(condition, ".")] ++
-            sequence ++ [gate_line(stage, people), doc && offers(stage, doc)],
+          sequence ++ [gate_line(stage, people), doc && offers(stage, doc)],
           &(&1 in [nil, false])
         ),
         ". "
       )
 
-    case label_description(stage) do
-      nil -> stage["name"] <> ". " <> rest
-      text -> stage["name"] <> ". " <> text <> rest
+    condition =
+      case condition(stage, doc, stage["id"], :stage) do
+        nil -> ""
+        text -> String.trim_trailing(text, ".") <> ". "
+      end
+
+    stage["name"] <> ". " <> condition <> (label_description(stage) || "") <> rest
+  end
+
+  # The workflows of a loop, each followed by its condition in brackets where it has one.
+  defp loop_names(names, %{conditions: conditions}) do
+    for {name, condition} <- Enum.zip(names, conditions) do
+      if condition, do: name <> " (" <> String.trim_trailing(condition, ".") <> ")", else: name
     end
   end
+
+  defp loop_names(names, _item), do: names
 
   defp with_condition(text, %{condition: condition}),
     do: text <> ", " <> String.trim_trailing(condition, ".")
@@ -380,26 +397,34 @@ defmodule ApiaryWeb.StagesLive.Words do
     do: gettext("%{stage}: condition changed.", stage: name(newer, id))
 
   def change({:gate_changed, id, _detail}, _older, newer, people) do
-    name = name(newer, id)
+    stage = Processes.stage(newer, id) || %{}
+    name = stage["name"]
 
-    case (Processes.stage(newer, id) || %{})["gate"] do
-      %{"kind" => "none"} ->
-        gettext("Changed the gate of %{name}: no gate.", name: name)
+    line =
+      case stage["gate"] do
+        %{"kind" => "none"} ->
+          gettext("Changed the gate of %{name}: no gate.", name: name)
 
-      %{"approvers" => %{"members" => [person]}} ->
-        gettext("Changed the gate of %{name}: %{person} approves.",
-          name: name,
-          person: person(people, person)
-        )
+        %{"approvers" => %{"members" => [person]}} ->
+          gettext("Changed the gate of %{name}: %{person} approves.",
+            name: name,
+            person: person(people, person)
+          )
 
-      %{"approvers" => %{"members" => ids}} ->
-        gettext("Changed the gate of %{name}: one of %{people} approves.",
-          name: name,
-          people: people(people, ids)
-        )
+        %{"approvers" => %{"members" => ids}} ->
+          gettext("Changed the gate of %{name}: one of %{people} approves.",
+            name: name,
+            people: people(people, ids)
+          )
 
-      _members ->
-        gettext("Changed the gate of %{name}: any member approves.", name: name)
+        _members ->
+          gettext("Changed the gate of %{name}: any member approves.", name: name)
+      end
+
+    # A gate that offers tracks adds them: "... any member approves. Offers: A, B."
+    case offers(stage, newer) do
+      nil -> line
+      offers -> line <> " " <> offers <> "."
     end
   end
 
@@ -593,6 +618,12 @@ defmodule ApiaryWeb.StagesLive.Words do
       field == "name" ->
         gettext("Give every stage a name of 1 to 60 characters.")
 
+      field == "sequence" and bad_entry_name?(doc, path) ->
+        gettext(
+          "%{stage}: write the name of a workflow with 1 to 60 characters, or remove the name.",
+          stage: stage
+        )
+
       String.contains?(path, "machine") ->
         machine_refused()
 
@@ -630,6 +661,21 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # Whether the entry at `path`, or a workflow in the loop there, has a `name` that is not a
+  # text of 1 to 60 characters.
+  defp bad_entry_name?(doc, path) do
+    case Draft.entry_at(doc, path) do
+      %{"loop" => %{"body" => body}} -> Enum.any?(body, &bad_name?/1)
+      %{} = entry -> bad_name?(entry)
+      _other -> false
+    end
+  end
+
+  defp bad_name?(%{"name" => name}),
+    do: not (is_binary(name) and length(String.codepoints(name)) in 1..60)
+
+  defp bad_name?(_entry), do: false
 
   # The banner's line for a stage with rows that show a refused machine type
   # (`Editor.banner/1`).
