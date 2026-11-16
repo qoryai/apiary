@@ -1211,10 +1211,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   declare `submit_module` in its start-up: the harness module, pinned to a full commit,
   that contains the forge's program that opens the draft pull request. Such a run then
   also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
-  starts with `submit` alone where no adapter declares one. Qory Apiary refuses a
-  start-up whose `submit_module` breaks the run contract or whose `git` is not an https
-  address. The run and the integration contracts are vendored at integrations
-  `b00f97d`.
+  starts with `submit` alone where no adapter declares one. A start-up whose
+  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
+  400 `invalid_request`, and nothing is stored. The run and the integration contracts are
+  vendored at integrations `b00f97d`.
 - A harness document may bind a group role of the kind `agents` to a list of at least one
   agent, such as `bind: {agents: {reviewers: [copy-reviewer, legal-reviewer]}}`. A role of
   the kind `commands` or `skills` still takes one name.
