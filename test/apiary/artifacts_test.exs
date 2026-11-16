@@ -1105,7 +1105,6 @@ defmodule Apiary.ArtifactsTest do
       assert {:ok, %Version{number: 1} = version} = push.([with_criterion, without])
 
       assert stored.(version) == %{"questions" => [with_criterion, without]}
-      refute Map.has_key?(Enum.at(stored.(version)["questions"], 1), "criterion")
     end
 
     test "a refused or normalised version of the questions keeps no file without a version",
