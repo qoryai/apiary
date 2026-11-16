@@ -284,9 +284,10 @@ defmodule ApiaryWeb.ArtifactLive.New do
         {:noreply, socket}
 
       mode == :ask and is_binary(params["type"]) ->
-        sizes = Enum.map(socket.assigns.uploads.files.entries, & &1.client_size)
-
-        case Stages.starts(socket.assigns.work_item, {:version_added, params["type"], sizes}) do
+        case Stages.starts(
+               socket.assigns.work_item,
+               {:version_added, params["type"], sizes(socket)}
+             ) do
           {:run, workflow} -> {:noreply, assign(socket, :spend, spend(socket, params, workflow))}
           :none -> push(socket, params)
         end
@@ -294,6 +295,14 @@ defmodule ApiaryWeb.ArtifactLive.New do
       true ->
         push(socket, params)
     end
+  end
+
+  # The sizes of the uploaded files, in bytes, read from the files LiveView keeps on the
+  # server, not the sizes the browser sent. The entries stay for the push.
+  defp sizes(socket) do
+    consume_uploaded_entries(socket, :files, fn %{path: path}, _entry ->
+      {:postpone, File.stat!(path).size}
+    end)
   end
 
   defp spend(socket, params, workflow) do
