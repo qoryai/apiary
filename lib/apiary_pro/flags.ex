@@ -50,9 +50,9 @@ defmodule ApiaryPro.Flags do
   # operator_infrastructure?/0 says whether an operator's people change some settings of
   # the workspaces it operates. While it is on, the operator's owners and admins act there
   # as owners and admins for the time limits, the retention, the process, its artifact
-  # types and the model choices (`ApiaryPro.Access`). Only the operator's people set the
-  # time limits there; the organisation's owners and admins keep every other action in the
-  # workspace. While it is off, the operator's people read those workspaces and change
+  # types and the model choices (`ApiaryPro.Access`). Only the operator's owners and admins
+  # set the time limits there; the organisation's owners and admins keep every other action
+  # in the workspace. While it is off, the operator's people read those workspaces and change
   # nothing there, and the organisation's owners and admins keep every action in them.
   # Off by default: `config :apiary_pro, :operator_infrastructure, true` turns it on.
   #

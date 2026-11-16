@@ -966,8 +966,8 @@ nothing starts or ends a link.
   and admins act there at that level (`operator_role/2` in `ApiaryPro.Access`), and its
   members read. At that level they change only the workspace's time limits, retention,
   process, artifact types and model choices (`@operator_in_workspace`): no node, access
-  key or harness document. Only the operator's people set the workspace's time limits
-  there (`@operator_alone`); the organisation's owners and admins keep every other action
+  key or harness document. Only the operator's owners and admins set the workspace's
+  time limits there (`@operator_alone`); the organisation's owners and admins keep every other action
   in the workspace, and a person in both sets them only where their level in the operator
   is the higher. A
   person of the operator who holds a membership in the organisation too acts there at
