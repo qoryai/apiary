@@ -37,6 +37,8 @@ const NAME_LINE = 26
 const LINE = 24
 const ROW_GAP = 8
 const LOOP_FRAME = 38
+// The line under a workflow with a return to an earlier stage, 14 px type on a 20 px line.
+const RETURN_LINE = 20
 // A description is at most DESCRIPTION_LINES lines of DESCRIPTION_LINE px, about
 // DESCRIPTION_CHARS characters each.
 const DESCRIPTION_LINE = 20
@@ -57,7 +59,13 @@ export const estimateHeight = data => {
   const steps =
     sequence.length === 0
       ? [LINE]
-      : sequence.map(item => ("loop" in item ? LOOP_FRAME + item.workflows.length * LINE : LINE))
+      : sequence.flatMap(item =>
+          "loop" in item
+            ? [LOOP_FRAME + item.workflows.length * LINE]
+            : item.returns
+              ? [LINE, RETURN_LINE]
+              : [LINE],
+        )
   const description = data?.description ? [descriptionLines(data.description) * DESCRIPTION_LINE] : []
   const rows = [...description, ...steps, LINE, ...(data?.alerts || []).map(() => LINE)]
   return CARD_FRAME + NAME_LINE + rows.reduce((sum, row) => sum + ROW_GAP + row, 0)
@@ -125,11 +133,14 @@ export const revealY = (start, end, viewport, size, length) => {
 
 const text = value => String(value ?? "")
 
-// One step of a stage's sequence: a workflow, or a loop with its label and workflows.
-const step = item =>
-  item && typeof item === "object" && "loop" in item
-    ? {loop: text(item.loop), workflows: (item.workflows || []).map(text)}
-    : {workflow: text(item?.workflow)}
+// One step of a stage's sequence: a workflow, with the line of its return to an earlier
+// stage if it has one, or a loop with its label and workflows.
+const step = item => {
+  if (item && typeof item === "object" && "loop" in item)
+    return {loop: text(item.loop), workflows: (item.workflows || []).map(text)}
+  const returns = text(item?.returns)
+  return returns === "" ? {workflow: text(item?.workflow)} : {workflow: text(item?.workflow), returns}
+}
 
 // Each workflow's mark, by name: whether the harness lists it, and its label as text.
 // None for a page with no list of the harness's workflows.

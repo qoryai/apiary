@@ -33,10 +33,15 @@ const workflow = (h, name, key, mark) =>
 // The mark set for `name`, read with hasOwn: a name such as "constructor" is a key of every object.
 const markOf = (marks, name) => (marks && Object.hasOwn(marks, name) ? marks[name] : undefined)
 
+// The line of a workflow's return to an earlier stage, under the workflow, in the size and
+// colour of the description. Under a check or a cross it starts where the name does.
+const returns = (h, text, key, marked) =>
+  line(h, text, key, ["break-words text-[14px]/5 text-muted", marked ? "pl-5" : ""].join(" ").trim())
+
 const steps = (h, sequence, words, marks) =>
   sequence.length === 0
     ? [line(h, words.no_workflow, "none", "text-muted")]
-    : sequence.map((item, i) =>
+    : sequence.flatMap((item, i) =>
         "loop" in item
           ? // A loop: a bracket around its workflows, labelled with its rounds.
             h(
@@ -50,7 +55,12 @@ const steps = (h, sequence, words, marks) =>
               h("p", {className: "text-[14px]/5 text-muted", "aria-hidden": "true"}, item.loop),
               ...item.workflows.map((name, j) => workflow(h, name, `w${j}`, markOf(marks, name))),
             )
-          : workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
+          : item.returns
+            ? [
+                workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
+                returns(h, item.returns, `r${i}`, markOf(marks, item.workflow) !== undefined),
+              ]
+            : workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
       )
 
 // The card for `data` (layout's card data), selected or not, with `words` the canvas's
