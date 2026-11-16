@@ -1353,6 +1353,54 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute line =~ "stages, in order"
     end
 
+    test "a stage that runs only on a track shows it on its card and in its panel", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      document =
+        Draft.update_stage(shown_document(), id_of("Build"), &Map.put(&1, "when", @on_fast))
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      build = card(view, "Build")
+      assert build["condition"] == "Runs on Fast track."
+      assert build["label"] =~ ~r/\ABuild\. Runs on Fast track\. /
+
+      select(view, "Build")
+      assert has_element?(view, "#stage-condition dt", "Condition")
+      assert has_element?(view, "#stage-condition dd", "Runs on Fast track.")
+    end
+
+    test "a save that changes one stage's condition lists that stage only", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _version} = Processes.save(scope, scope.workspace, shown_document())
+
+      changed =
+        Draft.update_stage(shown_document(), id_of("Build"), &Map.put(&1, "when", @on_fast))
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, changed)
+
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+
+      assert has_element?(view, "#stages-version-3", "Build: condition changed.")
+
+      for other <- ["Explore", "Shape", "Verify", "Release"] do
+        refute has_element?(view, "#stages-version-3", "#{other}: condition changed.")
+      end
+
+      assert view
+             |> element("#stages-version-3")
+             |> render()
+             |> String.split("condition changed")
+             |> length() == 2
+    end
+
     test "the history says when only the tracks, or only a condition, changed", %{
       conn: conn,
       path: path,

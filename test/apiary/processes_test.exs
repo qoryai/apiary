@@ -751,16 +751,16 @@ defmodule Apiary.ProcessesTest do
       assert {"#/stages/1/sequence/0", :schema} in errors(looped)
     end
 
-    test "has a refusal that says what to write" do
-      document =
-        put_sequence(default(), @shape, [
-          %{"workflow" => "write-specs", "name" => String.duplicate("n", 61)}
-        ])
-
-      assert {:error, found} = Processes.validate(document)
+    test "has a refusal that says what to write, for a long name and for one of only spaces" do
       line = "Give a workflow in Shape a name of 1 to 60 characters, or remove its name."
 
-      assert line in Enum.map(found, &ApiaryWeb.StagesLive.Words.refusal(&1, document))
+      for name <- [String.duplicate("n", 61), "   "] do
+        document =
+          put_sequence(default(), @shape, [%{"workflow" => "write-specs", "name" => name}])
+
+        assert {:error, found} = Processes.validate(document)
+        assert line in Enum.map(found, &ApiaryWeb.StagesLive.Words.refusal(&1, document))
+      end
     end
   end
 
