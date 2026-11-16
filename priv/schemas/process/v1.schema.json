@@ -85,6 +85,12 @@
       "not": {"required": ["loop"]},
       "properties": {
         "workflow": {"$ref": "#/$defs/workflow_name"},
+        "name": {
+          "description": "Optional. A name for this entry in plain text, 1 to 60 characters. Pages show it under the entry.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
         "machine": {"$ref": "#/$defs/machine"},
         "time_limit": {
           "description": "At most the time limit the stack declares for the workflow, as hours, minutes and seconds: 1h30m.",
