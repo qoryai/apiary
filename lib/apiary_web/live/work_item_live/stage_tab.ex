@@ -254,4 +254,28 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     |> Enum.with_index()
     |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
   end
+
+  # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for
+  # none, from `index`, the approval marks (`flow.index`). Only the first frame, the open
+  # one, shows an approval: the newest approval of its version, where the gate of `stage`
+  # recorded it as a gate `none` (vault 0252), with no member (`automatic`) or with the
+  # member who accepted the escalation that ended the stage (`by`). A person gate's
+  # approval shows none.
+  @spec approved([map], map, [map]) :: [map]
+  def approved(frames, stage, index) do
+    Enum.map(frames, &Map.put(&1, :approval, if(&1.open, do: approval(&1, stage, index))))
+  end
+
+  defp approval(%{type: type, version: version}, stage, index) do
+    with %{approved: ^version, approval: %{stage_id: id} = approval} when id == stage.id <-
+           Enum.find(index, &(&1.type == type and &1.name == "main")),
+         true <- approval.automatic or gate_none?(stage) do
+      approval
+    else
+      _none -> nil
+    end
+  end
+
+  defp gate_none?(%{gate: %{} = gate}), do: Map.get(gate, "kind", Map.get(gate, :kind)) == "none"
+  defp gate_none?(_stage), do: false
 end
