@@ -349,6 +349,9 @@ defmodule ApiaryWeb.StagesLive.Words do
           stage: stage
         )
 
+      error == :return_not_earlier ->
+        return_refused(stage)
+
       field == "name" ->
         gettext("Give every stage a name of 1 to 60 characters.")
 
@@ -435,6 +438,16 @@ defmodule ApiaryWeb.StagesLive.Words do
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
   def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")
+
+  # A workflow's "Returns at most" outside 1 to 10 (choice 10), under the field.
+  @doc false
+  def returns_refused, do: gettext("Enter 1 to 10 returns.")
+
+  # A return key set to a stage that is not before the entry's stage `stage`, by name, or
+  # to a removed stage (choice 10): in the return field, and for a refused save.
+  @doc false
+  def return_refused(stage),
+    do: gettext("Pick a stage before %{stage} to return to.", stage: stage)
 
   # A refusal that means the page was behind the versions: a trial dropped or made current
   # in another tab or by another person, or a version gone.

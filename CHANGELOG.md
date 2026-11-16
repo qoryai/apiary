@@ -149,11 +149,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a stage.
 - A workflow entry outside a loop may have a `return` key: `stage`, an earlier stage, and
   `limit`, 1 to 10, 2 by default. When the entry's run asks for changes, the work item
-  returns to that stage and starts at its first entry. After `limit` returns, the next
-  run that asks for changes escalates to a member, with the count of returns and the
-  run's points. **Request changes** at the gate of the entry's stage also returns the work
-  item to that stage's first entry, and is not counted. The stage editor shows the key
-  under the entry: **On changes requested, return to** and **Returns at most**.
+  returns to that stage and starts at its first entry. After `limit` returns of the
+  stage's runs in one take in, the next run that asks for changes escalates to a member,
+  with the member's action, the count of returns and the run's points; the escalation's
+  **Move back** offers the return's stage first. **Request changes** at the gate of the
+  entry's stage also returns the work item to that stage's first entry, and is not
+  counted. The stage editor shows the key under the entry: **On changes requested, return
+  to** and **Returns at most**, with an error for a number outside 1 to 10 and for a
+  stage that is not earlier.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You

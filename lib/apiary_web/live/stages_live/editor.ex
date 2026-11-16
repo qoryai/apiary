@@ -51,8 +51,9 @@ defmodule ApiaryWeb.StagesLive.Editor do
     socket |> assign(selected: selected) |> refresh.()
   end
 
-  # A loop's rounds outside 1 to 10 keep the rounds the loop had, and show an error under
-  # the field: the form is novalidate, so the browser does not check them. A workflow name
+  # A loop's rounds or a workflow's most returns outside 1 to 10 keep the number the entry
+  # had, and show an error under the field: the form is novalidate, so the browser does
+  # not check them. A workflow name
   # that breaks the schema's pattern keeps the entry's workflow the same way.
   #
   # The form's values go to the stage in its `id`, which becomes the selected stage. After a
@@ -288,13 +289,21 @@ defmodule ApiaryWeb.StagesLive.Editor do
   defp workflow_names(i, %{"workflow" => name}), do: [{i, name}]
   defp workflow_names(_i, _entry), do: []
 
+  # A loop's rounds and a workflow's "Returns at most" (choice 10) outside 1 to 10, by the
+  # entry's place: one entry has at most one of the two fields.
   defp rounds_errors(%{"sequence" => %{} = sequence}) do
-    for {i, %{"rounds" => text}} <- sequence, not Draft.rounds?(text), into: %{} do
-      {i, Words.rounds_refused()}
-    end
+    for {i, entry} <- sequence, error = count_refused(entry), into: %{}, do: {i, error}
   end
 
   defp rounds_errors(_params), do: %{}
+
+  defp count_refused(%{"rounds" => text}),
+    do: if(not Draft.rounds?(text), do: Words.rounds_refused())
+
+  defp count_refused(%{"returns" => text}),
+    do: if(not Draft.rounds?(text), do: Words.returns_refused())
+
+  defp count_refused(_entry), do: nil
 
   defp fits?(stage, %{"sequence" => %{} = form}),
     do: Draft.sequence_fits?(stage["sequence"], form)

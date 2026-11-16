@@ -2257,6 +2257,57 @@ defmodule ApiaryWeb.StagesLiveTest do
       view |> element("#stages-save") |> render_click()
       refute Map.has_key?(verify_entry(scope, verify), "return")
     end
+
+    test "Returns at most outside 1 to 10 shows the error under the field", %{
+      conn: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+      fold = "details[id^=stage-entry-1-return-]"
+
+      for text <- ["0", "11", ""] do
+        change_stage(view, %{"sequence" => %{"1" => %{"returns" => text}}})
+        assert has_element?(view, "#{fold} .q-stage-rounds", "Enter 1 to 10 returns.")
+        assert has_element?(view, fold, "at most 2 returns")
+      end
+
+      change_stage(view, %{"sequence" => %{"1" => %{"returns" => "4"}}})
+      refute has_element?(view, fold, "Enter 1 to 10 returns.")
+      assert has_element?(view, fold, "at most 4 returns")
+    end
+
+    test "a return to a removed stage shows what to pick, in the fold and for a save", %{
+      conn: conn,
+      path: path,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+      view |> element("#stage-remove") |> render_click()
+      select(view, "Verify")
+
+      fold = "details[id^=stage-entry-1-return-]"
+      assert has_element?(view, "#{fold} summary", "Pick a stage before Verify to return to.")
+
+      assert has_element?(
+               view,
+               "select#stage-entry-1-return option[value='#{build}'][selected]",
+               "Pick a stage before Verify to return to."
+             )
+
+      refute view |> element(fold) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text() =~
+               build
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "[data-save-error]", "Pick a stage before Verify to return to.")
+      refute has_element?(view, "[data-save-error]", "a value is not valid")
+    end
   end
 
   describe "a member's panel" do

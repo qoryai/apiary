@@ -46,7 +46,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
   attr :stage_errors, :map, default: %{}, doc: "refusals of a save, by stage id"
-  attr :rounds_errors, :map, default: %{}, doc: "refused rounds, by the loop's place"
+
+  attr :rounds_errors, :map,
+    default: %{},
+    doc: "refused rounds and most returns, by the loop's or the workflow's place"
 
   attr :workflow_errors, :map,
     default: %{},
@@ -259,6 +262,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   id={"stage-entry-#{i}"}
                   stage_id={@stage["id"]}
                   stages={@stages}
+                  return_errors={List.wrap(@rounds_errors[to_string(i)])}
                   declared={@declared}
                   machine={@machine}
                   machine_types={@machine_types}
@@ -399,6 +403,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     default: [],
     doc: "the document's stages; only a workflow outside a loop has them, for its return"
 
+  attr :return_errors, :list, default: [], doc: "what is wrong with its most returns"
+
   # A workflow's row: its name, its check or cross and Remove, and under them one line with
   # its settings, which opens them in place. The whole line is the `summary`, so a key or a
   # tap opens and closes the fold, and it ends in the word for what that does. The fold's id
@@ -535,6 +541,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         stage_id={@stage_id}
         key={@entry["return"]}
         stages={@stages}
+        errors={@return_errors}
       />
     </div>
     """
@@ -545,24 +552,27 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :stage_id, :string, required: true
   attr :key, :map, required: true, doc: "the entry's return key"
   attr :stages, :list, required: true
+  attr :errors, :list, default: [], doc: "what is wrong with its most returns"
 
   # The fold of a workflow entry's return key (choice 10), under its machine type: the
   # stage to return to on changes requested, "Do not return" or one of the stages before
   # the entry's, and the most returns, with the line on what happens after them. Only an
   # entry with the key has it. "Do not return" removes the key (`Draft`), and the fold
-  # with it. A key to a stage that is not earlier keeps its stage in the field, by name,
-  # so a save shows the refusal.
+  # with it. A key to a stage that is not earlier, or to a removed stage, keeps its stage
+  # in the field, where it and the fold's line show what to pick, and a save shows the
+  # same refusal.
   defp return_fold(assigns) do
     earlier = Enum.take_while(assigns.stages, &(&1["id"] != assigns.stage_id))
     to = assigns.key["stage"]
     limit = Runner.returns_limit(assigns.key)
 
+    refused =
+      if not Enum.any?(earlier, &(&1["id"] == to)),
+        do: Words.return_refused(stage_name(assigns.stages, assigns.stage_id))
+
     options =
       [{gettext("Do not return"), ""} | Enum.map(earlier, &{&1["name"], &1["id"]})] ++
-        if(Enum.any?(earlier, &(&1["id"] == to)),
-          do: [],
-          else: [{stage_name(assigns.stages, to), to}]
-        )
+        if(refused, do: [{refused, to}], else: [])
 
     assigns =
       assign(assigns,
@@ -570,12 +580,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         limit: limit,
         to: to,
         summary:
-          ngettext(
-            "On changes requested: return to %{stage}, at most %{count} return",
-            "On changes requested: return to %{stage}, at most %{count} returns",
-            limit,
-            stage: stage_name(assigns.stages, to)
-          ),
+          refused ||
+            ngettext(
+              "On changes requested: return to %{stage}, at most %{count} return",
+              "On changes requested: return to %{stage}, at most %{count} returns",
+              limit,
+              stage: stage_name(assigns.stages, to)
+            ),
         line: Words.return_line(limit)
       )
 
@@ -615,6 +626,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             min="1"
             max="10"
             value={@limit}
+            errors={@errors}
             label={gettext("Returns at most")}
             class="w-14"
           />

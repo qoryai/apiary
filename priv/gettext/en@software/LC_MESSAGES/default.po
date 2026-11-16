@@ -9464,6 +9464,11 @@ msgctxt "key"
 msgid "Enter"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enter 1 to 10 returns."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Enter a host, such as %{example}."
@@ -16044,6 +16049,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type: no type has the key %{key}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Pick a stage before %{stage} to return to."
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex

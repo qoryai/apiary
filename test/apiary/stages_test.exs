@@ -3410,6 +3410,96 @@ defmodule Apiary.StagesTest do
       assert length(returned(work_item)) == 2
     end
 
+    test "a take in again counts its returns from none", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+
+      {:ok, _closed} =
+        Stages.resolve_escalation(scope, work_item, :close, nil, expect_stage: @verify)
+
+      item = Repo.get!(Apiary.Sources.Item, work_item.item_id)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, item.public_id, %{owner_id: scope.user.id})
+
+      assert %WorkItem{take_in: 2, stage_id: @build} = work_item = reload(work_item)
+
+      # Take in 1's two returns do not count: the changes return the work item to Build.
+      work_item = work_item |> through_build!() |> end_run!(verdict("changes-requested"))
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert length(returned(work_item)) == 3
+    end
+
+    test "the returns count by stage, after a version that moves the entry", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        work_item
+        |> end_run!(verdict("changes-requested", @findings))
+        |> through_build!()
+        |> end_run!(verdict("changes-requested", @findings))
+
+      assert %WorkItem{stage_id: @build} = work_item
+      assert returned(work_item) == [@build, @build]
+
+      # Version 2 keeps Build and puts check-a-ticket before verify-a-ticket, whose entry
+      # is then 1, not 0.
+      %{document: %{"stages" => [build, verify]}} = Processes.current(scope.workspace)
+      [entry] = verify["sequence"]
+
+      version =
+        save!(scope, [
+          build,
+          %{verify | "sequence" => [%{"workflow" => "check-a-ticket"}, entry]}
+        ])
+
+      {:ok, work_item} = Processes.assign(scope, work_item, version)
+
+      work_item = end_run!(reload(work_item), verdict("passed"))
+      assert %WorkItem{stage_id: @verify, process_version_id: version_id} = work_item
+      assert version_id == version.id
+      assert %DispatchRun{workflow: "check-a-ticket"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated, stage_entry: 1} = work_item
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+    end
+
+    test "a cancelled run with changes requested returns nothing and counts no return", %{
+      scope: scope
+    } do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      cancelled = fn run, registered ->
+        verdict("changes-requested", @findings).(run, registered)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+          )
+      end
+
+      work_item = end_run!(work_item, cancelled)
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert returned(work_item) == []
+    end
+
     test "accept at the limit opens Verify's gate", %{scope: scope} do
       returning!(scope)
       work_item = take_in!(scope) |> through_build!()

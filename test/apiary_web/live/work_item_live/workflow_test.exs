@@ -3999,6 +3999,82 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
+    # A work item escalated at Verify's return limit (choice 10): Verify's entry returns to
+    # Shape, at most 2 times, and its last run asked for changes with one finding.
+    defp at_return_limit(scope) do
+      document =
+        Map.update!(document("members"), "stages", fn stages ->
+          for stage <- stages do
+            if stage["id"] == @verify,
+              do: %{
+                stage
+                | "sequence" => [
+                    %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @shape}}
+                  ]
+              },
+              else: stage
+          end
+        end)
+
+      work_item =
+        scope
+        |> work_item_fixture()
+        |> place!(save!(scope, document), @verify, :escalated, stage_round: 1, stage_entry: 0)
+
+      escalate!(
+        work_item,
+        :return_limit,
+        Apiary.Stages.Points.return_limit(2, "Verify", "Shape") ++
+          ["Criterion 2 is not met: the export has no PDF."]
+      )
+
+      work_item
+    end
+
+    test "at the return limit: the member's action, the count of returns, then the findings",
+         %{conn: conn, scope: scope} do
+      work_item = at_return_limit(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "Pick Move back to return the work item to Shape once more, or pick Accept " <>
+                 "as it is. Verify's run asked for changes again after 2 returns to Shape, " <>
+                 "the most that Verify allows.",
+               "Criterion 2 is not met: the export has no PDF. Run another round."
+             ]
+
+      assert has_element?(view, "#work-item-stage-waits", "Waits for you: 2 points")
+      assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
+    end
+
+    test "at the return limit, Move back offers the return's stage first", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_return_limit(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # Build is the nearest earlier stage, and without the preselect the select's first.
+      assert has_element?(view, "#work-item-stage-escalation-stage option:first-child", "Build")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-stage option[value='#{@shape}'][selected]",
+               "Shape"
+             )
+
+      refute has_element?(
+               view,
+               "#work-item-stage-escalation-stage option[value='#{@build}'][selected]"
+             )
+
+      # Another cause preselects no stage.
+      moved = at_build(scope, :escalated, round: 3)
+      escalate!(moved, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, moved.number))
+      refute has_element?(view, "#work-item-stage-escalation-stage option[selected]")
+    end
+
     for level <- [:owner, :admin, :member] do
       test "#{level}: Move back and Close", %{conn: conn, scope: scope} do
         conn = as(conn, scope, unquote(level))

@@ -418,7 +418,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
-      harness_path: harness_path(scope, get(escalation, :set_up_step))
+      harness_path: harness_path(scope, get(escalation, :set_up_step)),
+      return_to: get(escalation, :return_to)
     }
   end
 

@@ -1712,17 +1712,17 @@ defmodule Apiary.Stages do
     Enum.take_while(stages, &(&1["id"] != stage["id"]))
   end
 
-  # The runs of the work item's entry, at its position in `stage`, that returned the work
-  # item to an earlier stage (`returned!/2`), in any take in; 0 for an entry with no
-  # return key.
+  # The runs of `stage` in the work item's take in that returned the work item to an
+  # earlier stage (`returned!/2`), counted by stage id, so a version that keeps the stage
+  # under another index keeps the count; 0 at an entry with no return key.
   defp returns(work_item, stage) do
     with %{entry: entry, loop_entry: nil} <- position(work_item),
          true <- work_item.stage_id == stage["id"],
          %{"return" => %{}} <- Enum.at(stage["sequence"] || [], entry) do
       Repo.aggregate(
         from(d in DispatchRun,
-          where: d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"],
-          where: d.stage_entry == ^entry and not is_nil(d.returned_to)
+          where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
+          where: d.stage_id == ^stage["id"] and not is_nil(d.returned_to)
         ),
         :count
       )
@@ -2346,9 +2346,22 @@ defmodule Apiary.Stages do
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
       build_run: build_run(run, escalation),
       set_up_step: StopCause.set_up_step(run),
+      return_to: return_to(escalation, work_item, stage),
       inserted_at: escalation.inserted_at
     }
   end
+
+  # The stage that the return key at the work item's entry is set to (choice 10), for an
+  # escalation at the return limit, so Move back offers that stage first; nil otherwise.
+  defp return_to(%Escalation{cause: :return_limit}, %WorkItem{stage_entry: entry}, stage)
+       when is_integer(entry) do
+    case Enum.at(stage["sequence"] || [], entry) do
+      %{"return" => %{"stage" => stage_id}} -> stage_id
+      _other -> nil
+    end
+  end
+
+  defp return_to(_escalation, _work_item, _stage), do: nil
 
   # The escalation's points. An escalation with none (one open when points replaced its
   # gaps, or `placed_escalation/3`) shows the points the stage runner writes for its cause

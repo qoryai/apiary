@@ -261,8 +261,8 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once, and the stage of
-  each workflow entry's `return` before the entry's stage. `:ok`, or
+  and these rules: every stage id and every stage name once, and the stage of each
+  workflow entry's `return` before the entry's stage. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -311,8 +311,8 @@ defmodule Apiary.Processes do
     |> Enum.reverse()
   end
 
-  # The return key of each workflow entry (choice 10) names a stage before the entry's
-  # stage; the schema refuses the key in a loop's body.
+  # The return key of each workflow entry (choice 10) is set to a stage before the
+  # entry's stage; a key in a loop's body fails the schema.
   defp returns_not_earlier(stages) do
     for {stage, index} <- Enum.with_index(stages),
         earlier = MapSet.new(Enum.take(stages, index), & &1["id"]),
