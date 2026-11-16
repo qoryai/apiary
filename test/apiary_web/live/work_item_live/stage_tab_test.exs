@@ -476,7 +476,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
             where: d.work_item_id == ^work_item.id and d.stage_id == ^@shape
         )
 
-      assert caption =~ ~r|<time [^>]*datetime="[^"]+"[^>]*>#{ApiaryWeb.Format.day_time(at)}</time>|
+      assert caption =~
+               ~r|<time [^>]*datetime="[^"]+"[^>]*>#{ApiaryWeb.Format.day_time(at)}</time>|
 
       # The folded frames show their version alone.
       refute has_element?(view, "#work-item-tab-output-test-features-s .q-xp-frame-b")
