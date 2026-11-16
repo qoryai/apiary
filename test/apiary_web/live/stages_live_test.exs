@@ -2119,7 +2119,9 @@ defmodule ApiaryWeb.StagesLiveTest do
                "Time limit, in minutes"
              )
 
-      assert has_element?(view, ~s{#{@field}[type="number"][value=""][min="15"][max="1440"]})
+      # A text field with the numeric keyboard: a number field's text that is no number
+      # reaches the page as an empty value.
+      assert has_element?(view, ~s{#{@field}[type="text"][inputmode="numeric"][value=""]})
       assert has_element?(view, ~s{#{@field}[form="stage-entry-0-time-limit-form"]})
       assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
       assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]", "Save time limit")
@@ -2183,7 +2185,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
       refute has_element?(view, "#stage-entry-0-time-limit-error")
 
-      for minutes <- ~w(14 1441 90.5) do
+      for minutes <- ~w(14 1441 90.5 24x) do
         change_limit(view, minutes)
         assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
         leave_limit(view, minutes)
@@ -2230,15 +2232,103 @@ defmodule ApiaryWeb.StagesLiveTest do
       refute has_element?(view, "#stage-sequence li", "default)")
       refute has_element?(view, "#stage-panel input")
 
-      render_hook(view, "time_limit_save", %{
-        "time_limit" => %{
-          "row" => "x/stage-entry-0",
-          "workflow" => "explore-a-ticket",
-          "minutes" => "30"
-        }
-      })
+      html =
+        render_hook(view, "time_limit_save", %{
+          "time_limit" => %{
+            "row" => "#{id_of("Explore")}/stage-entry-0",
+            "workflow" => "explore-a-ticket",
+            "minutes" => "30"
+          }
+        })
+
+      assert html =~ "Only owners and admins can change the stages."
 
       assert limit(scope) == %{"explore-a-ticket" => 240}
+    end
+
+    test "an admin saves a limit", %{path: path, scope: scope} do
+      %{user: user} = member_fixture(scope, :admin)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+
+      change_limit(view, "300")
+      save_limit(view, "300")
+
+      assert limit(scope) == %{"explore-a-ticket" => 300}
+      assert has_element?(view, "#stage-entry-0-time-limit-saved", "Saved.")
+    end
+
+    test "a workflow in two rows and two stages has one limit, shown in each", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      twice = [%{"workflow" => "explore-a-ticket"}, %{"workflow" => "explore-a-ticket"}]
+
+      document =
+        Processes.default_document("software")
+        |> Draft.update_stage(id_of("Explore"), &Map.put(&1, "sequence", twice))
+        |> Draft.update_stage(
+          id_of("Shape"),
+          &Map.put(&1, "sequence", [%{"workflow" => "explore-a-ticket"}])
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      change_limit(view, "240")
+      save_limit(view, "240")
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
+
+      for row <- ~w(stage-entry-0 stage-entry-1) do
+        assert has_element?(view, "##{row}-time-limit-line", "Time limit: 240 minutes")
+      end
+
+      # The second row's field shows the saved minutes, with nothing to save.
+      assert has_element?(view, ~s{#stage-entry-1-time-limit[value="240"]})
+      assert has_element?(view, "#stage-entry-1-time-limit-save[disabled]")
+
+      select(view, "Shape")
+      assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+      assert has_element?(view, ~s{#stage-entry-0-time-limit[value="240"]})
+    end
+
+    test "a row the stage does not show, or a workflow the saved process does not have, saves nothing",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, view, _html} = live(conn, path)
+      explore = id_of("Explore")
+
+      for {row, workflow} <- [
+            {"x/stage-entry-0", "explore-a-ticket"},
+            {"#{explore}/stage-entry-9", "explore-a-ticket"},
+            {"#{explore}/stage-entry-0", "implement-changes"},
+            {"#{explore}/stage-entry-0", "Bad Name"}
+          ] do
+        html =
+          render_hook(view, "time_limit_save", %{
+            "time_limit" => %{"row" => row, "workflow" => workflow, "minutes" => "30"}
+          })
+
+        refute html =~ "Only owners and admins can change the stages.", "#{row} #{workflow}"
+        refute has_element?(view, "#stage-entry-0-time-limit-saved")
+      end
+
+      # A workflow of the draft alone: its field shows, and a save writes nothing.
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
+      assert has_element?(view, @field)
+
+      html =
+        render_hook(view, "time_limit_save", %{
+          "time_limit" => %{
+            "row" => "#{explore}/stage-entry-0",
+            "workflow" => "write-a-brief",
+            "minutes" => "30"
+          }
+        })
+
+      refute html =~ "Only owners and admins can change the stages."
+      refute has_element?(view, "#stage-entry-0-time-limit-saved")
+      assert limit(scope) == %{}
     end
   end
 

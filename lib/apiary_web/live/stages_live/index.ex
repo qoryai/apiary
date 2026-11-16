@@ -37,8 +37,9 @@ defmodule ApiaryWeb.StagesLive.Index do
   # the workspace's limit for that workflow in `Apiary.TimeLimits`, outside the process:
   # **Save time limit** writes it at once, under `time_limit.edit`, and makes no version.
   # An empty field removes the limit, and the workflow's sessions then stop after the
-  # default, 180 minutes. Where the edition shows a sentence in place of the field
-  # (`c:ApiaryWeb.Edition.operator_sentence/2`), the field is disabled and nothing saves.
+  # default, 180 minutes. Whoever `time_limit.edit` refuses sees the field disabled; where
+  # the edition has a sentence for them (`c:ApiaryWeb.Edition.operator_sentence/2`), it
+  # shows under the field.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -295,13 +296,15 @@ defmodule ApiaryWeb.StagesLive.Index do
     do: {:noreply, put_row(socket, params, params["value"], :blur)}
 
   # Save time limit: the field's minutes as the workspace's limit for the workflow, or,
-  # for an empty field, no limit. It writes `time_limits` alone, never the process.
+  # for an empty field, no limit. It writes `time_limits` alone, never the process. A row
+  # the selected stage does not show, or a workflow the saved process does not have, saves
+  # nothing (`saveable?/2`).
   def handle_event("time_limit_save", %{"time_limit" => %{} = params}, socket) do
     %{current_scope: scope} = socket.assigns
     workflow = params["workflow"]
 
-    with true <- time_limits_editable?(socket.assigns),
-         true <- is_binary(workflow) and is_binary(params["row"]),
+    with true <- time_limits_editable?(socket.assigns) || :refused,
+         true <- saveable?(socket.assigns, params) || :not_saveable,
          {:ok, minutes} <- save_minutes(params["minutes"]),
          :ok <- save_limit(scope, workflow, minutes) do
       value = if minutes, do: Integer.to_string(minutes), else: ""
@@ -311,6 +314,7 @@ defmodule ApiaryWeb.StagesLive.Index do
        |> assign(time_limits: saved_limits(scope))
        |> put_row(params, value, :saved)}
     else
+      :not_saveable -> {:noreply, socket}
       :invalid -> {:noreply, put_row(socket, params, params["minutes"], :refused)}
       _refused -> {:noreply, put_flash(socket, :error, Words.refusal(:forbidden, nil))}
     end
@@ -471,39 +475,66 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   defp time_limits_editable?(assigns),
-    do:
-      assigns.time_limits != nil and assigns.time_limit_editable and
-        is_nil(assigns.time_limit_note)
+    do: assigns.time_limits != nil and assigns.time_limit_editable
+
+  # Whether the event's row is one the selected stage shows (`Inspector.time_limit_keys/1`)
+  # with that workflow, and the saved process has the workflow: a draft's workflow has no
+  # runs to limit yet.
+  defp saveable?(assigns, params) do
+    known_row?(assigns, params) and
+      params["workflow"] in saved_workflows(assigns.current_scope.workspace)
+  end
+
+  defp known_row?(assigns, %{"row" => row, "workflow" => workflow})
+       when is_binary(row) and is_binary(workflow) do
+    case Processes.stage(assigns.draft, assigns.selected) do
+      %{} = stage -> {row, workflow} in Inspector.time_limit_keys(stage)
+      nil -> false
+    end
+  end
+
+  defp known_row?(_assigns, _params), do: false
+
+  # The workflows of the workspace's saved process, every stage's.
+  defp saved_workflows(workspace) do
+    workspace
+    |> Processes.current()
+    |> Map.fetch!(:document)
+    |> Map.get("stages", [])
+    |> Enum.filter(&is_map/1)
+    |> Enum.flat_map(&Processes.workflows/1)
+  end
 
   # The state of a time-limit field, by its row, after `event`: the workflow it is of, the
   # value it shows, whether it has lost the focus or been saved with an error since the
   # page loaded, and whether its value is the one just saved.
+  # A row the selected stage does not show keeps no state.
   defp put_row(socket, params, value, event) do
-    case params do
-      %{"row" => row, "workflow" => workflow} when is_binary(row) and is_binary(workflow) ->
-        value = to_string(value || "")
+    if known_row?(socket.assigns, params),
+      do: put_known_row(socket, params["row"], params["workflow"], value, event),
+      else: socket
+  end
 
-        old =
-          case socket.assigns.time_limit_rows[row] do
-            %{workflow: ^workflow} = old -> old
-            _none -> %{workflow: workflow, value: nil, touched: false, done: false}
-          end
+  defp put_known_row(socket, row, workflow, value, event) do
+    value = to_string(value || "")
 
-        same = old.done and old.value == value
+    old =
+      case socket.assigns.time_limit_rows[row] do
+        %{workflow: ^workflow} = old -> old
+        _none -> %{workflow: workflow, value: nil, touched: false, done: false}
+      end
 
-        state =
-          case event do
-            :change -> %{old | value: value, done: same}
-            :blur -> %{old | value: value, touched: true, done: same}
-            :refused -> %{old | value: value, touched: true, done: false}
-            :saved -> %{old | value: value, done: true}
-          end
+    same = old.done and old.value == value
 
-        update(socket, :time_limit_rows, &Map.put(&1, row, state))
+    state =
+      case event do
+        :change -> %{old | value: value, done: same}
+        :blur -> %{old | value: value, touched: true, done: same}
+        :refused -> %{old | value: value, touched: true, done: false}
+        :saved -> %{old | value: value, done: true}
+      end
 
-      _other ->
-        socket
-    end
+    update(socket, :time_limit_rows, &Map.put(&1, row, state))
   end
 
   defp save_minutes(value) do
@@ -515,7 +546,8 @@ defmodule ApiaryWeb.StagesLive.Index do
   end
 
   # The limit written, or removed for nil; a removal where none is saved changes nothing.
-  # A refusal of the minutes is the field's error.
+  # A refusal of the minutes is the field's error; a refusal of the workflow's name saves
+  # nothing, as for a workflow the saved process does not have.
   defp save_limit(scope, workflow, nil) do
     case TimeLimits.delete_limit(scope, :workspace, workflow) do
       {:ok, _limit} -> :ok
@@ -530,7 +562,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         :ok
 
       {:error, %Ecto.Changeset{errors: errors}} ->
-        if errors[:minutes], do: :invalid, else: :refused
+        if errors[:minutes], do: :invalid, else: :not_saveable
 
       {:error, reason} ->
         {:error, reason}

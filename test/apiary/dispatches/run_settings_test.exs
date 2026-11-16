@@ -13,7 +13,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}

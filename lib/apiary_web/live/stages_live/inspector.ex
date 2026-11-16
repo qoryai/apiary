@@ -571,15 +571,16 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         {gettext("Time limit, in minutes")}
       </label>
       <div class="flex flex-wrap items-center gap-2">
+        <%!-- A text field with the numeric keyboard, not a number field: a browser sends
+        a number field's text that is no number, such as 24x, as an empty value, which
+        would read as no limit. --%>
         <input
-          type="number"
+          type="text"
           id={@id}
           name="time_limit[minutes]"
           form={@field.form}
-          min="15"
-          max="1440"
-          step="1"
           inputmode="numeric"
+          autocomplete="off"
           value={@field.value}
           class={["input input-sm w-28", @error && "input-error"]}
           aria-invalid={@error && "true"}
@@ -659,12 +660,20 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   def minutes(_value), do: :error
 
+  @doc false
+  # time_limit_keys/1 is each row of `stage` that has a time-limit field, as its key
+  # (`time_limit_key/2`) with its workflow: the rows a time-limit event may be of.
+  @spec time_limit_keys(map) :: [{String.t(), String.t()}]
+  def time_limit_keys(stage),
+    do: for({id, workflow} <- stage_rows(stage), do: {time_limit_key(stage["id"], id), workflow})
+
   # The rows of the stage with a workflow, each with its id and workflow, whose time
   # limits have a form; none without time limits.
   defp time_limit_rows(nil, _stage), do: []
+  defp time_limit_rows(_time_limit, stage), do: stage_rows(stage)
 
-  defp time_limit_rows(_time_limit, stage) do
-    stage["sequence"]
+  defp stage_rows(stage) do
+    (stage["sequence"] || [])
     |> Enum.with_index()
     |> Enum.flat_map(fn
       {%{"loop" => %{"body" => body}}, i} ->

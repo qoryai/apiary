@@ -233,8 +233,9 @@ defmodule ApiaryWeb.Edition do
   person of `scope` acts there as a person of the organisation: one sentence, translated,
   such as "Set by your operator, Contoso. Ask them to change it."; nil where the
   person takes the action as `Apiary.Access` allows. The stage panel of Workspace
-  settings › Workflows asks it of `:"time_limit.edit"`: while it is a sentence, a
-  workflow's time limit shows with no way to change it, and the sentence under it.
+  settings › Workflows calls it with `:"time_limit.edit"`; where it returns a sentence,
+  the panel shows a workflow's time limit with no way to change it, and the sentence
+  under it.
   """
   @callback operator_sentence(about :: atom, Scope.t()) :: String.t() | nil
 
