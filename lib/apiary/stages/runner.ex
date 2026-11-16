@@ -658,13 +658,14 @@ defmodule Apiary.Stages.Runner do
 
   # The lower of two access levels, from lowest to highest read, write-no-push (a writable
   # checkout that has no push credential) and write: read when either is read, then
-  # write-no-push when the entry's is. An entry value other than `read` or `write-no-push`
-  # counts as read. nil where neither sets a level.
+  # write-no-push when the entry's or the declared one is. An entry value other than `read`
+  # or `write-no-push` counts as read. nil where neither sets a level.
   defp lower_access(entry, declared) do
     cond do
       read?(declared) -> :read
       entry == "write-no-push" -> :write_no_push
       not is_nil(entry) -> :read
+      declared in [:write_no_push, "write-no-push"] -> :write_no_push
       declared in [:write, "write"] -> :write
       true -> nil
     end

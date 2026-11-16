@@ -918,6 +918,17 @@ defmodule Apiary.Stages.RunnerTest do
       assert spec.access == :write_no_push
     end
 
+    test "limits/3 takes a declared write-no-push level: an entry with none keeps it, read lowers it" do
+      none = put_in(build(), ["sequence"], [wf("verify", %{})])
+      read = put_in(build(), ["sequence"], [wf("verify", %{"access" => "read"})])
+      same = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+      declared = %{time_limit: nil, access: :write_no_push}
+
+      assert Runner.limits(none, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(same, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(read, pos(0, nil, 1), declared).access == :read
+    end
+
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do
       seq =
         put_in(build(), ["sequence"], [
