@@ -1206,6 +1206,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   whose `submit.type` is not a structured type that its `artifact_types` defines, with
   the fix first: "set submit.type to a structured type of artifact_types: mockup is a
   standard type".
+- A run that runs a workflow with write access has `submit: {type, send}` in its run
+  documents, from its process version, where the version has one. A forge's adapter may
+  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
+  that contains the forge's program that opens the draft pull request. Such a run then
+  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
+  starts with `submit` alone where no adapter declares one. Qory Apiary refuses a
+  start-up whose `submit_module` breaks the run contract or whose `git` is not an https
+  address. The run and the integration contracts are vendored at integrations
+  `b00f97d`.
+- A harness document may bind a group role of the kind `agents` to a list of at least one
+  agent, such as `bind: {agents: {reviewers: [copy-reviewer, legal-reviewer]}}`. A role of
+  the kind `commands` or `skills` still takes one name.
 
 ### Changed
 
@@ -2053,6 +2065,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `nodes` (20261116100000): a nullable column `submit_module`, the harness module with
+  the submit program that an adapter's latest start-up declares, with a check that it is
+  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
+  reads and writes. It changes no row: each adapter's next start-up stores its module.
+  Rolling back drops `nodes.submit_module`.
 - `model_key_settings` (20261112100000): a nullable column `use_up_to_percent`, a model
   key's Use up to percentage, with a check that it is from 1 to 99. The column has no
   default, so adding it rewrites no row; the check scans `model_key_settings` under a
