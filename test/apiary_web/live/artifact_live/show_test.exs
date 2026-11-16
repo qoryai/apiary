@@ -351,12 +351,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         ])
 
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
-      row = "#artifact-view-#{version.public_id}-speed-0"
+      id = "artifact-view-#{version.public_id}-speed-0"
+      row = "##{id}"
 
       assert has_element?(view, "figure video + #{row}[phx-hook=VideoSpeed][phx-update=ignore]")
       assert has_element?(view, "#{row} + figcaption", "demo.mp4")
       assert has_element?(view, "#{row}-label", "Speed")
-      assert has_element?(view, ~s(#{row} [role=group][aria-labelledby="#{row}-label"]))
+      assert has_element?(view, ~s(#{row} [role=group][aria-labelledby="#{id}-label"]))
 
       buttons =
         view
