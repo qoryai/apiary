@@ -1217,6 +1217,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   whose `submit.type` is not a structured type that its `artifact_types` defines, with
   the fix first: "set submit.type to a structured type of artifact_types: mockup is a
   standard type".
+- A run that runs a workflow with write access has `submit: {type, send}` in its run
+  documents, from its process version, where the version has one. A forge's adapter may
+  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
+  that contains the forge's program that opens the draft pull request. Such a run then
+  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
+  starts with `submit` alone where no adapter declares one. A start-up whose
+  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
+  400 `invalid_request`, and nothing is stored. The run and the integration contracts are
+  vendored at integrations `5d456eb`.
 
 ### Changed
 
@@ -2099,6 +2108,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
+  the submit program that an adapter's latest start-up declares, with a check that it is
+  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
+  reads and writes. It changes no row: Apiary stores the module that each adapter
+  declares at its next start-up.
+  Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.

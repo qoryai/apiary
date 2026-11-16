@@ -161,4 +161,34 @@ defmodule Apiary.WorkItems.ReviewCommentsOutputsTest do
       assert is_integer(run)
     end
   end
+
+  describe "a withdrawn output named main" do
+    test "is no frame of a stage tab and no version of the take in; files list it again",
+         %{scope: scope} do
+      process!(scope)
+      {work_item, _ticket} = first!(scope)
+
+      end_run!(work_item, fn run, _registered ->
+        push!(run, work_item, "proposal")
+        push!(run, work_item, @other)
+        frames = fn -> ExploreView.newest_outputs(reload(work_item), run.stage_id, [@other]) end
+        versions = fn -> Explore.versions(work_item.id, work_item.take_in) end
+        assert frames.() == %{@other => 1}
+        assert MapSet.member?(versions.(), {@other, 1})
+
+        {:ok, _withdrawal} =
+          Artifacts.withdraw({:run, run}, reload(work_item), @other, stage_id: run.stage_id)
+
+        # Neither the withdrawal, version 2, nor version 1 of the withdrawn name.
+        assert frames.() == %{}
+        assert MapSet.member?(versions.(), {"proposal", 1})
+        refute Enum.any?(versions.(), &(elem(&1, 0) == @other))
+
+        push!(run, work_item, @other)
+        assert frames.() == %{@other => 3}
+        assert MapSet.member?(versions.(), {@other, 3})
+        refute MapSet.member?(versions.(), {@other, 2})
+      end)
+    end
+  end
 end
