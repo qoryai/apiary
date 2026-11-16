@@ -1211,6 +1211,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- A stage whose gate is **No gate** records an approval of the newest version of each
+  of its outputs when its sequence ends, then the work item moves on. Up to this change
+  it moved on with no approval, so a later stage's input from that stage had no version,
+  and a required one stopped the later stage. The approval has no member, and the
+  stage's tab shows on its first output “Approved” and “Version 2 · Approved
+  automatically · 15 Nov, 14:20”. When a member accepts the escalation that ends such a
+  stage, the approval has that member: “Accepted by Dana”. In the run API's artifact
+  index, an approval has `automatic`, and one a gate `none` recorded with no member has
+  `"by": null`. The stage form says under **No gate**: “Recorded as approved
+  automatically, with the time. At the round limit, a member decides.”
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
   (`workspace_operators`). No screen starts or ends such a link. In an operated
@@ -2038,6 +2050,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
+  default, true for an approval that a gate `none` recorded with no member, with a check
+  that such a row is an approval with no `user_id`. The default is a constant, so adding
+  the column rewrites no row. The first migration adds the check without a scan, and the
+  second validates it with a scan that does not block writes. It changes no row. Rolling
+  back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.

@@ -2841,14 +2841,22 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :id, :string, required: true
   attr :number, :integer, required: true
-  attr :output, :map, required: true
+
+  attr :output, :map,
+    required: true,
+    doc:
+      "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
+        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
+
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
   @doc false
   # output_frame/1 is one output of a stage, in a frame with its version, folded but for the
   # first (`open`). A folded frame's
   # text is read when it opens (`"open_frame"`, with its type). The frames keep the state the
-  # reader gave them when the page draws again.
+  # reader gave them when the page draws again. A frame whose version a gate `none`
+  # approved has the Approved badge and, after a check mark, the version, how it was
+  # approved and when, as Explore's approved Proposal frame has them.
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -2862,7 +2870,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         body: %{rendered: body},
         sources: sources,
         count: count,
-        heading: output_heading(assigns.output.type)
+        heading: output_heading(assigns.output.type),
+        approval: assigns.output[:approval]
       )
 
     ~H"""
@@ -2882,8 +2891,13 @@ defmodule ApiaryWeb.WorkItemComponents do
           <div class="q-xp-frame-h">
             <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
             <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
+            <.badge :if={@approval} color="info" class="q-xp-frame-b">{gettext("Approved")}</.badge>
           </div>
-          <p class="q-xp-cap">
+          <p :if={@approval} id={"#{@id}-approval"} class="q-xp-cap">
+            <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
+            <span><.rich text={approval_caption(@output.version, @approval)} /></span>
+          </p>
+          <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
           </p>
@@ -3641,6 +3655,30 @@ defmodule ApiaryWeb.WorkItemComponents do
       true ->
         versioned_caption(Format.number(run.version), by, at)
     end
+  end
+
+  # The caption of a stage output's version that a gate `none` approved: with no member,
+  # or accepted by the member `by` at the escalation that ended the stage.
+  defp approval_caption(version, %{automatic: true, at: at}) do
+    rich_gettext("Version %{version} · Approved automatically · %{when}",
+      version: Format.number(version),
+      when: time_tag(at, Format.day_time(at))
+    )
+  end
+
+  defp approval_caption(version, %{by: by, at: at}) do
+    if you?(by),
+      do:
+        rich_gettext("Version %{version} · Accepted by you · %{when}",
+          version: Format.number(version),
+          when: time_tag(at, Format.day_time(at))
+        ),
+      else:
+        rich_gettext("Version %{version} · Accepted by %{name} · %{when}",
+          version: Format.number(version),
+          name: by.name,
+          when: time_tag(at, Format.day_time(at))
+        )
   end
 
   defp versioned_caption(version, by, at) do

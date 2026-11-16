@@ -2478,10 +2478,11 @@ defmodule Apiary.StagesTest do
   describe "the when key (A-16)" do
     @verify "st_m1mqbeywdg"
     @demos %{"input" => "demo-scenarios"}
+    @optional_scenarios %{"outputs" => [%{"type" => "demo-scenarios", "required" => false}]}
 
     # Explore; Shape, worked by people, whose demo scenarios are optional; Verify, whose
     # capture-demos runs only with demo scenarios, and whose film is required only then.
-    defp verify_process!(scope) do
+    defp verify_process!(scope, shape \\ @optional_scenarios) do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
           "name" => "demo-scenarios",
@@ -2490,9 +2491,7 @@ defmodule Apiary.StagesTest do
 
       save!(scope, [
         explore_stage(),
-        stage(@shape, "Shape", [], %{
-          "outputs" => [%{"type" => "demo-scenarios", "required" => false}]
-        }),
+        stage(@shape, "Shape", [], shape),
         stage(
           @verify,
           "Verify",
@@ -2543,7 +2542,10 @@ defmodule Apiary.StagesTest do
 
     test "with no demo-scenarios, capture-demos starts no run and Verify's gate opens without a film",
          %{scope: scope} do
-      work_item = at_verify!(scope, fn _work_item -> :ok end)
+      work_item =
+        at_verify!(scope, fn work_item ->
+          assert Stages.starts(work_item, :approve) == {:run, "verify-a-ticket"}
+        end)
 
       assert %WorkItem{stage_id: @verify, stage_state: :running, stage_entry: 1} = work_item
       assert %DispatchRun{workflow: "verify-a-ticket", stage_entry: 1} = newest_run(work_item)
@@ -2583,6 +2585,8 @@ defmodule Apiary.StagesTest do
         at_verify!(scope, fn work_item ->
           {:ok, _version} =
             Stages.add_version(scope, work_item, "demo-scenarios", scenarios("# Scenario 1"))
+
+          assert Stages.starts(work_item, :approve) == {:run, "capture-demos"}
         end)
 
       assert %WorkItem{stage_id: @verify, stage_state: :running, stage_entry: 0} = work_item
@@ -2597,9 +2601,35 @@ defmodule Apiary.StagesTest do
       work_item =
         at_verify!(scope, fn work_item ->
           {:ok, _version} = Stages.add_version(scope, work_item, "demo-scenarios", scenarios(""))
+          assert Stages.starts(work_item, :approve) == {:run, "verify-a-ticket"}
         end)
 
       assert [%{size: 0}] = hd(versions(work_item, "demo-scenarios")).files
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+      assert [%{workflow: "capture-demos"}] = Stages.skips(work_item)
+    end
+
+    test "a version added at a gate none counts for Verify only with a file of more than 0 bytes",
+         %{scope: scope} do
+      verify_process!(scope, %{
+        "outputs" => [%{"type" => "demo-scenarios", "required" => true}],
+        "gate" => %{"kind" => "none"}
+      })
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      assert Stages.starts(work_item, {:version_added, "demo-scenarios", [12]}) ==
+               {:run, "capture-demos"}
+
+      assert Stages.starts(work_item, {:version_added, "demo-scenarios", [0]}) ==
+               {:run, "verify-a-ticket"}
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "demo-scenarios", scenarios(""))
+
+      assert %WorkItem{stage_id: @verify} = reload(work_item)
       assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
       assert [%{workflow: "capture-demos"}] = Stages.skips(work_item)
     end
@@ -2621,6 +2651,221 @@ defmodule Apiary.StagesTest do
                ),
                :count
              ) == 0
+    end
+  end
+
+  describe "a gate none (vault 0252)" do
+    # A stage with a loop of two workflows and a gate none, as Build, then a stage that
+    # reads its outputs, as Verify. `explainer` stands for Build's submission.
+    defp build_then_verify!(scope, rounds \\ 3) do
+      save!(scope, [
+        stage(
+          @explore,
+          "Build",
+          [
+            %{
+              "loop" => %{
+                "rounds" => rounds,
+                "body" => [
+                  %{"workflow" => "implement-changes"},
+                  %{"workflow" => "review-changes"}
+                ]
+              }
+            }
+          ],
+          %{
+            "outputs" => [
+              %{"type" => "explainer", "required" => true},
+              %{"type" => "decision-record", "required" => false}
+            ],
+            "gate" => %{"kind" => "none"}
+          }
+        ),
+        stage(@shape, "Verify", [%{"workflow" => "verify-a-ticket"}], %{
+          "inputs" => [
+            %{"type" => "explainer", "required" => true},
+            %{"type" => "decision-record", "required" => false}
+          ]
+        })
+      ])
+    end
+
+    # The end of a run that pushes the version `n` of each of `types`, then `verdict`.
+    defp pushes(types, n, verdict \\ nil) do
+      fn run, registered ->
+        for type <- types do
+          {:ok, _version} =
+            Stages.Artifacts.push(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              type,
+              [
+                %{filename: "#{type}.md", content_type: "text/markdown", binary: "# #{type} #{n}"}
+              ],
+              stage_id: run.stage_id
+            )
+        end
+
+        if verdict, do: verdict(verdict).(run, registered)
+      end
+    end
+
+    defp version_id(work_item, type, number),
+      do: Enum.find(versions(work_item, type), &(&1.number == number)).public_id
+
+    test "a passed run records an approval of the newest outputs, and Verify's run reads them",
+         %{scope: scope} do
+      build_then_verify!(scope)
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(pushes(["explainer", "decision-record"], 1))
+        |> end_run!(verdict("changes-requested"))
+        |> end_run!(pushes(["explainer"], 2))
+
+      assert decisions(work_item) == []
+      work_item = end_run!(work_item, verdict("passed"))
+
+      explainer = version_id(work_item, "explainer", 2)
+      record = version_id(work_item, "decision-record", 1)
+
+      assert [
+               %GateDecision{
+                 kind: :approve,
+                 stage_id: @explore,
+                 user_id: nil,
+                 automatic: true,
+                 versions: [^explainer, ^record]
+               }
+             ] = decisions(work_item)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
+      assert %DispatchRun{stage_id: @shape, workflow: "verify-a-ticket"} = newest_run(work_item)
+
+      assert [
+               %{type: "explainer", version: %{id: ^explainer, approvals: [approval]}},
+               %{type: "decision-record", version: %{id: ^record}}
+             ] = Stages.inputs(work_item)
+
+      assert %{automatic: true, user_id: nil, stage_id: @explore} = approval
+      # The approval writes no entry in the audit trail: no person acted.
+      refute Repo.exists?(
+               from e in Entry,
+                 where: e.subject_id == ^work_item.id and e.action == "gate.approve"
+             )
+    end
+
+    test "an accept at the round limit is the approval, recorded with the member", %{
+      scope: scope
+    } do
+      build_then_verify!(scope, 1)
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(pushes(["explainer"], 1))
+        |> end_run!(verdict("changes-requested"))
+
+      assert %Escalation{cause: :round_limit} = escalation(work_item)
+      assert decisions(work_item) == []
+
+      assert {:ok, %WorkItem{stage_id: @shape, stage_state: :running}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      explainer = version_id(work_item, "explainer", 1)
+      user_id = scope.user.id
+
+      assert [
+               %GateDecision{
+                 kind: :approve,
+                 stage_id: @explore,
+                 user_id: ^user_id,
+                 automatic: false,
+                 versions: [^explainer]
+               }
+             ] = decisions(work_item)
+
+      assert [%{type: "explainer", version: %{id: ^explainer}}, %{version: nil}] =
+               Stages.inputs(work_item)
+    end
+
+    test "an accept at a person gate records no approval", %{scope: scope} do
+      save!(scope, [
+        stage(@explore, "Build", [%{"workflow" => "implement-changes"}], %{
+          "outputs" => [%{"type" => "explainer", "required" => true}]
+        })
+      ])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          pushes(["explainer"], 1).(run, registered)
+          verdict("escalate", [again("Choose the wording.")]).(run, registered)
+        end)
+
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_state: :at_gate}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert decisions(work_item) == []
+    end
+
+    test "the approval leaves out a version of a run a member cancelled", %{scope: scope} do
+      build_then_verify!(scope)
+
+      cancelled = fn run, registered ->
+        pushes(["explainer"], 2).(run, registered)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+          )
+      end
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(pushes(["explainer"], 1))
+        |> end_run!(verdict("changes-requested"))
+        |> end_run!(cancelled)
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+
+      # The next round pushes no explainer: the newest one that counts is version 1.
+      assert %DispatchRun{workflow: "implement-changes"} = newest_run(work_item)
+      work_item = work_item |> end_run!(nil) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      assert Artifacts.cancelled?(Enum.find(versions(work_item, "explainer"), &(&1.number == 2)))
+      explainer = version_id(work_item, "explainer", 1)
+      assert [%GateDecision{automatic: true, versions: [^explainer]}] = decisions(work_item)
+    end
+
+    test "a person's last output there counts as a later stage's input in what a run starts",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+          "gate" => %{"kind" => "none"}
+        }),
+        stage(@build, "Build", [%{"workflow" => "implement-changes"}], %{
+          "inputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+        })
+      ])
+
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      assert Stages.starts(work_item, {:version_added, "acceptance-criteria"}) ==
+               {:run, "implement-changes"}
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :running} = reload(work_item)
+      assert %DispatchRun{stage_id: @build, workflow: "implement-changes"} = newest_run(work_item)
     end
   end
 

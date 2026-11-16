@@ -345,6 +345,15 @@ defmodule ApiaryWeb.StagesLive.Inspector do
               />
               <span>{gettext("No gate: the work item moves on when the sequence ends")}</span>
             </label>
+            <p
+              :if={@stage["gate"]["kind"] == "none"}
+              id="stage-gate-none-line"
+              class="pl-6 text-[13px]/5 text-muted"
+            >
+              {gettext(
+                "Recorded as approved automatically, with the time. At the round limit, a member decides."
+              )}
+            </p>
           </fieldset>
         </.sect>
       </.form>
