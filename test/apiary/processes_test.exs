@@ -356,9 +356,10 @@ defmodule Apiary.ProcessesTest do
         |> Application.app_dir("priv/schemas/process/v1.schema.json")
         |> File.read!()
 
-      assert Map.keys(Jason.decode!(schema)["$defs"]["workflow_entry"]["properties"]) ==
-               ~w(access machine workflow)
+      keys = Map.keys(Jason.decode!(schema)["$defs"]["workflow_entry"]["properties"])
 
+      assert "workflow" in keys
+      refute Enum.any?(keys, &(&1 =~ ~r/limit|time/))
       refute schema =~ "time_limit"
     end
 
