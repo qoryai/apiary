@@ -2,7 +2,8 @@ defmodule Apiary.Artifacts.TemplateTypes do
   # TemplateTypes reads the `artifact_types` list of a factory's `process.yaml`, as
   # `Apiary.Harnesses.Reader.template/1` returns it. An entry with a name alone is a
   # standard type (`Apiary.Artifacts.Type`), and any other entry is a custom type's
-  # definition.
+  # definition. A definition may have `withdrawable`, a boolean, true when it has none:
+  # with false, a run cannot withdraw a name of the type (`Apiary.Artifacts.withdraw/4`).
   #
   # `check/1` is `:ok`, or `{:error, refusals}` with a list of these, in this order:
   #
@@ -15,8 +16,9 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #   5. `{:invalid, type, :repeated}`: the list has a custom name more than once, one
   #      refusal per name. A custom type with a standard name is only
   #      `{:standard_name, type}`;
-  #   6. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2` or
-  #      `Apiary.Artifacts.CustomSchema.check/1`. `error` is the field that failed, with
+  #   6. `{:invalid, type, error}`: a definition fails `Type.create_changeset/2`, such as a
+  #      `withdrawable` that is not a boolean, or `Apiary.Artifacts.CustomSchema.check/1`.
+  #      `error` is the field that failed, with
   #      the base view for a limit. The check stops at the first such definition;
   #   7. `:schemas_too_long`: the definitions' JSON Schemas passed the total of one
   #      template (`@total`), which `Apiary.Artifacts.CustomSchema.check_within/2` counts.
@@ -76,7 +78,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   alias Apiary.Organisations.Workspace
 
   # The fields of a definition, in the order the Artifact types form shows them.
-  @fields [:name, :base_view, :size_limit, :max_files, :json_schema]
+  @fields [:name, :base_view, :size_limit, :max_files, :json_schema, :withdrawable]
 
   # The total over the JSON Schemas of one template. Measured on OTP 29: the worst file
   # found, 64 KiB of 430 definitions that each refer to the JSON Schema metaschema, does
@@ -95,6 +97,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
           | :base_view
           | {:size_limit | :max_files, Type.base_view()}
           | :json_schema
+          | :withdrawable
 
   @typedoc "What is wrong with a template's types."
   @type refusal ::
@@ -323,6 +326,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
   defp line({:size_limit, base_view}), do: TypeRules.size(base_view)
   defp line({:max_files, base_view}), do: TypeRules.files(base_view)
   defp line(:json_schema), do: TypeRules.schema()
+  defp line(:withdrawable), do: TypeRules.withdrawable()
 
   # apply/3: see the head of this module.
   @doc false

@@ -463,21 +463,29 @@ removed, with a push of `"withdraw": true` and no files:
 Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
 `withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
 the version, as a push does. Gates, stage inputs and the work item's pages leave out a
-withdrawn name. A stage done whose last approval covered a version of that name is at its
-gate again. A later push of files is a new version, and lists the name again. A run
-cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory Apiary
-reads them itself, and a run pushes a new version of them instead.
+withdrawn name. A stage done whose last approval, one that the runner recorded for a
+gate `none`, covered a version of that name is at its gate again. A later push of files is
+a new version, and lists the name again.
+
+A run cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory
+Apiary reads them itself, and a run pushes a new version of them instead. It cannot
+withdraw a name of a custom type that its template defines with `withdrawable: false`
+(`withdrawable` is true when the definition has none). It cannot withdraw a name whose
+newest version a member approved at a gate, and pushes a new version instead. An approval
+that the runner recorded for a gate `none` does not count, and neither does an approval
+of an older version.
 
 Checks, in order, after the checks of every request:
 
 1. A body that is not the push's object, as for a push: `400` `invalid_request`.
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
-3. `questions`, `review-comments`, `verdict` or `proposal`: `422`
-   `type_not_withdrawable`.
+3. `questions`, `review-comments`, `verdict` or `proposal`, or a custom type with
+   `withdrawable: false`: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
-   of the name, leaving out versions by a run a member cancelled: none, `409`
+   of the name, leaving out versions by a run a member cancelled: one that a member
+   approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
    `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
    `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
 
@@ -574,7 +582,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal` |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a custom type with `withdrawable: false`, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, or a verdict's `answer` point is about a question that is not open |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
@@ -597,6 +605,12 @@ The messages:
 - `type_not_withdrawable`: "Push a new version of questions instead. Qory Apiary reads
   questions, review-comments, verdict and proposal itself, so a run cannot withdraw
   them."
+- `type_not_withdrawable`, for a custom type with `withdrawable: false`: "Push a new
+  version of demo-script instead. The artifact type demo-script has withdrawable set to
+  false, so a run cannot withdraw its names."
+- `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
+  version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
+  a run cannot withdraw the name."
 - `withdrawal_with_files`: "Push either files or a withdrawal. A withdrawal of
   demo-script/scenario-2 stores no files, and the push has 1 file."
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a

@@ -35,12 +35,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      written as an integer (`1e3` as `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
-  #      reads itself, `422` `type_not_withdrawable`, then files with it `422`
-  #      `withdrawal_with_files`, then what
-  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name with no
-  #      version `409` `no_version`, a name whose newest version is a withdrawal `409`
-  #      `already_withdrawn`, and one whose newest version a person wrote `409`
-  #      `person_version`.
+  #      reads itself, and a custom type with `withdrawable` false, `422`
+  #      `type_not_withdrawable`, then files with it `422` `withdrawal_with_files`, then
+  #      what `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name
+  #      whose newest version a person approved at a gate `422` `type_not_withdrawable`,
+  #      a name with no version `409` `no_version`, a name whose newest version is a
+  #      withdrawal `409` `already_withdrawn`, and one whose newest version a person wrote
+  #      `409` `person_version`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -137,8 +138,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # A withdrawal: the type, whether a run may withdraw it, then no files, then what
   # `Apiary.Artifacts.withdraw/4` returns.
   defp store(run, %{withdraw: true} = push) do
-    with {:ok, _type} <- known_type(run.work_item.workspace, push.type),
-         :ok <- withdrawable_type(push),
+    with {:ok, type} <- known_type(run.work_item.workspace, push.type),
+         :ok <- withdrawable_type(type, push),
          :ok <- no_files(push) do
       Boundary.withdraw({:run, run.dispatch_run}, run.work_item, push.type,
         name: push.name,
@@ -350,10 +351,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   ## Pushes
 
-  defp withdrawable_type(push) do
-    if Boundary.withdrawable_type?(push.type),
-      do: :ok,
-      else: {:error, {:withdraw, :type, push.type, push.name}}
+  defp withdrawable_type(type, push) do
+    case Boundary.withdrawable_type(type) do
+      :ok -> :ok
+      {:error, {:withdraw, reason}} -> {:error, {:withdraw, reason, push.type, push.name}}
+    end
   end
 
   defp no_files(%{files: []}), do: :ok
@@ -759,6 +761,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       message:
         "Push a new version of #{type} instead. Qory Apiary reads questions, " <>
           "review-comments, verdict and proposal itself, so a run cannot withdraw them."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, :type_off, type, _name}}) do
+    error(conn, 422, "type_not_withdrawable",
+      type: type,
+      message:
+        "Push a new version of #{type} instead. The artifact type #{type} has " <>
+          "withdrawable set to false, so a run cannot withdraw its names."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, {:approved, number}, type, name}}) do
+    error(conn, 422, "type_not_withdrawable",
+      type: type,
+      message:
+        "Push a new version of #{type}/#{name} instead. A member approved its newest " <>
+          "version, v#{number}, so a run cannot withdraw the name."
     )
   end
 

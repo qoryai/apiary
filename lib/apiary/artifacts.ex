@@ -175,12 +175,17 @@ defmodule Apiary.Artifacts do
   # the next version with files lists it again. Only a run withdraws a name; any other
   # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
   # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
-  # `review-comments`, `verdict` or `proposal` (`withdrawable_type?/1`), is
-  # `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
-  # of a push's transaction, the artifact's newest version, leaving out versions by a run a
-  # member cancelled, is read, and the withdrawal is refused, as
+  # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
+  # `{:error, {:withdraw, :type}}`, and a custom type with `withdrawable` false is
+  # `{:error, {:withdraw, :type_off}}`. Then, in the transaction, with the locks and the
+  # reads of a push's transaction, the artifact's newest version, leaving out versions by a
+  # run a member cancelled, is read, and the withdrawal is refused, as
   # `{:error, {:withdraw, reason}}`, when it is:
   #
+  #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
+  #     gate, of kind `:approve`, with a `user_id` and not `automatic`, covers the version
+  #     (`versions` has its public id). The check comes before the three below, so that
+  #     a version a person wrote and approved is refused as approved;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
   #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
@@ -225,6 +230,7 @@ defmodule Apiary.Artifacts do
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.Stages.GateDecision
   alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
@@ -650,6 +656,8 @@ defmodule Apiary.Artifacts do
              refusal
              | {:withdraw,
                 :type
+                | :type_off
+                | {:approved, pos_integer}
                 | :no_version
                 | {:withdrawn, pos_integer}
                 | {:person, pos_integer, Ecto.UUID.t() | nil}}
@@ -673,16 +681,19 @@ defmodule Apiary.Artifacts do
 
   def withdraw(_actor, _work_item, _type_name, _opts), do: {:error, :not_found}
 
-  # withdrawable_type?/1 is whether a run may withdraw a name of the type `name`: every
-  # type but those Qory Apiary reads itself, `questions`, `review-comments`, `verdict` and
-  # `proposal`. A withdrawal of one of those would leave the stage runner or Explore with
-  # a newest version that has no file to read.
+  # withdrawable_type/1 is `:ok` when a run may withdraw a name of `type`: every type but
+  # those Qory Apiary reads itself, `questions`, `review-comments`, `verdict` and
+  # `proposal`, and those a template sets `withdrawable: false`. A withdrawal of one of
+  # the first would leave the stage runner or Explore with a newest version that has no
+  # file to read. Else `{:error, {:withdraw, :type}}` for the first, and
+  # `{:error, {:withdraw, :type_off}}` for the second.
   @doc false
-  @spec withdrawable_type?(term) :: boolean
-  def withdrawable_type?(name), do: name not in @not_withdrawable
+  @spec withdrawable_type(Type.t()) :: :ok | {:error, {:withdraw, :type | :type_off}}
+  def withdrawable_type(%Type{name: name}) when name in @not_withdrawable,
+    do: {:error, {:withdraw, :type}}
 
-  defp withdrawable_type(%Type{name: name}),
-    do: if(withdrawable_type?(name), do: :ok, else: {:error, {:withdraw, :type}})
+  def withdrawable_type(%Type{withdrawable: false}), do: {:error, {:withdraw, :type_off}}
+  def withdrawable_type(%Type{}), do: :ok
 
   # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
   # when the artifact's newest version is a run's version with files (`withdrawable/3`).
@@ -724,15 +735,30 @@ defmodule Apiary.Artifacts do
       nil ->
         {:error, {:withdraw, :no_version}}
 
-      %Version{withdrawn: true, number: number} ->
-        {:error, {:withdraw, {:withdrawn, number}}}
-
-      %Version{writer: :person} = version ->
-        {:error, {:withdraw, {:person, version.number, version.user_id}}}
-
-      %Version{artifact: artifact} ->
-        {:ok, artifact}
+      %Version{} = version ->
+        if person_approved?(held, version),
+          do: {:error, {:withdraw, {:approved, version.number}}},
+          else: written_by_run(version)
     end
+  end
+
+  defp written_by_run(%Version{withdrawn: true, number: number}),
+    do: {:error, {:withdraw, {:withdrawn, number}}}
+
+  defp written_by_run(%Version{writer: :person} = version),
+    do: {:error, {:withdraw, {:person, version.number, version.user_id}}}
+
+  defp written_by_run(%Version{artifact: artifact}), do: {:ok, artifact}
+
+  # Whether a person approved `version` at a gate of the work item: a decision of kind
+  # `:approve` with a member and not `automatic` that covers the version's public id.
+  defp person_approved?(held, %Version{public_id: public_id}) do
+    Repo.exists?(
+      from d in GateDecision,
+        where: d.work_item_id == ^held.id and d.kind == :approve and d.automatic == false,
+        where: not is_nil(d.user_id),
+        where: fragment("? @> to_jsonb(?::text)", d.versions, ^public_id)
+    )
   end
 
   # log_refusal/3 writes one warning to the server log for a refused push that a page

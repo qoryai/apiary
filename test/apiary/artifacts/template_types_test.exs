@@ -116,6 +116,19 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       end
     end
 
+    test "takes a withdrawable that is true or false, and refuses any other value" do
+      for value <- [true, false] do
+        assert :ok = TemplateTypes.check(template([Map.put(@document, "withdrawable", value)]))
+      end
+
+      for value <- ["false", 0, 1, nil, %{}, []] do
+        entry = Map.put(@document, "withdrawable", value)
+
+        assert TemplateTypes.check(template([entry])) ==
+                 {:error, [{:invalid, "reply-draft", :withdrawable}]}
+      end
+    end
+
     test "refuses a schema CustomSchema refuses" do
       for schema <- [%{"type" => 5}, %{"$ref" => "https://example.com/remote.json"}] do
         entry = %{@structured | "json_schema" => schema}
@@ -467,7 +480,8 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
             {{:max_files, :image}, "Set most files to a whole number from 1 to 20."},
             {{:max_files, :structured}, "A structured type has one file."},
             {:json_schema,
-             "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."}
+             "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."},
+            {:withdrawable, "Set withdrawable to true or false."}
           ] do
         assert TemplateTypes.message({:invalid, "reply-draft", error}) ==
                  "the custom type reply-draft is not valid: " <> line
@@ -589,6 +603,21 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       assert Artifacts.type(ctx.workspace, "customer-facts") == nil
       assert audit_entries(ctx.workspace) == []
       assert shown_list(ctx.workspace) == nil
+    end
+
+    test "writes withdrawable false, and true for a definition that has none", ctx do
+      listed = [Map.put(@document, "withdrawable", false), @structured]
+      assert {:ok, workspace} = applied(ctx.workspace, template(listed), ctx.scope)
+
+      assert %Type{withdrawable: false} = Artifacts.type(workspace, "reply-draft")
+      assert %Type{withdrawable: true} = Artifacts.type(workspace, "customer-facts")
+    end
+
+    test "fails on a withdrawable that is not a boolean", ctx do
+      entry = Map.put(@document, "withdrawable", "no")
+
+      assert applied(ctx.workspace, template([entry]), ctx.scope) ==
+               {:error, {:invalid, "reply-draft", :withdrawable}}
     end
 
     test "fails on a definition the changeset refuses, by the field that failed", ctx do

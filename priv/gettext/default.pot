@@ -19020,6 +19020,11 @@ msgstr ""
 msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
 msgstr ""
 
+#: lib/apiary/artifacts/type_rules.ex
+#, elixir-autogen, elixir-format
+msgid "Set withdrawable to true or false."
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Set xmlns=\"http://www.w3.org/2000/svg\" on the svg root element of %{filename}."

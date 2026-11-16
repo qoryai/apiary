@@ -23,7 +23,10 @@ defmodule Apiary.Artifacts.Type do
   # `max_files` the most files of one version; a structured type has exactly one file.
   # `json_schema` is the JSON Schema a structured type's file is validated against: a
   # custom type's in its row, a standard type's under `priv/schemas/artifacts/`
-  # (`schema_path`).
+  # (`schema_path`). `withdrawable` is false for a custom type whose template sets it, and
+  # then a run cannot withdraw a name of the type (`Apiary.Artifacts.withdraw/4`); it is
+  # true for every other custom type and set at creation only. A standard type is always
+  # true here: the types Qory Apiary reads itself are refused by name.
   #
   # The name and the base view of a custom type are fixed once it is made, since the
   # artifacts of its name were checked against its base view; its size limit, its most
@@ -94,6 +97,7 @@ defmodule Apiary.Artifacts.Type do
     field :size_limit, :integer
     field :max_files, :integer
     field :json_schema, :map
+    field :withdrawable, :boolean, default: true
     field :standard, :boolean, virtual: true, default: false
     field :view, :any, virtual: true
     field :schema_path, {:array, :string}, virtual: true
@@ -178,8 +182,9 @@ defmodule Apiary.Artifacts.Type do
   @spec create_changeset(t, map) :: Ecto.Changeset.t()
   def create_changeset(%__MODULE__{} = type, attrs) do
     type
-    |> cast(attrs, [:name, :base_view, :size_limit, :max_files, :json_schema])
+    |> cast(attrs, [:name, :base_view, :size_limit, :max_files, :json_schema, :withdrawable])
     |> validate_required([:name, :base_view])
+    |> boolean_withdrawable(attrs)
     |> validate_change(:name, fn :name, name ->
       cond do
         not name?(name) -> [name: {"has a form a type's name does not have", validation: :format}]
@@ -202,6 +207,15 @@ defmodule Apiary.Artifacts.Type do
     |> cast(attrs, [:size_limit, :max_files, :json_schema])
     |> limits()
     |> with_constraints()
+  end
+
+  # `withdrawable` is true or false and nothing else: a cast would take "false" or 0 too.
+  defp boolean_withdrawable(changeset, attrs) do
+    value = Map.get(attrs, "withdrawable", Map.get(attrs, :withdrawable, true))
+
+    if is_boolean(value),
+      do: changeset,
+      else: add_error(changeset, :withdrawable, "is not true or false", validation: :boolean)
   end
 
   defp defaults(changeset) do
