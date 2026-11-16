@@ -121,6 +121,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       runs: runs,
       # The workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`).
       skips: Stages.skips(row),
+      # Those of the earlier take ins, each with its take in (`Apiary.Stages.earlier_skips/1`).
+      earlier_skips: Stages.earlier_skips(row),
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,

@@ -2486,7 +2486,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the stage's workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`)"
 
-  attr :take_ins, :list, default: [], doc: "the earlier take ins with the stage's runs"
+  attr :take_ins, :list,
+    default: [],
+    doc: "the earlier take ins with the stage's runs and the entries the runner passed over"
+
   attr :outputs, :list, default: []
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
@@ -6007,7 +6010,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
 
   # The earlier take ins, each folded: who took it in and when, how it ended, how many
-  # runs; inside, its runs, which counted apart from this take in. The proposals of its
+  # runs; inside, its runs, which counted apart from this take in, and the workflow entries
+  # the runner passed over in it (`:skips`), as the record's fold places them
+  # (`record_rows/2`). The proposals of its
   # runs that the page has not read (`:unread`) are read when its fold opens
   # (`"open_fold"`, with its place from 1). The folds keep the state the reader gave them
   # when the page draws again.
@@ -6035,14 +6040,17 @@ defmodule ApiaryWeb.WorkItemComponents do
         </summary>
         <div class="q-xp-inner">
           <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
-          <%= for run <- take_in.runs do %>
-            <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
-            <.run_body
-              id={"#{@id}-#{i}-#{run_dom(run)}-body"}
-              run={run}
-              item={@item}
-              now={@now}
-            />
+          <%= for {kind, run, k} <- record_rows(take_in.runs, Map.get(take_in, :skips, [])) do %>
+            <.skip_row :if={kind == :skip} id={"#{@id}-#{i}-skip-#{k}"} skip={run} />
+            <%= if kind == :run do %>
+              <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
+              <.run_body
+                id={"#{@id}-#{i}-#{run_dom(run)}-body"}
+                run={run}
+                item={@item}
+                now={@now}
+              />
+            <% end %>
           <% end %>
         </div>
       </details>

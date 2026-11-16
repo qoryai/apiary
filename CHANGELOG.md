@@ -150,8 +150,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
-  with the reason, such as “No demo scenarios: capture-demos did not run.” The output is
-  then not required. A save is refused where the type is no output of an earlier stage.
+  with the reason, such as “No demo scenarios: capture-demos did not run.”, also in an
+  earlier take in's fold. An output with the key is then not required. A loop whose every
+  entry is passed over is passed over too, and a stage does not wait for an undeclared
+  workflow whose entry is passed over. A save is refused where the type is no output of
+  an earlier stage, with the entry or output, the stage and the type in the message.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
