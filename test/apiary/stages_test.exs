@@ -2540,6 +2540,23 @@ defmodule Apiary.StagesTest do
       assert [%{number: 1}] = versions(work_item, "explainer")
     end
 
+    test "a run does not withdraw a name a member approved whose account is gone",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+
+      {1, _rows} =
+        Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [user_id: nil]
+        )
+
+      assert [%GateDecision{user_id: nil, automatic: false}] = decisions(work_item)
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
     test "a run withdraws a name whose approval is automatic", %{scope: scope} do
       work_item = done_with_explainers!(scope, ["main"], :automatic)
 

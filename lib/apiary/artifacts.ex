@@ -185,8 +185,8 @@ defmodule Apiary.Artifacts do
   # `{:error, {:withdraw, reason}}`, when it is:
   #
   #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
-  #     gate, of kind `:approve`, with a `user_id` and not `automatic`, covers the version
-  #     (`versions` has its public id). The check comes before the three below, so that
+  #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
+  #     public id; a member whose account is gone has no `user_id`, and counts). The check comes before the three below, so that
   #     a version a person wrote and approved is refused as approved;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
@@ -770,12 +770,12 @@ defmodule Apiary.Artifacts do
   defp written_by_run(%Version{artifact: artifact}), do: {:ok, artifact}
 
   # Whether a person approved `version` at a gate of the work item: a decision of kind
-  # `:approve` with a member and not `automatic` that covers the version's public id.
+  # `:approve` that is not `automatic` and covers the version's public id. A nil `user_id`
+  # is a member whose account is gone (`Apiary.Stages.GateDecision`), and counts.
   defp person_approved?(held, %Version{public_id: public_id}) do
     Repo.exists?(
       from d in GateDecision,
         where: d.work_item_id == ^held.id and d.kind == :approve and d.automatic == false,
-        where: not is_nil(d.user_id),
         where: fragment("? @> to_jsonb(?::text)", d.versions, ^public_id)
     )
   end
