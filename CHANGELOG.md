@@ -12,6 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A test run with `MIX_TEST_PARTITION` set drops its database when it ends, also after a
+  failed migration. `scripts/test-run.sh` runs the tests on a new database and drops it
+  after a pass, a failure or an interrupt.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
