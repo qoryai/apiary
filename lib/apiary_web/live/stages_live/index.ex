@@ -187,6 +187,7 @@ defmodule ApiaryWeb.StagesLive.Index do
       base: version,
       draft: version.document,
       selected: Editor.first_id(version.document),
+      time_limit_workflows: MapSet.new(saved_workflows(workspace)),
       machine_types: Apiary.MachineTypes.list(),
       stage_errors: %{},
       refused_machines: [],
@@ -495,7 +496,8 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   defp known_row?(_assigns, _params), do: false
 
-  # The workflows of the workspace's saved process, every stage's.
+  # The workflows of the workspace's saved process, every stage's. The page reads them
+  # when it loads a version, for the fields of a draft's workflows, and again at a save.
   defp saved_workflows(workspace) do
     workspace
     |> Processes.current()
@@ -578,7 +580,8 @@ defmodule ApiaryWeb.StagesLive.Index do
       saved: assigns.time_limits,
       rows: assigns.time_limit_rows,
       editable: time_limits_editable?(assigns),
-      note: assigns.time_limit_note
+      note: assigns.time_limit_note,
+      workflows: assigns.time_limit_workflows
     }
 
   # The accounts of the versions' authors, by user id (`ApiaryWeb.People.accounts/1`).

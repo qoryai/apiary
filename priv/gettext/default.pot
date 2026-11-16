@@ -18358,6 +18358,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
+msgid "Save the stage first to set this workflow's time limit."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
 msgid "Save time limit"
 msgstr ""
 

@@ -2293,6 +2293,36 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, ~s{#stage-entry-0-time-limit[value="240"]})
     end
 
+    test "a workflow of the draft alone has a disabled field, no button, and a hint to save the stage first",
+         %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
+
+      assert has_element?(view, ~s{#{@field}[disabled]})
+      refute has_element?(view, "#stage-entry-0-time-limit-save")
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-hint",
+               "Save the stage first to set this workflow's time limit."
+             )
+
+      refute has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      # Back to a workflow of the saved process, the field and its button come back.
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "explore-a-ticket"}}})
+      refute has_element?(view, ~s{#{@field}[disabled]})
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save")
+    end
+
     test "a row the stage does not show, or a workflow the saved process does not have, saves nothing",
          %{conn: conn, path: path, scope: scope} do
       {:ok, view, _html} = live(conn, path)
@@ -2313,9 +2343,8 @@ defmodule ApiaryWeb.StagesLiveTest do
         refute has_element?(view, "#stage-entry-0-time-limit-saved")
       end
 
-      # A workflow of the draft alone: its field shows, and a save writes nothing.
+      # A workflow of the draft alone: a save sent anyway writes nothing.
       change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
-      assert has_element?(view, @field)
 
       html =
         render_hook(view, "time_limit_save", %{

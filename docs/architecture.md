@@ -967,18 +967,17 @@ nothing starts or ends a link.
   members read. At that level they change only the workspace's time limits, retention,
   process, artifact types and model choices (`@operator_in_workspace`): no node, access
   key or harness document. Only the operator's owners and admins set the workspace's
-  time limits there (`@operator_alone`); the organisation's owners and admins keep every other action
-  in the workspace, and a person in both sets them only where their level in the operator
-  is the higher. A
-  person of the operator who holds a membership in the organisation too acts there at
-  that membership's level, and, while the flag is on, at the higher of the two levels for
-  what the operator changes in an operated workspace; they read its secrets and variables
-  only where that membership reaches the workspace. A suspended operator's people reach
-  none of its workspaces; an instance admin reads every organisation they reach neither
-  way, as a `reader` too ([access.md](access.md), Reach). The scope carries how
-  (`Apiary.Accounts.Scope`'s `reach`, `{:operator, operated}` for a person of the
-  operator); `Apiary.Organisations.resolve_scope/4` finds it through the edition's
-  `reach/1`, and `Apiary.Access.reload/2` reads it again.
+  time limits there (`@operator_alone`); the organisation's owners and admins keep every
+  other action in the workspace, and a person in both sets them only where their level in
+  the operator is the higher. A person of the operator who holds a membership in the
+  organisation too acts there at that membership's level, and, while the flag is on, at
+  the higher of the two levels for what the operator changes in an operated workspace;
+  they read its secrets and variables only where that membership reaches the workspace. A
+  suspended operator's people reach none of its workspaces; an instance admin reads every
+  organisation they reach neither way, as a `reader` too ([access.md](access.md), Reach).
+  The scope carries how (`Apiary.Accounts.Scope`'s `reach`, `{:operator, operated}` for a
+  person of the operator); `Apiary.Organisations.resolve_scope/4` finds it through the
+  edition's `reach/1`, and `Apiary.Access.reload/2` reads it again.
 - **The instance actions.** The instance organisation's owners list every organisation on
   Instance settings' Organisations, `/instance/organisations`, create an organisation or an
   operator there, whose first owner is the one who creates it, make an organisation an

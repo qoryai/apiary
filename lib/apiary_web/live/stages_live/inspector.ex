@@ -555,6 +555,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # field has an error, and under them the error, else the hint, then Saved. after a
   # save. Where the person may not change it, the field is disabled with no button, and
   # the edition's sentence replaces the hint (`c:ApiaryWeb.Edition.operator_sentence/2`).
+  # A workflow the saved process does not have yet has its field disabled, with no button
+  # and a hint to save the stage first.
   defp time_limit(assigns) do
     field = assigns.field
 
@@ -616,7 +618,14 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
         {gettext("Enter 15 to 1440 minutes, or leave the field empty.")}
       </p>
-      <p :if={@hint} id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+      <p :if={@hint and @field.draft_only} id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+        {gettext("Save the stage first to set this workflow's time limit.")}
+      </p>
+      <p
+        :if={@hint and not @field.draft_only}
+        id={"#{@id}-hint"}
+        class="text-[12.5px]/[18px] text-muted"
+      >
         {gettext(
           "15 to 1440 minutes. If you leave it empty, each session of this workflow stops after %{minutes} minutes.",
           minutes: TimeLimits.default_minutes()
@@ -695,6 +704,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   defp time_limit_field(time_limit, stage_id, id, entry) do
     if named?(entry) do
       workflow = entry["workflow"]
+      # A workflow of the draft alone, which the saved process does not have yet.
+      draft_only = not MapSet.member?(time_limit.workflows, workflow)
       key = time_limit_key(stage_id, id)
       saved = Map.get(time_limit.saved, workflow)
       saved_value = if saved, do: Integer.to_string(saved), else: ""
@@ -717,7 +728,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         shown_error: minutes == :error and state.touched,
         changed: limit_changed?(minutes, saved),
         done: state.done,
-        editable: time_limit.editable,
+        editable: time_limit.editable and not draft_only,
+        draft_only: draft_only,
         note: time_limit.note
       }
     end
