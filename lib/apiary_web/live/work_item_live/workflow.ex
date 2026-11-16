@@ -451,7 +451,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # An artifact of the index with its approval marks: the number of the version a gate
   # approved, with the newest approval of it (`approval`: who, whether a gate `none`
-  # recorded it with no member, the stage and when), and of a newer one where there is one.
+  # recorded it with no member, whether the stage's gate was `none` then, the stage and
+  # when), and of a newer one where there is one.
   defp indexed(artifact) do
     versions = get(artifact, :versions) || []
     approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
@@ -474,6 +475,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     %{
       by: get(approval, :user_id),
       automatic: get(approval, :automatic) == true,
+      gate_none: get(approval, :gate_none) == true,
       stage_id: get(approval, :stage_id),
       at: get(approval, :inserted_at)
     }
