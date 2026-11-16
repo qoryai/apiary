@@ -549,6 +549,76 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-tab-output-spec-s .q-xp-frame-b")
       refute has_element?(view, "#work-item-tab-output-spec-approval")
     end
+
+    test "an accept keeps \"Accepted by you\" after a process version makes the gate a person's",
+         %{conn: conn, scope: scope} do
+      work_item = at_shape!(scope)
+
+      work_item =
+        work_item
+        |> end_run!(fn run, _registered ->
+          push!(run, work_item, "spec", "## The spec text")
+
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              %{
+                "verdict" => "escalate",
+                "points" => [%{"text" => "Ask.", "action" => "run_again"}]
+              },
+              stage_id: run.stage_id
+            )
+        end)
+        |> reload()
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+
+      process!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-spec-approval",
+               "Version 1 · Accepted by you · "
+             )
+    end
+
+    # The gate is read from the approval, never from the stage as the process has it now.
+    test "the line follows the gate the approval was recorded at" do
+      index = fn automatic, gate_none ->
+        [
+          %{
+            type: "spec",
+            name: "main",
+            approved: 1,
+            approval: %{
+              by: "u_1",
+              automatic: automatic,
+              gate_none: gate_none,
+              stage_id: @shape,
+              at: ~U[2026-11-15 14:20:00Z]
+            }
+          }
+        ]
+      end
+
+      frames = [%{type: "spec", version: 1, open: true}]
+      person = %{id: @shape, gate: %{"kind" => "person"}}
+      none = %{id: @shape, gate: %{"kind" => "none"}}
+
+      assert [%{approval: %{automatic: false, by: "u_1"}}] =
+               ApiaryWeb.WorkItemLive.StageTab.approved(frames, person, index.(false, true))
+
+      assert [%{approval: %{automatic: true}}] =
+               ApiaryWeb.WorkItemLive.StageTab.approved(frames, person, index.(true, true))
+
+      assert [%{approval: nil}] =
+               ApiaryWeb.WorkItemLive.StageTab.approved(frames, none, index.(false, false))
+    end
   end
 
   describe "the review comments document" do
