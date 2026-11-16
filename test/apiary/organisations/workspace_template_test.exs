@@ -222,6 +222,24 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert held(scope) == before
     end
 
+    test "a template whose submit names a listed type with no base view makes nothing" do
+      scope = scope_fixture()
+      before = held(scope)
+      entry = "  - name: decision-record\n"
+      submit = "submit:\n  type: reply-draft\n  send: end_of_run\n"
+
+      QoryHarnessFixture.files()
+      |> Map.update!("modules/software-factory/process.yaml", fn process ->
+        String.replace(process, entry, entry <> "  - name: reply-draft\n") <> submit
+      end)
+      |> QoryHarnessFixture.serve!()
+
+      assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
+               {:error, {:qory, {:unreadable, :invalid, nil}}}
+
+      assert held(scope) == before
+    end
+
     test "a failed read of the Qory harness makes nothing" do
       scope = scope_fixture()
       before = held(scope)

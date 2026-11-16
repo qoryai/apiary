@@ -283,13 +283,14 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
                {:error, [{:submit, "reply-draft", {:base_view, "document"}}]}
     end
 
-    test "leaves a name alone that is no standard name to the refusal of the list" do
+    test "refuses a name alone that is no standard name, once in check/1" do
       listed = [%{"name" => "reply-draft"}, @structured]
 
       assert TemplateTypes.check(with_submit(template(listed), "reply-draft")) ==
                {:error, [{:not_standard, "reply-draft"}]}
 
-      assert TemplateTypes.check_submit(with_submit(template(listed), "reply-draft")) == :ok
+      assert TemplateTypes.check_submit(with_submit(template(listed), "reply-draft")) ==
+               {:error, [{:not_standard, "reply-draft"}]}
     end
 
     test "comes after the refusals of the list, and calls a standard name a standard type" do

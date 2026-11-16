@@ -28,8 +28,10 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #   8. `{:submit, type, why}`: the template's `submit.type` is not a custom entry of the
   #      list with `base_view: structured`, as qory requires. `why` is `:missing` for a
   #      name no entry has, `:standard` for an entry with a standard name alone, and
-  #      `{:base_view, view}` for a custom type of another base view. An entry with a
-  #      name alone that is no standard name gets no such refusal, as refusal 1 covers it.
+  #      `{:base_view, view}` for a custom type of another base view. For an entry with
+  #      no `base_view` whose name is no standard name, the refusal is
+  #      `{:not_standard, type}`, so that `check_submit/1` refuses it too; `check/1` makes
+  #      that refusal once.
   #      `check_submit/1` makes this refusal alone, for a caller that runs no other check
   #      of the types.
   #
@@ -139,14 +141,24 @@ defmodule Apiary.Artifacts.TemplateTypes do
   end
 
   # The refusal of the template's `submit`, as qory checks it: its `type` names a custom
-  # entry of `artifact_types` with `base_view: structured`. An entry with a name alone
-  # that is no standard name gets none, as `{:not_standard, type}` covers it.
+  # entry of `artifact_types` with `base_view: structured`. An entry with no `base_view`
+  # whose name is no standard name gets `{:not_standard, type}`, which `refused/1` keeps
+  # once where refusal 1 makes it too.
   defp submit(%{submit: %{"type" => type}} = template) when is_binary(type) do
     case Enum.find(template.artifact_types || [], &(&1["name"] == type)) do
-      nil -> [{:submit, type, :missing}]
-      %{"base_view" => "structured"} -> []
-      %{"base_view" => view} -> [{:submit, type, {:base_view, to_string(view)}}]
-      _alone -> if type in Type.standard_names(), do: [{:submit, type, :standard}], else: []
+      nil ->
+        [{:submit, type, :missing}]
+
+      %{"base_view" => "structured"} ->
+        []
+
+      %{"base_view" => view} ->
+        [{:submit, type, {:base_view, to_string(view)}}]
+
+      _entry ->
+        if type in Type.standard_names(),
+          do: [{:submit, type, :standard}],
+          else: [{:not_standard, type}]
     end
   end
 
