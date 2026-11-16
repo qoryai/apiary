@@ -284,7 +284,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
         {:noreply, socket}
 
       mode == :ask and is_binary(params["type"]) ->
-        case Stages.starts(socket.assigns.work_item, {:version_added, params["type"]}) do
+        sizes = Enum.map(socket.assigns.uploads.files.entries, & &1.client_size)
+
+        case Stages.starts(socket.assigns.work_item, {:version_added, params["type"], sizes}) do
           {:run, workflow} -> {:noreply, assign(socket, :spend, spend(socket, params, workflow))}
           :none -> push(socket, params)
         end
