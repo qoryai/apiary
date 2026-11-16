@@ -17124,6 +17124,16 @@ msgstr ""
 msgid "Remove the allow rule %{host}?"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the control or invisible characters."

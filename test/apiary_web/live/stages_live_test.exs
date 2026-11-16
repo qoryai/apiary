@@ -990,6 +990,30 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a refused when key (A-16)" do
+    test "the refusal names the entry or the output, the stage and the input type" do
+      on = %{"input" => "demo-scenarios"}
+
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          stage
+          |> Map.put("sequence", [
+            %{"workflow" => "capture-demos", "when" => on},
+            %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos", "when" => on}]}}
+          ])
+          |> Map.put("outputs", [%{"type" => "demo-video", "required" => true, "when" => on}])
+        end)
+
+      assert {:error, errors} = Processes.validate(document)
+
+      assert Enum.map(errors, &Words.refusal(&1, document)) == [
+               "Remove the condition on capture-demos in Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on fix-demos in Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on the output demo-video in Build, or add an earlier stage that makes demo-scenarios."
+             ]
+    end
+  end
+
   describe "a workspace with no template" do
     test "the harness line shows the stack core", %{conn: conn, path: path, scope: scope} do
       {1, _rows} =
