@@ -23,9 +23,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
-  #      `422` `unknown_type`, whose message says to define the type, or for a standard
-  #      type to switch it on; more files than the type takes `422` `too_many_files`; files
-  #      over the type's size limit together `422` `too_large`; then a content that is not
+  #      `422` `unknown_type`, whose message says to define the type, for a standard
+  #      type to switch it on, and for `submission` to press Update from harness; more
+  #      files than the type takes `422` `too_many_files`; files over the type's size
+  #      limit together `422` `too_large`; then a content that is not
   #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
   #      the files that do not match the type's format among it, `422` `invalid_artifact`;
   #      a run's version of `questions` or `review-comments` that changes what members
@@ -639,6 +640,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp limit(limit, _type, _key) when is_integer(limit), do: limit
   defp limit(_limit, type, key), do: field(type, key)
 
+  # The step that adds a type a push named. A workspace lacks `submission` when its process
+  # comes from a template before the type: Update from harness brings the type in.
+  defp unknown_type_message("submission") do
+    "Press Update from harness in the workspace's Harness settings, then run the round " <>
+      "again. The workspace's process has no artifact type submission."
+  end
+
+  defp unknown_type_message(type) do
+    if Boundary.standard?(type),
+      do:
+        "Switch on the artifact type #{type} in the workspace's Artifact types, " <>
+          "then run the round again.",
+      else:
+        "Define the artifact type #{type} in the workspace's Artifact types, " <>
+          "then run the round again."
+  end
+
   defp write_error(conn, {:error, :not_found}), do: error(conn, 404, "not_found")
 
   defp write_error(conn, {:error, :run_ended}) do
@@ -660,18 +678,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   defp write_error(conn, {:error, {:unknown_type, type}}) do
-    error(conn, 422, "unknown_type",
-      type: type,
-      message:
-        if(Boundary.standard?(type),
-          do:
-            "Switch on the artifact type #{type} in the workspace's Artifact types, " <>
-              "then run the round again.",
-          else:
-            "Define the artifact type #{type} in the workspace's Artifact types, " <>
-              "then run the round again."
-        )
-    )
+    error(conn, 422, "unknown_type", type: type, message: unknown_type_message(type))
   end
 
   defp write_error(conn, {:error, {:too_many_files, type, limit}}) do

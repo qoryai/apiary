@@ -1108,6 +1108,46 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "a submission.json the type's schema takes is stored as a version of submission",
+         ctx do
+      submission = %{
+        "ref" => "qory/wi_example",
+        "verdict" => "passed",
+        "repositories" => [
+          %{
+            "system" => "forge.example.com",
+            "path" => "example/shop",
+            "commit" => String.duplicate("a", 40),
+            "draft" => %{
+              "number" => 4,
+              "url" => "https://forge.example.com/example/shop/pull/4",
+              "title" => "Gift cards",
+              "state" => "draft",
+              "action" => "opened"
+            }
+          }
+        ],
+        "text" => %{"title" => "Gift cards", "description" => "Adds gift cards to checkout."}
+      }
+
+      bytes = Jason.encode!(submission)
+      body = push_body("submission", [{"submission.json", "application/json", bytes}])
+      conn = write(ctx, "/artifacts", body)
+
+      assert %{"artifact" => %{"type" => "submission", "version" => %{"id" => id, "number" => 1}}} =
+               json_response(conn, 201)
+
+      assert Apiary.Artifacts.newest(ctx.work_item, "submission", "main").public_id == id
+      assert [%{files: [%{filename: "submission.json", content: ^bytes}]}] = RunApiStubs.pushed()
+
+      # A submission with no verdict fails the type's schema.
+      bytes = Jason.encode!(Map.delete(submission, "verdict"))
+      body = push_body("submission", [{"submission.json", "application/json", bytes}])
+      conn = write(ctx, "/artifacts", body)
+      assert json_response(conn, 422)["error"] == "invalid_artifact"
+      assert length(RunApiStubs.pushed()) == 1
+    end
+
     test "change is no standard type: a push of it is 422 unknown_type", ctx do
       file = {"change.json", "application/json", ~s({"url":"https://forge.example.com/pr/4"})}
       conn = write(ctx, "/artifacts", push_body("change", [file]))
@@ -1118,6 +1158,31 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "message" =>
                  "Define the artifact type change in the workspace's Artifact types, " <>
                    "then run the round again."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a submission to a workspace without the type is 422 unknown_type, with the step " <>
+           "to update the process from the harness",
+         ctx do
+      {1, _rows} =
+        Repo.delete_all(
+          from t in Apiary.Artifacts.Type,
+            where: t.workspace_id == ^ctx.work_item_workspace.id and t.name == "submission"
+        )
+
+      file = {"submission.json", "application/json", ~s({"ref":"qory/wi_example"})}
+      conn = write(ctx, "/artifacts", push_body("submission", [file]))
+
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "unknown_type",
+               "type" => "submission",
+               "message" =>
+                 "Press Update from harness in the workspace's Harness settings, then run " <>
+                   "the round again. The workspace's process has no artifact type submission."
              }
 
       assert RunApiStubs.pushed() == []
