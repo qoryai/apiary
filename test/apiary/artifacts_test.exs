@@ -1542,9 +1542,7 @@ defmodule Apiary.ArtifactsTest do
                  "points" => [%{run_again | "fix" => String.duplicate("x", 500)}]
                })
 
-      # An answer point has no fix: a fix would take the place of "Answer question N.". A
-      # fix is a string on one line: no control character, no line feed, 1 to 500
-      # characters.
+      # An answer point has no fix: a fix would take the place of "Answer question N.".
       answer = %{
         "text" => "Which basket gets the sale?",
         "action" => "answer",
@@ -1552,8 +1550,14 @@ defmodule Apiary.ArtifactsTest do
         "fix" => "Answer it on the Explore tab."
       }
 
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "value validated 'if' but not 'then'"}}}} =
+               push.("verdict", %{"verdict" => "escalate", "points" => [answer]})
+
+      # A fix is a string on one line: no control character, no line feed, 1 to 500
+      # characters.
       for point <- [
-            answer,
             %{run_again | "fix" => ""},
             %{run_again | "fix" => String.duplicate("x", 501)},
             %{run_again | "fix" => "Close the work item.\u0007"},

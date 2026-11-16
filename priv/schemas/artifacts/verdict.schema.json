@@ -43,7 +43,7 @@
         "fix": {"description": "What a person does to fix it, in one plain sentence on one line, 1 to 500 characters: Qory Apiary shows it in place of the sentence of the action run_again.", "$ref": "#/$defs/line", "minLength": 1, "maxLength": 500}
       },
       "if": {"required": ["action"], "properties": {"action": {"const": "answer"}}},
-      "then": {"required": ["question"], "not": {"required": ["fix"]}},
+      "then": {"required": ["question"], "properties": {"fix": false}},
       "else": {"not": {"required": ["question"]}}
     },
     "line": {

@@ -1644,6 +1644,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Jason.decode!(content) == body
     end
 
+    test "a fix on an answer point is 422 invalid_artifact", ctx do
+      points = [
+        %{
+          "text" => "Which basket gets the sale?",
+          "action" => "answer",
+          "question" => "q2",
+          "fix" => "Answer it on the Explore tab."
+        }
+      ]
+
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix verdict.json to match the format of verdict: at #/points/0, " <>
+                   "value validated 'if' but not 'then'."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a verdict without points is stored without the member, as its schema takes it",
          ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
