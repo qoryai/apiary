@@ -1225,7 +1225,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   starts with `submit` alone where no adapter declares one. A start-up whose
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
   400 `invalid_request`, and nothing is stored. The run and the integration contracts are
-  vendored at integrations `b00f97d`.
+  vendored at integrations `5d456eb`.
 
 ### Changed
 

@@ -106,14 +106,14 @@ defmodule Apiary.Dispatches.WireTest do
     "reason" => "The job could not start."
   }
   # The vendored contracts are at different integrations commits. The run and integration
-  # contracts are at b00f97dd, the last commit of the run submit work (submit and
-  # submit_module). That commit comes after 0506879f, which binds a group role to a list
-  # of agents.
+  # contracts are at 5d456ebe, the merge of the run submit work (submit and submit_module)
+  # into integrations 544-build-verify. That commit comes after 0506879f, which binds a
+  # group role to a list of agents.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
-          {"run/v1", "b00f97dd91034da0b647986950594bb559fe896b"},
-          {"integration/v1", "b00f97dd91034da0b647986950594bb559fe896b"},
+          {"run/v1", "5d456ebe65d5e5934b085b16de7a47ecb4133b2e"},
+          {"integration/v1", "5d456ebe65d5e5934b085b16de7a47ecb4133b2e"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
         ] do
