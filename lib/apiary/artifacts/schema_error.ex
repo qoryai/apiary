@@ -12,12 +12,12 @@ defmodule Apiary.Artifacts.SchemaError do
   # 'if' but not 'then'" is replaced by a message such as "property 'fix' is not
   # allowed"; an `if` error with none keeps its message. An `if` inside an `allOf` is
   # read so only with `unwrap: true`. Outside an `allOf` are the check on a verdict's
-  # point (`verdict.schema.json`) and, in `questions.schema.json` and
-  # `review-comments.schema.json`, the two checks that an answer with option null has a
-  # note; a verdict's top-level checks sit inside an `allOf`. With `unwrap: true`, as for the type `mockup`, an
-  # `allOf` error, which a `$ref` to a definition with a limit on its length makes, is the
-  # errors of its schemas that failed, so "value did not conform to all of the given
-  # schemas" is replaced by the failing limit's message.
+  # point (`verdict.schema.json`) and the two checks in `questions.schema.json` that an
+  # answer with option null has a note. A verdict's top-level checks and every `if` in
+  # `review-comments.schema.json` sit inside an `allOf`. With `unwrap: true`, as for the
+  # type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit on its
+  # length makes, is the errors of its schemas that failed, so "value did not conform to
+  # all of the given schemas" is replaced by the failing limit's message.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
