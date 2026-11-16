@@ -13,8 +13,9 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   newest verdict with its points, the stage's gaps (why it waits for a workflow, or
   #   the failed checks that started its round) and the work item's notes.
   # - `index/1`: every artifact of the work item with its versions, each version's files,
-  #   writer, approvals, whether a run a member cancelled wrote it and whether it is a
-  #   withdrawal (`Apiary.Stages.artifact_index/1`).
+  #   writer, approvals (by a person, or `automatic` at a gate `none`), whether a run a
+  #   member cancelled wrote it and whether it is a withdrawal
+  #   (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
   #
   # A person is written by name, as Explore's input writes a person
@@ -207,9 +208,15 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
+  # An approval that a gate `none` recorded with no member has no person: `by` null and
+  # `automatic` true.
   defp approval(approval, context) do
+    automatic = get(approval, :automatic) == true
+
     object([
-      {"by", object([{"name", name(context, get(approval, :user_id))}])},
+      {"by",
+       if(automatic, do: nil, else: object([{"name", name(context, get(approval, :user_id))}]))},
+      {"automatic", automatic},
       {"stage_id", get(approval, :stage_id)},
       {"at", time(get(approval, :inserted_at))}
     ])

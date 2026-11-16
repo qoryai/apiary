@@ -192,8 +192,12 @@ newest version, leaving out versions by a run a member cancelled, is a withdrawa
 index lists a withdrawn name with its versions, and the stage's outputs and inputs in
 `GET work-item` and the work item's pages leave it out. A run cannot withdraw `verdict`,
 so the newest verdict in `GET work-item` is never a withdrawal. An approval is
-`{"by": {"name": "dana"}, "stage_id": "st_...", "at": "..."}`. The index contains no file
-contents; `GET artifacts/<version_id>/files/<filename>` returns them.
+`{"by": {"name": "dana"}, "automatic": false, "stage_id": "st_...", "at": "..."}`. A
+gate `none` records an approval of the stage's newest versions, leaving out withdrawals
+and versions by a run a member cancelled, when the stage passes it:
+`{"by": null, "automatic": true, ...}`. When a member accepted the escalation that ended
+such a stage, the approval has the member in `by` and `automatic` false. The index
+contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 

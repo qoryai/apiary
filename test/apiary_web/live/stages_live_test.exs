@@ -490,9 +490,18 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       assert person < approvers and approvers < none
 
+      refute has_element?(view, "#stage-gate-none-line")
+
       view |> form("#stage-form", stage: %{gate: %{kind: "none"}}) |> render_change()
       assert card(view, "Explore")["gate"] == "No gate"
       refute has_element?(view, "#stage-gate-named")
+
+      # Under No gate, how a gate none approves (vault 0252).
+      assert has_element?(
+               view,
+               "#stage-gate-none-line",
+               "Recorded as approved automatically, with the time. At the round limit, a member decides."
+             )
     end
 
     test "a named approver shows by name in the history, never by id", %{

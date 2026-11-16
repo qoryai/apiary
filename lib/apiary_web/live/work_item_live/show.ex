@@ -2013,7 +2013,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      StageTab.frames(stage, ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      stage
+      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.approved(stage, assigns.flow.index)
+      |> Enum.map(&approver(socket, &1))
 
     wanted =
       for %{type: type, version: version, open: open} <- frames,
@@ -2034,6 +2037,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp framed(socket), do: assign(socket, :frames, [])
+
+  # The member of a frame's approval (`StageTab.approved/3`) as the components show a
+  # person (`View.person/2`), Former member for one whose account is gone: read for that
+  # frame alone, as they may be in no other part of the page.
+  defp approver(socket, %{approval: %{automatic: false, by: id} = approval} = frame) do
+    person = socket |> scope() |> View.people(List.wrap(id)) |> View.person(id)
+    %{frame | approval: %{approval | by: person}}
+  end
+
+  defp approver(_socket, frame), do: frame
 
   defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))

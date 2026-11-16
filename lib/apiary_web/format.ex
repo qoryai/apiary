@@ -269,6 +269,13 @@ defmodule ApiaryWeb.Format do
   end
 
   @doc """
+  A date and a time that leave out the year when it is the current one: "15 Nov, 14:20",
+  and "15 Nov 2025, 14:20" a year earlier.
+  """
+  @spec day_time(moment(), DateTime.t()) :: String.t()
+  def day_time(at, now \\ DateTime.utc_now()), do: datetime(at, year: not this_year?(at, now))
+
+  @doc """
   A moment of the coming week, as the reader's day and clock place it: "14:00" on the
   day of `now`, "Mon 09:00" on one of the six days after it, and "26 Sept, 14:00", with
   the year when it is not the current one, before or after those days.

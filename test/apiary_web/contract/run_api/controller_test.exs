@@ -564,6 +564,35 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert approved["approvals"] == [
                %{
                  "by" => %{"name" => Inputs.person_name(ctx.scope.user.id)},
+                 "automatic" => false,
+                 "stage_id" => @explore,
+                 "at" => at(approval.inserted_at)
+               }
+             ]
+    end
+
+    test "has an approval a gate none recorded with no member as by null, automatic", ctx do
+      place!(ctx)
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png <> "auto"}])
+             ).status == 201
+
+      [pushed] = RunApiStubs.pushed()
+
+      approval =
+        decide!(ctx, :approve, versions: [pushed.public_id], user_id: nil, automatic: true)
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert artifact["approved_version"] == pushed.public_id
+      [version] = artifact["versions"]
+
+      assert version["approvals"] == [
+               %{
+                 "by" => nil,
+                 "automatic" => true,
                  "stage_id" => @explore,
                  "at" => at(approval.inserted_at)
                }
