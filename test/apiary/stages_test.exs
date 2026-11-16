@@ -3806,7 +3806,7 @@ defmodule Apiary.StagesTest do
                Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @verify)
     end
 
-    test "a save refuses a return to a stage that is not earlier, in a loop, or over 10" do
+    test "a save with a return to a stage that is not earlier, in a loop, or over 10 fails" do
       document = &%{"schema" => "qory.process/v1", "stages" => &1}
       returning = &%{"workflow" => "check", "return" => Map.merge(%{"stage" => &1}, &2)}
 
