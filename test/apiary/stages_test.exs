@@ -4638,14 +4638,14 @@ defmodule Apiary.StagesTest do
 
   describe "a first attempt, and Verify with no run" do
     @verify "st_m1mqbeywdg"
-    @fast_on %{"track" => "fast-track"}
+    @on_fast %{"track" => "fast"}
     @tracks_of_process [
       %{"id" => "standard", "name" => "Standard"},
-      %{"id" => "fast-track", "name" => "Fast track"}
+      %{"id" => "fast", "name" => "Fast track"}
     ]
 
     # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
-    # ends its sequence when it passes, then plan-the-build; Verify, whose run and whose
+    # ends its sequence when it passes, then plan-the-build and, on Fast track, write-the-checks; Verify, whose run and whose
     # output `verification` Fast track does without.
     defp first_attempt_process!(scope) do
       {:ok, _type} =
@@ -4659,14 +4659,15 @@ defmodule Apiary.StagesTest do
         "machine" => "default",
         "tracks" => @tracks_of_process,
         "stages" => [
-          explore_stage(offering(["standard", "fast-track"])),
+          explore_stage(offering(["standard", "fast"])),
           stage(@build, "Build", [
-            %{"workflow" => "make-a-small-change", "when" => @fast_on, "first_attempt" => true},
-            %{"workflow" => "plan-the-build"}
+            %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+            %{"workflow" => "plan-the-build"},
+            %{"workflow" => "write-the-checks", "when" => @on_fast}
           ]),
-          stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket", "unless" => @fast_on}], %{
+          stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket", "unless" => @on_fast}], %{
             "outputs" => [
-              %{"type" => "verification", "required" => true, "unless" => @fast_on}
+              %{"type" => "verification", "required" => true, "unless" => @on_fast}
             ]
           })
         ]
@@ -4700,7 +4701,7 @@ defmodule Apiary.StagesTest do
 
     test "a passed first attempt ends Build's sequence, and Verify's gate opens with no run and no verification",
          %{scope: scope} do
-      work_item = in_build!(scope, "fast-track")
+      work_item = in_build!(scope, "fast")
 
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
       assert %DispatchRun{workflow: "make-a-small-change", stage_entry: 0} = newest_run(work_item)
@@ -4733,8 +4734,47 @@ defmodule Apiary.StagesTest do
                Stages.approve(scope, verifying, nil, expect_stage: @verify)
     end
 
+    test "a passed first attempt leaves one skip for each later workflow, until the stage runs again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+
+      assert [
+               %{stage_id: @build, workflow: "plan-the-build", reason: "first_attempt_passed"},
+               %{stage_id: @build, workflow: "write-the-checks", reason: "first_attempt_passed"}
+             ] = skips = Stages.skips(work_item)
+
+      assert Enum.all?(skips, &(&1.cause_entry == "make-a-small-change" and &1.input == nil))
+      assert Enum.all?(skips, &(&1.track == nil and &1.negated == false and &1.round == 1))
+
+      # Approving Build and moving back into it runs the stage again, from its first entry.
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+      assert Enum.count(Stages.skips(verifying), &(&1.stage_id == @build)) == 2
+
+      {:ok, again} = Stages.move(scope, verifying, @build, "Again.", expect_stage: @verify)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = again
+      assert Enum.filter(Stages.skips(again), & &1.reason) == []
+    end
+
+    test "Request changes clears the skips of a first attempt, and its next pass writes them again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+      assert length(Stages.skips(work_item)) == 2
+      [proposal] = versions(work_item, "proposal")
+
+      {:ok, again} =
+        Stages.request_changes(scope, work_item, "Redo it.", proposal.public_id,
+          expect_stage: @build
+        )
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = again
+      assert Stages.skips(again) == []
+
+      again = end_run!(again, verdict("passed"))
+      assert [_plan, _checks] = Stages.skips(again)
+    end
+
     test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
-      work_item = in_build!(scope, "fast-track")
+      work_item = in_build!(scope, "fast")
       work_item = end_run!(work_item, verdict("changes-requested"))
 
       assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item

@@ -1460,7 +1460,9 @@ defmodule Apiary.Stages do
   # first: each with its stage, workflow, the condition that held it back as `input` (a
   # type) or `track` (an id, with `track_name`), `negated` (true for an `unless` that was
   # met) and `after_attempt`, the newest attempt of the take in when the runner passed it
-  # over (0 for none). `earlier_skips/1` is those of the take ins before the current one,
+  # over (0 for none); for an entry a first attempt passed over, `reason` is
+  # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its workflow
+  # (both nil for a condition). `earlier_skips/1` is those of the take ins before the current one,
   # each with its `take_in`; `stage_skips/1` the stages passed over whole in the current
   # take in (`skip_records/1`).
   @doc false
@@ -1517,6 +1519,8 @@ defmodule Apiary.Stages do
         track: skip.track,
         track_name: names[skip.track] || skip.track,
         negated: skip.negated,
+        reason: skip.reason,
+        cause_entry: skip.cause_entry,
         round: skip.round,
         take_in: skip.take_in,
         after_attempt: skip.after_attempt
@@ -1755,12 +1759,13 @@ defmodule Apiary.Stages do
   # condition then does not pass it over (`Runner`, `facts.forced`).
   defp enter_locked(work_item, version, stage, forced? \\ false) do
     # A stage entered again is no longer the stage that was passed over: its record of the
-    # pass-over goes, and a new pass-over writes a new one.
+    # pass-over goes, and a new pass-over writes a new one. So do the records of the entries
+    # a first attempt passed over.
     Repo.delete_all(
       from s in Skip,
         where:
           s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
-            s.take_in == ^work_item.take_in and is_nil(s.workflow)
+            s.take_in == ^work_item.take_in and (is_nil(s.workflow) or not is_nil(s.reason))
     )
 
     now = DateTime.utc_now()
@@ -1778,6 +1783,9 @@ defmodule Apiary.Stages do
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
   defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}, by \\ nil) do
+    if match?(:request_changes, event) or match?({:another_round, _cause}, event),
+      do: delete_first_attempt_skips(work_item, stage)
+
     facts = Map.merge(facts(work_item, version, stage), more)
     outcome = Runner.step(stage, position(work_item), event, facts)
     apply_outcome(work_item, version, stage, outcome, run_id, by)
@@ -2126,6 +2134,17 @@ defmodule Apiary.Stages do
     )
   end
 
+  # The records of the entries a first attempt passed over (`Runner`), in the stage and the
+  # take in: they go when the stage runs its sequence again.
+  defp delete_first_attempt_skips(work_item, stage) do
+    Repo.delete_all(
+      from s in Skip,
+        where:
+          s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
+            s.take_in == ^work_item.take_in and not is_nil(s.reason)
+    )
+  end
+
   # A workflow entry the runner passed over, after the newest run of the take in.
   defp skip!(work_item, version, stage, spec) do
     newest =
@@ -2149,6 +2168,8 @@ defmodule Apiary.Stages do
       input: spec.input,
       track: spec.track,
       negated: spec.negated,
+      reason: Map.get(spec, :reason),
+      cause_entry: Map.get(spec, :cause_entry),
       after_attempt: newest || 0,
       inserted_at: DateTime.utc_now()
     }

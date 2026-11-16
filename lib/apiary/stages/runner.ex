@@ -23,8 +23,9 @@ defmodule Apiary.Stages.Runner do
   #     stage escalates, `round_limit`, with a point that says so
   #     (`Apiary.Stages.Points`).
   #   * A workflow entry outside a loop with `first_attempt: true` ends the sequence when its
-  #     run ends `passed`: the entries after it are passed over, and the Exists checks and
-  #     the gate follow. Another verdict acts as for any entry.
+  #     run ends `passed`: each workflow after it is passed over (`{:skip, spec}` with the
+  #     reason `first_attempt_passed`, those in a loop's body included), and the Exists
+  #     checks and the gate follow. Another verdict acts as for any entry.
   #   * Outside a loop, the sequence goes on after a run with `passed` or
   #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with a point
   #     that says so, on a first run and on a rerun. A test work item's run with no verdict
@@ -170,16 +171,19 @@ defmodule Apiary.Stages.Runner do
   @typedoc """
   A workflow entry passed over, at the position it would run at: its workflow and the
   condition that held it back, as `input` (a type) or `track` (an id), exactly one of them,
-  with `negated` for an `unless`.
+  with `negated` for an `unless`; or, with neither, `reason` `first_attempt_passed` and
+  `cause_entry`, the name of the first attempt's entry, else its workflow.
   """
   @type skip_spec :: %{
-          workflow: String.t(),
-          input: String.t() | nil,
-          track: String.t() | nil,
-          negated: boolean,
-          entry: non_neg_integer,
-          loop_entry: non_neg_integer | nil,
-          round: pos_integer
+          :workflow => String.t(),
+          :input => String.t() | nil,
+          :track => String.t() | nil,
+          :negated => boolean,
+          optional(:reason) => String.t(),
+          optional(:cause_entry) => String.t(),
+          :entry => non_neg_integer,
+          :loop_entry => non_neg_integer | nil,
+          :round => pos_integer
         }
 
   @typedoc "A run to queue, at the position it runs at."
@@ -506,9 +510,14 @@ defmodule Apiary.Stages.Runner do
   # the sequence: the rest of it is passed over, and the checks and the gate follow. In a
   # loop `passed` already leaves the loop.
   defp run_ended(stage, position, {:verdict, :passed, _points}, facts) do
-    if first_attempt?(stage, position),
-      do: finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts),
-      else: start(stage, next(stage, position, facts), facts)
+    if first_attempt?(stage, position) do
+      outcome =
+        finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts)
+
+      skipped(first_attempt_skips(stage, position), outcome)
+    else
+      start(stage, next(stage, position, facts), facts)
+    end
   end
 
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
@@ -636,6 +645,36 @@ defmodule Apiary.Stages.Runner do
   end
 
   defp next(stage, position, facts), do: at(stage, position.entry + 1, position.round, facts)
+
+  # A skip for each workflow after the first attempt at `position`, those in a loop's body
+  # included, with the reason `first_attempt_passed` and the name of the first attempt's
+  # entry, else its workflow, as `cause_entry`. No condition holds them back.
+  defp first_attempt_skips(stage, position) do
+    entry = entry_at(stage, position)
+    cause = entry["name"] || entry["workflow"]
+
+    for {item, i} <- Enum.with_index(sequence(stage)),
+        i > position.entry,
+        {workflow, j} <- later_workflows(item),
+        do:
+          {:skip,
+           %{
+             workflow: workflow,
+             input: nil,
+             track: nil,
+             negated: false,
+             reason: "first_attempt_passed",
+             cause_entry: cause,
+             entry: i,
+             loop_entry: j,
+             round: 1
+           }}
+  end
+
+  defp later_workflows(%{"loop" => %{"body" => body}}),
+    do: for({%{"workflow" => name}, j} <- Enum.with_index(body), do: {name, j})
+
+  defp later_workflows(%{"workflow" => name}), do: [{name, nil}]
 
   defp first_attempt?(stage, position),
     do:

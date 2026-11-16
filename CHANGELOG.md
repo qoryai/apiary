@@ -16,14 +16,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
-  refused when a loop's body has the key.
+  refused when a loop's body has the key. Each workflow after the first attempt that passed
+  gets a record of being passed over, with the reason `first_attempt_passed` and the name of
+  the first attempt's entry, else its workflow (`stage_skips.reason` and `cause_entry`), and
+  the work item page lists it: "Did not run, because <entry> passed on its first attempt."
+  The records go when the stage is entered again, and when Request changes or Another round
+  runs its sequence again.
 - An output takes `when` and `unless` with `{track: <id>}` or `{input: <type>}`, as an
   input does, and the stage runner evaluates it the way it does any other condition. An
   output whose condition holds it back is not required: its Exists check does not fail the
   stage, so the stage goes on to its gate, and the work item page lists it as not required.
   A save is refused for a track that no earlier gate offers, a type that no earlier stage
   makes, and both keys on one output. A Verify stage whose entries are all passed over on
-  the fast track, with `verification` set to `unless: {track: fast-track}`, starts no run
+  the fast track, with `verification` set to `unless: {track: fast}`, starts no run
   and opens its gate without `verification`; on the standard track `verification` is still
   required.
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
@@ -2171,6 +2176,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   validates it with a scan that does not block writes. It changes no row. Rolling back
   deletes every row with no workflow, each record of a stage passed over whole, and
   restores the two columns as not null.
+- `stage_skips` (20261116150000 and 20261116150100): nullable columns `reason` and
+  `cause_entry`, so a row can record an entry that a passed first attempt passed over, with
+  a check that a row has exactly one of `input`, `track` and `reason`, that `reason` is
+  `first_attempt_passed`, and that `cause_entry` is set with it. The columns are nullable,
+  so adding them rewrites no row. The first migration replaces the check without a scan, and
+  the second validates it with a scan that does not block writes. No stored row breaks it.
+  Rolling back deletes the rows with a `reason` and drops the two columns.
 - `gate_decisions` (20261116130000): a nullable column `take_in`, the take in of the work
   item that a decision was made in. It has no default, so adding it rewrites no row, and a
   decision stored before has none. Rolling back drops the column, with the take in of every

@@ -5299,7 +5299,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   attr :id, :string, required: true
-  attr :skip, :map, required: true, doc: "`%{workflow:, input:, track:, negated:}`"
+
+  attr :skip, :map,
+    required: true,
+    doc: "`%{workflow:, input:, track:, negated:}`, or `%{workflow:, reason:, cause_entry:}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -5314,6 +5317,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  defp skip_words(%{reason: "first_attempt_passed", cause_entry: entry}),
+    do: gettext("Did not run, because %{entry} passed on its first attempt.", entry: entry)
 
   defp skip_words(%{track: track} = skip) when is_binary(track) do
     if skip.negated,

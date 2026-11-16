@@ -498,14 +498,22 @@ defmodule Apiary.ProcessesTest do
     test "takes when and unless with a track or an input on an output, with the checks of any condition" do
       output = &(%{"type" => "mockup", "required" => true} |> Map.merge(&1))
 
+      document =
+        tracked()
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ])
+        |> with_gate_tracks(@explore, ["standard", "fast"])
+
       put =
-        &edit(tracked(), fn s ->
+        &edit(document, fn s ->
           if(s["id"] == @shape, do: Map.put(s, "outputs", [&1]), else: s)
         end)
 
       for condition <- [
             %{"when" => %{"track" => "standard"}},
-            %{"unless" => %{"track" => "fast-track"}},
+            %{"unless" => %{"track" => "fast"}},
             %{"when" => %{"input" => "proposal"}},
             %{"unless" => %{"input" => "proposal"}}
           ] do
@@ -521,12 +529,10 @@ defmodule Apiary.ProcessesTest do
       assert errors(put.(output.(%{"unless" => %{"input" => "mockup"}}))) ==
                [{"#/stages/1/outputs/0/unless/input", :condition_input}]
 
-      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast-track"}}
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast"}}
       assert errors(put.(output.(both))) == [{"#/stages/1/outputs/0", :condition_both}]
 
-      assert errors(
-               put.(output.(%{"unless" => %{"track" => "fast-track", "input" => "proposal"}}))
-             ) !=
+      assert errors(put.(output.(%{"unless" => %{"track" => "fast", "input" => "proposal"}}))) !=
                []
     end
 

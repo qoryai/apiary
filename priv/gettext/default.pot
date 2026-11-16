@@ -9006,6 +9006,11 @@ msgstr ""
 msgid "Dial failed"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Did not run, because %{entry} passed on its first attempt."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Difference between version %{from} and version %{to}"

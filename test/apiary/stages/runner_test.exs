@@ -322,20 +322,70 @@ defmodule Apiary.Stages.RunnerTest do
     defp attempt,
       do: stage([wf("small-change", %{"first_attempt" => true}), wf("plan"), wf("check")])
 
+    defp first_attempt_skip(workflow, entry, loop_entry \\ nil, cause \\ "small-change"),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: nil,
+           track: nil,
+           negated: false,
+           reason: "first_attempt_passed",
+           cause_entry: cause,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: 1
+         }}
+
     test "passed ends the sequence: the rest is passed over and the gate follows" do
-      assert %{state: :at_gate, position: %{entry: 3, loop_entry: nil}, actions: []} =
-               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+      assert %{
+               state: :at_gate,
+               position: %{entry: 3, loop_entry: nil},
+               actions: [skip_plan, skip_check]
+             } = Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skip_plan == first_attempt_skip("plan", 1)
+      assert skip_check == first_attempt_skip("check", 2)
+    end
+
+    test "passed writes a skip for each workflow of a later loop, and names the entry by its name" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true, "name" => "Quick fix"}),
+          loop([wf("review"), wf("fix")])
+        ])
+
+      assert %{state: :at_gate, actions: skips} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skips == [
+               first_attempt_skip("review", 1, 0, "Quick fix"),
+               first_attempt_skip("fix", 1, 1, "Quick fix")
+             ]
+    end
+
+    test "no skip for an entry before the first attempt, or when it does not pass" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert %{actions: [{:skip, %{workflow: "c", entry: 2}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert %{actions: [{:queue, %{workflow: "c"}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :changes_requested, nil}})
     end
 
     test "passed goes to a gate none's approval and advance" do
       stage = %{attempt() | "gate" => %{"kind" => "none"}}
 
-      assert %{state: :done, actions: [:approve, :advance]} =
+      assert %{state: :done, actions: [{:skip, _}, {:skip, _}, :approve, :advance]} =
                Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
     end
 
     test "passed runs the Exists checks before the gate" do
-      assert %{state: :escalated, actions: [{:escalate, :check_failed, _points}]} =
+      assert %{
+               state: :escalated,
+               actions: [{:skip, _}, {:skip, _}, {:escalate, :check_failed, _}]
+             } =
                Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
                  failed_checks: ["submission"]
                })
