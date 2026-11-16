@@ -342,6 +342,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypes do
               <Inspector.stage_panel
                 :if={@stage}
                 stage={@stage}
+                doc={@draft}
                 may={true}
                 named={false}
                 last={length(@draft["stages"]) == 1}

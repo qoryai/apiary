@@ -2171,6 +2171,180 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
+  describe "POST verdict with a track (A-23)" do
+    @tracks [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast track"}
+    ]
+    @track %{"id" => "fast-track", "reason" => "The change touches one file."}
+
+    # The run placed in Explore, whose gate offers the tracks `ids` of the process.
+    defp offering!(ctx, ids) do
+      document =
+        "software"
+        |> Apiary.Processes.default_document()
+        |> Map.put("tracks", @tracks)
+        |> ApiaryWeb.StagesLive.Draft.update_stage(@explore, fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ids)}
+        end)
+
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [process_version_id: version.id, stage_id: @explore]
+        )
+
+      # The gate is the one of the work item's version.
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [process_version_id: version.id]
+        )
+    end
+
+    test "stores a track the gate offers in the verdict's file", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert conn.status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed", "track" => @track}
+    end
+
+    test "a track the gate does not offer is 422 invalid_artifact for track, the fix first",
+         ctx do
+      offering!(ctx, ["standard"])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{"error" => "invalid_artifact", "names" => ["track"], "message" => message} =
+               json_response(conn, 422)
+
+      assert message ==
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a gate that offers no track, and a run in no stage, refuse a track", ctx do
+      offering!(ctx, [])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{"names" => ["track"], "message" => message} = json_response(conn, 422)
+      assert message == "Leave track out of the verdict: the gate of Explore offers no track."
+
+      # A stage the version does not have offers no track.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [stage_id: "st_zzzzzzzzzz"]
+        )
+
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{
+               "message" =>
+                 "Leave track out of the verdict: the gate of the run's stage offers no track."
+             } =
+               json_response(conn, 422)
+
+      # A run with no stage is a run of Explore: its gate is Explore's.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [stage_id: nil]
+        )
+
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+      assert %{"message" => message} = json_response(conn, 422)
+      assert message == "Leave track out of the verdict: the gate of Explore offers no track."
+    end
+
+    test "a verdict pushed as an artifact is checked as POST verdict is", ctx do
+      offering!(ctx, ["standard"])
+
+      file = fn track ->
+        {"verdict.json", "application/json",
+         Jason.encode!(%{"verdict" => "passed", "track" => track})}
+      end
+
+      conn = write(ctx, "/artifacts", push_body("verdict", [file.(@track)]))
+
+      assert %{"error" => "invalid_artifact", "names" => ["track"], "message" => message} =
+               json_response(conn, 422)
+
+      assert message ==
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
+
+      assert RunApiStubs.pushed() == []
+
+      offered = %{"id" => "standard", "reason" => "The usual change."}
+      assert write(ctx, "/artifacts", push_body("verdict", [file.(offered)])).status == 201
+    end
+
+    test "a track the schema refuses is the schema's, with no id echoed", ctx do
+      offering!(ctx, ["standard"])
+      long = String.duplicate("a", 5_000)
+
+      for id <- [long, "Fast Track", 7] do
+        conn =
+          write(ctx, "/verdict", %{
+            "verdict" => "passed",
+            "track" => %{"id" => id, "reason" => "x"}
+          })
+
+        assert %{"names" => names, "message" => message} = json_response(conn, 422)
+        assert message =~ "verdict.json"
+        refute message =~ long
+        assert names == ["files[0]"]
+      end
+    end
+
+    test "a verdict file that is not JSON is 422 invalid_artifact, as before", ctx do
+      offering!(ctx, ["standard"])
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("verdict", [{"verdict.json", "application/json", "{not json"}])
+        )
+
+      assert %{"error" => "invalid_artifact", "names" => ["files[0]"]} = json_response(conn, 422)
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a null track is no track, and is stored without the member", ctx do
+      offering!(ctx, ["standard"])
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "track" => nil}).status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a verdict with no track is stored as before where the gate offers tracks", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+      assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a track of another form is the schema's to refuse, at files[0]", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+
+      for track <- [
+            %{"id" => "fast-track"},
+            %{"id" => "fast-track", "reason" => ""},
+            %{"id" => "fast-track", "reason" => "ok", "value" => 1},
+            "fast-track"
+          ] do
+        conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => track})
+
+        assert %{"error" => "invalid_artifact", "names" => ["files[0]"]} =
+                 json_response(conn, 422)
+      end
+    end
+  end
+
   describe "GET resume/transcript" do
     @transcript_path "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
 
