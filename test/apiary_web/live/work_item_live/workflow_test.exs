@@ -2644,7 +2644,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-gate-approve")
     end
 
-    test "at a gate none: the line and Add, no approval, and a real push passes it on", %{
+    test "at a gate none: the line and Add, no Approve, and a real push passes it on", %{
       conn: conn,
       scope: scope
     } do
@@ -2661,7 +2661,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
 
       assert Repo.get!(WorkItem, work_item.id).stage_id == @build
-      assert decisions(work_item, :approve) == []
+
+      # The gate none records the approval, with no member (vault 0252).
+      assert [%GateDecision{stage_id: @shape, user_id: nil, automatic: true}] =
+               decisions(work_item, :approve)
+
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
 

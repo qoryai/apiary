@@ -449,6 +449,107 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "the approval of a gate none (vault 0252)" do
+    setup %{scope: scope} do
+      process!(scope, %{"gate" => %{"kind" => "none"}})
+      :ok
+    end
+
+    test "the first frame has Approved and \"Approved automatically\" with the time", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_gate!(scope)
+      assert %WorkItem{stage_id: @build} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-output-spec-s .q-xp-frame-b", "Approved")
+
+      caption = view |> element("#work-item-tab-output-spec-approval") |> render()
+      assert caption =~ "hero-check-micro"
+      assert caption =~ "Version 1 · Approved automatically · "
+
+      [%{inserted_at: at}] =
+        Repo.all(
+          from d in Apiary.Stages.GateDecision,
+            where: d.work_item_id == ^work_item.id and d.stage_id == ^@shape
+        )
+
+      assert caption =~ ~r|<time [^>]*datetime="[^"]+"[^>]*>#{ApiaryWeb.Format.day_time(at)}</time>|
+
+      # The folded frames show their version alone.
+      refute has_element?(view, "#work-item-tab-output-test-features-s .q-xp-frame-b")
+      refute has_element?(view, "#work-item-tab-output-test-features-approval")
+      assert has_element?(view, "#work-item-tab-output-test-features-s", "Version 1")
+    end
+
+    test "an accepted escalation shows \"Accepted by you\", and another member's name to others",
+         %{conn: conn, scope: scope} do
+      work_item = at_shape!(scope)
+
+      work_item =
+        work_item
+        |> end_run!(fn run, _registered ->
+          push!(run, work_item, "spec", "## The spec text")
+
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              %{
+                "verdict" => "escalate",
+                "points" => [%{"text" => "Ask.", "action" => "run_again"}]
+              },
+              stage_id: run.stage_id
+            )
+        end)
+        |> reload()
+
+      assert work_item.stage_state == :escalated
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+
+      assert work_item.stage_id == @build
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      assert has_element?(view, "#work-item-tab-output-spec-s .q-xp-frame-b", "Approved")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-spec-approval",
+               "Version 1 · Accepted by you · "
+             )
+
+      other = Apiary.OrganisationsFixtures.member_fixture(scope, :member)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), other.user), stage(scope, work_item.number))
+
+      name = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-spec-approval",
+               "Version 1 · Accepted by #{name} · "
+             )
+    end
+
+    test "a person gate's approval shows no mark", %{conn: conn, scope: scope} do
+      process!(scope)
+      work_item = at_gate!(scope)
+      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-output-spec-s", "Version 1")
+      refute has_element?(view, "#work-item-tab-output-spec-s .q-xp-frame-b")
+      refute has_element?(view, "#work-item-tab-output-spec-approval")
+    end
+  end
+
   describe "the review comments document" do
     test "has no frame" do
       stage = %{outputs: ["spec", "review-comments", "mockup"]}

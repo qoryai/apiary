@@ -76,8 +76,8 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :at_gate, actions: []} = Runner.step(stage([]), nil, :enter)
     end
 
-    test "a stage with no workflow and no gate passes through" do
-      assert %{state: :done, actions: [:advance]} =
+    test "a stage with no workflow and no gate records its approval and passes through" do
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(stage([], gate: %{"kind" => "none"}), nil, :enter)
     end
   end
@@ -107,7 +107,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :at_gate, actions: []} =
                Runner.step(seq, pos(0, nil, 1), :version_added, %{failed_checks: ["mockup"]})
 
-      assert %{state: :done, position: pos(0, nil, 1), actions: [:advance]} ==
+      assert %{state: :done, position: pos(0, nil, 1), actions: [:approve, :advance]} ==
                Runner.step(seq, pos(0, nil, 1), :version_added, %{})
     end
 
@@ -460,13 +460,13 @@ defmodule Apiary.Stages.RunnerTest do
       assert queued(%{outcome | actions: queue}) == {"a", 0, 0, 2}
     end
 
-    test "passing checks go to a person gate, or pass on with gate none" do
+    test "passing checks go to a person gate, or record the approval and pass on with gate none" do
       assert %{state: :at_gate} =
                Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :passed, nil}})
 
       seq = stage([wf("a")], gate: %{"kind" => "none"})
 
-      assert %{state: :done, actions: [:advance]} =
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
     end
   end
@@ -525,8 +525,8 @@ defmodule Apiary.Stages.RunnerTest do
                })
     end
 
-    test "accept of a stopped run at the last entry passes a gate none on, with no checks" do
-      assert %{state: :done, actions: [:advance]} =
+    test "accept of a stopped run at the last entry approves a gate none and passes on, with no checks" do
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(
                  stage([wf("a")], gate: %{"kind" => "none"}),
                  pos(0, nil, 1),
