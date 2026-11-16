@@ -3941,6 +3941,11 @@ msgstr[1] ""
 msgid ", done"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "0.5x"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "1 organisation matches."
@@ -3985,6 +3990,11 @@ msgstr ""
 msgid "1 workspace matches."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "1.5x"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1: one machine"
@@ -3993,6 +4003,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1: one machine."
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "1x"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "2x"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -13632,6 +13652,11 @@ msgstr ""
 msgid "No %{type} was stored in this stage."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{type}: %{workflow} did not run."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"
@@ -17124,6 +17149,16 @@ msgstr ""
 msgid "Remove the allow rule %{host}?"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the control or invisible characters."
@@ -19450,6 +19485,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Spec"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Speed"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
