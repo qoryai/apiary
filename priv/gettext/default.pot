@@ -3444,6 +3444,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "%{stage}: a gate with no approval offers no track. Remove its tracks, or let a person approve."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
 msgstr ""
 
@@ -3465,6 +3470,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: keep at most 20 entries in each list."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}: write each track of the gate as lower-case words joined by hyphens, such as fast-track."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -10749,7 +10759,17 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Give each track a different id. Two tracks have the id %{track}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Give every stage a name of 1 to 60 characters."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every track an id of lower-case words joined by hyphens, such as fast-track, and a name of 1 to 60 characters."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -17151,7 +17171,42 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Remove the condition on %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on %{stage}, or let an earlier stage offer the track %{track} at its gate."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on %{workflow} in %{stage}, or let an earlier stage offer the track %{track} at its gate."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on a loop in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on a loop in %{stage}, or let an earlier stage offer the track %{track} at its gate."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on the input %{input} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on the input %{input} in %{stage}, or let an earlier stage offer the track %{track} at its gate."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -17212,6 +17267,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the pool %{pool}? Runs in %{workspace} then use the Qory Pool."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the track %{track} from the gate of %{stage}, or add it to the tracks of the process."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex

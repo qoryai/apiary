@@ -334,8 +334,9 @@ defmodule ApiaryWeb.StagesLive.Draft do
 
   defp merge_artifacts(list, _params), do: list
 
+  # A gate with no approval offers no track (`priv/schemas/process/v1.schema.json`, `gate`).
   defp merge_gate(gate, %{"kind" => "none"}),
-    do: gate |> Map.put("kind", "none") |> Map.delete("approvers")
+    do: gate |> Map.put("kind", "none") |> Map.drop(["approvers", "tracks"])
 
   defp merge_gate(gate, %{"kind" => "person"} = p) do
     approvers =

@@ -12,6 +12,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
+  example Standard and Fast track. A gate lists the track ids it offers in `tracks`, and
+  a gate of kind `none` offers none. A stage, a loop, a workflow entry and an input take
+  `when` and `unless`, each with one condition: `{input: <type>}` or `{track: <id>}`. A
+  save is refused for a track id twice, a gate that offers an undeclared track, a `{track}`
+  condition that no earlier gate offers, and any other key on an input or a loop. A process
+  without `tracks` is saved as before. The runner does not use the conditions yet.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.

@@ -339,13 +339,14 @@ defmodule ApiaryWeb.StagesLive.Words do
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")
 
-  # A condition whose input type no earlier stage lists as an output, on a workflow entry
-  # or an output, at a place such as `#/stages/1/sequence/0/loop/body/1/when/input`.
+  # A condition that no earlier stage can meet, in `when` or `unless` on a stage, an input,
+  # a loop or a workflow entry, or in `when` on an output, at a place such as
+  # `#/stages/1/sequence/0/loop/body/1/when/input` or `#/stages/2/unless/track`.
   def refusal(%{error: :condition_input, path: path, detail: type}, doc) when is_binary(path) do
     {stage, _field} = place(path, doc)
 
-    case conditioned(doc, path) do
-      %{"workflow" => workflow} when is_binary(workflow) ->
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
         gettext(
           "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}.",
           workflow: workflow,
@@ -353,7 +354,7 @@ defmodule ApiaryWeb.StagesLive.Words do
           type: type
         )
 
-      %{"type" => output} when is_binary(output) ->
+      {:output, output} ->
         gettext(
           "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}.",
           output: output,
@@ -361,11 +362,88 @@ defmodule ApiaryWeb.StagesLive.Words do
           type: type
         )
 
+      {:input, input} ->
+        gettext(
+          "Remove the condition on the input %{input} in %{stage}, or add an earlier stage that makes %{type}.",
+          input: input,
+          stage: stage,
+          type: type
+        )
+
+      :loop ->
+        gettext(
+          "Remove the condition on a loop in %{stage}, or add an earlier stage that makes %{type}.",
+          stage: stage,
+          type: type
+        )
+
+      :stage ->
+        gettext(
+          "Remove the condition on %{stage}, or add an earlier stage that makes %{type}.",
+          stage: stage,
+          type: type
+        )
+
+      nil ->
+        gettext("%{stage}: a value is not valid. Check the stage, then save again.",
+          stage: stage
+        )
+    end
+  end
+
+  def refusal(%{error: :condition_track, path: path, detail: track}, doc) when is_binary(path) do
+    {stage, _field} = place(path, doc)
+
+    case condition_subject(doc, path) do
+      {:workflow, workflow} ->
+        gettext(
+          "Remove the condition on %{workflow} in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          workflow: workflow,
+          stage: stage,
+          track: track
+        )
+
+      {:input, input} ->
+        gettext(
+          "Remove the condition on the input %{input} in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          input: input,
+          stage: stage,
+          track: track
+        )
+
+      :loop ->
+        gettext(
+          "Remove the condition on a loop in %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          stage: stage,
+          track: track
+        )
+
+      :stage ->
+        gettext(
+          "Remove the condition on %{stage}, or let an earlier stage offer the track %{track} at its gate.",
+          stage: stage,
+          track: track
+        )
+
       _other ->
         gettext("%{stage}: a value is not valid. Check the stage, then save again.",
           stage: stage
         )
     end
+  end
+
+  def refusal(%{error: :duplicate_track_id, detail: track}, _doc),
+    do: gettext("Give each track a different id. Two tracks have the id %{track}.", track: track)
+
+  # A gate that offers a track id the process does not declare in its `tracks`.
+  def refusal(%{error: :gate_track, path: path, detail: track}, doc) do
+    {stage, _field} = place(path, doc)
+
+    gettext(
+      "Remove the track %{track} from the gate of %{stage}, or add it to the tracks of the process.",
+      track: track,
+      stage: stage
+    )
   end
 
   def refusal(%{error: error, path: path} = refused, doc) do
@@ -383,6 +461,23 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       String.contains?(path, "machine") ->
         machine_refused()
+
+      String.starts_with?(path, "#/tracks") ->
+        gettext(
+          "Give every track an id of lower-case words joined by hyphens, such as fast-track, and a name of 1 to 60 characters."
+        )
+
+      error == :gate_none_tracks ->
+        gettext(
+          "%{stage}: a gate with no approval offers no track. Remove its tracks, or let a person approve.",
+          stage: stage
+        )
+
+      String.contains?(path, "/gate/tracks") ->
+        gettext(
+          "%{stage}: write each track of the gate as lower-case words joined by hyphens, such as fast-track.",
+          stage: stage
+        )
 
       String.contains?(path, "approvers") ->
         gettext("%{stage}: choose at least one member who approves, or let any member approve.",
@@ -528,11 +623,36 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   defp place(_path, _doc), do: {gettext("The process"), nil}
 
-  # The workflow entry or the output that has the condition at `path`, a place such as
-  # `#/stages/1/outputs/0/when/input`; nil where the document has none there.
-  defp conditioned(doc, path) do
-    path
-    |> String.replace_suffix("/when/input", "")
+  # What has the condition at `path`, a place such as `#/stages/1/outputs/0/when/input`:
+  # `{:workflow, name}`, `{:output, type}`, `{:input, type}`, `:loop` or `:stage`; nil where the
+  # document has nothing there.
+  defp condition_subject(doc, path) do
+    holder = path |> String.replace(~r{/(when|unless)/(input|track)$}, "")
+
+    case {document_at(doc, holder), String.contains?(holder, "/outputs/"),
+          String.contains?(holder, "/inputs/")} do
+      {%{"workflow" => workflow}, _output, _input} when is_binary(workflow) ->
+        {:workflow, workflow}
+
+      {%{"type" => type}, true, _input} when is_binary(type) ->
+        {:output, type}
+
+      {%{"type" => type}, _output, true} when is_binary(type) ->
+        {:input, type}
+
+      {%{"loop" => _loop}, _output, _input} ->
+        :loop
+
+      {%{"sequence" => _sequence}, _output, _input} ->
+        :stage
+
+      _other ->
+        nil
+    end
+  end
+
+  defp document_at(doc, place) do
+    place
     |> String.replace_prefix("#/", "")
     |> String.split("/")
     |> Enum.reduce_while(doc, fn key, at ->

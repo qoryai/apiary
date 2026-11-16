@@ -95,8 +95,13 @@ defmodule Apiary.Processes do
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:condition_input` for a condition
-  `when: {input: T}` on a workflow entry or an output where `T` is no output of an earlier
-  stage, with `T` as `detail`, which refuses any condition on the first stage;
+  `{input: T}` in `when` or `unless` on a stage, an input, a loop or a workflow entry, or in
+  `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
+  with `ID` as `detail`; both refuse any condition on the first stage;
+  `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
+  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
+  on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -262,8 +267,9 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once, and the input of
-  each condition an output of an earlier stage. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, every track id
+  once, each track a gate offers declared, the input of each condition an output of an earlier
+  stage, and the track of each condition one that an earlier gate offers. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -276,7 +282,8 @@ defmodule Apiary.Processes do
       true ->
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
-            case duplicates(document["stages"]) ++ condition_inputs(document["stages"]) do
+            case duplicates(document["stages"]) ++
+                   track_errors(document) ++ condition_errors(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -312,39 +319,98 @@ defmodule Apiary.Processes do
     |> Enum.reverse()
   end
 
-  # The conditions whose input type is no output of an earlier stage, in the document's
-  # order: on the workflow entries, those in a loop included, then on the outputs.
-  defp condition_inputs(stages) do
+  # The refusals of tracks: a track id declared twice (`:duplicate_track_id`), a gate that
+  # offers a track the document does not declare (`:gate_track`), and tracks on a gate of kind
+  # none (`:gate_none_tracks`).
+  defp track_errors(document) do
+    declared = for %{"id" => id} <- document["tracks"] || [], do: id
+
+    duplicates =
+      declared
+      |> Enum.with_index()
+      |> Enum.reduce({[], MapSet.new()}, fn {id, index}, {errors, seen} ->
+        errors =
+          if id in seen,
+            do: [%{path: "#/tracks/#{index}/id", error: :duplicate_track_id, detail: id} | errors],
+            else: errors
+
+        {errors, MapSet.put(seen, id)}
+      end)
+      |> elem(0)
+      |> Enum.reverse()
+
+    offered =
+      for {stage, index} <- Enum.with_index(document["stages"]),
+          {id, j} <- Enum.with_index(stage["gate"]["tracks"] || []),
+          id not in declared,
+          do: %{path: "#/stages/#{index}/gate/tracks/#{j}", error: :gate_track, detail: id}
+
+    none =
+      for {%{"gate" => %{"kind" => "none", "tracks" => [_ | _]}}, index} <-
+            Enum.with_index(document["stages"]),
+          do: %{path: "#/stages/#{index}/gate/tracks", error: :gate_none_tracks, detail: nil}
+
+    duplicates ++ offered ++ none
+  end
+
+  # The conditions that no earlier stage can meet, in the document's order: an `input` type
+  # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
+  # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
+  # input, a workflow entry or a loop, those in a loop's body included, and in `when` on an
+  # output. The first stage has no earlier stage, so each of its conditions is refused.
+  defp condition_errors(stages) do
     stages
     |> Enum.with_index()
-    |> Enum.flat_map_reduce(MapSet.new(), fn {stage, index}, earlier ->
+    |> Enum.flat_map_reduce({MapSet.new(), MapSet.new()}, fn {stage, index},
+                                                             {types, tracks} = earlier ->
       at = "#/stages/#{index}"
 
       entries =
         stage["sequence"]
         |> Enum.with_index()
         |> Enum.flat_map(fn
-          {%{"loop" => %{"body" => body}}, i} ->
-            for {entry, j} <- Enum.with_index(body),
-                do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+          {%{"loop" => %{"body" => body}} = loop, i} ->
+            [{loop, "#{at}/sequence/#{i}"}] ++
+              for {entry, j} <- Enum.with_index(body),
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
 
           {entry, i} ->
             [{entry, "#{at}/sequence/#{i}"}]
         end)
 
+      inputs =
+        for {input, k} <- Enum.with_index(stage["inputs"] || []),
+            do: {input, "#{at}/inputs/#{k}"}
+
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
-            do: {output, "#{at}/outputs/#{k}"}
+            do: {Map.delete(output, "unless"), "#{at}/outputs/#{k}"}
 
       errors =
-        for {%{"when" => %{"input" => type}}, path} <- entries ++ outputs,
-            type not in earlier,
-            do: %{path: path <> "/when/input", error: :condition_input, detail: type}
+        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
+            key <- ["when", "unless"],
+            error <- condition_error(item[key], path <> "/" <> key, earlier),
+            do: error
 
-      {errors, Enum.into(for(o <- stage["outputs"] || [], do: o["type"]), earlier)}
+      made = for o <- stage["outputs"] || [], do: o["type"]
+      {errors, {Enum.into(made, types), Enum.into(stage["gate"]["tracks"] || [], tracks)}}
     end)
     |> elem(0)
   end
+
+  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
+    if type in types,
+      do: [],
+      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  end
+
+  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+    if track in tracks,
+      do: [],
+      else: [%{path: path <> "/track", error: :condition_track, detail: track}]
+  end
+
+  defp condition_error(_condition, _path, _earlier), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors
