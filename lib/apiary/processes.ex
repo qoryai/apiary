@@ -49,6 +49,13 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A first attempt
+
+  A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
+  ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
+  its output checks and its gate (`Apiary.Stages.Runner`). Another verdict acts as for any
+  entry. A loop's body refuses the key (`:schema`), because `passed` already leaves a loop.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the

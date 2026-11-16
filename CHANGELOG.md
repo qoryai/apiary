@@ -13,6 +13,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- A workflow entry outside a loop takes `first_attempt: true`, default false. When the
+  run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
+  on to its output checks and its gate. Another verdict acts as for any entry. A save is
+  refused when a loop's body has the key.
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on

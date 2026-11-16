@@ -93,6 +93,10 @@
           "pattern": "\\S"
         },
         "machine": {"$ref": "#/$defs/machine"},
+        "first_attempt": {
+          "description": "Optional, default false; not allowed in a loop. When the run of this entry ends passed, the rest of the stage's sequence is passed over, and the stage goes on to its output checks and its gate.",
+          "type": "boolean"
+        },
         "time_limit": {
           "description": "At most the time limit the stack declares for the workflow, as hours, minutes and seconds: 1h30m.",
           "type": "string",
@@ -135,7 +139,7 @@
               "type": "array",
               "minItems": 1,
               "maxItems": 10,
-              "items": {"$ref": "#/$defs/workflow_entry"}
+              "items": {"$ref": "#/$defs/workflow_entry", "properties": {"first_attempt": false}}
             }
           }
         }

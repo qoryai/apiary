@@ -318,6 +318,62 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
+  describe "a first attempt" do
+    defp attempt,
+      do: stage([wf("small-change", %{"first_attempt" => true}), wf("plan"), wf("check")])
+
+    test "passed ends the sequence: the rest is passed over and the gate follows" do
+      assert %{state: :at_gate, position: %{entry: 3, loop_entry: nil}, actions: []} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "passed goes to a gate none's approval and advance" do
+      stage = %{attempt() | "gate" => %{"kind" => "none"}}
+
+      assert %{state: :done, actions: [:approve, :advance]} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "passed runs the Exists checks before the gate" do
+      assert %{state: :escalated, actions: [{:escalate, :check_failed, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+                 failed_checks: ["submission"]
+               })
+    end
+
+    test "changes-requested goes on with the sequence" do
+      assert queued(
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :changes_requested, nil}})
+             ) ==
+               {"plan", 1, nil, 1}
+    end
+
+    test "escalate escalates and a run with no verdict escalates run_stopped" do
+      assert %{actions: [{:escalate, :escalate, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :escalate, nil}})
+
+      assert %{actions: [{:escalate, :run_stopped, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, nil, nil}})
+    end
+
+    test "an entry after a first attempt that passed is not a first attempt" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
+
+      assert %{state: :at_gate} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "first_attempt: false, or none, goes on" do
+      stage = stage([wf("a", %{"first_attempt" => false}), wf("b")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
+    end
+  end
+
   describe "a run's end in a loop" do
     test "passed from any workflow leaves the loop at once" do
       assert %{state: :at_gate} =

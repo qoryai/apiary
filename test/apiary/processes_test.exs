@@ -516,6 +516,24 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(put.(output.(%{"when" => %{"input" => "proposal"}}))) == :ok
     end
 
+    test "takes first_attempt on a workflow entry outside a loop, and refuses it in a loop body" do
+      entry = %{"workflow" => "make-a-small-change", "first_attempt" => true}
+
+      assert Processes.validate(put_sequence(default(), @shape, [entry])) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{entry | "first_attempt" => "yes"}])) ==
+               chain("#/stages/1/sequence/0")
+
+      for value <- [true, false] do
+        body = %{"loop" => %{"rounds" => 2, "body" => [%{entry | "first_attempt" => value}]}}
+
+        assert errors(put_sequence(default(), @shape, [body])) == chain("#/stages/1/sequence/0")
+      end
+
+      plain = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}
+      assert Processes.validate(put_sequence(default(), @shape, [plain])) == :ok
+    end
+
     test "refuses a key of an input or a loop entry that the schema does not list" do
       input = %{"type" => "proposal", "required" => true, "value" => "x"}
 

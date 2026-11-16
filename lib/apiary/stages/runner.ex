@@ -22,6 +22,9 @@ defmodule Apiary.Stages.Runner do
   #     ring goes back to the first, which starts the next round. At the round limit the
   #     stage escalates, `round_limit`, with a point that says so
   #     (`Apiary.Stages.Points`).
+  #   * A workflow entry outside a loop with `first_attempt: true` ends the sequence when its
+  #     run ends `passed`: the entries after it are passed over, and the Exists checks and
+  #     the gate follow. Another verdict acts as for any entry.
   #   * Outside a loop, the sequence goes on after a run with `passed` or
   #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with a point
   #     that says so, on a first run and on a rerun. A test work item's run with no verdict
@@ -499,8 +502,14 @@ defmodule Apiary.Stages.Runner do
 
   ## A run's end
 
-  defp run_ended(stage, position, {:verdict, :passed, _points}, facts),
-    do: start(stage, next(stage, position, facts), facts)
+  # `passed` from a first attempt (an entry outside a loop with `first_attempt: true`) ends
+  # the sequence: the rest of it is passed over, and the checks and the gate follow. In a
+  # loop `passed` already leaves the loop.
+  defp run_ended(stage, position, {:verdict, :passed, _points}, facts) do
+    if first_attempt?(stage, position),
+      do: finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts),
+      else: start(stage, next(stage, position, facts), facts)
+  end
 
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
     do: escalate(:escalate, points || [], position)
@@ -627,6 +636,11 @@ defmodule Apiary.Stages.Runner do
   end
 
   defp next(stage, position, facts), do: at(stage, position.entry + 1, position.round, facts)
+
+  defp first_attempt?(stage, position),
+    do:
+      not in_loop?(position) and
+        Map.get(entry_at(stage, position) || %{}, "first_attempt") == true
 
   defp entry_at(stage, %{entry: index, loop_entry: loop_entry}) do
     case Enum.at(sequence(stage), index) do
