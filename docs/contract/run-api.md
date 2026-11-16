@@ -17,7 +17,7 @@ The `access` of the run's documents is `read`, `write-no-push` or `write`
 (`documents.schema.json` of the run contract). It sets what the run may do on its target,
 not what it may do through the run API: a run of any level reads its work item and pushes
 artifacts and a verdict. A run with `write-no-push` has a writable checkout and a work
-credential with read access, so it holds no credential that pushes to the target; only a
+credential with read access, so its credential cannot push to the target; only a
 run with `write` has `submit`.
 
 Qory Apiary computes the level once, when it claims the run. The level is the lower of two

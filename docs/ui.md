@@ -2667,7 +2667,7 @@ Workflows, Instance settings › Workspace types and a workspace type's page use
   with the access level of its runs: **Access: Read only (set by the harness)**; with the
   levels Write, no push and Write and push, the same line. Where the stage's entry in
   `process.yaml` has a lower `access` than the harness's stack declares for the workflow, the
-  line gives the lower level first: **Access: Read only (set for this stage; the harness
+  line shows the lower level first: **Access: Read only (set for this stage; the harness
   allows Write and push)**. An entry never raises the level. A workflow the harness does
   not list has no Access line; its row has the mark "Not in the harness". The form writes
   no `access`, and a save keeps the entry's. Workspace types has no Access line.
