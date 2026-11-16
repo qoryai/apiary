@@ -387,8 +387,8 @@ defmodule ApiaryWeb.ArtifactComponents do
       title. `mockup` is the screens (`ApiaryWeb.ArtifactLive.Load.mockup/2`), and
       `screen_path` a function from a screen's id to its address (`mockup_path/5`);
     * structured: the JSON document as a table, nested objects and lists as nested
-      rows, every value as text; a `change`'s `url` is a link where it is `http` or `https`,
-      and a `questions` document's `context` is Markdown, as on Explore's tab.
+      rows, every value as text, and a `questions` document's `context` is Markdown, as on
+      Explore's tab.
 
   `content` is what the page read of the files, a map from filename: for a document,
   `{:markdown, rendered}` (`ApiaryWeb.ArtifactLive.Markdown.render/1`) or `:too_large`;
@@ -541,7 +541,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
     ~H"""
     <div id={@id} class="grid gap-6">
-      <figure :for={file <- @videos} class="grid gap-2">
+      <figure :for={{file, n} <- Enum.with_index(@videos)} class="grid gap-2">
         <video
           controls
           preload="metadata"
@@ -557,6 +557,32 @@ defmodule ApiaryWeb.ArtifactComponents do
             default={index == 0}
           />
         </video>
+        <%!-- The VideoSpeed hook sets the film's rate and presses its button; a patch keeps both. --%>
+        <div
+          id={"#{@id}-speed-#{n}"}
+          phx-hook="VideoSpeed"
+          phx-update="ignore"
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span id={"#{@id}-speed-#{n}-label"} class="text-[12.5px] text-muted">
+            {gettext("Speed")}
+          </span>
+          <div
+            role="group"
+            aria-labelledby={"#{@id}-speed-#{n}-label"}
+            class="flex items-center gap-1.5"
+          >
+            <button
+              :for={{rate, label} <- speeds()}
+              type="button"
+              data-rate={rate}
+              aria-pressed={to_string(rate == "1")}
+              class="btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2 tabular-nums"
+            >
+              {label}
+            </button>
+          </div>
+        </div>
         <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
       </figure>
     </div>
@@ -584,6 +610,17 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   defp inline_images, do: @inline_images
+
+  # The rates of a film's Speed row, each as the `data-rate` the VideoSpeed hook reads and
+  # its button's label; the film starts at 1x.
+  defp speeds do
+    [
+      {"0.5", gettext("0.5x")},
+      {"1", gettext("1x")},
+      {"1.5", gettext("1.5x")},
+      {"2", gettext("2x")}
+    ]
+  end
 
   defp content(:pending, _file), do: :pending
   defp content(content, file), do: Map.get(content, file.filename)
@@ -681,8 +718,6 @@ defmodule ApiaryWeb.ArtifactComponents do
                 <span class="text-muted">{gettext("(empty)")}</span>
               <% {:rows, nested} -> %>
                 <.value_table rows={nested} />
-              <% {:link, url} -> %>
-                <.external_link href={url}>{url}</.external_link>
               <% {:markdown, text} -> %>
                 <WorkItemComponents.run_text value={%{text: text}} key={:text} />
               <% {:null} -> %>
@@ -733,7 +768,6 @@ defmodule ApiaryWeb.ArtifactComponents do
     {[%{key: "", value: cell}], used}
   end
 
-  defp shown_as(:change, "url"), do: :url
   defp shown_as(:questions, "context"), do: :markdown
   defp shown_as(_view, _key), do: :text
 
@@ -763,12 +797,6 @@ defmodule ApiaryWeb.ArtifactComponents do
   defp cell(value, :markdown, _view, used, _left) when is_binary(value),
     do: {{:markdown, value}, used}
 
-  defp cell(value, :url, _view, used, _left) when is_binary(value) do
-    if web_url?(value),
-      do: {{:link, value}, used},
-      else: {{:text, Apiary.ExternalText.lines(value)}, used}
-  end
-
   defp cell(value, _shown_as, _view, used, _left) when is_binary(value),
     do: {{:text, Apiary.ExternalText.lines(value)}, used}
 
@@ -776,15 +804,4 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: {{:text, if(value, do: "true", else: "false")}, used}
 
   defp cell(value, _shown_as, _view, used, _left), do: {{:text, to_string(value)}, used}
-
-  # An absolute `http` or `https` URL with a host and no user name or password.
-  defp web_url?(url) do
-    case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}} when is_binary(scheme) ->
-        String.downcase(scheme) in ["http", "https"] and is_binary(host) and host != ""
-
-      _not ->
-        false
-    end
-  end
 end

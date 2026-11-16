@@ -88,6 +88,15 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   def push(actor, work_item, type, files, opts),
     do: artifacts().push(actor, work_item, type, files, opts)
 
+  # withdrawable_type?/1 is whether a run may withdraw a name of the type `name`
+  # (`Apiary.Artifacts.withdrawable_type?/1`).
+  @spec withdrawable_type?(term) :: boolean
+  def withdrawable_type?(name), do: Apiary.Artifacts.withdrawable_type?(name)
+
+  @spec withdraw(term, struct, String.t(), keyword) :: {:ok, map} | {:error, term}
+  def withdraw(actor, work_item, type, opts),
+    do: artifacts().withdraw(actor, work_item, type, opts)
+
   @spec get_version!(String.t()) :: map
   def get_version!(id), do: artifacts().get_version!(id)
 

@@ -3941,6 +3941,11 @@ msgstr[1] ""
 msgid ", done"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "0.5x"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "1 organisation matches."
@@ -3985,6 +3990,11 @@ msgstr ""
 msgid "1 workspace matches."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "1.5x"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1: one machine"
@@ -3993,6 +4003,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "1: one machine."
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "1x"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "2x"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -13642,6 +13662,11 @@ msgstr ""
 msgid "No %{type} was stored in this stage."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No %{type}: %{workflow} did not run."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapters.ex
 #, elixir-autogen, elixir-format
 msgid "No adapter yet"
@@ -16896,6 +16921,11 @@ msgstr ""
 msgid "Record and runs"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Recorded as approved automatically, with the time. At the round limit, a member decides."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Recorded the image a prebuild built"
@@ -17132,6 +17162,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the allow rule %{host}?"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -19460,6 +19500,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Spec"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Speed"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -23256,6 +23301,21 @@ msgstr ""
 msgid "Version %{version} · %{title}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · Accepted by %{name} · %{when}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · Accepted by you · %{when}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · Approved automatically · %{when}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · Policy"
@@ -25026,6 +25086,11 @@ msgstr ""
 msgid "activity history"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "add %{type} to artifact_types as structured"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "alive"
@@ -26244,6 +26309,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a structured type of artifact_types: %{type} is a standard type"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "set submit.type to a type whose base_view is structured, not %{view}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

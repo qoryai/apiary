@@ -75,8 +75,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # page/2 is what the work item page draws of `row` under the workflow model: the
   # stages of its process version with the current one marked, the current stage with
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
-  # escalation, the artifacts' approval marks, and what the reader may do; nil for a work
-  # item the stage runner has not placed.
+  # escalation, the artifacts' approval marks, but those of a withdrawn name
+  # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
+  # stage runner has not placed.
   @spec page(Scope.t(), struct) :: map | nil
   def page(scope, row) do
     case Stages.status(row, scope) do
@@ -119,6 +120,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       loop: get(status, :loop) == true,
       gaps: lines(get(status, :gaps)),
       runs: runs,
+      # The workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`).
+      skips: Stages.skips(row),
+      # Those of the earlier take ins, each with its take in (`Apiary.Stages.earlier_skips/1`).
+      earlier_skips: Stages.earlier_skips(row),
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
@@ -128,7 +133,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
-      index: Enum.map(index, &indexed/1),
+      index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
@@ -450,11 +455,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp result?(_cause, outputs, _no_verdict, _run), do: Enum.any?(outputs, & &1.version_id)
 
   # An artifact of the index with its approval marks: the number of the version a gate
-  # approved, and of a newer one where there is one.
+  # approved, with the newest approval of it (`approval`: who, whether a gate `none`
+  # recorded it with no member, whether the stage's gate was `none` then, the stage and
+  # when), and of a newer one where there is one.
   defp indexed(artifact) do
     versions = get(artifact, :versions) || []
     approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
     newest = List.first(versions)
+    approval = approved && List.last(get(approved, :approvals) || [])
     approved = approved && get(approved, :number)
     newest = newest && get(newest, :number)
 
@@ -462,8 +470,19 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       type: get(artifact, :type),
       name: get(artifact, :name) || "main",
       approved: approved,
+      approval: approval && approval_of(approval),
       newer: if(approved && newest && newest > approved, do: newest),
       changed_after_approval: get(artifact, :changed_after_approval) == true
+    }
+  end
+
+  defp approval_of(approval) do
+    %{
+      by: get(approval, :user_id),
+      automatic: get(approval, :automatic) == true,
+      gate_none: get(approval, :gate_none) == true,
+      stage_id: get(approval, :stage_id),
+      at: get(approval, :inserted_at)
     }
   end
 

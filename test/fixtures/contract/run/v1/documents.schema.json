@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/run/v1/documents.schema.json",
   "title": "Run documents",
-  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, workflow, harness_hidden, harness, image_destination, environment_destination and environment_image, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, the machine composes that file at target_version, and harness is absent. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. The machine works at target_version when it is present, unless the run's work item has a branch, which the machine reads. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no workflow, no harness_hidden and no harness, and its inputs are prebuild_inputs. run_settings is present only for the step explore, and image_destination, environment_destination and environment_image only for the step prebuild. A member this schema does not define is refused.",
+  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, workflow, harness_hidden, harness, submit_module, submit, image_destination, environment_destination and environment_image, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. submit is present only with workflow and with access write. submit_module is present only with submit. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version. The description of target_version states how. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no workflow, no harness_hidden, no harness, no submit_module and no submit, and its inputs are prebuild_inputs. run_settings is present only for the step explore, and image_destination, environment_destination and environment_image only for the step prebuild. A member this schema does not define is refused.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -43,6 +43,12 @@
     },
     "harness": {
       "$ref": "#/$defs/harness"
+    },
+    "submit_module": {
+      "$ref": "#/$defs/submit_module"
+    },
+    "submit": {
+      "$ref": "#/$defs/submit"
     },
     "image_destination": {
       "$ref": "#/$defs/image_destination"
@@ -116,7 +122,9 @@
           "target_version": false,
           "workflow": false,
           "harness_hidden": false,
-          "harness": false
+          "harness": false,
+          "submit_module": false,
+          "submit": false
         }
       }
     },
@@ -169,6 +177,20 @@
     {
       "if": {
         "required": [
+          "submit"
+        ]
+      },
+      "then": {
+        "properties": {
+          "access": {
+            "const": "write"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
           "workflow"
         ]
       },
@@ -203,6 +225,15 @@
     ],
     "harness_hidden": [
       "workflow"
+    ],
+    "submit_module": [
+      "workflow",
+      "access",
+      "submit"
+    ],
+    "submit": [
+      "workflow",
+      "access"
     ]
   },
   "$defs": {
@@ -261,7 +292,7 @@
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
     },
     "target_version": {
-      "description": "The version of the target at which the control plane checked for a harness file: the resolved_at of the read at the path of the harness file, https://qory.dev/contracts/integration/v1/read-answer.schema.json, whether the read returned the file or found: false. The machine composes the harness file at this version. The machine works at this version unless the run's work item has a branch, which the machine reads. If the read returned a file whose harness section has extends or lists at least one module, the machine composes that file at this version. If the read returned a file whose harness section is absent, or has no extends and lists no module, or found: false, the run documents contain harness, and the machine composes harness instead of the harness section of that file, as the description of harness states. The value is the exact version that the read returned, never a name that can point to another version later, because the machine would then compose a file that the control plane did not read. The grammar is generic, because a target in another system has another kind of version: 1 to 255 letters, digits and the characters ._/-. Present only when target is present, and never for the step prebuild.",
+      "description": "The version of the target at which the control plane checked for a harness file: the resolved_at of the read at the path of the harness file, https://qory.dev/contracts/integration/v1/read-answer.schema.json, whether the read returned the file or found: false. The run documents contain harness when the read returned found: false. They also contain harness when the read returned a file whose harness section is absent, or has no extends and lists no module. In both cases, the machine composes harness instead of the harness section of that file, as the description of harness states. The value is the exact version that the read returned, never a name that can point to another version later. The grammar is generic, because a target in another system has another kind of version: 1 to 255 letters, digits and the characters ._/-. Present only when target is present, and never for the step prebuild. The rest of this description applies to a target that is a repository: a target on the system of the repositories that the run configuration lists. The machine reads the harness file at this version, whether or not the run works on a branch of its work item. At this version, the machine composes the harness section of that file when the section has extends or lists at least one module. The machine applies the qory version that the file requires, the worktree section and the tiers at this version too. After the compose, the machine works at this version, or checks out the branch of the run's work item and works on that branch. The run documents contain no branch: the machine reads the branch from the control plane. An agent may change, on that branch, the harness file of the target or a file that the compose reads. A run composes that change only when the target_version of that run contains the change. Because target_version is exact, the machine reads the same file that the control plane read.",
       "type": "string",
       "pattern": "^[A-Za-z0-9._/-]{1,255}$"
     },
@@ -390,7 +421,7 @@
       "type": "boolean"
     },
     "harness": {
-      "description": "The harness document of the workspace, in the form of qory.yaml, https://qory.dev/contracts/harness/v1/config.schema.json, which the control plane takes from the settings of the workspace. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, the machine composes that file at target_version, and harness is absent. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. harness contains exactly one member, harness, the harness section, which extends a stack or defines one, as the description of harness_section states. Every source is a remote source. These are refused: a source of the form {path}, alone or with module or stack; a module given by name alone; link; the machine keys runtime, model, effort, tiers, force, update, home, links and launch; and the members git, env, worktree, exports and target. A run of the step prebuild has no harness.",
+      "description": "The harness document of the workspace, in the form of qory.yaml, https://qory.dev/contracts/harness/v1/config.schema.json, which the control plane takes from the settings of the workspace. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version. The description of target_version states how. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as the description of tiers states. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. harness contains exactly one member, harness, the harness section, which extends a stack or defines one, as the description of harness_section states. Every source is a remote source. These are refused: a source of the form {path}, alone or with module or stack; a module given by name alone; link; the machine keys runtime, model, effort, tiers, force, update, home, links and launch; and the members git, env, worktree, exports and target. A run of the step prebuild has no harness.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -429,12 +460,12 @@
           }
         },
         "bind": {
-          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
+          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind, or, for a group role of the kind agents, to a list of agents. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "agents": {
-              "$ref": "#/$defs/harness_bind_roles"
+              "$ref": "#/$defs/harness_bind_agent_roles"
             },
             "commands": {
               "$ref": "#/$defs/harness_bind_roles"
@@ -601,6 +632,54 @@
         ]
       }
     },
+    "submit_module": {
+      "description": "The harness module that contains the submit program of the forge of the run's target: the module whose manifest declares submit_program. It has the shape of harness_module: an optional name and a source, with no exclude, only or variant. Its source is harness_pinned_source, whose ref is a full commit hash. The control plane takes it from the submit_module of the start-up of the forge's adapter, https://qory.dev/contracts/integration/v1/adapter.schema.json. The control plane writes it only for a run with submit, and only when the start-up of the forge's adapter has submit_module. It applies whether harness is present or absent, and the control plane never also lists it in harness.harness.modules. The machine appends it after the modules of the harness it composes. On a run with a run code, the machine compares submit_module with every module that it composes. Those are the modules of the harness file of the target, of harness, and of every stack that they extend. The machine compares modules by the name that the manifest of each module declares. name is optional; when it is present, it must equal the name in the manifest of the module. A composed module of the same name from the same git is composed from source.git and source.ref of submit_module in place of its ref. The machine prints a line for each such replacement. The machine compares git values as written, so a git that ends in .git and the same git without .git are different values. If a composed module of the same name comes from another git, the run stops before any session starts, with an error. The first line of the error is one of two texts, by where the module comes from. From the harness file of the target or from harness, it is \"Remove module <name> from <place>: the run adds it from <git>@<sha>.\" From a stack that a harness extends, it is \"Remove module <name> from stack <stack>@<ref>, or stop extending it: the run adds it from <git>@<sha>.\" For the harness file of the target, <place> is the file name that the machine read, \"qory.yaml\" or \"harness.yaml\". For harness, <place> is \"the workspace's harness\". In both texts, <git> and <sha> are source.git and source.ref of submit_module. The next lines of the error show both sources. The first line of the error stays within 100 characters. When a long <git> would pass that limit, \"the run adds it from …\" moves to the second line. A run that a person starts with no run code has no run documents, so this rule does not apply to it. A run of the step prebuild has no submit_module.",
+      "$ref": "#/$defs/harness_module",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/harness_pinned_source"
+        },
+        "exclude": false,
+        "only": false,
+        "variant": false
+      }
+    },
+    "harness_pinned_source": {
+      "description": "A remote source of a module, pinned to one commit: harness_source, with ref a full commit hash, so every run that uses the source fetches the same files. A branch name, a tag and a short hash are refused.",
+      "$ref": "#/$defs/harness_source",
+      "properties": {
+        "ref": {
+          "description": "The commit of the remote source: a full commit hash, 40 or 64 lower-case hexadecimal digits.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$|^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "submit": {
+      "description": "The settings of the submit step of the run: type and send, both required, and no other member. The control plane writes submit whenever the process version of the workspace has one. submit is present only on a run with workflow and with access write. The control plane writes submit_module only when the start-up of the forge's adapter has one. With submit and no submit_module, qory runs the submit step and records the draft of each repository as {\"none\": \"no-program\"}. On a run with a run code, qory takes the settings of the submit step only from submit of the run documents, never from process.yaml. If the process.yaml of the composed harness has a different submit, qory prints one line with both values and uses submit of the run documents. A run that a person starts with no run code has no run documents, so it has no submit and no submit step. A run of the step prebuild has no submit.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "send"
+      ],
+      "properties": {
+        "type": {
+          "description": "The artifact type of the submission: the name of a structured entry of artifact_types of the process. The name is lower-case letters and digits in groups joined by single hyphens, 1 to 64 bytes. This schema cannot check that artifact_types has that entry.",
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "send": {
+          "description": "When the submit step sends the submission. With end_of_run, the submit step sends the submission at the end of the run. With after_gate, the submit step stores the submission and sends it after the gate of the stage passes.",
+          "type": "string",
+          "enum": [
+            "end_of_run",
+            "after_gate"
+          ]
+        }
+      }
+    },
     "harness_selection": {
       "description": "Parts of a module, by kind: the names of some entries of each kind listed, true for the instructions, and true or some names for the settings and the variables.",
       "type": "object",
@@ -640,7 +719,7 @@
       }
     },
     "harness_bind_roles": {
-      "description": "The roles of one kind of a bind, each to the name of the one entry of that kind that fills the role.",
+      "description": "The roles of the kind commands or skills of a bind, each to the name of the one entry of that kind that fills the role. Write one name: only an agents role can be a group, so a list fails here.",
       "type": "object",
       "propertyNames": {
         "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
@@ -648,6 +727,29 @@
       "additionalProperties": {
         "type": "string",
         "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+      }
+    },
+    "harness_bind_agent_roles": {
+      "description": "The roles of the kind agents of a bind, each to the name of the one agent that fills the role, or, for a group role, to the list of the agents that fill it, at least 1, such as reviewers: [copy-reviewer, legal-reviewer]. A name may appear twice in a list, and qory keeps it once. This schema accepts a list for any agents role; qory's compose fails for a list on a role that is not a group in the module manifests, and for a name on a group role.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+          },
+          {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[^/\\\\@ .][^/\\\\@ ]*$"
+            }
+          }
+        ]
       }
     },
     "harness_names": {

@@ -19,7 +19,9 @@ defmodule Apiary.Processes.Version do
     file's `type`, the same value as `workspaces.type`. A version made from the harness
     also has `ref_kind` (`branch`, `tag` or `commit`) and `ref`, the version of the
     harness it was read at, `version` nil, and `added_types`, the names of the artifact
-    types its save added, where it added any.
+    types its save added, where it added any. A template's record also has `submit`,
+    `%{"type" => type, "send" => send}`, where its `process.yaml` declares the submit
+    step of a run (`Apiary.Harnesses.Reader.template/1`).
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema

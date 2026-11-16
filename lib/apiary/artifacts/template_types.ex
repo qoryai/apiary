@@ -24,18 +24,28 @@ defmodule Apiary.Artifacts.TemplateTypes do
   #      the total bounds how long one template holds a caller. A schema over its single
   #      budget stays `{:invalid, type, :json_schema}`. A template with no JSON Schema
   #      does no such work, and `check/2` is `check/1` with another total. `total/1` is
-  #      the total for a caller with less time than `@total`.
+  #      the total for a caller with less time than `@total`;
+  #   8. `{:submit, type, why}`: the template's `submit.type` is not a custom entry of the
+  #      list with `base_view: structured`, as qory requires. `why` is `:missing` for a
+  #      name no entry has, `:standard` for an entry with a standard name alone, and
+  #      `{:base_view, view}` for a custom type of another base view. For an entry with
+  #      no `base_view` whose name is no standard name, the refusal is
+  #      `{:not_standard, type}`, so that `check_submit/1` returns it too; `check/1` makes
+  #      that refusal once.
+  #      `check_submit/1` makes this refusal alone, for a caller that runs no other check
+  #      of the types.
   #
-  # `{:schema, type}` is an eighth refusal, which `check/1` does not make: the entry `type`
+  # `{:schema, type}` is a ninth refusal, which `check/1` does not make: the entry `type`
   # did not pass the schema of `process.yaml`, so `Apiary.Harnesses.Reader.template/1`
   # returned no template to check, and `Apiary.Stacks.Sources` makes the refusal.
   #
-  # A nil list is `:ok` with no check, so a template written before the key works
-  # unchanged. `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the
-  # time its read has left, last, after `Apiary.Harnesses.Reader.template/1`, the check of
-  # the stack and `Apiary.Processes.validate/1`. A caller that has not validated the process gets no
-  # crash: `check/1` skips a stage that is not a map, a stage whose name is not text, and
-  # an `inputs` or `outputs` that is not a list.
+  # A nil list is `:ok` with no check of the list, so a template written before the key
+  # works unchanged; its `submit`, where it has one, still gets refusal 8.
+  # `Apiary.Stacks.Sources` calls `check/2` on each template it reads, with the time its
+  # read has left, last, after `Apiary.Harnesses.Reader.template/1`, the check of the
+  # stack and `Apiary.Processes.validate/1`. A caller that has not validated the process
+  # gets no crash: `check/1` skips a stage that is not a map, a stage whose name is not
+  # text, and an `inputs` or `outputs` that is not a list.
   #
   # `message/1` is a refusal's text, translated in the locale of the caller's process.
   # For `{:invalid, type, error}`, the text ends with the line the Artifact types form
@@ -94,6 +104,7 @@ defmodule Apiary.Artifacts.TemplateTypes do
           | {:repeated, String.t()}
           | {:invalid, String.t(), error}
           | :schemas_too_long
+          | {:submit, String.t(), :missing | :standard | {:base_view, String.t()}}
           | {:schema, String.t()}
 
   # check/1: see the head of this module.
@@ -102,21 +113,56 @@ defmodule Apiary.Artifacts.TemplateTypes do
           :ok | {:error, [refusal]}
   def check(template, total \\ @total)
 
-  def check(%{artifact_types: nil}, _total), do: :ok
+  def check(%{artifact_types: nil} = template, _total), do: check_submit(template)
 
-  def check(%{artifact_types: listed, process: process}, total) when is_list(listed) do
+  def check(%{artifact_types: listed, process: process} = template, total)
+      when is_list(listed) do
     {alone, custom} = Enum.split_with(listed, &alone?/1)
 
-    case Enum.uniq(
-           not_standard(alone) ++
-             standard_names(custom) ++
-             not_listed(process, listed) ++
-             repeated_standard(alone) ++ repeated(custom) ++ invalid(custom, total)
-         ) do
+    refused(
+      not_standard(alone) ++
+        standard_names(custom) ++
+        not_listed(process, listed) ++
+        repeated_standard(alone) ++
+        repeated(custom) ++ invalid(custom, total) ++ submit(template)
+    )
+  end
+
+  # check_submit/1: see the head of this module.
+  @doc false
+  @spec check_submit(Reader.template()) :: :ok | {:error, [refusal]}
+  def check_submit(template), do: refused(submit(template))
+
+  defp refused(refusals) do
+    case Enum.uniq(refusals) do
       [] -> :ok
       refusals -> {:error, refusals}
     end
   end
+
+  # The refusal of the template's `submit`, as qory checks it: its `type` names a custom
+  # entry of `artifact_types` with `base_view: structured`. An entry with no `base_view`
+  # whose name is no standard name gets `{:not_standard, type}`, which `refused/1` keeps
+  # once where refusal 1 makes it too.
+  defp submit(%{submit: %{"type" => type}} = template) when is_binary(type) do
+    case Enum.find(template.artifact_types || [], &(&1["name"] == type)) do
+      nil ->
+        [{:submit, type, :missing}]
+
+      %{"base_view" => "structured"} ->
+        []
+
+      %{"base_view" => view} ->
+        [{:submit, type, {:base_view, to_string(view)}}]
+
+      _entry ->
+        if type in Type.standard_names(),
+          do: [{:submit, type, :standard}],
+          else: [{:not_standard, type}]
+    end
+  end
+
+  defp submit(_template), do: []
 
   # total/1 is the total of a caller with `left` ms: the same reductions, and the smaller
   # of `@total`'s time and `left`.
@@ -248,6 +294,21 @@ defmodule Apiary.Artifacts.TemplateTypes do
       gettext("the entry %{type} in artifact_types does not match process.schema.json",
         type: type
       )
+
+  # At most 100 characters for a type name of 64 bytes, the longest a type may have.
+  def message({:submit, type, :missing}),
+    do: gettext("add %{type} to artifact_types as structured", type: type)
+
+  def message({:submit, type, :standard}),
+    do:
+      gettext(
+        "set submit.type to a structured type of artifact_types: %{type} is a standard type",
+        type: type
+      )
+
+  def message({:submit, _type, {:base_view, view}}),
+    do:
+      gettext("set submit.type to a type whose base_view is structured, not %{view}", view: view)
 
   def message({:invalid, type, error}),
     do:

@@ -12,21 +12,26 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   The harness members of an explore run's documents, from its harness walk: the target's
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
   resolved, lowered by the run's stage entry; and the harness document the walk took, nil
-  where the target's harness file applies.
+  where the target's harness file applies. A run with write access whose process version
+  has a submit step also has `submit` and `submit_module`, nil for none
+  (`Apiary.Dispatches.Handover`).
   """
   @type harness :: %{
-          target_version: String.t() | nil,
-          workflow: String.t(),
-          harness_hidden: boolean,
-          access: :read | :local_write | :write,
-          harness: map | nil
+          required(:target_version) => String.t() | nil,
+          required(:workflow) => String.t(),
+          required(:harness_hidden) => boolean,
+          required(:access) => :read | :write_no_push | :write,
+          required(:harness) => map | nil,
+          optional(:submit) => %{type: String.t(), send: String.t()},
+          optional(:submit_module) => map | nil
         }
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
   # this order: the run's `step`, the workspace's `domain`, the run's `access` and
   # `target` (none for a run without a target), its `target_version`, its `work_item`
   # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
-  # its `workflow`, `harness_hidden` and `harness` (`harness/1`), a prebuild's
+  # its `workflow`, `harness_hidden`, `harness`, `submit_module` and `submit`
+  # (`harness/1`), a prebuild's
   # destinations, `image_destination` and then `environment_destination` or
   # `environment_image` (`:destinations`, `{name, value}` members, none for any other
   # run), and its `inputs`. The claim measures them (`Apiary.Dispatches.Handover`).
@@ -65,13 +70,27 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `harness`, `{"harness": document}`, where the walk took a document other than the
   # target's harness file: a stack chosen for the target, the workspace's or the
   # organisation's harness choice, or the Qory harness. The machine composes the
-  # target's file at `target_version` where `harness` is absent.
+  # target's file at `target_version` where `harness` is absent. Then `submit_module`,
+  # as the adapter of the forge declared it, where there is one, and `submit`, `{type,
+  # send}`, where the run has a submit step.
   defp harness(nil), do: []
 
-  defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document}) do
+  defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document} = members) do
     harness = if document, do: [{"harness", %{"harness" => document}}], else: []
-    [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness
+    [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness ++ submit(members)
   end
+
+  defp submit(%{submit: %{type: type, send: send}} = members) do
+    module =
+      case Map.get(members, :submit_module) do
+        %{} = module -> [{"submit_module", module}]
+        nil -> []
+      end
+
+    module ++ [{"submit", Jason.OrderedObject.new([{"type", type}, {"send", send}])}]
+  end
+
+  defp submit(_members), do: []
 
   # reach/2 is the `access` of a run with the harness members `harness` (`access/1`) and
   # its `target`, both present for a run with a target and both left out for one
@@ -101,14 +120,14 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   end
 
   # access/1 is what a run with the harness members `harness` may do on its target: the
-  # level its harness walk resolved, `read` or `write`. A run with no harness members, a
-  # prebuild or an explore run with no workflow, reads. The contract's `access` has no
-  # value for `:local_write`, a writable checkout with no push, so such a run is sent
-  # `read`, the level of its work credential (`Apiary.Runs.RunCredentials`).
+  # level its harness walk resolved, lowered by its stage entry: `read`, `write-no-push`
+  # (a writable checkout that holds no push credential) or `write`. A run with no harness
+  # members, a prebuild or an explore run with no workflow, reads. The work credential of
+  # a `write-no-push` run has read access (`Apiary.Runs.RunCredentials`).
   @doc false
   @spec access(harness | nil) :: String.t()
+  def access(%{access: :write_no_push}), do: "write-no-push"
   def access(%{access: level}) when level in [:read, :write], do: Atom.to_string(level)
-  def access(%{access: :local_write}), do: "read"
   def access(_none), do: "read"
 
   # time/1 is `at` in UTC to the whole second.

@@ -410,6 +410,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage={@view.stage}
             work_item={@item}
             runs={@view.runs}
+            skips={@view.skips}
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}
@@ -1965,7 +1966,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can: can(scope, row, explore.status, flow),
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
-        artifacts: if(flow, do: Artifacts.list(row), else: []),
+        artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
       )
@@ -2013,7 +2014,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      StageTab.frames(stage, ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      stage
+      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.approved(stage, assigns.flow.index)
+      |> Enum.map(&approver(socket, &1))
 
     wanted =
       for %{type: type, version: version, open: open} <- frames,
@@ -2034,6 +2038,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp framed(socket), do: assign(socket, :frames, [])
+
+  # The member of a frame's approval (`StageTab.approved/3`) as the components show a
+  # person (`View.person/2`), Former member for one whose account is gone: read for that
+  # frame alone, as they may be in no other part of the page.
+  defp approver(socket, %{approval: %{automatic: false, by: id} = approval} = frame) do
+    person = socket |> scope() |> View.people(List.wrap(id)) |> View.person(id)
+    %{frame | approval: %{approval | by: person}}
+  end
+
+  defp approver(_socket, frame), do: frame
 
   defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))
@@ -2313,6 +2327,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp with_confirmers(%{kind: _other} = event, _confirmers), do: event
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
+
+  # The work item's artifacts that its page lists: every one but a name whose newest
+  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
+  defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
 
   # While the work item's latest run waits in the queue, before a pool claims it (no state
   # yet), whatever Explore's status (a run after a move back to Explore, or a later

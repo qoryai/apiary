@@ -94,8 +94,10 @@ defmodule Apiary.Processes do
   the document, `#/stages/1/name` for the name of the second stage), and why. `:too_large` for a document over the limits; `:schema` for one the
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
-  (names compared trimmed and without case); `:unchanged` for a save of the document of
-  the version it starts from.
+  (names compared trimmed and without case); `:condition_input` for a condition
+  `when: {input: T}` on a workflow entry or an output where `T` is no output of an earlier
+  stage, with `T` as `detail`, which refuses any condition on the first stage;
+  `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
 
@@ -260,7 +262,8 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, and the input of
+  each condition an output of an earlier stage. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -273,7 +276,7 @@ defmodule Apiary.Processes do
       true ->
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
-            case duplicates(document["stages"]) do
+            case duplicates(document["stages"]) ++ condition_inputs(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -307,6 +310,40 @@ defmodule Apiary.Processes do
     end)
     |> elem(0)
     |> Enum.reverse()
+  end
+
+  # The conditions whose input type is no output of an earlier stage, in the document's
+  # order: on the workflow entries, those in a loop included, then on the outputs.
+  defp condition_inputs(stages) do
+    stages
+    |> Enum.with_index()
+    |> Enum.flat_map_reduce(MapSet.new(), fn {stage, index}, earlier ->
+      at = "#/stages/#{index}"
+
+      entries =
+        stage["sequence"]
+        |> Enum.with_index()
+        |> Enum.flat_map(fn
+          {%{"loop" => %{"body" => body}}, i} ->
+            for {entry, j} <- Enum.with_index(body),
+                do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+
+          {entry, i} ->
+            [{entry, "#{at}/sequence/#{i}"}]
+        end)
+
+      outputs =
+        for {output, k} <- Enum.with_index(stage["outputs"] || []),
+            do: {output, "#{at}/outputs/#{k}"}
+
+      errors =
+        for {%{"when" => %{"input" => type}}, path} <- entries ++ outputs,
+            type not in earlier,
+            do: %{path: path <> "/when/input", error: :condition_input, detail: type}
+
+      {errors, Enum.into(for(o <- stage["outputs"] || [], do: o["type"]), earlier)}
+    end)
+    |> elem(0)
   end
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
@@ -487,9 +524,22 @@ defmodule Apiary.Processes do
         "stack" => Workspace.qory_stack(workspace),
         "type" => template.type,
         "version" => newest.number
-      },
+      }
+      |> with_submit(template),
       []
     )
+  end
+
+  @doc false
+  # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
+  # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
+  # where it has one (`Apiary.Processes.Version`).
+  @spec with_submit(map, map) :: map
+  def with_submit(record, template) do
+    case Map.get(template, :submit) do
+      %{} = submit -> Map.put(record, "submit", submit)
+      nil -> record
+    end
   end
 
   @doc """
