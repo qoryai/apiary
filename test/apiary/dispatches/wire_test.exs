@@ -105,10 +105,10 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # Each vendored contract is at the integrations commit of its last change, so the refs
-  # differ. The run and integration contracts are at the last commit of the run submit
-  # work (submit and submit_module). That commit comes after the commit that binds a
-  # group role to a list of agents.
+  # The vendored contracts are at different integrations commits. The run and integration
+  # contracts are at b00f97dd, the last commit of the run submit work (submit and
+  # submit_module). That commit comes after 0506879f, which binds a group role to a list
+  # of agents.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "2fbb74357cec7806d17f77c7b82d7f4ac760b3f9"},
