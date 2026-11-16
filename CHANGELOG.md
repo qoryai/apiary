@@ -12,6 +12,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A demo video's page has a Speed row under each video, with the buttons 0.5x, 1x, 1.5x
+  and 2x: a click plays the video at that speed, and the pressed button shows the speed.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
