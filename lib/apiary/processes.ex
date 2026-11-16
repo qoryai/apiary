@@ -118,6 +118,8 @@ defmodule Apiary.Processes do
            | :inputs_changed
            | :outputs_changed
            | :gate_changed
+           | :condition_changed
+           | :tracks_changed
            | :machine_changed, String.t() | nil, map}
 
   @typedoc "A finding of `placement_check/3`, with the stage's id."
@@ -1221,18 +1223,21 @@ defmodule Apiary.Processes do
 
   @doc """
   diff/2 is what changed from `older` to `newer`, two versions or documents; `older` nil
-  for none, as before version 1. First a change of the document's `machine`, then, for
-  each stage of `newer` in its order, whether it was added, or renamed, moved, or had its
-  description, sequence, inputs, outputs or gate changed, then each stage `older` had and
-  `newer` does not, in `older`'s order. A stage is moved when its place among the stages
-  both have changed, beyond what another stage's move explains.
+  for none, as before version 1. First a change of the document's `machine`, then of its
+  `tracks`, then, for each stage of `newer` in its order, whether it was added, or renamed,
+  moved, or had its description, sequence, inputs, outputs, gate or condition changed, then
+  each stage `older` had and `newer` does not, in `older`'s order. A stage is moved when its
+  place among the stages both have changed, beyond what another stage's move explains.
 
   Each change is `{kind, stage_id, detail}`: `%{name, position}` for an added stage
   (position from 0), `%{name}` for a removed one, `%{from, to}` for the rest, the value
   before and after (a position for a move, the document's machine for
   `:machine_changed`, whose stage id is nil, and nil for a stage with no description). A
   document with no `machine` and one with `default` run on the same type: between them
-  there is no `:machine_changed`.
+  there is no `:machine_changed`. `:tracks_changed` (stage id nil) is a difference in the
+  document's `tracks`, none being the same as an empty list, and `:condition_changed` a
+  difference in the stage's own `when` and `unless` (a condition on an input, a loop or an
+  entry changes `:inputs_changed` or `:sequence_changed`).
   """
   @spec diff(Version.t() | document | nil, Version.t() | document) :: [change]
   def diff(%Version{document: older}, newer), do: diff(older, newer)
@@ -1269,7 +1274,12 @@ defmodule Apiary.Processes do
           stage["id"] not in new_ids,
           do: {:stage_removed, stage["id"], %{name: stage["name"]}}
 
-    machine ++ changed ++ removed
+    tracks =
+      if older != %{"stages" => []} and (older["tracks"] || []) != (newer["tracks"] || []),
+        do: [{:tracks_changed, nil, %{from: older["tracks"], to: newer["tracks"]}}],
+        else: []
+
+    machine ++ tracks ++ changed ++ removed
   end
 
   defp stage_changes(old, new, move) do
@@ -1283,10 +1293,21 @@ defmodule Apiary.Processes do
       field_change(:sequence_changed, id, old, new, "sequence"),
       field_change(:inputs_changed, id, old, new, "inputs"),
       field_change(:outputs_changed, id, old, new, "outputs"),
-      field_change(:gate_changed, id, old, new, "gate")
+      field_change(:gate_changed, id, old, new, "gate"),
+      condition_change(id, old, new)
     ]
     |> Enum.filter(& &1)
   end
+
+  # `:condition_changed` when the stage's own `when` or `unless` differs. A change of the
+  # condition of an input, a loop or an entry is part of `:inputs_changed` or
+  # `:sequence_changed`.
+  defp condition_change(id, old, new) do
+    {from, to} = {own_condition(old), own_condition(new)}
+    if from != to, do: {:condition_changed, id, %{from: from, to: to}}
+  end
+
+  defp own_condition(stage), do: Map.take(stage, ["when", "unless"])
 
   defp field_change(kind, id, old, new, field) do
     if Map.get(old, field, []) != Map.get(new, field, []),

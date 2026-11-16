@@ -38,6 +38,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   back starts no run. A required input held back is not waited for. A person's move into
   a stage runs it whatever its condition. A later approval with another track changes the
   stages that come after it.
+- The Workflows page shows the tracks and conditions of a process, read-only. A stage's card
+  and its Gate section show `Offers: ...` when its gate offers tracks. A stage, a loop or a
+  workflow entry with a condition on a track shows it on its card and in its panel (`Skipped
+  on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`, `Runs on Standard or Slow
+  only.`), and so does a workflow in a loop. A workflow entry takes an optional `name` of 1 to
+  60 characters with at least one letter or sign, shown as `Name: ...` under its row in the
+  stage panel. The Details tab lists the tracks, and for a process that declares tracks its
+  line reads "Every work item of <workspace> goes through these stages in order, except a
+  stage that its track skips. Each save makes a new version." The History says `Tracks
+  changed.` when the tracks change, `<stage>: condition changed.` when a stage's own `when` or
+  `unless` changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's tracks
+  change, or `... Offers no track.` when a gate stops offering tracks. A change to the
+  condition of an input, a loop or an entry shows as a change of the inputs or the sequence.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.

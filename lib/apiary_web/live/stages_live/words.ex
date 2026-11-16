@@ -48,9 +48,11 @@ defmodule ApiaryWeb.StagesLive.Words do
   defp people(people, ids), do: Enum.map_join(ids, ", ", &person(people, &1))
 
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
-  # its label and its workflows. Text only.
+  # its label and its workflows. Text only. With the process document `doc`, an entry or a
+  # loop that has a condition on a track also has `condition`, its words (`condition/4`),
+  # and a loop has `conditions`, the words of each workflow's condition, nil for none.
   @doc false
-  def card_sequence(stage) do
+  def card_sequence(stage, doc \\ nil) do
     for entry <- stage["sequence"] do
       case entry do
         %{"loop" => %{"rounds" => rounds, "body" => body}} ->
@@ -61,42 +63,151 @@ defmodule ApiaryWeb.StagesLive.Words do
               ),
             workflows: Enum.map(body, &to_string(&1["workflow"]))
           }
+          |> put_conditions(Enum.map(body, &condition(&1, doc, stage["id"])))
+          |> put_condition(condition(entry, doc, stage["id"]))
 
         entry ->
           %{workflow: to_string(entry["workflow"])}
+          |> put_condition(condition(entry, doc, stage["id"]))
       end
     end
   end
 
-  # The words a screen reader reads for a card: its name, its description, its workflows
-  # and loops, its gate, each in full.
+  # `conditions`, one place for each workflow of a loop, nil for a workflow with none; no key
+  # where none of them has one.
+  defp put_conditions(map, conditions) do
+    if Enum.all?(conditions, &is_nil/1), do: map, else: Map.put(map, :conditions, conditions)
+  end
+
+  defp put_condition(map, nil), do: map
+  defp put_condition(map, text), do: Map.put(map, :condition, text)
+
+  # The name the process document `doc` gives the track `id`, else the id.
   @doc false
-  def card_label(stage, people) do
+  def track_name(doc, id) do
+    case Enum.find(doc["tracks"] || [], &(&1["id"] == id)) do
+      %{"name" => name} -> name
+      _none -> id
+    end
+  end
+
+  # "Offers: Standard, Fast track" for a stage whose gate offers tracks, in the gate's
+  # order; nil for a stage that offers none, or with no document.
+  @doc false
+  def offers(%{"gate" => %{"tracks" => [_ | _] = ids}}, %{} = doc),
+    do: gettext("Offers: %{tracks}", tracks: Enum.map_join(ids, ", ", &track_name(doc, &1)))
+
+  def offers(_stage, _doc), do: nil
+
+  # The words of a condition on a track in `when` or `unless` of `item`, a stage, a loop or a
+  # workflow entry of the stage `stage_id` in `doc`; nil for an item with none, for a
+  # condition on an input (no words here), and with no document.
+  #
+  #   * a stage: "Skipped on Fast track" for `unless`, "Runs on Fast track." for `when`;
+  #   * a loop or entry: "Runs on Fast track." for `when`; for `unless`, "Runs on Standard
+  #     only.", with the other tracks that the gates before the stage offer, in the
+  #     document's order, and "Skipped on Fast track" when there is none.
+  @doc false
+  def condition(item, doc, stage_id, kind \\ :part)
+
+  def condition(%{"when" => %{"track" => id}}, %{} = doc, _stage_id, _kind),
+    do: gettext("Runs on %{track}.", track: track_name(doc, id))
+
+  def condition(%{"unless" => %{"track" => id}}, %{} = doc, stage_id, kind) do
+    others =
+      if kind == :part, do: Enum.reject(offered_before(doc, stage_id), &(&1 == id)), else: []
+
+    case others do
+      [] ->
+        gettext("Skipped on %{track}", track: track_name(doc, id))
+
+      _others ->
+        gettext("Runs on %{tracks} only.",
+          tracks: ApiaryWeb.SourceComponents.joined(Enum.map(others, &track_name(doc, &1)), :or)
+        )
+    end
+  end
+
+  def condition(_item, _doc, _stage_id, _kind), do: nil
+
+  # The ids of the tracks that the gates before the stage `stage_id` offer, in the order of
+  # the document's `tracks`.
+  defp offered_before(doc, stage_id) do
+    offered =
+      (doc["stages"] || [])
+      |> Enum.take_while(&(&1["id"] != stage_id))
+      |> Enum.flat_map(&((&1["gate"] || %{})["tracks"] || []))
+
+    for %{"id" => id} <- doc["tracks"] || [], id in offered, do: id
+  end
+
+  # The lines under a workflow entry's row in the editor and the member's panel: "Name: ..."
+  # for an entry with a name, then its condition.
+  @doc false
+  def entry_notes(entry, doc, stage_id) do
+    name =
+      case entry["name"] do
+        name when is_binary(name) and name != "" -> gettext("Name: %{name}", name: name)
+        _none -> nil
+      end
+
+    Enum.reject([name, condition(entry, doc, stage_id)], &is_nil/1)
+  end
+
+  # The words a screen reader reads for a card, in the card's order: its name, its condition,
+  # its description, its workflows and loops, its gate and the tracks it offers, each in full.
+  @doc false
+  def card_label(stage, people, doc \\ nil) do
     sequence =
-      case card_sequence(stage) do
+      case card_sequence(stage, doc) do
         [] ->
           [gettext("No workflow")]
 
         items ->
           Enum.map(items, fn
-            %{loop: loop, workflows: names} ->
+            %{loop: loop, workflows: names} = item ->
               gettext("a loop of %{workflows}, %{rounds}",
-                workflows: Enum.join(names, ", "),
+                workflows: Enum.join(loop_names(names, item), ", "),
                 rounds: loop
               )
+              |> with_condition(item)
 
-            %{workflow: name} ->
-              name
+            %{workflow: name} = item ->
+              with_condition(name, item)
           end)
       end
 
-    rest = Enum.join(sequence ++ [gate_line(stage, people)], ". ")
+    rest =
+      Enum.join(
+        Enum.reject(
+          sequence ++ [gate_line(stage, people), doc && offers(stage, doc)],
+          &(&1 in [nil, false])
+        ),
+        ". "
+      )
 
-    case label_description(stage) do
-      nil -> stage["name"] <> ". " <> rest
-      text -> stage["name"] <> ". " <> text <> rest
+    condition =
+      case condition(stage, doc, stage["id"], :stage) do
+        nil -> ""
+        text -> String.trim_trailing(text, ".") <> ". "
+      end
+
+    stage["name"] <> ". " <> condition <> (label_description(stage) || "") <> rest
+  end
+
+  # The workflows of a loop, each followed by its condition in brackets where it has one.
+  defp loop_names(names, %{conditions: conditions}) do
+    for {name, condition} <- Enum.zip(names, conditions) do
+      if condition, do: name <> " (" <> String.trim_trailing(condition, ".") <> ")", else: name
     end
   end
+
+  defp loop_names(names, _item), do: names
+
+  defp with_condition(text, %{condition: condition}),
+    do: text <> ", " <> String.trim_trailing(condition, ".")
+
+  defp with_condition(text, _item), do: text
 
   # The stage's description as the document has it, plain text; nil for none or a blank one.
   @doc false
@@ -279,27 +390,43 @@ defmodule ApiaryWeb.StagesLive.Words do
   def change({:outputs_changed, id, _detail}, _older, newer, _people),
     do: gettext("Changed the outputs of %{name}.", name: name(newer, id))
 
-  def change({:gate_changed, id, _detail}, _older, newer, people) do
-    name = name(newer, id)
+  def change({:tracks_changed, _id, _detail}, _older, _newer, _people),
+    do: gettext("Tracks changed.")
 
-    case (Processes.stage(newer, id) || %{})["gate"] do
-      %{"kind" => "none"} ->
-        gettext("Changed the gate of %{name}: no gate.", name: name)
+  def change({:condition_changed, id, _detail}, _older, newer, _people),
+    do: gettext("%{stage}: condition changed.", stage: name(newer, id))
 
-      %{"approvers" => %{"members" => [person]}} ->
-        gettext("Changed the gate of %{name}: %{person} approves.",
-          name: name,
-          person: person(people, person)
-        )
+  def change({:gate_changed, id, _detail}, older, newer, people) do
+    stage = Processes.stage(newer, id) || %{}
+    name = stage["name"]
 
-      %{"approvers" => %{"members" => ids}} ->
-        gettext("Changed the gate of %{name}: one of %{people} approves.",
-          name: name,
-          people: people(people, ids)
-        )
+    line =
+      case stage["gate"] do
+        %{"kind" => "none"} ->
+          gettext("Changed the gate of %{name}: no gate.", name: name)
 
-      _members ->
-        gettext("Changed the gate of %{name}: any member approves.", name: name)
+        %{"approvers" => %{"members" => [person]}} ->
+          gettext("Changed the gate of %{name}: %{person} approves.",
+            name: name,
+            person: person(people, person)
+          )
+
+        %{"approvers" => %{"members" => ids}} ->
+          gettext("Changed the gate of %{name}: one of %{people} approves.",
+            name: name,
+            people: people(people, ids)
+          )
+
+        _members ->
+          gettext("Changed the gate of %{name}: any member approves.", name: name)
+      end
+
+    # A gate that offers tracks adds them: "... any member approves. Offers: A, B."; a gate
+    # that stops offering them says so.
+    case {offers(stage, newer), offers(Processes.stage(older, id) || %{}, older)} do
+      {nil, nil} -> line
+      {nil, _before} -> line <> " " <> gettext("Offers no track.")
+      {offers, _before} -> line <> " " <> offers <> "."
     end
   end
 
@@ -493,6 +620,12 @@ defmodule ApiaryWeb.StagesLive.Words do
       field == "name" ->
         gettext("Give every stage a name of 1 to 60 characters.")
 
+      field == "sequence" and bad_entry_name?(doc, path) ->
+        gettext(
+          "Give a workflow in %{stage} a name of 1 to 60 characters, or remove its name.",
+          stage: stage
+        )
+
       String.contains?(path, "machine") ->
         machine_refused()
 
@@ -501,7 +634,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       String.starts_with?(path, "#/tracks") and String.ends_with?(path, "/description") ->
         gettext("Shorten the description of %{track} to at most 500 characters.",
-          track: track_name(doc, path)
+          track: track_at(doc, path)
         )
 
       String.starts_with?(path, "#/tracks") ->
@@ -544,6 +677,21 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # Whether the entry at `path`, or a workflow in the loop there, has a `name` that is not a
+  # text of 1 to 60 characters.
+  defp bad_entry_name?(doc, path) do
+    case Draft.entry_at(doc, path) do
+      %{"loop" => %{"body" => body}} -> Enum.any?(body, &bad_name?/1)
+      %{} = entry -> bad_name?(entry)
+      _other -> false
+    end
+  end
+
+  defp bad_name?(%{"name" => name}),
+    do: not (is_binary(name) and length(String.codepoints(name)) in 1..60 and name =~ ~r/\S/)
+
+  defp bad_name?(_entry), do: false
 
   # The banner's line for a stage with rows that show a refused machine type
   # (`Editor.banner/1`).
@@ -666,7 +814,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   # The name of the track at a place such as `#/tracks/1/description`, else its id, else
   # "a track".
-  defp track_name(doc, path) do
+  defp track_at(doc, path) do
     with [_all, index] <- Regex.run(~r{^#/tracks/(\d+)}, path),
          %{} = track <- Enum.at(doc["tracks"] || [], String.to_integer(index)) do
       [track["name"], track["id"]]
