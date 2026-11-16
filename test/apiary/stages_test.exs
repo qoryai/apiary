@@ -2630,6 +2630,64 @@ defmodule Apiary.StagesTest do
 
       assert decisions(work_item) == []
     end
+
+    test "the approval leaves out a version of a run a member cancelled", %{scope: scope} do
+      build_then_verify!(scope)
+
+      cancelled = fn run, registered ->
+        pushes(["explainer"], 2).(run, registered)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+          )
+      end
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(pushes(["explainer"], 1))
+        |> end_run!(verdict("changes-requested"))
+        |> end_run!(cancelled)
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+
+      # The next round pushes no explainer: the newest one that counts is version 1.
+      assert %DispatchRun{workflow: "implement-changes"} = newest_run(work_item)
+      work_item = work_item |> end_run!(nil) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      assert Artifacts.cancelled?(Enum.find(versions(work_item, "explainer"), &(&1.number == 2)))
+      explainer = version_id(work_item, "explainer", 1)
+      assert [%GateDecision{automatic: true, versions: [^explainer]}] = decisions(work_item)
+    end
+
+    test "a person's last output there counts as a later stage's input in what a run starts",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+          "gate" => %{"kind" => "none"}
+        }),
+        stage(@build, "Build", [%{"workflow" => "implement-changes"}], %{
+          "inputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+        })
+      ])
+
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      assert Stages.starts(work_item, {:version_added, "acceptance-criteria"}) ==
+               {:run, "implement-changes"}
+
+      {:ok, _version} = Stages.add_version(scope, work_item, "acceptance-criteria", file("a.md"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :running} = reload(work_item)
+      assert %DispatchRun{stage_id: @build, workflow: "implement-changes"} = newest_run(work_item)
+    end
   end
 
   describe "a work item the runner has not placed" do
