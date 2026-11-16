@@ -295,11 +295,9 @@ defmodule Apiary.Artifacts.TemplateTypes do
         type: type
       )
 
+  # At most 100 characters for a type name of 64 bytes, the longest a type may have.
   def message({:submit, type, :missing}),
-    do:
-      gettext("set submit.type to a structured type of artifact_types: no entry is named %{type}",
-        type: type
-      )
+    do: gettext("add structured type %{type} for submit.type", type: type)
 
   def message({:submit, type, :standard}),
     do:
