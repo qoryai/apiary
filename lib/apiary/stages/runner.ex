@@ -65,9 +65,10 @@ defmodule Apiary.Stages.Runner do
   #   * A queued run's time limit and access level are the lower of the entry's and the
   #     workflow's declaration (addition 10); its machine type is the entry's, else the
   #     document's.
-  #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`, each with
-  #     one condition: `{input: T}`, met while `T` counts (the version of `T` that the stage
-  #     reads has a file of more than 0 bytes, `facts.counted`), or `{track: ID}`, met while
+  #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
+  #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
+  #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
+  #     `{track: ID}`, met while
   #     the work item is on the track `ID` (`facts.track`, `Apiary.Stages.track/1`). `when`
   #     holds the item back while its condition is not met, `unless` while it is met
   #     (`unmet/2` is the reason, or nil). A stage whose condition holds it back is passed
@@ -82,7 +83,8 @@ defmodule Apiary.Stages.Runner do
   #     round and a failed check never start it again. A stage does not wait for an
   #     undeclared workflow whose condition holds it back. An output whose condition holds it
   #     back is not required (`required?/2`, by `unmet/2` as for any item), so the stage goes
-  #     on to its gate. A loop with a condition that holds it back is passed over whole, each of its entries with that reason.
+  #     on to its gate. A loop with a condition that holds it back is passed over whole, each
+  #     of its entries with that reason.
   @moduledoc false
 
   alias Apiary.Stages.Points
@@ -511,9 +513,8 @@ defmodule Apiary.Stages.Runner do
   # loop `passed` already leaves the loop.
   defp run_ended(stage, position, {:verdict, :passed, _points}, facts) do
     if first_attempt?(stage, position) do
-      outcome =
-        finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts)
-
+      end_position = %{position | entry: length(sequence(stage)), loop_entry: nil}
+      outcome = finish(stage, end_position, facts, false)
       skipped(first_attempt_skips(stage, position), outcome)
     else
       start(stage, next(stage, position, facts), facts)
@@ -575,7 +576,10 @@ defmodule Apiary.Stages.Runner do
 
   ## The end of the sequence
 
-  defp finish(stage, position, facts) do
+  # `restart?` is false after a passed first attempt: a failed check then escalates
+  # `check_failed` at once, since a loop that starts again would run entries the first
+  # attempt passed over.
+  defp finish(stage, position, facts, restart? \\ true) do
     failed = Map.get(facts, :failed_checks, [])
 
     cond do
@@ -589,8 +593,8 @@ defmodule Apiary.Stages.Runner do
       true ->
         gaps = check_gaps(failed)
 
-        case List.last(loops(stage, facts)) do
-          nil ->
+        case restart? && List.last(loops(stage, facts)) do
+          falsy when falsy in [nil, false] ->
             escalate(:check_failed, Points.check_failed(failed), position)
 
           index ->

@@ -391,6 +391,31 @@ defmodule Apiary.Stages.RunnerTest do
                })
     end
 
+    test "a failed check after a passed first attempt escalates check_failed, with no loop restart" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true}),
+          loop([wf("review"), wf("fix")])
+        ])
+        |> Map.put("outputs", [%{"type" => "submission", "required" => true}])
+
+      outcome =
+        Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["submission"]
+        })
+
+      assert %{state: :escalated, position: %{entry: 2, loop_entry: nil}} = outcome
+
+      assert [
+               {:skip, %{workflow: "review"}},
+               {:skip, %{workflow: "fix"}},
+               {:escalate, :check_failed, [_point]}
+             ] = outcome.actions
+
+      refute Enum.any?(outcome.actions, &match?({:queue, _}, &1))
+      refute Enum.any?(outcome.actions, &match?({:checks_failed, _, _}, &1))
+    end
+
     test "changes-requested goes on with the sequence" do
       assert queued(
                Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :changes_requested, nil}})

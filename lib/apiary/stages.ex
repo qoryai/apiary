@@ -1323,7 +1323,7 @@ defmodule Apiary.Stages do
       state = shown_state(work_item, stage, artifacts)
       counted = counted(work_item, version, stage, artifacts)
       track = track(work_item)
-      outputs = outputs(work_item, version, stage, artifacts, counted)
+      outputs = outputs(work_item, version, stage, artifacts, %{counted: counted, track: track})
       missing = missing(outputs)
 
       %{
@@ -2060,7 +2060,8 @@ defmodule Apiary.Stages do
       declarations: declarations,
       counted: counted,
       track: track,
-      failed_checks: missing(outputs(work_item, version, stage, artifacts, counted)),
+      failed_checks:
+        missing(outputs(work_item, version, stage, artifacts, %{counted: counted, track: track})),
       machine: version.document["machine"],
       test: work_item.test
     }
@@ -2875,10 +2876,12 @@ defmodule Apiary.Stages do
   end
 
   # An output with a condition is required only while its condition does not hold it back
-  # (`Runner.required?/2`), with `counted` as `counted/4` reads it, read here for nil.
-  defp outputs(work_item, version, stage, artifacts, counted \\ nil) do
-    counted = counted || counted(work_item, version, stage, artifacts)
-    facts = %{counted: counted, track: track(work_item)}
+  # (`Runner.required?/2`), with `facts` as `facts/3` reads them (`counted` and `track`), read
+  # here for nil.
+  defp outputs(work_item, version, stage, artifacts, facts \\ nil) do
+    facts =
+      facts ||
+        %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
 
     for output <- Map.get(stage, "outputs", []) do
       type = output["type"]

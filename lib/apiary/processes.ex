@@ -110,10 +110,10 @@ defmodule Apiary.Processes do
   entry, where `T` is no output of an earlier stage, with `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
-  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both `when` and
-  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
-  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
-  on a gate of kind `none`;
+  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
+  `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
+  for a track id in a gate's `tracks` that the document's `tracks` do not declare;
+  `:gate_none_tracks` for tracks on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}

@@ -25,8 +25,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - An output takes `when` and `unless` with `{track: <id>}` or `{input: <type>}`, as an
   input does, and the stage runner evaluates it the way it does any other condition. An
   output whose condition holds it back is not required: its Exists check does not fail the
-  stage, so the stage goes on to its gate, and the work item page lists it as not required.
-  A save is refused for a track that no earlier gate offers, a type that no earlier stage
+  stage, so the stage goes on to its gate. The work item page shows such an output as
+  "Optional, none" while it has no version, and "Passed" once it has one; the Run API gives
+  it `required: false`. A save is refused for a track that no earlier gate offers, a type that no earlier stage
   makes, and both keys on one output. A Verify stage whose entries are all passed over on
   the fast track, with `verification` set to `unless: {track: fast}`, starts no run
   and opens its gate without `verification`; on the standard track `verification` is still
