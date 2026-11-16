@@ -68,8 +68,8 @@ defmodule Apiary.Stages.Runner do
   #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
   #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
   #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
-  #     `{track: ID}`, met while
-  #     the work item is on the track `ID` (`facts.track`, `Apiary.Stages.track/1`). `when`
+  #     `{track: ID}`, met while the work item is on the track `ID`
+  #     (`facts.track`, `Apiary.Stages.track/1`). `when`
   #     holds the item back while its condition is not met, `unless` while it is met
   #     (`unmet/2` is the reason, or nil). A stage whose condition holds it back is passed
   #     over when it is entered, before it waits for anything, with no run
@@ -726,7 +726,9 @@ defmodule Apiary.Stages.Runner do
 
   # loops/2 is the indexes of the stage's loops that are not passed over with `facts`
   # (`passed_over?/3`), in order.
-  defp loops(stage, facts) do
+  @doc false
+  @spec loops(map, map) :: [non_neg_integer]
+  def loops(stage, facts) do
     for {%{"loop" => _loop}, index} <- Enum.with_index(sequence(stage)),
         not passed_over?(stage, index, facts),
         do: index

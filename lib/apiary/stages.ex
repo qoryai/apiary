@@ -1461,10 +1461,10 @@ defmodule Apiary.Stages do
   # type) or `track` (an id, with `track_name`), `negated` (true for an `unless` that was
   # met) and `after_attempt`, the newest attempt of the take in when the runner passed it
   # over (0 for none); for an entry a first attempt passed over, `reason` is
-  # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its workflow
-  # (both nil for a condition). `earlier_skips/1` is those of the take ins before the current one,
-  # each with its `take_in`; `stage_skips/1` the stages passed over whole in the current
-  # take in (`skip_records/1`).
+  # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its
+  # workflow (both nil for a condition). `earlier_skips/1` is those of the take ins before
+  # the current one, each with its `take_in`; `stage_skips/1` the stages passed over whole
+  # in the current take in (`skip_records/1`).
   @doc false
   @spec skips(WorkItem.t()) :: [map]
   def skips(%WorkItem{} = work_item), do: skip_records(work_item).skips
@@ -1783,10 +1783,8 @@ defmodule Apiary.Stages do
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
   defp apply_event(work_item, version, stage, event, run_id \\ nil, more \\ %{}, by \\ nil) do
-    if match?(:request_changes, event) or match?({:another_round, _cause}, event),
-      do: delete_first_attempt_skips(work_item, stage)
-
     facts = Map.merge(facts(work_item, version, stage), more)
+    delete_first_attempt_skips(work_item, stage, event, facts)
     outcome = Runner.step(stage, position(work_item), event, facts)
     apply_outcome(work_item, version, stage, outcome, run_id, by)
   end
@@ -2136,14 +2134,30 @@ defmodule Apiary.Stages do
   end
 
   # The records of the entries a first attempt passed over (`Runner`), in the stage and the
-  # take in: they go when the stage runs its sequence again.
-  defp delete_first_attempt_skips(work_item, stage) do
-    Repo.delete_all(
+  # take in, go when the stage runs those entries again: Request changes runs the sequence
+  # from its start, so all of them go. Another round at the end of the sequence runs only
+  # the stage's last loop, so only the records of that loop's body go and the entries before
+  # it, which still do not run, keep theirs. Another round with no loop runs the sequence
+  # from its start.
+  defp delete_first_attempt_skips(work_item, stage, event, facts) do
+    query =
       from s in Skip,
         where:
           s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
             s.take_in == ^work_item.take_in and not is_nil(s.reason)
-    )
+
+    case {event, List.last(Runner.loops(stage, facts))} do
+      {:request_changes, _loop} ->
+        Repo.delete_all(query)
+
+      {{:another_round, _cause}, loop} ->
+        if loop && Runner.at_end?(stage, position(work_item)),
+          do: Repo.delete_all(from s in query, where: s.stage_entry == ^loop),
+          else: Repo.delete_all(query)
+
+      _other ->
+        :ok
+    end
   end
 
   # A workflow entry the runner passed over, after the newest run of the take in.

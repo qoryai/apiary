@@ -20,18 +20,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gets a record of being passed over, with the reason `first_attempt_passed` and the name of
   the first attempt's entry, else its workflow (`stage_skips.reason` and `cause_entry`), and
   the work item page lists it: "Did not run, because <entry> passed on its first attempt."
-  The records go when the stage is entered again, and when Request changes or Another round
-  runs its sequence again.
+  The records go when the stage is entered again, and when Request changes runs its sequence
+  again. Another round after a failed check runs only the last loop, so it deletes the
+  records of the entries in that loop and keeps the others.
 - An output takes `when` and `unless` with `{track: <id>}` or `{input: <type>}`, as an
   input does, and the stage runner evaluates it the way it does any other condition. An
   output whose condition holds it back is not required: its Exists check does not fail the
   stage, so the stage goes on to its gate. The work item page shows such an output as
   "Optional, none" while it has no version, and "Passed" once it has one; the Run API gives
-  it `required: false`. A save is refused for a track that no earlier gate offers, a type that no earlier stage
-  makes, and both keys on one output. A Verify stage whose entries are all passed over on
-  the fast track, with `verification` set to `unless: {track: fast}`, starts no run
-  and opens its gate without `verification`; on the standard track `verification` is still
-  required.
+  it `required: false`. A save is refused for a track that no earlier gate offers, a type
+  that no earlier stage makes, and both keys on one output. A Verify stage whose entries
+  are all passed over on the fast track, with `verification` set to
+  `unless: {track: fast}`, starts no run and opens its gate without `verification`; on the
+  standard track `verification` is still required.
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on

@@ -4645,8 +4645,9 @@ defmodule Apiary.StagesTest do
     ]
 
     # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
-    # ends its sequence when it passes, then plan-the-build and, on Fast track, write-the-checks; Verify, whose run and whose
-    # output `verification` Fast track does without.
+    # ends its sequence when it passes, then plan-the-build and, on Fast track,
+    # write-the-checks; Verify, whose run and whose output `verification` Fast track does
+    # without.
     defp first_attempt_process!(scope) do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
@@ -4771,6 +4772,52 @@ defmodule Apiary.StagesTest do
 
       again = end_run!(again, verdict("passed"))
       assert [_plan, _checks] = Stages.skips(again)
+    end
+
+    test "Another round after a failed check clears the skips of the last loop only",
+         %{scope: scope} do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast"])),
+          stage(
+            @build,
+            "Build",
+            [
+              %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+              %{"workflow" => "plan-the-build"},
+              %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "check-it"}]}}
+            ],
+            %{"outputs" => [%{"type" => "submission", "required" => true}]}
+          )
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+
+      # The first attempt passes with no submission: the check fails and the stage escalates.
+      work_item = reload(work_item) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+
+      assert ["plan-the-build", "check-it"] ==
+               for(
+                 %{reason: "first_attempt_passed", workflow: w} <- Stages.skips(work_item),
+                 do: w
+               )
+
+      {:ok, again} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @build)
+
+      # The loop runs again, so its skip goes; plan-the-build still does not run.
+      assert %DispatchRun{workflow: "check-it"} = newest_run(again)
+
+      assert ["plan-the-build"] ==
+               for(%{reason: "first_attempt_passed", workflow: w} <- Stages.skips(again), do: w)
     end
 
     test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
