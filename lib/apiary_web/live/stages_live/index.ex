@@ -664,6 +664,7 @@ defmodule ApiaryWeb.StagesLive.Index do
               <Inspector.stage_panel
                 :if={@stage}
                 stage={@stage}
+                doc={@draft}
                 may={@may}
                 last={length(@draft["stages"]) == 1}
                 declared={@declared}
@@ -687,10 +688,17 @@ defmodule ApiaryWeb.StagesLive.Index do
 
           <div :if={@tab == :details} id="stages-details" class="grid gap-6">
             <p id="stages-details-line" class="text-[13.5px]/5 text-muted">
-              {gettext(
-                "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
-                workspace: @workspace
-              )}
+              <%= if @draft["tracks"] in [nil, []] do %>
+                {gettext(
+                  "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
+                  workspace: @workspace
+                )}
+              <% else %>
+                {gettext(
+                  "Every work item of %{workspace} goes through these stages in order, except a stage that its track skips. Each save makes a new version.",
+                  workspace: @workspace
+                )}
+              <% end %>
             </p>
             <p id="stages-harness" class="text-[13.5px]/5">
               <.rich :if={!@in_use} text={gettext("Harness: %{harness}", harness: @harness)} />
@@ -746,6 +754,25 @@ defmodule ApiaryWeb.StagesLive.Index do
                 machine: MachineTypeWords.default_words(@machine_types, @draft["machine"])
               )}
             </p>
+
+            <section
+              :if={@draft["tracks"] not in [nil, []]}
+              id="stages-tracks"
+              aria-labelledby="stages-tracks-title"
+              class="grid gap-2"
+            >
+              <h2 id="stages-tracks-title" class="text-[15px]/6 font-semibold">
+                {gettext("Tracks")}
+              </h2>
+              <ul class="grid max-w-[60rem] gap-3">
+                <li :for={track <- @draft["tracks"]} class="grid gap-0.5">
+                  <p class="text-[13.5px]/5 font-medium">{track["name"]}</p>
+                  <p :if={track["description"] not in [nil, ""]} class="text-[13.5px]/5">
+                    {track["description"]}
+                  </p>
+                </li>
+              </ul>
+            </section>
 
             <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">
               <h2 id="stages-check-title" class="text-[15px]/6 font-semibold">

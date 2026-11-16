@@ -95,8 +95,14 @@ defmodule Apiary.Processes do
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:condition_input` for a condition
-  `when: {input: T}` on a workflow entry or an output where `T` is no output of an earlier
-  stage, with `T` as `detail`, which refuses any condition on the first stage;
+  `{input: T}` in `when` or `unless` on a stage, an input, a loop or a workflow entry, or in
+  `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
+  with `ID` as `detail`; both refuse any condition on the first stage;
+  `:condition_both` for a stage, an input, a loop or a workflow entry with both `when` and
+  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
+  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
+  on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -112,6 +118,8 @@ defmodule Apiary.Processes do
            | :inputs_changed
            | :outputs_changed
            | :gate_changed
+           | :condition_changed
+           | :tracks_changed
            | :machine_changed, String.t() | nil, map}
 
   @typedoc "A finding of `placement_check/3`, with the stage's id."
@@ -262,8 +270,10 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once, and the input of
-  each condition an output of an earlier stage. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, every track id
+  once, each track a gate offers declared, the input of each condition an output of an earlier
+  stage, the track of each condition one that an earlier gate offers, and one condition on an item,
+  `when` or `unless`. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -276,7 +286,8 @@ defmodule Apiary.Processes do
       true ->
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
-            case duplicates(document["stages"]) ++ condition_inputs(document["stages"]) do
+            case duplicates(document["stages"]) ++
+                   track_errors(document) ++ condition_errors(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -312,39 +323,111 @@ defmodule Apiary.Processes do
     |> Enum.reverse()
   end
 
-  # The conditions whose input type is no output of an earlier stage, in the document's
-  # order: on the workflow entries, those in a loop included, then on the outputs.
-  defp condition_inputs(stages) do
+  # The refusals of tracks: a track id declared twice (`:duplicate_track_id`), a gate that
+  # offers a track the document does not declare (`:gate_track`), and tracks on a gate of kind
+  # none (`:gate_none_tracks`).
+  defp track_errors(document) do
+    declared = for %{"id" => id} <- document["tracks"] || [], do: id
+
+    duplicates =
+      declared
+      |> Enum.with_index()
+      |> Enum.reduce({[], MapSet.new()}, fn {id, index}, {errors, seen} ->
+        errors =
+          if id in seen,
+            do: [%{path: "#/tracks/#{index}/id", error: :duplicate_track_id, detail: id} | errors],
+            else: errors
+
+        {errors, MapSet.put(seen, id)}
+      end)
+      |> elem(0)
+      |> Enum.reverse()
+
+    offered =
+      for {stage, index} <- Enum.with_index(document["stages"]),
+          {id, j} <- Enum.with_index(stage["gate"]["tracks"] || []),
+          id not in declared,
+          do: %{path: "#/stages/#{index}/gate/tracks/#{j}", error: :gate_track, detail: id}
+
+    none =
+      for {%{"gate" => %{"kind" => "none", "tracks" => [_ | _]}}, index} <-
+            Enum.with_index(document["stages"]),
+          do: %{path: "#/stages/#{index}/gate/tracks", error: :gate_none_tracks, detail: nil}
+
+    duplicates ++ offered ++ none
+  end
+
+  # The conditions that no earlier stage can meet, in the document's order: an `input` type
+  # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
+  # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
+  # input, a workflow entry or a loop, those in a loop's body included, and in `when` on an
+  # output. The first stage has no earlier stage, so each of its conditions is refused.
+  defp condition_errors(stages) do
     stages
     |> Enum.with_index()
-    |> Enum.flat_map_reduce(MapSet.new(), fn {stage, index}, earlier ->
+    |> Enum.flat_map_reduce({MapSet.new(), MapSet.new()}, fn {stage, index},
+                                                             {types, tracks} = earlier ->
       at = "#/stages/#{index}"
 
       entries =
         stage["sequence"]
         |> Enum.with_index()
         |> Enum.flat_map(fn
-          {%{"loop" => %{"body" => body}}, i} ->
-            for {entry, j} <- Enum.with_index(body),
-                do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+          {%{"loop" => %{"body" => body}} = loop, i} ->
+            [{loop, "#{at}/sequence/#{i}"}] ++
+              for {entry, j} <- Enum.with_index(body),
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
 
           {entry, i} ->
             [{entry, "#{at}/sequence/#{i}"}]
         end)
+
+      inputs =
+        for {input, k} <- Enum.with_index(stage["inputs"] || []),
+            do: {input, "#{at}/inputs/#{k}"}
 
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
             do: {output, "#{at}/outputs/#{k}"}
 
       errors =
-        for {%{"when" => %{"input" => type}}, path} <- entries ++ outputs,
-            type not in earlier,
-            do: %{path: path <> "/when/input", error: :condition_input, detail: type}
+        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
+            error <- item_errors(item, path, earlier),
+            do: error
 
-      {errors, Enum.into(for(o <- stage["outputs"] || [], do: o["type"]), earlier)}
+      made = for o <- stage["outputs"] || [], do: o["type"]
+      {errors, {Enum.into(made, types), Enum.into(stage["gate"]["tracks"] || [], tracks)}}
     end)
     |> elem(0)
   end
+
+  # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
+  # item's place).
+  defp item_errors(item, path, earlier) do
+    both =
+      if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
+        do: [%{path: path, error: :condition_both, detail: nil}],
+        else: []
+
+    both ++
+      for key <- ["when", "unless"],
+          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          do: error
+  end
+
+  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
+    if type in types,
+      do: [],
+      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  end
+
+  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+    if track in tracks,
+      do: [],
+      else: [%{path: path <> "/track", error: :condition_track, detail: track}]
+  end
+
+  defp condition_error(_condition, _path, _earlier), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors
@@ -1153,18 +1236,21 @@ defmodule Apiary.Processes do
 
   @doc """
   diff/2 is what changed from `older` to `newer`, two versions or documents; `older` nil
-  for none, as before version 1. First a change of the document's `machine`, then, for
-  each stage of `newer` in its order, whether it was added, or renamed, moved, or had its
-  description, sequence, inputs, outputs or gate changed, then each stage `older` had and
-  `newer` does not, in `older`'s order. A stage is moved when its place among the stages
-  both have changed, beyond what another stage's move explains.
+  for none, as before version 1. First a change of the document's `machine`, then of its
+  `tracks`, then, for each stage of `newer` in its order, whether it was added, or renamed,
+  moved, or had its description, sequence, inputs, outputs, gate or condition changed, then
+  each stage `older` had and `newer` does not, in `older`'s order. A stage is moved when its
+  place among the stages both have changed, beyond what another stage's move explains.
 
   Each change is `{kind, stage_id, detail}`: `%{name, position}` for an added stage
   (position from 0), `%{name}` for a removed one, `%{from, to}` for the rest, the value
   before and after (a position for a move, the document's machine for
   `:machine_changed`, whose stage id is nil, and nil for a stage with no description). A
   document with no `machine` and one with `default` run on the same type: between them
-  there is no `:machine_changed`.
+  there is no `:machine_changed`. `:tracks_changed` (stage id nil) is a difference in the
+  document's `tracks`, none being the same as an empty list, and `:condition_changed` a
+  difference in the stage's own `when` and `unless` (a condition on an input, a loop or an
+  entry changes `:inputs_changed` or `:sequence_changed`).
   """
   @spec diff(Version.t() | document | nil, Version.t() | document) :: [change]
   def diff(%Version{document: older}, newer), do: diff(older, newer)
@@ -1201,7 +1287,12 @@ defmodule Apiary.Processes do
           stage["id"] not in new_ids,
           do: {:stage_removed, stage["id"], %{name: stage["name"]}}
 
-    machine ++ changed ++ removed
+    tracks =
+      if older != %{"stages" => []} and (older["tracks"] || []) != (newer["tracks"] || []),
+        do: [{:tracks_changed, nil, %{from: older["tracks"], to: newer["tracks"]}}],
+        else: []
+
+    machine ++ tracks ++ changed ++ removed
   end
 
   defp stage_changes(old, new, move) do
@@ -1215,10 +1306,21 @@ defmodule Apiary.Processes do
       field_change(:sequence_changed, id, old, new, "sequence"),
       field_change(:inputs_changed, id, old, new, "inputs"),
       field_change(:outputs_changed, id, old, new, "outputs"),
-      field_change(:gate_changed, id, old, new, "gate")
+      field_change(:gate_changed, id, old, new, "gate"),
+      condition_change(id, old, new)
     ]
     |> Enum.filter(& &1)
   end
+
+  # `:condition_changed` when the stage's own `when` or `unless` differs. A change of the
+  # condition of an input, a loop or an entry is part of `:inputs_changed` or
+  # `:sequence_changed`.
+  defp condition_change(id, old, new) do
+    {from, to} = {own_condition(old), own_condition(new)}
+    if from != to, do: {:condition_changed, id, %{from: from, to: to}}
+  end
+
+  defp own_condition(stage), do: Map.take(stage, ["when", "unless"])
 
   defp field_change(kind, id, old, new, field) do
     if Map.get(old, field, []) != Map.get(new, field, []),

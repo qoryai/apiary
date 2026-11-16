@@ -7,9 +7,11 @@ defmodule Apiary.Stages.GateDecision do
   # A gate `none` records an approval too: `automatic` true, with no `user_id`, when the
   # runner passed the gate, and the member's `user_id` when they accepted the escalation
   # that ended the stage. A nil `user_id` with `automatic` false is a member whose account
-  # is gone. `note` is what the person wrote, nil for nothing. `stage_id`
+  # is gone. `track` is the id of the track the approval chose, nil for none; only an
+  # approval has one. `note` is what the person wrote, nil for nothing. `stage_id`
   # and `process_version_id` are the stage and the version of the process it was made
-  # under. Nothing changes a decision once it is written.
+  # under, and `take_in` the take in of the work item it was made in. Nothing changes a
+  # decision once it is written.
   @moduledoc false
   use Ecto.Schema
 
@@ -25,6 +27,8 @@ defmodule Apiary.Stages.GateDecision do
     field :versions, {:array, :string}, default: []
     field :artifact_version_id, :string
     field :note, :string
+    field :track, :string
+    field :take_in, :integer
     field :automatic, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 

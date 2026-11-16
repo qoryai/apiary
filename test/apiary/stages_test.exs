@@ -2932,6 +2932,800 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the track of an approval (A-23)" do
+    @tracks [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast track", "description" => "Skips shaping."}
+    ]
+
+    defp offering(ids),
+      do: %{"gate" => %{"kind" => "person", "approvers" => "members", "tracks" => ids}}
+
+    # Explore, whose gate offers `explore`, then Shape, whose gate offers `shape`; the
+    # process declares the tracks Standard and Fast track.
+    defp tracked_process!(scope, explore, shape \\ []) do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(explore)),
+          stage(@shape, "Shape", [], offering(shape))
+        ]
+      }
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      version
+    end
+
+    # The end of a run that pushes a proposal and a verdict that proposes the track `track`.
+    defp proposing(track) do
+      fn run, registered ->
+        proposal_only().(run, registered)
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "passed", "track" => %{"id" => track, "reason" => "A small change."}},
+            stage_id: run.stage_id
+          )
+      end
+    end
+
+    defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
+
+    test "an approval with no track records the gate's first track, and the work item is on it",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert Stages.proposed_track(work_item) == nil
+      assert [%{id: "standard"}, %{id: "fast-track"}] = Stages.offered_tracks(work_item)
+      assert Stages.track(work_item) == nil
+
+      assert {:ok, %WorkItem{stage_id: @shape} = moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+      assert Stages.track(moved) == "standard"
+    end
+
+    test "an approval with no track records the track the run proposed", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      assert Stages.proposed_track(work_item) == "fast-track"
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["fast-track"]
+      assert Stages.track(moved) == "fast-track"
+    end
+
+    test "a proposed track that the gate does not offer is not recorded: the first offered is",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      # The gate stops offering the track the run proposed, as a later version of the
+      # process can.
+      version = Repo.get!(Processes.Version, work_item.process_version_id)
+
+      document =
+        put_in(version.document, ["stages", Access.at(0), "gate", "tracks"], ["standard"])
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [document: document]
+        )
+
+      assert Stages.proposed_track(work_item) == "fast-track"
+      assert [%{id: "standard"}] = Stages.offered_tracks(work_item)
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+    end
+
+    test "the track a person chooses wins over the proposed track, at the gate and by confirm",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert tracks_of(moved) == ["standard"]
+
+      other = take_in!(scope) |> end_run!(proposing("standard"))
+
+      assert {:ok, moved} =
+               Stages.approve(scope, other, nil, expect_stage: @explore, track: "fast-track")
+
+      assert tracks_of(moved) == ["fast-track"]
+    end
+
+    test "a verdict with no track proposes none", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          proposal_only().(run, registered)
+          verdict("passed").(run, registered)
+        end)
+
+      assert Stages.proposed_track(work_item) == nil
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+    end
+
+    test "the track a person chooses is recorded, at the gate and by confirm", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      assert tracks_of(moved) == ["fast-track"]
+
+      other = take_in!(scope) |> end_run!(understood_result())
+
+      assert {:ok, moved} =
+               Stages.approve(scope, other, nil, expect_stage: @explore, track: "fast-track")
+
+      assert tracks_of(moved) == ["fast-track"]
+    end
+
+    test "a track the gate does not offer is refused, and nothing is written", %{scope: scope} do
+      tracked_process!(scope, ["standard"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      assert WorkItems.confirm(scope, work_item, 1, track: "fast-track") ==
+               {:error, {:track_not_offered, "fast-track"}}
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @explore, track: "express") ==
+               {:error, {:track_not_offered, "express"}}
+
+      work_item = reload(work_item)
+      assert %{stage_id: @explore, stage_state: :at_gate} = work_item
+      assert decisions(work_item) == []
+      refute Repo.get_by(Confirmation, work_item_id: work_item.id)
+    end
+
+    test "a gate that offers no track refuses one, and records none without one", %{scope: scope} do
+      tracked_process!(scope, ["standard"], [])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %{stage_id: @shape} = work_item
+
+      assert Stages.offered_tracks(work_item) == []
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape, track: "standard") ==
+               {:error, {:track_not_offered, "standard"}}
+
+      assert {:ok, _done} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert tracks_of(work_item) == ["standard", nil]
+      assert Stages.track(work_item) == "standard"
+    end
+
+    test "a process with no tracks records none, and behaves as before", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert Stages.offered_tracks(work_item) == []
+      assert Stages.proposed_track(work_item) == nil
+
+      assert {:ok, %WorkItem{stage_id: @shape} = moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == [nil]
+      assert Stages.track(moved) == nil
+
+      assert Stages.approve(scope, moved, nil, expect_stage: @shape, track: "standard") ==
+               {:error, {:track_not_offered, "standard"}}
+    end
+
+    test "the database keeps a track to an approval, and a skip to one condition", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      [decision] = decisions(moved)
+
+      fields =
+        Map.take(decision, [
+          :organisation_id,
+          :workspace_id,
+          :work_item_id,
+          :stage_id,
+          :process_version_id
+        ])
+
+      error =
+        catch_error(
+          Repo.insert!(
+            struct(
+              GateDecision,
+              Map.merge(fields, %{
+                kind: :request_changes,
+                track: "standard",
+                inserted_at: DateTime.utc_now()
+              })
+            )
+          )
+        )
+
+      assert Exception.message(error) =~ "gate_decisions_track_check"
+
+      skip =
+        Map.merge(fields, %{
+          take_in: 1,
+          stage_entry: 0,
+          round: 1,
+          workflow: "capture-demos",
+          after_attempt: 0,
+          inserted_at: DateTime.utc_now()
+        })
+
+      for condition <- [%{}, %{input: "spec", track: "standard"}] do
+        error = catch_error(Repo.insert!(struct(Stages.Skip, Map.merge(skip, condition))))
+        assert Exception.message(error) =~ "stage_skips_condition_check"
+      end
+
+      for condition <- [%{input: "spec"}, %{track: "fast-track", negated: true}] do
+        assert %Stages.Skip{} = Repo.insert!(struct(Stages.Skip, Map.merge(skip, condition)))
+      end
+    end
+
+    test "a later approval with another track changes the track", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.track(moved) == "standard"
+
+      {:ok, moved} =
+        Stages.approve(scope, reload(moved), nil, expect_stage: @shape, track: "fast-track")
+
+      assert Stages.track(moved) == "fast-track"
+      assert tracks_of(moved) == ["standard", "fast-track"]
+    end
+
+    test "a later approval at Explore's gate with another track changes the track", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.track(moved) == "standard"
+
+      {:ok, back} = Stages.move(scope, reload(moved), @explore, nil, expect_stage: @shape)
+      assert %{stage_id: @explore} = back
+
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "fast-track")
+
+      assert Stages.track(again) == "fast-track"
+      assert tracks_of(again) == ["standard", nil, "fast-track"]
+    end
+  end
+
+  describe "the record of a track (A-23 review)" do
+    # `@tracks`, `offering/1`, `tracked_process!/3` and `proposing/1` are the ones of "the
+    # track of an approval".
+
+    @fast_track %{"track" => "fast-track"}
+    @standard_track %{"track" => "standard"}
+
+    # A process of Explore, Shape (a stage of people, run on Standard only) and a last stage
+    # `last`, each with the gate and the conditions of the document.
+    defp process_of!(scope, explore, middle, last) do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [explore_stage(offering(explore)), middle, last]
+      }
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      version
+    end
+
+    defp people_stage(id, name, extra \\ %{}), do: stage(id, name, [], extra)
+
+    test "an approval with no track at a later gate keeps the track the work item is on",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      assert Stages.track(moved) == "fast-track"
+
+      assert {:ok, approved} = Stages.approve(scope, reload(moved), nil, expect_stage: @shape)
+      assert tracks_of(approved) == ["fast-track", "fast-track"]
+      assert Stages.track(approved) == "fast-track"
+    end
+
+    test "with no proposal and a gate that does not offer the current track, the first offered track",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      assert {:ok, approved} = Stages.approve(scope, reload(moved), nil, expect_stage: @shape)
+      assert tracks_of(approved) == ["fast-track", "standard"]
+    end
+
+    # The end of a run that pushes the verdict `verdict`, with the track `track` where given.
+    defp verdict_on(verdict, track) do
+      fn run, _registered ->
+        document =
+          Map.merge(
+            %{"verdict" => verdict},
+            if(track,
+              do: %{"track" => %{"id" => track, "reason" => "A small change."}},
+              else: %{}
+            )
+          )
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            document,
+            stage_id: run.stage_id
+          )
+      end
+    end
+
+    test "a proposal counts from any of the stage's runs: the newest verdict with a track",
+         %{scope: scope} do
+      loop = %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "shape-it"}]}}
+
+      process_of!(
+        scope,
+        ["standard", "fast-track"],
+        stage(@shape, "Shape", [loop], offering(["standard", "fast-track"])),
+        people_stage(@build, "Build")
+      )
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
+      assert Stages.proposed_track(work_item) == nil
+
+      work_item = end_run!(work_item, verdict_on("changes-requested", "fast-track"))
+      assert %DispatchRun{attempt: 3} = newest_run(work_item)
+      assert Stages.proposed_track(work_item) == "fast-track"
+
+      # The newest run proposes none: the one before it still counts.
+      work_item = end_run!(work_item, verdict_on("changes-requested", nil))
+      assert Stages.proposed_track(work_item) == "fast-track"
+
+      # A newer proposal replaces it.
+      work_item = end_run!(work_item, verdict_on("changes-requested", "standard"))
+      assert Stages.proposed_track(work_item) == "standard"
+    end
+
+    test "a run of an earlier visit to the stage proposes nothing: the current track counts",
+         %{scope: scope} do
+      process_of!(
+        scope,
+        ["standard", "fast-track"],
+        people_stage(@shape, "Shape", offering(["standard", "fast-track"])),
+        people_stage(@build, "Build")
+      )
+
+      # Explore's run proposes Fast track, and the approval records it.
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      assert Stages.track(reload(work_item)) == "fast-track"
+
+      # A later gate records Standard.
+      {:ok, at_build} =
+        Stages.approve(scope, reload(work_item), nil, expect_stage: @shape, track: "standard")
+
+      assert Stages.track(at_build) == "standard"
+
+      # A person moves the work item back to Explore. Its new run proposes none.
+      {:ok, back} = Stages.move(scope, at_build, @explore, nil, expect_stage: @build)
+      back = end_run!(back, understood_result())
+      assert Stages.proposed_track(back) == nil
+
+      {:ok, again} = Stages.approve(scope, back, nil, expect_stage: @explore)
+      assert Enum.map(decisions(again), & &1.track) == ["fast-track", "standard", nil, "standard"]
+      assert Stages.track(again) == "standard"
+    end
+
+    test "an approval is refused when a verdict of the stage cannot be read from the store",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      [file] = hd(versions(work_item, "verdict")).files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @explore) ==
+               {:error, :store_unavailable}
+
+      assert WorkItems.confirm(scope, work_item, 1) == {:error, :store_unavailable}
+
+      work_item = reload(work_item)
+      assert %{stage_id: @explore, stage_state: :at_gate} = work_item
+      assert decisions(work_item) == []
+
+      # With the file back, the approval records the proposal.
+      File.rename!(path <> ".away", path)
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["fast-track"]
+    end
+
+    test "a move forward past a gate that offers tracks records the track an approval would",
+         %{scope: scope} do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          people_stage(@shape, "Shape"),
+          people_stage(@build, "Build", %{"when" => %{"track" => "fast-track"}})
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
+      # The proposal is Fast track: the move records it, and the later stage with
+      # `when: {track: fast-track}` runs.
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+      {:ok, moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @explore)
+      assert [%GateDecision{kind: :move, track: "fast-track"}] = decisions(moved)
+      assert Stages.track(moved) == "fast-track"
+
+      {:ok, at_build} = Stages.approve(scope, reload(moved), nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = at_build
+      assert Stages.stage_skips(at_build) == []
+
+      # With no proposal the first track is recorded, Standard: the later stage is passed over.
+      other = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = Stages.move(scope, other, @shape, nil, expect_stage: @explore)
+      assert Stages.track(moved) == "standard"
+
+      {:ok, closed} = Stages.approve(scope, reload(moved), nil, expect_stage: @shape)
+      assert %WorkItem{state: :closed} = closed
+      assert [%{stage_id: @build, track: "fast-track"}] = Stages.stage_skips(closed)
+
+      # A move back records no track.
+      third = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = Stages.move(scope, third, @shape, nil, expect_stage: @explore)
+      {:ok, back} = Stages.move(scope, reload(third), @explore, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @explore} = back
+      assert Enum.map(decisions(back), & &1.track) == ["standard", nil]
+    end
+
+    test "a stage with a track condition reached before any approval recorded a track is passed over",
+         %{scope: scope} do
+      process_of!(
+        scope,
+        ["standard", "fast-track"],
+        people_stage(@shape, "Shape", %{"when" => @standard_track}),
+        people_stage(@build, "Build")
+      )
+
+      # The process changes after it is saved: Explore's gate offers no track, so the
+      # approval records none and the work item is on no track at Shape.
+      version = Repo.get!(Processes.Version, Processes.current(scope.workspace).id)
+      document = put_in(version.document, ["stages", Access.at(0), "gate", "tracks"], [])
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [document: document]
+        )
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+
+      assert Stages.track(moved) == nil
+      assert %WorkItem{stage_id: @build} = reload(moved)
+
+      assert [%{stage_id: @shape, track: "standard", negated: false, approved: nil}] =
+               Stages.stage_skips(reload(moved))
+    end
+
+    test "a work item taken in again starts with no track, and no stage passed over",
+         %{scope: scope} do
+      runner_process!(scope)
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item = work_item |> reload() |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+
+      assert Stages.track(work_item) == "fast-track"
+      assert [%{stage_id: @shape}] = Stages.stage_skips(work_item)
+
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+      {:ok, _again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+      again = reload(work_item)
+
+      assert again.take_in == 2
+      assert Stages.track(again) == nil
+      assert Stages.stage_skips(again) == []
+    end
+
+    test "the last stage passed over closes the work item", %{scope: scope} do
+      process_of!(
+        scope,
+        ["standard", "fast-track"],
+        people_stage(@shape, "Shape"),
+        people_stage(@build, "Build", %{"when" => @standard_track})
+      )
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      {:ok, closed} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+
+      assert %WorkItem{state: :closed} = closed
+      assert [%{stage_id: @build, track: "standard"}] = Stages.stage_skips(closed)
+    end
+
+    test "the records of stages passed over are in the order they were written, to the microsecond",
+         %{scope: scope} do
+      runner_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+      [%{stage_id: @shape}] = Stages.stage_skips(work_item)
+
+      Repo.delete_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id))
+
+      row = fn stage, at ->
+        Repo.insert!(%Stages.Skip{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          stage_id: stage,
+          process_version_id: work_item.process_version_id,
+          take_in: work_item.take_in,
+          round: 1,
+          track: "standard",
+          after_attempt: 0,
+          inserted_at: at
+        })
+      end
+
+      # The first was written at 12:00:01.9, the second at 12:00:02.1: as terms, 100000
+      # sorts before 900000, so the second would come first.
+      row.(@shape, ~U[2025-11-14 12:00:01.900000Z])
+      row.(@build, ~U[2025-11-14 12:00:02.100000Z])
+
+      assert [@shape, @build] == Enum.map(Stages.stage_skips(work_item), & &1.stage_id)
+    end
+
+    test "two stages in a row passed over, then the third runs", %{scope: scope} do
+      verify = "st_m1mqbeywdg"
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          people_stage(@shape, "Shape", %{"when" => @standard_track}),
+          people_stage(@build, "Build", %{"unless" => @fast_track}),
+          people_stage(verify, "Verify")
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+
+      assert %WorkItem{stage_id: ^verify, stage_state: :at_gate} = work_item
+
+      assert [%{stage_id: @shape, negated: false}, %{stage_id: @build, negated: true}] =
+               Stages.stage_skips(work_item)
+    end
+
+    test "a stage with a condition on an input is passed over without it and runs with it",
+         %{scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      verify = "st_m1mqbeywdg"
+      held = %{"when" => %{"input" => "spec"}}
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          explore_stage(),
+          people_stage(@shape, "Shape", %{"outputs" => [%{"type" => "spec", "required" => false}]}),
+          people_stage(@build, "Build", held),
+          people_stage(verify, "Verify", %{"unless" => %{"input" => "spec"}})
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      {:ok, done} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+
+      # No spec: Build is passed over; Verify, which runs unless a spec exists, runs.
+      assert %WorkItem{stage_id: ^verify} = done
+
+      assert [%{stage_id: @build, input: "spec", track: nil, negated: false, approved: nil}] =
+               Stages.stage_skips(done)
+    end
+  end
+
+  describe "the runner on tracks (A-23)" do
+    @fast_track %{"track" => "fast-track"}
+    @standard_track %{"track" => "standard"}
+
+    # Explore, whose gate offers Standard and Fast track; Shape, worked by people, which only
+    # Standard goes through; Build, whose input `spec` and whose entry `review` Fast track
+    # does without.
+    defp runner_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          stage(@shape, "Shape", [], %{
+            "when" => @standard_track,
+            "outputs" => [%{"type" => "spec", "required" => false}]
+          }),
+          stage(
+            @build,
+            "Build",
+            [%{"workflow" => "implement"}, %{"workflow" => "review", "unless" => @fast_track}],
+            %{"inputs" => [%{"type" => "spec", "required" => true, "unless" => @fast_track}]}
+          )
+        ]
+      }
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      version
+    end
+
+    defp confirmed_on!(scope, track) do
+      runner_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    test "Fast track passes Shape over and Build runs with no spec", %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+
+      assert Stages.track(work_item) == "fast-track"
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "implement", stage_id: @build} = newest_run(work_item)
+
+      # Shape has no gate decision: nobody approved it.
+      assert Enum.map(decisions(work_item), & &1.stage_id) == [@explore]
+
+      assert [%{stage_id: @shape, track: "standard", negated: false, input: nil}] =
+               Stages.stage_skips(work_item)
+
+      # Build's input is not required on Fast track, so it shows as not required.
+      assert [%{type: "spec", required: false, version: nil}] = Stages.inputs(work_item)
+    end
+
+    test "Standard goes through Shape, and Build waits for its spec", %{scope: scope} do
+      work_item = confirmed_on!(scope, "standard")
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      assert Stages.stage_skips(work_item) == []
+
+      {:ok, built} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build, stage_state: :waiting_inputs} = built
+      assert [%{type: "spec", required: true, version: nil}] = Stages.inputs(built)
+    end
+
+    test "an entry with an unless on the track is passed over on Fast track, with its reason",
+         %{scope: scope} do
+      fast = confirmed_on!(scope, "fast-track")
+      assert %DispatchRun{workflow: "implement"} = newest_run(fast)
+
+      fast = end_run!(fast, verdict("passed"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = fast
+
+      assert [%{workflow: "review", track: "fast-track", negated: true, input: nil}] =
+               Stages.skips(fast)
+    end
+
+    test "a person's move runs a stage whatever its condition", %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert %WorkItem{stage_id: @build} = work_item
+
+      assert {:ok, %WorkItem{stage_id: @shape, stage_state: :at_gate}} =
+               Stages.move(scope, work_item, @shape, "Shape it anyway", expect_stage: @build)
+
+      # The stage the move enters is no stage passed over now: its record is gone.
+      assert Stages.stage_skips(work_item) == []
+    end
+
+    test "a stage passed over twice has one record, which names the newer approval",
+         %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert [%{stage_id: @shape, approved: first}] = Stages.stage_skips(work_item)
+
+      {:ok, back} = Stages.move(scope, work_item, @explore, nil, expect_stage: @build)
+      # No record while the work item is back at Explore: Shape is not passed over now.
+      assert %WorkItem{stage_id: @explore} = back
+
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "fast-track")
+
+      assert %WorkItem{stage_id: @build} = again
+      assert [%{stage_id: @shape, approved: second}] = Stages.stage_skips(again)
+      assert second.track_id == "fast-track"
+      assert DateTime.compare(second.at, first.at) == :gt
+    end
+
+    test "a stage run after a move back and another track has no record of a pass-over",
+         %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      {:ok, back} = Stages.move(scope, work_item, @explore, nil, expect_stage: @build)
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "standard")
+
+      assert %WorkItem{stage_id: @shape} = again
+      assert Stages.stage_skips(again) == []
+    end
+
+    test "a stage a person moved into and out of before it ran has no record either",
+         %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert [%{stage_id: @shape}] = Stages.stage_skips(work_item)
+
+      {:ok, in_shape} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: @shape} = in_shape
+
+      {:ok, out} = Stages.move(scope, in_shape, @build, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = out
+      assert Stages.stage_skips(out) == []
+    end
+
+    test "a later approval at Explore's gate with another track changes the stages after it",
+         %{scope: scope} do
+      work_item = confirmed_on!(scope, "fast-track")
+      assert %WorkItem{stage_id: @build} = work_item
+
+      {:ok, back} = Stages.move(scope, work_item, @explore, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: @explore} = back
+
+      back = end_run!(back, understood_result())
+
+      {:ok, again} =
+        Stages.approve(scope, back, nil, expect_stage: @explore, track: "standard")
+
+      assert Stages.track(again) == "standard"
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = again
+    end
+
+    test "a process with no tracks runs as before", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+
+      assert %WorkItem{stage_id: @shape} = moved
+      assert Stages.stage_skips(moved) == []
+      assert Stages.track(moved) == nil
+    end
+  end
+
   describe "a gate none (vault 0252)" do
     # A stage with a loop of two workflows and a gate none, as Build, then a stage that
     # reads its outputs, as Verify. `explainer` stands for Build's submission.

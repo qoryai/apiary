@@ -501,7 +501,8 @@ The body, at most 64 KiB:
    {"text": "The ticket does not say who may cancel a booking.",
     "action": "answer", "question": "q4"},
    {"text": "The checks script failed on the spec's links.", "action": "run_again"}
- ]}
+ ],
+ "track": {"id": "small-change", "reason": "The change touches one file."}}
 ```
 
 - `verdict`: `passed`, `changes-requested` or `escalate`.
@@ -516,11 +517,18 @@ The body, at most 64 KiB:
   schema of the type `verdict` checks them (`priv/schemas/artifacts/verdict.schema.json`).
   That file is the source of the schema, and qory keeps a byte copy of it at
   `contracts/harness/v1/verdict.schema.json`.
+- `track`: optional, for any verdict. The track the run proposes for the work item:
+  `id`, the id of a track that the gate of the run's stage offers, and `reason`, why, in
+  one sentence on one line of 1 to 300 characters. Both are required when `track` is
+  present. When a person approves the gate with no track chosen, the approval records
+  this track, if the gate offers it. A verdict with no `track` proposes none.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "points": ...}`, without `points` when the body
-has none. A run of any workflow may push a verdict. A `changes-requested` verdict moves
-the stage in the same way with points as without them. For a run of Explore, only
+file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ...}`, without `points`
+or `track` when the body has none. A body with `"track": null` has none: it is stored
+without `track`, as `"points": null` is stored without `points`. A run of any workflow may
+push a verdict. A `changes-requested` verdict moves the stage in the same way with points
+as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
 `passed` and `changes-requested` as no verdict. A run that leaves questions open and
 gives `escalate` waits for answers first: its escalation is kept, and the answers run the
@@ -537,8 +545,11 @@ that left open questions: Explore's result is its proposal or its questions. A r
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
-`verdict` and `points`, or a `verdict` that is not one of the three, is `400`
-`invalid_request`; points the schema refuses are `422` `invalid_artifact`. The question
+`verdict`, `points` and `track`, or a `verdict` that is not one of the three, is `400`
+`invalid_request`; points or a track the schema refuses are `422` `invalid_artifact`. A
+`track.id` that the gate of the run's stage does not offer is `422` `invalid_artifact`
+with `names` `["track"]` and the message in "The messages", for a push of the artifact
+`verdict` too. The question
 of each `answer` point must be open in the newest `questions` of the work item's current
 take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
@@ -584,7 +595,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal` |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, or a verdict's `answer` point is about a question that is not open |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -646,12 +657,6 @@ The messages:
       attribute", "the url() in the style element", "the url() in the xmlns:a
       attribute", "the @import in the text of the desc element" or "the image-set() in
       the style attribute". A name past 64 characters is cut to 64 and "…".
-  - For a run's version of `mockup` with `screens.json`, the message of the first
-    rule the version breaks, with the fix first, such as "Remove the `<script>` element
-    from `home.html` (screen `home`): a mockup page runs no script."
-  - For a version of `verdict` whose `answer` point is about a question that is not open:
-    "Push the questions first, or point at an open question in verdict.json: point 2 is
-    about question q7, which is not open."
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the format of proposal sources: at #, additional
@@ -659,6 +664,20 @@ The messages:
       is the JSON pointer of the first failing value and the text of the failed check: a
       schema check, or a check outside the schema such as a key that comes twice in an
       object ("the object has the key <key> twice", check 6).
+  - For a run's version of `mockup` with `screens.json`, the message of the first
+    rule the version breaks, with the fix first, such as "Remove the `<script>` element
+    from `home.html` (screen `home`): a mockup page runs no script."
+  - For a version of `verdict` whose `answer` point is about a question that is not open:
+    "Push the questions first, or point at an open question in verdict.json: point 2 is
+    about question q7, which is not open."
+  - For a version of `verdict` whose `track.id` is a track that the gate of the stage the
+    version is made in does not offer, `names` is `["track"]` and the message is, for a
+    gate that offers tracks, "Set track.id to a track that the gate of Shape offers
+    (standard, fast-track), or leave track out of the verdict. The track express is not
+    offered.", and for a gate that offers none, "Leave track out of the verdict: the gate
+    of Shape offers no track." A stage the process version does not have reads "the run's
+    stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
+    `verdict`.
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

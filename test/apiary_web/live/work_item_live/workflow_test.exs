@@ -3538,7 +3538,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-notice",
-               "Add acceptance criteria before you approve Shape."
+               "Add acceptance criteria before you approve this stage."
              )
     end
   end
@@ -6395,7 +6395,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
       assert has_element?(view, "#work-item-stage-state", "At the gate")
-      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve Shape")
+      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve")
     end
   end
 
@@ -6885,8 +6885,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(runs)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
-      assert has_element?(view, "#spend-dialog-go", "Approve Shape")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
+      assert has_element?(view, "#spend-dialog-go", "Approve")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of implement on #{machine(scope)}. The run uses model tokens."
@@ -7166,7 +7166,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(approve)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of verify-change on #{machine(scope)}. The run uses model tokens."
