@@ -1208,12 +1208,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of its outputs when its sequence ends, then the work item moves on. Up to this change
   it moved on with no approval, so a later stage's input from that stage had no version,
   and a required one stopped the later stage. The approval has no member, and the
-  stage's tab shows on its first output "Approved" and “Version 2 · Approved
+  stage's tab shows on its first output “Approved” and “Version 2 · Approved
   automatically · 15 Nov, 14:20”. When a member accepts the escalation that ends such a
   stage, the approval has that member: “Accepted by Dana”. In the run API's artifact
-  index, an approval has `automatic`, and one with no member has `"by": null`. The stage
-  form says under **No gate**: “Recorded as approved automatically, with the time. At the
-  round limit, a member decides.”
+  index, an approval has `automatic`, and one a gate `none` recorded with no member has
+  `"by": null`. The stage form says under **No gate**: “Recorded as approved
+  automatically, with the time. At the round limit, a member decides.”
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
