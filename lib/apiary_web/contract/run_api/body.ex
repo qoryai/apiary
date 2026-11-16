@@ -8,9 +8,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   "content_base64"}]}`, at most `max_bytes(:push)` bytes. The file contents stay
   #   base64 here; `decode_files/1` decodes them once the type's limits have been checked
   #   against their decoded sizes (`decoded_size/1`).
-  # - `verdict/1`: `{"verdict", "points"?}`, at most `max_bytes(:verdict)` bytes. The
-  #   points pass as they are: the schema of the type `verdict` checks them
-  #   (`priv/schemas/artifacts/verdict.schema.json`).
+  # - `verdict/1`: `{"verdict", "points"?, "track"?}`, at most `max_bytes(:verdict)` bytes.
+  #   The points and the track pass as they are: the schema of the type `verdict` checks
+  #   them (`priv/schemas/artifacts/verdict.schema.json`).
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -61,16 +61,16 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   end
 
   @spec verdict(binary) ::
-          {:ok, %{verdict: String.t(), points: term}}
+          {:ok, %{verdict: String.t(), points: term, track: term}}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def verdict(raw_body) when byte_size(raw_body) > @verdict_max_bytes, do: {:error, :too_large}
 
   def verdict(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(verdict points)),
+         :ok <- members(body, ~w(verdict points track)),
          {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)) do
-      {:ok, %{verdict: verdict, points: Map.get(body, "points")}}
+      {:ok, %{verdict: verdict, points: Map.get(body, "points"), track: Map.get(body, "track")}}
     end
   end
 

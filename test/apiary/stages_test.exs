@@ -2786,6 +2786,22 @@ defmodule Apiary.StagesTest do
       version
     end
 
+    # The end of a run that pushes a proposal and a verdict that proposes the track `track`.
+    defp proposing(track) do
+      fn run, registered ->
+        proposal_only().(run, registered)
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "passed", "track" => %{"id" => track, "reason" => "A small change."}},
+            stage_id: run.stage_id
+          )
+      end
+    end
+
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
 
     test "an approval with no track records the gate's first track, and the work item is on it",
@@ -2800,6 +2816,43 @@ defmodule Apiary.StagesTest do
       assert {:ok, %WorkItem{stage_id: @shape} = moved} = WorkItems.confirm(scope, work_item, 1)
       assert tracks_of(moved) == ["standard"]
       assert Stages.track(moved) == "standard"
+    end
+
+    test "an approval with no track records the track the run proposed", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      assert Stages.proposed_track(work_item) == "fast-track"
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["fast-track"]
+      assert Stages.track(moved) == "fast-track"
+    end
+
+    test "a proposed track that the gate does not offer is not recorded: the first offered is",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      assert Stages.proposed_track(work_item) == "fast-track"
+      assert [%{id: "standard"}] = Stages.offered_tracks(work_item)
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1)
+      assert tracks_of(moved) == ["standard"]
+    end
+
+    test "the track a person chooses wins over the proposed track, at the gate and by confirm",
+         %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      assert {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert tracks_of(moved) == ["standard"]
+
+      other = take_in!(scope) |> end_run!(proposing("standard"))
+
+      assert {:ok, moved} =
+               Stages.approve(scope, other, nil, expect_stage: @explore, track: "fast-track")
+
+      assert tracks_of(moved) == ["fast-track"]
     end
 
     test "a verdict with no track proposes none", %{scope: scope} do

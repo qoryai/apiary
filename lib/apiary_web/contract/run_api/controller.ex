@@ -143,6 +143,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     with {:ok, run} <- run(conn, run_id),
          :ok <- live(run),
          {:ok, verdict} <- Body.verdict(conn.assigns.raw_body),
+         :ok <- offered(run, verdict),
          content = verdict_json(verdict),
          file = %{filename: "verdict.json", content_type: "application/json", binary: content},
          {:ok, version} <-
@@ -173,12 +174,44 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # The verdict's file, as the schema of the type `verdict` takes it: `points` only where
-  # the body has them, which the schema then checks.
-  defp verdict_json(%{verdict: verdict, points: nil}), do: Jason.encode!(%{"verdict" => verdict})
+  # The verdict's file, as the schema of the type `verdict` takes it: `points` and `track`
+  # only where the body has them, which the schema then checks.
+  defp verdict_json(%{verdict: verdict} = body) do
+    members =
+      for {key, value} <- [{"points", body.points}, {"track", body.track}],
+          value != nil,
+          into: [{"verdict", verdict}],
+          do: {key, value}
 
-  defp verdict_json(%{verdict: verdict, points: points}),
-    do: Jason.encode!(Jason.OrderedObject.new([{"verdict", verdict}, {"points", points}]))
+    Jason.encode!(Jason.OrderedObject.new(members))
+  end
+
+  # A verdict's track, where it has the form `{id, ...}`, is a track the gate of the run's
+  # stage offers: `422` `invalid_artifact` for `track` otherwise, with the fix first. Another
+  # form of `track` is the schema's to refuse.
+  defp offered(run, %{track: %{"id" => id}}) when is_binary(id) do
+    case Boundary.run_gate(run.dispatch_run) do
+      {_stage, ids} when is_list(ids) ->
+        if id in ids, do: :ok, else: {:error, {:invalid_artifact, "track", not_offered(run, id)}}
+    end
+  end
+
+  defp offered(_run, _verdict), do: :ok
+
+  defp not_offered(run, id) do
+    case Boundary.run_gate(run.dispatch_run) do
+      {stage, []} ->
+        "Leave track out of the verdict: the gate of #{stage_words(stage)} offers no track."
+
+      {stage, ids} ->
+        "Set track.id to a track that the gate of #{stage_words(stage)} offers, " <>
+          "#{Enum.join(ids, ", ")}, or leave track out of the verdict. " <>
+          "The track #{id} is not offered."
+    end
+  end
+
+  defp stage_words(nil), do: "the run's stage"
+  defp stage_words(stage), do: stage
 
   ## The feature
 

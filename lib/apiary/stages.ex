@@ -1766,6 +1766,24 @@ defmodule Apiary.Stages do
   end
 
   @doc """
+  run_gate/1 is the name of the stage `run` belongs to and the ids of the tracks the gate of
+  that stage offers, in the version the run started under: `{name, ids}`. `{nil, []}` for a
+  run the process did not place. The run API checks a verdict's track against it.
+  """
+  @spec run_gate(DispatchRun.t()) :: {String.t() | nil, [String.t()]}
+  def run_gate(%DispatchRun{process_version_id: version_id, stage_id: stage_id})
+      when is_binary(version_id) and is_binary(stage_id) do
+    with %Processes.Version{} = version <- Repo.get(Processes.Version, version_id),
+         %{} = stage <- Processes.stage(version, stage_id) do
+      {stage["name"], stage["gate"]["tracks"] || []}
+    else
+      _unplaced -> {nil, []}
+    end
+  end
+
+  def run_gate(%DispatchRun{}), do: {nil, []}
+
+  @doc """
   proposed_track/1 is the track the latest run of `work_item`'s stage in its take in
   proposed: the `track.id` of the newest `verdict` named `main` that the run pushed. nil
   where the stage has no run, the run pushed no verdict, or the verdict has no track. The
