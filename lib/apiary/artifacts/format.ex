@@ -139,9 +139,9 @@ defmodule Apiary.Artifacts.Format do
   # which `Apiary.Kinds.Bounds.file!/2` cannot read: the questions and the review comments
   # formats, copied from qory, bound a document by its size, 1 MiB. Their lists are
   # bounded here by the values in all, and their objects by the most members one has, a
-  # question's 9 and a review comment's 7.
+  # question's 11 and a review comment's 7.
   @unbounded_lists %{
-    "questions" => [list: 65_536, members: 9],
+    "questions" => [list: 65_536, members: 11],
     "review-comments" => [list: 65_536, members: 7],
     "proposal-sources" => [list: 65_536, members: 6]
   }

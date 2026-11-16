@@ -11,7 +11,9 @@ defmodule Apiary.Explore.Questions do
   # is null; a question a run reopened keeps its earlier answers in `history`. A question
   # a run adds decided has a `decision`: the `option` the run chose, its `reason`, the
   # `run` and when (`at`). A later version keeps that `decision` unchanged in every state
-  # of the question (`:decision_changed`).
+  # of the question (`:decision_changed`). A question may have a `criterion`: the id of
+  # the acceptance criterion it is about, such as `ac-3`. Qory Apiary keeps it in the
+  # version as the run pushed it, and `answer/4` keeps it beside the answer.
   #
   # A run adds, withdraws and reopens questions by pushing a new version through the run
   # API; Qory Apiary writes the answers (`answer/4`, from `Apiary.WorkItems.Moves`). So a

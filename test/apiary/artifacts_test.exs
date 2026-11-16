@@ -1078,6 +1078,36 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 1
     end
 
+    test "stores a question's criterion as the run pushed it, and refuses one not an id",
+         %{run: run} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          json("questions.json", %{"questions" => &1})
+        ])
+
+      stored = fn %Version{files: [file]} ->
+        {:ok, path} = Artifacts.open_file(file)
+        path |> File.read!() |> Jason.decode!()
+      end
+
+      with_criterion = Map.put(asked(run, "q1", "Which basket?"), "criterion", "ac-3")
+      without = asked(run, "q2", "Which sale?")
+
+      for id <- ["AC-3", "ac-0", "criterion-3"] do
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/criterion"}}}} =
+                 push.([Map.put(with_criterion, "criterion", id)]),
+               id
+      end
+
+      assert count(Version) == 0
+
+      # The version keeps the criterion of q1, and q2 without one, as the run pushed them.
+      assert {:ok, %Version{number: 1} = version} = push.([with_criterion, without])
+
+      assert stored.(version) == %{"questions" => [with_criterion, without]}
+      refute Map.has_key?(Enum.at(stored.(version)["questions"], 1), "criterion")
+    end
+
     test "a refused or normalised version of the questions keeps no file without a version",
          %{run: run, root: root} = context do
       push =

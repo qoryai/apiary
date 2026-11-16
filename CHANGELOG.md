@@ -12,6 +12,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A question in a run's questions may have a `criterion`: the id of the acceptance
+  criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
+  refuses a value that is not such an id.
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.

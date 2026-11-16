@@ -275,7 +275,11 @@ Checks, in order, after the checks of every request:
    twice is refused at the object's place, such as "at #/questions/0, the object has the
    key state twice", before the schema check. A question in `questions` has 0 to 4
    `options`, and at most one option has `recommended` true: a fifth option is refused
-   as "at #/questions/0/options, value should have at most 4 items, got 5".
+   as "at #/questions/0/options, value should have at most 4 items, got 5". A question
+   may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
+   number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
+   the run pushed it. Another value, such as `AC-3`, is refused at
+   `#/questions/0/criterion`.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 

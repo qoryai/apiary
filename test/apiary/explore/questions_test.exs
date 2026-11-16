@@ -656,6 +656,21 @@ defmodule Apiary.Explore.QuestionsTest do
   end
 
   describe "answer/4" do
+    test "keeps a question's criterion beside the answer" do
+      document = doc([Map.put(open("q1", 12), "criterion", "ac-3"), open("q2", 12)])
+
+      assert {:ok, %{"questions" => [q1, q2]}} =
+               Questions.answer(
+                 document,
+                 [{"q1", nil, "Yes."}, {"q2", nil, "No."}],
+                 "Ann Example",
+                 ~U[2026-11-04 12:00:00Z]
+               )
+
+      assert %{"state" => "answered", "criterion" => "ac-3"} = q1
+      refute Map.has_key?(q2, "criterion")
+    end
+
     test "keeps an option's recommended on the question it answers" do
       options = [
         %{"title" => "Yes", "explanation" => "Why.", "recommended" => true},
