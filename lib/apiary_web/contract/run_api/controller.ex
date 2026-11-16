@@ -23,16 +23,16 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      over its size `413` `payload_too_large`, then a body outside the contract `400`
   #      `invalid_request` with the member in `names`;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
-  #      `422` `unknown_type`, whose message says to define the type, or for a standard
-  #      type to switch it on; more files than the type takes `422` `too_many_files`; files
-  #      over the type's size limit together `422` `too_large`; then a content that is not
-  #      strict base64 `400` `invalid_request`; then what `Apiary.Artifacts.push/5` returns,
-  #      the files that do not match the type's format among it, `422` `invalid_artifact`;
-  #      a run's version of `questions` or `review-comments` that changes what members
-  #      wrote, `422` `invalid_artifact` with the rule it breaks; and a version of
-  #      `questions` or `review-comments` whose file is over the size limit as stored,
-  #      with each number that is an integer in value written as an integer (`1e3` as
-  #      `1000`), `422` `too_large`;
+  #      `422` `unknown_type`, with a message that starts with the step: define the type;
+  #      for a standard type, switch it on; more files than the type takes `422`
+  #      `too_many_files`; files over the type's size limit together `422` `too_large`;
+  #      then a content that is not strict base64 `400` `invalid_request`; then what
+  #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
+  #      among it, `422` `invalid_artifact`; a run's version of `questions` or
+  #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
+  #      the rule it breaks; and a version of `questions` or `review-comments` whose file
+  #      is over the size limit as stored, with each number that is an integer in value
+  #      written as an integer (`1e3` as `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, `422` `type_not_withdrawable`, then files with it `422`
@@ -684,6 +684,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp limit(limit, _type, _key) when is_integer(limit), do: limit
   defp limit(_limit, type, key), do: field(type, key)
 
+  # The step that adds the type of a push.
+  defp unknown_type_message(type) do
+    if Boundary.standard?(type),
+      do:
+        "Switch on the artifact type #{type} in the workspace's Artifact types, " <>
+          "then run the round again.",
+      else:
+        "Define the artifact type #{type} in the workspace's Artifact types, " <>
+          "then run the round again."
+  end
+
   defp write_error(conn, {:error, :not_found}), do: error(conn, 404, "not_found")
 
   defp write_error(conn, {:error, :run_ended}) do
@@ -705,18 +716,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   end
 
   defp write_error(conn, {:error, {:unknown_type, type}}) do
-    error(conn, 422, "unknown_type",
-      type: type,
-      message:
-        if(Boundary.standard?(type),
-          do:
-            "Switch on the artifact type #{type} in the workspace's Artifact types, " <>
-              "then run the round again.",
-          else:
-            "Define the artifact type #{type} in the workspace's Artifact types, " <>
-              "then run the round again."
-        )
-    )
+    error(conn, 422, "unknown_type", type: type, message: unknown_type_message(type))
   end
 
   defp write_error(conn, {:error, {:too_many_files, type, limit}}) do

@@ -374,16 +374,19 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#{second}[phx-hook=VideoSpeed] + figcaption", "other.mp4")
     end
 
-    test "shows structured JSON as a table of text, a change's http URL as a link", ctx do
-      change =
-        pushed!(ctx, "change", [
-          {"change.json", ~s({"url":"https://example.com/pr/7","title":"<b>Gift cards</b>"})}
+    test "shows structured JSON as a table of text, a URL as text", ctx do
+      point = %{"text" => "<b>Gift cards</b> https://example.com/pr/7", "action" => "run_again"}
+
+      verdict =
+        pushed!(ctx, "verdict", [
+          {"verdict.json", Jason.encode!(%{"verdict" => "escalate", "points" => [point]})}
         ])
 
-      {:ok, view, _dead} = live(ctx.conn, page(ctx, change))
+      {:ok, view, _dead} = live(ctx.conn, page(ctx, verdict))
       html = render(view)
 
-      assert has_element?(view, ~s(table a[href="https://example.com/pr/7"]))
+      assert has_element?(view, "table td", "https://example.com/pr/7")
+      refute has_element?(view, "table a")
       assert html =~ "&lt;b&gt;Gift cards&lt;/b&gt;"
       refute html =~ "<b>Gift cards"
 
