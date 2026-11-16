@@ -1037,7 +1037,9 @@ defmodule Apiary.Stages do
   defp resolution_name(resolution) when is_atom(resolution), do: Atom.to_string(resolution)
 
   # move/4 moves the work item to the stage `stage_id` of its version, forward past a
-  # stage or back, with the person's note, and starts that stage.
+  # stage or back, with the person's note, and starts that stage. A move resolves an open
+  # escalation of the stage as `:move_back` with no note: the move's decision keeps the
+  # note, so the next run reads it once (`notes/1`).
   @doc false
   @spec move(Scope.t(), WorkItem.t(), String.t(), String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1055,7 +1057,7 @@ defmodule Apiary.Stages do
                "to" => target["id"],
                "note" => note
              }) do
-        :ok = close_open(work_item, :move_back, scope, note)
+        :ok = close_open(work_item, :move_back, scope, nil)
         {work_item, _run} = enter_locked(work_item, version, target)
         {:ok, work_item}
       end
@@ -1398,10 +1400,10 @@ defmodule Apiary.Stages do
   # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
   # `comment` true. The page labels a comment by it; the run API sends no `comment`.
   #
-  # Only open notes are listed. A request for changes, an escalation's note and a failed
-  # check close once their stage passes its gate after them, and a move once the stage it
-  # went to passes its gate after it: a person's approval, or a gate `none` that passed
-  # on (`:pass`). A move kept with no `to_stage_id`, and an answer, stay open.
+  # Only open notes are listed. A note closes once its stage passes its gate after it,
+  # and a move once the stage it went to passes its gate after it: a person's approval,
+  # or a gate `none` that passed on (`:pass`). A move kept with no `to_stage_id`, and an
+  # answer given at a run with no stage, stay open.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id} = work_item) do
@@ -1450,14 +1452,10 @@ defmodule Apiary.Stages do
           }
       )
 
-    closable =
-      (decisions ++ escalations ++ checks)
-      |> Enum.filter(&open?(&1, passed))
-      |> Enum.map(&Map.delete(&1, :to_stage_id))
-
-    answers = given_notes(work_item)
-
-    Enum.sort_by(closable ++ answers, & &1.inserted_at, DateTime)
+    (decisions ++ escalations ++ checks ++ given_notes(work_item))
+    |> Enum.filter(&open?(&1, passed))
+    |> Enum.map(&Map.delete(&1, :to_stage_id))
+    |> Enum.sort_by(& &1.inserted_at, DateTime)
   end
 
   # The time each stage of the work item last passed its gate, by stage id.
@@ -1472,7 +1470,9 @@ defmodule Apiary.Stages do
   end
 
   # Whether a note is still open: the stage that closes it has not passed its gate since.
-  # A move's is the stage it went to; every other note's, its stage.
+  # A move's is the stage it went to; every other note's, its stage. Each row's
+  # `inserted_at`, written under the work item's lock, orders a note and a pass; a note
+  # and a pass with the same time leave the note open.
   defp open?(%{kind: :move, to_stage_id: nil}, _passed), do: true
 
   defp open?(%{kind: :move, to_stage_id: stage_id} = note, passed),

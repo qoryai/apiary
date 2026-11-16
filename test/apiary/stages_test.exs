@@ -2767,6 +2767,39 @@ defmodule Apiary.StagesTest do
       assert Stages.notes(work_item) == []
     end
 
+    test "an answer closes when its stage is approved after it", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
+      work_item = end_run!(work_item, understood_result())
+
+      assert [%{kind: :answer, stage_id: @explore}, %{kind: :answer}] = Stages.notes(work_item)
+      assert texts(work_item) == ["The sale price", "Yes"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %{stage_id: @shape} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move that resolves an open escalation is one note, the move's", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough", expect_stage: @explore)
+
+      assert %Escalation{resolution: :move_back, note: nil} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert [%{kind: :move, stage_id: @explore, note: "Shaped enough"}] =
+               Stages.notes(work_item)
+
+      # The move closes once Shape, the stage it went to, is approved.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+    end
+
     test "open notes of several stages are listed together, oldest first", %{scope: scope} do
       four_stages!(scope)
       work_item = take_in!(scope) |> end_run!(understood_result())

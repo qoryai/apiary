@@ -516,6 +516,39 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
+    test "keeps a move with no stage it went to open, whatever passes after it", ctx do
+      place!(ctx)
+      shape = "st_p9w5cvh311"
+      time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
+
+      # A move kept before its stage was: no `to_stage_id`.
+      decide!(ctx, :move, stage_id: shape, note: "Back to Explore.", inserted_at: time.(1))
+      decide!(ctx, :approve, stage_id: shape, inserted_at: time.(2))
+      decide!(ctx, :approve, inserted_at: time.(3))
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      assert [%{"kind" => "move", "note" => "Back to Explore."}] = body["notes"]
+    end
+
+    test "keeps a note open beside a pass of its stage at the same time", ctx do
+      place!(ctx)
+      at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      decide!(ctx, :request_changes, note: "Add the empty cart.", inserted_at: at)
+      decide!(ctx, :pass, user_id: nil, inserted_at: at)
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      assert [%{"kind" => "request_changes", "note" => "Add the empty cart."}] = body["notes"]
+    end
+
+    test "the database refuses a stage it went to on a decision that is not a move", ctx do
+      place!(ctx)
+
+      assert_raise Ecto.ConstraintError, ~r/gate_decisions_to_stage_check/, fn ->
+        decide!(ctx, :approve, to_stage_id: @explore)
+      end
+    end
+
     test "has the newest verdict with its points", ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
 

@@ -1205,9 +1205,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: workflow_model -->
 - The notes for the next run, on the work item and in `GET work-item`, list only open
-  notes. A request for changes, an escalation's note and a failed check leave the list
-  once their stage is approved after them, and a move once the stage it moved to is
-  approved after it. A gate none that passes on counts as an approval.
+  notes. A note leaves the list once its stage is approved after it, and a move once the
+  stage it moved to is approved after it. A gate none that passes on counts as an
+  approval. A move that resolves an open escalation is listed once, as the move.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - An operator's people reach only the workspaces the operator operates
@@ -2040,9 +2040,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `gate_decisions` (20261116100000): a nullable column `to_stage_id`, the stage a move
   went to, and a kind `pass`, a gate none that passed on. The column has no default, so
   adding it rewrites no row. The two checks scan `gate_decisions` under a lock that
-  blocks reads and writes, one row per decision. It changes no row: a move made before
-  has no `to_stage_id` and stays in the notes for the next run. Rolling back deletes
-  every `pass` row and drops `to_stage_id`.
+  blocks reads and writes, one row per decision. The migration changes no row. A move
+  made before has no `to_stage_id` and stays in the notes for the next run. A gate none
+  that passed on before has no `pass` row, so the notes of its stage stay there until
+  the stage passes its gate again. Rolling back deletes every `pass` row and drops
+  `to_stage_id`.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
