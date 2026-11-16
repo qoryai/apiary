@@ -1022,7 +1022,7 @@ defmodule Apiary.Stages do
        when resolution in [:accept, :another_round] do
     :ok = resolve!(escalation, resolution, scope, note)
     event = {resolution, escalation.cause}
-    by = if resolution == :accept, do: scope.user.id
+    by = if resolution == :accept, do: scope && scope.user && scope.user.id
     {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
     {:ok, work_item}
   end
