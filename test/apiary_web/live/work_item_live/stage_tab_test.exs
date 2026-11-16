@@ -1678,12 +1678,31 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
     end
 
+    # The approval and the pass-over it caused, at noon UTC on 14 Nov 2025, a day in the year
+    # before the test's now and one that every time zone shows as the same date.
     defp confirmed!(scope, track) do
       tracked!(scope)
       work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
       {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+
+      {_n, _rows} =
+        Repo.update_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [inserted_at: ~U[2025-11-14 12:00:00.000000Z]]
+        )
+
+      {_n, _rows} =
+        Repo.update_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id),
+          set: [inserted_at: ~U[2025-11-14 12:00:01.000000Z]]
+        )
+
       reload(work_item)
     end
+
+    defp shown(view),
+      do: view |> element("#work-item-tab-passed-over-why") |> render() |> text_of()
+
+    defp text_of(html),
+      do: html |> String.replace(~r/<[^>]*>/, "") |> String.replace("&#39;", "'") |> String.trim()
 
     test "the tab says the stage did not run, and which approval skips it", %{
       conn: conn,
@@ -1697,12 +1716,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(view, "#work-item-tab-passed-over-h", "Shape did not run")
 
-      day = ApiaryWeb.Format.day(DateTime.utc_now())
-
       assert view
              |> element("#work-item-tab-passed-over-why")
              |> render() =~
-               "You approved Fast track at Explore&#39;s gate on #{day}. Fast track skips Shape."
+               "You approved Fast track at Explore&#39;s gate on 14 Nov 2025. Fast track skips Shape."
     end
 
     test "the record of a stage lists an entry the track passed over, with the reason", %{
@@ -1751,15 +1768,61 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-tab-passed-over")
     end
 
-    test "another member's approval names the member", %{conn: conn, scope: scope} do
+    test "another member's approval names the member", %{scope: scope} do
       work_item = confirmed!(scope, "fast-track")
       %{user: other} = Apiary.OrganisationsFixtures.member_fixture(scope, :admin)
 
       {:ok, view, _html} =
         live(log_in_user(build_conn(), other), stage(scope, work_item.number, @shape))
 
-      assert view |> element("#work-item-tab-passed-over-why") |> render() =~
-               "#{ApiaryWeb.People.short(scope.user.email)} approved Fast track at Explore&#39;s gate on"
+      assert shown(view) ==
+               "#{ApiaryWeb.People.short(scope.user.email)} approved Fast track at Explore's gate on 14 Nov 2025. Fast track skips Shape."
+    end
+
+    test "an approval of a member whose account is gone reads Former member", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = confirmed!(scope, "fast-track")
+
+      {_n, _rows} =
+        Repo.update_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [user_id: nil]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert shown(view) ==
+               "Former member approved Fast track at Explore's gate on 14 Nov 2025. Fast track skips Shape."
+    end
+
+    test "with no approval to name, the line gives the condition that held the stage back",
+         %{conn: conn, scope: scope} do
+      work_item = confirmed!(scope, "fast-track")
+
+      {_n, _rows} =
+        Repo.delete_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id))
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+      assert shown(view) == "Shape runs on Standard only."
+
+      reason = fn set ->
+        {1, _rows} =
+          Repo.update_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id),
+            set: set
+          )
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+        shown(view)
+      end
+
+      assert reason.(negated: true, track: "fast-track") == "Shape does not run on Fast track."
+
+      assert reason.(negated: false, track: nil, input: "test-features") ==
+               "Shape runs only while the work item has test features, and it has none."
+
+      assert reason.(negated: true) ==
+               "Shape does not run while the work item has test features."
     end
   end
 

@@ -1304,6 +1304,7 @@ defmodule Apiary.Stages do
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
       counted = counted(work_item, version, stage, artifacts)
+      track = track(work_item)
       outputs = outputs(work_item, version, stage, artifacts, counted)
       missing = missing(outputs)
 
@@ -1317,9 +1318,9 @@ defmodule Apiary.Stages do
         gaps: shown_gaps(escalation, work_item, stage, artifacts, counted),
         outputs: outputs,
         missing_outputs: missing,
-        inputs: inputs(work_item, version, stage, artifacts),
+        inputs: inputs(work_item, version, stage, artifacts, %{counted: counted, track: track}),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
-        waiting_workflow: waiting_workflow(work_item, stage, counted),
+        waiting_workflow: waiting_workflow(work_item, stage, counted, track),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
@@ -1439,72 +1440,95 @@ defmodule Apiary.Stages do
   # first: each with its stage, workflow, the condition that held it back as `input` (a
   # type) or `track` (an id, with `track_name`), `negated` (true for an `unless` that was
   # met) and `after_attempt`, the newest attempt of the take in when the runner passed it
-  # over (0 for none).
+  # over (0 for none). `earlier_skips/1` is those of the take ins before the current one,
+  # each with its `take_in`; `stage_skips/1` the stages passed over whole in the current
+  # take in (`skip_records/1`).
   @doc false
   @spec skips(WorkItem.t()) :: [map]
-  def skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in),
-    do:
-      read_skips(
-        from(s in Skip, where: s.work_item_id == ^id and s.take_in == ^take_in),
-        track_names(work_item)
-      )
+  def skips(%WorkItem{} = work_item), do: skip_records(work_item).skips
 
-  def skips(%WorkItem{}), do: []
-
-  # earlier_skips/1 is the entries `skips/1` lists, of the take ins before the current
-  # one, each with its `take_in`.
   @doc false
   @spec earlier_skips(WorkItem.t()) :: [map]
-  def earlier_skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in),
-    do:
-      read_skips(
-        from(s in Skip, where: s.work_item_id == ^id and s.take_in < ^take_in),
-        track_names(work_item)
-      )
+  def earlier_skips(%WorkItem{} = work_item), do: skip_records(work_item).earlier_skips
 
-  def earlier_skips(%WorkItem{}), do: []
-
-  # stage_skips/1 is the stages the runner passed over whole in the work item's current take
-  # in, because a condition on the stage held them back, oldest first: each with its
-  # `stage_id`, the condition as `input` (a type) or `track` (an id), `negated` (true for an
-  # `unless` that was met), when it was passed over, and `approved`, the approval that put
-  # the work item on the track that passed it over: the newest approval with a track made
-  # before the stage was passed over, as `%{track_id, track_name, stage_id, user_id, at}`;
-  # nil for none, and for a condition that is no track's. `track_name` is the name the process version declares, else the id.
   @doc false
   @spec stage_skips(WorkItem.t()) :: [map]
-  def stage_skips(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in) do
+  def stage_skips(%WorkItem{} = work_item), do: skip_records(work_item).stage_skips
+
+  # skip_records/1 is `%{skips:, earlier_skips:, stage_skips:}`, each as the function of its
+  # name returns it, read with one read of the work item's skips and one of its approvals
+  # with a track. A stage passed over whole has no workflow: its entry in `stage_skips` has
+  # its `stage_id`, the condition as `input` (a type) or `track` (an id, with `track_name`),
+  # `negated` (true for an `unless` that was met), when it was passed over, and `approved`,
+  # the approval that put the work item on the track that passed it over: the newest
+  # approval with a track made in the take in before the stage was passed over, as
+  # `%{track_id, track_name, stage_id, user_id, at}`; nil for none, and for a condition
+  # that is no track's. `track_name` is the name the process version declares, else the id.
+  # A stage's record is deleted when the stage is entered again (`enter_locked/4`), so a
+  # stage has at most one, and none once it ran or waits at its gate.
+  @doc false
+  @spec skip_records(WorkItem.t()) :: %{skips: [map], earlier_skips: [map], stage_skips: [map]}
+  def skip_records(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in) do
     names = track_names(work_item)
 
-    Repo.all(
-      from s in Skip,
-        where: s.work_item_id == ^id and s.take_in == ^take_in and is_nil(s.workflow),
-        order_by: [s.inserted_at, s.id]
-    )
-    |> Enum.map(fn skip ->
+    rows =
+      Repo.all(
+        from s in Skip,
+          where: s.work_item_id == ^id and s.take_in <= ^take_in,
+          order_by: [s.take_in, s.after_attempt, s.inserted_at, s.id]
+      )
+
+    approvals =
+      Repo.all(
+        from d in GateDecision,
+          where:
+            d.work_item_id == ^id and d.kind == :approve and not is_nil(d.track) and
+              d.take_in == ^take_in,
+          order_by: [d.inserted_at, d.id]
+      )
+
+    {stages, entries} = Enum.split_with(rows, &is_nil(&1.workflow))
+
+    entry = fn skip ->
       %{
         stage_id: skip.stage_id,
+        workflow: skip.workflow,
         input: skip.input,
         track: skip.track,
         track_name: names[skip.track] || skip.track,
         negated: skip.negated,
-        inserted_at: skip.inserted_at,
-        approved: skip.track && approved_track(id, skip.inserted_at, names)
+        round: skip.round,
+        take_in: skip.take_in,
+        after_attempt: skip.after_attempt
       }
-    end)
+    end
+
+    %{
+      skips: for(skip <- entries, skip.take_in == take_in, do: entry.(skip)),
+      earlier_skips: for(skip <- entries, skip.take_in < take_in, do: entry.(skip)),
+      stage_skips:
+        for skip <- Enum.sort_by(stages, &{&1.inserted_at, &1.id}), skip.take_in == take_in do
+          %{
+            stage_id: skip.stage_id,
+            input: skip.input,
+            track: skip.track,
+            track_name: names[skip.track] || skip.track,
+            negated: skip.negated,
+            inserted_at: skip.inserted_at,
+            approved: skip.track && approval_before(approvals, skip.inserted_at, names)
+          }
+        end
+    }
   end
 
-  def stage_skips(%WorkItem{}), do: []
+  def skip_records(%WorkItem{}), do: %{skips: [], earlier_skips: [], stage_skips: []}
 
-  defp approved_track(work_item_id, before, names) do
-    case Repo.one(
-           from d in GateDecision,
-             where:
-               d.work_item_id == ^work_item_id and d.kind == :approve and not is_nil(d.track) and
-                 d.inserted_at <= ^before,
-             order_by: [desc: d.inserted_at, desc: d.id],
-             limit: 1
-         ) do
+  # The newest of `approvals`, oldest first, made at or before `at`, as a map of the
+  # approval; nil for none.
+  defp approval_before(approvals, at, names) do
+    case approvals
+         |> Enum.filter(&(DateTime.compare(&1.inserted_at, at) != :gt))
+         |> List.last() do
       nil ->
         nil
 
@@ -1523,25 +1547,6 @@ defmodule Apiary.Stages do
   defp track_names(work_item),
     do:
       Map.new(Processes.version_for(work_item).document["tracks"] || [], &{&1["id"], &1["name"]})
-
-  defp read_skips(query, names) do
-    Repo.all(
-      from s in query,
-        where: not is_nil(s.workflow),
-        order_by: [s.take_in, s.after_attempt, s.inserted_at],
-        select: %{
-          stage_id: s.stage_id,
-          workflow: s.workflow,
-          input: s.input,
-          track: s.track,
-          negated: s.negated,
-          round: s.round,
-          take_in: s.take_in,
-          after_attempt: s.after_attempt
-        }
-    )
-    |> Enum.map(&Map.put(&1, :track_name, names[&1.track] || &1.track))
-  end
 
   defp proposed(%DispatchRun{result_outcome: :proposal} = run),
     do: if(explore_run?(run), do: :passed)
@@ -1725,8 +1730,18 @@ defmodule Apiary.Stages do
 
   # `forced` is true where a person moved the work item into `stage`: the stage's own
   # condition then does not pass it over (`Runner`, `facts.forced`).
-  defp enter_locked(work_item, version, stage, forced? \\ false),
-    do: apply_event(work_item, version, stage, :enter, nil, %{forced: forced?})
+  defp enter_locked(work_item, version, stage, forced? \\ false) do
+    # A stage entered again is no longer the stage that was passed over: its record of the
+    # pass-over goes, and a new pass-over writes a new one.
+    Repo.delete_all(
+      from s in Skip,
+        where:
+          s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
+            s.take_in == ^work_item.take_in and is_nil(s.workflow)
+    )
+
+    apply_event(work_item, version, stage, :enter, nil, %{forced: forced?})
+  end
 
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
@@ -1806,6 +1821,7 @@ defmodule Apiary.Stages do
       user_id: by,
       automatic: is_nil(by),
       kind: :approve,
+      take_in: work_item.take_in,
       versions: Enum.map(newest_outputs(work_item, stage), & &1.public_id),
       inserted_at: DateTime.utc_now()
     }
@@ -1818,14 +1834,19 @@ defmodule Apiary.Stages do
 
   @doc """
   track/1 is the id of the track `work_item` is on: the track of its newest approval that
-  has one, at any stage, or nil where no approval chose a track (a process with no tracks,
-  or no approval yet). A later approval with another track changes it.
+  has one, at any stage, made in its current take in, or nil where no approval chose a track
+  (a process with no tracks, or no approval yet). A later approval with another track
+  changes it. A work item taken in again starts with none.
   """
   @spec track(WorkItem.t()) :: String.t() | nil
-  def track(%WorkItem{id: id}) do
+  def track(%WorkItem{take_in: nil}), do: nil
+
+  def track(%WorkItem{id: id, take_in: take_in}) do
     Repo.one(
       from d in GateDecision,
-        where: d.work_item_id == ^id and d.kind == :approve and not is_nil(d.track),
+        where:
+          d.work_item_id == ^id and d.kind == :approve and not is_nil(d.track) and
+            d.take_in == ^take_in,
         order_by: [desc: d.inserted_at, desc: d.id],
         limit: 1,
         select: d.track
@@ -1857,82 +1878,61 @@ defmodule Apiary.Stages do
   end
 
   @doc """
-  run_gate/1 is the name of the stage `run` belongs to and the ids of the tracks the gate of
-  that stage offers, in the version the run started under: `{name, ids}`. `{nil, []}` for a
-  run the process did not place. The run API checks a verdict's track against it.
-  """
-  @spec run_gate(DispatchRun.t()) :: {String.t() | nil, [String.t()]}
-  def run_gate(%DispatchRun{process_version_id: version_id, stage_id: stage_id})
-      when is_binary(version_id) and is_binary(stage_id) do
-    with %Processes.Version{} = version <- Repo.get(Processes.Version, version_id),
-         %{} = stage <- Processes.stage(version, stage_id) do
-      {stage["name"], stage["gate"]["tracks"] || []}
-    else
-      _unplaced -> {nil, []}
-    end
-  end
-
-  def run_gate(%DispatchRun{}), do: {nil, []}
-
-  @doc """
-  proposed_track/1 is the track the latest run of `work_item`'s stage in its take in
-  proposed: the `track.id` of the newest `verdict` named `main` that the run pushed. nil
-  where the stage has no run, the run pushed no verdict, or the verdict has no track. The
-  track is not checked against the gate: `chosen_track/3` does that.
+  proposed_track/1 is the track that the runs of `work_item`'s stage in its take in proposed:
+  the `track.id` of the newest `verdict` named `main` with a track that any of those runs
+  pushed. nil where the stage has no run, or no run pushed a verdict with a track. The track
+  is not checked against the gate: `chosen_track/3` does that.
   """
   @spec proposed_track(WorkItem.t()) :: String.t() | nil
   def proposed_track(%WorkItem{stage_id: stage_id} = work_item) when is_binary(stage_id) do
-    latest =
-      Repo.one(
+    run_ids =
+      Repo.all(
         from d in DispatchRun,
           left_join: r in subquery(Run.registered()),
           on: r.dispatch_run_id == d.id,
           where:
             d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in and
               d.stage_id == ^stage_id,
-          order_by: [desc: d.attempt],
-          limit: 1,
           select: {d.id, r.id}
       )
+      |> Enum.flat_map(fn {dispatch_run_id, run_id} -> [dispatch_run_id, run_id] end)
+      |> Enum.reject(&is_nil/1)
 
-    with {dispatch_run_id, run_id} <- latest,
-         %{} = verdict <-
-           newest_verdict(work_item, Enum.reject([dispatch_run_id, run_id], &is_nil/1)),
-         %{"track" => %{"id" => id}} when is_binary(id) <- verdict do
-      id
-    else
-      _none -> nil
+    # The versions are newest first: the first with a track is the newest.
+    for artifact <- Artifacts.list(work_item),
+        artifact.type == "verdict" and artifact.name == "main",
+        version <- artifact.versions,
+        version.run_id in run_ids,
+        %{"track" => %{"id" => id}} <- [Artifacts.read_json(version)],
+        is_binary(id),
+        reduce: nil do
+      nil -> id
+      found -> found
     end
   end
 
   def proposed_track(%WorkItem{}), do: nil
 
-  # The file of the newest version of the verdict `main` that one of the runs `run_ids` pushed.
-  defp newest_verdict(work_item, run_ids) do
-    versions =
-      for artifact <- Artifacts.list(work_item),
-          artifact.type == "verdict" and artifact.name == "main",
-          version <- artifact.versions,
-          version.run_id in run_ids,
-          do: version
-
-    case versions do
-      [version | _older] -> Artifacts.read_json(version)
-      [] -> nil
-    end
-  end
-
   # The track an approval at `stage`'s gate records: the `track` of `opts` where the gate
-  # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the proposed
-  # track where the gate offers it, else the gate's first track, else nil. A gate that
-  # offers none refuses a track that `opts` names and records none otherwise.
+  # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the track the
+  # stage's runs proposed (`proposed_track/1`) where the gate offers it, else the track the
+  # work item is on (`track/1`) where the gate offers it, else the gate's first track, else
+  # nil. A gate that offers none refuses a track that `opts` names and records none
+  # otherwise.
   defp chosen_track(work_item, stage, opts) do
     offered = for id <- stage["gate"]["tracks"] || [], do: id
 
     case Keyword.get(opts, :track) do
       nil ->
         proposed = proposed_track(work_item)
-        {:ok, if(proposed in offered, do: proposed, else: List.first(offered))}
+        current = track(work_item)
+
+        {:ok,
+         cond do
+           proposed in offered -> proposed
+           current in offered -> current
+           true -> List.first(offered)
+         end}
 
       track when is_binary(track) ->
         if track in offered, do: {:ok, track}, else: {:error, {:track_not_offered, track}}
@@ -2531,6 +2531,7 @@ defmodule Apiary.Stages do
       process_version_id: version.id,
       user_id: scope.user.id,
       kind: kind,
+      take_in: work_item.take_in,
       versions: covered,
       artifact_version_id: artifact_version_id,
       note: note,
@@ -2950,7 +2951,8 @@ defmodule Apiary.Stages do
        ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage, counted), Processes.declared_snapshot(workspace)} do
+    case {waiting_workflow(work_item, stage, counted, track(work_item)),
+          Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         case Sources.chosen(workspace) do
           %{choice: :qory} -> not_in_qory(stage["name"], workflow)
@@ -3008,19 +3010,24 @@ defmodule Apiary.Stages do
   end
 
   # The first undeclared workflow of the stage whose condition is met, with `counted`.
-  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage, counted) do
+  defp waiting_workflow(
+         %WorkItem{stage_state: :waiting_workflow} = work_item,
+         stage,
+         counted,
+         track
+       ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
       Map.new(
-        Runner.workflows(stage, counted, track(work_item)),
+        Runner.workflows(stage, counted, track),
         &{&1, Processes.workflow_declaration(workspace, &1)}
       )
 
     workspace |> undeclared(declarations) |> List.first()
   end
 
-  defp waiting_workflow(_work_item, _stage, _counted), do: nil
+  defp waiting_workflow(_work_item, _stage, _counted, _track), do: nil
 
   ## Helpers
 

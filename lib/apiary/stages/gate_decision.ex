@@ -9,7 +9,8 @@ defmodule Apiary.Stages.GateDecision do
   # is gone. `track` is the id of the track the approval chose, nil for none; only an
   # approval has one. `note` is what the person wrote, nil for nothing. `stage_id`
   # and `process_version_id` are the stage and the version of the process it was made
-  # under. Nothing changes a decision once it is written.
+  # under, and `take_in` the take in of the work item it was made in. Nothing changes a
+  # decision once it is written.
   @moduledoc false
   use Ecto.Schema
 
@@ -25,6 +26,7 @@ defmodule Apiary.Stages.GateDecision do
     field :artifact_version_id, :string
     field :note, :string
     field :track, :string
+    field :take_in, :integer
     field :automatic, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 

@@ -7,7 +7,8 @@ defmodule Apiary.Stages.Skip do
   # or `loop_entry`, and `round` 1. A workflow entry has the take in, its position and its
   # workflow. `after_attempt` is the newest attempt of the take in when the runner passed it
   # over (0 for none), which places it among the runs on the work item page. Nothing changes
-  # a skip once it is written.
+  # a skip once it is written, but the record of a stage passed over whole goes when the
+  # stage is entered again (`Apiary.Stages`).
   @moduledoc false
   use Ecto.Schema
 

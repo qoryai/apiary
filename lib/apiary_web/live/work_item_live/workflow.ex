@@ -105,6 +105,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     explore_id = Stages.explore_stage_id(row)
     runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
+    records = Stages.skip_records(row)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -120,11 +121,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gaps: lines(get(status, :gaps)),
       runs: runs,
       # The workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`).
-      skips: Stages.skips(row),
+      skips: records.skips,
       # Those of the earlier take ins, each with its take in (`Apiary.Stages.earlier_skips/1`).
-      earlier_skips: Stages.earlier_skips(row),
+      earlier_skips: records.earlier_skips,
       # The stages the runner passed over whole in the take in (`Apiary.Stages.stage_skips/1`).
-      stage_skips: Stages.stage_skips(row),
+      stage_skips: records.stage_skips,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,

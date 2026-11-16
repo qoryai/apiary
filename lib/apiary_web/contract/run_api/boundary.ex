@@ -99,9 +99,6 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   ## Stages
 
-  @spec run_gate(struct) :: {String.t() | nil, [String.t()]}
-  def run_gate(dispatch_run), do: Apiary.Stages.run_gate(dispatch_run)
-
   @spec status(WorkItem.t()) :: map | nil
   def status(work_item), do: Apiary.Stages.status(work_item)
 

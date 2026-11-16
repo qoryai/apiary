@@ -17,14 +17,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not
-  offer is `422` `invalid_artifact` with `names` `["track"]`.
+  offer is `422` `invalid_artifact` with `names` `["track"]`, also for a push of the artifact
+  `verdict` with `POST artifacts`. A body with `"track": null` has none.
 - An approval at a gate records a track. `gate_decisions.track` holds the id, and only an
-  approval has one. With no track chosen, the approval records the track that the latest
-  run of the stage proposed in its verdict, if the gate offers it, else the gate's first
-  track, else none. An approval with a track that the gate does not offer is refused. A
-  process with no tracks records none. `Stages.track/1` is the track of a work item: the
-  track of its newest approval that has one. `stage_skips` can record the condition that
-  passed an entry over as `input` or `track`, with `negated` for an `unless`.
+  approval has one. With no track chosen, the approval records the track that the runs of
+  the stage proposed in their verdicts, if the gate offers it, else the track the work
+  item is on, if the gate offers it, else the gate's first track, else none. An approval
+  with a track that the gate does not offer is refused. A process with no tracks records
+  none. `Stages.track/1` is the track of a work item: the track of its newest approval that
+  has one, made in its current take in, so a work item taken in again starts with none.
+  `gate_decisions.take_in` holds the take in. `stage_skips` can record the condition that
+  passed an entry or a whole stage over as `input` or `track`, with `negated` for an
+  `unless`; the record of a stage goes when the stage is entered again.
 - A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
   example Standard and Fast track. A gate lists the track ids it offers in `tracks`, and
   a gate of kind `none` offers none. A stage, a loop, a workflow entry and an input take

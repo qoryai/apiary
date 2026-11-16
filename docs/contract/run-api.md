@@ -475,8 +475,10 @@ The body, at most 64 KiB:
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
 file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ...}`, without `points`
-or `track` when the body has none. A run of any workflow may push a verdict. A `changes-requested` verdict moves
-the stage in the same way with points as without them. For a run of Explore, only
+or `track` when the body has none. A body with `"track": null` has none: it is stored
+without `track`, as `"points": null` is stored without `points`. A run of any workflow may
+push a verdict. A `changes-requested` verdict moves the stage in the same way with points
+as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
 `passed` and `changes-requested` as no verdict. A run that leaves questions open and
 gives `escalate` waits for answers first: its escalation is kept, and the answers run the
@@ -496,10 +498,8 @@ Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member ot
 `verdict`, `points` and `track`, or a `verdict` that is not one of the three, is `400`
 `invalid_request`; points or a track the schema refuses are `422` `invalid_artifact`. A
 `track.id` that the gate of the run's stage does not offer is `422` `invalid_artifact`
-with `names` `["track"]` and the message "Set track.id to a track that the gate of Shape
-offers, standard, fast-track, or leave track out of the verdict. The track express is not
-offered." For a gate that offers no track, the message is "Leave track out of the verdict:
-the gate of Shape offers no track." The question
+with `names` `["track"]` and the message in "The messages", for a push of the artifact
+`verdict` too. The question
 of each `answer` point must be open in the newest `questions` of the work item's current
 take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
@@ -597,6 +597,14 @@ The messages:
   - For a version of `verdict` whose `answer` point is about a question that is not open:
     "Push the questions first, or point at an open question in verdict.json: point 2 is
     about question q7, which is not open."
+  - For a version of `verdict` whose `track.id` is a track that the gate of the stage the
+    version is made in does not offer, `names` is `["track"]` and the message is, for a
+    gate that offers tracks, "Set track.id to a track that the gate of Shape offers,
+    standard, fast-track, or leave track out of the verdict. The track express is not
+    offered.", and for a gate that offers none, "Leave track out of the verdict: the gate
+    of Shape offers no track." A run in no stage reads "the run's stage" for the stage's
+    name. The check is the same for `POST verdict` and for `POST artifacts` with the type
+    `verdict`.
     - "Shrink sources.json to at most 1048576 bytes."
     - "Make sources.json valid JSON. The file does not parse as JSON."
     - "Fix sources.json to match the format of proposal sources: at #, additional
