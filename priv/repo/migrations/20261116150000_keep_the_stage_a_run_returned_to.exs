@@ -11,7 +11,7 @@ defmodule Apiary.Repo.Migrations.KeepTheStageARunReturnedTo do
   #
   # The column is new and may be empty, with no default, so no row is written again. Both
   # checks are added NOT VALID, so adding them takes no scan of the tables under their
-  # locks; `20261116120100` validates them.
+  # locks; `20261116150100` validates them.
   @stage_id "^st_[0-9a-hjkmnp-tv-z]{10}$"
   @causes ~w(round_limit escalate check_failed run_stopped)
 

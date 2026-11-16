@@ -573,7 +573,7 @@ defmodule ApiaryWeb.InstanceLive.WorkspaceTypesTest do
     test "offers the standard types and the Qory harness's custom type", %{conn: conn} do
       {:ok, view, _html} = live(conn, @edit)
 
-      assert new_output_options(view) == standard_names() ++ ["branch"]
+      assert new_output_options(view) == standard_names() ++ ["submission"]
     end
 
     test "another type's page offers the standard types, and no custom type of the template",

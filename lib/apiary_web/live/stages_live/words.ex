@@ -339,6 +339,35 @@ defmodule ApiaryWeb.StagesLive.Words do
   def refusal(%{error: :duplicate_stage_id}, _doc),
     do: gettext("Two stages have the same id. Reload the page, then make the change again.")
 
+  # A condition whose input type no earlier stage lists as an output, on a workflow entry
+  # or an output, at a place such as `#/stages/1/sequence/0/loop/body/1/when/input`.
+  def refusal(%{error: :condition_input, path: path, detail: type}, doc) when is_binary(path) do
+    {stage, _field} = place(path, doc)
+
+    case conditioned(doc, path) do
+      %{"workflow" => workflow} when is_binary(workflow) ->
+        gettext(
+          "Remove the condition on %{workflow} in %{stage}, or add an earlier stage that makes %{type}.",
+          workflow: workflow,
+          stage: stage,
+          type: type
+        )
+
+      %{"type" => output} when is_binary(output) ->
+        gettext(
+          "Remove the condition on the output %{output} in %{stage}, or add an earlier stage that makes %{type}.",
+          output: output,
+          stage: stage,
+          type: type
+        )
+
+      _other ->
+        gettext("%{stage}: a value is not valid. Check the stage, then save again.",
+          stage: stage
+        )
+    end
+  end
+
   def refusal(%{error: error, path: path} = refused, doc) do
     {stage, field} = place(path, doc)
     error_detail = refused[:detail]
@@ -526,4 +555,20 @@ defmodule ApiaryWeb.StagesLive.Words do
   end
 
   defp place(_path, _doc), do: {gettext("The process"), nil}
+
+  # The workflow entry or the output that has the condition at `path`, a place such as
+  # `#/stages/1/outputs/0/when/input`; nil where the document has none there.
+  defp conditioned(doc, path) do
+    path
+    |> String.replace_suffix("/when/input", "")
+    |> String.replace_prefix("#/", "")
+    |> String.split("/")
+    |> Enum.reduce_while(doc, fn key, at ->
+      case {at, Integer.parse(key)} do
+        {list, {index, ""}} when is_list(list) -> {:cont, Enum.at(list, index)}
+        {map, _not_index} when is_map(map) -> {:cont, Map.get(map, key)}
+        _other -> {:halt, nil}
+      end
+    end)
+  end
 end

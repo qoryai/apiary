@@ -7,6 +7,8 @@ defmodule Apiary.Stages.StopCauseTest do
 
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.Connections
+  alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Stages.StopCause
@@ -26,7 +28,7 @@ defmodule Apiary.Stages.StopCauseTest do
       target_path: "acme/web-shop"
     }
 
-    %{work_item: work_item, ws: workspace.name, org: organisation.name}
+    %{work_item: work_item, ws: workspace.name, org: organisation.name, scope: scope}
   end
 
   defp text(cause, work_item, fields \\ [], context \\ %{}) do
@@ -118,27 +120,75 @@ defmodule Apiary.Stages.StopCauseTest do
     keys = [%{allow_secrets: false}]
     instance = %Node{kind: :gateway, name: "edge-1"}
 
+    # The context in the shape the claim passes (`Apiary.Dispatches.Handover.gateway/1`):
+    # the gateway with the claim's workspace.
+    context = fn gateway, keys -> %{gateway: {gateway, nil}, keys: keys} end
+
     # The instance's gateway is not named: the person sees neither it nor its keys.
     for keys <- [keys, [%{allow_secrets: true}]] do
-      assert text(:secrets_not_allowed, work_item, [], %{gateway: instance, keys: keys}) ==
+      assert text(:secrets_not_allowed, work_item, [], context.(instance, keys)) ==
                "The run did not start, because its gateway is not allowed to receive the run's secrets.\n" <>
                  "Contact support with work item #12."
     end
 
     organisation = %{instance | organisation_id: work_item.organisation_id}
 
-    assert text(:secrets_not_allowed, work_item, [], %{gateway: organisation, keys: keys}) =~
-             "\nOwners and admins of #{org} add an access key for edge-1 with stored secrets allowed, on Gateways › edge-1 › Access key."
+    assert text(:secrets_not_allowed, work_item, [], context.(organisation, keys)) ==
+             "The run did not start, because gateway edge-1 is not allowed to receive the run's secrets.\n" <>
+               "Owners and admins of #{org} add an access key for edge-1 with stored secrets allowed, on Gateways › edge-1 › Access key."
 
     workspace = %{organisation | workspace_id: work_item.workspace_id}
 
-    assert text(:secrets_not_allowed, work_item, [], %{gateway: workspace, keys: keys}) =~
-             "\nOwners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Machines › edge-1 › Access key."
+    assert text(:secrets_not_allowed, work_item, [], context.(workspace, keys)) ==
+             "The run did not start, because gateway edge-1 is not allowed to receive the run's secrets.\n" <>
+               "Owners and admins of #{ws} add an access key for edge-1 with stored secrets allowed, on Machines › edge-1 › Access key."
 
-    assert text(:secrets_not_allowed, work_item, [], %{
-             gateway: organisation,
+    # Every key read after the claim allows stored secrets, on a gateway of the run's
+    # organisation or workspace: a key changed after the claim.
+    for gateway <- [organisation, workspace] do
+      assert text(
+               :secrets_not_allowed,
+               work_item,
+               [],
+               context.(gateway, [%{allow_secrets: true}])
+             ) ==
+               "The run did not start, because the access key of gateway edge-1 changed after the run was claimed.\n" <>
+                 "Run another round. It then uses the current access key of edge-1."
+    end
+
+    # A gateway of another organisation may not receive the model key.
+    other = %{organisation | organisation_id: Ecto.UUID.generate()}
+
+    assert text(:secrets_not_allowed, work_item, [], context.(other, [%{allow_secrets: true}])) ==
+             "The run did not start, because the model key of its model choice may not be sent to gateway edge-1, which belongs to another organisation.\n" <>
+               "Owners and admins of #{ws} choose a model provider of #{org} in Workspace settings › Model."
+  end
+
+  @tag needs: [:factory, :secrets]
+  test "a provider whose key is never sealed for a gateway shows the support line",
+       %{work_item: work_item, scope: scope} do
+    keys = [%{value_id: "main", value: "sk-ant-fixture-main-0123456789"}]
+    {:ok, provider} = Connections.create_provider(scope, %{provider: "anthropic", keys: keys})
+
+    # A provider of a chain other than the organisation's: its key is never sealed for a
+    # gateway, so another round would end the same way.
+    Repo.update_all(from(c in Connection, where: c.id == ^provider.id),
+      set: [chain: "operator"]
+    )
+
+    gateway = %Node{
+      kind: :gateway,
+      name: "edge-1",
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id
+    }
+
+    assert text(:secrets_not_allowed, work_item, [model_provider_ids: [provider.id]], %{
+             gateway: {gateway, nil},
              keys: [%{allow_secrets: true}]
-           }) =~ "may not be sent to gateway edge-1"
+           }) ==
+             "The run did not start, because its gateway is not allowed to receive the run's secrets.\n" <>
+               "Contact support with work item #12."
   end
 
   test "a target no collection of the workspace reaches any more", %{

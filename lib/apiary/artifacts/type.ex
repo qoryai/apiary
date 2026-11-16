@@ -1,11 +1,11 @@
 defmodule Apiary.Artifacts.Type do
   # An artifact type: what a version of an artifact must be, and how a page shows it.
   #
-  # A type is standard, one of the eleven Qory Apiary ships (`standard/0`), or custom, a row
+  # A type is standard, one of the ten Qory Apiary ships (`standard/0`), or custom, a row
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
-  # workspace. `view` is the dedicated view of a standard structured type (`:questions`,
-  # `:verdict` or `:change`), nil for every other type. A `proposal` is a document: one
+  # workspace. `view` is the dedicated view of a standard structured type (`:questions`
+  # or `:verdict`), nil for every other type. A `proposal` is a document: one
   # Markdown file of up to 256 KiB, PNG, JPEG, GIF, WebP or SVG images beside it, and at
   # most one `sources.json`, up to 10 files and 5 MiB together
   # (`Apiary.Artifacts.Format`). A `mockup` is pictures, or, pushed by a run with a
@@ -74,7 +74,6 @@ defmodule Apiary.Artifacts.Type do
     {"mockup", :image, 10 * @mib, 10, nil},
     {"screenshot", :image, 10 * @mib, 10, nil},
     {"demo-video", :video, 200 * @mib, 5, nil},
-    {"change", :structured, 64 * 1024, 1, :change},
     {"proposal", :document, 5 * @mib, 10, nil},
     {"questions", :structured, @mib, 1, :questions},
     {"review-comments", :structured, @mib, 1, nil},

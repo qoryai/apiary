@@ -957,6 +957,72 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "the when key (A-16)" do
+    @when_proposal %{"input" => "proposal"}
+
+    test "survives an edit of the entry and of the output, a rename of its workflow included",
+         %{conn: conn, path: path, scope: scope} do
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          stage
+          |> Map.put("sequence", [%{"workflow" => "capture-demos", "when" => @when_proposal}])
+          |> Map.put("outputs", [
+            %{"type" => "demo-video", "required" => true, "when" => @when_proposal}
+          ])
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      change_stage(view, %{
+        "sequence" => %{"0" => %{"workflow" => "record-demos", "machine" => "default"}},
+        "outputs" => %{"0" => %{"type" => "demo-video", "required" => "false"}}
+      })
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+
+      build =
+        Enum.find(
+          Processes.current(scope.workspace).document["stages"],
+          &(&1["id"] == id_of("Build"))
+        )
+
+      assert build["sequence"] == [
+               %{"workflow" => "record-demos", "machine" => "default", "when" => @when_proposal}
+             ]
+
+      assert build["outputs"] == [
+               %{"type" => "demo-video", "required" => false, "when" => @when_proposal}
+             ]
+    end
+  end
+
+  describe "a refused when key (A-16)" do
+    test "the refusal names the entry or the output, the stage and the input type" do
+      on = %{"input" => "demo-scenarios"}
+
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          stage
+          |> Map.put("sequence", [
+            %{"workflow" => "capture-demos", "when" => on},
+            %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos", "when" => on}]}}
+          ])
+          |> Map.put("outputs", [%{"type" => "demo-video", "required" => true, "when" => on}])
+        end)
+
+      assert {:error, errors} = Processes.validate(document)
+
+      assert Enum.map(errors, &Words.refusal(&1, document)) == [
+               "Remove the condition on capture-demos in Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on fix-demos in Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on the output demo-video in Build, or add an earlier stage that makes demo-scenarios."
+             ]
+    end
+  end
+
   describe "a workspace with no template" do
     test "the harness line shows the stack core", %{conn: conn, path: path, scope: scope} do
       {1, _rows} =
