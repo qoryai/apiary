@@ -332,10 +332,10 @@ defmodule Apiary.Adapters.Wire do
 
   def declaration(_raw), do: :error
 
-  # `submit_module` when the body gives one: the run contract's `submit_module`, a harness
+  # `submit_module` when the body has one: the run contract's `submit_module`, a harness
   # module whose source is pinned to a full commit hash, with no exclude, only or variant,
   # and whose `git` is an https address, as every harness source Qory Apiary takes is
-  # (`Apiary.Stacks.Document.submit_module?/1`). nil when the body gives none.
+  # (`Apiary.Stacks.Document.submit_module?/1`). nil when the body has none.
   defp submit_module(%{"submit_module" => module}),
     do: if(Apiary.Stacks.Document.submit_module?(module), do: {:ok, module}, else: :error)
 
@@ -365,9 +365,15 @@ defmodule Apiary.Adapters.Wire do
   # brackets outside strings; any other value to the first byte that cannot be in it.
   # Each step looks for its next byte with `:binary.match/3`, so the scan is linear in the
   # size of `raw`, at most the 1 MiB `ApiaryWeb.Contract.RawBody` reads.
+  #
+  # `stop` is a list of member names that come after `name` in `raw`'s order, where
+  # `raw` has one: the scan returns `:error` at the first of them, before it steps over
+  # that member's value, so the bytes after it are never read.
   @doc false
-  @spec member_value(binary, String.t()) :: {:ok, binary} | :error
-  def member_value(raw, name) when is_binary(raw) and is_binary(name) do
+  @spec member_value(binary, String.t(), [String.t()]) :: {:ok, binary} | :error
+  def member_value(raw, name, stop \\ [])
+
+  def member_value(raw, name, stop) when is_binary(raw) and is_binary(name) and is_list(stop) do
     patterns = %{
       string: :binary.compile_pattern(["\"", "\\"]),
       nested: :binary.compile_pattern(["\"", "{", "[", "}", "]"]),
@@ -375,29 +381,30 @@ defmodule Apiary.Adapters.Wire do
     }
 
     case skip_space(raw) do
-      "{" <> rest -> members(rest, name, patterns)
+      "{" <> rest -> members(rest, {name, stop}, patterns)
       _other -> :error
     end
   end
 
-  def member_value(_raw, _name), do: :error
+  def member_value(_raw, _name, _stop), do: :error
 
-  defp members(rest, name, patterns) do
+  defp members(rest, {name, stop} = names, patterns) do
     with "\"" <> _ = rest <- skip_space(rest),
          {key, rest} <- string_span(rest, patterns),
          ":" <> rest <- skip_space(rest),
+         {:ok, key} <- Jason.decode(key),
+         false <- key in stop,
          value = skip_space(rest),
-         after_value when is_binary(after_value) <- skip_value(value, patterns),
-         {:ok, key} <- Jason.decode(key) do
+         after_value when is_binary(after_value) <- skip_value(value, patterns) do
       bytes = binary_part(value, 0, byte_size(value) - byte_size(after_value))
 
       case {key == name, skip_space(after_value)} do
         {true, _rest} -> {:ok, bytes}
-        {false, "," <> rest} -> members(rest, name, patterns)
+        {false, "," <> rest} -> members(rest, names, patterns)
         {false, _end_of_object} -> :error
       end
     else
-      _end_of_object_or_unreadable -> :error
+      _end_of_object_stop_or_unreadable -> :error
     end
   end
 

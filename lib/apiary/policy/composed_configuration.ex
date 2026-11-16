@@ -529,11 +529,13 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   # The source of the `submit_module` in the documents the claim sent `run`
   # (`runs.run_documents`, as encoded), `[%{"git" => url}]`, as a pin of a harness walk
-  # has its `git`; `[]` for none. The claim writes `submit_module` before `inputs`, so the
-  # scan of the documents stops before their largest member (`Wire.member_value/2`).
+  # has its `git`; `[]` for none. The claim writes `submit_module`, then `submit`, then
+  # `inputs` (`ApiaryWeb.Contract.DispatchAnswer`), so the scan stops at the first of
+  # `submit` and `inputs` (`Wire.member_value/3`), with or without a module, and never
+  # reads the input, the documents' largest member.
   defp submit_source(run) do
     with documents when is_binary(documents) <- Map.get(run, :run_documents),
-         {:ok, raw} <- Wire.member_value(documents, "submit_module"),
+         {:ok, raw} <- Wire.member_value(documents, "submit_module", ["submit", "inputs"]),
          {:ok, %{"source" => %{"git" => git}}} when is_binary(git) <- Jason.decode(raw) do
       [%{"git" => git}]
     else

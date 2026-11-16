@@ -295,6 +295,18 @@ defmodule Apiary.Adapters.WireTest do
       assert Wire.member_value(~s({"description":{}}), "description") == {:ok, "{}"}
     end
 
+    test "returns :error at the first stop name, before its value" do
+      raw = ~S({"a":1,"submit_module":{"b":2},"submit":3,"inputs":{"c":4}})
+      assert Wire.member_value(raw, "submit_module", ["submit", "inputs"]) == {:ok, ~S({"b":2})}
+      assert Wire.member_value(raw, "inputs", ["submit"]) == :error
+
+      assert Wire.member_value(~S({"a":1,"inputs":{"c":4}}), "submit_module", ["inputs"]) ==
+               :error
+
+      # A stop name is read with its escapes, as `name` is.
+      assert Wire.member_value(~S({"subm\u0069t":1,"x":2}), "x", ["submit"]) == :error
+    end
+
     test "reads a member's name with its escapes" do
       assert Wire.member_value(~S({"descr\u0069ption":{"y":1}}), "description") ==
                {:ok, ~S({"y":1})}
