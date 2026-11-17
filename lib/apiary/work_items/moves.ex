@@ -203,7 +203,7 @@ defmodule Apiary.WorkItems.Moves do
   #     it: Explore's tab writes a comment with `another_round/4`, and tests call it to
   #     set up a work item. It works wherever no run is running and the take in has a
   #     proposal: where its questions wait, where its proposal waits, and after a run
-  #     that gave no result, was lost or was cancelled. It asks
+  #     that gave no result, was lost, reached its time limit or was cancelled. It asks
   #     `work_item.review_comment` (`Apiary.Access`, else `:not_approver`), which only
   #     the approvers of the stage the work item is in have, where the stage lists them,
   #     and checks the text (`Apiary.WorkItems.Proposal.check_comment/1`, else
@@ -293,7 +293,8 @@ defmodule Apiary.WorkItems.Moves do
   #     keeps the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is
   #     then ready for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
-  #     was lost or was cancelled, while a run is left: it queues the take in's next run.
+  #     was lost, reached its time limit or was cancelled, while a run is left: it queues
+  #     the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
   #
   # ## People's comments

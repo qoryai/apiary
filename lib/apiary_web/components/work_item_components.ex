@@ -21,8 +21,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     The ticket's full form is this title followed by its key (`"acme/shop#1204"`), or
   #     the title alone without a key (`BacklogComponents.full_form/1`);
   #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
-  #     (the take in used its runs), `:no_result`, `:lost`, `:time_limit` or `:cancelled` (its run gave
-  #     nothing to show); then `:confirm`, `:shape`, `:closed` or `:undone`;
+  #     (the take in used its runs), `:no_result`, `:lost`, `:time_limit` or `:cancelled`
+  #     (its run gave nothing to show); then `:confirm`, `:shape`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
   #     (`:proposal`, `:questions`, `:error`, `:none` or `:refused`), `:end_cause`,
@@ -652,9 +652,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, questions (`:questions`): with `can_act`, that answering the questions runs
       Explore again, and Answer the questions (a link to Explore's tab, `explore_path`,
       where it is given); without, that a member answers next.
-    * Explore, no result (`:no_result`, `:lost`, `:time_limit`, `:cancelled`): what happened to the run;
-      with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
-      the take in.
+    * Explore, no result (`:no_result`, `:lost`, `:time_limit`, `:cancelled`): what
+      happened to the run; with `can_act`, Run Explore again (`"explore_again"`), which
+      starts the next run of the take in.
     * Explore, the run limit (`:used_up`, and questions or no result at the take in's
       last run): that the take in used its runs, and why Qory cannot explore again; with
       `can_act`, the way on and, with `can_close`, Close work item… (`"ask_close"`).
@@ -2142,9 +2142,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     * an undone work item (`:undone`): that the take in was undone before a run started,
       whether a run of it waited or the take in queued none; a closed work item whose
       take in queued no run (`:closed`): who closed it and when (`ended_tab_words/2`);
-    * a run without a result (no result, lost, at its time limit or cancelled): what happened, and the run's
-      page; for a run that ended at its claim, before it started (`:end_cause`
-      `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone` or
+    * a run without a result (no result, lost, at its time limit or cancelled): what
+      happened, and the run's page; for a run that ended at its claim, before it started
+      (`:end_cause` `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone` or
       `:write_without_work_item`),
       while it waited for its environment image's build, which failed (`:build_failed`),
       or because its harness walk failed (`:harness_unresolved`, with
@@ -6461,9 +6461,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       where it has no owner;
     * `:replied` - Qory wrote no proposal and no question, but wrote replies to review
       comments: to how many (`replies`) and after how long (`duration`);
-    * `:no_result`, `:lost`, `:time_limit`, `:cancelled` - a run (`run`) that gave no result, and why
-      (`outcome`: `:error`, `:none` or `:refused`), or for a failed run that pushed a
-      proposal first, its version (`wrote`); for a run the gateway stopped for
+    * `:no_result`, `:lost`, `:time_limit`, `:cancelled` - a run (`run`) that gave no
+      result, and why (`outcome`: `:error`, `:none` or `:refused`), or for a failed run
+      that pushed a proposal first, its version (`wrote`); for a run the gateway stopped for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
       what a member fixes;
     * `:explore_again` - who ran Explore again;

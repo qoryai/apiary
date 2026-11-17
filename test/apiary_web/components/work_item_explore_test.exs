@@ -3562,6 +3562,20 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run at a stage after Explore's that gave no result names the stage" do
+      r = run(%{})
+
+      for {kind, words} <- [
+            {:lost, "Attempt 1 was lost before it ended, so Build has no result"},
+            {:time_limit, "Attempt 1 reached its time limit, so Build has no result"},
+            {:cancelled, "Attempt 1 was cancelled before it ended, so Build has no result"}
+          ] do
+        html = event(kind: kind, run: r, stage: "Build")
+        assert line(html) == words <> " 14 Oct, 11:25"
+        assert count(html, ".q-wi-ev-bad") == 1
+      end
+    end
+
     test "asked to explore again, confirmed, changed and confirmed" do
       for {extra, words} <- [
             {[kind: :explore_again, actor: @dana], "You ran Explore again"},

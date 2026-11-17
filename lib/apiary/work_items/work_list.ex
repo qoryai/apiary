@@ -247,9 +247,9 @@ defmodule Apiary.WorkItems.WorkList do
   @typedoc """
   The live work items in each stage, and what in each needs a look: how many Explore
   is running on (`exploring`), how many wait for answers (`answers`), how many Explore left
-  without a result (`no_result`: no result, lost or cancelled), how many wait at Confirm
-  (`waiting`) and how many of those for the reader (`waiting_you`), and how many are
-  ready for Shape (`ready`).
+  without a result (`no_result`: no result, lost, at its time limit or cancelled), how
+  many wait at Confirm (`waiting`) and how many of those for the reader (`waiting_you`),
+  and how many are ready for Shape (`ready`).
   """
   @type stages :: %{
           explore: non_neg_integer,
