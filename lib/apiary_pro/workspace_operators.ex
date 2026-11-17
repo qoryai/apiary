@@ -80,6 +80,8 @@ defmodule ApiaryPro.WorkspaceOperators do
   the operator's people see the core's step. Translated when it is asked.
   """
   @spec schema_change_line(Scope.t()) :: String.t() | nil
+  # The page gate `artifact_type.edit` limits the page to owners and admins, so a member never
+  # reaches it. This checks only the operator and `through_operator?/1`.
   def schema_change_line(%Scope{organisation: %Organisation{} = organisation} = scope) do
     if operator_id(organisation, scope.workspace) && not ApiaryPro.Access.through_operator?(scope),
       do: gettext("To change the schema, ask the operator of this workspace.")

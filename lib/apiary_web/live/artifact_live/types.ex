@@ -13,8 +13,11 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   #
   # The type that the process's `submit` sets (`Apiary.Artifacts.submit_types/1`) shows the
   # mark Set by the harness and has no Edit and no Delete: the harness sets its schema. The
-  # page shows a line under the table with the reason and a link to Harness settings. The
-  # edit and delete routes and events of such a type go back to the list.
+  # page shows a line under the table with the reason and one of three endings. The step in
+  # Harness settings, as a link, is the usual one. In a workspace that an operator operates,
+  # the organisation's owners and admins read to ask the operator. Without the feature
+  # `factory`, the line says that the Qory harness sets the schema, with no step. The edit
+  # and delete routes and events of such a type go back to the list.
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
@@ -337,10 +340,9 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     )
   end
 
-  # The last sentence of the line under the table for a type that the harness sets, the
-  # step to change the schema. Without the feature `factory` the workspace's people have no
-  # Harness settings, so the sentence has no step; where the edition says who changes the
-  # harness, its sentence stands in place of the link.
+  # The last sentence of the line under the table for a type that the harness sets. Without
+  # `factory` there is no Harness settings, so it has no step; the edition's sentence, if
+  # any, stands in place of the link.
   @doc false
   def schema_step(scope) do
     cond do
