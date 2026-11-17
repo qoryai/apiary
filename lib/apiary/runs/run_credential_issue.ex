@@ -26,7 +26,8 @@ defmodule Apiary.Runs.RunCredentialIssue do
        plaintext's `apply` in the Forager contract. Each item is a map whose `hosts` are
        1 to 16 distinct strings, whose `scheme` is a string, whose `username` and
        `header` are strings when present, and whose `paths` are 1 to 32 distinct strings
-       of the path grammar `^/[^*?#\\s]*\\*?$` when present (`:apply_item_invalid`). No
+       of the path grammar `^/[^*?{}#\\s]*\\*?$` when present (`:apply_item_invalid`): no
+       brace, since Forager reads a segment `{}` as a wildcard, which no template makes. No
        item has a `token` (`:token_in_apply_item`).
     6. Each answer item lies inside one entry item: the same `scheme`, the same
        `username` and the same `header`, each both absent or equal
@@ -55,8 +56,9 @@ defmodule Apiary.Runs.RunCredentialIssue do
   The entry is a map with string keys: `"apply"`, a list of 1 to 16 apply items, each
   with `"hosts"` (a list of strings), `"scheme"` (`"bearer"`, `"basic"` or `"header"`)
   and optional `"username"`, `"header"` and `"paths"`, with the paths filled, and
-  `"push_ref"`, a string; and optional `"name"`, `"purpose"` and `"placeholders"`, a list of strings. This is the
-  host credential of the run configuration, so a composed entry fits as it is.
+  `"push_ref"`, a string; and optional `"name"`, `"purpose"` and `"placeholders"`, a list
+  of strings. This is the host credential of the run configuration, so a composed entry
+  fits as it is.
 
   The module makes no call, reads no database and writes no log line or Activity entry.
   A refusal is an atom only: no cause contains the token or any part of the answer. The
@@ -144,7 +146,7 @@ defmodule Apiary.Runs.RunCredentialIssue do
   @min_lifetime 6 * 60
   @max_lifetime 24 * 60 * 60
 
-  @path ~r/\A\/[^*?#\s]*\*?\z/u
+  @path ~r/\A\/[^*?#\{\}\s]*\*?\z/u
   # The date, the time, the fraction digits and the offset of an RFC 3339 date-time.
   @rfc3339 ~r/\A(\d{4}-\d{2}-\d{2})[Tt](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})\z/
 

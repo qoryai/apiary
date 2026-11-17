@@ -279,6 +279,20 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
       assert issue.apply == pushing([@code, @api, @files])
     end
 
+    test "an answer item takes the push_ref of the entry item it lies inside, in any order" do
+      other = "refs/heads/qory/wi_ffffffffffffffff"
+      entry = entry([Map.put(@code, "push_ref", @branch), Map.put(@api, "push_ref", other)])
+      code = Map.put(@code, "push_ref", @branch)
+      api = Map.put(@api, "push_ref", other)
+
+      assert {:ok, %{apply: [^api, ^code]}} =
+               RunCredentialIssue.check(entry, items([@api, @code]), @now)
+
+      # An answer that matches only one entry item has only that item's push_ref.
+      assert {:ok, %{apply: [^code]}} = RunCredentialIssue.check(entry, items([@code]), @now)
+      assert {:ok, %{apply: [^api]}} = RunCredentialIssue.check(entry, items([@api]), @now)
+    end
+
     test "an entry whose items have none gives the answer's items as they are" do
       assert {:ok, %{apply: [@code, @api, @files]}} = check(answer())
     end
@@ -304,6 +318,18 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
       for ref <- [nil, 1, [@branch], %{}] do
         entry = entry([Map.put(@code, "push_ref", ref)])
         assert refused_with(entry, items([@code]), @now) == :entry_invalid
+      end
+    end
+  end
+
+  describe "braces in a path" do
+    test "an answer path with a brace is refused, though an entry path covers it" do
+      entry = entry([%{@code | "paths" => ["/team/*"]}])
+
+      for path <- ["/team/{}", "/team/a{b", "/team/{}/x", "/team/}"] do
+        assert refused_with(entry, items([%{@code | "paths" => [path]}]), @now) ==
+                 :apply_item_invalid,
+               path
       end
     end
   end

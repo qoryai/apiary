@@ -200,6 +200,10 @@ defmodule Apiary.Adapters.CallWireTest do
             Map.put(item, "paths", []),
             Map.put(item, "paths", ["api/*"]),
             Map.put(item, "paths", ["/a*b"]),
+            Map.put(item, "paths", ["/a/{}"]),
+            Map.put(item, "paths", ["/a{b"]),
+            Map.put(item, "push_ref", "refs/heads/qory/wi_0123456789abcdef"),
+            Map.put(item, "push_ref", "refs/heads/main"),
             Map.put(item, "other", 1)
           ] do
         assert answer("run-credential", credential(%{"apply" => [bad]})) == :error, inspect(bad)

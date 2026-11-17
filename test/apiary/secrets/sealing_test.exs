@@ -364,7 +364,16 @@ defmodule Apiary.Secrets.SealingTest do
                   Map.put(item, "push_ref", "refs/heads/" <> String.duplicate("a", 245))
                 ]
             },
-            %{forge | "apply" => [Map.put(item, "push_ref", nil)]}
+            %{forge | "apply" => [Map.put(item, "push_ref", nil)]},
+            # 141 graphemes and 271 code points: the schema's maxLength counts code points.
+            %{
+              forge
+              | "apply" => [
+                  Map.put(item, "push_ref", "refs/heads/" <> String.duplicate("e\u0301", 130))
+                ]
+            },
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a{b"])]}
           ] do
         values = [other, model]
 
@@ -383,6 +392,9 @@ defmodule Apiary.Secrets.SealingTest do
             forge,
             Map.put(forge, "expires_at", "2026-10-24T15:00:00.5+02:00"),
             Map.put(forge, "apply", [@item]),
+            Map.put(forge, "apply", [
+              Map.put(@item, "push_ref", "refs/heads/" <> String.duplicate("a", 244))
+            ]),
             Map.merge(forge, %{
               "expires_at" => "2026-10-24T13:00:00Z",
               "apply" => [

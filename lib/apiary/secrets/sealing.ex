@@ -83,7 +83,7 @@ defmodule Apiary.Secrets.Sealing do
   ]
   @username ~r/\A[^:\s]+\z/
   @header ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}\z/
-  @path ~r/\A\/[^*?#\s]*\*?\z/
+  @path ~r/\A\/[^*?#\{\}\s]*\*?\z/
   @push_ref ~r/\Arefs\/heads\/[^\s]+\z/u
   @max_push_ref 255
 
@@ -338,7 +338,7 @@ defmodule Apiary.Secrets.Sealing do
 
   defp push_ref?(ref),
     do:
-      is_binary(ref) and String.valid?(ref) and String.length(ref) <= @max_push_ref and
+      is_binary(ref) and String.valid?(ref) and length(String.to_charlist(ref)) <= @max_push_ref and
         Regex.match?(@push_ref, ref)
 
   defp value_json({credential, value, expires_at, apply}) do

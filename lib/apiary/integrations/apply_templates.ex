@@ -5,7 +5,8 @@ defmodule Apiary.Integrations.ApplyTemplates do
   # the path of the run's target. A start keeps the items (`Apiary.Nodes.Node`'s
   # `source_apply`), and a run's claim fills them (`Apiary.Runs.RunCredentials`).
   #
-  # Forager's path grammar is `^/[^*?#\s]*\*?$`, where `\s` is a space character: one
+  # Apiary's path grammar, Forager's without a `{}` segment, is `^/[^*?#{}\s]*\*?$`, where
+  # `\s` is a space character: one
   # below U+0021, U+007F, U+FEFF, U+0085, U+00A0, U+1680, U+2000 to U+200A, U+2028,
   # U+2029, U+202F, U+205F or U+3000. A template contains `{target.path}` at most once,
   # right after a `/`, and the rest of that segment has no `*`; no other `{` or `}`. A
@@ -14,9 +15,12 @@ defmodule Apiary.Integrations.ApplyTemplates do
   # not an entry of the description's `egress_hosts`.
   #
   # A target path is refused before any template is filled when it contains `..`, `//`,
-  # `*`, `?`, `#` or a space character, or is not UTF-8. Filling replaces the placeholder
-  # with the path exactly as the adapter wrote it, with no case folding and no decoding,
-  # and leaves out a filled path equal to an earlier filled path of the same item.
+  # `*`, `?`, `#`, `{`, `}` or a space character, or is not UTF-8. Forager's grammar
+  # reads a segment written `{}` as a wildcard for one segment, and refuses any other
+  # brace, so a brace in a target path could widen a credential or fail late. No template
+  # produces a `{}` segment, so no path of an item has a brace. Filling replaces the
+  # placeholder with the path exactly as the adapter wrote it, with no case folding and no
+  # decoding, and leaves out a filled path equal to an earlier filled path of the same item.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -24,8 +28,8 @@ defmodule Apiary.Integrations.ApplyTemplates do
   @placeholder "{target.path}"
   @space "\\x{0}-\\x{20}\\x{7F}\\x{85}\\x{A0}\\x{1680}\\x{2000}-\\x{200A}" <>
            "\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}"
-  @grammar Regex.compile!("\\A/[^*?\\#" <> @space <> "]*\\*?\\z", "u")
-  @refused_target Regex.compile!("\\.\\.|//|[*?\\#" <> @space <> "]", "u")
+  @grammar Regex.compile!("\\A/[^*?\\#\\{\\}" <> @space <> "]*\\*?\\z", "u")
+  @refused_target Regex.compile!("\\.\\.|//|[*?\\#\\{\\}" <> @space <> "]", "u")
   # The members of an item, in the order a run configuration writes them. `push_ref` is not
   # one an adapter's item has (the description schema refuses it): a claim sets it on an
   # item (`Apiary.Runs.RunCredentials`).
@@ -89,8 +93,9 @@ defmodule Apiary.Integrations.ApplyTemplates do
 
   @doc false
   # refused_in/1 is the first part of `path` that `target_path?/1` refuses, from the
-  # start: `{:character, char}` for `*`, `?`, `#` or a space character, `{:sequence, ".."}`
-  # or `{:sequence, "//"}`, or nil for a path with none (and for one that is not UTF-8).
+  # start: `{:character, char}` for `*`, `?`, `#`, `{`, `}` or a space character,
+  # `{:sequence, ".."}` or `{:sequence, "//"}`, or nil for a path with none (and for one
+  # that is not UTF-8).
   @spec refused_in(String.t()) :: {:character | :sequence, String.t()} | nil
   def refused_in(path) when is_binary(path) do
     with true <- String.valid?(path),
@@ -103,7 +108,7 @@ defmodule Apiary.Integrations.ApplyTemplates do
 
   @doc false
   # target_path?/1 is whether a target path may fill a template: UTF-8 with no `..`, `//`,
-  # `*`, `?`, `#` and no space character.
+  # `*`, `?`, `#`, `{`, `}` and no space character.
   @spec target_path?(term) :: boolean
   def target_path?(path) when is_binary(path) and path != "",
     do: String.valid?(path) and not Regex.match?(@refused_target, path)
