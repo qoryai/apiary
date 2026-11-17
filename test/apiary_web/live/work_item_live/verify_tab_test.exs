@@ -716,7 +716,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#work-item-tab-output-demo-evidence-s", "Version 1")
     end
 
-    test "the rows show the plain label; the Artifacts list keeps the type's id",
+    test "the rows and the tab's Artifacts list show the plain label",
          %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
@@ -738,8 +738,13 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                "demo evidence scenario-1 v1"
              )
 
-      assert has_element?(view, "#work-item-artifact-list", "demo-video scenario-1 v1")
-      refute has_element?(view, "#work-item-artifact-list", "demo video scenario-1 v1")
+      # The tab's Artifacts list has the same words; the page's other lists and the
+      # artifact page keep the type's id.
+      assert has_element?(view, "#work-item-artifact-list", "demo video scenario-1 v1")
+      refute has_element?(view, "#work-item-artifact-list", "demo-video scenario-1 v1")
+
+      explore = item_page(conn, scope, work_item)
+      refute has_element?(explore, "#work-item-artifact-list", "demo video scenario-1 v1")
     end
 
     test "the gate card lists the films and pictures together, in scenario order",

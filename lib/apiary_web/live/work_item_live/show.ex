@@ -443,6 +443,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 index={@view.index}
                 scope={@current_scope}
                 number={@number}
+                label={verify_label(@view.stage)}
               />
             </:artifacts>
             <:row :let={output}>
@@ -536,6 +537,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   attr :number, :integer, required: true
   attr :round, :boolean, default: true, doc: "whether a run's writer shows its round"
   attr :index, :list, default: nil, doc: "the approval marks; nil for all of `flow`'s"
+  attr :label, :any, default: nil, doc: "`ArtifactComponents.list/1`'s `label`"
 
   # The work item's artifacts, with their approval marks and Add a version.
   defp artifacts_section(assigns) do
@@ -550,6 +552,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         number={@number}
         add={@flow.can_add}
         round={@round}
+        label={@label}
       />
     </section>
     """
@@ -2215,10 +2218,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # `reads` with the JSON document of the version whose public id is `id`, read once.
   defp stored_json(reads, id, version) do
     key = {:json, id}
-    if Map.has_key?(reads, key), do: reads, else: Map.put(reads, key, read_json(version))
-  end
 
-  defp read_json(version), do: Stages.Artifacts.read_json(version)
+    case reads do
+      %{^key => _read} ->
+        reads
+
+      _unread ->
+        # A read the store could not do is not kept, so the next read tries again.
+        case Stages.Artifacts.stored_json(version) do
+          {:ok, decoded} -> Map.put(reads, key, decoded)
+          {:error, :store_unavailable} -> reads
+        end
+    end
+  end
 
   # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
   # where it has no scenario; a verification read as its parts with the model families and
