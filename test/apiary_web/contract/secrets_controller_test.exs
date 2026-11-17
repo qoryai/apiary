@@ -953,6 +953,62 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert post_secrets(ctx, request(ctx, credentials: ["work-1"])).status == 200
     end
 
+    test "a push-1 whose kept items moved rolls back the items kept for work-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+
+      started =
+        Enum.map(@entry_apply, &Map.put(&1, "push_ref", "refs/heads/qory/wi_ffffffffffffffff"))
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^push_row(ctx).id),
+          set: [issued_apply: started]
+        )
+
+      running!(ctx)
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"])) end)
+
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "cause=apply_moved"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      # Work-1's items were written before push-1's comparison failed, and are written no more.
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == started
+      assert seals() == []
+
+      assert [{"push-1", "apply_moved"}, {"work-1", "not_recorded"}] ==
+               Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
+    end
+
+    test "a seal that fails after both credentials were issued refuses both and keeps nothing",
+         ctx do
+      # The push entry's push_ref is longer than the 255 characters a sealed item may have:
+      # the adapter's answers pass every check, and the seal refuses the plaintext.
+      long = "refs/heads/qory/" <> String.duplicate("a", 300)
+      {ctx, _pushing} = push_entry!(ctx, long)
+      issue_both!(ctx)
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "could not be sealed"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      assert length(WorkCredentialStub.calls()) == 2
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == nil
+
+      assert [{"push-1", "seal_failed"}, {"work-1", "seal_failed"}] ==
+               Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
+    end
+
     test "a failed check of the first credential makes no call for the second", ctx do
       {ctx, _pushing} = push_entry!(ctx, @branch)
       wider = [%{hd(@entry_apply) | "paths" => ["/other/*"]}]
