@@ -2,7 +2,8 @@ defmodule Apiary.Stages.GateDecision do
   # A person's decision at a stage's gate on a work item (`Apiary.Stages`): an approval,
   # `:approve`, which covers the artifact versions in `versions` (their public ids,
   # `av_…`), a request for changes, `:request_changes`, which may point at one version,
-  # `artifact_version_id`, or a move of the work item from the stage to another, `:move`.
+  # `artifact_version_id`, or a move of the work item from the stage to another, `:move`,
+  # to the stage `to_stage_id` (nil for a move written before that column).
   # A gate `none` records an approval too: `automatic` true, with no `user_id`, when the
   # runner passed the gate, and the member's `user_id` when they accepted the escalation
   # that ended the stage. A nil `user_id` with `automatic` false is a member whose account
@@ -29,6 +30,7 @@ defmodule Apiary.Stages.GateDecision do
     field :public_id, :string, read_after_writes: true
     field :stage_id, :string
     field :kind, Ecto.Enum, values: [:approve, :request_changes, :move]
+    field :to_stage_id, :string
     field :versions, {:array, :string}, default: []
     field :artifact_version_id, :string
     field :note, :string

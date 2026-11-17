@@ -93,12 +93,16 @@
 # and `dev.qory.run.target_write`, the gateway's report of each write a run sends to a place
 # in another system, with its `system`, `path`, `state` (`started`, `changed`, `refused` or
 # `cut`) and the request's `request_id`; and `resume.runs` of a run configuration, the
-# paused runs a continuation continues, optional.
+# paused runs a continuation continues, optional; and `push_ref` on a host credential's
+# `apply` item, the one ref, in full, that a push through the item may create, update or
+# delete, in the item of a sealed value's `apply` as well, the same or none; and a path
+# segment written `{}` in a policy's and an item's paths; and `session`, optional, on a model
+# keys report: the number of the session open when the gateway made it.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-17c5423d15ec75ed8c1688b3829d27b85cc2390d
+3d4ec18a56620cefb8ff3bb4b310b3c271fada2f
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
@@ -185,3 +189,8 @@ test/fixtures/forager-contract/invalid/event-target-write-ref-member.json
 test/fixtures/forager-contract/invalid/event-target-write-request-id-upper-case.json
 test/fixtures/forager-contract/invalid/event-target-write-unknown-state.json
 test/fixtures/forager-contract/invalid/event-target-write-without-path.json
+test/fixtures/forager-contract/run-configuration/credentials-forge-push.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-push-ref-branch-name.json
+test/fixtures/forager-contract/invalid/run-configuration-credentials-push-ref-tag.json
+test/fixtures/forager-contract/model-keys-report/report-session.json
+test/fixtures/forager-contract/invalid/model-keys-report-session-0.json

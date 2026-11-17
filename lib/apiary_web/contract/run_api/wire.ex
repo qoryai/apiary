@@ -225,7 +225,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # notes/1 is the notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
+  # notes/1 is the open notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
   # started a round. `id` is the public id of the first three (`gd_…`, `es_…`), which a

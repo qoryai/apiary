@@ -268,6 +268,115 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
     end
   end
 
+  describe "push_ref" do
+    @branch "refs/heads/qory/wi_0123456789abcdef"
+
+    defp pushing(items), do: Enum.map(items, &Map.put(&1, "push_ref", @branch))
+
+    test "each item of an accepted answer has the push_ref of the entry item it lies inside" do
+      entry = entry(pushing([@code, @api, @files]))
+      assert {:ok, issue} = RunCredentialIssue.check(entry, answer(), @now)
+      assert issue.apply == pushing([@code, @api, @files])
+    end
+
+    test "an answer item takes the push_ref of the entry item it lies inside, in any order" do
+      other = "refs/heads/qory/wi_ffffffffffffffff"
+      entry = entry([Map.put(@code, "push_ref", @branch), Map.put(@api, "push_ref", other)])
+      code = Map.put(@code, "push_ref", @branch)
+      api = Map.put(@api, "push_ref", other)
+
+      assert {:ok, %{apply: [^api, ^code]}} =
+               RunCredentialIssue.check(entry, items([@api, @code]), @now)
+
+      # An answer that matches only one entry item has only that item's push_ref.
+      assert {:ok, %{apply: [^code]}} = RunCredentialIssue.check(entry, items([@code]), @now)
+      assert {:ok, %{apply: [^api]}} = RunCredentialIssue.check(entry, items([@api]), @now)
+    end
+
+    test "an entry whose items have none gives the answer's items as they are" do
+      assert {:ok, %{apply: [@code, @api, @files]}} = check(answer())
+    end
+
+    test "an item inside an entry item with one has it, one inside an item without has none" do
+      entry = entry([Map.put(@code, "push_ref", @branch), @api, @files])
+      assert {:ok, issue} = RunCredentialIssue.check(entry, answer(), @now)
+      assert issue.apply == [Map.put(@code, "push_ref", @branch), @api, @files]
+    end
+
+    test "an answer item with a push_ref is refused, with the entry's or another" do
+      entry = entry(pushing([@code, @api, @files]))
+
+      for ref <- [@branch, "refs/heads/main"] do
+        refused = Map.put(@code, "push_ref", ref)
+
+        assert refused_with(entry, items([refused, @api, @files]), @now) == :unknown_member
+        assert refused(items([refused, @api, @files])) == :unknown_member
+      end
+    end
+
+    test "an entry item whose push_ref is not a string is refused" do
+      for ref <- [nil, 1, [@branch], %{}] do
+        entry = entry([Map.put(@code, "push_ref", ref)])
+        assert refused_with(entry, items([@code]), @now) == :entry_invalid
+      end
+    end
+  end
+
+  describe "braces in a path" do
+    test "an answer path with a segment that is exactly {} is inside the entry path that covers it" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/shop/*"]}])
+
+      for path <- [
+            "/repos/acme/shop/pulls/{}",
+            "/repos/acme/shop/{}",
+            "/repos/acme/shop/{}/merge",
+            "/repos/acme/shop/{}/{}",
+            "/repos/acme/shop/{}*"
+          ] do
+        item = %{@code | "paths" => [path]}
+        assert {:ok, %{apply: [^item]}} = RunCredentialIssue.check(entry, items([item]), @now)
+      end
+    end
+
+    test "a {} segment past the entry's prefix is refused where the prefix is another" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/other/*"]}])
+      item = %{@code | "paths" => ["/repos/acme/shop/pulls/{}"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+
+      # A {} segment inside the entry's literal prefix is not a prefix of it either.
+      entry = entry([%{@code | "paths" => ["/repos/acme/*"]}])
+      item = %{@code | "paths" => ["/repos/{}/shop"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+    end
+
+    test "an exact entry path is not covered by a {} segment" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/shop/pulls/12"]}])
+      item = %{@code | "paths" => ["/repos/acme/shop/pulls/{}"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+    end
+
+    test "any other brace in an answer path is refused, though an entry path covers it" do
+      entry = entry([%{@code | "paths" => ["/team/*"]}])
+
+      for path <- [
+            "/team/{x}",
+            "/team/{",
+            "/team/}",
+            "/team/a{}",
+            "/team/{}b",
+            "/team/{}x",
+            "/team/{{}",
+            "/team/{}}",
+            "/team/a{b",
+            "/team/{}/x{y}"
+          ] do
+        assert refused_with(entry, items([%{@code | "paths" => [path]}]), @now) ==
+                 :apply_item_invalid,
+               path
+      end
+    end
+  end
+
   describe "the apply member" do
     test "absent, not a list, empty or over 16 items is refused" do
       assert refused(Map.delete(answer(), "apply")) == :apply_invalid

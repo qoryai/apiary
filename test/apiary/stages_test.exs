@@ -24,6 +24,7 @@ defmodule Apiary.StagesTest do
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
+  @verify "st_m1mqbeywdg"
   # The point of a run outside a loop that ended with no verdict (`Apiary.Stages.Points`).
   @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
@@ -4260,6 +4261,305 @@ defmodule Apiary.StagesTest do
         [prefix, _random] = String.split(id, "_")
         assert Apiary.PublicId.valid?(prefix, id)
       end
+    end
+
+    # Explore, then Shape, Build and Verify, three stages with no workflow, each at a
+    # person's gate.
+    defp four_stages!(scope, explore_gate \\ %{"kind" => "person", "approvers" => "members"}) do
+      save!(scope, [
+        explore_stage(%{"gate" => explore_gate}),
+        stage(@shape, "Shape", []),
+        stage(@build, "Build", []),
+        stage(@verify, "Verify", [])
+      ])
+    end
+
+    defp texts(work_item), do: Enum.map(Stages.notes(work_item), & &1.note)
+
+    # The work item approved at each stage before `stage_id`, at that stage's gate.
+    defp approved_up_to!(scope, work_item, stage_id) do
+      Enum.reduce_while([@explore, @shape, @build], work_item, fn at, work_item ->
+        if at == stage_id do
+          {:halt, work_item}
+        else
+          {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: at)
+          {:cont, reload(work_item)}
+        end
+      end)
+    end
+
+    # A run of Explore that stopped: the stage escalates, `run_stopped`.
+    defp stopped_run, do: %{exit_state: "failed", outcome_state: "failed"}
+
+    test "Shape's request for changes is gone once Shape is approved again", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = approved_up_to!(scope, work_item, @verify)
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Back to Shape", expect_stage: @verify)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert texts(work_item) == ["Back to Shape", "Split the plan in two"]
+
+      # Shape's first approval came before both notes; its second closes both.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert %{stage_id: @build} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "Verify's request for changes stays open until Verify is approved", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = approved_up_to!(scope, work_item, @verify)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Show the refund", nil, expect_stage: @verify)
+
+      {:ok, _} = Stages.move(scope, work_item, @build, "Fix the refund", expect_stage: @verify)
+
+      assert [
+               %{kind: :request_changes, stage_id: @verify, note: "Show the refund"},
+               %{kind: :move, stage_id: @verify, note: "Fix the refund"}
+             ] = Stages.notes(work_item)
+
+      # Build's approval closes the move to Build; Verify's request stays.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %{stage_id: @verify, stage_state: :at_gate} = reload(work_item)
+      assert texts(work_item) == ["Show the refund"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an approval before a note leaves it open", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+      work_item = end_run!(work_item, understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Keep the coupon", nil, expect_stage: @explore)
+
+      # The approval came before the move and the second request: it closes only the
+      # first request.
+      assert texts(work_item) == ["Read the cart", "Keep the coupon"]
+    end
+
+    test "a note that a finished run already read stays open until its stage is approved",
+         %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      # The next run of Explore reads the note and ends; the note is still listed for the
+      # run after it.
+      work_item = end_run!(work_item, understood_result())
+      assert texts(work_item) == ["Name the price rule"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a note that an approval closed stays closed when a newer output reopens the stage",
+         %{scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"outputs" => [%{"type" => "spec", "required" => false}]})
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      work_item = reload(work_item)
+
+      spec = fn text ->
+        [%{filename: "spec.md", content_type: "text/markdown", binary: text}]
+      end
+
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The spec"),
+          stage_id: @shape
+        )
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert texts(work_item) == ["Split the plan in two"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+      assert Stages.status(work_item).state == :done
+
+      # A newer version of Shape's output, the last stage's, reopens Shape's gate; the
+      # closed note stays out.
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The new spec"),
+          stage_id: @shape
+        )
+
+      assert [_first, _second] = versions(work_item, "spec")
+      assert Stages.status(work_item).state == :at_gate
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move closes when the stage it went to is approved, not the one it left",
+         %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+
+      assert [%GateDecision{kind: :move, stage_id: @shape, to_stage_id: @explore}] =
+               Enum.filter(decisions(work_item), &(&1.kind == :move))
+
+      work_item = end_run!(work_item, understood_result())
+      assert [%{kind: :move, stage_id: @shape, note: "Read the cart"}] = Stages.notes(work_item)
+
+      # Shape, the stage it left, is not approved again: Explore's approval closes it.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an escalation's note closes when its stage is approved", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+
+      {:ok, _} =
+        Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart",
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      assert [%{kind: :escalation, stage_id: @explore}] = Stages.notes(work_item)
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "the automatic approval of a gate none closes the notes of its stage", %{
+      scope: scope
+    } do
+      four_stages!(scope, %{"kind" => "none"})
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+
+      {:ok, _} =
+        Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart",
+          expect_stage: @explore
+        )
+
+      assert texts(work_item) == ["Read the cart"]
+      work_item = end_run!(work_item, understood_result())
+
+      assert %{stage_id: @shape} = reload(work_item)
+
+      assert [%GateDecision{kind: :approve, automatic: true, stage_id: @explore, user_id: nil}] =
+               decisions(work_item)
+
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move closes when the stage it went to is approved automatically", %{scope: scope} do
+      four_stages!(scope, %{"kind" => "none"})
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert %{stage_id: @shape} = reload(work_item)
+
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+      assert texts(work_item) == ["Read the cart"]
+
+      work_item = end_run!(work_item, understood_result())
+
+      assert %{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an answer closes when its stage is approved after it", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
+      work_item = end_run!(work_item, understood_result())
+
+      assert [%{kind: :answer, stage_id: @explore}, %{kind: :answer}] = Stages.notes(work_item)
+      assert texts(work_item) == ["The sale price", "Yes"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %{stage_id: @shape} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move that resolves an open escalation is one note, the move's", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough", expect_stage: @explore)
+
+      assert %Escalation{resolution: :move_back, note: nil} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert [%{kind: :move, stage_id: @explore, note: "Shaped enough"}] =
+               Stages.notes(work_item)
+
+      # The move closes once Shape, the stage it went to, is approved.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "open notes of several stages are listed together, oldest first", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough", expect_stage: @explore)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert [
+               %{kind: :request_changes, stage_id: @explore},
+               %{kind: :move, stage_id: @explore},
+               %{kind: :request_changes, stage_id: @shape}
+             ] = Stages.notes(work_item)
+
+      # Shape's approval closes the move to Shape and Shape's request; Explore's request
+      # stays open, as Explore is not approved after it.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert %{stage_id: @build} = reload(work_item)
+      assert texts(work_item) == ["Name the price rule"]
     end
   end
 

@@ -157,6 +157,14 @@ Returns `200` with the work item snapshot:
   decision at a gate; `es_` and 16 characters for an escalation; null for `answer` and
   `check`. A run sends it as `decision` in `POST artifacts`, for a version that the note
   asked for.
+  `notes` contains only open notes. A note closes once the stage `stage_id` has an
+  approval after `at`, and a `move` once the stage it moved to has one: a member's, or
+  the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
+  open. A move that resolves an open escalation is one `move` note, with no
+  `escalation` note. Two records are missing from before Qory Apiary kept them: a
+  `move` written then has no stage it moved to, so it stays open; and a gate `none`
+  that passed on then recorded no approval, so the notes of that stage stay open until
+  the stage passes its gate again.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
