@@ -318,6 +318,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             <StageComponents.needs_block
               :if={!@flow.explore and needs?(@flow)}
               page={@flow}
+              scope={@current_scope}
+              number={@number}
               questions={@questions}
               question_path={
                 if @tab != questions_tab(@flow),
@@ -392,7 +394,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
-              <StageComponents.needs_block page={@flow} questions={@questions} />
+              <StageComponents.needs_block
+                page={@flow}
+                scope={@current_scope}
+                number={@number}
+                questions={@questions}
+              />
             </:needs>
             <:artifacts :if={@flow && (@flow.explore or !@flow.at_explore)}>
               <.artifacts_section
@@ -1407,6 +1414,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def refused({:outputs_missing, types}, _flow) do
     gettext("Add %{outputs} before you approve this stage.",
       outputs: StageComponents.outputs_words(types)
+    )
+  end
+
+  # A switch names the gate that recorded the work item's track, not the stage it is in.
+  def refused({:track_not_offered, track, gate}, _flow) do
+    gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
+      stage: gate,
+      track: track
     )
   end
 

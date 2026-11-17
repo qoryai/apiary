@@ -4563,8 +4563,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     # The software process with the tracks Standard and Fast track, Explore's gate offering
     # both, and a work item escalated in Build on the track `track`, which Explore's gate
-    # recorded. Shape runs `shape-a-ticket`. With a result in Build, as Accept as it is needs one.
-    defp on_track!(scope, track) do
+    # recorded. Shape runs `shape-a-ticket`, and Verify `verify-a-ticket` unless `verify` is false. With a result in Build, as Accept as it is needs one.
+    defp on_track!(scope, track, verify \\ true) do
       document =
         document("members")
         |> Map.put("tracks", [
@@ -4576,6 +4576,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             case stage["id"] do
               @explore -> put_in(stage, ["gate", "tracks"], ["standard", "fast-track"])
               @shape -> %{stage | "sequence" => [%{"workflow" => "shape-a-ticket"}]}
+              @verify when verify -> %{stage | "sequence" => [%{"workflow" => "verify-a-ticket"}]}
               _other -> stage
             end
           end
@@ -4585,11 +4586,41 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       work_item =
         scope
-        |> work_item_fixture()
+        |> taken_in_fixture()
         |> place!(version, @build, :escalated, stage_round: 3, stage_entry: 1)
 
-      push!({:person, scope}, work_item, "explainer", @build)
-      escalate!(work_item, :escalate, "A server check reads the button text.")
+      # An earlier run of Build pushed an explainer named `other`; the escalated run, which
+      # also pushed a verdict, pushed the explainer `main`.
+      {_run, earlier} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {:ok, _version} =
+        Artifacts.push({:run, earlier}, work_item, "explainer", [sample("explainer")],
+          name: "other",
+          stage_id: @build
+        )
+
+      {_run, escalated} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {:ok, _version} =
+        Artifacts.push({:run, escalated}, work_item, "explainer", [sample("explainer")],
+          stage_id: @build
+        )
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, escalated},
+          work_item,
+          "verdict",
+          %{
+            "verdict" => "escalate",
+            "points" => [
+              %{"text" => "A server check reads the button text.", "action" => "run_again"}
+            ]
+          },
+          stage_id: @build
+        )
+
+      escalate!(work_item, :escalate, "A server check reads the button text.", escalated)
 
       Repo.insert!(%GateDecision{
         organisation_id: work_item.organisation_id,
@@ -4637,6 +4668,105 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
       assert has_element?(view, "#work-item-stage-escalation-close")
       refute has_element?(view, ~s|[id^="work-item-stage-escalation-switch"]|)
+    end
+
+    test "Fast track: the actions come first, then the points, then the outputs of the escalated run",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      html = view |> element("#work-item-needs") |> render()
+
+      positions =
+        for id <- [
+              "work-item-stage-escalation-another",
+              "work-item-needs-points",
+              "work-item-needs-outputs"
+            ] do
+          {at, _length} = :binary.match(html, ~s(id="#{id}"))
+          at
+        end
+
+      assert positions == Enum.sort(positions)
+      assert has_element?(view, "#work-item-needs-outputs-h", "What the run made")
+    end
+
+    test "the outputs are the versions the escalated run pushed, and no other run's",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs-outputs a", "explainer v1")
+      refute has_element?(view, "#work-item-needs-outputs", "explainer other")
+      # The verdict, whose points the block shows, is not listed.
+      refute has_element?(view, "#work-item-needs-outputs", "verdict")
+    end
+
+    test "a structured output shows as its table of values", %{conn: conn, scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "findings",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      work_item = on_track!(scope, "fast-track")
+      dispatch = Repo.get_by!(Escalation, work_item_id: work_item.id).run_id
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, Repo.get!(DispatchRun, dispatch)},
+          work_item,
+          "findings",
+          %{"reason" => "A check reads the text"},
+          stage_id: @build
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs-outputs a", "findings v1")
+      assert has_element?(view, "#work-item-needs-outputs table th", "reason")
+      assert has_element?(view, "#work-item-needs-outputs table td", "A check reads the text")
+    end
+
+    test "Standard: today's block, with no outputs and no line under an action",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-needs-outputs")
+      refute has_element?(view, "#work-item-stage-escalation-another-line")
+      refute has_element?(view, "#work-item-stage-escalation-close-line")
+    end
+
+    test "the lines under Switch to Standard, Run another round and Close", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert [%{first: "Shape", later: ["Build", "Verify"]}] = Stages.switch_tracks(work_item)
+
+      assert line(view, "#work-item-stage-escalation-switch-standard-line") ==
+               "Shape runs for the first time, with your note and the build report. " <>
+                 "A new commit undoes this attempt, then Build and Verify run on Standard."
+
+      assert line(view, "#work-item-stage-escalation-another-line") ==
+               "Runs capture-demo again with your note. " <>
+                 "Use it when the session changed more than the ticket asks."
+
+      assert line(view, "#work-item-stage-escalation-close-line") ==
+               "Ends the work item. No draft is sent."
+    end
+
+    test "one later stage reads \"runs\"", %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track", false)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-stage-escalation-switch-standard-line") ==
+               "Shape runs for the first time, with your note and the build report. " <>
+                 "A new commit undoes this attempt, then Build runs on Standard."
     end
 
     test "Switch to Standard opens the dialog, and confirming records the track and starts Shape",
@@ -4705,6 +4835,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %Escalation{resolution: nil} = escalation(work_item)
       assert Stages.track(work_item) == "fast-track"
       assert length(Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id)) == 1
+
+      # The notice names the gate that recorded the track, Explore's, not Build.
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Choose a track that the gate of Explore offers. It does not offer express."
+             )
     end
   end
 

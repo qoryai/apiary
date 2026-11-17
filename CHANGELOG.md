@@ -23,6 +23,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gate does not offer, or the track the work item is on, is refused and nothing is written.
   A work item on the gate's first track, or on none, keeps the card as it was. The
   resolution is `switch`, and the audit entry `escalation_switch` has the track.
+- On an escalation that offers a switch, the block "What the run needs from you" lists the
+  versions that the escalated run pushed, under "What the run made", each as its artifact
+  page shows it: a document as its text and a structured file as its table of values. The
+  versions of the verdict and of other runs are not listed. The block shows the note and
+  Run another round first, then the points, then those outputs. A line under each action
+  says what it does: under **Switch to <track>**, the stage it starts and the stages after
+  it that run on the track; under **Run another round**, the entry it runs again; under
+  **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
+  switch to a track that the gate does not offer names the gate that recorded the track.
+  One component takes a run and lists its versions, so another page can show them.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

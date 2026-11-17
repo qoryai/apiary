@@ -4909,7 +4909,18 @@ defmodule Apiary.StagesTest do
          %{scope: scope} do
       work_item = escalated_in_build!(scope, "fast-track")
       assert Stages.track(work_item) == "fast-track"
-      assert [%{id: "standard", name: "Standard"}] = Stages.switch_tracks(work_item)
+
+      assert [
+               %{
+                 id: "standard",
+                 name: "Standard",
+                 gate: "Explore",
+                 first: "Shape",
+                 later: ["Build"]
+               }
+             ] =
+               Stages.switch_tracks(work_item)
+
       assert Stages.starts(work_item, {:switch, "standard"}) == {:run, "shape-a-ticket"}
 
       assert {:ok, %WorkItem{stage_id: @shape, stage_state: :running}} =
@@ -4962,7 +4973,9 @@ defmodule Apiary.StagesTest do
       before = decisions(work_item)
 
       for track <- ["express", "fast-track"] do
-        assert switch(scope, work_item, track) == {:error, {:track_not_offered, track}}
+        assert switch(scope, work_item, track) ==
+                 {:error, {:track_not_offered, track, "Explore"}}
+
         assert Stages.starts(work_item, {:switch, track}) == :none
       end
 

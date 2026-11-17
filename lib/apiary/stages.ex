@@ -160,6 +160,7 @@ defmodule Apiary.Stages do
           | :stage_changed
           | {:outputs_missing, [String.t()]}
           | {:track_not_offered, String.t()}
+          | {:track_not_offered, String.t(), String.t()}
           | :store_unavailable
           | {:invalid, :note}
           | term
@@ -1133,15 +1134,15 @@ defmodule Apiary.Stages do
   defp switch_only(_work_item, _version, _stage, _resolution), do: :ok
 
   # The gate that recorded the work item's track, and the stage that a switch enters, the
-  # stage after that gate, for `track`: `{:error, {:track_not_offered, track}}` for a track
-  # the gate does not offer or the one the work item is on, `{:error, :invalid}` where no
-  # switch is offered.
+  # stage after that gate, for `track`: `{:error, {:track_not_offered, track, gate_name}}` for
+  # a track the gate does not offer or the one the work item is on, `{:error, :invalid}`
+  # where no switch is offered.
   defp switch_target(work_item, version, stage, track) do
     case switch_offers(work_item, version, stage) do
       {gate, others} ->
         if Enum.any?(others, &(&1.id == track)),
           do: {:ok, gate, next_stage(version, gate)},
-          else: {:error, {:track_not_offered, track}}
+          else: {:error, {:track_not_offered, track, gate["name"]}}
 
       nil ->
         {:error, :invalid}
@@ -2035,21 +2036,55 @@ defmodule Apiary.Stages do
 
   @doc """
   switch_tracks/1 is the tracks that an escalation of `work_item` offers a switch to, each
-  `%{id, name, description}`: the other tracks of the gate that recorded the track the work
-  item is on (`track/1`), where that gate offers tracks, the work item is not on its first
-  track, and the gate is before the work item's stage. `[]` otherwise, and where the work
-  item is in no stage. The work item is then offered no accept and no move back
+  `%{id, name, description, gate, first, later}`: the other tracks of the gate that recorded
+  the track the work item is on (`track/1`), where that gate offers tracks, the work item is
+  not on its first track, and the gate is before the work item's stage. `gate` is the name
+  of that gate's stage, `first` the name of the stage a switch to the track starts and
+  `later` the names of the stages after it that run on the track (`nil` and `[]` where none
+  runs). `[]` otherwise, and where the work item is in no stage. The work item is then offered no accept and no move back
   (`resolve_escalation/5`).
   """
   @spec switch_tracks(WorkItem.t()) :: [
-          %{id: String.t(), name: String.t(), description: String.t() | nil}
+          %{
+            id: String.t(),
+            name: String.t(),
+            description: String.t() | nil,
+            gate: String.t(),
+            first: String.t() | nil,
+            later: [String.t()]
+          }
         ]
   def switch_tracks(%WorkItem{} = work_item) do
     with {:ok, version, stage} <- placed(work_item),
-         {_gate, others} <- switch_offers(work_item, version, stage) do
-      others
+         {gate, others} <- switch_offers(work_item, version, stage) do
+      artifacts = Artifacts.list(work_item)
+
+      for track <- others do
+        {first, later} = switch_plan(work_item, version, gate, track.id, artifacts)
+        Map.merge(track, %{gate: gate["name"], first: first, later: later})
+      end
     else
       _none -> []
+    end
+  end
+
+  # The names of the stage a switch to `track` starts and of the stages after it that run
+  # on `track`: from the stage after `gate`, the stages whose condition holds on the track
+  # and that have a workflow to run there. `{nil, []}` where none does.
+  defp switch_plan(work_item, version, gate, track, artifacts) do
+    stages = version.document["stages"]
+    at = Enum.find_index(stages, &(&1["id"] == gate["id"]))
+
+    running =
+      for stage <- Enum.drop(stages, at + 1),
+          counted = counted(work_item, version, stage, artifacts),
+          is_nil(Runner.unmet(stage, %{track: track, counted: counted})),
+          Runner.workflows(stage, counted, track) != [],
+          do: stage["name"]
+
+    case running do
+      [first | later] -> {first, later}
+      [] -> {nil, []}
     end
   end
 
