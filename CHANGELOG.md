@@ -50,6 +50,41 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with the artifact in the plain form of the gate card (the type with spaces, then the
   name). The page of a withdrawn version shows that line in place of an empty view and
   an empty list of files.
+- An escalation of a work item on a track that is not the first track of the gate that
+  recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
+  records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
+  track, and enters the stage after that gate: the runner passes over each stage that does
+  not run on the new track and starts the first one that does. Its dialog names the run it
+  starts. The card then offers only the switches, Run another round and Close: Accept as it
+  is and Move back are refused (`Stages.resolve_escalation/5`, `:invalid`). A track that the
+  gate does not offer, or the track the work item is on, is refused and nothing is written.
+  A work item on the gate's first track, or on none, keeps the card as it was. The
+  resolution is `switch`, and the audit entry `escalation_switch` has the track.
+- On an escalation that offers a switch, the block "What the run needs from you" lists the
+  versions that the escalated run pushed, under "The run's outputs", each as its artifact
+  page shows it: a document as its text and a structured file as its table of values. The
+  versions of the verdict and of other runs are not listed. The block shows those outputs
+  first, then the points, then the note and Run another round. A line under each action
+  says what it does: under **Switch to `<track>`**, the stage it starts and the stages after
+  it that run on the track; under **Run another round**, the entry it runs again; under
+  **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
+  switch to a track that the gate does not offer names the gate that recorded the track.
+  One component takes a run and lists its versions, so another page can show them.
+- A `diff` code block in a run's Markdown shows as a diff box with the file and the count of
+  changed lines, on every page that renders a run's Markdown. In the block "What the run
+  needs from you", the headings of the run's report show as small bold lines.
+- After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
+  lists, for each output of the stage the work item left, the newest version made in that
+  stage from the time the work item last entered it to the time it left, with
+  `"from": "move"` and `"required": false`. A person's move back and an escalation's move
+  back count (the escalation's move back now also writes a `move` decision with no note and
+  the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
+  leaves that decision out). The entries stay until the left stage's gate
+  passes again (an approval of the stage, by a person or automatic) or a later move goes
+  to a stage after it, and are scoped to the take in. No approval lists these versions, and
+  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
+  they were. A `move` decision keeps the stage it moved to and when the work item last
+  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
@@ -2400,6 +2435,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
+- `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
+  item switched to another track. The first migration replaces the check
+  `escalations_resolution_check` and adds it without a scan, and the second validates it
+  with a scan that does not block writes. It changes no row. Rolling back deletes the
+  escalations resolved with `switch`; the work items stay where the switch put them, and
+  the gate decision of each switch stays with its track and loses its `escalation_id`.
+- `gate_decisions` (20261117090000, 20261117090100 and 20261117090200): nullable columns
+  `left_stage_entered_at` and `escalation_id` (a foreign key to `escalations`), kept on a
+  `move`: when the work item had last entered the stage it left, and the escalation it
+  resolves. The stage it moved to is `to_stage_id`, from 20261116170000. The columns have
+  no default, so adding them rewrites no row, and a move written before has none. The
+  first migration adds the key without a scan. The second indexes `escalation_id` for the
+  rows that have one, concurrently, outside a transaction. The third validates the key with
+  a scan that does not block writes. Rolling back drops the index, the key and the two
+  columns.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116170000 and 20261116170100): a nullable column
