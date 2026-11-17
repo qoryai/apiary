@@ -5155,6 +5155,12 @@ defmodule Apiary.StagesTest do
 
     # Explore offers both tracks, Shape runs on Standard only, Build offers no track.
     defp switch_process!(scope, offered \\ ["standard", "fast-track"]) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "build-report",
+          "base_view" => "document"
+        })
+
       document = %{
         "schema" => "qory.process/v1",
         "machine" => "default",
@@ -5163,7 +5169,7 @@ defmodule Apiary.StagesTest do
           explore_stage(offering(offered)),
           stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"when" => @on_standard}),
           stage(@build, "Build", [%{"workflow" => "make-a-small-change"}], %{
-            "outputs" => [%{"type" => "explainer", "required" => false}]
+            "outputs" => [%{"type" => "build-report", "required" => false}]
           })
         ]
       }
@@ -5186,8 +5192,8 @@ defmodule Apiary.StagesTest do
           Artifacts.push(
             {:person, scope},
             work_item,
-            "explainer",
-            [%{filename: "explainer.md", content_type: "text/markdown", binary: "# Report"}],
+            "build-report",
+            [%{filename: "build-report.md", content_type: "text/markdown", binary: "# Report"}],
             stage_id: @build
           )
       end
@@ -5264,14 +5270,25 @@ defmodule Apiary.StagesTest do
              }
     end
 
-    test "after a switch, the inputs list Build's newest outputs from the move", %{scope: scope} do
+    test "after a switch, the inputs list Build's report from the move until Build is entered again",
+         %{scope: scope} do
       work_item = escalated_in_build!(scope, "fast-track")
       assert Enum.filter(Stages.inputs(work_item), & &1[:from]) == []
 
       {:ok, %WorkItem{stage_id: @shape}} = switch(scope, work_item, "standard")
 
-      assert [%{type: "explainer", required: false, from: :move, version: %{number: 1}}] =
+      assert [%{type: "build-report", required: false, from: :move, version: %{number: 1}}] =
                Enum.filter(Stages.inputs(work_item), & &1[:from])
+
+      # Shape's run ends and its gate passes: Build is entered again, and its report is no
+      # longer an input of the stage the work item is in.
+      shaping = end_run!(reload(work_item), verdict("passed"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = shaping
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, shaping, nil, expect_stage: @shape)
+
+      assert Enum.filter(Stages.inputs(work_item), & &1[:from]) == []
     end
 
     test "after a switch, the notes list one escalation and no move", %{scope: scope} do
@@ -5349,6 +5366,40 @@ defmodule Apiary.StagesTest do
 
       assert %Escalation{resolution: :move_back} =
                Repo.get_by(Escalation, work_item_id: work_item.id)
+    end
+
+    test "the gate that recorded the track is read from the version it was recorded under, after a repin",
+         %{scope: scope} do
+      switch_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @build} = work_item
+
+      # A later version, whose Explore gate no longer offers Fast track; the work item is
+      # pinned to it between the approval and the escalation.
+      version = Processes.current(scope.workspace)
+
+      document =
+        version.document
+        |> put_in(["stages", Access.at(0), "gate", "tracks"], ["standard"])
+        |> Map.put("tracks", @switch_tracks)
+
+      {:ok, later} = Processes.save(scope, scope.workspace, document)
+      assert later.id != version.id
+      assert {:ok, _assigned} = Processes.assign(scope, work_item, later)
+
+      escalated = end_run!(reload(work_item), verdict("escalate", [again("It is wrong.")]))
+      assert %Escalation{cause: :escalate} = escalation(escalated)
+      assert reload(escalated).process_version_id == later.id
+
+      assert [%{id: "standard", name: "Standard", gate: "Explore"}] =
+               Stages.switch_tracks(reload(escalated))
+
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               Stages.resolve_escalation(scope, reload(escalated), {:switch, "standard"}, nil,
+                 expect_stage: @build
+               )
     end
 
     test "a later gate that offers the same tracks does not take the switch's place as the recording gate",

@@ -1193,14 +1193,19 @@ defmodule Apiary.Stages do
   end
 
   # The newest of `decisions` made at a stage whose gate offers `current`, with that gate's
-  # tracks; nil for none. A switch is left out: it is made out of the stage it resolves in,
-  # which may have a gate that offers the same tracks, and records no gate's offer.
+  # tracks; nil for none. The gate is read from the process version the decision was made
+  # under, as `Apiary.Processes.assign/3` may pin the work item to another version since;
+  # `version`, the work item's, stands for a decision that kept none. A switch is left
+  # out: it is made out of the stage it resolves in, which may have a gate that offers the
+  # same tracks, and records no gate's offer.
   defp recording_gate(decisions, current, version) do
     decisions
     |> Enum.filter(&is_nil(&1.escalation_id))
-    |> Enum.find_value(fn %{stage_id: stage_id} ->
-      with %{} = gate <- Processes.stage(version, stage_id),
-           [_ | _] = offered <- gate_tracks(version, gate),
+    |> Enum.find_value(fn %{stage_id: stage_id, process_version_id: version_id} ->
+      recorded = recorded_version(version_id, version)
+
+      with %{} = gate <- Processes.stage(recorded, stage_id),
+           [_ | _] = offered <- gate_tracks(recorded, gate),
            true <- Enum.any?(offered, &(&1.id == current)) do
         {gate, offered}
       else
@@ -1208,6 +1213,10 @@ defmodule Apiary.Stages do
       end
     end)
   end
+
+  defp recorded_version(nil, version), do: version
+  defp recorded_version(id, %{id: id} = version), do: version
+  defp recorded_version(id, version), do: Repo.get(Processes.Version, id) || version
 
   # move/4 moves the work item to the stage `stage_id` of its version, forward past a
   # stage or back, with the person's note, and starts that stage. A move forward records the
@@ -2147,8 +2156,9 @@ defmodule Apiary.Stages do
   end
 
   # The approvals and moves of the work item that have a track, made in its current take in,
-  # newest first: each `track`, the `stage_id` the decision was made at and, for a switch,
-  # the `escalation_id` it resolves; `[]` for none.
+  # newest first: each `track`, the `stage_id` the decision was made at, the
+  # `process_version_id` it was made under and, for a switch, the `escalation_id` it
+  # resolves; `[]` for none.
   defp track_decisions(%WorkItem{take_in: nil}), do: []
 
   defp track_decisions(%WorkItem{id: id, take_in: take_in}) do
@@ -2158,7 +2168,12 @@ defmodule Apiary.Stages do
           d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track) and
             d.take_in == ^take_in,
         order_by: [desc: d.inserted_at, desc: d.id],
-        select: %{track: d.track, stage_id: d.stage_id, escalation_id: d.escalation_id}
+        select: %{
+          track: d.track,
+          stage_id: d.stage_id,
+          escalation_id: d.escalation_id,
+          process_version_id: d.process_version_id
+        }
     )
   end
 
