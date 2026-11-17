@@ -17,25 +17,31 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>"; with none proposed, the track the
   work item is on is selected, else the gate's first. The member keeps it or picks another, and
-  Approve records the track that is selected. The line in the gate's card reads "Pick a track
-  and approve the proposal, or add a comment and run another round." A gate that offers no
-  track is as before.
+  Approve records the track that is selected on the page when the member confirms, never a
+  value an earlier click carried. A pick ends when the gate's stage or the take in changes,
+  and after Approve or Run another round. Typing a comment is no pick. The line in the gate's
+  card reads "Pick a track and approve the proposal, or add a comment and run another
+  round." A gate that offers no track is as before.
 - The stage track under the work item's title marks a stage that a track passed over whole
-  with "not run", in place of its number.
+  with "Not run", in place of its number.
 - The tab of a stage of a work item on a track, where the runner passed over an entry, starts
   with the table "Workflows": each entry of the stage's sequence in order, with its state
-  (Passed, Not run, or the run's state) and why. The line above it reads "Track: <track>, approved at <stage>'s
-  gate", where an approval chose the track. An entry that has a name shows it, with its
+  (Passed, Not run, Paused, Did not pass, Questions, Queued, Running, Undone or Ended without a
+  verdict) and why. The line above it reads "Track: <track>, approved at <stage>'s gate",
+  where an approval chose the track. An entry that has a name shows it, with its
   workflow under it; a loop reads "Loop of up to <n> rounds", with its workflows under it. Why
-  is the entry's condition ("Runs on <track>.", "Runs on <track> only."), else the reason the
-  record of the skip gives, as the runs fold gave it. Under the table, a gate that needs no
-  member reads "Approved without a member: <stage>'s gate needs no member." The runs fold of
-  that tab no longer repeats the entries. A sequence that names one workflow twice keeps the
-  fold's rows and has no table.
+  is the reason when an earlier entry's first attempt passed over the entry ("Did not run,
+  because <entry> passed on its first attempt."), else the entry's condition ("Runs on
+  <track>.", "Runs on <track> only."), else the reason the record of the skip gives. Under the
+  table, a gate that needs no member reads "Approved without a member: <stage>'s gate needs
+  no member." The runs fold of that tab no longer repeats the entries. A sequence that names
+  one workflow twice keeps the fold's rows and has no table.
 - The gate of a later stage for a work item on a track shows "Track" and the track's name, and
-  offers no choice. For a stage that started no run, the card reads "<stage> started no run. Read
-  the build report and the draft, then approve." and leaves out the list of outputs, and the
-  stage's tab shows the newest version of each of the stage's inputs.
+  offers no choice. For a stage of a work item on a track that started no run, the card
+  reads "<stage> started no run. Read the run's outputs, then approve." (in a software
+  workspace, "Read the build report and the draft, then approve.") and leaves out the list of
+  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
+  item on no track keeps both as before.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
