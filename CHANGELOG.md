@@ -13,6 +13,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
+  lists, for each output of the stage the work item left, the newest version made in that
+  stage from the time the work item last entered it to the time it left, with
+  `"from": "move"` and `"required": false`. A move back, an escalation's move back and any
+  later resolution that enters an earlier stage count; a move forward does not. The entries
+  stay until the left stage's gate passes again (an approval of the stage, by a person or
+  automatic, after the move) and are scoped to the take in. No approval lists these
+  versions, and the page's missing inputs, the stage's checks and the other entries of
+  `inputs` stay as they were. A stage left twice counts by its newer departure
+  (`stage_departures`).
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

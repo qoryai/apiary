@@ -20,7 +20,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias Apiary.Artifacts.ArtifactFile
   alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Check, GateDecision}
+  alias Apiary.Stages.{Check, Departure, GateDecision}
   alias Apiary.WorkItems.WorkItem
   alias Apiary.SigningKey
   alias ApiaryWeb.Contract.{RawBody, SignedAnswer}
@@ -378,6 +378,80 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert body["gaps"] == nil
       assert body["notes"] == []
       refute Map.has_key?(body, "domain")
+    end
+
+    test "lists, after a move back, a version of the stage left, marked from move", ctx do
+      shape = "st_p9w5cvh311"
+      build = "st_6ns22c4pav"
+      people = %{"inputs" => [], "sequence" => [], "outputs" => []}
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      stages = [
+        Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
+        Map.merge(people, %{
+          "id" => shape,
+          "name" => "Shape",
+          "gate" => gate,
+          "inputs" => [%{"type" => "proposal", "required" => true}]
+        }),
+        Map.merge(people, %{
+          "id" => build,
+          "name" => "Build",
+          "gate" => gate,
+          "outputs" => [%{"type" => "screenshot", "required" => false}]
+        })
+      ]
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+      version = Repo.get!(Apiary.Processes.Version, version.id)
+
+      screenshot =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], stage_id: build)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: shape,
+            stage_state: :at_gate,
+            stage_round: 0,
+            stage_entry: 0,
+            stage_entered_at: DateTime.utc_now()
+          ]
+        )
+
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+
+      assert [] =
+               json_response(read(ctx, "/work-item"), 200)["inputs"] |> Enum.filter(& &1["from"])
+
+      Repo.insert!(%Departure{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        stage_id: build,
+        take_in: work_item.take_in,
+        entered_at: DateTime.add(DateTime.utc_now(), -60, :second),
+        inserted_at: DateTime.add(DateTime.utc_now(), 60, :second)
+      })
+
+      conn = read(ctx, "/work-item")
+      body = json_response(conn, 200)
+
+      assert body["inputs"] == [
+               %{"type" => "proposal", "required" => true, "version" => nil},
+               %{
+                 "type" => "screenshot",
+                 "required" => false,
+                 "version" => %{"id" => screenshot.public_id, "number" => 1},
+                 "from" => "move"
+               }
+             ]
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      [_unmarked, marked] = ordered["inputs"]
+      assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
     end
 
     test "a work item the stage runner has not placed has the run's stage id alone", ctx do

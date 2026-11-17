@@ -57,7 +57,7 @@ defmodule Apiary.Deletion.Tables do
   # bookkeeping of their listings, the grants and the linked passes before the connections
   # they name; a work item's events, answers, confirmations and comments before the work
   # item, and so are its artifacts, the workspace's artifact types, the decisions at its
-  # gates and its stages' failed checks; its escalations before the runs of the queue they
+  # gates, its stages' failed checks and the stages it moved back from; its escalations before the runs of the queue they
   # name; the work items and the runs of the queue before the process versions they run
   # under, and a work item or a run of another workspace that still links to one has that
   # link set to null (`ON DELETE SET NULL`); a model choice's fallbacks before the choice
@@ -97,6 +97,7 @@ defmodule Apiary.Deletion.Tables do
     {"escalations", :workspace},
     {"stage_checks", :workspace},
     {"stage_skips", :workspace},
+    {"stage_departures", :workspace},
     {"dispatch_runs", :workspace},
     {"environments", :workspace},
     {"work_item_events", :workspace},

@@ -16,7 +16,7 @@ defmodule Apiary.StagesTest do
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Organisations.Workspace
-  alias Apiary.Stages.{Escalation, GateDecision}
+  alias Apiary.Stages.{Departure, Escalation, GateDecision}
   alias Apiary.WorkItems.{Confirmation, Explore, Moves, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
@@ -4098,6 +4098,236 @@ defmodule Apiary.StagesTest do
 
       assert [%{version: %{id: id}}] = Stages.inputs(work_item)
       assert id == explainer.public_id
+    end
+  end
+
+  describe "inputs after a move to an earlier stage" do
+    @verify "st_m1mqbeywdg"
+
+    # Explore, Shape (reads Explore's proposal), Build (makes an explainer and a spec) and
+    # Verify, the last three with no workflow: a person adds each version.
+    defp moved_process!(scope) do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]}),
+        stage(@build, "Build", [], %{
+          "outputs" => [
+            %{"type" => "explainer", "required" => false},
+            %{"type" => "acceptance-criteria", "required" => false}
+          ]
+        }),
+        stage(@verify, "Verify", [])
+      ])
+    end
+
+    defp at_shape_with_proposal!(scope) do
+      moved_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      assert %WorkItem{stage_id: @shape} = work_item = reload(work_item)
+      work_item
+    end
+
+    defp at_build!(scope) do
+      work_item = at_shape_with_proposal!(scope)
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = at_build
+      at_build
+    end
+
+    defp add!(scope, work_item, type, name) do
+      {:ok, _version} = Stages.add_version(scope, work_item, type, file(name))
+      work_item
+    end
+
+    defp move_to!(scope, work_item, stage_id) do
+      {:ok, moved} =
+        Stages.move(scope, work_item, stage_id, nil, expect_stage: reload(work_item).stage_id)
+
+      moved
+    end
+
+    # The marked inputs: the type and the number of the version.
+    defp marked(work_item) do
+      for %{from: :move, type: type, version: %{number: number}} <- Stages.inputs(work_item),
+          do: {type, number}
+    end
+
+    defp public_id(work_item, type, number) do
+      Enum.find_value(versions(work_item, type), &(&1.number == number && &1.public_id))
+    end
+
+    test "a move back lists the newest version of each output of the stage it left", %{
+      scope: scope
+    } do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      add!(scope, work_item, "explainer", "two.md")
+      add!(scope, work_item, "acceptance-criteria", "spec.md")
+      assert Stages.inputs(work_item) == []
+
+      shape = move_to!(scope, work_item, @shape)
+      proposal = public_id(work_item, "proposal", 1)
+
+      assert [
+               %{type: "proposal", required: true, version: %{id: ^proposal}} = read,
+               %{type: "explainer", required: false, from: :move, version: %{number: 2} = one},
+               %{
+                 type: "acceptance-criteria",
+                 required: false,
+                 from: :move,
+                 version: %{number: 1} = two
+               }
+             ] = Stages.inputs(shape)
+
+      refute Map.has_key?(read, :from)
+      assert one.id == public_id(work_item, "explainer", 2)
+      assert two.id == public_id(work_item, "acceptance-criteria", 1)
+    end
+
+    test "a version made before the work item last entered the stage is not listed", %{
+      scope: scope
+    } do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "old.md")
+      add!(scope, work_item, "acceptance-criteria", "old.md")
+      shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}, {"acceptance-criteria", 1}]
+
+      # Shape's gate passes, so Build is entered again; only its spec is made this time.
+      {:ok, again} = Stages.approve(scope, shape, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = again
+      add!(scope, again, "acceptance-criteria", "new.md")
+
+      shape = move_to!(scope, again, @shape)
+      assert marked(shape) == [{"acceptance-criteria", 2}]
+    end
+
+    test "a version made after the work item left the stage is not listed", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+
+      # A late push into Build, as a run that was still running at the move makes one.
+      {:ok, late} =
+        Stages.Artifacts.push({:person, scope}, work_item, "explainer", file("late.md"),
+          stage_id: @build
+        )
+
+      later = DateTime.add(DateTime.utc_now(), 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(v in "artifact_versions", where: v.public_id == ^late.public_id),
+          set: [inserted_at: later]
+        )
+
+      assert marked(shape) == [{"explainer", 1}]
+    end
+
+    test "the rule stops when the stage's gate passes again", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}]
+
+      {:ok, again} = Stages.approve(scope, shape, nil, expect_stage: @shape)
+      {:ok, verifying} = Stages.approve(scope, again, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: @verify} = verifying
+
+      # Back at Shape, Build is not the stage that was left last, and its gate has passed.
+      shape = move_to!(scope, verifying, @shape)
+      assert marked(shape) == []
+    end
+
+    test "each stage a work item left, and not passed since, is listed once", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      add!(scope, work_item, "explainer", "two.md")
+      shape = move_to!(scope, work_item, @shape)
+      {:ok, build} = Stages.approve(scope, shape, nil, expect_stage: @shape)
+      add!(scope, build, "acceptance-criteria", "spec.md")
+      shape = move_to!(scope, build, @shape)
+      explore = move_to!(scope, shape, @explore)
+
+      # Build was left twice: its newest departure counts, from its last entry.
+      assert marked(explore) == [{"acceptance-criteria", 1}]
+      assert Repo.aggregate(from(d in Departure, where: d.stage_id == ^@build), :count) == 2
+    end
+
+    test "no approval lists a marked version", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}]
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, shape, nil, expect_stage: @shape)
+
+      # Shape's two approvals, one for each time Build was entered, list no version.
+      assert [[], []] = for(d <- decisions(work_item), d.stage_id == @shape, do: d.versions)
+
+      assert [%{type: "explainer", approved_version: nil, versions: [%{approvals: []}]}] =
+               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "explainer"))
+    end
+
+    test "an escalation's move back lists them too", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :escalated]
+        )
+
+      assert {:ok, %WorkItem{stage_id: @shape} = shape} =
+               Stages.resolve_escalation(scope, work_item, {:move_back, @shape}, "Not built",
+                 expect_stage: @build
+               )
+
+      assert marked(shape) == [{"explainer", 1}]
+    end
+
+    test "a move forward, or a stage entered by a gate, leaves nothing to list", %{scope: scope} do
+      work_item = at_shape_with_proposal!(scope)
+      build = move_to!(scope, work_item, @build)
+      add!(scope, build, "explainer", "one.md")
+      {:ok, verifying} = Stages.approve(scope, build, nil, expect_stage: @build)
+
+      assert Repo.aggregate(Departure, :count) == 0
+      assert marked(verifying) == []
+      assert Stages.inputs(verifying) == []
+    end
+
+    test "a departure of another take in is not read", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}]
+
+      {1, _rows} =
+        Repo.update_all(from(d in Departure, where: d.work_item_id == ^work_item.id),
+          set: [take_in: shape.take_in + 1]
+        )
+
+      assert marked(shape) == []
+    end
+
+    test "a withdrawn name and a cancelled run's version are not listed", %{scope: scope} do
+      work_item = at_build!(scope)
+      run = live_run!(work_item)
+      push = &Stages.Artifacts.push({:run, &1}, work_item, &2, file("a.md"), stage_id: @build)
+
+      {:ok, _version} = push.(run, "explainer")
+      {:ok, _version} = push.(run, "acceptance-criteria")
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, work_item, "acceptance-criteria", stage_id: @build)
+
+      cancelled = live_run!(work_item)
+      {:ok, _version} = push.(cancelled, "explainer")
+      cancel_run!(scope, cancelled)
+
+      assert marked(move_to!(scope, work_item, @shape)) == [{"explainer", 1}]
     end
   end
 

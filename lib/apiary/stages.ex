@@ -131,7 +131,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
-  alias Apiary.Stages.Skip
+  alias Apiary.Stages.{Departure, Skip}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -1401,15 +1401,85 @@ defmodule Apiary.Stages do
   # person's version added on the work item in this stage, else the version the gate of
   # the stage that made it approved; nil for none. A name whose newest version is a
   # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
+  #
+  # After a person moved the work item to an earlier stage, it ends with one entry for each
+  # output of each stage the work item left that way (`moved_inputs/5`), marked
+  # `from: :move`. No other entry has `from`, and the entries `status/1` and the stage's
+  # checks read are the unmarked ones.
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
   def inputs(%WorkItem{} = work_item) do
     work_item = Repo.get!(WorkItem, work_item.id)
 
     case placed(work_item) do
-      {:ok, version, stage} -> inputs(work_item, version, stage, Artifacts.list(work_item))
-      _other -> []
+      {:ok, version, stage} ->
+        artifacts = Artifacts.list(work_item)
+        read = inputs(work_item, version, stage, artifacts)
+        read ++ moved_inputs(work_item, version, stage, artifacts, read)
+
+      _other ->
+        []
     end
+  end
+
+  # moved_inputs/5 is, for each stage that a person's entry into an earlier stage left in
+  # the work item's take in, whose gate has not passed since (no approval of the stage, by a
+  # person or automatic, after the departure), and that is after the work item's stage: the
+  # newest version of each of its outputs made in it from the time the work item last
+  # entered it to the time it left, marked `from: :move` and not required. A stage left
+  # twice counts once, by its newest departure. Newest departure first, outputs in the
+  # stage's order. An output whose version `read` has already is left out. No approval lists
+  # these versions: they are not outputs of the work item's stage.
+  defp moved_inputs(work_item, version, stage, artifacts, read) do
+    ids = Enum.map(version.document["stages"], & &1["id"])
+    here = Enum.find_index(ids, &(&1 == stage["id"]))
+    approvals = approvals_by_version(work_item)
+    read_ids = for %{version: %{id: id}} <- read, do: id
+
+    for departure <- departures(work_item),
+        left = Processes.stage(version, departure.stage_id),
+        Enum.find_index(ids, &(&1 == departure.stage_id)) > here,
+        not gate_passed_since?(work_item, departure),
+        output <- Map.get(left, "outputs", []),
+        found =
+          newest_made_in(artifacts, output["type"], left["id"], &made_during?(&1, departure)),
+        found.public_id not in read_ids do
+      %{
+        type: output["type"],
+        required: false,
+        version: version_map(found, approvals),
+        from: :move
+      }
+    end
+  end
+
+  # The newest departure of each stage in the work item's take in, newest first.
+  defp departures(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in) do
+    Repo.all(
+      from d in Departure,
+        where: d.work_item_id == ^id and d.take_in == ^take_in,
+        order_by: [desc: d.inserted_at, desc: d.id]
+    )
+    |> Enum.uniq_by(& &1.stage_id)
+  end
+
+  defp departures(%WorkItem{}), do: []
+
+  defp gate_passed_since?(work_item, departure) do
+    Repo.exists?(
+      from d in GateDecision,
+        where:
+          d.work_item_id == ^work_item.id and d.stage_id == ^departure.stage_id and
+            d.kind == :approve and d.take_in == ^departure.take_in and
+            d.inserted_at > ^departure.inserted_at
+    )
+  end
+
+  # A version made from the time the work item last entered the stage (any time, for a
+  # work item with none kept) to the time it left.
+  defp made_during?(version, %Departure{entered_at: entered_at, inserted_at: left_at}) do
+    DateTime.compare(version.inserted_at, left_at) != :gt and
+      (is_nil(entered_at) or DateTime.compare(version.inserted_at, entered_at) != :lt)
   end
 
   # artifact_index/1 is every artifact of the work item with its versions, newest first,
@@ -1802,6 +1872,7 @@ defmodule Apiary.Stages do
     )
 
     now = DateTime.utc_now()
+    if forced?, do: leave_for_earlier!(work_item, version, stage, now)
 
     {1, _rows} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -1812,6 +1883,32 @@ defmodule Apiary.Stages do
       forced: forced?
     })
   end
+
+  # A person's entry into a stage before the work item's stage records the stage it leaves
+  # and when it last entered it (`work_items.stage_entered_at`, which the entry overwrites),
+  # for `inputs/1`. A move forward, or to the same stage, records nothing.
+  defp leave_for_earlier!(%WorkItem{stage_id: left} = work_item, version, stage, now)
+       when is_binary(left) and is_integer(work_item.take_in) do
+    ids = Enum.map(version.document["stages"], & &1["id"])
+    here = Enum.find_index(ids, &(&1 == left))
+    there = Enum.find_index(ids, &(&1 == stage["id"]))
+
+    if is_integer(here) and is_integer(there) and there < here do
+      Repo.insert!(%Departure{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        stage_id: left,
+        take_in: work_item.take_in,
+        entered_at: work_item.stage_entered_at,
+        inserted_at: now
+      })
+    end
+
+    :ok
+  end
+
+  defp leave_for_earlier!(_work_item, _version, _stage, _now), do: :ok
 
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
@@ -2912,12 +3009,13 @@ defmodule Apiary.Stages do
 
   # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),
   # and neither is a withdrawal or a version of a withdrawn name (`Artifacts.withdrawn?/1`).
-  defp newest_made_in(artifacts, type, stage_id) do
+  defp newest_made_in(artifacts, type, stage_id, keep \\ fn _version -> true end) do
     artifacts
     |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
     |> Enum.flat_map(& &1.versions)
     |> Enum.filter(
-      &(&1.stage_id == stage_id and not &1.withdrawn and not Artifacts.cancelled?(&1))
+      &(&1.stage_id == stage_id and not &1.withdrawn and not Artifacts.cancelled?(&1) and
+          keep.(&1))
     )
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
