@@ -1285,6 +1285,11 @@ msgstr ""
 msgid "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -2383,6 +2388,7 @@ msgid_plural "%{number} lines added, %{removed} removed"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/artifact_live/markdown.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} line changed"
@@ -3417,6 +3423,18 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} needs %{type} as an input, and no stage before %{stage} lists it as an output."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}."
+msgid_plural "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} run on %{track}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -9493,6 +9511,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended without a verdict"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ends the work item. No draft is sent."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -18460,6 +18483,11 @@ msgstr ""
 msgid "Runs"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs %{entry} again with your note. Use it when the run changed more than the work item asks."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs a page"
@@ -20270,6 +20298,17 @@ msgstr ""
 msgid "Switch organisation, current: %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}?"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace"
@@ -20278,6 +20317,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Switched a work item to another track to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -22006,6 +22050,11 @@ msgstr ""
 msgid "The run's last result was an error. There is nothing to show or approve."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's outputs"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
@@ -22321,6 +22370,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The whole workspace"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The work item is already on %{track}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -25224,6 +25278,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You started a test run"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You switched the work item to %{track} on %{date}. %{track} skips %{stage}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

@@ -5772,26 +5772,38 @@ defmodule ApiaryWeb.WorkItemComponents do
       stage: stage
     ]
 
-    case {approval.kind, you?(by)} do
-      {:move, true} ->
+    case {approval.kind, Map.get(approval, :switch, false), you?(by)} do
+      {:move, true, true} ->
+        gettext(
+          "You switched the work item to %{track} on %{date}. %{track} skips %{stage}.",
+          values
+        )
+
+      {:move, true, false} ->
+        gettext(
+          "%{member} switched the work item to %{track} on %{date}. %{track} skips %{stage}.",
+          [member: by.name] ++ values
+        )
+
+      {:move, false, true} ->
         gettext(
           "You moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
           values
         )
 
-      {:move, false} ->
+      {:move, false, false} ->
         gettext(
           "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
           [member: by.name] ++ values
         )
 
-      {_approve, true} ->
+      {_approve, _switch, true} ->
         gettext(
           "You approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
           values
         )
 
-      {_approve, false} ->
+      {_approve, _switch, false} ->
         gettext(
           "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
           [member: by.name] ++ values

@@ -52,6 +52,9 @@ defmodule ApiaryWeb.ActivityStagesTest do
     assert said.("escalation_move_back") ==
              "Moved a work item back to an earlier stage to resolve an escalation"
 
+    assert said.("escalation_switch") ==
+             "Switched a work item to another track to resolve an escalation"
+
     assert said.("escalation_close") == "Closed a work item to resolve an escalation"
 
     # An escalation resolved with Decline, in an entry from before that resolution went.
