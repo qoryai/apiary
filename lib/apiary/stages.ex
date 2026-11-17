@@ -143,7 +143,7 @@ defmodule Apiary.Stages do
   alias Apiary.Stages.{Runner, Skip}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
-  alias Apiary.WorkItems.{Explore, ExploreView, Moves, WorkItem}
+  alias Apiary.WorkItems.{Explore, Moves, WorkItem}
 
   # The runs a workflow outside a loop may have in one round of its entry: its first,
   # and one after each set of answers, as today's Explore has in one take in.
@@ -996,16 +996,12 @@ defmodule Apiary.Stages do
   end
 
   # An approval; `audit?` false where the confirmation of today's proposal wrote the act's
-  # one entry in the trail. It covers the versions the stage's gate shows
-  # (`gate_versions/3`), then each version a person's change made that no approval lists
-  # yet (`changed_versions/2`), as a person's approval is the one that lists such a
-  # version (vault 0261, 624 (a)).
+  # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
+  # work item page frames (`gate_frames/2`).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     artifacts = Artifacts.list(work_item)
     approvals = approvals_by_version(work_item)
-    newest = Enum.map(gate_versions(stage, artifacts, approvals), & &1.public_id)
-    changed = Enum.map(changed_versions(artifacts, listed(approvals)), & &1.public_id)
-    covered = Enum.uniq(newest ++ changed)
+    covered = Enum.map(recorded_versions(stage, artifacts, approvals, true), & &1.public_id)
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
     with {:ok, _decision} <-
@@ -3166,33 +3162,46 @@ defmodule Apiary.Stages do
   # (`approve_none!/4`).
   defp person_approval?(approval), do: not approval.automatic and not approval.gate_none
 
-  # gate_numbers/3 is, for the work item page's frames of the stage `stage_id`
-  # (`ApiaryWeb.WorkItemLive.StageTab.frames/2`), the number of the newest version of each
-  # of `types` that a run of the current take in pushed at the stage, of the artifact named
-  # `main` (`Apiary.WorkItems.ExploreView.newest_outputs/3`), each raised to the version the
-  # gate shows (`listed_higher/3`). A type with no such version has no entry, as before.
-  @doc false
-  @spec gate_numbers(WorkItem.t(), String.t(), [String.t()]) :: %{String.t() => pos_integer}
-  def gate_numbers(%WorkItem{} = work_item, stage_id, types) do
-    case ExploreView.newest_outputs(work_item, stage_id, types) do
-      newest when map_size(newest) == 0 -> newest
-      newest -> raised(work_item, newest)
-    end
+  # The versions an approval of `stage` records, in the order the gate shows them: the
+  # versions its gate shows (`gate_versions/3`), then, with `changes?`, each version a
+  # person's change made that no approval lists yet (`changed_versions/2`), as a person's
+  # approval is the one that lists such a version (vault 0261, 624 (a)). An approval is
+  # made only at the work item's stage, so only there are the changes the gate's.
+  defp recorded_versions(stage, artifacts, approvals, changes?) do
+    changed = if changes?, do: changed_versions(artifacts, listed(approvals)), else: []
+    Enum.uniq_by(gate_versions(stage, artifacts, approvals) ++ changed, & &1.public_id)
   end
 
-  defp raised(work_item, newest) do
-    artifacts = Artifacts.list(work_item)
-    approvals = approvals_by_version(work_item)
+  # gate_frames/2 is the versions that an approval of the stage `stage_id` records, as the
+  # work item page frames them (`ApiaryWeb.WorkItemLive.StageTab.frames/1`): each with its
+  # artifact's type and name, in the order of `recorded_versions/4`, the set
+  # `approve_locked/7` lists. So the page frames every version a person's approval at the
+  # gate records. [] for a stage the work item's process version does not have.
+  @doc false
+  @spec gate_frames(WorkItem.t(), String.t()) :: [
+          %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}
+        ]
+  def gate_frames(%WorkItem{} = work_item, stage_id) when is_binary(stage_id) do
+    work_item = Repo.get!(WorkItem, work_item.id)
 
-    Map.new(newest, fn {type, number} ->
-      with %{} = artifact <- Enum.find(artifacts, &(&1.type == type and &1.name == "main")),
-           false <- Artifacts.withdrawn?(artifact),
-           %{} = start <- Enum.find(artifact.versions, &(&1.number == number)) do
-        {type, listed_higher(artifact, start, approvals).number}
-      else
-        _none -> {type, number}
-      end
-    end)
+    case Processes.stage(Processes.version_for(work_item), stage_id) do
+      nil ->
+        []
+
+      stage ->
+        artifacts = Artifacts.list(work_item)
+        approvals = approvals_by_version(work_item)
+        by_id = Map.new(artifacts, &{&1.id, &1})
+        changes? = work_item.stage_id == stage_id
+
+        for version <- recorded_versions(stage, artifacts, approvals, changes?) do
+          %{
+            type: by_id[version.artifact_id].type,
+            name: by_id[version.artifact_id].name,
+            version: version
+          }
+        end
+    end
   end
 
   # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),

@@ -2579,7 +2579,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :item_noun, :map, default: nil
   slot :artifacts, doc: "the stage's artifacts, in the record block"
 
-  slot :row, doc: "an output's artifact row, for a version with no Markdown; takes its type"
+  slot :row,
+    doc:
+      "an output's artifact row, for a version with no Markdown; takes its frame (`:type`, `:name`)"
 
   attr :cancel, :map,
     default: nil,
@@ -2704,11 +2706,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       />
       <.output_frame
         :for={output <- @outputs}
-        id={"#{@id}-output-#{output.type}"}
+        id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
         number={@work_item.number}
         output={output}
       >
-        {render_slot(@row, output.type)}
+        {render_slot(@row, output)}
       </.output_frame>
       <.decisions_frame
         :if={@decisions_frame != []}
@@ -3038,18 +3040,21 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
-        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
+      "`:type`, `:name`, `:version`, `:open`, `:writer`, `:read` and `:approval`, the " <>
+        "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
   @doc false
   # output_frame/1 is one output of a stage, in a frame with its version, folded but for the
   # first (`open`). A folded frame's
-  # text is read when it opens (`"open_frame"`, with its type). The frames keep the state the
-  # reader gave them when the page draws again. A frame whose version a gate `none`
-  # approved has the Approved badge and, after a check mark, the version, how it was
-  # approved and when, as Explore's approved Proposal frame has them.
+  # text is read when it opens (`"open_frame"`, with its type and name). The frames keep the
+  # state the reader gave them when the page draws again. A frame whose version a gate
+  # `none` approved has the Approved badge and, after a check mark, the version, how it was
+  # approved and when, as Explore's approved Proposal frame has them. The heading has the
+  # artifact's name after the type where it is not `main`, and a version a person made has
+  # who made it after its number, as the record block's artifact rows have it
+  # (`ApiaryWeb.ArtifactComponents.made_by/1`).
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3080,10 +3085,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           phx-click={@output.read == :unread && "open_frame"}
           phx-value-number={@number}
           phx-value-type={@output.type}
+          phx-value-name={@output[:name] || "main"}
         >
           <div class="q-xp-frame-h">
             <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
-            <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
+            <h2 id={"#{@id}-h"} class="q-xp-frame-t" phx-no-format>{@heading}<%= if @output[:name] not in [nil, "main"] do %> · {@output.name}<% end %></h2>
             <.badge :if={@approval} color="info" class="q-xp-frame-b">{gettext("Approved")}</.badge>
           </div>
           <p :if={@approval} id={"#{@id}-approval"} class="q-xp-cap">
@@ -3092,7 +3098,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-            <span>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+            <span phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · <ApiaryWeb.ArtifactComponents.made_by version={@output.writer} /><% end %></span>
           </p>
         </summary>
         <div

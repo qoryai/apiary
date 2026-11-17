@@ -1044,6 +1044,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         do: version_words(type, number)
   end
 
+  @doc """
+  frame_key/1 is an output frame's part of its DOM ids: the artifact's type, then `-` and
+  its name where the name is not `main`, such as `spec` or `test-features-other`.
+  """
+  @spec frame_key(map) :: String.t()
+  def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}-#{name}"
+  def frame_key(%{type: type}), do: type
+
   @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
   def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()
 

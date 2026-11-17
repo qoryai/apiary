@@ -384,15 +384,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert %{{"spec", 1} => %{}} = :sys.get_state(view.pid).socket.assigns.frame_texts
+      assert %{{"spec", "main", 1} => %{}} = :sys.get_state(view.pid).socket.assigns.frame_texts
 
       refute Map.has_key?(
                :sys.get_state(view.pid).socket.assigns.frame_texts,
-               {"test-features", 1}
+               {"test-features", "main", 1}
              )
     end
 
-    test "an output whose artifact is not named main has no frame", %{
+    test "an output whose artifact is not named main has a frame with its name", %{
       conn: conn,
       scope: scope
     } do
@@ -411,6 +411,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(view, "#work-item-tab-output-spec")
       refute has_element?(view, "#work-item-tab-output-test-features")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features-other-h",
+               "Test features · other"
+             )
+
+      view |> element("#work-item-tab-output-test-features-other-s") |> render_click()
+      assert render(view) =~ "Another"
     end
 
     test "a version with no Markdown has its artifact row", %{conn: conn, scope: scope} do
@@ -623,14 +632,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   describe "the review comments document" do
     test "has no frame" do
-      stage = %{outputs: ["spec", "review-comments", "mockup"]}
+      recorded =
+        for {type, number} <- [{"spec", 2}, {"review-comments", 1}, {"mockup", 1}],
+            do: %{type: type, name: "main", version: %{number: number, writer: :run}}
 
       assert [%{type: "spec", version: 2, open: true}, %{type: "mockup", open: false}] =
-               ApiaryWeb.WorkItemLive.StageTab.frames(stage, %{
-                 "spec" => 2,
-                 "review-comments" => 1,
-                 "mockup" => 1
-               })
+               ApiaryWeb.WorkItemLive.StageTab.frames(recorded)
     end
   end
 
@@ -2129,6 +2136,141 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         from d in Apiary.Stages.GateDecision,
           where: d.work_item_id == ^work_item.id and d.kind == :approve
       )
+    end
+  end
+
+  describe "every version an approval records has a frame (A-20)" do
+    # The public ids of the versions whose frames the page draws on the tab.
+    defp drawn(view, work_item) do
+      frames = :sys.get_state(view.pid).socket.assigns.frames
+
+      for artifact <- Artifacts.list(work_item),
+          version <- artifact.versions,
+          frame <- frames,
+          frame.type == artifact.type and Map.get(frame, :name, "main") == artifact.name and
+            frame.version == version.number,
+          do: version.public_id
+    end
+
+    # The versions that the newest approval of `stage_id` records.
+    defp recorded(work_item, stage_id) do
+      Repo.all(
+        from d in Apiary.Stages.GateDecision,
+          where:
+            d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^stage_id,
+          order_by: [desc: d.inserted_at],
+          limit: 1,
+          select: d.versions
+      )
+      |> List.first()
+    end
+
+    defp add_spec!(scope, work_item, text) do
+      {:ok, version} =
+        Stages.add_version(scope, reload(work_item), "spec", [
+          %{filename: "spec.md", content_type: "text/markdown", binary: text}
+        ])
+
+      version
+    end
+
+    # The tab of `stage_id` drawn, then its gate approved: the versions the approval
+    # records, and those the page drew.
+    defp approved_and_drawn(conn, scope, work_item, stage_id) do
+      {:ok, view, html} = live(conn, stage(scope, work_item.number, stage_id))
+      drawn = drawn(view, work_item)
+      {:ok, _approved} = Stages.approve(scope, reload(work_item), nil, expect_stage: stage_id)
+      {recorded(work_item, stage_id), drawn, view, html}
+    end
+
+    test "a run's version", %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope)
+      {recorded, drawn, _view, _html} = approved_and_drawn(conn, scope, work_item, @shape)
+
+      assert length(recorded) == 2
+      assert recorded -- drawn == []
+    end
+
+    test "a version that only a person uploaded, with who uploaded it",
+         %{conn: conn, scope: scope} do
+      process!(scope, %{"outputs" => [%{"type" => "spec", "required" => false}]})
+      work_item = scope |> at_shape!() |> end_run!(fn run, _registered -> passed!(run) end)
+      add_spec!(scope, work_item, "## Spec by hand")
+
+      {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, work_item, @shape)
+
+      assert [_one] = recorded
+      assert recorded -- drawn == []
+      assert html =~ "Spec by hand"
+
+      # The page as drawn before the approval: the frame's caption has who uploaded it.
+      assert html =~ "Version 1 · #{scope.user.email}"
+    end
+
+    test "a version that only an earlier take in made", %{conn: conn, scope: scope} do
+      process!(scope, %{"outputs" => [%{"type" => "spec", "required" => false}]})
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item = work_item |> reload() |> end_run!(understood_result())
+      {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1)
+
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(run, work_item, "spec", "## Spec of the first take in")
+        passed!(run)
+      end)
+
+      {:ok, _closed} = WorkItems.close(scope, reload(work_item))
+      {:ok, _again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+      work_item = work_item |> reload() |> end_run!(understood_result())
+      {:ok, _confirmed} = WorkItems.confirm(scope, reload(work_item), 1)
+
+      work_item =
+        work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+
+      assert %WorkItem{take_in: 2, stage_id: @shape} = work_item
+
+      {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, work_item, @shape)
+
+      assert [_one] = recorded
+      assert recorded -- drawn == []
+      assert html =~ "Spec of the first take in"
+    end
+
+    test "a change that a person's approval lists", %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      add_spec!(scope, work_item, "## Spec two")
+      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+
+      {:ok, moved} = Stages.move(scope, at_verify, @shape, nil, expect_stage: at_verify.stage_id)
+      work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+
+      [spec] = for a <- Artifacts.list(work_item), a.type == "spec", do: a
+      spec_two = Enum.find(spec.versions, &(&1.number == 2)).public_id
+      {recorded, drawn, _view, _html} = approved_and_drawn(conn, scope, work_item, @shape)
+
+      assert spec_two in recorded
+      assert recorded -- drawn == []
+    end
+
+    test "a change that no approval lists yet, at a stage with no outputs",
+         %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      add_spec!(scope, at_build, "## Spec two")
+      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = at_build
+
+      {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, at_build, @build)
+
+      assert [_spec_two] = recorded
+      assert recorded -- drawn == []
+      assert html =~ "Spec two"
+
+      assert html =~ "Version 2 · #{scope.user.email}"
     end
   end
 

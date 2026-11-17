@@ -453,10 +453,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 number={@number}
               />
             </:artifacts>
-            <:row :let={type}>
+            <:row :let={output}>
               <ArtifactComponents.list
-                id={"work-item-tab-output-#{type}-row"}
-                artifacts={Enum.filter(@artifacts, &(&1.type == type and &1.name == "main"))}
+                id={"work-item-tab-output-#{StageComponents.frame_key(output)}-row"}
+                artifacts={
+                  Enum.filter(@artifacts, &(&1.type == output.type and &1.name == output.name))
+                }
                 scope={@current_scope}
                 number={@number}
               />
@@ -1244,10 +1246,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # A folded output's frame opened: its text is read once, for a reader who may still read
-  # the work item, as for `"open_fold"`.
-  defp act("open_frame", %{"type" => type}, socket) when is_binary(type) do
+  # the work item, as for `"open_fold"`. The frame is its artifact's type and name.
+  defp act("open_frame", %{"type" => type} = params, socket) when is_binary(type) do
+    name = Map.get(params, "name", "main")
+
     if Access.authorize(scope(socket), :"work_item.read", socket.assigns.row) == :ok do
-      {:noreply, socket |> update(:opened_frames, &MapSet.put(&1, type)) |> viewed()}
+      {:noreply, socket |> update(:opened_frames, &MapSet.put(&1, {type, name})) |> viewed()}
     else
       {:noreply, gone(socket)}
     end
@@ -2092,16 +2096,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      stage
-      |> StageTab.frames(Stages.gate_numbers(assigns.row, stage.id, stage.outputs))
-      |> then(&if &1 == [], do: StageTab.input_frames(assigns.flow, stage), else: &1)
+      assigns.row
+      |> Stages.gate_frames(stage.id)
+      |> StageTab.frames()
+      |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 
     wanted =
-      for %{type: type, version: version, open: open} <- frames,
-          open or MapSet.member?(assigns.opened_frames, type),
-          do: {type, version}
+      for %{type: type, name: name, version: version, open: open} <- frames,
+          open or MapSet.member?(assigns.opened_frames, {type, name}),
+          do: {type, name, version}
 
     texts =
       Enum.reduce(wanted, assigns.frame_texts, fn key, texts ->
@@ -2109,8 +2114,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       end)
 
     frames =
-      Enum.map(frames, fn %{type: type, version: version} = frame ->
-        Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
+      Enum.map(frames, fn %{type: type, name: name, version: version} = frame ->
+        Map.put(frame, :read, Map.get(texts, {type, name, version}, :unread))
       end)
 
     assign(socket, frames: frames, frame_texts: texts)
@@ -2128,8 +2133,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp approver(_socket, frame), do: frame
 
-  defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
-    do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))
+  defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, name, version}),
+    do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version, name))
 
   # Every run the page read, of any take in, for which stages have a tab.
   defp every_run(explore) do

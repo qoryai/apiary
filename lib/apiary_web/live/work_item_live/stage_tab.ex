@@ -403,23 +403,46 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Enum.filter(index, &MapSet.member?(shown, {&1.type, &1.name}))
   end
 
-  # frames/2 is the output frames of `stage`, in its order, with the newest version a run of
-  # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:}`,
-  # the first one `open`. A type with no such version has no frame, nor do the review
-  # comments, the document a review comment is written to.
-  @spec frames(map, %{String.t() => pos_integer}) :: [map]
-  def frames(stage, newest) do
-    stage.outputs
-    |> Enum.filter(&(Map.has_key?(newest, &1) and &1 != "review-comments"))
+  # frames/1 is the output frames of a stage's tab: one for each version an approval of the
+  # stage records (`Apiary.Stages.gate_frames/2`), in that order, as
+  # `%{type:, name:, version:, open:, writer:}`, the first one `open`. `version` is the
+  # version's number; `writer` is the version where a person made it, for the frame's
+  # caption, else nil. The review comments, the document a review comment is written to,
+  # have no frame.
+  @spec frames([map]) :: [map]
+  def frames(recorded) do
+    recorded
+    |> Enum.reject(&(&1.type == "review-comments"))
     |> Enum.with_index()
-    |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
+    |> Enum.map(fn {%{type: type, name: name, version: version}, place} ->
+      %{
+        type: type,
+        name: name,
+        version: version.number,
+        open: place == 0,
+        writer: if(version.writer == :person, do: version)
+      }
+    end)
+  end
+
+  @doc """
+  with_inputs/2 is `outputs`, the output frames (`frames/1`), then `inputs`, the input
+  frames (`input_frames/2`), folded, but for an input of a type that an output frame
+  already shows. With no output frame, it is `inputs` as they are.
+  """
+  @spec with_inputs([map], [map]) :: [map]
+  def with_inputs([], inputs), do: inputs
+
+  def with_inputs(outputs, inputs) do
+    shown = MapSet.new(outputs, & &1.type)
+    outputs ++ for(input <- inputs, input.type not in shown, do: %{input | open: false})
   end
 
   @doc """
   input_frames/2 is, for the current stage's tab where the stage started no run
   (`StageComponents.started_no_run?/1`), the frames of the newest versions of the stage's
   inputs: the person at the gate reads what earlier stages made. `[]` for any other tab.
-  The first is `open`, as `frames/2` opens the first of the outputs.
+  The first is `open`, as `frames/1` opens the first of the outputs.
   """
   @spec input_frames(map, map) :: [map]
   def input_frames(flow, stage) do
@@ -428,7 +451,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       |> Enum.filter(&(is_integer(&1.version) and &1.type != "review-comments"))
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
-        %{type: input.type, version: input.version, open: place == 0}
+        %{type: input.type, name: "main", version: input.version, open: place == 0, writer: nil}
       end)
     else
       []
@@ -447,9 +470,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Enum.map(frames, &Map.put(&1, :approval, if(&1.open, do: approval(&1, stage, index))))
   end
 
-  defp approval(%{type: type, version: version}, stage, index) do
+  defp approval(%{type: type, version: version} = frame, stage, index) do
+    name = Map.get(frame, :name, "main")
+
     with %{approved: ^version, approval: %{stage_id: id} = approval} when id == stage.id <-
-           Enum.find(index, &(&1.type == type and &1.name == "main")),
+           Enum.find(index, &(&1.type == type and &1.name == name)),
          true <- approval.automatic or approval.gate_none do
       approval
     else
