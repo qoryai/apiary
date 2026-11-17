@@ -3298,7 +3298,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-head-stages-#{@shape}-not-run", "Not run")
+      assert has_element?(view, "#work-item-head-stages-#{@shape}-not-run", "not run")
       refute has_element?(view, "#work-item-head-stages-#{@build}-not-run")
     end
 
@@ -4028,7 +4028,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ ~s(id="work-item-tab-gate-send")
     end
 
-    test "has_outputs: false hides the comment and keeps Run another round; runs_on_track: false hides both" do
+    test "has_outputs: false hides the comment and Run another round with no open review comment and no changed decision; runs_on_track: false hides both" do
       render = fn assigns ->
         render_component(
           &ApiaryWeb.WorkItemComponents.stage_tab/1,
@@ -4049,7 +4049,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       html = render.(has_outputs: false)
       refute html =~ ~s(id="work-item-tab-gate-comment")
       refute html =~ "Comment on the stage"
-      assert html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ "Run another round"
+      refute html =~ ~s(id="work-item-tab-gate")
 
       html = render.(runs_on_track: false)
       refute html =~ ~s(id="work-item-tab-gate-comment")
@@ -4061,6 +4063,34 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       html = render.(has_outputs: false, runs_on_track: false)
       refute html =~ ~s(id="work-item-tab-gate")
+    end
+
+    test "has_outputs: false keeps Run another round, without the comment, for an open review comment" do
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["spec"]},
+          work_item: %{number: 1, status: :gate, run: nil},
+          outputs: [%{type: "spec", version: 1, open: true, read: nil}],
+          review_comments: [
+            %{
+              id: 1,
+              state: :open,
+              reopened: false,
+              text: "Name the file.",
+              version: 1,
+              replies: [],
+              by: %{email: "sam@example.com", name: "Sam"}
+            }
+          ],
+          current: true,
+          round_gate: true,
+          can_send: true,
+          has_outputs: false
+        )
+
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+      assert html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ ~r/id="work-item-tab-gate-send"[^>]*disabled/
     end
 
     test "the gate keeps a refused move's error with both hidden" do

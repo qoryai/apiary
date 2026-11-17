@@ -14833,7 +14833,6 @@ msgid "Not ready: the pool's runs may not go through the chosen gateway"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
-#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Not run"
 msgstr ""
@@ -26412,6 +26411,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "not recorded"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "not run"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

@@ -2615,9 +2615,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     # The gate's Run another round needs an entry that runs on the work item's track. Its
     # comment on the stage's outputs, which only Run another round sends, needs that and an
-    # output frame.
+    # output frame. Without the comment field the button is drawn only where an open review
+    # comment or a changed decision (the Decisions frame) can enable it.
     rerun? = assigns.runs_on_track
     comment? = assigns.can_send and assigns.has_outputs and rerun?
+    reviewing? = assigns.can_send and open != []
 
     # Sent decisions are text: only a decision still `:decided` takes a change.
     change =
@@ -2627,6 +2629,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     # At the gate the decisions sit in the Decisions frame, above the gate, as on Explore's
     # tab; elsewhere in the questions frame.
     decisions_frame = if round_gate and change, do: decisions, else: []
+    rerun_button? = rerun? and (comment? or reviewing? or decisions_frame != [])
 
     assigns =
       assign(assigns,
@@ -2638,10 +2641,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         closed_questions: if(decisions_frame == [], do: assigns.questions, else: others),
         round:
           round_gate and
-            ((rerun? and assigns.can_send) or decisions_frame != [] or
-               not is_nil(assigns.move_error)),
+            (rerun_button? or not is_nil(assigns.move_error)),
         commenting: comment?,
-        rerun: rerun?,
+        rerun: rerun_button?,
         sendable: if(assigns.can_send, do: length(open), else: 0),
         item: SourceComponents.item(assigns.item_noun),
         run: run,
