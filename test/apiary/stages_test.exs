@@ -5346,12 +5346,13 @@ defmodule Apiary.StagesTest do
 
   describe "a person's change to an approved output (A-20)" do
     @verify "st_m1mqbeywdg"
+    @release "st_q4ncz8w2xe"
 
     # Shape, where a person adds the acceptance criteria; Build, a loop with a gate none,
     # as the software process has it, which reads the criteria and makes the explainer;
-    # and Verify, which reads both, with a person's gate. With `verify?` false, Build is
-    # the last stage.
-    defp criteria_process!(scope, verify? \\ true) do
+    # and Verify, which reads both, with a person's gate. `last` is the last stage: `:build`,
+    # `:verify`, or `:release`, a stage after Verify that reads the criteria.
+    defp criteria_process!(scope, last \\ :verify) do
       stages = [
         explore_stage(),
         stage(@shape, "Shape", [], %{
@@ -5387,7 +5388,19 @@ defmodule Apiary.StagesTest do
           ]
         })
 
-      save!(scope, if(verify?, do: stages ++ [verify], else: stages))
+      release =
+        stage(@release, "Release", [%{"workflow" => "verify-a-ticket"}], %{
+          "inputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+        })
+
+      save!(
+        scope,
+        case last do
+          :build -> stages
+          :verify -> stages ++ [verify]
+          :release -> stages ++ [verify, release]
+        end
+      )
     end
 
     # The end of a run that pushes a version of `type` with `opts`, such as a decision.
@@ -5679,8 +5692,10 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
     end
 
-    test "a person's approval lists the change of each name of a type", %{scope: scope} do
-      criteria_process!(scope)
+    test "a person's approval lists the change of each name of a type, and a later stage " <>
+           "reads the same name as before it",
+         %{scope: scope} do
+      criteria_process!(scope, :release)
 
       {work_item, %Escalation{public_id: decision}} =
         asked_in_build!(scope, "Add a scenario for the empty cart and one for the coupon.")
@@ -5709,15 +5724,36 @@ defmodule Apiary.StagesTest do
 
       assert length(ids) == 2
 
-      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+      # Before the approval, the read is the newest change: scenario-2, pushed last.
+      [first, second] = Enum.sort_by(versions_of(work_item, ids), & &1.inserted_at, DateTime)
+      second_id = second.public_id
+      assert first.public_id != second_id
+
+      assert [%{type: "acceptance-criteria", version: %{id: ^second_id}}, _explainer] =
+               Stages.inputs(work_item)
+
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
       verified = Enum.find(decisions(work_item), &(&1.stage_id == @verify))
       assert ids -- verified.versions == []
+
+      # After it, Release reads the same version through Verify's approval.
+      assert %WorkItem{stage_id: @release} = work_item
+
+      assert [%{type: "acceptance-criteria", version: %{id: ^second_id}}] =
+               Stages.inputs(work_item)
+    end
+
+    defp versions_of(work_item, ids) do
+      for artifact <- Apiary.Artifacts.list(work_item),
+          v <- artifact.versions,
+          v.public_id in ids,
+          do: v
     end
 
     test "a closed work item whose last gate none left out an output with a decision stays " <>
            "done",
          %{scope: scope} do
-      criteria_process!(scope, false)
+      criteria_process!(scope, :build)
 
       {work_item, %Escalation{public_id: decision}} =
         asked_in_build!(scope, "Name the empty cart in the explainer.")

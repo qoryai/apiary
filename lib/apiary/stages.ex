@@ -3232,18 +3232,14 @@ defmodule Apiary.Stages do
     changed || person || gated
   end
 
-  # The version of `type` that an approval covering `covered` approved: of the first
-  # artifact of `type` in `covered`, its highest-numbered version there; nil for none.
+  # The version of `type` that an approval covering `covered` approved: of each artifact of
+  # `type` in `covered`, its highest-numbered version there, and of those the newest by
+  # time, as `changed_version/3` reads the changes; nil for none.
   defp approved_version(covered, by_id, type) do
-    found = for id <- covered, {^type, name, v} <- [by_id[id]], do: {name, v}
-
-    case found do
-      [] ->
-        nil
-
-      [{name, _version} | _rest] ->
-        for({^name, v} <- found, do: v) |> Enum.max_by(& &1.number)
-    end
+    for(id <- covered, {^type, name, v} <- [by_id[id]], do: {name, v})
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {_name, versions} -> Enum.max_by(versions, & &1.number) end)
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 
   # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,

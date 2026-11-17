@@ -137,7 +137,9 @@ Returns `200` with the work item snapshot:
   a version by a run that a member cancelled are never a change. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
-  approval lists two versions of one name, the input is the higher-numbered one.
+  approval lists several versions of one name, the input is the highest-numbered one.
+  Where it lists several names of one type, the input is the name whose listed version
+  is newest.
   `questions` and `review-comments` are never a change.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
