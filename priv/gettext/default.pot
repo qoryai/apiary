@@ -1285,6 +1285,11 @@ msgstr ""
 msgid "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -2009,6 +2014,7 @@ msgstr[1] ""
 msgid "%{number} B"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} GB"
@@ -2382,6 +2388,7 @@ msgid_plural "%{number} lines added, %{removed} removed"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/artifact_live/markdown.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} line changed"
@@ -3418,6 +3425,18 @@ msgstr ""
 msgid "%{stage} needs %{type} as an input, and no stage before %{stage} lists it as an output."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}."
+msgid_plural "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} run on %{track}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} runs on %{track} only."
@@ -4170,6 +4189,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies to prebuilds that start after it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -9482,6 +9507,11 @@ msgstr ""
 msgid "Empty: %{default}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Empty: no limit."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
@@ -9530,6 +9560,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended without a verdict"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ends the work item. No draft is sent."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10797,6 +10832,11 @@ msgstr ""
 msgid "Full screen"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "GB"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Gate"
@@ -11269,6 +11309,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "How it works"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "How large an image a prebuild may keep. A prebuild whose image is larger fails."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -12423,6 +12468,17 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Larger text"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image saved."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -14126,6 +14182,7 @@ msgid "No key yet"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -16495,6 +16552,11 @@ msgstr ""
 msgid "Prebuild"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Prebuilds"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Prebuilt for this target"
@@ -18503,6 +18565,11 @@ msgstr ""
 msgid "Runs"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs %{entry} again with your note. Use it when the run changed more than the work item asks."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs a page"
@@ -20313,6 +20380,17 @@ msgstr ""
 msgid "Switch organisation, current: %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}?"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace"
@@ -20321,6 +20399,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Switched a work item to another track to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -22042,6 +22125,11 @@ msgstr ""
 msgid "The run's last result was an error. There is nothing to show or approve."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's outputs"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
@@ -22357,6 +22445,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The whole workspace"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The work item is already on %{track}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -25264,6 +25357,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You took this in %{when}."
 msgstr ""
 
@@ -27109,6 +27207,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the request failed for another credential of the run, so this one was not sent"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

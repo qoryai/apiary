@@ -4678,6 +4678,437 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "an escalation that is offered a switch" do
+    setup :ready_pool
+
+    # The software process with the tracks Standard and Fast track, Explore's gate offering
+    # both, and a work item escalated in Build on the track `track`, which Explore's gate
+    # recorded. Shape runs `shape-a-ticket`, and Verify `verify-a-ticket` unless `verify` is false. With a result in Build, as Accept as it is needs one.
+    defp on_track!(scope, track, verify \\ true) do
+      document =
+        document("members")
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+        |> Map.update!("stages", fn stages ->
+          for stage <- stages do
+            case stage["id"] do
+              @explore -> put_in(stage, ["gate", "tracks"], ["standard", "fast-track"])
+              @shape -> %{stage | "sequence" => [%{"workflow" => "shape-a-ticket"}]}
+              @verify when verify -> %{stage | "sequence" => [%{"workflow" => "verify-a-ticket"}]}
+              _other -> stage
+            end
+          end
+        end)
+
+      version = save!(scope, document)
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> place!(version, @build, :escalated, stage_round: 3, stage_entry: 1)
+
+      # An earlier run of Build pushed an explainer named `other`; the escalated run, which
+      # also pushed a verdict, pushed the explainer `main`.
+      {_run, earlier} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {:ok, _version} =
+        Artifacts.push({:run, earlier}, work_item, "explainer", [sample("explainer")],
+          name: "other",
+          stage_id: @build
+        )
+
+      {_run, escalated} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
+
+      {:ok, _version} =
+        Artifacts.push({:run, escalated}, work_item, "explainer", [sample("explainer")],
+          stage_id: @build
+        )
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, escalated},
+          work_item,
+          "verdict",
+          %{
+            "verdict" => "escalate",
+            "points" => [
+              %{"text" => "A server check reads the button text.", "action" => "run_again"}
+            ]
+          },
+          stage_id: @build
+        )
+
+      escalate!(
+        work_item,
+        :escalate,
+        [
+          %{
+            "text" => "A server check reads the button text.",
+            "action" => "run_again",
+            "fix" => "Add a check that reads the text of the button."
+          }
+        ],
+        escalated
+      )
+
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        stage_id: @explore,
+        process_version_id: version.id,
+        user_id: scope.user.id,
+        kind: :approve,
+        take_in: work_item.take_in,
+        track: track,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert Stages.track(work_item) == track
+      work_item
+    end
+
+    test "Fast track: Switch to Standard, Run another round and Close, and no Accept, stage list or Move back",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-switch-standard",
+               "Switch to Standard"
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-switch-fast-track")
+      assert has_element?(view, "#work-item-stage-escalation-close", "Close")
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      refute has_element?(view, "#work-item-stage-escalation-stage")
+      refute has_element?(view, "#work-item-stage-escalation-move")
+    end
+
+    test "Standard: today's card, with Accept, the stage list and Move back, and no switch",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-escalation-accept", "Accept as it is")
+      assert has_element?(view, "#work-item-stage-escalation-stage")
+      assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
+      assert has_element?(view, "#work-item-stage-escalation-close")
+      refute has_element?(view, ~s|[id^="work-item-stage-escalation-switch"]|)
+    end
+
+    test "Fast track: the outputs of the escalated run come first, then each point with its action line, then the note and Run another round",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      html = view |> element("#work-item-needs") |> render()
+
+      positions =
+        for id <- [
+              "work-item-needs-outputs",
+              "work-item-needs-point-1",
+              "work-item-stage-escalation-another"
+            ] do
+          {at, _length} = :binary.match(html, ~s(id="#{id}"))
+          at
+        end
+
+      assert positions == Enum.sort(positions)
+      assert has_element?(view, "#work-item-needs-outputs-h", "The run's outputs")
+
+      # The point's fix line is in its item, after the point's text.
+      assert line(view, "#work-item-needs-point-1") ==
+               "A server check reads the button text. Add a check that reads the text of the button."
+
+      # The fix line sits inside the point, after the outputs and before the note and
+      # Run another round.
+      [outputs, point, fix, note, another] =
+        for needle <- [
+              ~s(id="work-item-needs-outputs"),
+              ~s(id="work-item-needs-point-1"),
+              "Add a check that reads the text of the button.",
+              ~s(id="work-item-stage-escalation-note"),
+              ~s(id="work-item-stage-escalation-another")
+            ],
+            do: :binary.match(html, needle) |> elem(0)
+
+      assert outputs < point and point < fix and fix < note and note < another
+
+      # The note field comes after the points as well, and Run another round last.
+      [last_point, note, another] =
+        for id <- [
+              "work-item-needs-point-1",
+              "work-item-stage-escalation-note",
+              "work-item-stage-escalation-another"
+            ],
+            do: :binary.match(html, ~s(id="#{id}")) |> elem(0)
+
+      assert last_point < note and note < another
+    end
+
+    test "the outputs are the versions the escalated run pushed, and no other run's",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs-outputs a", "explainer v1")
+      refute has_element?(view, "#work-item-needs-outputs", "explainer other")
+      # The block's outputs carry the class that gives a report's headings the small bold
+      # lines of the block (app.css).
+      assert has_element?(view, "#work-item-needs-outputs.q-xp-needs-outputs")
+      # The verdict, whose points the block shows, is not listed.
+      refute has_element?(view, "#work-item-needs-outputs", "verdict")
+    end
+
+    test "a structured output shows as its table of values", %{conn: conn, scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "findings",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      work_item = on_track!(scope, "fast-track")
+      dispatch = Repo.get_by!(Escalation, work_item_id: work_item.id).run_id
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, Repo.get!(DispatchRun, dispatch)},
+          work_item,
+          "findings",
+          %{"reason" => "A check reads the text"},
+          stage_id: @build
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-needs-outputs a", "findings v1")
+      assert has_element?(view, "#work-item-needs-outputs table th", "reason")
+      assert has_element?(view, "#work-item-needs-outputs table td", "A check reads the text")
+    end
+
+    test "Standard: today's block, with no outputs and no line under an action",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-needs-outputs")
+      refute has_element?(view, "#work-item-stage-escalation-another-line")
+      refute has_element?(view, "#work-item-stage-escalation-close-line")
+    end
+
+    test "the lines under Switch to Standard, Run another round and Close", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert [%{first: "Shape", later: ["Build", "Verify"]}] = Stages.switch_tracks(work_item)
+
+      assert line(view, "#work-item-stage-escalation-switch-standard-line") ==
+               "Shape runs for the first time, with your note and the build report. " <>
+                 "A new commit undoes this attempt, then Build and Verify run on Standard."
+
+      assert line(view, "#work-item-stage-escalation-another-line") ==
+               "Runs capture-demo again with your note. " <>
+                 "Use it when the session changed more than the ticket asks."
+
+      assert line(view, "#work-item-stage-escalation-close-line") ==
+               "Ends the work item. No draft is sent."
+    end
+
+    test "one later stage reads \"runs\"", %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track", false)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-stage-escalation-switch-standard-line") ==
+               "Shape runs for the first time, with your note and the build report. " <>
+                 "A new commit undoes this attempt, then Build runs on Standard."
+    end
+
+    test "Switch to Standard opens the dialog, and confirming records the track and starts Shape",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Write a spec first"})
+      |> put_submitter("#work-item-stage-escalation-switch-standard")
+      |> render_submit()
+
+      assert has_element?(view, "#spend-dialog-title", "Switch to Standard?")
+      assert has_element?(view, "#spend-dialog-go", "Switch to Standard")
+
+      assert has_element?(
+               view,
+               ~s|#spend-dialog[data-return="work-item-stage-escalation-switch-standard"]|
+             )
+
+      view |> element("#spend-dialog-cancel") |> render_click()
+      assert escalation(work_item).resolution == nil
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Write a spec first"})
+      |> put_submitter("#work-item-stage-escalation-switch-standard")
+      |> render_submit()
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: :switch, note: "Write a spec first"} = escalation(work_item)
+      assert Stages.track(work_item) == "standard"
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+
+      # The notes list the escalation, with the note, and not a second entry for the move.
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Escalation resolved · Build"
+             ]
+
+      assert has_element?(view, "#work-item-notes", "Write a spec first")
+      refute has_element?(view, "#work-item-notes", "Moved")
+    end
+
+    test "a stale form that sends Accept as it is or Move back is refused", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      for params <- [%{"how" => "accept"}, %{"how" => "move_back", "stage" => @shape}] do
+        view
+        |> form("#work-item-stage-escalation-form", %{"note" => ""})
+        |> render_submit(params)
+      end
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} =
+               Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "a person's move event is refused on an escalation that is offered a switch", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      render_hook(view, "stage_move", %{
+        "number" => Integer.to_string(work_item.number),
+        "seen" => @build,
+        "stage" => @shape,
+        "note" => ""
+      })
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} =
+               Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "the same move event on a Standard escalation resolves it as a move back", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      render_hook(view, "stage_move", %{
+        "number" => Integer.to_string(work_item.number),
+        "seen" => @build,
+        "stage" => @shape,
+        "note" => ""
+      })
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: :move_back} = escalation(work_item)
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+    end
+
+    test "a switch to the track the work item is on says so", %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"switch" => "fast-track"})
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "The work item is already on Fast track."
+             )
+
+      refute has_element?(view, "#work-item-stage-notice", "does not offer")
+    end
+
+    test "a track that the gate does not offer is refused with nothing written", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"switch" => "express"})
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+      assert Stages.track(work_item) == "fast-track"
+      assert length(Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id)) == 1
+
+      # The notice names the gate that recorded the track, Explore's, not Build.
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Choose a track that the gate of Explore offers. It does not offer express."
+             )
+    end
+  end
+
+  describe "the notes after a move" do
+    setup :ready_pool
+
+    test "a move back that resolves an escalation shows the escalation and no Moved entry",
+         %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :escalated, round: 3)
+      escalate!(work_item, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Plan again", "stage" => @shape})
+      |> render_submit(%{"how" => "move_back"})
+
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Escalation resolved · Build"
+             ]
+
+      assert has_element?(view, "#work-item-notes", "Plan again")
+      refute has_element?(view, "#work-item-notes", "Moved")
+    end
+
+    test "a person's move with no text still shows as Moved", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      {:ok, _moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-notes li > p:first-child") == ["Moved · Build"]
+    end
+  end
+
   describe "a work item that ended" do
     test "close: no stage card, and the track and the head's words stay", %{
       conn: conn,

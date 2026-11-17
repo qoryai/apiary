@@ -208,7 +208,7 @@
       "properties": {
         "kind": {"enum": ["person", "none"]},
         "tracks": {
-          "description": "Optional. The ids of the tracks the gate offers; the person who approves picks one. A gate of kind none offers none: a save with tracks on it is refused.",
+          "description": "Optional. The ids of the tracks the gate offers; the person who approves picks one. The first id is the default: an approval that picks none records it, unless a run proposed another track the gate offers or the work item is on one the gate offers. A work item on the first track is offered no switch to another track at an escalation. A gate of kind none offers none: a save with tracks on it is refused.",
           "type": "array",
           "maxItems": 10,
           "uniqueItems": true,

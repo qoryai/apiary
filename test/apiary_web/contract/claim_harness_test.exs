@@ -147,6 +147,17 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     work_item
   end
 
+  # Saves the instance's largest prebuilt image, `gb` GB, nil for no limit, as Instance
+  # settings › Configuration saves it (`Apiary.InstanceConfig`).
+  defp largest_prebuilt_image!(gb) do
+    Repo.insert_all(
+      Apiary.InstanceConfig.Row,
+      [%{id: true, prebuilt_image_max_gb: gb, updated_at: DateTime.utc_now()}],
+      on_conflict: {:replace, [:prebuilt_image_max_gb]},
+      conflict_target: :id
+    )
+  end
+
   defp section do
     {:ok, section} = Reader.document(@document)
     section
@@ -235,6 +246,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       documents = documents(claim(ctx))
       assert %{"workflow" => "explore-a-ticket", "harness_hidden" => true} = documents
       valid!(documents)
+    end
+
+    test "has no largest_prebuilt_image_bytes, whatever the instance's largest prebuilt image",
+         ctx do
+      largest_prebuilt_image!(20)
+      workflow!(ctx)
+      explore!(ctx, origin: :file, target_version: @version)
+      refute Map.has_key?(documents(claim(ctx)), "largest_prebuilt_image_bytes")
     end
 
     test "with no workflow has none of the harness members, and no machine", ctx do
@@ -623,6 +642,32 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert second["environment_image"] == image
       refute Map.has_key?(second, "environment_destination")
       refute second["image_destination"] == first["image_destination"]
+    end
+
+    test "has largest_prebuilt_image_bytes, the instance's largest prebuilt image in bytes, after its destinations",
+         ctx do
+      largest_prebuilt_image!(20)
+
+      {:ok, _run} =
+        Repo.transact(fn ->
+          Dispatches.queue_prebuild(collection_fixture(ctx.scope), ctx.pool, "env-1")
+        end)
+
+      claim = claim(ctx)
+      documents = documents(claim)
+
+      assert documents["largest_prebuilt_image_bytes"] == 20_000_000_000
+
+      assert claim |> stored() |> members() |> Enum.take(-3) ==
+               ~w(environment_destination largest_prebuilt_image_bytes inputs)
+    end
+
+    test "has no largest_prebuilt_image_bytes where the instance has no largest prebuilt image",
+         ctx do
+      largest_prebuilt_image!(nil)
+      documents = prebuild_documents(ctx, collection_fixture(ctx.scope))
+      refute Map.has_key?(documents, "largest_prebuilt_image_bytes")
+      assert is_binary(documents["image_destination"])
     end
 
     test "makes its target where its workspace has none, for the target image's name", ctx do

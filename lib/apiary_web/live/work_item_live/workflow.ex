@@ -151,7 +151,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
-      escalation: escalation(scope, get(status, :escalation), runs, outputs),
+      escalation: scope |> escalation(get(status, :escalation), runs, outputs) |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
@@ -159,6 +159,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
+      # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
+      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
+      # Accept as it is and no Move back.
+      switch: switch_tracks(row, state),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
@@ -171,6 +175,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
+
+  defp switch_tracks(row, :escalated),
+    do: Stages.switch_tracks(row)
+
+  defp switch_tracks(_row, _state), do: []
 
   # The track the work item is on, with the name the process version declares, else the id.
   defp current_track(nil, _document), do: nil
@@ -478,9 +487,32 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
+      # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
+      # it pushed name (`ApiaryWeb.RunOutputs`).
+      run_id: get(get(escalation, :run), :id),
       harness_path: harness_path(scope, get(escalation, :set_up_step)),
       return_to: get(escalation, :return_to)
     }
+  end
+
+  # The escalation with `entry`, the name of the entry of `stage`'s sequence that the
+  # escalated run ran, else its workflow; nil with no run.
+  defp entry(nil, _stage), do: nil
+
+  defp entry(escalation, stage) do
+    workflow = escalation.run && escalation.run.workflow
+
+    entries =
+      Enum.flat_map(Map.get(stage, :sequence, []), fn item ->
+        case get(get(item, :loop), :body) do
+          body when is_list(body) -> body
+          _none -> [item]
+        end
+      end)
+
+    named = Enum.find(entries, &(get(&1, :workflow) == workflow))
+
+    Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
   # An escalation's points as the block "What the run needs from you" shows them: each
@@ -746,7 +778,22 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
 
+  # Accept as it is and Move back, where the card offers a switch: it offers neither.
+  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
+
+  defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
+    do: {:error, :invalid}
+
+  # A switch to a track the card offers; `Apiary.Stages` refuses any other, with the reason.
+  defp checked({:resolve, {:switch, _track}, _note} = action, %{switch: [_ | _]}),
+    do: {:ok, action}
+
+  defp checked({:resolve, {:switch, _track}, _note}, _page), do: {:error, :invalid}
+
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
+
+  # A person's move resolves the escalation as a move back: refused where it offers a switch.
+  defp checked({:move, _id, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)
 
   defp checked({:request_changes, _note, nil} = action, _page), do: {:ok, action}
