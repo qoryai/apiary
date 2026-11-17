@@ -6006,10 +6006,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         "Start the run again. The setup container was not removed, so a process in it could still write the files."
       )
 
-  # What a person does about a run that writes and that qory closed for want of a wall
-  # (`Apiary.Runs.WriteNeeds`), the fix first. As for a read-only run, a person in an
-  # organisation cannot edit the instance's pool's forager.yaml. `Apiary.Stages.StopCause`
-  # stores the same words in English.
+  # What a person does about a run that writes and has no wall (`Apiary.Runs.WriteNeeds`),
+  # the fix first. A person in an organisation cannot edit the instance pool's
+  # forager.yaml. `Apiary.Stages.StopCause` stores the same words in English.
   defp write_needs_words(%{installed: true}),
     do:
       rich_gettext(

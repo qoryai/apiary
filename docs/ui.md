@@ -2479,11 +2479,11 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   the files.". On the Qory Pool, whose forager.yaml a person in an organisation cannot
   edit, "Contact support." replaces the fix of the first two. A run that writes, with
   access `write` or `write-no-push`, that qory closes for want of a wall gives
-  `write_needs_wall`, which reads "write run with no wall"; the work item shows "Set a
-  wall in the machine's forager.yaml, then start the run again. A run that writes to the
-  checkout needs a wall, and this machine has none." ("A run that writes needs a wall,
-  and this machine has none." outside a software workspace), and on the Qory Pool
-  "Contact support." replaces the fix. A run that ended with `timeout` reads "time limit
+  `write_needs_wall`, which reads "write run with no wall"; the work item shows, under
+  "The run ended without a result.", "Set a wall in the machine's forager.yaml, then
+  start the run again. A run that writes to the checkout needs a wall, and this machine
+  has none." ("A run that writes needs a wall, and this machine has none." outside a
+  software workspace), and on the Qory Pool "Contact support." replaces the fix. A run that ended with `timeout` reads "time limit
   reached" on its run page; the work item shows "Attempt 3 reached its time limit, so
   Build has no result." ("Attempt" stays capitalised after "The run stopped:"; "Build" is
   the stage's name, and "the stage" stands for a run with no stage), with no fix: another

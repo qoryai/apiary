@@ -204,49 +204,59 @@ defmodule Apiary.Stages.StopCause do
 
   ## The causes
 
+  # The registered run is read once; ReadNeeds and WriteNeeds read their facts from it.
   defp no_gap(run, work_item) do
-    case ReadNeeds.of_dispatch_run(run) do
+    registered = registered_run(run)
+
+    case ReadNeeds.of_run(registered) do
       %{} = facts -> read_needs(facts, work_item)
-      nil -> no_read_needs(run, work_item)
+      nil -> no_read_needs(registered, run, work_item)
     end
   end
 
-  defp no_read_needs(run, work_item) do
-    case WriteNeeds.of_dispatch_run(run) do
+  defp no_read_needs(registered, run, work_item) do
+    case WriteNeeds.of_run(registered) do
       %{} = facts -> write_needs(facts, work_item)
-      nil -> no_write_needs(run, work_item)
+      nil -> timed_out_or_no_result(registered, run, work_item)
     end
+  end
+
+  # The reason and the node of the dispatch run's registered run; nil for none.
+  defp registered_run(%DispatchRun{id: id}) do
+    Repo.one(
+      from r in Run.registered(),
+        where: r.dispatch_run_id == ^id,
+        select: map(r, [:reason, :node_id])
+    )
   end
 
   # A run whose registered run ended with the reason `timeout` reached its time limit. The
   # words follow "Attempt 2 ended with an error, so Build has no result"
   # (`ApiaryWeb.WorkItemComponents`); no fix, only another round helps.
-  defp no_write_needs(run, work_item) do
-    if timed_out?(run),
-      do:
-        {:one,
-         "Attempt #{run.attempt} reached its time limit, so #{stage_name(run, work_item)} has no result."},
-      else: {:one, "The run ended without a result."}
-  end
+  defp timed_out_or_no_result(%{reason: "timeout"}, run, work_item),
+    do:
+      {:one,
+       "Attempt #{run.attempt} reached its time limit, so #{stage_name(run, work_item)} has no result."}
 
-  defp timed_out?(%DispatchRun{id: id}) do
-    Repo.exists?(
-      from r in Run.registered(), where: r.dispatch_run_id == ^id and r.reason == "timeout"
-    )
-  end
+  defp timed_out_or_no_result(_registered, _run, _work_item),
+    do: {:one, "The run ended without a result."}
 
   # The name of the stage the run was in, from the process version the run started under,
-  # else the work item's; "the stage" for a run placed in no stage or no version.
+  # else the work item's; "the stage" for a run placed in no stage or no version. Only the
+  # version's document is read.
   defp stage_name(run, work_item) do
     stage_id = run.stage_id || work_item.stage_id
 
-    version =
+    document =
       case run.process_version_id || work_item.process_version_id do
-        id when is_binary(id) -> Repo.get(Version, id)
-        nil -> nil
+        id when is_binary(id) ->
+          Repo.one(from v in Version, where: v.id == ^id, select: v.document)
+
+        nil ->
+          nil
       end
 
-    case version && Processes.stage(version, stage_id) do
+    case document && Processes.stage(document, stage_id) do
       %{"name" => name} when is_binary(name) and name != "" -> name
       _none -> "the stage"
     end

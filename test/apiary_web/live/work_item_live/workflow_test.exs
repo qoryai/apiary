@@ -4944,7 +4944,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "a run that reached its time limit" do
-    # Qory closed the run `failed` with `timeout`; the stage runner escalated it from the
+    # Qory closed the run `cancelled` with `timeout`; the stage runner escalated it from the
     # stop cause (`Apiary.Stages.StopCause`): the attempt and the stage, and no fix line
     # (the page shows "Run another round." in its place).
     test "shows its stop cause with the attempt and the stage on the work item", %{
@@ -4955,8 +4955,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         scope
         |> taken_in_fixture()
         |> end_run!(nil, %{
-          state: "failed",
-          exit_state: "failed",
+          state: "cancelled",
+          exit_state: "cancelled",
+          exit_code: 124,
           reason: "timeout",
           outcome_state: nil,
           outcome_time: nil,

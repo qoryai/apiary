@@ -8,11 +8,12 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # The sentences a software workspace says in its words, with no engine word in them: the
   # policy file's place, outside the checkout, and the harness choice's repository and its
   # branch, tag or commit, the version's name among them, why a read of the Qory
-  # harness failed, the branch of a run that writes, what a person reads at a gate whose
-  # stage started no run (the build report and the draft), and why Shape did not run (the
-  # spec and the criteria).
+  # harness failed, the branch of a run that writes, the wall of a run that writes (the
+  # checkout), what a person reads at a gate whose stage started no run (the build report
+  # and the draft), and why Shape did not run (the spec and the criteria).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{contact_support}. A run that writes needs a wall, and this machine has none.",
     "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
     "%{person}, updated from harness version %{commit}, %{date}",
     "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
@@ -25,7 +26,6 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
     "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this version.",
     "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version.",
-    "%{contact_support}. A run that writes needs a wall, and this machine has none.",
     "Contact support: a run that writes needs a work item.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",

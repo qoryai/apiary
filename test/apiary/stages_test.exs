@@ -1310,8 +1310,9 @@ defmodule Apiary.StagesTest do
 
       work_item =
         end_run!(work_item, nil, %{
-          state: "failed",
-          exit_state: "failed",
+          state: "cancelled",
+          exit_state: "cancelled",
+          exit_code: 124,
           reason: "timeout",
           outcome_state: nil,
           outcome_time: nil,
