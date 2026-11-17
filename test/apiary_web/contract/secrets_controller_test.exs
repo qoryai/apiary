@@ -49,6 +49,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   ]
 
   @token "fixture-work-token-for-tests-only-7f3a"
+  @push_token "fixture-push-token-for-tests-only-91c2"
   @branch "refs/heads/qory/wi_0123456789abcdef"
 
   setup ctx do
@@ -824,56 +825,292 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       refute log =~ @token
     end
 
-    test "for a write entry, seals the answer's items with the entry's push_ref, which the call lacks",
+    test "for a write run, is answered a read work-1 and a push-1 with the entry's push_ref",
          ctx do
-      {ctx, pushing} = write_entry!(ctx, @branch)
+      {ctx, pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
 
-      WorkCredentialStub.issue(
-        ctx.adapter_seed,
-        WorkCredentialStub.credential(@token, @entry_apply)
-      )
-
-      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end)
       assert conn.status == 200, conn.resp_body
       {bytes, plaintext} = opened(ctx, conn)
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
-      assert %{"apply" => ^pushing} = value(plaintext, "work-1")
-      assert work_row(ctx).issued_apply == pushing
+      assert plaintext["credentials"] == Enum.sort(all(ctx))
 
-      # The call has the access and no branch.
-      assert [{"/calls/run-credential", body}] = WorkCredentialStub.calls()
-      assert body["access"] == "write"
-      refute inspect(body) =~ "push_ref"
+      # Each name has a different token, never the other's, and only push-1's items have a
+      # branch.
+      assert %{"value" => @token, "apply" => @entry_apply} = value(plaintext, "work-1")
+      assert %{"value" => @push_token, "apply" => ^pushing} = value(plaintext, "push-1")
+      refute inspect(value(plaintext, "work-1")) =~ "push_ref"
+
+      # Two calls, in the run configuration's order, both for the work: the access differs,
+      # and neither has a branch.
+      assert [{"/calls/run-credential", read}, {"/calls/run-credential", write}] =
+               WorkCredentialStub.calls()
+
+      assert {read["access"], read["purpose"]} == {"read", "work"}
+      assert {write["access"], write["purpose"]} == {"write", "work"}
+      assert Map.delete(read, "access") == Map.delete(write, "access")
+      refute inspect({read, write}) =~ "push_ref"
+
+      # Each row keeps its first credential's items, and one Activity entry each.
+      assert work_row(ctx).issued_apply == @entry_apply
+      assert push_row(ctx).issued_apply == pushing
+
+      assert [{"work-1", "read", "work"}, {"push-1", "write", "push"}] ==
+               for(
+                 %Entry{details: %{"outcome" => "issued"} = d} <- issues(),
+                 do: {d["credential"], d["access"], d["purpose"]}
+               )
+
+      assert length(seals()) == 1
+      refute log =~ @token
+      refute log =~ @push_token
     end
 
-    test "at a renewal, items whose push_ref differs from the start's are refused", ctx do
-      {ctx, pushing} = write_entry!(ctx, @branch)
+    test "at a renewal, a request by the name of one entry is answered that entry's credential",
+         ctx do
+      {ctx, pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+      assert post_secrets(ctx, request(ctx, credentials: all(ctx))).status == 200
+      WorkCredentialStub.calls()
+      running!(ctx)
 
-      WorkCredentialStub.issue(
-        ctx.adapter_seed,
-        WorkCredentialStub.credential(@token, @entry_apply)
-      )
+      for {name, token, items, access} <- [
+            {"push-1", @push_token, pushing, "write"},
+            {"work-1", @token, @entry_apply, "read"},
+            {"push-1", @push_token, pushing, "write"}
+          ] do
+        conn = post_secrets(ctx, request(ctx, credentials: [name]))
+        assert conn.status == 200, conn.resp_body
+        {_bytes, plaintext} = opened(ctx, conn)
+        assert plaintext["credentials"] == [name]
 
-      assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
-      assert work_row(ctx).issued_apply == pushing
+        assert [%{"credential" => ^name, "value" => ^token, "apply" => ^items}] =
+                 plaintext["values"]
+
+        assert [{"/calls/run-credential", %{"access" => ^access}}] = WorkCredentialStub.calls()
+      end
+    end
+
+    test "at a renewal, push-1 items whose push_ref differs from the start's are refused",
+         ctx do
+      {ctx, pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+      assert post_secrets(ctx, request(ctx, credentials: all(ctx))).status == 200
+      assert push_row(ctx).issued_apply == pushing
 
       # The start's items had another branch.
       started =
         Enum.map(@entry_apply, &Map.put(&1, "push_ref", "refs/heads/qory/wi_ffffffffffffffff"))
 
       {1, _rows} =
-        Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+        Repo.update_all(from(c in RunCredential, where: c.id == ^push_row(ctx).id),
           set: [issued_apply: started]
         )
 
       running!(ctx)
 
-      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["work-1"])) end)
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["push-1"])) end)
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
-      assert work_row(ctx).issued_apply == started
-      assert ["issued", "apply_moved"] = Enum.map(issues(), & &1.details["outcome"])
+      assert push_row(ctx).issued_apply == started
+      assert ["issued", "issued", "apply_moved"] = Enum.map(issues(), & &1.details["outcome"])
       assert log =~ "cause=apply_moved"
+      assert log =~ "credential=push-1"
+    end
+
+    test "a refusal of the write credential refuses the whole request, work-1's included",
+         ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+
+      WorkCredentialStub.issue_by_access(ctx.adapter_seed, %{
+        "read" => WorkCredentialStub.credential(@token, @entry_apply),
+        "write" => {403, ~s({"error":"access_not_granted"})}
+      })
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end)
+      assert conn.status == 409
+      assert conn.resp_body == ~s({"error":"credential_unavailable"})
+      refute log =~ @token
+
+      # Nothing is sealed, no items are kept, and each entry has its Activity entry: the
+      # read credential was issued and not sent, the push entry refused.
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == nil
+      refute inspect(Enum.map(issues(), & &1.details)) =~ "access_not_granted"
+
+      # The adapter's refusal is the run's, as for a refusal of the read credential: the run
+      # of the queue records it, and the run's page shows it as it shows any adapter's.
+      assert %DispatchRun{adapter_failure: :refused, adapter_failure_code: "access_not_granted"} =
+               Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+
+      assert [{"push-1", "refused"}, {"work-1", "other_credential_failed"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+
+      # The work entry's credential is still answered alone, as a request by the sessions'
+      # gateway for the read credential.
+      assert post_secrets(ctx, request(ctx, credentials: ["work-1"])).status == 200
+    end
+
+    test "a push-1 whose kept items moved rolls back the items kept for work-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+
+      started =
+        Enum.map(@entry_apply, &Map.put(&1, "push_ref", "refs/heads/qory/wi_ffffffffffffffff"))
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^push_row(ctx).id),
+          set: [issued_apply: started]
+        )
+
+      running!(ctx)
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"])) end)
+
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "cause=apply_moved"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      # Work-1's items were written before push-1's comparison failed, and are written no more.
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == started
+      assert seals() == []
+
+      assert [{"push-1", "apply_moved"}, {"work-1", "not_recorded"}] ==
+               Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
+    end
+
+    test "a seal that fails after both credentials were issued refuses both and keeps nothing",
+         ctx do
+      # The push entry's push_ref is longer than the 255 characters a sealed item may have:
+      # the adapter's answers pass every check, and the seal refuses the plaintext.
+      long = "refs/heads/qory/" <> String.duplicate("a", 300)
+      {ctx, _pushing} = push_entry!(ctx, long)
+      issue_both!(ctx)
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "could not be sealed"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      assert length(WorkCredentialStub.calls()) == 2
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == nil
+
+      assert [{"push-1", "seal_failed"}, {"work-1", "seal_failed"}] ==
+               Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
+    end
+
+    test "a failed check of the first credential refuses the second, whose call was sent",
+         ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      wider = [%{hd(@entry_apply) | "paths" => ["/other/*"]}]
+
+      WorkCredentialStub.issue_by_access(ctx.adapter_seed, %{
+        "read" => WorkCredentialStub.credential(@token, wider),
+        "write" => WorkCredentialStub.credential(@push_token, @entry_apply)
+      })
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      # Both calls are made together; the read call is among those sent.
+      assert Enum.any?(WorkCredentialStub.calls(), &match?({_, %{"access" => "read"}}, &1))
+
+      assert [{"work-1", "path_outside_entry"}, {"push-1", "other_credential_failed"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == nil
+    end
+
+    test "a work entry with write access is never issued", ctx do
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+          set: [access: :write]
+        )
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert issues() == []
+      assert work_row(ctx).issued_apply == nil
+      assert log =~ "the entry work-1 has write access"
+      refute log =~ @token
+    end
+
+    test "409 secrets_not_allowed for a key without allow_secrets that names push-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      list_key!(ctx.run, plain.public_key)
+      conn = post_secrets(ctx, request(ctx, credentials: ["push-1"]), key: {plain, seed})
+      assert conn.status == 409
+      assert code(conn) == "secrets_not_allowed"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+
+    test "404 for a key the run key does not list that names push-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+
+      %{access_key: later, pair: pair} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, ctx.gateway, %{
+          allow_secrets: true
+        })
+
+      conn = post_secrets(ctx, request(ctx, credentials: all(ctx)), key: {later, pair.secret})
+      assert conn.status == 404
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert issues() == []
+    end
+
+    test "409 credentials_differ for push-1 on a run that has no push entry, before any call",
+         ctx do
+      for credentials <- [["push-1"], ["work-1", "push-1"], all(ctx)] do
+        conn = post_secrets(ctx, request(ctx, credentials: credentials))
+        assert conn.status == 409
+        assert code(conn) == "credentials_differ"
+      end
+
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+      assert seals() == []
+    end
+
+    # The adapter limits the paths of a credential by its access (a read call is answered
+    # the read paths, a write call the push paths). Qory Apiary checks only that an item
+    # lies inside the entry, by prefix, and the entry has the paths of both entries.
+    test "a read call answered with the push paths is accepted: the adapter's duty", ctx do
+      pushing = [%{hd(@entry_apply) | "paths" => ["/acme/shop.git/git-receive-pack"]}]
+      WorkCredentialStub.issue(ctx.adapter_seed, WorkCredentialStub.credential(@token, pushing))
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+      assert %{"value" => @token, "apply" => ^pushing} = value(plaintext, "work-1")
     end
 
     test "at the run's start, takes the run's row before the work entry's, as a deletion does",
@@ -904,6 +1141,34 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       # locks its `run_credentials` row. A run's deletion locks the run, then that row.
       writes = statements() |> Enum.filter(&(&1 in [:copies, :work_entry])) |> Enum.dedup()
       assert writes == [:copies, :work_entry]
+    end
+
+    test "a request for both entries takes the run's row before either entry's update", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+      assert post_secrets(ctx, request(ctx, credentials: all(ctx))).status == 200
+      running!(ctx)
+
+      handler = "secrets-both-lock-order-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{source: source, query: query}, _config ->
+          if self() == test, do: send(test, {:statement, source, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      _earlier = statements()
+
+      assert post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"])).status == 200
+      :telemetry.detach(handler)
+
+      writes = statements() |> Enum.filter(&(&1 in [:run_lock, :work_entry])) |> Enum.dedup()
+      assert writes == [:run_lock, :work_entry]
     end
 
     test "at a renewal of work-1 alone, is answered a new credential and no model key", ctx do
@@ -1045,6 +1310,185 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
                Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
     end
 
+    test "the calls of a request for both entries run together: the time of one, not the sum",
+         ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      deadline!(5_000)
+
+      WorkCredentialStub.issue_by_access(
+        ctx.adapter_seed,
+        %{
+          "read" => WorkCredentialStub.credential(@token, @entry_apply),
+          "write" => WorkCredentialStub.credential(@push_token, @entry_apply)
+        },
+        %{"read" => 1_500, "write" => 1_500}
+      )
+
+      {time, conn} =
+        :timer.tc(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end, :millisecond)
+
+      assert conn.status == 200, conn.resp_body
+      # One after the other, the calls would take 3 seconds and more.
+      assert time >= 1_500 and time < 2_800, "took #{time} ms"
+      assert length(WorkCredentialStub.calls()) == 2
+      assert ["issued", "issued"] = Enum.map(issues(), & &1.details["outcome"])
+      assert work_row(ctx).issued_apply == @entry_apply
+    end
+
+    test "two calls that together pass the deadline: both are refused as timed out, nothing kept",
+         ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      deadline!(600)
+
+      WorkCredentialStub.issue_by_access(
+        ctx.adapter_seed,
+        %{
+          "read" => WorkCredentialStub.credential(@token, @entry_apply),
+          "write" => WorkCredentialStub.credential(@push_token, @entry_apply)
+        },
+        %{"read" => 5_000, "write" => 5_000}
+      )
+
+      {{time, conn}, log} =
+        with_log(fn ->
+          :timer.tc(
+            fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end,
+            :millisecond
+          )
+        end)
+
+      assert conn.status == 503
+      assert code(conn) == "unavailable"
+      assert time >= 600 and time < 1_300, "took #{time} ms"
+      assert log =~ "cause=timeout"
+      refute log =~ @token
+      refute log =~ @push_token
+
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert push_row(ctx).issued_apply == nil
+
+      assert [{"push-1", "timeout"}, {"work-1", "timeout"}] ==
+               Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
+
+      # No call outlives the deadline, and no process of the request is left.
+      assert no_calls_left?()
+    end
+
+    test "a call that fails at once cancels the slow one: the request does not wait", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      deadline!(3_000)
+
+      WorkCredentialStub.issue_by_access(
+        ctx.adapter_seed,
+        %{
+          "read" => WorkCredentialStub.credential(@token, @entry_apply),
+          "write" => {403, ~s({"error":"access_not_granted"})}
+        },
+        %{"read" => 5_000}
+      )
+
+      {{time, conn}, log} =
+        with_log(fn ->
+          :timer.tc(
+            fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end,
+            :millisecond
+          )
+        end)
+
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert time < 2_000, "took #{time} ms"
+      refute log =~ @token
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+
+      assert [{"push-1", "refused"}, {"work-1", "other_credential_failed"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+
+      # The slow call, which the stub answers after 5 seconds, is stopped with the request:
+      # no process is left within a second.
+      assert no_children?(Apiary.Runs.TaskSupervisor)
+      assert no_calls_left?()
+    end
+
+    test "the request that names one entry is bounded by the same deadline", ctx do
+      deadline!(500)
+
+      WorkCredentialStub.issue_by_access(
+        ctx.adapter_seed,
+        %{"read" => WorkCredentialStub.credential(@token, @entry_apply)},
+        %{"read" => 5_000}
+      )
+
+      {time, conn} =
+        :timer.tc(
+          fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end,
+          :millisecond
+        )
+
+      assert conn.status == 503
+      assert time >= 500 and time < 1_200, "took #{time} ms"
+      assert [%Entry{details: %{"outcome" => "timeout"}}] = issues()
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+      assert no_calls_left?()
+    end
+
+    test "an entry that fails its check before any call leaves the other entry no call", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+
+      # The push entry's connection is no longer its adapter's: `connection_gone`.
+      {key, _seed} = ctx.secrets_key
+      gateway = Repo.get!(Apiary.AccessKeys.AccessKey, key.id)
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^push_row(ctx).id),
+          set: [adapter_id: gateway.node_id]
+        )
+
+      conn = post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"]))
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+
+      # Only the entry that failed has an Activity entry: work-1 was not attempted.
+      assert [{"push-1", "connection_gone"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+    end
+
+    test "a check of the answer that raises is call_failed, and no token is logged", ctx do
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      {key, _seed} = ctx.secrets_key
+      key = Repo.preload(Repo.get!(Apiary.AccessKeys.AccessKey, key.id), [:workspace, :node])
+      run = Repo.get!(Run, ctx.run.id)
+
+      # A time `DateTime.from_unix!/1` refuses raises inside the check, after the call.
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.WorkCredential.issue_all(
+            run,
+            [work_row(ctx)],
+            key,
+            1_000_000_000_000_000_000,
+            System.monotonic_time(:millisecond) + 5_000
+          )
+        end)
+
+      assert result == {:error, :credential_unavailable}
+      assert log =~ "cause=call_failed"
+      refute log =~ @token
+      refute log =~ "** ("
+      assert [%Entry{details: %{"outcome" => "call_failed"}}] = issues()
+    end
+
     test "503 for a call that reached no one", ctx do
       fast_calls!()
       WorkCredentialStub.slow(0)
@@ -1161,8 +1605,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   end
 
   # The credential names of a run with a model key and a work entry, in the run
-  # configuration's order.
+  # configuration's order, and of a write run, which has a push entry after it.
   defp names(ctx), do: [start(ctx), "work-1"]
+  defp all(ctx), do: names(ctx) ++ ["push-1"]
 
   defp provider(ctx), do: Repo.get!(Connection, ctx.provider.id)
 
@@ -1188,9 +1633,24 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   defp statement("model_key_copies", "INSERT" <> _rest), do: :copies
   defp statement("run_credentials", "UPDATE" <> _rest), do: :work_entry
+
+  defp statement("runs", "SELECT" <> rest),
+    do: if(rest =~ "FOR KEY SHARE", do: :run_lock, else: :other)
+
   defp statement(_source, _query), do: :other
 
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
+  defp push_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :push)
+
+  # The adapter's answers to a write run: its read credential for the call with access
+  # `read`, and another for the call with access `write`. The adapter's items have no
+  # push_ref: the claim's entry has it.
+  defp issue_both!(ctx) do
+    WorkCredentialStub.issue_by_access(ctx.adapter_seed, %{
+      "read" => WorkCredentialStub.credential(@token, @entry_apply),
+      "write" => WorkCredentialStub.credential(@push_token, @entry_apply)
+    })
+  end
 
   # The plaintext of an answer, as the gateway opens it: its bytes and as decoded.
   defp opened(ctx, conn) do
@@ -1299,16 +1759,17 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   defp ended_lost!(ctx, changes), do: lost!(ctx, changes)
 
-  # The work entry of the run made a write entry whose items have the push_ref `branch`,
-  # as a claim of a write run records it, and the run configuration's digest after it.
-  # `{ctx, items}`, the context with the new digest.
-  defp write_entry!(ctx, branch) do
+  # The run made a write run, as the claim of a write run records it: a push entry beside
+  # its read work entry, whose items have the push_ref `branch`, and the run configuration's
+  # digest after it. `{ctx, items}`, the context with the new digest, and the push items.
+  defp push_entry!(ctx, branch) do
     pushing = Enum.map(@entry_apply, &Map.put(&1, "push_ref", branch))
+    item = %Apiary.WorkItems.WorkItem{public_id: Path.basename(branch)}
 
-    {1, _rows} =
-      Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
-        set: [access: :write, apply: pushing]
-      )
+    assert %RunCredential{apply: ^pushing} =
+             push = Apiary.Runs.RunCredentials.push_from(work_row(ctx), :write, item)
+
+    Repo.insert!(%{Ecto.put_meta(push, state: :built) | id: nil, issued_apply: nil})
 
     {key, _seed} = ctx.secrets_key
 
@@ -1320,12 +1781,44 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
              )
 
     assert settings =~ ~s("push_ref":"#{branch}")
+    assert settings =~ ~s("name":"push-1","purpose":"push")
     {put_in(ctx.attached.digest, digest), pushing}
   end
 
   defp running!(ctx) do
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "running"])
+  end
+
+  # The time the whole request has, in milliseconds, until the test ends.
+  defp deadline!(ms) do
+    saved = Application.get_env(:apiary, Apiary.Runs.SecretsRequest)
+
+    on_exit(fn ->
+      if saved,
+        do: Application.put_env(:apiary, Apiary.Runs.SecretsRequest, saved),
+        else: Application.delete_env(:apiary, Apiary.Runs.SecretsRequest)
+    end)
+
+    Application.put_env(:apiary, Apiary.Runs.SecretsRequest, deadline: ms)
+  end
+
+  # Whether no process of a call to an adapter is left, within a second of asking.
+  defp no_calls_left?, do: no_children?(Apiary.Adapters.Calls.Supervisor)
+
+  # Whether `supervisor` has no child, polled for up to a second.
+  defp no_children?(supervisor, tries \\ 20) do
+    cond do
+      Task.Supervisor.children(supervisor) == [] ->
+        true
+
+      tries == 0 ->
+        false
+
+      true ->
+        Process.sleep(50)
+        no_children?(supervisor, tries - 1)
+    end
   end
 
   # Calls to an adapter with short times, so a timeout takes milliseconds, until the test

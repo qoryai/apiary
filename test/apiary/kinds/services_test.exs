@@ -332,6 +332,7 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/event-target-write-unknown-state.json
                                   invalid/event-target-write-without-path.json
                                   run-configuration/credentials-forge-push.json
+                                  run-configuration/push.json
                                   invalid/run-configuration-credentials-push-ref-branch-name.json
                                   invalid/run-configuration-credentials-push-ref-tag.json
                                   model-keys-report/report-session.json

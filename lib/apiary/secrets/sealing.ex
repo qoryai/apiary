@@ -33,7 +33,7 @@ defmodule Apiary.Secrets.Sealing do
   **What it refuses**, each with an atom and nothing of the input: a recipient that is not
   a map (`:recipient`); identifiers outside their forms (`:identifiers`); an access key
   that fails a key check, or whose seal fails in `:crypto` (`:key`); a plaintext whose
-  digest is not the given one (`:digest`); credentials that are not 1 to 8 names, each
+  digest is not the given one (`:digest`); credentials that are not 1 to 16 names, each
   once (`:credentials`); values that are not one for each credential (`:values`); a value
   that is not 1 to 16,384 bytes of UTF-8 without a NUL, or whose `expires_at` or `apply`
   is outside the schema's form (`:value`); any other plaintext (`:plaintext`).
@@ -60,7 +60,7 @@ defmodule Apiary.Secrets.Sealing do
 
   # How far after the server's clock exp lies, in seconds.
   @lifetime 600
-  @max_credentials 8
+  @max_credentials 16
   @max_value_bytes 16_384
   @max_integer Integer.pow(2, 53) - 1
 
@@ -253,7 +253,7 @@ defmodule Apiary.Secrets.Sealing do
 
   defp recipient_key(_recipient), do: {:error, :key}
 
-  # The credentials sorted: 1 to 8 names of the grammar, each once.
+  # The credentials sorted: 1 to 16 names of the grammar, each once.
   defp credentials(credentials) do
     sorted = Enum.sort(credentials)
 

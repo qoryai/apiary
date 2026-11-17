@@ -380,6 +380,184 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       refute Map.has_key?(body, "domain")
     end
 
+    test "lists, after a move back, a version of the stage left, marked from move", ctx do
+      shape = "st_p9w5cvh311"
+      build = "st_6ns22c4pav"
+      people = %{"inputs" => [], "sequence" => [], "outputs" => []}
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      stages = [
+        Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
+        Map.merge(people, %{
+          "id" => shape,
+          "name" => "Shape",
+          "gate" => gate,
+          "inputs" => [%{"type" => "proposal", "required" => true}]
+        }),
+        Map.merge(people, %{
+          "id" => build,
+          "name" => "Build",
+          "gate" => gate,
+          "outputs" => [%{"type" => "screenshot", "required" => false}]
+        })
+      ]
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+      version = Repo.get!(Apiary.Processes.Version, version.id)
+
+      screenshot =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], stage_id: build)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: shape,
+            stage_state: :at_gate,
+            stage_round: 0,
+            stage_entry: 0,
+            stage_entered_at: DateTime.utc_now()
+          ]
+        )
+
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+
+      assert [] =
+               json_response(read(ctx, "/work-item"), 200)["inputs"] |> Enum.filter(& &1["from"])
+
+      decide!(ctx, :move,
+        stage_id: build,
+        to_stage_id: shape,
+        take_in: work_item.take_in,
+        left_stage_entered_at: DateTime.add(DateTime.utc_now(), -60, :second),
+        inserted_at: DateTime.add(DateTime.utc_now(), 60, :second)
+      )
+
+      conn = read(ctx, "/work-item")
+      body = json_response(conn, 200)
+
+      assert body["inputs"] == [
+               %{"type" => "proposal", "required" => true, "version" => nil},
+               %{
+                 "type" => "screenshot",
+                 "required" => false,
+                 "version" => %{"id" => screenshot.public_id, "number" => 1},
+                 "from" => "move"
+               }
+             ]
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      [_unmarked, marked] = ordered["inputs"]
+      assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
+    end
+
+    test "leaves out the move that resolved an escalation, and lists the escalation", ctx do
+      place!(ctx)
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+      now = DateTime.utc_now()
+
+      escalation =
+        Repo.insert!(%Apiary.Stages.Escalation{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          process_version_id: Apiary.Processes.version_for(work_item).id,
+          stage_id: @explore,
+          round: 1,
+          cause: :run_stopped,
+          points: [],
+          resolution: :move_back,
+          note: "Start again.",
+          resolved_by_id: ctx.scope.user.id,
+          resolved_at: now,
+          inserted_at: now
+        })
+
+      decide!(ctx, :move, escalation_id: escalation.id, to_stage_id: @explore)
+      decide!(ctx, :move, note: "Back to Explore.")
+
+      assert [%{"kind" => "escalation", "note" => "Start again."}, %{"kind" => "move"} = move] =
+               json_response(read(ctx, "/work-item"), 200)["notes"]
+
+      assert move["note"] == "Back to Explore."
+    end
+
+    test "lists, after a switch of track, the escalation in the notes and not the switch", ctx do
+      shape = "st_p9w5cvh311"
+      build = "st_6ns22c4pav"
+      people = %{"inputs" => [], "sequence" => [], "outputs" => []}
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      stages = [
+        Map.merge(people, %{
+          "id" => @explore,
+          "name" => "Explore",
+          "gate" => Map.put(gate, "tracks", ["standard", "fast"])
+        }),
+        Map.merge(people, %{
+          "id" => shape,
+          "name" => "Shape",
+          "gate" => gate,
+          "when" => %{"track" => "standard"}
+        }),
+        Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate})
+      ]
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ],
+        "stages" => stages
+      }
+
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+      version = Repo.get!(Apiary.Processes.Version, version.id)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: build,
+            stage_state: :escalated,
+            stage_round: 1,
+            stage_entry: 0,
+            stage_entered_at: DateTime.utc_now()
+          ]
+        )
+
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+      decide!(ctx, :approve, track: "fast", take_in: work_item.take_in)
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Apiary.Stages.Escalation{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: version.id,
+        stage_id: build,
+        round: 1,
+        cause: :escalate,
+        points: [%{"text" => "The change alters what the product does.", "action" => "run_again"}],
+        inserted_at: now
+      })
+
+      assert {:ok, %WorkItem{stage_id: ^shape}} =
+               Apiary.Stages.resolve_escalation(
+                 ctx.scope,
+                 work_item,
+                 {:switch, "standard"},
+                 "Write a spec first.",
+                 expect_stage: build
+               )
+
+      assert [%{"kind" => "escalation", "note" => "Write a spec first."}] =
+               json_response(read(ctx, "/work-item"), 200)["notes"]
+    end
+
     test "a work item the stage runner has not placed has the run's stage id alone", ctx do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
@@ -779,6 +957,80 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ] = by_type["explainer"]
 
       assert run_id == other.run_id
+    end
+
+    @tag needs: [:workflow_model, :factory, :secrets, :observability]
+    test "newest_version and changed_after_approval leave out a cancelled run's versions",
+         ctx do
+      place!(ctx)
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png <> "a"}])
+             ).status == 201
+
+      [first] = RunApiStubs.pushed()
+      decide!(ctx, :approve, versions: [first.public_id])
+
+      # Another run of the work item stores version 2 of the screenshot and the only
+      # version of the explainer; the work item then moves on to another stage.
+      other =
+        Repo.insert!(%DispatchRun{
+          organisation_id: ctx.dispatch_run.organisation_id,
+          workspace_id: ctx.dispatch_run.workspace_id,
+          work_item_id: ctx.work_item.id,
+          run_id: Ecto.UUID.generate(),
+          step: ctx.dispatch_run.step,
+          take_in: ctx.dispatch_run.take_in,
+          attempt: ctx.dispatch_run.attempt + 1,
+          of: ctx.dispatch_run.of + 1,
+          queued_at: Apiary.Dispatches.now()
+        })
+
+      registered =
+        Apiary.RunEventsFixtures.run_fixture(ctx.scope, %{
+          dispatch_run_id: other.id,
+          state: "running",
+          started_at: DateTime.utc_now()
+        })
+
+      for {type, filename, content_type, binary} <- [
+            {"screenshot", "one.png", "image/png", @png <> "b"},
+            {"explainer", "notes.md", "text/markdown", "x"}
+          ] do
+        store!(%{ctx | dispatch_run: other}, type, [file(filename, content_type, binary)],
+          stage_id: @explore
+        )
+      end
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_id: "st_p9w5cvh311"]
+        )
+
+      by_type = fn ->
+        body = json_response(read(ctx, "/artifacts"), 200)
+        Map.new(body["artifacts"], &{&1["type"], &1})
+      end
+
+      assert %{"newest_version" => 2, "changed_after_approval" => true} =
+               by_type.()["screenshot"]
+
+      assert %{"newest_version" => 1} = by_type.()["explainer"]
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^registered.id),
+          set: [cancel_requested_at: DateTime.utc_now()]
+        )
+
+      artifacts = by_type.()
+
+      assert %{"newest_version" => 1, "changed_after_approval" => false} =
+               artifacts["screenshot"]
+
+      assert %{"newest_version" => nil, "changed_after_approval" => false} =
+               artifacts["explainer"]
     end
   end
 

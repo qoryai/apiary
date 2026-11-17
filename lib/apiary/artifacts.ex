@@ -1724,6 +1724,28 @@ defmodule Apiary.Artifacts do
   def cancelled?(%{writer: :run, run: %{run: run}}), do: Apiary.Runs.Run.cancel_requested?(run)
   def cancelled?(_version), do: false
 
+  # name_order/1 is the sort key of an artifact's name among the names of one type: `main`
+  # first, then the others by their words, a number among them by its value, so
+  # `scenario-2` comes before `scenario-10`.
+  @doc false
+  @spec name_order(String.t()) :: {boolean, [String.t() | integer]}
+  def name_order(name) when is_binary(name) do
+    parts =
+      for part <- Regex.split(~r/(\d+)/, name, include_captures: true, trim: true),
+          do: if(part =~ ~r/^\d+$/, do: String.to_integer(part), else: part)
+
+    {name != "main", parts}
+  end
+
+  # newest_counted/1 is the newest version of `artifact` that no run a member cancelled
+  # wrote (`cancelled?/1`), for versions newest first; nil for none.
+  @doc false
+  @spec newest_counted(Artifact.t() | map) :: Version.t() | map | nil
+  def newest_counted(%{versions: versions}) when is_list(versions),
+    do: Enum.find(versions, &(not counted_out?(&1)))
+
+  def newest_counted(_artifact), do: nil
+
   # withdrawn?/1 is whether the newest version of `artifact` that no cancelled run wrote
   # (`cancelled?/1`) is a withdrawal (`withdraw/4`), for an artifact whose versions are
   # newest first, as `list/1` reads them and `Apiary.Stages.artifact_index/1` returns them,

@@ -150,14 +150,22 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
-      escalation: escalation(scope, get(status, :escalation), runs, outputs),
+      escalation: scope |> escalation(get(status, :escalation), runs, outputs) |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: gate_kind,
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
+      # The newest submission; the work item page fills `drafts` from its document
+      # (`drafts/1`), which it reads once per version.
+      submission: submission(version, index),
+      drafts: [],
       earlier: if(at, do: Enum.take(all, at), else: []),
+      # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
+      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
+      # Accept as it is and no Move back.
+      switch: switch_tracks(row, state),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
@@ -170,6 +178,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
+
+  defp switch_tracks(row, :escalated),
+    do: Stages.switch_tracks(row)
+
+  defp switch_tracks(_row, _state), do: []
 
   # The track the work item is on, with the name the process version declares, else the id.
   defp current_track(nil, _document), do: nil
@@ -458,9 +471,46 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       required: get(output, :required) == true,
       version: number_of(get(output, :version)),
       version_id: id_of(get(output, :version)),
+      names: for(named <- get(output, :names) || [], do: named_output(named)),
       check: if(check in @checks, do: check, else: :missing)
     }
   end
+
+  # The work item's newest submission, the type the process version's submit step names
+  # (`submit.type`, else `submission`), as the artifact index has it (`id`, its public
+  # id; `files`); nil for none. A withdrawn name and a version a cancelled run wrote count
+  # for none.
+  defp submission(version, index) do
+    type =
+      case get(version, :template) do
+        %{"submit" => %{"type" => type}} when is_binary(type) -> type
+        _other -> "submission"
+      end
+
+    index
+    |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
+    |> Enum.map(&Artifacts.newest_counted/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
+  end
+
+  # drafts/1 is the drafts of a submission's JSON document (`submission`, read with
+  # `Apiary.Stages.Artifacts.read_json/1`), in the order of its repositories: `%{path:,
+  # url:}` for each repository with a draft link. A document that could not be read, nil,
+  # has none.
+  @doc false
+  @spec drafts(map | nil) :: [%{path: String.t(), url: String.t()}]
+  def drafts(%{"repositories" => repositories}) when is_list(repositories) do
+    for %{"path" => path, "draft" => %{"url" => url}} <- repositories,
+        is_binary(path) and is_binary(url),
+        do: %{path: path, url: url}
+  end
+
+  def drafts(_document), do: []
+
+  # The newest version of one name of an output type (`Apiary.Stages.status/2`).
+  defp named_output(named),
+    do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
   defp escalation(_scope, nil, _runs, _outputs), do: nil
 
@@ -477,8 +527,31 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
+      # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
+      # it pushed name (`ApiaryWeb.RunOutputs`).
+      run_id: get(get(escalation, :run), :id),
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
+  end
+
+  # The escalation with `entry`, the name of the entry of `stage`'s sequence that the
+  # escalated run ran, else its workflow; nil with no run.
+  defp entry(nil, _stage), do: nil
+
+  defp entry(escalation, stage) do
+    workflow = escalation.run && escalation.run.workflow
+
+    entries =
+      Enum.flat_map(Map.get(stage, :sequence, []), fn item ->
+        case get(get(item, :loop), :body) do
+          body when is_list(body) -> body
+          _none -> [item]
+        end
+      end)
+
+    named = Enum.find(entries, &(get(&1, :workflow) == workflow))
+
+    Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
   # An escalation's points as the block "What the run needs from you" shows them: each
@@ -516,7 +589,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp indexed(artifact) do
     versions = get(artifact, :versions) || []
     approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
-    newest = List.first(versions)
+    # A version of a run a member cancelled is never the newer one.
+    newest = Enum.find(versions, &(get(&1, :cancelled) != true))
     approval = approved && List.last(get(approved, :approvals) || [])
     approved = approved && get(approved, :number)
     newest = newest && get(newest, :number)
@@ -562,6 +636,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     :used_up,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :confirm
   ]
@@ -744,14 +819,33 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
 
+  # Accept as it is and Move back, where the card offers a switch: it offers neither.
+  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
+
+  defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
+    do: {:error, :invalid}
+
+  # A switch to a track the card offers; `Apiary.Stages` refuses any other, with the reason.
+  defp checked({:resolve, {:switch, _track}, _note} = action, %{switch: [_ | _]}),
+    do: {:ok, action}
+
+  defp checked({:resolve, {:switch, _track}, _note}, _page), do: {:error, :invalid}
+
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
+
+  # A person's move resolves the escalation as a move back: refused where it offers a switch.
+  defp checked({:move, _id, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)
 
   defp checked({:request_changes, _note, nil} = action, _page), do: {:ok, action}
 
   defp checked({:request_changes, _note, id} = action, page),
     do:
-      if(Enum.any?(page.outputs, &(&1.version_id == id)),
+      if(
+        Enum.any?(
+          page.outputs,
+          &(&1.version_id == id or Enum.any?(&1.names, fn named -> named.version_id == id end))
+        ),
         do: {:ok, action},
         else: {:error, :invalid}
       )

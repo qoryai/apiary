@@ -128,7 +128,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.ExploreView
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
-  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, View, Workflow}
+  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
   # As on the run's page (`ApiaryWeb.RunLive.Show`).
@@ -144,7 +144,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @actions ~w(undo ask_close close explore_again answer_draft answer confirm reply page_draft open_fold open_frame)
   # The statuses where no run runs, so the page shows Reply and its form page
   # (`can_review?/3`).
-  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+  # The statuses of a run that gave no result: Run Explore again follows.
+  @no_result [:no_result, :lost, :time_limit, :cancelled]
+  @no_run [:questions, :confirm, :no_result, :lost, :time_limit, :cancelled, :used_up]
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -154,6 +156,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     :used_up,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :confirm
   ]
@@ -319,6 +322,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             <StageComponents.needs_block
               :if={!@flow.explore and needs?(@flow)}
               page={@flow}
+              scope={@current_scope}
+              number={@number}
               questions={@questions}
               question_path={
                 if @tab != questions_tab(@flow),
@@ -394,7 +399,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
-              <StageComponents.needs_block page={@flow} questions={@questions} />
+              <StageComponents.needs_block
+                page={@flow}
+                scope={@current_scope}
+                number={@number}
+                questions={@questions}
+              />
             </:needs>
             <:artifacts :if={@flow && (@flow.explore or !@flow.at_explore)}>
               <.artifacts_section
@@ -451,14 +461,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 index={@view.index}
                 scope={@current_scope}
                 number={@number}
+                label={verify_label(@view.stage)}
               />
             </:artifacts>
-            <:row :let={type}>
-              <ArtifactComponents.list
-                id={"work-item-tab-output-#{type}-row"}
-                artifacts={Enum.filter(@artifacts, &(&1.type == type and &1.name == "main"))}
+            <:row :let={output}>
+              <VerifyTab.verification_body
+                :if={output.kind == :verification}
+                id={"work-item-tab-output-#{output.type}-parts"}
+                verification={elem(output.read, 1)}
+                accepted={output[:accepted]}
+                anchors={output[:anchors] || %{}}
+              >
+                <ArtifactComponents.list
+                  id={"work-item-tab-output-#{output.type}-row"}
+                  artifacts={named(@artifacts, output.type, @view, @row)}
+                  scope={@current_scope}
+                  number={@number}
+                  label={verify_label(@view.stage)}
+                />
+              </VerifyTab.verification_body>
+              <VerifyTab.scenarios_body
+                :if={output.kind == :scenarios}
+                id="work-item-tab-scenarios"
+                scenarios={elem(output.read, 1)}
                 scope={@current_scope}
                 number={@number}
+              />
+              <ArtifactComponents.list
+                :if={output.kind not in [:verification, :scenarios]}
+                id={"work-item-tab-output-#{output.type}-row"}
+                artifacts={named(@artifacts, output.type, @view, @row)}
+                scope={@current_scope}
+                number={@number}
+                label={verify_label(@view.stage)}
               />
             </:row>
           </.stage_tab>
@@ -520,6 +555,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   attr :number, :integer, required: true
   attr :round, :boolean, default: true, doc: "whether a run's writer shows its round"
   attr :index, :list, default: nil, doc: "the approval marks; nil for all of `flow`'s"
+  attr :label, :any, default: nil, doc: "`ArtifactComponents.list/1`'s `label`"
 
   # The work item's artifacts, with their approval marks and Add a version.
   defp artifacts_section(assigns) do
@@ -534,6 +570,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         number={@number}
         add={@flow.can_add}
         round={@round}
+        label={@label}
       />
     </section>
     """
@@ -590,6 +627,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            view: nil,
            frames: [],
            frame_texts: %{},
+           stored_reads: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
            stage_error: nil,
@@ -1022,6 +1060,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  defp stage_spend("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    ask_if_run("stage_resolve", params, socket, {:switch, track},
+      title: gettext("Switch to %{track}?", track: switch_name(socket, track)),
+      action: gettext("Switch to %{track}", track: switch_name(socket, track)),
+      return_to: "work-item-stage-escalation-switch-#{track}",
+      note: escalation_note()
+    )
+  end
+
   defp stage_spend("stage_resolve", %{"how" => "move_back", "stage" => stage} = params, socket)
        when is_binary(stage) do
     ask_if_run("stage_resolve", params, socket, {:move, stage},
@@ -1055,6 +1103,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp stage_spend(_event, _params, _socket), do: nil
+
+  # The name of the track `id` that the escalation card offers a switch to; its id for none.
+  defp switch_name(socket, id) do
+    Enum.find_value(socket.assigns.flow.switch, id, &(&1.id == id && &1.name))
+  end
 
   # The note of the escalation card, which goes to the next run.
   defp escalation_note,
@@ -1306,6 +1359,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  defp stage_act("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    fresh(socket, params, &decided(&1, &2, {:resolve, {:switch, track}, note(params)}))
+  end
+
   defp stage_act("stage_resolve", params, socket) do
     case Map.fetch(@resolutions, params["how"]) do
       {:ok, how} -> fresh(socket, params, &decided(&1, &2, {:resolve, how, note(params)}))
@@ -1398,6 +1456,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       outputs: StageComponents.outputs_words(types)
     )
   end
+
+  # A switch names the gate that recorded the work item's track, not the stage it is in.
+  def refused({:track_not_offered, track, gate}, _flow) do
+    gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
+      stage: gate,
+      track: track
+    )
+  end
+
+  def refused({:already_on, track}, _flow),
+    do: gettext("The work item is already on %{track}.", track: track)
 
   def refused({:track_not_offered, track}, flow) do
     gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
@@ -1959,6 +2028,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         if Workflow.on?(scope),
           do: Workflow.page(scope, row, proposal: explore.status == :confirm)
 
+      {flow, reads} = with_drafts(flow, socket.assigns.stored_reads)
+
       flow =
         flow &&
           %{
@@ -2033,6 +2104,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can: can(scope, row, explore.status, flow),
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
+        stored_reads: reads,
         artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
@@ -2091,32 +2163,67 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
+    newest =
+      assigns.row
+      |> ExploreView.newest_outputs(stage.id, stage.outputs)
+      |> StageTab.newest(assigns.view.artifacts, assigns.row.take_in)
+
     frames =
       stage
-      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.frames(newest)
       |> then(&if &1 == [], do: StageTab.input_frames(assigns.flow, stage), else: &1)
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 
+    # The scenarios are read whatever the frame's fold, so a tab with none has no frame. A
+    # frame of the kind `:row` shows no text, so none is read for it.
     wanted =
-      for %{type: type, version: version, open: open} <- frames,
-          open or MapSet.member?(assigns.opened_frames, type),
-          do: {type, version}
+      for %{type: type, open: open} = frame <- frames,
+          frame.kind != :row,
+          open or frame.kind == :scenarios or MapSet.member?(assigns.opened_frames, type),
+          do: frame_key(frame, assigns)
 
-    texts =
-      Enum.reduce(wanted, assigns.frame_texts, fn key, texts ->
-        Map.put_new_lazy(texts, key, fn -> read_output(socket, key) end)
+    {texts, reads} =
+      Enum.reduce(wanted, {assigns.frame_texts, assigns.stored_reads}, fn key, {texts, reads} ->
+        if Map.has_key?(texts, key) do
+          {texts, reads}
+        else
+          {read, reads} = read_output(socket, key, reads)
+          {Map.put(texts, key, read), reads}
+        end
       end)
 
-    frames =
-      Enum.map(frames, fn %{type: type, version: version} = frame ->
-        Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
+    {frames, reads} =
+      Enum.flat_map_reduce(frames, reads, fn
+        %{kind: :row} = frame, reads ->
+          {[Map.put(frame, :read, nil)], reads}
+
+        frame, reads ->
+          frame
+          |> Map.put(:read, Map.get(texts, frame_key(frame, assigns), :unread))
+          |> verify_frame(socket, reads)
       end)
 
-    assign(socket, frames: frames, frame_texts: texts)
+    assign(socket, frames: anchored(frames), frame_texts: texts, stored_reads: reads)
   end
 
   defp framed(socket), do: assign(socket, :frames, [])
+
+  # The frames, the verification's with `anchors`: the DOM id of each scenario of the
+  # Scenarios frame by its number, which the matrix's Evidence cells link to
+  # (`VerifyTab.evidence_parts/2`).
+  defp anchored(frames) do
+    anchors =
+      for %{kind: :scenarios, read: {:scenarios, scenarios}} <- frames,
+          %{number: number, key: key} when is_integer(number) <- scenarios,
+          reduce: %{} do
+        anchors -> Map.put_new(anchors, number, "work-item-tab-scenarios-#{key}")
+      end
+
+    for frame <- frames do
+      if frame.kind == :verification, do: Map.put(frame, :anchors, anchors), else: frame
+    end
+  end
 
   # The member of a frame's approval (`StageTab.approved/3`) as the components show a
   # person (`View.person/2`), Former member for one whose account is gone: read for that
@@ -2128,8 +2235,232 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp approver(_socket, frame), do: frame
 
-  defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
+  # A frame's key among the texts the page read: its type and version; for the Scenarios
+  # frame, the stage, the take in and the newest version of each name of the types its
+  # scenarios are read from, so a new version of any of them reads them again.
+  defp frame_key(%{kind: :scenarios}, %{view: view, artifacts: artifacts, row: row}) do
+    ids =
+      for artifact <- artifacts,
+          artifact.type in ["verification", "demo-evidence", "demo-script" | VerifyTab.media()],
+          %{public_id: id} <- [Artifacts.newest_counted(artifact)],
+          do: id
+
+    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids)}
+  end
+
+  defp frame_key(%{type: type, version: version}, _assigns), do: {type, version}
+
+  # A verification is read as its parts (`VerifyTab.verification/1`), else, as any other
+  # output, as Markdown. The scenarios are those of the verified commit, that of the
+  # stage's verification, where it has one (`VerifyTab.scenarios/5`). `reads` is what the
+  # page read from the store before (`stored_reads`), by version: a version never
+  # changes, so each is read once. Each clause returns the read and `reads`.
+  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids}, reads) do
+    {commit, reads} = verified_commit(assigns, stage_id, take_in, reads)
+
+    reads =
+      assigns.artifacts
+      |> VerifyTab.documents(stage_id, take_in)
+      |> Enum.reduce(reads, &stored_json(&2, &1.public_id, &1))
+
+    scenarios =
+      VerifyTab.scenarios(
+        assigns.artifacts,
+        stage_id,
+        take_in,
+        commit,
+        &Map.get(reads, {:json, &1.public_id})
+      )
+
+    {{:scenarios, scenarios}, reads}
+  end
+
+  defp read_output(socket, {"verification", number} = key, reads) do
+    case verification_parts(socket.assigns.row, number, reads) do
+      {%{} = verification, reads} -> {{:verification, verification}, reads}
+      {nil, reads} -> {shown_output(socket, key), reads}
+    end
+  end
+
+  defp read_output(socket, key, reads), do: {shown_output(socket, key), reads}
+
+  defp shown_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))
+
+  # The commit that the stage's verification verified: that of the newest version of the
+  # verification `main` made at the stage that a run of the take in wrote and no member
+  # cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for none.
+  defp verified_commit(assigns, stage_id, take_in, reads) do
+    newest =
+      for %{type: "verification", name: "main"} = artifact <-
+            StageTab.of_take_in(assigns.artifacts, take_in),
+          versions = Enum.filter(artifact.versions, &(&1.stage_id == stage_id)),
+          %{withdrawn: false, number: number} <- [Artifacts.newest_counted(%{versions: versions})],
+          do: number
+
+    with [number] <- newest,
+         {%{commit: commit}, reads} <- verification_parts(assigns.row, number, reads) do
+      {commit, reads}
+    else
+      {nil, reads} -> {nil, reads}
+      [] -> {nil, reads}
+    end
+  end
+
+  # The parts of version `number` of the verification `main` (`VerifyTab.verification/1`),
+  # nil for a text with none, read and parsed once per version.
+  defp verification_parts(row, number, reads) do
+    key = {:verification, number}
+
+    case reads do
+      %{^key => parts} ->
+        {parts, reads}
+
+      _unread ->
+        parts =
+          case ExploreView.output(row, "verification", number) do
+            %{message: text} -> VerifyTab.verification(text)
+            _none -> nil
+          end
+
+        {parts, Map.put(reads, key, parts)}
+    end
+  end
+
+  # The flow with the drafts of the newest submission (`Workflow.drafts/1`), its JSON
+  # document read once per version (`stored_json/3`), and `reads`.
+  defp with_drafts(%{submission: %{id: id} = version} = flow, reads) do
+    reads = stored_json(reads, id, version)
+    {%{flow | drafts: Workflow.drafts(reads[{:json, id}])}, reads}
+  end
+
+  defp with_drafts(flow, reads), do: {flow, reads}
+
+  # `reads` with the JSON document of the version whose public id is `id`, read once.
+  defp stored_json(reads, id, version) do
+    key = {:json, id}
+
+    case reads do
+      %{^key => _read} ->
+        reads
+
+      _unread ->
+        # A read the store could not do is not kept, so the next read tries again.
+        case Stages.Artifacts.stored_json(version) do
+          {:ok, decoded} -> Map.put(reads, key, decoded)
+          {:error, :store_unavailable} -> reads
+        end
+    end
+  end
+
+  # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
+  # where it has no scenario; a verification read as its parts with the model families and
+  # the member who accepted the stage's escalation (`accepted/3`); a verification shown as
+  # its Markdown with that member too. Returns the frames and `reads`.
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, []}}, _socket, reads), do: {[], reads}
+
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, scenarios}} = frame, _socket, reads) do
+    count = length(scenarios)
+
+    caption =
+      ngettext(
+        "Version %{version} · %{count} scenario",
+        "Version %{version} · %{count} scenarios",
+        count,
+        version: ApiaryWeb.Format.number(frame.version)
+      )
+
+    {[Map.put(frame, :caption, caption)], reads}
+  end
+
+  defp verify_frame(%{read: {:verification, verification}} = frame, socket, reads) do
+    caption =
+      if verification.families != [],
+        do:
+          gettext("Version %{version} · Model families: %{families}",
+            version: ApiaryWeb.Format.number(frame.version),
+            families: Enum.join(verification.families, " · ")
+          )
+
+    {frame, reads} =
+      %{frame | kind: :verification} |> Map.put(:caption, caption) |> accepted(socket, reads)
+
+    {[frame], reads}
+  end
+
+  defp verify_frame(%{type: "verification", read: read} = frame, socket, reads)
+       when is_map(read) do
+    {frame, reads} = accepted(frame, socket, reads)
+    {[frame], reads}
+  end
+
+  defp verify_frame(frame, _socket, reads), do: {[frame], reads}
+
+  # The member who accepted as it is the newest escalation of the stage after the run
+  # pushed the frame's verification (`Apiary.Stages.accepted/2`), by name, as the page
+  # shows a person (`View.person/2`); nil for none. It is read again only when the stage's
+  # place changes (stage, state, round or entry), as an accept changes the state: `reads`
+  # keeps the one answer of the newest place.
+  defp accepted(%{version: number} = frame, %{assigns: assigns} = socket, reads) do
+    %{row: row, view: %{stage: stage}} = assigns
+
+    key =
+      {:accepted, stage.id, number,
+       {row.stage_id, row.stage_state, row.stage_round, row.stage_entry}}
+
+    case reads do
+      %{^key => name} ->
+        {Map.put(frame, :accepted, name), reads}
+
+      _unread ->
+        name = accepted_name(frame, socket)
+
+        reads =
+          reads
+          |> Map.reject(fn {read, _name} -> match?({:accepted, _, _, _}, read) end)
+          |> Map.put(key, name)
+
+        {Map.put(frame, :accepted, name), reads}
+    end
+  end
+
+  defp accepted_name(%{type: type, version: number}, %{assigns: assigns} = socket) do
+    pushed =
+      for %{type: ^type, name: "main"} = artifact <- assigns.view.artifacts,
+          %{number: ^number, inserted_at: at} <- artifact.versions,
+          do: at
+
+    with [at] <- pushed,
+         %{by: id, at: accepted} <- Stages.accepted(assigns.row, assigns.view.stage.id),
+         false <- DateTime.before?(accepted, at) do
+      socket |> scope() |> View.people(List.wrap(id)) |> View.person(id) |> Map.get(:name)
+    else
+      _none -> nil
+    end
+  end
+
+  # The artifacts of `type` that a frame of the tab lists, `main` first and then by name
+  # (`Apiary.Artifacts.name_order/1`): `main`, and each other name with a version that a
+  # run of the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take
+  # in's names stay off the tab.
+  defp named(artifacts, type, view, row) do
+    taken =
+      for artifact <- StageTab.of_take_in(view.artifacts, row.take_in),
+          into: MapSet.new(),
+          do: {artifact.type, artifact.name}
+
+    artifacts
+    |> Enum.filter(&(&1.type == type and (&1.name == "main" or {type, &1.name} in taken)))
+    |> Enum.sort_by(&Artifacts.name_order(&1.name))
+  end
+
+  # The words of the artifact rows in a frame: on the tab of a stage with a `verification`
+  # output, today's plain form (`VerifyTab.label/2`); elsewhere `ArtifactComponents.title/2`.
+  defp verify_label(%{outputs: outputs}) when is_list(outputs) do
+    if "verification" in outputs, do: &VerifyTab.label/2
+  end
+
+  defp verify_label(_stage), do: nil
 
   # Every run the page read, of any take in, for which stages have a tab.
   defp every_run(explore) do
@@ -2285,7 +2616,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       case status do
         :questions -> :"work_item.answer"
         :confirm -> :"work_item.confirm"
-        status when status in [:no_result, :lost, :cancelled] -> :"work_item.explore_again"
+        status when status in @no_result -> :"work_item.explore_again"
         :used_up -> :"work_item.close"
         _other -> nil
       end
@@ -2602,7 +2933,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp foot(_flow, _item, _earlier_runs), do: nil
 
   defp escalated?(%{state: :escalated, escalation: %{}}, status)
-       when status in [:no_result, :lost, :cancelled, :used_up, :confirm],
+       when status in [:no_result, :lost, :time_limit, :cancelled, :used_up, :confirm],
        do: true
 
   defp escalated?(_flow, _status), do: false

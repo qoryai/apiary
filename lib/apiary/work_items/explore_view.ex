@@ -139,8 +139,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     `duration_ms`), `:proposed` (`run`, `duration_ms`, `owner_id`), `:no_result`
   #     (`run`, `outcome`, the end cause and its code, `end_cause` and `end_detail`, as a
   #     run map has them, and `wrote`, the version of the proposal a failed run pushed
-  #     before it failed, nil for none), `:lost` or `:cancelled` (`run`). A run that
-  #     waits on an earlier run's open questions and wrote or reopened none ends as
+  #     before it failed, nil for none), `:lost`, `:time_limit` or `:cancelled` (`run`). A
+  #     run that waits on an earlier run's open questions and wrote or reopened none ends as
   #     `:proposed` with no `owner_id` where it wrote a proposal, as `:replied` (`run`,
   #     `replies`, how many replies to review comments it wrote, `duration_ms`) where it
   #     wrote none but at least one such reply, else as `:no_result` with `outcome`
@@ -1443,7 +1443,7 @@ defmodule Apiary.WorkItems.ExploreView do
           }
         ]
 
-      place when place in [:lost, :cancelled] ->
+      place when place in [:lost, :time_limit, :cancelled] ->
         [%{kind: place, at: at, run: run}]
     end
   end
