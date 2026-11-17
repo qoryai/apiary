@@ -16,6 +16,58 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
   refuses a value that is not such an id. A run may change the criterion of an open
   question, and keeps it unchanged, set or absent, while a question stays answered.
+<!-- feature: workflow_model -->
+- The tab of a stage that a track passed over whole reads "<stage> did not run", with the
+  reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
+  track that a person's move recorded, "You moved the work item past <stage>'s gate on
+  <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
+  name in place of "You". The
+  record of a stage lists an entry that a track or an `unless` passed over, with its reason.
+- A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
+  the verdict's schema checks it. A `track.id` that the gate of the run's stage does not
+  offer is `422` `invalid_artifact` with `names` `["track"]`, also for a push of the artifact
+  `verdict` with `POST artifacts`. A body with `"track": null` has none.
+- An approval at a gate records a track. `gate_decisions.track` is the id, and only an
+  approval or a move has one. With no track chosen, the approval records the track that the runs of
+  the stage proposed in their verdicts, if the gate offers it, else the track the work
+  item is on, if the gate offers it, else the gate's first track, else none. An approval
+  with a track that the gate does not offer is refused. A process with no tracks records
+  none. A person's move forward past a gate that offers tracks records the track the same
+  way, on the move. The runs that propose a track are the runs since the work item last
+  entered the stage. `Stages.track/1` is the track of a work item: the track of its newest
+  approval or move that has one, made in its current take in, so a work item taken in again
+  starts with none. `gate_decisions.take_in` is the take-in. An approval is refused when a
+  verdict of the stage cannot be read from the artifact store, and no track is guessed.
+  `stage_skips` can record the condition that
+  passed an entry or a whole stage over as `input` or `track`, with `negated` for an
+  `unless`; the record of a stage goes when the stage is entered again.
+- A process can declare `tracks`, each with an `id`, a `name` and a `description`, for
+  example Standard and Fast track. A gate lists the track ids it offers in `tracks`, and
+  a gate of kind `none` offers none. A stage, a loop, a workflow entry and an input take
+  `when` and `unless`, each with one condition: `{input: <type>}` or `{track: <id>}`. A
+  save is refused for a track id twice, a gate that offers an undeclared track, a `{track}`
+  condition that no earlier gate offers, an item with both `when` and `unless`, and any other
+  key on an input or a loop. A process
+  without `tracks` is saved as before. The stage runner follows the conditions: a stage whose
+  condition holds it back is passed over when the work item enters it, before it waits for
+  anything, with no run and no gate, and a record of the condition. A loop or an entry held
+  back starts no run. A required input held back is not waited for. A person's move into
+  a stage runs it whatever its condition. A later approval with another track changes the
+  stages that come after it.
+- The Workflows page shows the tracks and conditions of a process, read-only. A stage's card
+  and its Gate section show `Offers: ...` when its gate offers tracks. A stage, a loop or a
+  workflow entry with a condition on a track shows it on its card and in its panel (`Skipped
+  on Fast track`, `Runs on Fast track.`, `Runs on Standard only.`, `Runs on Standard or Slow
+  only.`), and so does a workflow in a loop. A workflow entry takes an optional `name` of 1 to
+  60 characters with at least one letter or sign, shown as `Name: ...` under its row in the
+  stage panel. The Details tab lists the tracks, and for a process that declares tracks its
+  line reads "Every work item of <workspace> goes through these stages in order, except a
+  stage that its track skips. Each save makes a new version." The History says `Tracks
+  changed.` when the tracks change, `<stage>: condition changed.` when the `when` or
+  `unless` of a stage changes, and `Changed the gate of <stage>: ... Offers: ...` when a gate's tracks
+  change, or `... Offers no track.` when a gate stops offering tracks. A change to the
+  condition of an input, a loop or an entry shows as a change of the inputs or the sequence.
+<!-- /feature -->
 - An artifact page that shows videos has a Speed row under each video, with the buttons
   0.5x, 1x, 1.5x and 2x: a click plays the video at that speed, and the pressed button
   shows the speed.
@@ -162,6 +214,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry is passed over is passed over too, and a stage does not wait for an undeclared
   workflow whose entry is passed over. A save is refused where the type is no output of
   an earlier stage, with the entry or output, the stage and the type in the message.
+- A workflow has a third access level, `write-no-push`: a run with a writable checkout
+  and no push credential, for a workflow that starts the app and runs checks on a branch
+  it must not change. A stack's `workflows.<name>.access` may be `read`, `write-no-push`
+  or `write`, and the run's documents have it as `access`. The run's work credential has
+  read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
+  `access: read` or `access: write-no-push` to lower the level the stack declares; the run
+  has the lower of the two. A run of a stage whose version has no entry for its workflow
+  has `read`. The run and the integration contracts are vendored at integrations
+  `55a22cb`.
+- Workspace settings › Workflows: under the Machine type line, the row of a workflow the
+  harness lists has one line with the access level of its runs, with no **Change**:
+  “Access: Read only (set by the harness)”, or Write, no push or Write and push for the
+  level the harness declares. Where the stage's entry in `process.yaml` has a lower level,
+  the line is “Access: Read only (set for this stage; the harness allows Write and
+  push)”. The row of a workflow the harness does not list has no Access line.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -1215,9 +1282,29 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   saves its features.
 - A switch on that page, off by default: **Features by person**. Where the server's
   config turned it on, the first start after the upgrade saves it on.
+- A template's `process.yaml` may declare the submit step of a run, `submit: {type,
+  send}`, as qory's harness contract v1 has it since qory `c0184bd`. A process version
+  made from the template keeps it in its template record. Qory Apiary refuses a template
+  whose `submit.type` is not a structured type that its `artifact_types` defines, with
+  the fix first: "set submit.type to a structured type of artifact_types: mockup is a
+  standard type".
+- A run that runs a workflow with write access has `submit: {type, send}` in its run
+  documents, from its process version, where the version has one. A forge's adapter may
+  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
+  that contains the forge's program that opens the draft pull request. Such a run then
+  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
+  starts with `submit` alone where no adapter declares one. A start-up whose
+  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
+  400 `invalid_request`, and nothing is stored.
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- The gate button of a stage read "Approve" and the stage's name, for example "Approve
+  Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
+  stage?" and its button reads **Approve**. The line about a missing output reads "Add
+  <outputs> before you approve this stage.", where it ended with the stage's name.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change
@@ -1819,6 +1906,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Removed
 
+- The standard artifact type `change`, with its JSON Schema and its view, which showed a
+  change's `url` as a link. The type `submission` of the software factory template
+  replaces it (vault decision 0216). A run's push of `change` now gets `422`
+  `unknown_type`, as any type the workspace does not have, and **Artifact types** no
+  longer lists `change`. Stored versions of `change` stay, and their page has a download
+  link for the file.
+
 <!-- feature: managed_organisations -->
 - An operator relates only to the workspaces it operates (under Changed), not to whole
   organisations. These parts of the earlier model are gone:
@@ -2067,6 +2161,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: workflow_model -->
+- `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
+  column `gate_decisions.track`, the track an approval chose, with a check that only an
+  approval has one; and, on `stage_skips`, `input` now nullable, a column `track`, a column
+  `negated`, false by default, and a check that a row has exactly one of `input` and
+  `track`. The columns are nullable or have a constant default, so adding them rewrites no
+  row. The first migration adds the checks without a scan, and the second validates them
+  with a scan that does not block writes. No stored row breaks them. Rolling back drops
+  `gate_decisions.track`, with every track that approvals recorded, and deletes the
+  `stage_skips` rows that a track condition wrote, which have no `input`, before it drops
+  `track` and `negated` and restores `input` as not null.
+- `stage_skips` (20261116120200 and 20261116120300): `workflow` and `stage_entry` now
+  nullable, so a row can record a stage passed over whole, with a check that a row has a
+  workflow and an entry or neither, and no loop entry without a workflow. Dropping a NOT
+  NULL takes no scan; the first migration adds the check without a scan, and the second
+  validates it with a scan that does not block writes. It changes no row. Rolling back
+  deletes every row with no workflow, each record of a stage passed over whole, and
+  restores the two columns as not null.
+- `gate_decisions` (20261116130000): a nullable column `take_in`, the take in of the work
+  item that a decision was made in. It has no default, so adding it rewrites no row, and a
+  decision stored before has none. Rolling back drops the column, with the take in of every
+  decision.
+- `work_items` (20261116140000): a nullable column `stage_entered_at`, when the stage
+  runner last entered the work item into its stage. It has no default, so adding it
+  rewrites no row. Rolling back drops the column, with that time of every work item.
+- `gate_decisions` (20261116140100 and 20261116140200): the check on `track` also allows a
+  `move`, so a person's move forward records a track. The first migration replaces the
+  check and adds it without a scan, and the second validates it with a scan that does not
+  block writes. It changes no row. Rolling back sets the track of every move to null, then
+  restores the check for an approval alone.
+<!-- /feature -->
+<!-- feature: workflow_model -->
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
   default, true for an approval that a gate `none` recorded with no member, with a check
   that such a row is an approval with no `user_id`. The default is a constant, so adding
@@ -2074,12 +2199,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`
+  takes `write-no-push` besides `read` and `write`, and `workspaces` gets a nullable column
+  `declared_access`, the access level each workflow of the harness declares at its last
+  read. The new check scans `run_harnesses` under a lock that blocks reads and writes, and
+  changes no row. Adding the column rewrites no row; a workspace has a value after the
+  next read of its harness. Rolling back drops the column and makes each `write-no-push`
+  run `read`.
+<!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at
   most one per workspace, of the kind operator, never of the workspace's organisation.
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
+  the submit program that an adapter's latest start-up declares, with a check that it is
+  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
+  reads and writes. It changes no row: Apiary stores the module that each adapter
+  declares at its next start-up.
+  Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.

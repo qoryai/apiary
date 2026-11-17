@@ -94,6 +94,7 @@ defmodule Apiary.WorkItems.WorkItem do
     field :stage_id, :string
     field :stage_state, Ecto.Enum, values: Apiary.Processes.Version.stage_states()
     field :stage_round, :integer
+    field :stage_entered_at, :utc_datetime_usec
     field :stage_entry, :integer
     field :loop_entry, :integer
 

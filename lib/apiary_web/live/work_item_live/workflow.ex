@@ -75,8 +75,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # page/2 is what the work item page draws of `row` under the workflow model: the
   # stages of its process version with the current one marked, the current stage with
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
-  # escalation, the artifacts' approval marks, and what the reader may do; nil for a work
-  # item the stage runner has not placed.
+  # escalation, the artifacts' approval marks, but those of a withdrawn name
+  # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
+  # stage runner has not placed.
   @spec page(Scope.t(), struct) :: map | nil
   def page(scope, row) do
     case Stages.status(row, scope) do
@@ -105,6 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     explore_id = Stages.explore_stage_id(row)
     runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
+    records = Stages.skip_records(row)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -120,9 +122,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gaps: lines(get(status, :gaps)),
       runs: runs,
       # The workflow entries the runner passed over in the take in (`Apiary.Stages.skips/1`).
-      skips: Stages.skips(row),
+      skips: records.skips,
       # Those of the earlier take ins, each with its take in (`Apiary.Stages.earlier_skips/1`).
-      earlier_skips: Stages.earlier_skips(row),
+      earlier_skips: records.earlier_skips,
+      # The stages the runner passed over whole in the take in (`Apiary.Stages.stage_skips/1`).
+      stage_skips: records.stage_skips,
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
@@ -132,7 +136,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: get(get(status, :gate) || %{}, :kind),
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
-      index: Enum.map(index, &indexed/1),
+      index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
@@ -665,6 +669,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
          {:ok, action} <- checked(action, page) do
       case action do
         {:approve, note} -> Stages.approve(scope, row, note, expect)
+        {:approve, note, track} -> Stages.approve(scope, row, note, [track: track] ++ expect)
         {:request_changes, note, av} -> Stages.request_changes(scope, row, note, av, expect)
         {:resolve, how, note} -> Stages.resolve_escalation(scope, row, how, note, expect)
         {:move, stage_id, note} -> Stages.move(scope, row, stage_id, note, expect)
@@ -678,6 +683,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # At Explore's gate, a member confirms the proposal (`Apiary.WorkItems.confirm/4`),
   # which approves the gate: the page offers no Approve and no Request changes there.
   defp checked({:approve, _note}, %{confirm_gate: true}), do: {:error, :confirm_gate}
+  defp checked({:approve, _note, _track}, %{confirm_gate: true}), do: {:error, :confirm_gate}
 
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}

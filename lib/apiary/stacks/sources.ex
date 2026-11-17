@@ -45,12 +45,12 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
   # the result's lists. A module whose file has a `stack` the `exports` do not list, a
   # `type` that is the key of no domain's type (`Apiary.Lingo.Domain.known_type?/1`), a
-  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
-  # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module whose file is not
-  # read, is in `not_readable` with the reason (`t:not_readable/0`), and the other modules
-  # are read. The file's checks run in that order, the costly check of the types last. The
-  # schema of the file comes before them, so an entry of `artifact_types` it refuses is
-  # reported first.
+  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` or a
+  # `submit` that does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module
+  # whose file is not read, is in `not_readable` with the reason (`t:not_readable/0`), and
+  # the other modules are read. The file's checks run in that order, the costly check of
+  # the types last. The schema of the file comes before them, so an entry of
+  # `artifact_types` it refuses is reported first.
   # A failed read of one file fails the source only where the failure is about the
   # source (`source_failed?/1`), such as an adapter out of reach or no time left. A name
   # listed twice counts once.
@@ -221,7 +221,12 @@ defmodule Apiary.Stacks.Sources do
   @type start :: %{source: source, commit: String.t(), template: template}
 
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
-  @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
+  @type stack :: %{
+          name: String.t() | nil,
+          base: map,
+          workflows: [String.t()],
+          access: %{String.t() => :read | :write_no_push | :write}
+        }
 
   @typedoc """
   A template of a source: `module`, the name of the module whose folder has its
@@ -235,7 +240,8 @@ defmodule Apiary.Stacks.Sources do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          submit: %{String.t() => String.t()} | nil
         }
 
   @typedoc """
@@ -246,8 +252,8 @@ defmodule Apiary.Stacks.Sources do
     * `{:unknown_type, type}`: the file's `type` is the key of no domain's workspace type
       (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
-    * `{:types, refusals}`: its `artifact_types` do not pass the check of a template's
-      types, or the schema refuses an entry with a name (`{:schema, type}`);
+    * `{:types, refusals}`: its `artifact_types` or its `submit` do not pass the check of
+      a template's types, or the schema refuses an entry with a name (`{:schema, type}`);
       `TemplateTypes.message/1` returns each refusal's text;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
       failed, or the file does not pass `Apiary.Harnesses.Reader.template/1` for a reason
@@ -809,8 +815,15 @@ defmodule Apiary.Stacks.Sources do
       |> Enum.take(@max_stacks)
       |> Enum.reduce_while([], fn stack, read ->
         case workflows(location, stack.file, version, deadline) do
-          {:ok, workflows} ->
-            {:cont, [%{name: stack.name, base: base(source, stack), workflows: workflows} | read]}
+          {:ok, access} ->
+            listed = %{
+              name: stack.name,
+              base: base(source, stack),
+              workflows: access |> Map.keys() |> Enum.sort(),
+              access: access
+            }
+
+            {:cont, [listed | read]}
 
           {:error, reason} ->
             {:halt, {:error, reason}}
@@ -1305,7 +1318,8 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The workflows of the stack file `file` at `location`, read at `at`, by name.
+  # The workflows of the stack file `file` at `location`, read at `at`, with the access
+  # level each declares, by name.
   defp workflows(location, file, at, deadline) do
     case read_file(location, file, at, deadline) do
       {:ok, nil, _version} ->
@@ -1313,7 +1327,7 @@ defmodule Apiary.Stacks.Sources do
 
       {:ok, content, _version} ->
         case Reader.stack(content) do
-          {:ok, %{workflows: workflows}} -> {:ok, workflows |> Map.keys() |> Enum.sort()}
+          {:ok, %{workflows: workflows}} -> {:ok, Reader.workflow_levels(workflows)}
           {:error, reason} -> {:error, refused_file(file, reason)}
         end
 
@@ -1525,27 +1539,38 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
-  # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
-  # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice has none. A harness that follows a branch is read at the commit
-  # the runs of the workspace's current version compose, where it has one
-  # (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness is not read: its
-  # names are those of its stored files (`Apiary.Processes.qory_workflows/2`). The
-  # Workflows page, the Harness page and Check again on a work item read the snapshot
-  # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
+  # chosen_declared/2 is the workflows the harness the workspace chose lists, with the
+  # access level each declares, read as the scope's person (`chosen_source/1`, `read/2`):
+  # of its stack, or of every stack where the choice has none. A harness that follows a
+  # branch is read at the commit the runs of the workspace's current version compose,
+  # where it has one (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness
+  # is not read: its workflows are those of its stored files
+  # (`Apiary.Processes.qory_workflows/2`). The Workflows page, the Harness page and Check
+  # again on a work item keep the result as the snapshot
+  # (`Apiary.Processes.record_declared/2`). `{:ok, %{name => level}}`, or the read's
   # `{:error, reason}`.
-  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
-  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+  @spec chosen_declared(Scope.t(), Workspace.t()) ::
+          {:ok, %{String.t() => :read | :write_no_push | :write}} | {:error, term}
+  def chosen_declared(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
       %{choice: :qory} = qory ->
-        {:ok, Apiary.Processes.qory_workflows(qory, workspace)}
+        {:ok, Apiary.Processes.qory_workflow_levels(qory, workspace)}
 
       repository ->
         with {:ok, source, stack} <- chosen_source(workspace),
              {:ok, stacks} <- read(scope, at_in_use(source, workspace, repository)) do
-          {:ok, workflows_of(stacks, stack)}
+          {:ok, levels_of(stacks, stack)}
         end
     end
+  end
+
+  @doc false
+  # chosen_workflows/2 is the workflow names `chosen_declared/2` lists, sorted:
+  # `{:ok, names}`, or the read's `{:error, reason}`.
+  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
+  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+    with {:ok, levels} <- chosen_declared(scope, workspace),
+         do: {:ok, levels |> Map.keys() |> Enum.sort()}
   end
 
   # `source` at the commit the runs of the workspace's current version compose, where
@@ -1558,14 +1583,23 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
-  # workflows_of/2 is the workflow names of `stacks`, as `read/2` returns them: of the
-  # stack named `stack`, or of every stack for nil.
-  @spec workflows_of([map], String.t() | nil) :: [String.t()]
-  def workflows_of(stacks, stack) do
+  # levels_of/2 is the access level of each workflow of `stacks`, as `read/2` returns
+  # them, by name: of the stack named `stack`, or of every stack for nil. A workflow that
+  # two stacks list takes the lower level.
+  @spec levels_of([map], String.t() | nil) :: %{
+          String.t() => :read | :write_no_push | :write
+        }
+  def levels_of(stacks, stack) do
+    rank = %{read: 0, write_no_push: 1, write: 2}
+
     stacks
     |> Enum.filter(&(is_nil(stack) or &1.name == stack))
-    |> Enum.flat_map(& &1.workflows)
-    |> Enum.uniq()
+    |> Enum.flat_map(&Map.to_list(&1.access))
+    |> Enum.reduce(%{}, fn {name, level}, levels ->
+      Map.update(levels, name, level, fn kept ->
+        if rank[level] < rank[kept], do: level, else: kept
+      end)
+    end)
   end
 
   @doc false
@@ -2150,8 +2184,9 @@ defmodule Apiary.Stacks.Sources do
   # source that offers no template, a connected or an assigned source that is not the
   # entry of its list, read from the database (`listed?/2`), or a template of a type that
   # is the key of no domain's type, which a page read before can still send
-  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a process
-  # `Apiary.Processes.validate/1` refuses.
+  # (`Apiary.Lingo.Domain.known_type?/1`), or whose `submit` names no structured entry of
+  # its `artifact_types` (`Apiary.Artifacts.TemplateTypes.check_submit/1`); or `{:error,
+  # errors}` for a process `Apiary.Processes.validate/1` refuses.
   @spec check_start(Scope.t(), start) ::
           :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
   def check_start(
@@ -2161,10 +2196,12 @@ defmodule Apiary.Stacks.Sources do
       when is_binary(commit) do
     with :ok <- source_allowed(scope, source),
          true <- listed?(scope, source),
-         true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
+         true <- not narrowed?(narrowing) and Domain.known_type?(template.type),
+         {:submit, :ok} <- {:submit, TemplateTypes.check_submit(template)} do
       Apiary.Processes.validate(template.process)
     else
       false -> {:error, :invalid}
+      {:submit, {:error, _refusals}} -> {:error, :invalid}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -2217,15 +2254,18 @@ defmodule Apiary.Stacks.Sources do
              )
            ) do
       {:ok,
-       %{
-         "source" => "repository",
-         "git" => git,
-         "commit" => commit,
-         "module" => template.module,
-         "stack" => template.stack,
-         "type" => template.type,
-         "version" => nil
-       }}
+       Apiary.Processes.with_submit(
+         %{
+           "source" => "repository",
+           "git" => git,
+           "commit" => commit,
+           "module" => template.module,
+           "stack" => template.stack,
+           "type" => template.type,
+           "version" => nil
+         },
+         template
+       )}
     end
   end
 

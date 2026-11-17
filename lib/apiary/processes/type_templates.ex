@@ -61,7 +61,6 @@ defmodule Apiary.Processes.TypeTemplates do
     {"mockup", :image},
     {"screenshot", :image},
     {"demo-video", :video},
-    {"change", :structured},
     {"proposal", :document},
     {"questions", :structured},
     {"review-comments", :structured},

@@ -136,15 +136,16 @@ defmodule Apiary.Harnesses.Walk do
   #
   # ## The access level
   #
-  # What the run may do on its target, `:read` or `:write`, with `:read` < `:write`. The
+  # What the run may do on its target: `:read`, `:write_no_push` (a writable checkout that
+  # has no push credential) or `:write`, with `:read` < `:write_no_push` < `:write`. The
   # walk never raises a level. Whichever harness applies, it is the lower of two levels:
   #
   #   * declared: `workflows.<workflow>.access`, read for the run's workflow
   #     (`Apiary.Harnesses.Reader.workflow_access/2`), of the base's `qory-stack.yaml`
   #     for a section with `extends`, and of the section's `workflows` for one without.
-  #     A value other than `write`, an absent key, an absent `workflows` entry, and a
-  #     base that is not read, one with no link that is not public, declare `:read`. A
-  #     public base has no link, is read, and its value counts;
+  #     A value other than `write` and `write-no-push`, an absent key, an absent
+  #     `workflows` entry, and a base that is not read, one with no link that is not
+  #     public, declare `:read`. A public base has no link, is read, and its value counts;
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
@@ -235,7 +236,7 @@ defmodule Apiary.Harnesses.Walk do
   @type walked :: %{
           optional(:ref_kind) => :branch | :tag | :commit | nil,
           required(:origin) => :file | :setting,
-          required(:access_level) => :read | :write,
+          required(:access_level) => :read | :write_no_push | :write,
           required(:target_version) => String.t() | nil,
           required(:document) => map | nil,
           required(:stack_id) => Ecto.UUID.t() | nil,
@@ -455,9 +456,12 @@ defmodule Apiary.Harnesses.Walk do
   defp recorded_for(%{stage_run?: true, workflow: workflow}), do: {:stage, workflow}
   defp recorded_for(%{workflow: workflow}), do: workflow
 
-  # The lower of the declared level and the recorded one, nil for none recorded.
-  defp lower(:write, recorded) when recorded in [nil, :write], do: :write
-  defp lower(_declared, _recorded), do: :read
+  # The lower of the declared level and the recorded one, nil for none recorded. The
+  # recorded level is `:read` or `:write` (`Apiary.Stacks.Stack`).
+  defp lower(declared, nil), do: declared
+  defp lower(:read, _recorded), do: :read
+  defp lower(_declared, :read), do: :read
+  defp lower(declared, _write), do: declared
 
   # The bytes of `section` as the row stores it, JSON in Postgres' text form, which has
   # more spaces than the YAML it came from may have.

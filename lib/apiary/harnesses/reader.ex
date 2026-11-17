@@ -58,6 +58,11 @@ defmodule Apiary.Harnesses.Reader do
   custom type's full definition. `template/1` returns the list as written, and nil when
   the key is absent. The schema has no list of standard types, so the caller checks what
   the list means for the workspaces made from the template.
+
+  The schema also takes an optional `submit`, with `type` and `send`. `template/1`
+  returns it as written, and nil when the key is absent. The schema cannot check that
+  `type` is a structured entry of `artifact_types`, so the caller checks `type` before it
+  records a process version from the template.
   """
 
   alias Apiary.Kinds.{Budget, Schema}
@@ -127,8 +132,10 @@ defmodule Apiary.Harnesses.Reader do
 
   @typedoc """
   A factory's `process.yaml`: its texts, the workspace type, the stack its workflows run
-  on, `process`, the `qory.process/v1` document as written, and `artifact_types`, the
-  artifact types its workspaces use as written, nil when the key is absent.
+  on, `process`, the `qory.process/v1` document as written, `artifact_types`, the
+  artifact types its workspaces use as written, nil when the key is absent, and
+  `submit`, the submit step of a run as written, `%{"type" => type, "send" => send}`,
+  nil when the key is absent.
   """
   @type template :: %{
           name: String.t(),
@@ -137,7 +144,8 @@ defmodule Apiary.Harnesses.Reader do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          submit: %{String.t() => String.t()} | nil
         }
 
   # qory's process.schema.json, under the application's priv.
@@ -242,16 +250,26 @@ defmodule Apiary.Harnesses.Reader do
 
   @doc """
   workflow_access/2 is the access level a stack's `workflows` declare for the workflow
-  `name`, `workflows.<name>.access`: `:write` for `write`, and `:read` for `read`, for
-  any other value, and where the key or the workflow is absent.
+  `name`, `workflows.<name>.access`: `:write` for `write`, `:write_no_push` for
+  `write-no-push` (a writable checkout that has no push credential), and `:read` for
+  `read`, for any other value, and where the key or the workflow is absent.
   """
-  @spec workflow_access(map, String.t()) :: :read | :write
+  @spec workflow_access(map, String.t()) :: :read | :write_no_push | :write
   def workflow_access(workflows, name) when is_map(workflows) and is_binary(name) do
     case workflows do
       %{^name => %{"access" => "write"}} -> :write
+      %{^name => %{"access" => "write-no-push"}} -> :write_no_push
       _read_or_none -> :read
     end
   end
+
+  @doc """
+  workflow_levels/1 is the access level of each workflow a stack's `workflows` list, by
+  name (`workflow_access/2`).
+  """
+  @spec workflow_levels(map) :: %{String.t() => :read | :write_no_push | :write}
+  def workflow_levels(workflows) when is_map(workflows),
+    do: Map.new(workflows, fn {name, _entry} -> {name, workflow_access(workflows, name)} end)
 
   @doc """
   exports/1 is the `exports` section of a root `qory.yaml` or `harness.yaml`: `{:ok,
@@ -419,7 +437,8 @@ defmodule Apiary.Harnesses.Reader do
        type: file["type"],
        stack: file["stack"],
        process: Apiary.Processes.with_description_line_breaks(file["process"]),
-       artifact_types: file["artifact_types"]
+       artifact_types: file["artifact_types"],
+       submit: file["submit"]
      }}
   end
 

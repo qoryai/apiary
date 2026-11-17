@@ -402,7 +402,8 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:error, {:limited, _seconds}} = Sources.exports(ctx.scope, harness)
     end
 
-    test "reading one gives its workflows and the base a document extends", ctx do
+    test "reading one gives its workflows, the level each declares and the base a document extends",
+         ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
       [_app, source] = Sources.repositories(ctx.scope)
 
@@ -411,8 +412,20 @@ defmodule Apiary.Stacks.SourcesTest do
       assert stack == %{
                name: "triage",
                base: %{"git" => @harness, "ref" => "HEAD", "stack" => "triage"},
-               workflows: ["fix", "triage"]
+               workflows: ["fix", "triage"],
+               access: %{"fix" => :write, "triage" => :read}
              }
+    end
+
+    test "levels_of/2 takes the lower level of a workflow two stacks list", _ctx do
+      stacks = [
+        %{name: "a", workflows: ["fix", "plan"], access: %{"fix" => :write, "plan" => :read}},
+        %{name: "b", workflows: ["fix"], access: %{"fix" => :write_no_push}}
+      ]
+
+      assert Sources.levels_of(stacks, nil) == %{"fix" => :write_no_push, "plan" => :read}
+      assert Sources.levels_of(stacks, "a") == %{"fix" => :write, "plan" => :read}
+      assert Sources.levels_of(stacks, "missing") == %{}
     end
   end
 
@@ -471,7 +484,8 @@ defmodule Apiary.Stacks.SourcesTest do
       assert stack == %{
                name: nil,
                base: %{"git" => @team, "ref" => "v1"},
-               workflows: ["review"]
+               workflows: ["review"],
+               access: %{"review" => :read}
              }
     end
 
@@ -934,6 +948,63 @@ defmodule Apiary.Stacks.SourcesTest do
 
       assert {:ok, %{templates: [%{module: "a", artifact_types: nil}], not_readable: []}} =
                Sources.templates(ctx.scope, source)
+    end
+
+    test "a submit that names a structured type of the file reaches the template", ctx do
+      file = template_file() <> submit_types() <> "submit:\n  type: facts\n  send: after_gate\n"
+      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+      assert {:ok, %{templates: [a, b], not_readable: []}} = Sources.templates(ctx.scope, source)
+      assert a.submit == %{"type" => "facts", "send" => "after_gate"}
+      assert b.submit == nil
+    end
+
+    test "a submit that names no structured type of the file is not readable", ctx do
+      for {type, refusal, text} <- [
+            {"other", {:submit, "other", :missing}, "add other to artifact_types as structured"},
+            {"mockup", {:submit, "mockup", :standard},
+             "set submit.type to a structured type of artifact_types: mockup is a standard type"},
+            {"draft", {:submit, "draft", {:base_view, "document"}},
+             "set submit.type to a type whose base_view is structured, not document"}
+          ] do
+        file =
+          template_file() <> submit_types() <> "submit:\n  type: #{type}\n  send: end_of_run\n"
+
+        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
+
+        assert {:ok, read} = Sources.templates(ctx.scope, source)
+        assert [%{module: "b"}] = read.templates
+        assert read.not_readable == [%{module: "a", reason: {:types, [refusal]}}]
+
+        assert TemplateTypes.message(refusal) == text
+      end
+    end
+
+    test "a submit with no artifact_types is not readable", ctx do
+      file = template_file() <> "submit:\n  type: facts\n  send: end_of_run\n"
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: reason}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert reason == {:types, [{:submit, "facts", :missing}]}
+    end
+
+    # An artifact_types of a standard type, a document type and a structured type.
+    defp submit_types do
+      """
+      artifact_types:
+        - name: mockup
+        - name: draft
+          base_view: document
+          size_limit: 65536
+          max_files: 1
+        - name: facts
+          base_view: structured
+          size_limit: 65536
+          max_files: 1
+          json_schema: {type: object}
+      """
     end
 
     # A clock of the read's checks, on time for the first `on_time` reads and 60 s past the

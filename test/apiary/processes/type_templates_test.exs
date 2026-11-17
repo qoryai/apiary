@@ -389,10 +389,10 @@ defmodule Apiary.Processes.TypeTemplatesTest do
   end
 
   describe "workflows/0 and artifact_types/0" do
-    test "are the Qory harness's workflows and the eleven standard types" do
+    test "are the Qory harness's workflows and the ten standard types" do
       assert TypeTemplates.workflows() == ["explore-a-ticket"]
       assert TypeTemplates.workflows() == Qory.workflows(Qory.current(), "software")
-      assert length(TypeTemplates.artifact_types()) == 11
+      assert length(TypeTemplates.artifact_types()) == 10
       assert %{name: "review-comments", base_view: :structured} in TypeTemplates.artifact_types()
       assert %{name: "proposal", base_view: :document} in TypeTemplates.artifact_types()
     end
@@ -402,7 +402,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
     test "the template's type offers the standard types and the template's custom types" do
       template = Qory.template(Qory.current())
 
-      assert %{name: "branch", base_view: :structured} in TypeTemplates.offered_types(
+      assert %{name: "submission", base_view: :structured} in TypeTemplates.offered_types(
                template.type
              )
 

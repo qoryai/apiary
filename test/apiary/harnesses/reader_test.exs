@@ -129,9 +129,10 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.stack("workflows: {}\n") == {:error, :invalid_stack}
     end
 
-    test "a workflow declares write only with access: write, and read otherwise" do
+    test "a workflow declares write with access: write, write-no-push with access: write-no-push, and read otherwise" do
       workflows = %{
         "explore" => %{"access" => "write"},
+        "verify" => %{"access" => "write-no-push"},
         "review" => %{"access" => "read"},
         "fix" => %{"time_limit" => "45m"},
         "plan" => %{"access" => "admin"},
@@ -139,11 +140,31 @@ defmodule Apiary.Harnesses.ReaderTest do
       }
 
       assert Reader.workflow_access(workflows, "explore") == :write
+      assert Reader.workflow_access(workflows, "verify") == :write_no_push
 
       for name <- ~w(review fix plan test absent),
           do: assert(Reader.workflow_access(workflows, name) == :read, name)
 
       assert Reader.workflow_access(%{}, "explore") == :read
+    end
+
+    test "workflow_levels/1 is the level of each listed workflow, by name" do
+      workflows = %{
+        "explore" => %{"access" => "write"},
+        "verify" => %{"access" => "write-no-push"},
+        "review" => %{"access" => "read"},
+        "fix" => %{"time_limit" => "45m"}
+      }
+
+      assert Reader.workflow_levels(workflows) ==
+               %{
+                 "explore" => :write,
+                 "verify" => :write_no_push,
+                 "review" => :read,
+                 "fix" => :read
+               }
+
+      assert Reader.workflow_levels(%{}) == %{}
     end
   end
 
@@ -571,6 +592,30 @@ defmodule Apiary.Harnesses.ReaderTest do
       end
     end
 
+    test "returns nil for submit when the key is absent" do
+      assert {:ok, %{submit: nil}} = Reader.template(source(@template))
+    end
+
+    test "returns submit as written" do
+      for send <- ["end_of_run", "after_gate"] do
+        assert {:ok, %{submit: %{"type" => "customer-facts", "send" => ^send}}} =
+                 read(with_value("submit", "{type: customer-facts, send: #{send}}"))
+      end
+    end
+
+    test "refuses a submit the schema refuses" do
+      for value <- [
+            "customer-facts",
+            "{type: customer-facts}",
+            "{send: end_of_run}",
+            "{type: customer-facts, send: at_once}",
+            "{type: Customer_Facts, send: end_of_run}",
+            "{type: #{String.duplicate("a", 65)}, send: end_of_run}",
+            "{type: customer-facts, send: end_of_run, command: make}"
+          ],
+          do: assert(read(with_value("submit", value)) == {:error, :invalid_template}, value)
+    end
+
     test "refuses an artifact_types that is not a list" do
       for value <- ["screenshot", "{name: screenshot}", "null", "1"],
           do:
@@ -582,10 +627,10 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "173471878608f4d7f9de2b3eaf8b21c6715adbac"
+  @qory_ref "c0184bd720732a9ff8d8cff8be36e30077d19421"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "7a9087ce63e4f070269835f79783205e8970f9a3dfc56a066cff99a4f23d479a"
+    "process.schema.json" => "fc2e475e64a13f2549f7b72f86f477794a0cb766b5b2b426fa283b9a652dc28e"
   }
 
   describe "the file vendored from qory" do

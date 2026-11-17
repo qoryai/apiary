@@ -95,7 +95,7 @@ defmodule Apiary.ArtifactsTest do
   # The audit entries of a change of a type, but the one of the sign-up's custom type.
   defp type_entries do
     Repo.all(from e in Entry, where: e.action == "artifact_type.edit")
-    |> Enum.reject(&(&1.details["type"] == "branch"))
+    |> Enum.reject(&(&1.details["type"] == "submission"))
   end
 
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
@@ -132,7 +132,7 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "types/1 and type/2" do
-    test "list the eleven standard types first, then the workspace's custom types by name", %{
+    test "list the ten standard types first, then the workspace's custom types by name", %{
       scope: scope
     } do
       {:ok, _type} =
@@ -145,7 +145,7 @@ defmodule Apiary.ArtifactsTest do
 
       assert names ==
                ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
-                  change proposal questions review-comments verdict demo-findings)
+                  proposal questions review-comments verdict demo-findings)
     end
 
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
@@ -161,7 +161,7 @@ defmodule Apiary.ArtifactsTest do
       assert types["screenshot"].base_view == :image
       assert types["demo-video"].base_view == :video
 
-      for name <- ~w(change questions verdict) do
+      for name <- ~w(questions verdict) do
         assert types[name].base_view == :structured
         assert types[name].view == String.to_existing_atom(name)
         assert types[name].max_files == 1
@@ -221,10 +221,10 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "with a list, only its types and the always-on types are shown", %{scope: scope} do
-      show!(scope.workspace, ["mockup", "change"])
+      show!(scope.workspace, ["mockup", "screenshot"])
 
       assert names(Artifacts.types(scope.workspace)) ==
-               ~w(mockup change proposal questions review-comments verdict demo-findings)
+               ~w(mockup screenshot proposal questions review-comments verdict demo-findings)
 
       assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
       assert Artifacts.type(scope.workspace, "explainer") == nil
@@ -597,7 +597,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
 
       assert stored(ctx.scope) ==
-               ~w(acceptance-criteria explainer decision-record screenshot demo-video change)
+               ~w(acceptance-criteria explainer decision-record screenshot demo-video)
 
       assert Artifacts.type(ctx.scope.workspace, "mockup") == nil
       refute "mockup" in names(Artifacts.types(ctx.scope.workspace))
@@ -605,13 +605,28 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "on adds the name back in the standard order", ctx do
-      show!(ctx.scope.workspace, ~w(acceptance-criteria change))
+      show!(ctx.scope.workspace, ~w(acceptance-criteria screenshot))
 
       assert {:ok, %Type{name: "mockup", shown: true}} =
                Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", true)
 
-      assert stored(ctx.scope) == ~w(acceptance-criteria mockup change)
+      assert stored(ctx.scope) == ~w(acceptance-criteria mockup screenshot)
       assert %Type{name: "mockup"} = Artifacts.type(ctx.scope.workspace, "mockup")
+    end
+
+    test "a name of no standard type in the list, such as change, is ignored and dropped",
+         ctx do
+      show!(ctx.scope.workspace, ~w(acceptance-criteria change))
+
+      assert names(Artifacts.types(ctx.scope.workspace)) ==
+               ~w(acceptance-criteria proposal questions review-comments verdict)
+
+      assert Artifacts.type(ctx.scope.workspace, "change") == nil
+
+      assert {:ok, %Type{name: "mockup", shown: true}} =
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", true)
+
+      assert stored(ctx.scope) == ~w(acceptance-criteria mockup)
     end
 
     test "stores no always-on name", ctx do
@@ -1442,28 +1457,8 @@ defmodule Apiary.ArtifactsTest do
          %{run: run} = context do
       push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
 
-      assert {:ok, _version} =
-               push.("change", %{
-                 "url" => "https://forge.example.com/acme/shop/pull/4",
-                 "title" => "Gift cards"
-               })
-
-      assert {:ok, _version} = push.("change", %{"url" => "http://localhost:8080/changes/4"})
-
-      for url <- [
-            "ftp://forge.example.com/4",
-            "javascript:alert(1)",
-            "https://user@forge.example.com/",
-            "https://",
-            "https://forge.example.com/a b"
-          ] do
-        assert {:error, {:invalid, {:schema, 0, %{path: "#/url"}}}} =
-                 push.("change", %{"url" => url}),
-               "#{url} is taken"
-      end
-
       assert {:error, {:invalid, {:schema, 0, %{path: "#", error: extra}}}} =
-               push.("change", %{"url" => "https://a.example", "extra" => 1})
+               push.("verdict", %{"verdict" => "passed", "extra" => 1})
 
       assert extra =~ "'extra'"
 
