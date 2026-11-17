@@ -153,7 +153,7 @@ defmodule Apiary.Artifacts do
   # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
   # stored all the same. A push of a standard type reads nothing for the entry. Where the
   # instance's public address is not one the entry takes (plain http to a host that is
-  # not `localhost` or a loopback address), the push is `{:error, :public_url}` before
+  # not `localhost`, `127.0.0.1` or `[::1]`), the push is `{:error, :public_url}` before
   # any file is kept, with a log line that starts with the fix: set `PUBLIC_URL`. A
   # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
   # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
@@ -1201,8 +1201,8 @@ defmodule Apiary.Artifacts do
   # any other node gets no entry.
   #
   # `{:error, :public_url}` where the stable url is not one a watch entry takes: the
-  # instance's `PUBLIC_URL` is plain http to a host other than `localhost` or a loopback
-  # address, or has a character outside RFC 3986, such as a host in Unicode. The boot
+  # instance's `PUBLIC_URL` is plain http to a host other than `localhost`, `127.0.0.1`
+  # or `[::1]`, or has a character outside RFC 3986, such as a host in Unicode. The boot
   # accepts both (`config/runtime.exs`), and the error is logged with the fix. It comes
   # before `keep/6`, so a refused push keeps no file in the store.
   defp watch_entry(%{actor: :run, run_id: run_id}, held, %Type{standard: false, name: name}) do
