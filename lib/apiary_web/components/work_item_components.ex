@@ -21,7 +21,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   #     The ticket's full form is this title followed by its key (`"acme/shop#1204"`), or
   #     the title alone without a key (`BacklogComponents.full_form/1`);
   #   * `:status` - at Explore `:queued`, `:running`, `:questions` (Qory wrote some), `:used_up`
-  #     (the take in used its runs), `:no_result`, `:lost` or `:cancelled` (its run gave
+  #     (the take in used its runs), `:no_result`, `:lost`, `:time_limit` or `:cancelled` (its run gave
   #     nothing to show); then `:confirm`, `:shape`, `:closed` or `:undone`;
   #   * `:run` - at Explore and after, its latest run: `:attempt` and `:of` (run 2 of 3),
   #     and once it has one, `:id` (its `rn_` id), `:path`, `:state`, `:outcome`
@@ -99,8 +99,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   @stages [:explore, :confirm, :shape]
   @ended [:closed, :undone]
-  @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :cancelled]
-  @no_result [:no_result, :lost, :cancelled]
+  @exploring [:queued, :running, :questions, :used_up, :no_result, :lost, :time_limit, :cancelled]
+  @no_result [:no_result, :lost, :time_limit, :cancelled]
   # The end causes of a run that ended before it started: at its claim, because the claim
   # could not form what the run is made from (`Apiary.Dispatches.Handover`), while it
   # waited for its environment image's build, which failed (`Apiary.Environments`), or
@@ -290,6 +290,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp words_of(%{status: :no_result}), do: gettext("Explore ended without a result")
   defp words_of(%{status: :lost}), do: gettext("Explore's run was lost")
+  defp words_of(%{status: :time_limit}), do: gettext("Explore's run reached its time limit")
   defp words_of(%{status: :cancelled}), do: gettext("Explore's run was cancelled")
   defp words_of(%{status: :shape}), do: gettext("Ready for Shape")
 
@@ -335,8 +336,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp mark_of(%{status: status}, can_act) when status in [:questions, :used_up],
     do: if(can_act, do: :wait, else: :wait_other)
 
-  defp mark_of(%{status: status}, _can_act) when status in [:no_result, :lost, :cancelled],
-    do: :err
+  defp mark_of(%{status: status}, _can_act)
+       when status in [:no_result, :lost, :time_limit, :cancelled],
+       do: :err
 
   defp mark_of(%{status: :shape}, _can_act), do: :ready
   defp mark_of(%{status: status}, _can_act) when status in [:closed, :undone], do: :closed
@@ -650,7 +652,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * Explore, questions (`:questions`): with `can_act`, that answering the questions runs
       Explore again, and Answer the questions (a link to Explore's tab, `explore_path`,
       where it is given); without, that a member answers next.
-    * Explore, no result (`:no_result`, `:lost`, `:cancelled`): what happened to the run;
+    * Explore, no result (`:no_result`, `:lost`, `:time_limit`, `:cancelled`): what happened to the run;
       with `can_act`, Run Explore again (`"explore_again"`), which starts the next run of
       the take in.
     * Explore, the run limit (`:used_up`, and questions or no result at the take in's
@@ -852,6 +854,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp step_badge(%{status: :lost} = assigns),
     do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Lost")}</.badge>|
+
+  defp step_badge(%{status: :time_limit} = assigns),
+    do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Time limit")}</.badge>|
 
   defp step_badge(%{status: :cancelled} = assigns),
     do: ~H|<.badge color="error" class="q-wi-badge">{gettext("Cancelled")}</.badge>|
@@ -1287,6 +1292,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp no_result_line(:lost, run),
     do:
       rich_gettext("%{attempt} was lost before it ended, so Explore has no result.",
+        attempt: attempt_words(run)
+      )
+
+  defp no_result_line(:time_limit, run),
+    do:
+      rich_gettext("%{attempt} reached its time limit, so Explore has no result.",
         attempt: attempt_words(run)
       )
 
@@ -2131,7 +2142,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     * an undone work item (`:undone`): that the take in was undone before a run started,
       whether a run of it waited or the take in queued none; a closed work item whose
       take in queued no run (`:closed`): who closed it and when (`ended_tab_words/2`);
-    * a run without a result (no result, lost or cancelled): what happened, and the run's
+    * a run without a result (no result, lost, at its time limit or cancelled): what happened, and the run's
       page; for a run that ended at its claim, before it started (`:end_cause`
       `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone` or
       `:write_without_work_item`),
@@ -5674,6 +5685,13 @@ defmodule ApiaryWeb.WorkItemComponents do
            gettext("Qory Apiary has no result from the run. There is nothing to show or approve.")
        )}
 
+  defp no_result_words(%{place: :time_limit, wrote: version}, _earlier)
+       when is_integer(version),
+       do: {"hero-clock-micro", gettext("The run reached its time limit."), nil}
+
+  defp no_result_words(%{place: :time_limit}, earlier),
+    do: {"hero-clock-micro", gettext("The run reached its time limit."), nothing_left(earlier)}
+
   defp no_result_words(%{state: :cancelled, wrote: version}, _earlier)
        when is_integer(version),
        do: {"hero-stop-circle-micro", gettext("The run was cancelled."), nil}
@@ -6443,7 +6461,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       where it has no owner;
     * `:replied` - Qory wrote no proposal and no question, but wrote replies to review
       comments: to how many (`replies`) and after how long (`duration`);
-    * `:no_result`, `:lost`, `:cancelled` - a run (`run`) that gave no result, and why
+    * `:no_result`, `:lost`, `:time_limit`, `:cancelled` - a run (`run`) that gave no result, and why
       (`outcome`: `:error`, `:none` or `:refused`), or for a failed run that pushed a
       proposal first, its version (`wrote`); for a run the gateway stopped for
       want of a model key (`end_cause: :run_refused`, `end_detail: "model_key_missing"`),
@@ -6474,6 +6492,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       :replied,
       :no_result,
       :lost,
+      :time_limit,
       :cancelled,
       :explore_again,
       :confirmed,
@@ -6544,7 +6563,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, default: nil, doc: "the time it is drawn at; now by default"
 
   def thread_event(%{kind: kind, run: %{id: nil}} = assigns)
-      when kind in [:started, :no_result, :lost, :cancelled],
+      when kind in [:started, :no_result, :lost, :time_limit, :cancelled],
       do: ~H""
 
   def thread_event(%{kind: :closed, actor: nil, reason: nil} = assigns), do: ~H""
@@ -6559,7 +6578,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           assigns.kind == :started &&
             gettext("Attempt %{attempt}", attempt: Format.number(assigns.run.attempt)),
         qory: assigns.kind in [:started, :asked, :proposed, :replied],
-        bad: assigns.kind in [:no_result, :lost, :cancelled],
+        bad: assigns.kind in [:no_result, :lost, :time_limit, :cancelled],
         at_words: time_tag(assigns.at, Format.relative(assigns.at, now)),
         href: if(out?(assigns.url), do: assigns.url),
         instruction: assigns.kind == :taken_in && instruction(assigns.first_instruction)
@@ -6630,6 +6649,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_icon(:answered), do: "hero-chat-bubble-left-right-micro"
   defp event_icon(:no_result), do: "hero-exclamation-triangle-micro"
   defp event_icon(:lost), do: "hero-signal-slash-micro"
+  defp event_icon(:time_limit), do: "hero-clock-micro"
   defp event_icon(:cancelled), do: "hero-stop-circle-micro"
   defp event_icon(:explore_again), do: "hero-arrow-path-micro"
   defp event_icon(:confirmed), do: "hero-check-micro"
@@ -6928,6 +6948,14 @@ defmodule ApiaryWeb.WorkItemComponents do
         stage: stage
       )
 
+  defp event_line(%{kind: :time_limit, stage: stage, run: run}) when is_binary(stage),
+    do:
+      rich_gettext(
+        "Attempt %{attempt} reached its time limit, so %{stage} has no result",
+        attempt: attempt_ref(run),
+        stage: stage
+      )
+
   defp event_line(%{kind: :cancelled, stage: stage, run: run}) when is_binary(stage),
     do:
       rich_gettext(
@@ -6939,6 +6967,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp event_line(%{kind: :lost, run: run}),
     do:
       rich_gettext("Attempt %{attempt} was lost before it ended, so Explore has no result",
+        attempt: attempt_ref(run)
+      )
+
+  defp event_line(%{kind: :time_limit, run: run}),
+    do:
+      rich_gettext("Attempt %{attempt} reached its time limit, so Explore has no result",
         attempt: attempt_ref(run)
       )
 

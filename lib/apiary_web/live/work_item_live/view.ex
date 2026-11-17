@@ -36,7 +36,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   alias Apiary.Artifacts.ArtifactFile
   alias ApiaryWeb.{ArtifactComponents, People, RunComponents, WorkItemComponents}
 
-  @qory [:started, :asked, :proposed, :replied, :no_result, :lost, :cancelled]
+  @qory [:started, :asked, :proposed, :replied, :no_result, :lost, :time_limit, :cancelled]
 
   ## People
 
@@ -526,7 +526,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
     }
 
   defp event_fields(%{kind: kind} = entry, _row, _names, ctx)
-       when kind in [:lost, :cancelled, :explore_again],
+       when kind in [:lost, :time_limit, :cancelled, :explore_again],
        do: %{run: run_ref(entry.run, ctx)}
 
   defp event_fields(%{kind: :answered} = entry, _row, _names, ctx),

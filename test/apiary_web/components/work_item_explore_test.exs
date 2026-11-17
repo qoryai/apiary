@@ -495,6 +495,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       for {status, overrides, line} <- [
             {:lost, %{state: :lost}, "Attempt 3 (Run 43) was lost before it ended"},
+            {:time_limit, %{state: :cancelled},
+             "Attempt 3 (Run 43) reached its time limit, so Explore has no result"},
             {:cancelled, %{state: :cancelled},
              "Attempt 3 (Run 43) was cancelled before it ended"},
             {:no_result, %{state: :completed, outcome: :none},
@@ -535,6 +537,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:used_up, "Explore used its 3 runs", "wait", "wait_other"},
             {:no_result, "Explore ended without a result", "err", "err"},
             {:lost, "Explore's run was lost", "err", "err"},
+            {:time_limit, "Explore's run reached its time limit", "err", "err"},
             {:cancelled, "Explore's run was cancelled", "err", "err"}
           ] do
         w = work_item(%{status: status, run: used})
@@ -844,6 +847,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Attempt 1 (Run 16) returned a result that did not pass Qory Apiary's check, so Explore has no result."},
             {:lost, %{state: :lost, outcome: nil}, "Lost",
              "Attempt 1 (Run 16) was lost before it ended, so Explore has no result."},
+            {:time_limit, %{state: :cancelled, outcome: nil}, "Time limit",
+             "Attempt 1 (Run 16) reached its time limit, so Explore has no result."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
              "Attempt 1 (Run 16) was cancelled before it ended, so Explore has no result."}
           ] do
@@ -2763,6 +2768,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Qory Apiary accepts a result only in Explore's format and up to 128 KiB. This result is outside those limits, so it is not shown."},
             {:lost, %{state: :lost, outcome: nil}, "Lost", "The run was lost (Run 12).",
              "Qory Apiary has no result from the run. There is nothing to show or approve."},
+            {:time_limit, %{state: :cancelled, outcome: nil, place: :time_limit}, "Cancelled",
+             "The run reached its time limit (Run 12).", "There is nothing to show or approve."},
             {:cancelled, %{state: :cancelled, outcome: nil}, "Cancelled",
              "The run was cancelled (Run 12).", "There is nothing to show or approve."}
           ] do
@@ -3545,6 +3552,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:no_result, :refused,
              "Attempt 1 returned a result that did not pass Qory Apiary's check"},
             {:lost, :error, "Attempt 1 was lost before it ended, so Explore has no result"},
+            {:time_limit, :error, "Attempt 1 reached its time limit, so Explore has no result"},
             {:cancelled, :error,
              "Attempt 1 was cancelled before it ended, so Explore has no result"}
           ] do

@@ -959,7 +959,7 @@ defmodule Apiary.WorkItems.Moves do
   @type answer_by_id :: %{required(String.t()) => String.t() | nil}
 
   # The places where no run is running, so a member may write review comments.
-  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+  @no_run [:questions, :confirm, :no_result, :lost, :time_limit, :cancelled, :used_up]
   # The same on a reply: the gate of a stage after Explore's too
   # (`Apiary.WorkItems.Explore.member_view/2`).
   @no_run_at_stage [:gate | @no_run]
@@ -1510,7 +1510,7 @@ defmodule Apiary.WorkItems.Moves do
         now = DateTime.utc_now()
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.explore_again", work_item, now),
-             :ok <- waiting(current, [:no_result, :lost, :cancelled], attempt),
+             :ok <- waiting(current, [:no_result, :lost, :time_limit, :cancelled], attempt),
              {:ok, run} <- next_run(held, false),
              data = %{"take_in" => held.take_in, "attempt" => run.attempt},
              :ok <- event(held, :explore_again, scope, now, data),

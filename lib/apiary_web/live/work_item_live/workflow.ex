@@ -510,6 +510,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     :used_up,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :confirm
   ]
