@@ -125,6 +125,17 @@ defmodule Apiary.StagesTest do
     })
   end
 
+  # The approvals of the work item as a gate `none` records them: with no member, so that a
+  # run may withdraw the versions they cover.
+  defp automatic_approval!(work_item) do
+    {1, _rows} =
+      Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
+        set: [user_id: nil, automatic: true]
+      )
+
+    :ok
+  end
+
   # A version of the explainer `name` that the run of the queue `run` pushes at Explore.
   defp push_explainer(run, name) do
     Stages.Artifacts.push(
@@ -2388,7 +2399,9 @@ defmodule Apiary.StagesTest do
 
     # The last stage, Explore, with the output explainer beside the proposal; its run
     # pushes the proposal and an explainer of each of `names`, and the stage is approved.
-    defp done_with_explainers!(scope, names) do
+    # `by` is who approved the gate: `:automatic`, as a gate `none` records it, with no
+    # member, or `:person`, the member who approved.
+    defp done_with_explainers!(scope, names, by \\ :automatic) do
       save!(scope, [
         explore_stage(%{
           "outputs" => [
@@ -2410,6 +2423,8 @@ defmodule Apiary.StagesTest do
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       assert Stages.status(work_item).state == :done
+
+      if by == :automatic, do: automatic_approval!(work_item)
       work_item
     end
 
@@ -2510,6 +2525,87 @@ defmodule Apiary.StagesTest do
 
       assert upload.number == 1
       assert user_id == scope.user.id
+    end
+
+    test "a run does not withdraw a name whose newest version a person approved",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+
+      assert Stages.status(work_item).state == :done
+      assert [%{number: 1}] = versions(work_item, "explainer")
+    end
+
+    test "a run does not withdraw a name a member approved whose account is gone",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+
+      {1, _rows} =
+        Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [user_id: nil]
+        )
+
+      assert [%GateDecision{user_id: nil, automatic: false}] = decisions(work_item)
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a run withdraws a name whose approval is automatic", %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :automatic)
+
+      assert {:ok, %{number: 2, withdrawn: true}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a person's approval is read before the writer of the version", %{scope: scope} do
+      work_item = done_with_explainers!(scope, [], :person)
+
+      {:ok, upload} =
+        Stages.Artifacts.push(
+          {:person, scope},
+          work_item,
+          "explainer",
+          [%{filename: "explainer.md", content_type: "text/markdown", binary: "# P"}],
+          stage_id: @explore
+        )
+
+      [%GateDecision{} = earlier | _rest] = decisions(work_item)
+
+      Repo.insert!(%GateDecision{
+        organisation_id: earlier.organisation_id,
+        workspace_id: earlier.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: earlier.process_version_id,
+        user_id: scope.user.id,
+        stage_id: @explore,
+        kind: :approve,
+        versions: [upload.public_id],
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a run withdraws a name whose newer version no person approved", %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+      {:ok, %{number: 2}} = push_explainer(live_run!(work_item), "main")
+
+      assert {:ok, %{number: 3, withdrawn: true}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
     end
   end
 
@@ -4044,6 +4140,7 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
+      automatic_approval!(work_item)
       [explainer] = versions(work_item, "explainer")
       assert [%{version: %{id: id}}] = Stages.inputs(work_item)
       assert id == explainer.public_id
@@ -4087,6 +4184,7 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
+      automatic_approval!(work_item)
       [explainer] = versions(work_item, "explainer")
       run = live_run!(work_item)
 

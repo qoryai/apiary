@@ -1860,6 +1860,123 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "refuses a custom type with withdrawable false, before the files", ctx do
+      {:ok, _type} =
+        Apiary.Artifacts.insert_template_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "demo-script",
+          "base_view" => "file",
+          "withdrawable" => false
+        })
+
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      for body <- [
+            withdrawal("demo-script", "scenario-2"),
+            push_body("demo-script", [{"a.txt", "text/plain", "a"}], %{
+              "name" => "scenario-2",
+              "withdraw" => true
+            })
+          ] do
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "type_not_withdrawable",
+                 "type" => "demo-script",
+                 "message" =>
+                   "Push a new version of demo-script instead. The artifact type " <>
+                     "demo-script has withdrawable set to false, so a run cannot withdraw " <>
+                     "its names."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "refuses a standard type its template sets withdrawable false for", ctx do
+      store!(ctx, "mockup", [file("one.png", "image/png", @png)], name: "home")
+
+      # Before the lock, a run withdraws the name; a lock on another name leaves it.
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["screenshot"]]
+        )
+
+      assert write(ctx, "/artifacts", withdrawal("mockup", "home")).status == 201
+      store!(ctx, "mockup", [file("two.png", "image/png", @png)], name: "home")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["mockup"]]
+        )
+
+      conn = write(ctx, "/artifacts", withdrawal("mockup", "home"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "mockup",
+               "message" =>
+                 "Push a new version of mockup instead. The artifact type mockup has " <>
+                   "withdrawable set to false, so a run cannot withdraw its names."
+             }
+    end
+
+    test "withdraws a name of a custom type that sets no withdrawable", ctx do
+      file_type!(ctx, "demo-script", 1000, 2)
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-script", "scenario-2"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
+    test "refuses a name whose newest version a person approved, before the other 409s",
+         ctx do
+      version =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      decide!(ctx, :approve, versions: [version.public_id])
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "screenshot",
+               "message" =>
+                 "Push a new version of screenshot/scenario-2 instead. A member approved its " <>
+                   "newest version, v1, so a run cannot withdraw the name."
+             }
+
+      # A name with no version is still 409 no_version.
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-3"))
+      assert json_response(conn, 409)["error"] == "no_version"
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "withdraws a name whose approval is automatic or of an older version", ctx do
+      automatic = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "auto")
+      decide!(ctx, :approve, versions: [automatic.public_id], user_id: nil, automatic: true)
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "auto")).status == 201
+
+      older = store!(ctx, "screenshot", [file("b.png", "image/png", @png)], name: "older")
+      decide!(ctx, :approve, versions: [older.public_id])
+      store!(ctx, "screenshot", [file("b.png", "image/png", @png <> "b")], name: "older")
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "older"))
+      assert %{"artifact" => %{"version" => %{"number" => 3}}} = json_response(conn, 201)
+    end
+
+    test "withdraws a name when a person only requested changes", ctx do
+      version = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "asked")
+      decide!(ctx, :request_changes, versions: [version.public_id])
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "asked")).status == 201
+    end
+
     test "a withdrawal by a run that ended or that a member cancelled is 409 run_ended",
          ctx do
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")

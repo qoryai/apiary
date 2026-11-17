@@ -1328,6 +1328,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a host in Unicode, the push of such a version is refused: the run API returns `503`
   `unavailable`, no version and no file is stored, and the log line starts with "Set
   PUBLIC_URL to an https:// address".
+- An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
+  type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
+  of that type, and it cannot withdraw a name whose newest version a member approved at a
+  gate: the run API returns `422` `type_not_withdrawable`.
 
 ### Changed
 
@@ -2243,6 +2247,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `artifact_types` and `workspaces` (20261116190000): a column `artifact_types.withdrawable`,
+  true by default, false for a custom type whose template sets `withdrawable: false`, and a
+  column `workspaces.locked_standard_types`, the standard types whose template entry sets
+  it, an empty list by default. Each default is a constant, so adding the columns rewrites
+  no row, and every type and workspace stored before has the default. Rolling back drops
+  both columns, with every `withdrawable: false` and every locked standard type that a
+  template set.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`
