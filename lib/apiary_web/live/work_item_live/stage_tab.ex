@@ -112,6 +112,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `questions`: on the current stage's tab, every open question and the closed ones the
   #     stage's runs wrote; on another tab, the closed ones its runs wrote;
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
+  #   * `wrote`: the versions the stage's runs wrote, for the summary of its runs
+  #     (`wrote/3`), [] for no stage;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
   # On the Ticket tab and the Thread, `review_comments` are the current stage's. A version
@@ -131,6 +133,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       review_comments: read.review_comments,
       artifacts: read.artifacts,
       index: [],
+      wrote: [],
       foot: nil
     }
   end
@@ -162,6 +165,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       review_comments: read.review_comments,
       artifacts: read.artifacts,
       index: [],
+      wrote: [],
       foot: nil
     }
   end
@@ -185,9 +189,36 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       review_comments: comments(flow, stage, read.review_comments, artifacts),
       artifacts: artifacts,
       index: index(flow.index, artifacts),
+      wrote: wrote(stage, runs, read.artifacts),
       foot: if(explore? and not flow.at_explore, do: %{runs: runs, latest: nil, pieces: nil})
     }
   end
+
+  # The newest version of each of the stage's output types, of the artifact named `main`,
+  # that one of `runs` wrote, as `%{type, version}` in the stage's order. A person's upload
+  # is no run's, and the gate may show a higher version than this (`frames/1`).
+  defp wrote(stage, runs, artifacts) do
+    ids = for %{id: id} when is_binary(id) <- runs, into: MapSet.new(), do: id
+
+    for type <- stage.outputs,
+        number = newest_wrote(artifacts, type, ids),
+        number != nil,
+        do: %{type: type, version: number}
+  end
+
+  defp newest_wrote(artifacts, type, ids) do
+    for(
+      %{type: ^type, name: "main"} = artifact <- artifacts,
+      version <- artifact.versions,
+      MapSet.member?(ids, run_id(version)),
+      do: version.number
+    )
+    |> Enum.max(fn -> nil end)
+  end
+
+  # The public id of the registered run that wrote `version`, nil for a person's version.
+  defp run_id(%{run: %{run: %{public_id: id}}}), do: id
+  defp run_id(_version), do: nil
 
   # The record of the runner passing `stage` over whole, while the work item is not in the
   # stage and the stage has no run: a person's move into it later runs it after all.

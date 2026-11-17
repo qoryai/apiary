@@ -2347,6 +2347,24 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-output-spec", "Version 2 · #{scope.user.email}")
       assert html =~ "Spec two"
     end
+
+    test "the runs' summary lists the version the runs wrote, not the upload",
+         %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope, "## Spec one")
+      add_spec!(scope, work_item, "## Spec two")
+      {:ok, moved_on} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      assert moved_on.stage_id != @shape
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert [%{version: 2}] =
+               Enum.filter(:sys.get_state(view.pid).socket.assigns.frames, &(&1.type == "spec"))
+
+      summary = "#work-item-record-fold > summary"
+      assert has_element?(view, summary, "1 run")
+      assert has_element?(view, summary, "spec v1")
+      refute has_element?(view, summary, "spec v2")
+    end
   end
 
   describe "a stage with a workflow and no outputs" do

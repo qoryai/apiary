@@ -421,6 +421,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            wrote={@view.wrote}
             questions={@view.questions}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}

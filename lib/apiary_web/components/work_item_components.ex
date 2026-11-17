@@ -2537,6 +2537,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
+
+  attr :wrote, :list,
+    default: [],
+    doc: "the versions the stage's runs wrote, `%{type, version}`, for the runs' summary"
+
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
   attr :current, :boolean, default: false, doc: "whether it is the current stage's tab"
@@ -2628,10 +2633,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         groups: Enum.filter(assigns.runs, &(&1[:answered_by] != nil)),
         # The stage with a proposal output has Confirm: a proposal waits for it.
         confirm: assigns.current and assigns.work_item.status == :confirm and "proposal" in types,
-        pieces:
-          StageComponents.output_versions(%{
-            outputs: Enum.map(assigns.outputs, &Map.take(&1, [:type, :version]))
-          })
+        pieces: StageComponents.output_versions(%{outputs: assigns.wrote})
       )
 
     ~H"""
