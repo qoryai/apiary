@@ -13649,6 +13649,16 @@
     border-color: var(--color-warning);
     color: var(--q-primary-soft-content);
   }
+  .q-wi-stage-skipped .q-wi-stage-n,
+  .q-wi-stage-skipped.q-wi-stage-done .q-wi-stage-n {
+    border-style: dashed;
+    border-color: var(--q-border-field);
+    background-color: transparent;
+    color: var(--q-muted);
+  }
+  .q-wi-stage-note {
+    color: var(--q-faint);
+  }
   .q-wi-track-ended .q-wi-stage {
     color: var(--q-faint);
   }
@@ -14961,6 +14971,84 @@
   .q-xp-reply .q-xp-comment {
     display: grid;
     margin-top: 0;
+  }
+
+  /* The table of a stage's workflow entries: name, state, why. */
+  .q-xp-entries table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  .q-xp-entries th,
+  .q-xp-entries td {
+    padding: 6px 10px;
+    border: 1px solid var(--q-border-strong);
+    text-align: left;
+    vertical-align: top;
+  }
+  .q-xp-entries th {
+    font-weight: 600;
+  }
+  .q-xp-entry-name,
+  .q-xp-entry-note {
+    display: block;
+  }
+  .q-xp-entry-note {
+    color: var(--q-muted);
+    font-size: 0.75rem;
+  }
+  .q-xp-entries table + p {
+    margin-top: 12px;
+  }
+
+  /* The tracks that Explore's gate offers: a radio, the name, and the description. */
+  .q-xp-tracks {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    margin: 20px 0 0;
+    padding: 0;
+    border: 0;
+  }
+  .q-xp-tracks > legend {
+    margin-bottom: 8px;
+    padding: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .q-xp-track {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    cursor: pointer;
+  }
+  .q-xp-track-on {
+    border-color: var(--color-warning);
+    background-color: var(--q-primary-soft);
+  }
+  .q-xp-track input {
+    flex: none;
+    margin-top: 3px;
+  }
+  .q-xp-track-body {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    font-size: 0.875rem;
+  }
+  .q-xp-track-name {
+    font-weight: 600;
+  }
+  .q-xp-track-text {
+    flex-basis: 100%;
+    color: var(--q-muted);
+    line-height: 1.25rem;
   }
 
   /* Review comments: cards in the rail from 1024 px, at the top of the proposal's text
