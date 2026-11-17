@@ -224,7 +224,7 @@
       }
     },
     "condition": {
-      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{input: T, changed: true}` is met when T has a version and the runs of the item on the work item have none that ended `passed`, or that version was stored after the newest such run was queued. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
+      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{input: T, changed: true}` is met when T has a version and the workflow entry has no run on the work item that ended `passed`, or that version was stored after the newest such run was queued; on a stage, a loop, an input or an output it is met while T has a version. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
       "oneOf": [{"$ref": "#/$defs/input_condition"}, {"$ref": "#/$defs/track_condition"}]
     },
     "input_condition": {
@@ -235,7 +235,7 @@
       "properties": {
         "input": {"$ref": "#/$defs/artifact_type"},
         "changed": {
-          "description": "Only `true`: the condition is then met when the version of `input` is new since the item last ran and passed, not when it has a file. The item is the stage, the loop or the workflow entry that has the condition; an input or an output counts the runs of its stage.",
+          "description": "Only `true`. On a workflow entry, the condition is met when the version of `input` is new since the entry last ran and passed, whatever the size of its files; on a stage, a loop, an input or an output it is met while `input` has a version.",
           "const": true
         }
       }

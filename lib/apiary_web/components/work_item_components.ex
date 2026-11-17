@@ -5508,20 +5508,6 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: gettext("%{stage} runs on %{track} only.", stage: stage, track: skip.track_name)
   end
 
-  defp passed_over_words(%{input: type, changed: true} = skip, stage, _stage_names, _now) do
-    if skip.negated,
-      do:
-        gettext("%{stage} does not run after a change to %{type} since the stage last passed.",
-          stage: stage,
-          type: StageComponents.type_words(type)
-        ),
-      else:
-        gettext("%{stage} runs only after a change to %{type} since the stage last passed.",
-          stage: stage,
-          type: StageComponents.type_words(type)
-        )
-  end
-
   defp passed_over_words(%{input: type} = skip, stage, _stage_names, _now) do
     if skip.negated,
       do:

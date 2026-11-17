@@ -1379,7 +1379,7 @@ defmodule Apiary.Stages do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
-      facts = condition_facts(work_item, version, stage, artifacts)
+      facts = condition_facts(work_item, version, stage, artifacts, false)
       outputs = outputs(work_item, version, stage, artifacts, facts)
       missing = missing(outputs)
 
@@ -1431,8 +1431,19 @@ defmodule Apiary.Stages do
     work_item = Repo.get!(WorkItem, work_item.id)
 
     case placed(work_item) do
-      {:ok, version, stage} -> inputs(work_item, version, stage, Artifacts.list(work_item))
-      _other -> []
+      {:ok, version, stage} ->
+        artifacts = Artifacts.list(work_item)
+
+        inputs(
+          work_item,
+          version,
+          stage,
+          artifacts,
+          condition_facts(work_item, version, stage, artifacts, false)
+        )
+
+      _other ->
+        []
     end
   end
 
@@ -3114,11 +3125,8 @@ defmodule Apiary.Stages do
   defp reported?(_output), do: false
 
   # `required` is false for an input whose condition holds it back (`Runner.unmet/2`): the
-  # stage does not wait for it. `facts` has the input types that count and the track, read
-  # here for nil.
-  defp inputs(work_item, version, stage, artifacts, facts \\ nil) do
-    facts = facts || condition_facts(work_item, version, stage, artifacts)
-
+  # stage does not wait for it. `facts` are those of `condition_facts/5`.
+  defp inputs(work_item, version, stage, artifacts, facts) do
     for input <- Map.get(stage, "inputs", []) do
       type = input["type"]
       chosen = read_version(work_item, version, stage, artifacts, type)
@@ -3180,13 +3188,18 @@ defmodule Apiary.Stages do
 
   # The facts of the conditions of `stage` (`Runner.facts/0`): the input types that count,
   # the track, and, for a stage with a condition `{input: T, changed: true}`, `stored` and
-  # `passed` (`changed_facts/4`), which a stage with none does not read.
-  defp condition_facts(work_item, version, stage, artifacts) do
+  # `passed` (`changed_facts/5`), which a stage with none does not read. A verdict whose
+  # file the store cannot read raises, as the runner's read of an end does, unless `strict?`
+  # is false, as for a page: the run then does not count as passed.
+  defp condition_facts(work_item, version, stage, artifacts, strict? \\ true) do
     facts = %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
 
     case Runner.changed_inputs(stage) do
-      [] -> facts
-      types -> Map.merge(facts, changed_facts(work_item, version, stage, artifacts, types))
+      [] ->
+        facts
+
+      types ->
+        Map.merge(facts, changed_facts(work_item, version, stage, artifacts, types, strict?))
     end
   end
 
@@ -3197,7 +3210,7 @@ defmodule Apiary.Stages do
   # place of the run that stored it (`Runner.stored_version/0`). `passed`: the runs of the
   # stage on the work item, in every take in, that ended `passed` as the runner reads the
   # end (`reported_verdict/1`), each with its place and when it was queued.
-  defp changed_facts(work_item, version, stage, artifacts, types) do
+  defp changed_facts(work_item, version, stage, artifacts, types, strict?) do
     live = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
 
     stored =
@@ -3215,7 +3228,7 @@ defmodule Apiary.Stages do
         {type, if(read, do: [%{at: read.inserted_at, by: nil}], else: []) ++ made}
       end
 
-    %{stored: stored, passed: passed_runs(work_item, stage)}
+    %{stored: stored, passed: passed_runs(work_item, stage, strict?)}
   end
 
   defp run_place(%{run: %DispatchRun{stage_entry: entry, loop_entry: loop_entry}})
@@ -3227,8 +3240,8 @@ defmodule Apiary.Stages do
   # The runs of `stage` on the work item that ended `passed`, as the runner reads the end:
   # a run that ended by its exit, which no member cancelled, whose newest verdict `main` says
   # `passed` (`reported_verdict/1`); a verdict whose file the store cannot read raises, as
-  # `verdict!/1` does.
-  defp passed_runs(work_item, stage) do
+  # `verdict!/1` does, with `strict?`, and is no pass without it.
+  defp passed_runs(work_item, stage, strict?) do
     for run <-
           Repo.all(
             from d in DispatchRun,
@@ -3237,10 +3250,13 @@ defmodule Apiary.Stages do
                   d.state == :ended and d.end_cause == :run_ended and not is_nil(d.stage_entry),
               order_by: [d.queued_at, d.id]
           ),
-        match?({:verdict, :passed, _points}, verdict!(run)) do
+        passed?(run, strict?) do
       %{entry: run.stage_entry, loop_entry: run.loop_entry, queued_at: run.queued_at}
     end
   end
+
+  defp passed?(run, true), do: match?({:verdict, :passed, _points}, verdict!(run))
+  defp passed?(run, false), do: match?({:verdict, :passed, _points}, reported_verdict(run))
 
   # The ids of the stages before `stage`, nearest first.
   defp earlier_stage_ids(version, stage) do

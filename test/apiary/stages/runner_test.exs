@@ -1225,14 +1225,12 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.changed?("acceptance-criteria", {2, nil}, facts)
     end
 
-    test "only a run of the same place counts as the entry's run" do
+    test "only a run at the same place counts as the entry's run" do
       facts = %{stored: stored(@t1), passed: [passed(2, @t2), passed(1, @t2, 0)]}
       assert Runner.changed?("acceptance-criteria", {1, nil}, facts)
       refute Runner.changed?("acceptance-criteria", {2, nil}, facts)
       assert Runner.changed?("acceptance-criteria", {1, 1}, facts)
       refute Runner.changed?("acceptance-criteria", {1, 0}, facts)
-      refute Runner.changed?("acceptance-criteria", {1}, facts)
-      refute Runner.changed?("acceptance-criteria", :stage, facts)
     end
 
     test "an unless passes the entry over while the version is new" do
@@ -1246,44 +1244,51 @@ defmodule Apiary.Stages.RunnerTest do
       assert queued(old) == {"triage-review", 0, nil, 1}
     end
 
-    test "a loop and the entries of its body read their own runs" do
-      body = [wf("fix", %{"when" => @criteria}), wf("check")]
-      seq = stage([Map.put(loop(body), "when", @criteria)])
-      facts = %{stored: stored(@t1), passed: [passed(0, @t0, 1), passed(0, @t2, 0)]}
+    test "a loop, a stage, an input and an output have no run of their own: they are met while the type has a version" do
+      facts = %{stored: stored(@t0), passed: [passed(0, @t2), passed(0, @t2, 0), passed(1, @t2)]}
+      none = %{stored: %{"acceptance-criteria" => []}, passed: []}
 
-      # The loop's runs are those of every entry of its body: the newest passed at @t2.
-      assert [{:skip, %{workflow: "fix", loop_entry: 0, changed: true}}, _skip] =
-               Runner.step(seq, nil, :enter, facts).actions
+      assert Runner.changed?("acceptance-criteria", :stage, facts)
+      refute Runner.changed?("acceptance-criteria", :stage, none)
 
-      facts = %{stored: stored(@t2), passed: [passed(0, @t0, 1), passed(0, @t1, 0)]}
-      assert queued(Runner.step(seq, nil, :enter, facts)) == {"fix", 0, 0, 1}
-    end
-
-    test "a stage with the condition is passed over when the stage's own runs are newer" do
-      seq = stage([wf("review")]) |> Map.put("when", @criteria)
-      facts = %{stored: stored(@t1), passed: [passed(0, @t2)]}
-
-      assert %{state: :done, actions: [{:skip_stage, spec}, :advance]} =
-               Runner.step(seq, nil, :enter, facts)
-
-      assert spec == %{input: "acceptance-criteria", track: nil, negated: false, changed: true}
-
-      assert queued(
-               Runner.step(seq, nil, :enter, %{stored: stored(@t2), passed: [passed(0, @t1)]})
-             ) ==
-               {"review", 0, nil, 1}
-    end
-
-    test "an input and an output with the condition read the stage's runs" do
       input = %{"type" => "spec", "required" => true, "when" => @criteria}
       output = %{"type" => "submission", "required" => true, "unless" => @criteria}
-      new = %{stored: stored(@t2), passed: [passed(1, @t1)]}
-      old = %{stored: stored(@t0), passed: [passed(1, @t1)]}
+      assert Runner.input_required?(input, facts)
+      refute Runner.input_required?(input, none)
+      refute Runner.required?(output, facts)
+      assert Runner.required?(output, none)
 
-      assert Runner.input_required?(input, new)
-      refute Runner.input_required?(input, old)
-      refute Runner.required?(output, new)
-      assert Runner.required?(output, old)
+      seq = stage([wf("review")]) |> Map.put("when", @criteria)
+      assert queued(Runner.step(seq, nil, :enter, facts)) == {"review", 0, nil, 1}
+
+      assert %{state: :done, actions: [{:skip_stage, spec}, :advance]} =
+               Runner.step(seq, nil, :enter, none)
+
+      assert spec == %{input: "acceptance-criteria", track: nil, negated: false}
+    end
+
+    test "a loop with the condition goes on after a run of its body, whose pass is in the facts" do
+      body = [wf("fix"), wf("check")]
+      seq = stage([Map.put(loop(body), "when", @criteria)])
+      facts = %{stored: stored(@t0), passed: [passed(0, @t1, 0)]}
+
+      assert queued(Runner.step(seq, nil, :enter, facts)) == {"fix", 0, 0, 1}
+
+      assert queued(Runner.step(seq, pos(0, 0, 1), {:run, {:verdict, nil, nil}}, facts)) ==
+               {"check", 0, 1, 1}
+    end
+
+    test "the entries of a loop's body read their own runs" do
+      body = [wf("fix", %{"when" => @criteria}), wf("check")]
+      seq = stage([loop(body)])
+
+      facts = %{stored: stored(@t1), passed: [passed(0, @t2, 0)]}
+
+      assert [{:skip, %{workflow: "fix", loop_entry: 0, changed: true}}, {:queue, _run}] =
+               Runner.step(seq, nil, :enter, facts).actions
+
+      facts = %{stored: stored(@t2), passed: [passed(0, @t1, 0)]}
+      assert queued(Runner.step(seq, nil, :enter, facts)) == {"fix", 0, 0, 1}
     end
 
     test "workflows_met/2 and condition_inputs/1 read the condition's place" do
@@ -1311,6 +1316,9 @@ defmodule Apiary.Stages.RunnerTest do
                %{kind: :input, value: "acceptance-criteria", negated: false, changed: true}
 
       assert Runner.unmet(%{"unless" => @criteria}, %{stored: stored(@t2), passed: []}, :stage) ==
+               %{kind: :input, value: "acceptance-criteria", negated: true}
+
+      assert Runner.unmet(%{"unless" => @criteria}, %{stored: stored(@t2), passed: []}, {1, nil}) ==
                %{kind: :input, value: "acceptance-criteria", negated: true, changed: true}
 
       assert Runner.unmet(%{"when" => @criteria}, %{stored: stored(@t2), passed: []}) == nil

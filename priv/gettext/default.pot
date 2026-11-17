@@ -3350,11 +3350,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage} does not run after a change to %{type} since the stage last passed."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "%{stage} does not run on %{track}."
 msgstr ""
 
@@ -3427,11 +3422,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} runs on %{track} only."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage} runs only after a change to %{type} since the stage last passed."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

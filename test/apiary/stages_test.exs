@@ -3141,6 +3141,37 @@ defmodule Apiary.StagesTest do
                ~w(explore-a-ticket capture-demos verify-a-ticket verify-a-ticket capture-demos)
     end
 
+    test "a page reads a stage with the condition while a verdict cannot be read; a click's check raises",
+         %{scope: scope} do
+      changed_process!(scope, [
+        %{"workflow" => "capture-demos", "when" => @new_scenarios},
+        %{"workflow" => "verify-a-ticket"}
+      ])
+
+      work_item = in_verify!(scope, "# Scenario 1")
+      work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      # The versions may share one stored file, so each path is moved once.
+      paths =
+        for version <- versions(work_item, "verdict"), file <- version.files, uniq: true do
+          {:ok, path} = Artifacts.open_file(file)
+          path
+        end
+
+      for path <- Enum.uniq(paths) do
+        File.rename!(path, path <> ".away")
+        on_exit(fn -> File.rename(path <> ".away", path) end)
+      end
+
+      assert %{state: :at_gate, inputs: []} = Stages.status(work_item, scope)
+      assert Stages.inputs(work_item) == []
+
+      assert_raise Stages.VerdictUnreadable, fn ->
+        Stages.starts(work_item, :request_changes)
+      end
+    end
+
     test "a version with a file of 0 bytes is a version", %{scope: scope} do
       changed_process!(scope, [
         %{"workflow" => "capture-demos", "when" => @new_scenarios},
@@ -3226,7 +3257,8 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{workflow: "capture-demos"} = newest_run(other)
     end
 
-    test "a stage condition, an input and an output read the stage's own runs", %{scope: scope} do
+    test "an input and an output have no run of their own: they read whether the type has a version",
+         %{scope: scope} do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
           "name" => "demo-scenarios",
@@ -3249,18 +3281,53 @@ defmodule Apiary.StagesTest do
       work_item = in_verify!(scope, "# Scenario 1")
       assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
 
-      # No run of Verify passed: the scenarios are new, so the explainer is not required.
+      # The type has a version: the input is waited for and the explainer is not required.
       assert %{inputs: [%{type: "demo-scenarios", required: true}], outputs: [output]} =
                Stages.status(work_item, scope)
 
       assert %{type: "explainer", required: false} = output
 
-      # Once Verify's run passed, the same version is not new: the input is not waited for
-      # and the explainer is required.
+      # A run of Verify that passed changes nothing: the version is still there.
       work_item = end_run!(work_item, verdict("passed"))
 
-      assert %{inputs: [%{required: false}], outputs: [%{required: true}]} =
+      assert %{inputs: [%{required: true}], outputs: [%{required: false}]} =
                Stages.status(work_item, scope)
+    end
+
+    test "a stage passed over whole for a changed condition is held back as an input condition is",
+         %{
+           scope: scope
+         } do
+      changed = %{"input" => "demo-scenarios", "changed" => true}
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-scenarios",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "demo-scenarios", "required" => false}]
+        }),
+        stage(@build, "Build", [], %{"when" => changed}),
+        stage(@verify, "Verify", [], %{"unless" => changed})
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      {:ok, done} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+
+      # No version of the scenarios: Build, which needs a change, is passed over; Verify,
+      # which runs unless there is one, runs.
+      assert %WorkItem{stage_id: @verify} = done
+
+      assert [%{stage_id: @build, input: "demo-scenarios", changed: false, negated: false}] =
+               Stages.stage_skips(done)
+
+      assert [%Stages.Skip{input: "demo-scenarios", changed: false, workflow: nil}] =
+               Repo.all(from s in Stages.Skip, where: s.work_item_id == ^done.id)
     end
   end
 
