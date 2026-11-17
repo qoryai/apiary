@@ -69,7 +69,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   card reads "Pick a track and approve the proposal, or add a comment and run another
   round." A gate that offers no track is as before.
 - The stage track under the work item's title marks a stage that a track passed over whole
-  with "Not run", in place of its number.
+  with "not run", in place of its number. The card's line "<stage> started no run." is
+  small and muted, as the line under it.
 - The tab of a stage of a work item on a track, where the runner passed over an entry, starts
   with the table "Workflows": each entry of the stage's sequence in order, with its state
   (Passed, Not run, Paused, Did not pass, Questions, Queued, Running, Undone or Ended without a

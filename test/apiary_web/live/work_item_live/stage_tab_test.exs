@@ -4089,8 +4089,81 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         )
 
       refute html =~ ~s(id="work-item-tab-gate-comment")
-      assert html =~ ~s(id="work-item-tab-gate-send")
-      refute html =~ ~r/id="work-item-tab-gate-send"[^>]*disabled/
+      assert gate_send_disabled(html) == false
+    end
+
+    test "has_outputs: false keeps Run another round for a decision the reader may change, disabled until one changes" do
+      render = fn answers ->
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["spec"]},
+          work_item: %{number: 1, status: :gate, run: nil},
+          outputs: [%{type: "spec", version: 1, open: true, read: nil}],
+          questions: [
+            %{
+              id: "q1",
+              number: 1,
+              state: :decided,
+              text: "Which store keeps the orders?",
+              note: nil,
+              context: nil,
+              decision: %{option: "Redis", reason: "The other services use Redis.", at: nil},
+              options: [
+                %{title: "Redis", explanation: "The store the other services use."},
+                %{title: "Postgres", explanation: "The database of the storefront."}
+              ]
+            }
+          ],
+          answers: answers,
+          current: true,
+          round_gate: true,
+          can_send: true,
+          can_change: true,
+          has_outputs: false
+        )
+      end
+
+      html = render.(%{})
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+      assert gate_send_disabled(html) == true
+
+      html = render.(%{"q1" => %{"option" => "2"}})
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+      assert gate_send_disabled(html) == false
+    end
+
+    test "has_outputs: false and no right to send: an open review comment gives no Run another round" do
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["spec"]},
+          work_item: %{number: 1, status: :gate, run: nil},
+          outputs: [%{type: "spec", version: 1, open: true, read: nil}],
+          review_comments: [
+            %{
+              id: 1,
+              state: :open,
+              reopened: false,
+              text: "Name the file.",
+              version: 1,
+              replies: [],
+              by: %{email: "sam@example.com", name: "Sam"}
+            }
+          ],
+          current: true,
+          round_gate: true,
+          can_send: false,
+          has_outputs: false
+        )
+
+      refute html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ "Run another round"
+    end
+
+    # Whether the gate's Run another round has the `disabled` attribute, whatever the order
+    # of its attributes; fails the test where the button is missing.
+    defp gate_send_disabled(html) do
+      button = html |> LazyHTML.from_fragment() |> LazyHTML.query("#work-item-tab-gate-send")
+      assert Enum.count(button) == 1
+      LazyHTML.attribute(button, "disabled") != []
     end
 
     test "the gate keeps a refused move's error with both hidden" do
