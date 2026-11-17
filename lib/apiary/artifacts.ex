@@ -146,8 +146,14 @@ defmodule Apiary.Artifacts do
   # `{:error, :run_cancelled}`; the artifact found or made; the
   # check of what members wrote and the integers, as above; the next number, one more
   # than the highest; the version and its audit entry; then every file is kept in the
-  # store, and its row written. The workspace's lock comes first, as in the core's
-  # lock order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
+  # store, and its row written; then, for a run's version of the submission type in
+  # `submit.type` of the run's process version, a `watch` entry in the feed of the
+  # adapter of the work item's target collection (`Apiary.Adapters.Feed`), one per
+  # version. A work item with no target, or a target that no collection matches
+  # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
+  # stored all the same. A withdrawal writes no entry. The workspace's lock comes first,
+  # as in the core's lock order (`Apiary.WorkItems`). An always-on type takes no lock on
+  # the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
   # transactions that already hold the work item. The work item's lock makes the
   # transactions of pushes to one work item run one after the other, so the numbers of an
@@ -218,16 +224,19 @@ defmodule Apiary.Artifacts do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo}
+  alias Apiary.{Access, Audit, PublicId, Repo, WorkItems}
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.Feed
   alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Mockup, Store}
   alias Apiary.Artifacts.Type
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.{Questions, ReviewComments}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.Runs.RunCredentials
   alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
@@ -1118,8 +1127,10 @@ defmodule Apiary.Artifacts do
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
-           {:ok, kept} <- integers(type, staged) do
-        keep(writer, held, artifact, fields, kept, now)
+           {:ok, kept} <- integers(type, staged),
+           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
+        watch(writer, held, artifact)
+        written
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
@@ -1158,6 +1169,53 @@ defmodule Apiary.Artifacts do
       discard(kept)
       reraise exception, __STACKTRACE__
   end
+
+  # A `watch` entry for the version a run stored of its submission type: the type in
+  # `submit.type` of the run's process version (`Processes.harness_template/1`). The entry
+  # goes to the feed of the adapter of the work item's target collection, the collection
+  # the run's work entry comes from (`RunCredentials.work_collection/3`), and contains the
+  # work item's public id and its stable url. It is written in the push's transaction, so
+  # the version and its entry commit together or not at all. Nothing is written for a
+  # person's version, a version of another type, a run whose process version has no
+  # submit, a work item with no target, or a target that no collection matches. The
+  # lookup and `Processes.harness_template/1` only read the database: no message is sent
+  # and no other system is called inside the transaction. `Feed.append/2` takes only an
+  # adapter with no organisation, which the `nodes` check keeps true of every adapter; any
+  # other node gets no entry.
+  defp watch(%{actor: :run, run_id: run_id}, %WorkItem{} = held, %Artifact{type: type}) do
+    with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
+         ^type <- submit_type(dispatch_run),
+         %{} = target <- target(held),
+         {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
+           RunCredentials.work_collection(dispatch_run, held, target) do
+      {:ok, _seq} =
+        Feed.append(adapter, %{
+          kind: "watch",
+          work_item_id: held.public_id,
+          url: WorkItems.stable_url(held)
+        })
+    end
+
+    :ok
+  end
+
+  defp watch(_writer, _held, _artifact), do: :ok
+
+  # The type in `submit.type` of the run's process version, nil for none.
+  defp submit_type(%DispatchRun{process_version_id: id}) do
+    case Processes.harness_template(id) do
+      %{"submit" => %{"type" => type}} when is_binary(type) -> type
+      _none -> nil
+    end
+  end
+
+  # The work item's target, as a run's claim reads it (`Apiary.Dispatches.Handover`), nil
+  # for none.
+  defp target(%WorkItem{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path),
+       do: %{system: system, path: path}
+
+  defp target(%WorkItem{}), do: nil
 
   # Drops staged copies; one kept in the store already has no staged copy left.
   defp discard(staged) do

@@ -1278,6 +1278,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
   400 `invalid_request`, and nothing is stored. The run and the integration contracts are
   vendored at integrations `5d456eb`.
+- A run that stores a version of its submission type, `submit.type` of its process
+  version, adds a `watch` entry to the change feed of the adapter of the work item's
+  target collection: the work item's public id and its page, `url`, as in a `work_item`
+  entry. Each stored version adds one entry, whatever source the work item came from.
+  A work item with no target, or a target that no collection matches, gets no entry, and
+  the version is stored all the same. The integration contract is vendored at
+  integrations `c6b7701`.
 
 ### Changed
 
@@ -2140,6 +2147,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
+  takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the
+  new check without a scan, and the second validates it with a scan that does not block
+  writes. It changes no row. To roll back past 20261117120000, delete the feed's `watch`
+  entries first: its `down` fails while one exists.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
   column `gate_decisions.track`, the track an approval chose, with a check that only an
