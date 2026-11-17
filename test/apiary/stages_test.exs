@@ -5693,6 +5693,13 @@ defmodule Apiary.StagesTest do
       work_item
     end
 
+    # Build's gate passes again and Verify's run starts.
+    defp in_verify_again!(work_item) do
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      work_item
+    end
+
     defp returned_by(work_item, verification) do
       work_item = end_run!(work_item, verifying("changes-requested", verification))
       assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = work_item
@@ -5703,6 +5710,20 @@ defmodule Apiary.StagesTest do
       for %{from: :return, type: type, required: false, version: %{id: id}} <-
             Stages.inputs(work_item),
           do: {type, id}
+    end
+
+    # A decision of a person at `stage_id`, recorded now.
+    defp decide!(work_item, kind, stage_id) do
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: stage_id,
+        kind: kind,
+        take_in: work_item.take_in,
+        inserted_at: DateTime.utc_now()
+      })
     end
 
     defp newest_id(work_item, type) do
@@ -5799,6 +5820,64 @@ defmodule Apiary.StagesTest do
       assert verification == newest_id(work_item, "verification")
       assert second != first
       assert length(versions(work_item, "verification")) == 2
+    end
+
+    test "a Request changes at Build's gate, and a decision in another stage, end nothing",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      listed = from_return(work_item)
+      assert [_verdict, _verification] = listed
+
+      decide!(work_item, :request_changes, @build)
+      assert from_return(work_item) == listed
+
+      decide!(work_item, :approve, @verify)
+      decide!(work_item, :move, @verify)
+      assert from_return(work_item) == listed
+    end
+
+    test "an approval of Build, and a move out of Build, end them", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      decide!(work_item, :approve, @build)
+      assert from_return(work_item) == []
+
+      # A second return lists the newer versions again, and a move out of Build ends them.
+      work_item = in_verify_again!(work_item) |> returned_by("# Second")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      decide!(work_item, :move, @build)
+      assert from_return(work_item) == []
+    end
+
+    test "a later update of the returning run does not change the listed inputs",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      listed = from_return(work_item)
+      assert [_verdict, _verification] = listed
+
+      run =
+        Repo.one!(
+          from d in DispatchRun,
+            where: d.work_item_id == ^work_item.id and d.returned_to == ^@build
+        )
+
+      assert %DateTime{} = run.returned_at
+
+      # The run is written again, long before and long after its return.
+      for shift <- [-3600, 3600] do
+        {1, _rows} =
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [updated_at: DateTime.add(DateTime.utc_now(), shift, :second)]
+          )
+
+        assert from_return(work_item) == listed
+      end
+
+      # Build's approval still ends them, whatever the run's last write.
+      decide!(work_item, :approve, @build)
+      assert from_return(work_item) == []
     end
   end
 

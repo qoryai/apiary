@@ -1610,15 +1610,16 @@ defmodule Apiary.Stages do
   # later stage's run (`returned!/2`), the newest version of `verdict` and then of
   # `verification` made in the stage that run belongs to, marked `from: :return` and not
   # required; a type with no such version has no entry. A version in `listed` (the entries
-  # already there) is left out. The entries last until a decision of the take in is made
-  # after that run: an approval of any stage, so the gate of this stage passing, a move, or
-  # a Request changes, each of which enters a stage by another route. A newer return
-  # replaces them. They are not the stage's outputs, so no approval lists them, and they
-  # are no person's note (`{feedback: new}` stays false).
+  # already there) is left out. The entries last until the stage's gate passes again or the
+  # work item leaves the stage by a move: an approval of the stage, or a move out of it,
+  # made after the return (`left_since?/2`). A Request changes at the gate and a decision
+  # in another stage end nothing. A newer return replaces them. They are not the stage's
+  # outputs, so no approval lists them, and they are no person's note (`{feedback: new}`
+  # stays false).
   defp returned_inputs(%WorkItem{take_in: take_in} = work_item, stage, artifacts, listed)
        when is_integer(take_in) do
     with %DispatchRun{} = run <- returning_run(work_item, stage),
-         false <- decided_since?(work_item, run) do
+         false <- left_since?(work_item, run) do
       listed_ids = for %{version: %{id: id}} <- listed, do: id
 
       for type <- @returned_types,
@@ -1639,22 +1640,25 @@ defmodule Apiary.Stages do
   defp returned_inputs(%WorkItem{}, _stage, _artifacts, _listed), do: []
 
   # The newest run of the work item's take in that returned it to `stage` (`returned_to`),
-  # nil for none. The run's `updated_at` is the time it ended and returned the work item.
+  # by `returned_at`, nil for none.
   defp returning_run(%WorkItem{id: id, take_in: take_in}, stage) do
     Repo.one(
       from d in DispatchRun,
         where: d.work_item_id == ^id and d.take_in == ^take_in and d.returned_to == ^stage["id"],
-        order_by: [desc: d.updated_at, desc: d.id],
+        where: not is_nil(d.returned_at),
+        order_by: [desc: d.returned_at, desc: d.id],
         limit: 1
     )
   end
 
-  defp decided_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{updated_at: ended}) do
+  # Whether the work item's take in has, after the run's return, an approval of the stage
+  # the return entered, or a move out of it.
+  defp left_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{} = run) do
     Repo.exists?(
       from d in GateDecision,
         where:
-          d.work_item_id == ^id and d.take_in == ^take_in and
-            d.kind in [:approve, :move, :request_changes] and d.inserted_at > ^ended
+          d.work_item_id == ^id and d.take_in == ^take_in and d.stage_id == ^run.returned_to and
+            d.kind in [:approve, :move] and d.inserted_at > ^run.returned_at
     )
   end
 
@@ -2267,7 +2271,7 @@ defmodule Apiary.Stages do
   defp returned!(run_id, stage_id) do
     {1, _rows} =
       Repo.update_all(from(d in DispatchRun, where: d.id == ^run_id),
-        set: [returned_to: stage_id]
+        set: [returned_to: stage_id, returned_at: DateTime.utc_now()]
       )
 
     :ok

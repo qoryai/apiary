@@ -336,12 +336,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - After a run's return (the `return` key above), `inputs` in `GET work-item` also lists,
   for each run of the stage it returned the work item to, the newest `verdict` and the
   newest `verification` made in the stage that returned it, with `"from": "return"` and
-  `"required": false`; a type with no version has no entry. The entries stay until a
-  decision of the take in is made after the returning run: an approval (so the returned
-  stage's gate passing again), a move or a Request changes. A later return lists its newer
-  versions. No approval lists these versions, an entry is left out when an input above it
-  already has that version, and the findings are not a person's note: `notes` is the same
-  as before.
+  `"required": false`; a type with no version has no entry. The entries stay until the
+  returned stage's gate passes again (an approval of that stage) or the work item leaves
+  that stage by a move, after the return; a Request changes at its gate and a decision in
+  another stage end nothing. A later return lists its newer versions. No approval lists
+  these versions, an entry is left out when an input above it already has that version,
+  and the findings are not a person's note: `notes` is the same as before.
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
@@ -2420,12 +2420,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
-- `dispatch_runs` and `escalations` (20261116180000 and 20261116180100): a nullable
-  column `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
-  check that it is a stage id; and the check on `escalations.cause` takes `return_limit`.
-  The column has no default, so adding it rewrites no row. The first migration adds both
+- `dispatch_runs` and `escalations` (20261116180000 and 20261116180100): nullable
+  columns `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
+  check that it is a stage id, and `dispatch_runs.returned_at`, when it did; and the check
+  on `escalations.cause` takes `return_limit`. The columns have no default, so adding them
+  rewrites no row. The first migration adds both
   checks without a scan, and the second validates them with scans that do not block
-  writes. It changes no row. Rolling back drops `dispatch_runs.returned_to` and sets the
+  writes. It changes no row. Rolling back drops the two columns and sets the
   cause of each `return_limit` escalation to `escalate`.
 - `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
   item switched to another track. The first migration replaces the check

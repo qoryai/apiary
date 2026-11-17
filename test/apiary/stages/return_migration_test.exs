@@ -1,9 +1,9 @@
 defmodule Apiary.Stages.ReturnMigrationTest do
   # The two migrations that keep the stage a run returned to (`20261116180000` and
   # `20261116180100`), run down and up again inside the test's transaction, which rolls it
-  # all back: down takes the column `dispatch_runs.returned_to` and its check away and the
-  # cause `return_limit` out of the check on `escalations.cause`; up brings them back. The
-  # migrations change `dispatch_runs` and `escalations` under every other test, so this is
+  # all back: down takes the columns `dispatch_runs.returned_to` and `returned_at` and the
+  # check on the first away, and the cause `return_limit` out of the check on
+  # `escalations.cause`; up brings them back. The migrations change `dispatch_runs` and `escalations` under every other test, so this is
   # not async. The rolled-back transaction leaves the test database as it was, and the
   # migration lock is off, as it is in the other migration tests here.
   use Apiary.DataCase, async: false
@@ -36,14 +36,16 @@ defmodule Apiary.Stages.ReturnMigrationTest do
   defp up!({version, migration, _name}),
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
-  defp column? do
+  # The columns of `dispatch_runs` that the first migration adds, by name.
+  defp columns do
     %{rows: rows} =
       Repo.query!(
-        "SELECT 1 FROM information_schema.columns " <>
-          "WHERE table_name = 'dispatch_runs' AND column_name = 'returned_to'"
+        "SELECT column_name FROM information_schema.columns " <>
+          "WHERE table_name = 'dispatch_runs' AND column_name IN ('returned_to', 'returned_at') " <>
+          "ORDER BY column_name"
       )
 
-    rows != []
+    List.flatten(rows)
   end
 
   # The checks of the two tables, each with whether it is validated.
@@ -68,21 +70,21 @@ defmodule Apiary.Stages.ReturnMigrationTest do
     definition
   end
 
-  test "down takes returned_to and its check away, and return_limit out of the cause check; up brings them back" do
-    assert column?()
+  test "down takes returned_to, returned_at and the check on returned_to away, and return_limit out of the cause check; up brings them back" do
+    assert columns() == ["returned_at", "returned_to"]
     assert cause_check() =~ "return_limit"
 
     down!(@validate)
     down!(@keep)
 
-    refute column?()
+    assert columns() == []
     assert checks() == [{"escalations_cause_check", true}]
     refute cause_check() =~ "return_limit"
 
     up!(@keep)
     up!(@validate)
 
-    assert column?()
+    assert columns() == ["returned_at", "returned_to"]
 
     assert checks() == [
              {"dispatch_runs_returned_to_check", true},

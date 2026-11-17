@@ -169,6 +169,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     # return key that asked for changes (`Apiary.Stages.Runner`); nil for every other run.
     # The stage runner counts an entry's returns by it. No changeset casts it.
     field :returned_to, :string
+    # When the run returned its work item, written with `returned_to` and never again.
+    field :returned_at, :utc_datetime_usec
     # The machine type the run is queued on, and its spec as the provisioner contract
     # writes it, both as they were when the run was queued (`Apiary.MachineTypes.resolve/1`),
     # and whether the type was the default type then: a pool without offers takes such a

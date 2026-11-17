@@ -503,7 +503,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # The run of Verify that ended and returned the work item to Build.
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
-          set: [stage_id: verify, returned_to: build, updated_at: DateTime.utc_now()]
+          set: [stage_id: verify, returned_to: build, returned_at: DateTime.utc_now()]
         )
 
       conn = read(ctx, "/work-item")
