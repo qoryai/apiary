@@ -8,7 +8,7 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   alias Apiary.Kinds.Bounds
 
   @path Path.expand("../../../priv/schemas/artifacts/verdict.schema.json", __DIR__)
-  @sha256 "e85da6db7067ba2d3253241d09910422ae812d9950a661b2155bc5f47ee100f7"
+  @sha256 "eb5c1c15f11a381d673a54eb2e7f5680ff8896cf2ecd9605df793887f656b348"
 
   test "is the bytes of the verdict schema the hash pins" do
     bytes = File.read!(@path)
@@ -18,42 +18,6 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   test "limits a verdict to 20 points of at most 4 members each" do
     assert @path |> File.read!() |> Jason.decode!() |> Bounds.from_schema() ==
              [list: 20, members: 4]
-  end
-
-  describe "track kind" do
-    defp with_kind(kind) do
-      %{
-        "verdict" => "passed",
-        "track" => %{"id" => "small-change", "reason" => "One file changes.", "kind" => kind}
-      }
-    end
-
-    test "is one line of 1 to 80 characters with something other than spaces" do
-      for kind <- ["a", "A text that the product shows", String.duplicate("x", 80), "ä<b>"] do
-        assert valid?(with_kind(kind))
-      end
-
-      for kind <- [
-            String.duplicate("x", 81),
-            "",
-            "   ",
-            7,
-            nil,
-            ["a"],
-            "two\nlines",
-            "one\rtwo",
-            "tab\there"
-          ] do
-        refute valid?(with_kind(kind))
-      end
-    end
-
-    test "is optional" do
-      assert valid?(%{
-               "verdict" => "passed",
-               "track" => %{"id" => "small-change", "reason" => "One file changes."}
-             })
-    end
   end
 
   describe "track" do

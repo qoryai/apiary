@@ -583,14 +583,7 @@ The body, at most 64 KiB:
 - `track`: optional, for any verdict. The track the run proposes for the work item:
   `id`, the id of a track that the gate of the run's stage offers, and `reason`, why, in
   one sentence on one line of 1 to 300 characters. Both are required when `track` is
-  present. `track` may also have `kind`, one line of 1 to 80 characters with something
-  other than spaces in it, such as "A text that the product shows". A `kind` that is
-  longer, is empty or only spaces, is not a string, or has a line break, another control
-  character, a bidirectional control character or a format character (the rule of a line
-  in the schema) is `422` `invalid_artifact`, as a `reason` that breaks its rule is. A
-  verdict with no `kind` is as before. The verdict file stores `kind` as the run sent it.
-  Qory Apiary stores `kind` and decides nothing by it; no screen shows it.
-  When a person approves the gate with no track chosen, the approval records
+  present. When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one

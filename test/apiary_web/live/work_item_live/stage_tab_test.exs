@@ -2605,11 +2605,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
 
     # The end of Explore's run: a proposal, and a verdict that proposes `track`.
-    defp proposing(track, reason \\ "A small change.", kind \\ nil) do
+    defp proposing(track, reason \\ "A small change.") do
       fn run, registered ->
         push_result!(run, registered, understood_result())
         proposal = %{"id" => track, "reason" => reason}
-        proposal = if kind, do: Map.put(proposal, "kind", kind), else: proposal
 
         {:ok, _version} =
           Stages.Artifacts.push_json(
@@ -2622,15 +2621,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       end
     end
 
-    defp at_explore_gate!(scope, proposed \\ "fast-track", kind \\ nil) do
+    defp at_explore_gate!(scope, proposed \\ "fast-track") do
       screens!(scope)
-      scope |> taken_in_fixture() |> end_run!(proposing(proposed, "A small change.", kind))
+      scope |> taken_in_fixture() |> end_run!(proposing(proposed))
     end
 
     # Explore's gate approved with the track `track`, and Build's first attempt run passed,
     # with test-features written. Verify's gate waits, and Verify started no run.
-    defp at_verify_gate!(scope, track \\ "fast-track", kind \\ nil) do
-      work_item = at_explore_gate!(scope, "fast-track", kind)
+    defp at_verify_gate!(scope, track \\ "fast-track") do
+      work_item = at_explore_gate!(scope)
       {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
 
       work_item
@@ -2716,50 +2715,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
 
       refute has_element?(view, "#work-item-explore-gate-track-standard-reason")
-    end
-
-    test "Explore's gate shows no kind line for a work item that has a track", %{
-      conn: conn,
-      scope: scope
-    } do
-      screens!(scope)
-      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track", "x", "A kind"))
-
-      # The work item is on a track while it waits at Explore's gate.
-      Repo.insert!(%Stages.GateDecision{
-        organisation_id: work_item.organisation_id,
-        workspace_id: work_item.workspace_id,
-        work_item_id: work_item.id,
-        process_version_id: work_item.process_version_id,
-        stage_id: work_item.stage_id,
-        kind: :approve,
-        track: "fast-track",
-        take_in: work_item.take_in,
-        inserted_at: DateTime.utc_now()
-      })
-
-      assert Stages.track(work_item) == "fast-track"
-
-      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
-
-      assert has_element?(view, "#work-item-explore-gate-track-fast-track")
-      assert has_element?(view, "#work-item-explore-gate-track-fast-track-reason")
-      refute html =~ "A kind"
-      refute has_element?(view, "[id$=-kind]")
-    end
-
-    test "Verify's card shows no kind line, with a kind stored in the verdict", %{
-      conn: conn,
-      scope: scope
-    } do
-      payload = "<script>alert(1)</script>"
-      work_item = at_verify_gate!(scope, "fast-track", payload)
-
-      {:ok, view, html} = live(conn, page(scope, work_item.number))
-
-      assert has_element?(view, "#work-item-stage-gate-track .badge", "Fast track")
-      refute has_element?(view, "#work-item-stage-gate [id$=-kind]")
-      refute html =~ "alert(1)"
     end
 
     test "a blank reason shows no line of reason", %{conn: conn, scope: scope} do
