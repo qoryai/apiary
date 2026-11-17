@@ -87,7 +87,7 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
   end
 
   # A person of the operator, at `operator_level`, made an admin of the organisation.
-  defp operator_person_who_is_org_admin(ctx, operator_level) do
+  defp user_of_operator_person_who_is_org_admin(ctx, operator_level) do
     Flags.put_operator_infrastructure(false)
     %{user: user} = member_fixture(ctx.operator.scope, operator_level)
     %{membership: joined} = join_fixture(ctx.operated.owner.scope, user)
@@ -97,7 +97,7 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
   end
 
   test "a person who is an admin of both reads to ask the operator, as their levels tie", ctx do
-    user = operator_person_who_is_org_admin(ctx, :admin)
+    user = user_of_operator_person_who_is_org_admin(ctx, :admin)
     {:ok, view, _html} = page(user, ctx.operated)
 
     assert has_element?(view, @line, @operator_step)
@@ -105,7 +105,7 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
   end
 
   test "an owner of the operator who is an admin of the organisation reads the link", ctx do
-    user = operator_person_who_is_org_admin(ctx, :owner)
+    user = user_of_operator_person_who_is_org_admin(ctx, :owner)
     {:ok, view, _html} = page(user, ctx.operated)
 
     assert has_element?(view, @line, @harness_step)

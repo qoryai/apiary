@@ -25,12 +25,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness, or that has no record.
 - On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
   and no **Edit** and no **Delete**. The page shows a line under the table with the reason
-  and the step to change the schema, which is a link to **Harness settings**. For the
-  organisation's owners and admins in a workspace that an operator operates, the step is
-  to ask the operator. The change and the delete are refused on the server too.
-  A type that an older process version in use sets stays set. **Add a version** does not
-  offer the type, and a person's push of it is refused with `unknown_type`, as for
-  `questions`.
+  and the step to change the schema, which is a link to **Harness settings**. With the
+  `operator_infrastructure` flag on, the step for the organisation's owners and admins in a
+  workspace that an operator operates is to ask the operator. With the flag off, the link
+  shows. The change and the delete are refused on the server too. A type that an older
+  process version in use sets stays set. **Add a version** does not offer the type, and a
+  person's push of it is refused with `unknown_type`, as for `questions`.
 <!-- /feature -->
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an

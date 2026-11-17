@@ -126,7 +126,7 @@ defmodule ApiaryPro.WorkspaceOperatorsTest do
     @operator_step "To change the schema, ask the operator of this workspace."
 
     # A person of the operator, at `operator_level`, made an admin of the organisation.
-    defp operator_person_who_is_org_admin(ctx, operator_level) do
+    defp scope_of_operator_person_who_is_org_admin(ctx, operator_level) do
       ApiaryPro.Flags.put_operator_infrastructure(false)
       %{user: user} = member_fixture(ctx.operator.scope, operator_level)
       %{membership: joined} = join_fixture(ctx.owner, user)
@@ -168,8 +168,8 @@ defmodule ApiaryPro.WorkspaceOperatorsTest do
     end
 
     test "follows through_operator?/1 for a person in both", ctx do
-      tie = operator_person_who_is_org_admin(ctx, :admin)
-      higher = operator_person_who_is_org_admin(ctx, :owner)
+      tie = scope_of_operator_person_who_is_org_admin(ctx, :admin)
+      higher = scope_of_operator_person_who_is_org_admin(ctx, :owner)
       ApiaryPro.Flags.put_operator_infrastructure(true)
 
       # An admin of both acts at their level in the organisation.
