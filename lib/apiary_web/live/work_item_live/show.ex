@@ -1015,6 +1015,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  defp stage_spend("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    ask_if_run("stage_resolve", params, socket, {:switch, track},
+      title: gettext("Switch to %{track}?", track: switch_name(socket, track)),
+      action: gettext("Switch to %{track}", track: switch_name(socket, track)),
+      return_to: "work-item-stage-escalation-switch-#{track}",
+      note: escalation_note()
+    )
+  end
+
   defp stage_spend("stage_resolve", %{"how" => "move_back", "stage" => stage} = params, socket)
        when is_binary(stage) do
     ask_if_run("stage_resolve", params, socket, {:move, stage},
@@ -1048,6 +1058,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp stage_spend(_event, _params, _socket), do: nil
+
+  # The name of the track `id` that the escalation card offers a switch to; its id for none.
+  defp switch_name(socket, id) do
+    Enum.find_value(socket.assigns.flow.switch, id, &(&1.id == id && &1.name))
+  end
 
   # The note of the escalation card, which goes to the next run.
   defp escalation_note,
@@ -1295,6 +1310,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       stage ->
         fresh(socket, params, &decided(&1, &2, {:resolve, {:move_back, stage}, note(params)}))
     end
+  end
+
+  defp stage_act("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    fresh(socket, params, &decided(&1, &2, {:resolve, {:switch, track}, note(params)}))
   end
 
   defp stage_act("stage_resolve", params, socket) do

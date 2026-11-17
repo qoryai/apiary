@@ -15,7 +15,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   #   * `"stage_ask_changes"`, `"stage_request_changes"` - Request changes opens its form,
   #     which sends `note` and `version`, the artifact version it is about or `""`;
   #   * `"stage_resolve"` - an escalation action: `how` (`accept`, `another_round`,
-  #     `move_back` or `close`), `note`, and `stage` for `move_back`;
+  #     `move_back` or `close`), `note`, and `stage` for `move_back`; or `switch`, the id
+  #     of the track to switch to, with no `how`;
   #   * `"stage_move"` - Move back while the stage waits for inputs: `stage` and `note`.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -524,7 +525,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result), Move back and Close. Their form has the note field and Run
+  # it is (only with a result), Move back and Close; where the page offers a switch
+  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close. Their form has the note field and Run
   # another round in the block, which name it in their `form` attribute, so the note goes
   # with every action.
   defp escalation_card(assigns) do
@@ -535,6 +537,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{cause: :escalate, result: true, points: [], run: nil, harness_path: nil}
       )
+      |> assign(:switch, Map.get(assigns.page, :switch) || [])
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
@@ -558,7 +561,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       >
         <input type="hidden" name="number" value={@number} />
         <input type="hidden" name="seen" value={@page.stage.id} />
-        <div :if={@escalation.result} class="q-wi-acts flex-wrap">
+        <div :if={@switch != []} class="q-wi-acts flex-wrap">
+          <.button
+            :for={track <- @switch}
+            id={"#{@id}-switch-#{track.id}"}
+            type="submit"
+            name="switch"
+            value={track.id}
+            variant="primary"
+          >
+            {gettext("Switch to %{track}", track: track.name)}
+          </.button>
+        </div>
+        <div :if={@switch == [] and @escalation.result} class="q-wi-acts flex-wrap">
           <.button
             id={"#{@id}-accept"}
             type="submit"
@@ -569,7 +584,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("Accept as it is")}
           </.button>
         </div>
-        <div :if={@page.earlier != []} class="q-wi-acts flex-wrap">
+        <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
             <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>

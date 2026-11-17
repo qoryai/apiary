@@ -138,6 +138,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
+      # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
+      # with its `id` and `name`; with any, the card offers no Accept as it is and no Move back.
+      switch: switch_tracks(row, state),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
@@ -150,6 +153,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_add: Access.can?(scope, :"artifact.write", row)
     }
   end
+
+  defp switch_tracks(row, :escalated),
+    do: for(track <- Stages.switch_tracks(row), do: Map.take(track, [:id, :name]))
+
+  defp switch_tracks(_row, _state), do: []
 
   # The round limit as the card counts it: Run another round at the limit runs one round
   # more, which is then the last before the stage escalates again, so the count is never
@@ -691,6 +699,18 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # Accept as it is only where the stage has a result: the page offers it nowhere else.
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
+
+  # Accept as it is and Move back, where the card offers a switch: it offers neither.
+  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
+
+  defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
+    do: {:error, :invalid}
+
+  defp checked({:resolve, {:switch, track}, _note} = action, page) do
+    if Enum.any?(Map.get(page, :switch, []), &(&1.id == track)),
+      do: {:ok, action},
+      else: {:error, {:track_not_offered, track}}
+  end
 
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)

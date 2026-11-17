@@ -812,6 +812,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_stage("escalation_move_back"),
     do: gettext("Moved a work item back to an earlier stage to resolve an escalation")
 
+  defp said_stage("escalation_switch"),
+    do: gettext("Switched a work item to another track to resolve an escalation")
+
   defp said_stage("escalation_close"), do: gettext("Closed a work item to resolve an escalation")
 
   defp said_stage("escalation_decline"),

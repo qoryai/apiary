@@ -143,7 +143,8 @@ defmodule Apiary.Stages do
   @max_note 4000
 
   @typedoc "A resolution of an escalation."
-  @type resolution :: :accept | :another_round | {:move_back, String.t()} | :close
+  @type resolution ::
+          :accept | :another_round | {:move_back, String.t()} | {:switch, String.t()} | :close
 
   @typedoc "Why a person's action is refused."
   @type refusal ::
@@ -1041,9 +1042,11 @@ defmodule Apiary.Stages do
     end)
   end
 
-  # resolve_escalation/4 acts on the work item's open escalation: accept it as it is, run
+  # resolve_escalation/5 acts on the work item's open escalation: accept it as it is, run
   # another round with the person's note, move the work item back to an earlier stage,
-  # or close it.
+  # switch it to another track of the gate that recorded its track (`{:switch, track}`,
+  # `switch_tracks/1`), or close it. A work item that is offered a switch (`switch_tracks/1`
+  # is not empty) is offered no accept and no move back: both are refused with `:invalid`.
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1052,13 +1055,19 @@ defmodule Apiary.Stages do
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            %Escalation{} = escalation <- escalation!(work_item, version, stage),
+           :ok <- switch_only(work_item, version, stage, resolution),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
            {:ok, _entry} <-
-             audit(scope, work_item, "escalation_#{resolution_name(resolution)}", %{
-               "stage_id" => stage["id"],
-               "cause" => Atom.to_string(escalation.cause)
-             }) do
+             audit(
+               scope,
+               work_item,
+               "escalation_#{resolution_name(resolution)}",
+               Map.merge(
+                 %{"stage_id" => stage["id"], "cause" => Atom.to_string(escalation.cause)},
+                 switched(resolution)
+               )
+             ) do
         {:ok, work_item}
       end
     end)
@@ -1073,6 +1082,21 @@ defmodule Apiary.Stages do
     by = if resolution == :accept, do: scope && scope.user && scope.user.id
     {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
     {:ok, work_item}
+  end
+
+  # A switch: the track is recorded as a move's decision at the gate that recorded the
+  # work item's track, so `track/1` reads it as it reads an approval's. Then the stage
+  # after that gate is entered as a stage that no person moved the work item into
+  # (`forced` false): the runner passes over each stage that does not run on the new track
+  # and starts the first that does.
+  defp resolve(scope, work_item, version, stage, escalation, {:switch, track}, note)
+       when is_binary(track) do
+    with {:ok, gate, next} <- switch_target(work_item, version, stage, track),
+         :ok <- resolve!(escalation, :switch, scope, note),
+         {:ok, _decision} <- decide(scope, work_item, version, gate, :move, [], nil, nil, track) do
+      {work_item, _run} = enter_locked(work_item, version, next, false)
+      {:ok, work_item}
+    end
   end
 
   defp resolve(scope, work_item, version, stage, escalation, {:move_back, stage_id}, note) do
@@ -1093,7 +1117,57 @@ defmodule Apiary.Stages do
     do: {:error, :invalid}
 
   defp resolution_name({:move_back, _stage_id}), do: "move_back"
+  defp resolution_name({:switch, _track}), do: "switch"
   defp resolution_name(resolution) when is_atom(resolution), do: Atom.to_string(resolution)
+
+  defp switched({:switch, track}), do: %{"track" => track}
+  defp switched(_resolution), do: %{}
+
+  # A work item that is offered a switch has no accept and no move back.
+  defp switch_only(work_item, version, stage, resolution)
+       when resolution == :accept or
+              (is_tuple(resolution) and elem(resolution, 0) == :move_back) do
+    if switch_offers(work_item, version, stage), do: {:error, :invalid}, else: :ok
+  end
+
+  defp switch_only(_work_item, _version, _stage, _resolution), do: :ok
+
+  # The gate that recorded the work item's track, and the stage that a switch enters, the
+  # stage after that gate, for `track`: `{:error, {:track_not_offered, track}}` for a track
+  # the gate does not offer or the one the work item is on, `{:error, :invalid}` where no
+  # switch is offered.
+  defp switch_target(work_item, version, stage, track) do
+    case switch_offers(work_item, version, stage) do
+      {gate, others} ->
+        if Enum.any?(others, &(&1.id == track)),
+          do: {:ok, gate, next_stage(version, gate)},
+          else: {:error, {:track_not_offered, track}}
+
+      nil ->
+        {:error, :invalid}
+    end
+  end
+
+  # `{gate, tracks}`: the gate that recorded the work item's current track (`track/1`) and
+  # the other tracks it offers, where the gate offers tracks, the work item is not on the
+  # gate's first track, and the gate is before `stage`; nil otherwise. The gate is read from
+  # the decision that recorded the track, not from `stage`, whose gate may offer none.
+  defp switch_offers(work_item, version, stage) do
+    ids = Enum.map(version.document["stages"], & &1["id"])
+
+    with %{stage_id: gate_id, track: current} <- track_decision(work_item),
+         %{} = gate <- Processes.stage(version, gate_id),
+         [%{id: first} | _] = offered <- gate_tracks(version, gate),
+         true <- current != first,
+         gate_at when is_integer(gate_at) <- Enum.find_index(ids, &(&1 == gate["id"])),
+         stage_at when is_integer(stage_at) <- Enum.find_index(ids, &(&1 == stage["id"])),
+         true <- gate_at < stage_at,
+         [_ | _] = others <- Enum.reject(offered, &(&1.id == current)) do
+      {gate, others}
+    else
+      _none -> nil
+    end
+  end
 
   # move/4 moves the work item to the stage `stage_id` of its version, forward past a
   # stage or back, with the person's note, and starts that stage. A move forward records the
@@ -1150,6 +1224,8 @@ defmodule Apiary.Stages do
   #     (`resolve_escalation/5`);
   #   * `{:move, stage_id}` - that stage of the version entered (`move/5`, and a move
   #     back that resolves an escalation);
+  #   * `{:switch, track}` - the stage after the gate that recorded the work item's
+  #     track entered on `track` (`resolve_escalation/5`);
   #   * `:found` - a stage that waits for a workflow, once the harness lists it
   #     (`check_workflows/3`);
   #   * `{:version_added, type}`, `{:version_added, type, sizes}` - a version of `type`
@@ -1207,6 +1283,14 @@ defmodule Apiary.Stages do
 
   defp would_start(work_item, version, _stage, {:move, stage_id}) when is_binary(stage_id),
     do: entered(work_item, version, Processes.stage(version, stage_id))
+
+  # A switch enters the stage after the gate that recorded the track, on the new track.
+  defp would_start(work_item, version, stage, {:switch, track}) when is_binary(track) do
+    case switch_target(work_item, version, stage, track) do
+      {:ok, _gate, next} -> entered(work_item, version, next, &%{&1 | track: track})
+      {:error, _refusal} -> :none
+    end
+  end
 
   # Once the harness lists the stage's workflows.
   defp would_start(work_item, version, stage, :found) do
@@ -1910,9 +1994,18 @@ defmodule Apiary.Stages do
   another track changes it. A work item taken in again starts with none.
   """
   @spec track(WorkItem.t()) :: String.t() | nil
-  def track(%WorkItem{take_in: nil}), do: nil
+  def track(%WorkItem{} = work_item) do
+    case track_decision(work_item) do
+      %{track: track} -> track
+      nil -> nil
+    end
+  end
 
-  def track(%WorkItem{id: id, take_in: take_in}) do
+  # The newest approval or move of the work item that has a track, made in its current take
+  # in: its `track` and the `stage_id` of the gate it was made at; nil for none.
+  defp track_decision(%WorkItem{take_in: nil}), do: nil
+
+  defp track_decision(%WorkItem{id: id, take_in: take_in}) do
     Repo.one(
       from d in GateDecision,
         where:
@@ -1920,7 +2013,7 @@ defmodule Apiary.Stages do
             d.take_in == ^take_in,
         order_by: [desc: d.inserted_at, desc: d.id],
         limit: 1,
-        select: d.track
+        select: %{track: d.track, stage_id: d.stage_id}
     )
   end
 
@@ -1937,6 +2030,26 @@ defmodule Apiary.Stages do
     case placed(work_item) do
       {:ok, version, stage} -> gate_tracks(version, stage)
       :not_placed -> []
+    end
+  end
+
+  @doc """
+  switch_tracks/1 is the tracks that an escalation of `work_item` offers a switch to, each
+  `%{id, name, description}`: the other tracks of the gate that recorded the track the work
+  item is on (`track/1`), where that gate offers tracks, the work item is not on its first
+  track, and the gate is before the work item's stage. `[]` otherwise, and where the work
+  item is in no stage. The work item is then offered no accept and no move back
+  (`resolve_escalation/5`).
+  """
+  @spec switch_tracks(WorkItem.t()) :: [
+          %{id: String.t(), name: String.t(), description: String.t() | nil}
+        ]
+  def switch_tracks(%WorkItem{} = work_item) do
+    with {:ok, version, stage} <- placed(work_item),
+         {_gate, others} <- switch_offers(work_item, version, stage) do
+      others
+    else
+      _none -> []
     end
   end
 

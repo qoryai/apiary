@@ -13,6 +13,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- An escalation of a work item on a track that is not the first track of the gate that
+  recorded it offers the gate's other tracks by name, as **Switch to <track>**. A switch
+  records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
+  track, and enters the stage after that gate: the runner passes over each stage that does
+  not run on the new track and starts the first one that does. Its dialog names the run it
+  starts. The card then offers only the switches, Run another round and Close: Accept as it
+  is and Move back are refused (`Stages.resolve_escalation/5`, `:invalid`). A track that the
+  gate does not offer, or the track the work item is on, is refused and nothing is written.
+  A work item on the gate's first track, or on none, keeps the card as it was. The
+  resolution is `switch`, and the audit entry `escalation_switch` has the track.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -2211,6 +2221,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
+- `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
+  item switched to another track. The first migration replaces the check
+  `escalations_resolution_check` and adds it without a scan, and the second validates it
+  with a scan that does not block writes. It changes no row. Rolling back deletes the
+  escalations resolved with `switch`; the work items stay where the switch put them, with
+  the track on their gate decision and the entry in the audit trail.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by

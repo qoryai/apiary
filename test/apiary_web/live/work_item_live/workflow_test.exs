@@ -4558,6 +4558,156 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "an escalation that is offered a switch" do
+    setup :ready_pool
+
+    # The software process with the tracks Standard and Fast track, Explore's gate offering
+    # both, and a work item escalated in Build on the track `track`, which Explore's gate
+    # recorded. Shape runs `shape-a-ticket`. With a result in Build, as Accept as it is needs one.
+    defp on_track!(scope, track) do
+      document =
+        document("members")
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+        |> Map.update!("stages", fn stages ->
+          for stage <- stages do
+            case stage["id"] do
+              @explore -> put_in(stage, ["gate", "tracks"], ["standard", "fast-track"])
+              @shape -> %{stage | "sequence" => [%{"workflow" => "shape-a-ticket"}]}
+              _other -> stage
+            end
+          end
+        end)
+
+      version = save!(scope, document)
+
+      work_item =
+        scope
+        |> work_item_fixture()
+        |> place!(version, @build, :escalated, stage_round: 3, stage_entry: 1)
+
+      push!({:person, scope}, work_item, "explainer", @build)
+      escalate!(work_item, :escalate, "A server check reads the button text.")
+
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        stage_id: @explore,
+        process_version_id: version.id,
+        user_id: scope.user.id,
+        kind: :approve,
+        take_in: work_item.take_in,
+        track: track,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert Stages.track(work_item) == track
+      work_item
+    end
+
+    test "Fast track: Switch to Standard, Run another round and Close, and no Accept, stage list or Move back",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-switch-standard",
+               "Switch to Standard"
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-switch-fast-track")
+      assert has_element?(view, "#work-item-stage-escalation-close", "Close")
+      assert has_element?(view, "#work-item-needs #work-item-stage-escalation-another")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      refute has_element?(view, "#work-item-stage-escalation-stage")
+      refute has_element?(view, "#work-item-stage-escalation-move")
+    end
+
+    test "Standard: today's card, with Accept, the stage list and Move back, and no switch",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-escalation-accept", "Accept as it is")
+      assert has_element?(view, "#work-item-stage-escalation-stage")
+      assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
+      assert has_element?(view, "#work-item-stage-escalation-close")
+      refute has_element?(view, ~s|[id^="work-item-stage-escalation-switch"]|)
+    end
+
+    test "Switch to Standard opens the dialog, and confirming records the track and starts Shape",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Write a spec first"})
+      |> put_submitter("#work-item-stage-escalation-switch-standard")
+      |> render_submit()
+
+      assert has_element?(view, "#spend-dialog-title", "Switch to Standard?")
+      assert has_element?(view, "#spend-dialog-go", "Switch to Standard")
+
+      assert has_element?(
+               view,
+               ~s|#spend-dialog[data-return="work-item-stage-escalation-switch-standard"]|
+             )
+
+      view |> element("#spend-dialog-cancel") |> render_click()
+      assert escalation(work_item).resolution == nil
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Write a spec first"})
+      |> put_submitter("#work-item-stage-escalation-switch-standard")
+      |> render_submit()
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: :switch, note: "Write a spec first"} = escalation(work_item)
+      assert Stages.track(work_item) == "standard"
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+    end
+
+    test "a stale form that sends Accept as it is or Move back is refused", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      for params <- [%{"how" => "accept"}, %{"how" => "move_back", "stage" => @shape}] do
+        view
+        |> form("#work-item-stage-escalation-form", %{"note" => ""})
+        |> render_submit(params)
+      end
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} =
+               Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "a track that the gate does not offer is refused with nothing written", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"switch" => "express"})
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+      assert Stages.track(work_item) == "fast-track"
+      assert length(Repo.all(from d in GateDecision, where: d.work_item_id == ^work_item.id)) == 1
+    end
+  end
+
   describe "a work item that ended" do
     test "close: no stage card, and the track and the head's words stay", %{
       conn: conn,
