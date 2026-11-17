@@ -8,7 +8,7 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   alias Apiary.Kinds.Bounds
 
   @path Path.expand("../../../priv/schemas/artifacts/verdict.schema.json", __DIR__)
-  @sha256 "24c3e07ee336cd88edd8783cc1b3ffb4cb58a70d9c8ec0b3c409a55ce58f36dc"
+  @sha256 "eb5c1c15f11a381d673a54eb2e7f5680ff8896cf2ecd9605df793887f656b348"
 
   test "is the bytes of the verdict schema the hash pins" do
     bytes = File.read!(@path)
