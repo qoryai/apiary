@@ -13,20 +13,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
-- A condition in `when` or `unless` can be `{input: <type>, changed: true}`. On a workflow
-  entry it is met when the type has a version and the entry has no run on the work item
-  that ended `passed`, or that version was stored after the newest such run was queued. An
-  entry is told by its place in the stage: its position, and its position in the loop's
-  body. On a stage, a loop, an input or an output it is met while the type has a version.
-  The version is the one the stage reads, whatever the size of its files, and a version
-  that a run of the stage stored, for example triage-review's, counts too, except one that
-  a run of the entry stored. A save refuses `changed` with any value but `true`, and
-  refuses the type like any input condition (no earlier stage outputs it).
-  `stage_skips.changed` is true for the record of such an entry. The tab of a stage
-  says why an entry did not run: "<workflow> did not run: <type> did not change since
-  <workflow> last passed." for a `when`, and "<workflow> did not run: <type> changed since
-  <workflow> last passed." for an `unless`. A stage, or a loop's body, held back by the
-  condition has the words of `{input: <type>}`.
+- A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
+  `{input: <type>, changed: true}`. It is met when the type has a version and the entry has no
+  run on the work item that ended `passed`, or that version was stored after the newest such
+  run was queued. The entry's runs are the runs of its workflow at its position in the stage
+  (and in the loop's body). The version is the one the stage reads, whatever the size of its
+  files, and a version that a run of the stage stored, for example triage-review's, counts
+  too, except one that a run of the entry stored. A save refuses `changed` with any value but
+  `true`, refuses the type like any input condition (no earlier stage outputs it), and
+  refuses `changed: true` on a stage, a loop, an input and an output: "Move `changed: true`
+  to a workflow entry: only an entry has runs to compare with." `stage_skips.changed` is true
+  for the record of such an entry. The tab of a stage says why an entry did not run:
+  "<workflow> did not run: the <type> did not change since it last passed." for a `when`, and
+  "<workflow> did not run: the <type> changed since it last passed." for an `unless`.
 <!-- /feature -->
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an

@@ -112,6 +112,8 @@ defmodule Apiary.Processes do
   `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
+  `:condition_changed_entry_only` for `changed: true` in a condition on a stage, an input,
+  an output or a loop, at the place of the key `changed`;
   `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
   `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
   for a track id in a gate's `tracks` that the document's `tracks` do not declare;
@@ -434,6 +436,8 @@ defmodule Apiary.Processes do
   # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
   # item's place).
   defp item_errors(item, path, earlier) do
+    entry? = is_binary(item["workflow"])
+
     both =
       if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
         do: [%{path: path, error: :condition_both, detail: nil}],
@@ -441,23 +445,34 @@ defmodule Apiary.Processes do
 
     both ++
       for key <- ["when", "unless"],
-          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          error <- condition_error(item[key], path <> "/" <> key, earlier, entry?),
           do: error
   end
 
-  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
-    if type in types,
-      do: [],
-      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  # `{input: T, changed: true}` compares a version with the runs of one workflow entry, so
+  # only a workflow entry may have it (`:condition_changed_entry_only`, at `.../changed`),
+  # after the refusal of its type (`:condition_input`).
+  defp condition_error(%{"input" => type} = condition, path, {types, _tracks}, entry?) do
+    input =
+      if type in types,
+        do: [],
+        else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+
+    changed =
+      if condition["changed"] == true and not entry?,
+        do: [%{path: path <> "/changed", error: :condition_changed_entry_only, detail: nil}],
+        else: []
+
+    input ++ changed
   end
 
-  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+  defp condition_error(%{"track" => track}, path, {_types, tracks}, _entry?) do
     if track in tracks,
       do: [],
       else: [%{path: path <> "/track", error: :condition_track, detail: track}]
   end
 
-  defp condition_error(_condition, _path, _earlier), do: []
+  defp condition_error(_condition, _path, _earlier, _entry?), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors

@@ -1812,6 +1812,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                  "Did not run, because Quick fix passed on its first attempt."
                )
       end
+
+      # The same two records, now passed over for a condition on a change.
+      for {negated, words} <- [
+            {false, "did not run: the demo scenarios did not change since it last passed."},
+            {true, "did not run: the demo scenarios changed since it last passed."}
+          ] do
+        {2, _rows} =
+          Repo.update_all(
+            from(k in Stages.Skip,
+              where: k.work_item_id == ^work_item.id and not is_nil(k.workflow)
+            ),
+            set: [
+              reason: nil,
+              cause_entry: nil,
+              input: "demo-scenarios",
+              changed: true,
+              negated: negated
+            ]
+          )
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        for {i, workflow} <- [{1, "shape-a-ticket"}, {2, "build-it"}] do
+          assert has_element?(view, "#work-item-record-skip-#{i}", "#{workflow} #{words}")
+        end
+      end
     end
 
     test "the tab of a stage the work item went through has no such block", %{

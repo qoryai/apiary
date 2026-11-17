@@ -5562,14 +5562,14 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp skip_words(%{changed: true, negated: true} = skip),
     do:
-      gettext("%{workflow} did not run: %{type} changed since %{workflow} last passed.",
+      gettext("%{workflow} did not run: the %{type} changed since it last passed.",
         workflow: skip.workflow,
         type: StageComponents.type_words(skip.input)
       )
 
   defp skip_words(%{changed: true} = skip),
     do:
-      gettext("%{workflow} did not run: %{type} did not change since %{workflow} last passed.",
+      gettext("%{workflow} did not run: the %{type} did not change since it last passed.",
         workflow: skip.workflow,
         type: StageComponents.type_words(skip.input)
       )

@@ -1027,24 +1027,19 @@ defmodule ApiaryWeb.StagesLiveTest do
   describe "the changed key (A-47)" do
     @changed %{"input" => "proposal", "changed" => true}
 
-    test "survives an edit of the entry, of the loop and of the output, a rename included",
+    test "survives an edit of the entries, in a loop's body too, a rename included",
          %{conn: conn, path: path, scope: scope} do
       document =
         Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
-          stage
-          |> Map.put("sequence", [
+          Map.put(stage, "sequence", [
             %{"workflow" => "capture-demos", "when" => @changed},
             %{"workflow" => "plan-it", "unless" => @changed},
             %{
               "loop" => %{
                 "rounds" => 2,
                 "body" => [%{"workflow" => "fix-demos", "when" => @changed}]
-              },
-              "unless" => @changed
+              }
             }
-          ])
-          |> Map.put("outputs", [
-            %{"type" => "demo-video", "required" => true, "unless" => @changed}
           ])
         end)
 
@@ -1057,8 +1052,7 @@ defmodule ApiaryWeb.StagesLiveTest do
           "0" => %{"workflow" => "record-demos", "machine" => "default"},
           "1" => %{"workflow" => "plan-it-again"},
           "2" => %{"rounds" => "3", "body" => %{"0" => %{"workflow" => "fix-demos"}}}
-        },
-        "outputs" => %{"0" => %{"type" => "demo-video", "required" => "false"}}
+        }
       })
 
       view |> element("#stages-save") |> render_click()
@@ -1077,14 +1071,25 @@ defmodule ApiaryWeb.StagesLiveTest do
                  "loop" => %{
                    "rounds" => 3,
                    "body" => [%{"workflow" => "fix-demos", "when" => @changed}]
-                 },
-                 "unless" => @changed
+                 }
                }
              ]
+    end
 
-      assert build["outputs"] == [
-               %{"type" => "demo-video", "required" => false, "unless" => @changed}
+    test "a save with changed: true off a workflow entry says to move it", %{scope: scope} do
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          Map.put(stage, "when", @changed)
+        end)
+
+      assert {:error, errors} = Processes.validate(document)
+
+      assert Enum.map(errors, &Words.refusal(&1, document)) == [
+               "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
              ]
+
+      assert {:error, [%{error: :condition_changed_entry_only}]} =
+               Processes.save(scope, scope.workspace, document)
     end
 
     test "the refusal names the entry, the stage and the input type, as for an input condition" do

@@ -3187,8 +3187,8 @@ defmodule Apiary.Stages do
   defp counts?(version), do: Enum.any?(version.files, &(&1.size > 0))
 
   # The facts of the conditions of `stage` (`Runner.facts/0`): the input types that count,
-  # the track, and, for a stage with a condition `{input: T, changed: true}`, `stored` and
-  # `passed` (`changed_facts/5`), which a stage with none does not read. A verdict whose
+  # the track, and, for a stage whose workflow entry has a condition `{input: T, changed: true}`, `stored` and
+  # `passed` (`changed_facts/6`), which a stage with none does not read. A verdict whose
   # file the store cannot read raises, as the runner's read of an end does, unless `strict?`
   # is false, as for a page: the run then does not count as passed.
   defp condition_facts(work_item, version, stage, artifacts, strict? \\ true) do
@@ -3231,27 +3231,39 @@ defmodule Apiary.Stages do
     %{stored: stored, passed: passed_runs(work_item, stage, strict?)}
   end
 
-  defp run_place(%{run: %DispatchRun{stage_entry: entry, loop_entry: loop_entry}})
-       when is_integer(entry),
-       do: {entry, loop_entry}
+  defp run_place(%{
+         run: %DispatchRun{stage_entry: entry, loop_entry: loop_entry, workflow: workflow}
+       })
+       when is_integer(entry) and is_binary(workflow),
+       do: {entry, loop_entry, workflow}
 
   defp run_place(_version), do: nil
 
   # The runs of `stage` on the work item that ended `passed`, as the runner reads the end:
   # a run that ended by its exit, which no member cancelled, whose newest verdict `main` says
   # `passed` (`reported_verdict/1`); a verdict whose file the store cannot read raises, as
-  # `verdict!/1` does, with `strict?`, and is no pass without it.
+  # `verdict!/1` does, with `strict?`, and is no pass without it. Only the runs of the
+  # workflows of the entries that have a changed condition are read
+  # (`Runner.changed_workflows/1`), each at its position in the stage.
   defp passed_runs(work_item, stage, strict?) do
+    workflows = Runner.changed_workflows(stage)
+
     for run <-
           Repo.all(
             from d in DispatchRun,
               where:
                 d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"] and
-                  d.state == :ended and d.end_cause == :run_ended and not is_nil(d.stage_entry),
+                  d.state == :ended and d.end_cause == :run_ended and
+                  not is_nil(d.stage_entry) and d.workflow in ^workflows,
               order_by: [d.queued_at, d.id]
           ),
         passed?(run, strict?) do
-      %{entry: run.stage_entry, loop_entry: run.loop_entry, queued_at: run.queued_at}
+      %{
+        entry: run.stage_entry,
+        loop_entry: run.loop_entry,
+        workflow: run.workflow,
+        queued_at: run.queued_at
+      }
     end
   end
 
