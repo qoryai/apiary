@@ -589,11 +589,7 @@ The body, at most 64 KiB:
   character, a bidirectional control character or a format character (the rule of a line
   in the schema) is `422` `invalid_artifact`, as a `reason` that breaks its rule is. A
   verdict with no `kind` is as before. The verdict file stores `kind` as the run sent it.
-  The card of a gate after Explore's, such as Verify's, shows the `kind` of the newest
-  verdict that has a track, next to the badge of the work item's track, as plain text
-  without the spaces around it. It shows no line where that verdict's track is not the
-  work item's track, or where `kind` has no letter, number, punctuation mark or symbol
-  that draws something. Qory Apiary decides nothing by `kind`.
+  Qory Apiary stores `kind` and decides nothing by it; no screen shows it.
   When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
 

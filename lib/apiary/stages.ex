@@ -2344,13 +2344,12 @@ defmodule Apiary.Stages do
 
   @doc false
   # proposed_track_with_reason/2 is `proposed_track/2` with the reason that the same verdict
-  # gives for the track (`track.reason`) and its kind line (`track.kind`): `%{id:, reason:,
-  # kind:}`, `reason` and `kind` nil where the verdict has none or a blank one; nil where
-  # `proposed_track/2` is nil. The kind is for display: nothing branches on it. `artifacts`,
-  # the work item's artifacts (`Apiary.Artifacts.list/1`) where the caller has read them,
-  # spare that read.
+  # gives for the track (`track.reason`): `%{id:, reason:}`, `reason` nil where the verdict
+  # has none or a blank one; nil where `proposed_track/2` is nil. `artifacts`, the work
+  # item's artifacts (`Apiary.Artifacts.list/1`) where the caller has read them, spare that
+  # read.
   @spec proposed_track_with_reason(WorkItem.t(), [Artifacts.Artifact.t()] | nil) ::
-          %{id: String.t(), reason: String.t() | nil, kind: String.t() | nil} | nil
+          %{id: String.t(), reason: String.t() | nil} | nil
   def proposed_track_with_reason(%WorkItem{} = work_item, artifacts \\ nil) do
     case proposal(work_item, artifacts) do
       {:ok, found} -> found
@@ -2358,7 +2357,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  # `{:ok, %{id:, reason:, kind:}}` or `{:ok, nil}` for the track proposed; `{:error,
+  # `{:ok, %{id:, reason:}}` or `{:ok, nil}` for the track proposed; `{:error,
   # :store_unavailable}` where a verdict's file cannot be read from the store.
   defp proposal(work_item, artifacts \\ nil)
 
@@ -2378,15 +2377,6 @@ defmodule Apiary.Stages do
         entered -> from d in runs, where: d.inserted_at >= ^entered
       end
 
-    newest_track_member(work_item, artifacts, runs)
-  end
-
-  defp proposal(%WorkItem{}, _artifacts), do: {:ok, nil}
-
-  # `{:ok, %{id:, reason:, kind:}}` of the track member of the newest verdict `main` that a run
-  # of `runs` (a query of `{dispatch run id, run id}`) pushed and that has a track; `{:ok,
-  # nil}` for none; `{:error, :store_unavailable}` where a file cannot be read.
-  defp newest_track_member(work_item, artifacts, runs) do
     run_ids =
       runs
       |> Repo.all()
@@ -2402,9 +2392,7 @@ defmodule Apiary.Stages do
     |> Enum.reduce_while({:ok, nil}, fn version, found ->
       case Artifacts.stored_json(version) do
         {:ok, %{"track" => %{"id" => id} = track}} when is_binary(id) ->
-          {:halt,
-           {:ok,
-            %{id: id, reason: track_text(track["reason"]), kind: track_kind_text(track["kind"])}}}
+          {:halt, {:ok, %{id: id, reason: track_reason(track["reason"])}}}
 
         {:ok, _none} ->
           {:cont, found}
@@ -2415,59 +2403,16 @@ defmodule Apiary.Stages do
     end)
   end
 
-  @doc false
-  # track_kind/3 is the kind line (`track.kind`) of the newest verdict `main` that a run of
-  # the work item's current take in pushed with a track, at any stage, where that track is
-  # `track_id`, the track `work_item` is on. nil where that verdict has another track, no
-  # kind or one with no visible character, where no verdict has a track, or where a file
-  # cannot be read. An older verdict is not read for it. The kind is for display: nothing
-  # branches on it. One query of the runs, and one file read for each verdict from the
-  # newest down to that one. `artifacts`, the work item's artifacts
-  # (`Apiary.Artifacts.list/1`) where the caller has read them, spare that read.
-  @spec track_kind(WorkItem.t(), String.t() | nil, [Artifacts.Artifact.t()] | nil) ::
-          String.t() | nil
-  def track_kind(work_item, track_id, artifacts \\ nil)
+  defp proposal(%WorkItem{}, _artifacts), do: {:ok, nil}
 
-  def track_kind(%WorkItem{take_in: take_in} = work_item, track_id, artifacts)
-      when is_binary(track_id) and is_integer(take_in) do
-    runs =
-      from d in DispatchRun,
-        left_join: r in subquery(Run.registered()),
-        on: r.dispatch_run_id == d.id,
-        where: d.work_item_id == ^work_item.id and d.take_in == ^take_in,
-        select: {d.id, r.id}
-
-    case newest_track_member(work_item, artifacts, runs) do
-      {:ok, %{id: ^track_id, kind: kind}} -> kind
-      _other -> nil
-    end
-  end
-
-  def track_kind(%WorkItem{}, _track_id, _artifacts), do: nil
-
-  defp track_text(text) when is_binary(text) do
-    case String.trim(text) do
+  defp track_reason(reason) when is_binary(reason) do
+    case String.trim(reason) do
       "" -> nil
-      text -> text
+      reason -> reason
     end
   end
 
-  defp track_text(_text), do: nil
-
-  # A kind shows as a line of text: with no visible character it is nil. A letter, number,
-  # punctuation mark or symbol is visible, but not the characters that draw nothing and are
-  # symbols or letters, such as U+2800 (the blank braille pattern) and the Hangul fillers.
-  defp track_kind_text(kind) do
-    with text when is_binary(text) <- track_text(kind),
-         true <-
-           text
-           |> String.replace(~r/[\x{115F}\x{1160}\x{2800}\x{3164}\x{FFA0}]/u, "")
-           |> String.match?(~r/[\p{L}\p{N}\p{P}\p{S}]/u) do
-      text
-    else
-      _none -> nil
-    end
-  end
+  defp track_reason(_reason), do: nil
 
   # The track an approval at `stage`'s gate records: the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the track the
