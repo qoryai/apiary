@@ -2272,6 +2272,24 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert html =~ "Version 2 · #{scope.user.email}"
     end
+
+    test "a past stage's tab frames what its approval recorded", %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      add_spec!(scope, at_build, "## Spec two")
+      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      {:ok, moved_on} = Stages.approve(scope, at_build, nil, expect_stage: @build)
+
+      assert moved_on.stage_id != @build
+      assert [spec_two] = recorded(work_item, @build)
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert spec_two in drawn(view, work_item)
+      assert has_element?(view, "#work-item-tab-output-spec", "Version 2 · #{scope.user.email}")
+      assert html =~ "Spec two"
+    end
   end
 
   describe "a stage with a workflow and no outputs" do

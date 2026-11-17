@@ -3172,11 +3172,13 @@ defmodule Apiary.Stages do
     Enum.uniq_by(gate_versions(stage, artifacts, approvals) ++ changed, & &1.public_id)
   end
 
-  # gate_frames/2 is the versions that an approval of the stage `stage_id` records, as the
-  # work item page frames them (`ApiaryWeb.WorkItemLive.StageTab.frames/1`): each with its
-  # artifact's type and name, in the order of `recorded_versions/4`, the set
-  # `approve_locked/7` lists. So the page frames every version a person's approval at the
-  # gate records. [] for a stage the work item's process version does not have.
+  # gate_frames/2 is the versions the work item page frames on the tab of the stage
+  # `stage_id` (`ApiaryWeb.WorkItemLive.StageTab.frames/1`), each with its artifact's type
+  # and name. At the work item's stage, until its last stage is done, they are the versions
+  # an approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
+  # At any other stage with a person's approval in this take in, they are the versions the
+  # newest such approval recorded, in its order; with none, the versions its gate shows.
+  # [] for a stage the work item's process version does not have.
   @doc false
   @spec gate_frames(WorkItem.t(), String.t()) :: [
           %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}
@@ -3190,11 +3192,9 @@ defmodule Apiary.Stages do
 
       stage ->
         artifacts = Artifacts.list(work_item)
-        approvals = approvals_by_version(work_item)
         by_id = Map.new(artifacts, &{&1.id, &1})
-        changes? = work_item.stage_id == stage_id
 
-        for version <- recorded_versions(stage, artifacts, approvals, changes?) do
+        for version <- framed_versions(work_item, stage, artifacts) do
           %{
             type: by_id[version.artifact_id].type,
             name: by_id[version.artifact_id].name,
@@ -3202,6 +3202,36 @@ defmodule Apiary.Stages do
           }
         end
     end
+  end
+
+  defp framed_versions(work_item, stage, artifacts) do
+    here? = work_item.stage_id == stage["id"]
+
+    approval =
+      if not here? or work_item.stage_state == :done,
+        do: last_person_approval(work_item, stage["id"])
+
+    if approval do
+      by_public_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, v}
+      for id <- approval.versions, version = by_public_id[id], version != nil, do: version
+    else
+      recorded_versions(stage, artifacts, approvals_by_version(work_item), here?)
+    end
+  end
+
+  # The newest approval of the stage `stage_id` in the work item's take in that a person
+  # gave at the gate (`gate_none_approval?/1` false); nil for none.
+  defp last_person_approval(%WorkItem{take_in: nil}, _stage_id), do: nil
+
+  defp last_person_approval(work_item, stage_id) do
+    Repo.all(
+      from d in GateDecision,
+        where:
+          d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve and
+            d.take_in == ^work_item.take_in and not d.automatic,
+        order_by: [desc: d.inserted_at]
+    )
+    |> Enum.find(&(not gate_none_approval?(&1)))
   end
 
   # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),
