@@ -2786,28 +2786,6 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
-    test "a write run with no work item that has a public id names it for support" do
-      r =
-        run(%{
-          path: nil,
-          state: :failed,
-          outcome: :error,
-          end_cause: :write_without_work_item,
-          proposal: nil,
-          started_at: nil,
-          ended_at: ago(3600),
-          duration: nil
-        })
-
-      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
-
-      assert [
-               "The run did not start.",
-               "Contact support with run rn_01a97b20c4e81f3d: a run that writes needs a branch, which comes from its work item."
-               | _link
-             ] = texts(html, "#work-item-explore-none p")
-    end
-
     test "a run that ended at its handover, before it started: what to fix and why, here and in the folds" do
       for {cause, body} <- [
             {:variables_invalid,
@@ -2820,7 +2798,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {:target_access_gone,
              "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. The run had no access to its repository: the integration no longer reaches it, or the repository's path has a character that access rules do not allow."},
             {:write_without_work_item,
-             "Contact support with run 1: a run that writes needs a branch, which comes from its work item."},
+             "Contact support: a run that writes needs a branch, which comes from its work item."},
             {:build_failed,
              "Check why the build failed on the repository's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."}
           ] do

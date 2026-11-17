@@ -372,8 +372,14 @@ defmodule Apiary.Secrets.SealingTest do
                   Map.put(item, "push_ref", "refs/heads/" <> String.duplicate("e\u0301", 130))
                 ]
             },
-            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}"])]},
-            %{forge | "apply" => [Map.put(item, "paths", ["/a{b"])]}
+            %{forge | "apply" => [Map.put(item, "paths", ["/a{b"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{x}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/a{}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}b"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{{}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}}"])]}
           ] do
         values = [other, model]
 
@@ -392,6 +398,9 @@ defmodule Apiary.Secrets.SealingTest do
             forge,
             Map.put(forge, "expires_at", "2026-10-24T15:00:00.5+02:00"),
             Map.put(forge, "apply", [@item]),
+            Map.put(forge, "apply", [
+              Map.put(@item, "paths", ["/example-org/app/pulls/{}", "/a/{}/b", "/{}*"])
+            ]),
             Map.put(forge, "apply", [
               Map.put(@item, "push_ref", "refs/heads/" <> String.duplicate("a", 244))
             ]),

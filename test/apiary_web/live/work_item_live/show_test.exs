@@ -1095,7 +1095,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {:target_access_gone,
              "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. The run had no access to its repository: the integration no longer reaches it, or the repository's path has a character that access rules do not allow."},
             {:write_without_work_item,
-             "Contact support with run 1: a run that writes needs a branch, which comes from its work item."},
+             "Contact support: a run that writes needs a branch, which comes from its work item."},
             {:build_failed,
              "Check why the build failed on the repository's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."}
           ] do

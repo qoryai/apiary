@@ -26,9 +26,10 @@ defmodule Apiary.Runs.RunCredentialIssue do
        plaintext's `apply` in the Forager contract. Each item is a map whose `hosts` are
        1 to 16 distinct strings, whose `scheme` is a string, whose `username` and
        `header` are strings when present, and whose `paths` are 1 to 32 distinct strings
-       of the path grammar `^/[^*?{}#\\s]*\\*?$` when present (`:apply_item_invalid`): no
-       brace, since Forager reads a segment `{}` as a wildcard, which no template makes. No
-       item has a `token` (`:token_in_apply_item`).
+       of Forager's path grammar when present (`:apply_item_invalid`): a path from the root,
+       with `*` only at its end and no `{` or `}`, except a segment that is exactly `{}`,
+       which matches one segment that is not empty. No item has a `token`
+       (`:token_in_apply_item`).
     6. Each answer item lies inside one entry item: the same `scheme`, the same
        `username` and the same `header`, each both absent or equal
        (`:scheme_outside_entry`); every host among that entry item's hosts
@@ -146,7 +147,11 @@ defmodule Apiary.Runs.RunCredentialIssue do
   @min_lifetime 6 * 60
   @max_lifetime 24 * 60 * 60
 
-  @path ~r/\A\/[^*?#\{\}\s]*\*?\z/u
+  # Forager's path grammar for an item (`credential.schema.json`, `paths`): segments of any
+  # characters but `* ? # { }`, a space character and `/`, or exactly `{}`, which matches one
+  # segment that is not empty; a `*` only at the end. An answer path is checked against the
+  # entry's, which has no brace, by its text (`path_inside?/2`), so a `{}` segment narrows.
+  @path ~r/\A\/(?:\{\}|[^*?#\s\{\}\/]*)(?:\/(?:\{\}|[^*?#\s\{\}\/]*))*\*?\z/u
   # The date, the time, the fraction digits and the offset of an RFC 3339 date-time.
   @rfc3339 ~r/\A(\d{4}-\d{2}-\d{2})[Tt](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})\z/
 

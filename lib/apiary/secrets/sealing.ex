@@ -83,7 +83,8 @@ defmodule Apiary.Secrets.Sealing do
   ]
   @username ~r/\A[^:\s]+\z/
   @header ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}\z/
-  @path ~r/\A\/[^*?#\{\}\s]*\*?\z/
+  # Forager's path grammar for an item's `paths`, as `Apiary.Runs.RunCredentialIssue` reads it.
+  @path ~r/\A\/(?:\{\}|[^*?#\s\{\}\/]*)(?:\/(?:\{\}|[^*?#\s\{\}\/]*))*\*?\z/u
   @push_ref ~r/\Arefs\/heads\/[^\s]+\z/u
   @max_push_ref 255
 

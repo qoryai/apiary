@@ -5693,10 +5693,10 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
-  defp no_result_words(%{end_cause: cause} = run, _earlier) when cause in @unstarted,
+  defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
-       unstarted_words(cause, run)}
+       unstarted_words(cause)}
 
   defp no_result_words(%{workflow_gap: %{} = gap}, _earlier),
     do:
@@ -6077,24 +6077,17 @@ defmodule ApiaryWeb.WorkItemComponents do
         "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. The run had no access to its target: the integration no longer reaches it, or the target's path has a character that access rules do not allow."
       )
 
+  defp unstarted_words(:write_without_work_item),
+    do:
+      gettext(
+        "Contact support: a run that writes needs a branch, which comes from its work item."
+      )
+
   defp unstarted_words(:build_failed),
     do:
       gettext(
         "Check why the build failed on the target's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."
       )
-
-  # A run that ended before its handover has no public id: it is named by its place in
-  # the take in, as the page shows it.
-  defp unstarted_words(:write_without_work_item, run) do
-    id = if is_binary(run[:id]), do: run[:id], else: shown_number(run[:attempt])
-
-    gettext(
-      "Contact support with run %{run}: a run that writes needs a branch, which comes from its work item.",
-      run: id
-    )
-  end
-
-  defp unstarted_words(cause, _run), do: unstarted_words(cause)
 
   # A run in a DOM id: its number, or for a run that ended before its handover, which has
   # no public id, its place in the take in.

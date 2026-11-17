@@ -1341,15 +1341,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
   `write_without_work_item`, because it has no branch to limit its push credential to. The
-  run's page reads: "Contact support with run 1: a run that writes needs a branch, which
-  comes from its work item.", with the run's public id, or its place in the take in where it
-  has none, in place of 1.
+  run's page reads: "Contact support: a run that writes needs a branch, which comes from
+  its work item."
 <!-- /feature -->
 <!-- feature: factory -->
 - A target path with `{` or `}` ends the run `target_access_gone`, as one with `*`, `?`
   or `#` does. Forager's path grammar reads a segment written `{}` as a wildcard for one
-  segment, so a brace in a target path could widen a run's access. An adapter's answer
-  with a brace in a path is refused too.
+  segment, so a brace in a target path could widen a run's access. A template of an
+  adapter's apply item has no brace either, but `{target.path}`. A path in an adapter's
+  answer, and in a sealed item, may have a segment that is exactly `{}`, as Forager reads
+  it, such as `/repos/acme/shop/pulls/{}`. Any other brace in them is refused.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - A gateway's report of its model keys may have `session`, an integer of 1 or more, the

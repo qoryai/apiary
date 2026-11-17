@@ -323,10 +323,53 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
   end
 
   describe "braces in a path" do
-    test "an answer path with a brace is refused, though an entry path covers it" do
+    test "an answer path with a segment that is exactly {} is inside the entry path that covers it" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/shop/*"]}])
+
+      for path <- [
+            "/repos/acme/shop/pulls/{}",
+            "/repos/acme/shop/{}",
+            "/repos/acme/shop/{}/merge",
+            "/repos/acme/shop/{}/{}",
+            "/repos/acme/shop/{}*"
+          ] do
+        item = %{@code | "paths" => [path]}
+        assert {:ok, %{apply: [^item]}} = RunCredentialIssue.check(entry, items([item]), @now)
+      end
+    end
+
+    test "a {} segment past the entry's prefix is refused where the prefix is another" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/other/*"]}])
+      item = %{@code | "paths" => ["/repos/acme/shop/pulls/{}"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+
+      # A {} segment inside the entry's literal prefix is not a prefix of it either.
+      entry = entry([%{@code | "paths" => ["/repos/acme/*"]}])
+      item = %{@code | "paths" => ["/repos/{}/shop"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+    end
+
+    test "an exact entry path is not covered by a {} segment" do
+      entry = entry([%{@code | "paths" => ["/repos/acme/shop/pulls/12"]}])
+      item = %{@code | "paths" => ["/repos/acme/shop/pulls/{}"]}
+      assert refused_with(entry, items([item]), @now) == :path_outside_entry
+    end
+
+    test "any other brace in an answer path is refused, though an entry path covers it" do
       entry = entry([%{@code | "paths" => ["/team/*"]}])
 
-      for path <- ["/team/{}", "/team/a{b", "/team/{}/x", "/team/}"] do
+      for path <- [
+            "/team/{x}",
+            "/team/{",
+            "/team/}",
+            "/team/a{}",
+            "/team/{}b",
+            "/team/{}x",
+            "/team/{{}",
+            "/team/{}}",
+            "/team/a{b",
+            "/team/{}/x{y}"
+          ] do
         assert refused_with(entry, items([%{@code | "paths" => [path]}]), @now) ==
                  :apply_item_invalid,
                path
