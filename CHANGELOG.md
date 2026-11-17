@@ -12,6 +12,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: workflow_model -->
+- A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
+  of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
+  full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
+  them, stores a repeated commit once, and answers `204`. A run that ended gets `409`
+  `run_ended`, a run that has no write access `409` `not_writable`, and a body outside the
+  limits `400` `invalid_request`. A cancel that a member requested does not refuse a
+  report; the report is refused once the run has ended. `GET work-item` has a new member,
+  `pushed_commits`: the commits that the work item's earlier runs reported, from every
+  stage, ordered by run number and then by when they were recorded, each with `run_id`,
+  `cancelled` and `at`. `cancelled` is true only when a member cancelled that run, not when
+  it ended at its time limit, was released or lost its machine. The migration adds the table
+  `run_pushed_commits`.
+<!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
   refuses a value that is not such an id. A run can change the criterion of an open
