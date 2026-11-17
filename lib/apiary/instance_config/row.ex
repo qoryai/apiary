@@ -3,8 +3,8 @@ defmodule Apiary.InstanceConfig.Row do
   The settings an instance admin saves in Instance settings › Configuration, in the
   instance's row of `instance_settings` (`Apiary.InstanceConfig`): how many days the audit
   trail keeps an entry and the address it came from, the grace period before a purge, and
-  the invitations an organisation makes a day. Each is nil until saved, and nil is the
-  default.
+  the invitations an organisation makes a day, and the largest image a prebuild may keep.
+  Each is nil until saved, and nil is the default.
 
   The schema maps only these columns of the row, and `updated_at`; its other columns are
   the instance's other settings (`Apiary.Mail.Settings`, `Apiary.ProductName.Row`,
@@ -21,6 +21,8 @@ defmodule Apiary.InstanceConfig.Row do
     field :invitations_per_day, :integer
     # The days a dispatch's machine log is kept (`Apiary.Dispatches.MachineLogs`).
     field :machine_log_retention_days, :integer
+    # The largest image a prebuild may keep, in GB; nil is no limit.
+    field :prebuilt_image_max_gb, :integer
     field :updated_at, :utc_datetime_usec
   end
 

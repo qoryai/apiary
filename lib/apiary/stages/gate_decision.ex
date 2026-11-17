@@ -13,9 +13,16 @@ defmodule Apiary.Stages.GateDecision do
   # under, and `take_in` the take in of the work item it was made in. Nothing changes a
   # decision once it is written.
   #
+  # A `:move` also has `left_stage_entered_at`, when the work item had last entered
+  # `stage_id` (`work_items.stage_entered_at`, which the move overwrites; nil for none).
+  # `Apiary.Stages.inputs/1` reads the versions that `stage_id` made in between. The move
+  # back that resolves an escalation writes one too, with no note and the `escalation_id` of
+  # the escalation it resolves: the note of the escalation is the one that `notes/1` lists.
+  #
   # `public_id` is `gd_` and sixteen lowercase Crockford base32 characters
-  # (`Apiary.PublicId`): the id of a request for changes or a move in the run API's notes
-  # (`Apiary.Stages.Notes`), which a run's version may have as its `decision`.
+  # (`Apiary.PublicId`): the id of a request for changes, or of a move that resolves no
+  # escalation, in the run API's notes (`Apiary.Stages.Notes`), which a run's version may
+  # have as its `decision`.
   @moduledoc false
   use Ecto.Schema
 
@@ -36,6 +43,7 @@ defmodule Apiary.Stages.GateDecision do
     field :note, :string
     field :track, :string
     field :take_in, :integer
+    field :left_stage_entered_at, :utc_datetime_usec
     field :automatic, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 
@@ -44,6 +52,7 @@ defmodule Apiary.Stages.GateDecision do
     belongs_to :work_item, Apiary.WorkItems.WorkItem
     belongs_to :process_version, Apiary.Processes.Version
     belongs_to :user, Apiary.Accounts.User
+    belongs_to :escalation, Apiary.Stages.Escalation
   end
 
   # prefix/0 is the prefix of a decision's public id, `gd`.

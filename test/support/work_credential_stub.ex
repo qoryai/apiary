@@ -36,6 +36,38 @@ defmodule Apiary.WorkCredentialStub do
   end
 
   @doc """
+  Answers each call with the credential `credentials` has for the access the call asks for
+  (`"read"` or `"write"`), signed under `seed`: a run with a work entry and a push entry
+  gets a different token for each. A value that is a status and a body, such as
+  `{403, ~s({"error":"access_not_granted"})}`, is the answer as it is. `delays` has, for an
+  access, the milliseconds the stub waits before it answers; the test then gets
+  `{:run_credential_waited, access}`.
+  """
+  def issue_by_access(seed, credentials, delays \\ %{}) when is_map(credentials) do
+    Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
+      {conn, call} = told_with(conn)
+
+      # An answer after the delay of its access, in milliseconds; the test is told when
+      # a call that was waiting has ended its wait.
+      if delay = delays[call["access"]] do
+        Process.sleep(delay)
+        send(test(), {:run_credential_waited, call["access"]})
+      end
+
+      {status, body} =
+        case Map.fetch!(credentials, call["access"]) do
+          {status, body} when is_integer(status) ->
+            {status, body}
+
+          credential ->
+            {200, Jason.encode!(%{"version" => 1, "revision" => 1, "credential" => credential})}
+        end
+
+      reply(conn, seed, status, body)
+    end)
+  end
+
+  @doc """
   Answers every call with `body`, as given, with `status`, signed under `seed`, after it
   calls `before`.
   """
@@ -43,15 +75,19 @@ defmodule Apiary.WorkCredentialStub do
     Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
       conn = told(conn)
       before.()
-      [call_signature] = Plug.Conn.get_req_header(conn, "x-qory-signature-ed25519")
-      message = SignedMessage.call_answer(status, call_signature, body)
-      signature = Ed25519.encode(:crypto.sign(:eddsa, :none, message, [seed, :ed25519]))
-
-      conn
-      |> Plug.Conn.put_resp_header("x-qory-signature-ed25519", signature)
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(status, body)
+      reply(conn, seed, status, body)
     end)
+  end
+
+  defp reply(conn, seed, status, body) do
+    [call_signature] = Plug.Conn.get_req_header(conn, "x-qory-signature-ed25519")
+    message = SignedMessage.call_answer(status, call_signature, body)
+    signature = Ed25519.encode(:crypto.sign(:eddsa, :none, message, [seed, :ed25519]))
+
+    conn
+    |> Plug.Conn.put_resp_header("x-qory-signature-ed25519", signature)
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(status, body)
   end
 
   @doc "Answers every call after `ms` milliseconds, with an unsigned 504."
@@ -74,13 +110,18 @@ defmodule Apiary.WorkCredentialStub do
 
   # The stub runs in the attempt's task, whose first caller is the test.
   defp told(conn) do
-    {:ok, body, conn} = Plug.Conn.read_body(conn)
-
-    send(
-      hd(Process.get(:"$callers")),
-      {:run_credential_call, conn.request_path, Jason.decode!(body)}
-    )
-
+    {conn, _call} = told_with(conn)
     conn
+  end
+
+  # The test process: the last of the callers, as the stub runs in a task of the call, which
+  # a task of the request started.
+  defp test, do: List.last(Process.get(:"$callers"))
+
+  defp told_with(conn) do
+    {:ok, body, conn} = Plug.Conn.read_body(conn)
+    call = Jason.decode!(body)
+    send(test(), {:run_credential_call, conn.request_path, call})
+    {conn, call}
   end
 end

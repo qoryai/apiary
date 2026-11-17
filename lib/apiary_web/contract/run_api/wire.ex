@@ -109,12 +109,16 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp stage_value(stage, :name) when is_binary(stage), do: stage
   defp stage_value(_stage, _key), do: nil
 
+  # An input has `from` only for a version of a stage the work item left by a person's
+  # move to an earlier stage (`Apiary.Stages.inputs/1`): `"move"`.
   defp input(input) do
-    object([
-      {"type", get(input, :type)},
-      {"required", get(input, :required) == true},
-      {"version", ref(get(input, :version))}
-    ])
+    object(
+      [
+        {"type", get(input, :type)},
+        {"required", get(input, :required) == true},
+        {"version", ref(get(input, :version))}
+      ] ++ if(get(input, :from) == :move, do: [{"from", "move"}], else: [])
+    )
   end
 
   defp output(output) do

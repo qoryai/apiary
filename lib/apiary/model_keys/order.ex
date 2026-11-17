@@ -37,8 +37,10 @@ defmodule Apiary.ModelKeys.Order do
   order, then the keys in cooldown in tie order.
   """
 
-  # A run's model keys, within the 8 credentials of a run configuration, which also has
-  # the registry's and the work credentials.
+  # A run's model keys, within the 16 credentials of a run configuration, which also has
+  # the registry's credential, the work credential and the push credential: 6 keys and
+  # those 3 are 9, and the harness links (`Apiary.Harnesses.Walk.max_links/0`) take up to 5
+  # more.
   @max_keys 6
 
   @typedoc "A key as the order reads it (the moduledoc)."
