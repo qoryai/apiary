@@ -51,7 +51,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   follow the output frames, folded; with no output frame, the first input frame is open.
   An input version that a run made has the caption "Version <n> · from <stage>, Attempt
   <a> (Run <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no
-  registered number. When another input remains, the version of the harness's submission
+  registered number; one that a person made has "Version <n> · <the member's short name>",
+  as an output has. When another input remains, the version of the harness's submission
   type (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where
   it is the only input, it has the frame. On the stage card, each output's version at the
   gate links to that version's page, and the gate also links every further version that
@@ -86,7 +87,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reads "<stage> started no run. Read the inputs below, then approve." (in a software
   workspace, "Read the build report and the draft, then approve.") and leaves out the list of
   outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
-  item on no track keeps both as before.
+  item on no track keeps both as before. On the stage's tab at that gate, **Comment on the
+  stage's outputs** shows only where the tab has an output frame, **Run another round** only
+  where the stage has a workflow entry that runs on the work item's track (a condition on the
+  track, "Runs on <track> only", holds an entry back), and the runs fold only where the stage
+  has a run or a skipped entry that the table does not list. The table of entries stays.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

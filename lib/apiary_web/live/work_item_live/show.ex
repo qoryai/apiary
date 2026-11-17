@@ -423,6 +423,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            has_outputs={@output_frames}
+            runs_on_track={StageTab.runs_on_track?(@flow, @view.stage)}
             wrote={@view.wrote}
             questions={@view.questions}
             review_comments={@view.review_comments}
@@ -441,7 +443,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 (&reply_path(@current_scope, @number, @tab, @flow, &1))
             }
             move_error={acts?(@tab, @flow, @item) && @move_error}
-            record={StageTab.record?(@view.runs, @view.artifacts)}
+            record={
+              StageTab.record?(
+                @view.runs,
+                @view.artifacts,
+                if(@view.entries == [], do: @view.skips, else: [])
+              )
+            }
             verdicts={@flow.runs}
             item_noun={@source.item_noun}
             now={@now}
@@ -595,6 +603,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           output_frames: false,
            frame_texts: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
@@ -2100,10 +2109,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
+    outputs = assigns |> recorded(stage.id) |> StageTab.frames()
+
     frames =
-      assigns
-      |> recorded(stage.id)
-      |> StageTab.frames()
+      outputs
       |> StageTab.with_inputs(
         StageTab.input_frames(assigns.flow, stage, assigns.artifacts, assigns.row.process_version)
       )
@@ -2125,10 +2134,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         Map.put(frame, :read, Map.get(texts, {type, name, version}, :unread))
       end)
 
-    assign(socket, frames: frames, frame_texts: texts)
+    assign(socket, frames: frames, output_frames: outputs != [], frame_texts: texts)
   end
 
-  defp framed(socket), do: assign(socket, :frames, [])
+  defp framed(socket), do: assign(socket, frames: [], output_frames: false)
 
   # The member of a frame's approval (`StageTab.approved/3`) as the components show a
   # person (`View.person/2`), Former member for one whose account is gone: read for that

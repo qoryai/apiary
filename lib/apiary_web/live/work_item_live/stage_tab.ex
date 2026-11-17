@@ -65,12 +65,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     end
   end
 
-  # record?/2 is whether a stage's tab has the record block (`foot_record/1`), with the
-  # stage's `runs` and `artifacts`: every tab but during a first run with no output. A stage
-  # with no run and no artifact has it for Add a version.
-  @spec record?([map], [map]) :: boolean
-  def record?([%{place: place}], []) when place in [:queued, :running], do: false
-  def record?(_runs, _artifacts), do: true
+  # record?/3 is whether a stage's tab has the record block (`foot_record/1`), with the
+  # stage's `runs`, its `artifacts` and the `skips` the block lists (those the table of
+  # entries does not): every tab but during a first run with no output, and but where the
+  # stage has no run and no skip to list, which leaves the block no fold to draw.
+  @spec record?([map], [map], [map]) :: boolean
+  def record?(runs, artifacts, skips \\ [])
+  def record?([], _artifacts, skips), do: skips != []
+  def record?([%{place: place}], [], _skips) when place in [:queued, :running], do: false
+  def record?(_runs, _artifacts, _skips), do: true
 
   # folded?/4 is whether a tab's runs fold lists every run of `flow` (`flow.runs`, the
   # stage runs of the take in), with `run`, the take in's latest run, and `earlier_runs`
@@ -321,6 +324,40 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   defp entry(_item, _index, _stage, _runs, _skips), do: nil
 
   @doc """
+  runs_on_track?/2 is whether `stage` has a workflow entry that runs on the track the work
+  item is on (`flow.track`, `Apiary.Stages.track/1`): an entry, in a loop or not, that no
+  condition on a track holds back, as the Workflows table words it ("Runs on Standard
+  only"). True for a work item on no track, and for a stage with no entry that holds back
+  on a track. Only the conditions on a track count: a condition on an input does not hold
+  an entry back here, as the page does not read which inputs count.
+  """
+  @spec runs_on_track?(map, map) :: boolean
+  def runs_on_track?(%{track: %{id: track}}, stage) do
+    facts = %{track: track}
+
+    stage.sequence
+    |> Enum.flat_map(fn
+      %{"loop" => %{"body" => body}} = loop -> if held?(loop, facts), do: [], else: body
+      entry -> [entry]
+    end)
+    |> Enum.any?(&(is_binary(&1["workflow"]) and not held?(&1, facts)))
+  end
+
+  def runs_on_track?(_flow, _stage), do: true
+
+  # Whether a condition on a track of `item` holds it back with `facts`.
+  defp held?(item, facts) do
+    on_track = fn {_key, condition} -> is_map(condition) and is_binary(condition["track"]) end
+
+    item
+    |> Map.take(["when", "unless"])
+    |> Enum.filter(on_track)
+    |> Map.new()
+    |> Runner.unmet(facts)
+    |> Kernel.!=(nil)
+  end
+
+  @doc """
   track_line/1 is the track the work item is on and where an approval put it there:
   `%{name:, gate:}`, `gate` the name of the stage whose gate the approval passed, nil where
   no approval that the stages passed over whole record made it (a move forward, or a stage
@@ -489,6 +526,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   Where it is the only input, it has the frame, open, so the tab is never empty.
   `artifacts` are the work item's artifacts, as `Apiary.Artifacts.list/1` reads them, and
   `version` is the work item's process version.
+
+  `writer` is the member's short name for a version a person made, as `frames/1` has it for
+  an output ("Former member" for an account that is gone), else nil.
   """
   @spec input_frames(map, map, [map], Apiary.Processes.Version.t() | nil) :: [map]
   def input_frames(flow, stage, artifacts, version) do
@@ -507,13 +547,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       shown
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
+        made = made(artifacts, input)
+
         %{
           type: input.type,
           name: "main",
           version: input.version,
           open: place == 0,
-          writer: nil,
-          source: source(artifacts, input, names)
+          writer: writer(made),
+          source: source(made, names)
         }
       end)
     else
@@ -529,15 +571,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     end
   end
 
-  # Where the version of `input` came from: the stage, attempt and run number of the run
-  # that made it, nil for a version with no run or a stage the process version no longer has.
-  defp source(artifacts, input, names) do
-    version =
-      artifacts
-      |> Enum.filter(&(&1.type == input.type and &1.name == "main"))
-      |> Enum.flat_map(& &1.versions)
-      |> Enum.find(&(&1.number == input.version))
+  # The version of `input` among `artifacts`, nil where none has its number.
+  defp made(artifacts, input) do
+    artifacts
+    |> Enum.filter(&(&1.type == input.type and &1.name == "main"))
+    |> Enum.flat_map(& &1.versions)
+    |> Enum.find(&(&1.number == input.version))
+  end
 
+  # The short name of the member who made `version`, as `frames/1` names the writer of an
+  # output; nil for a version a run made, or none.
+  defp writer(%{writer: :person, user: user}), do: member(user)
+  defp writer(_version), do: nil
+
+  # Where `version` came from: the stage, attempt and run number of the run that made it,
+  # nil for a version with no run or a stage the process version no longer has.
+  defp source(version, names) do
     with %{writer: :run, run: %{attempt: attempt} = run} <- version,
          stage when is_binary(stage) <- names[run.stage_id || version.stage_id] do
       %{stage: stage, attempt: attempt, run: run.run && run.run.number}

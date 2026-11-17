@@ -2538,6 +2538,16 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :outputs, :list, default: []
 
+  attr :has_outputs, :boolean,
+    default: true,
+    doc:
+      "whether the tab has an output frame, one for a version the stage's approval recorded, not an input frame; the gate's comment on the stage's outputs needs one"
+
+  attr :runs_on_track, :boolean,
+    default: true,
+    doc:
+      "whether the stage has a workflow entry that runs on the work item's track (`ApiaryWeb.WorkItemLive.StageTab.runs_on_track?/2`); the gate's Run another round needs one"
+
   attr :wrote, :list,
     default: [],
     doc: "the versions the stage's runs wrote, `%{type, version}`, for the runs' summary"
@@ -2603,10 +2613,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     form? = assigns.current and assigns.work_item.status == :questions and assigns.can_act
     round_gate = assigns.current and assigns.round_gate and not running and not open_questions?
 
+    # The gate's comment is on the stage's outputs, so it needs an output frame; its Run
+    # another round needs an entry that runs on the work item's track.
+    comment? = assigns.can_send and assigns.has_outputs
+    rerun? = assigns.runs_on_track
+
     # Sent decisions are text: only a decision still `:decided` takes a change.
     change =
       assigns.can_change and Enum.any?(decisions, &(&1.state == :decided)) and
-        (round_gate or form?)
+        ((round_gate and rerun?) or form?)
 
     # At the gate the decisions sit in the Decisions frame, above the gate, as on Explore's
     # tab; elsewhere in the questions frame.
@@ -2622,7 +2637,10 @@ defmodule ApiaryWeb.WorkItemComponents do
         closed_questions: if(decisions_frame == [], do: assigns.questions, else: others),
         round:
           round_gate and
-            (decisions_frame != [] or assigns.can_send or not is_nil(assigns.move_error)),
+            ((rerun? and assigns.can_send) or decisions_frame != [] or comment? or
+               not is_nil(assigns.move_error)),
+        commenting: comment?,
+        rerun: rerun?,
         sendable: if(assigns.can_send, do: length(open), else: 0),
         item: SourceComponents.item(assigns.item_noun),
         run: run,
@@ -2733,6 +2751,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         comment={@comment}
         can_confirm={@confirm and @can_act}
         can_send={@round and @can_send}
+        commenting={@commenting}
+        rerun={@rerun}
         can_change={@decisions_frame != []}
         changed={@changed}
         decisions={@decisions_frame != []}
@@ -3935,6 +3955,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :decisions, :boolean, default: false, doc: "whether the tab shows decisions"
   attr :error, :any, default: nil, doc: "why the last move on the tab was not made"
 
+  attr :commenting, :boolean,
+    default: true,
+    doc: "whether a reader who may send (`can_send`) sees the comment field"
+
+  attr :rerun, :boolean, default: true, doc: "whether the gate has Run another round"
+
   attr :updates, :atom,
     default: :proposal,
     values: [:proposal, :outputs],
@@ -3962,47 +3988,48 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         ready: comment?(assigns.comment) or assigns.open > 0 or assigns.changed,
-        sends: assigns.can_send or assigns.can_change
+        comment?: assigns.can_send and assigns.commenting,
+        sends: (assigns.can_send or assigns.can_change) and assigns.rerun
       )
 
     ~H"""
     <form id={@id} class="q-xp-reply" phx-change="answer_draft" phx-submit="answer" novalidate>
       <input type="hidden" name="number" value={@number} />
-      <p :if={@sends} class="q-xp-cap q-xp-gate-cap">
+      <p :if={@sends and (@comment? or @can_change)} class="q-xp-cap q-xp-gate-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span :if={!@can_send and @updates == :proposal}>
+        <span :if={!@comment? and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
           )}
         </span>
-        <span :if={!@can_send and @updates == :outputs}>
+        <span :if={!@comment? and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and updates the outputs."
           )}
         </span>
-        <span :if={@can_send and !@changed and @updates == :proposal}>
+        <span :if={@comment? and !@changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your comment and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and !@changed and @updates == :outputs}>
+        <span :if={@comment? and !@changed and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your comment and updates the outputs."
           )}
         </span>
-        <span :if={@can_send and @changed and @updates == :proposal}>
+        <span :if={@comment? and @changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and @changed and @updates == :outputs}>
+        <span :if={@comment? and @changed and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the outputs."
           )}
         </span>
       </p>
       <.comment_field
-        :if={@can_send}
+        :if={@comment?}
         id={"#{@id}-comment"}
         value={@comment}
         decisions={@decisions}

@@ -860,7 +860,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record")
     end
 
-    test "on the stage's tab: kept for Add a version with no run and no artifact", %{
+    test "on the stage's tab: none with no run and nothing to list, so no 0 runs fold", %{
       conn: conn,
       scope: scope
     } do
@@ -872,8 +872,28 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-record")
-      assert has_element?(view, "#work-item-artifact-list-add", "Add a version")
+      refute has_element?(view, "#work-item-record")
+      refute has_element?(view, "#work-item-record-fold")
+      refute render(view) =~ "0 runs"
+    end
+
+    test "on the stage's tab: kept with a run", %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-record-fold > summary", "1 run")
+    end
+
+    test "record?/3 has a fold for a run, or for a skip the block lists, not for neither" do
+      alias ApiaryWeb.WorkItemLive.StageTab
+
+      refute StageTab.record?([], [], [])
+      refute StageTab.record?([], [%{type: "spec"}], [])
+      assert StageTab.record?([], [], [%{workflow: "build-it"}])
+      assert StageTab.record?([%{place: :ended}], [], [])
+      refute StageTab.record?([%{place: :running}], [], [])
+      assert StageTab.record?([%{place: :running}], [%{type: "spec"}], [])
     end
 
     test "on the Ticket tab and the Thread: kept during a first run", %{
@@ -3922,6 +3942,270 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       refute has_element?(view, "#work-item-tab-passed-over")
       refute has_element?(view, "#work-item-head-stages-#{@shape}-not-run")
+    end
+  end
+
+  describe "the person's gate's blocks (A-24)" do
+    @verify "st_m1mqbeywdg"
+
+    # A person's upload of a test report at Verify, after Build's run passed on the Fast
+    # track: an output frame at Verify, whose workflow runs on Standard only.
+    defp with_upload!(scope, work_item) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "test-report",
+          "base_view" => "document",
+          "size_limit" => 1_048_576,
+          "max_files" => 1
+        })
+
+      {:ok, _version} =
+        Stages.add_version(scope, reload(work_item), "test-report", [
+          %{filename: "report.md", content_type: "text/markdown", binary: "## The report"}
+        ])
+
+      work_item
+    end
+
+    defp frames(view), do: :sys.get_state(view.pid).socket.assigns.frames
+
+    defp track_flow(track, sequence),
+      do: {%{track: track && %{id: track, name: track}}, %{sequence: sequence}}
+
+    test "Run another round, the comment and the fold: none at Verify's gate with no run, no entry on the track and no output frame",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(view, "#work-item-stage-gate-no-run")
+      assert has_element?(view, "#work-item-tab-output-test-features-fold[open]")
+      assert has_element?(view, "#work-item-stage-gate-approve-go")
+      refute has_element?(view, "#work-item-tab-gate")
+      refute has_element?(view, "#work-item-tab-gate-send")
+      refute has_element?(view, "#work-item-tab-gate-comment")
+      refute has_element?(view, "#work-item-record")
+      refute render(view) =~ "Run another round"
+      refute render(view) =~ "Comment on the stage&#39;s outputs"
+      refute render(view) =~ "0 runs"
+    end
+
+    test "with a person's upload at Verify: the comment returns with the output frame, Run another round stays hidden",
+         %{conn: conn, scope: scope} do
+      work_item = scope |> at_verify_gate!() |> then(&with_upload!(scope, &1))
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert Enum.any?(
+               :sys.get_state(view.pid).socket.assigns.frames,
+               &(&1.type == "test-report")
+             )
+
+      assert has_element?(view, "#work-item-tab-output-test-report-fold[open]")
+
+      assert has_element?(view, "#work-item-tab-gate-comment")
+      assert has_element?(view, "label", "Comment on the stage's outputs")
+      refute has_element?(view, "#work-item-tab-gate-send")
+      refute render(view) =~ "Run another round"
+      refute has_element?(view, "#work-item-record-fold")
+    end
+
+    test "the stage's tab keeps the comment and Run another round at a gate whose stage has an output frame and an entry on the track" do
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["spec"]},
+          work_item: %{number: 1, status: :gate, run: nil},
+          outputs: [%{type: "spec", version: 1, open: true, read: nil}],
+          current: true,
+          round_gate: true,
+          can_send: true
+        )
+
+      assert html =~ ~s(id="work-item-tab-gate-comment")
+      assert html =~ ~s(id="work-item-tab-gate-send")
+    end
+
+    test "has_outputs: false hides the comment and keeps Run another round; runs_on_track: false hides Run another round and keeps the comment" do
+      render = fn assigns ->
+        render_component(
+          &ApiaryWeb.WorkItemComponents.stage_tab/1,
+          Keyword.merge(
+            [
+              stage: %{name: "Plan", outputs: ["spec"]},
+              work_item: %{number: 1, status: :gate, run: nil},
+              outputs: [%{type: "spec", version: 1, open: true, read: nil}],
+              current: true,
+              round_gate: true,
+              can_send: true
+            ],
+            assigns
+          )
+        )
+      end
+
+      html = render.(has_outputs: false)
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+      refute html =~ "Comment on the stage"
+      assert html =~ ~s(id="work-item-tab-gate-send")
+
+      html = render.(runs_on_track: false)
+      assert html =~ ~s(id="work-item-tab-gate-comment")
+      refute html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ "Run another round"
+
+      html = render.(has_outputs: false, runs_on_track: false)
+      refute html =~ ~s(id="work-item-tab-gate")
+    end
+
+    test "the gate keeps a refused move's error with both hidden" do
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["spec"]},
+          work_item: %{number: 1, status: :gate, run: nil},
+          current: true,
+          round_gate: true,
+          can_send: true,
+          has_outputs: false,
+          runs_on_track: false,
+          move_error: :stale
+        )
+
+      assert html =~ ~s(id="work-item-tab-gate-error")
+      refute html =~ ~s(id="work-item-tab-gate-send")
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+    end
+
+    test "runs_on_track?/2 is true for an entry that no condition on the track holds back" do
+      alias ApiaryWeb.WorkItemLive.StageTab
+
+      standard = %{"when" => %{"track" => "standard"}}
+      not_fast = %{"unless" => %{"track" => "fast-track"}}
+
+      for {track, sequence, expected} <- [
+            # On no track, as with a process that has none: the gate keeps Run another round.
+            {nil, [%{"workflow" => "shape-a-ticket", "when" => %{"track" => "standard"}}], true},
+            {"fast-track", [%{"workflow" => "shape-a-ticket"}], true},
+            {"fast-track", [Map.put(not_fast, "workflow", "shape-a-ticket")], false},
+            {"standard", [Map.put(not_fast, "workflow", "shape-a-ticket")], true},
+            {"fast-track", [Map.put(standard, "workflow", "shape-a-ticket")], false},
+            {"standard", [Map.put(standard, "workflow", "shape-a-ticket")], true},
+            # One entry that runs is enough.
+            {"fast-track",
+             [
+               Map.put(standard, "workflow", "shape-a-ticket"),
+               %{"workflow" => "build-it"}
+             ], true},
+            # A loop held back, and a loop whose body is held back, run nothing.
+            {"fast-track",
+             [
+               Map.put(not_fast, "loop", %{
+                 "rounds" => 3,
+                 "body" => [%{"workflow" => "review-it"}]
+               })
+             ], false},
+            {"fast-track",
+             [
+               %{
+                 "loop" => %{
+                   "rounds" => 3,
+                   "body" => [Map.put(standard, "workflow", "review-it")]
+                 }
+               }
+             ], false},
+            {"standard",
+             [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "review-it"}]}}], true},
+            # A condition on an input holds nothing back: the page does not read the inputs.
+            {"fast-track",
+             [%{"workflow" => "shape-a-ticket", "when" => %{"input" => "test-features"}}], true},
+            {"fast-track",
+             [
+               %{
+                 "workflow" => "shape-a-ticket",
+                 "when" => %{"input" => "test-features"},
+                 "unless" => %{"track" => "fast-track"}
+               }
+             ], false},
+            # A stage with no workflow has no entry.
+            {"fast-track", [], false}
+          ] do
+        {flow, stage} = track_flow(track, sequence)
+
+        assert StageTab.runs_on_track?(flow, stage) == if(track, do: expected, else: true),
+               "#{inspect(track)} on #{inspect(sequence)}"
+      end
+    end
+
+    test "input_frames/4 has the member's short name as the writer of a person's version, none for a run's" do
+      alias ApiaryWeb.WorkItemLive.StageTab
+
+      flow = %{
+        state: :at_gate,
+        track: %{id: "fast-track"},
+        offers: [],
+        stage: %{id: "st_a"},
+        stages: [%{id: "st_a", name: "Verify"}, %{id: "st_b", name: "Build"}],
+        runs: [],
+        skips: [%{stage_id: "st_a"}],
+        inputs: [
+          %{type: "report", version: 2},
+          %{type: "notes", version: 1},
+          %{type: "plan", version: 1}
+        ]
+      }
+
+      run = %{attempt: 2, stage_id: "st_b", run: %{number: 7}}
+
+      artifacts = [
+        %{
+          type: "report",
+          name: "main",
+          versions: [
+            %{number: 2, writer: :person, user: %Apiary.Accounts.User{email: "sam@example.com"}},
+            %{number: 1, writer: :run, run: run, stage_id: "st_b"}
+          ]
+        },
+        %{type: "notes", name: "main", versions: [%{number: 1, writer: :person, user: nil}]},
+        %{
+          type: "plan",
+          name: "main",
+          versions: [%{number: 1, writer: :run, run: run, stage_id: "st_b"}]
+        }
+      ]
+
+      assert [
+               %{type: "report", writer: "sam", source: nil, open: true},
+               %{type: "notes", writer: "Former member", source: nil},
+               %{type: "plan", writer: nil, source: %{stage: "Build", attempt: 2, run: 7}}
+             ] = StageTab.input_frames(flow, %{id: "st_a"}, artifacts, nil)
+    end
+
+    test "a person's input version has the caption Version n · name", %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+
+      # The report that Verify reads was written by a person, at Build's stage.
+      {1, _rows} =
+        Repo.update_all(
+          from(v in Artifacts.Version,
+            join: a in assoc(v, :artifact),
+            where: a.work_item_id == ^work_item.id and a.type == "test-features"
+          ),
+          set: [writer: :person, user_id: scope.user.id, run_id: nil]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      name = ApiaryWeb.People.short(scope.user.email)
+      assert [%{type: "test-features", version: 1, writer: ^name, source: nil}] = frames(view)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features-s .q-xp-cap",
+               "Version 1 · #{name}"
+             )
+
+      refute has_element?(view, "#work-item-tab-output-test-features-source")
     end
   end
 
