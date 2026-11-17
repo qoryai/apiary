@@ -1372,7 +1372,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - When a credential of a secrets request is refused, because its adapter call or its
   check fails, the Activity entry of each other credential of the request, issued or
   cancelled, shows the text “the request failed for another credential of the run, so this
-  one was not sent”. A seal or record failure shows its own text. The request is refused
+  one was not sent”. A seal or record failure shows another text. The request is refused
   as a whole, and nothing is sealed or kept.
 <!-- /feature -->
 <!-- feature: factory -->

@@ -851,8 +851,12 @@ for each other and never on each other at once:
    8 seconds from the start of the request (`Apiary.Runs.SecretsRequest`), because
    Qory Gateway gives up on a secrets request after 10 seconds. A call or a check that
    fails, or the deadline, refuses the whole request and cancels the calls still running.
-   An entry whose call failed, or timed out, is refused for that cause; every other
-   entry, issued or cancelled, is refused as `other_credential_failed`. A run's deletion
+   An entry whose call or check failed keeps its cause, a timeout included. A cancelled
+   entry is `timeout` when the deadline has passed and `other_credential_failed`
+   otherwise. An entry whose credential was issued is `other_credential_failed`.
+   The checks that need no call (the connection, the adapter's key) run for every entry
+   before the first call: when one fails, no entry gets a call, an entry before it gets no
+   Activity entry, and that entry's refusal is the answer. A run's deletion
    locks the run's row, then
    its rows in `model_key_copies` and `run_credentials`, so both take the run's row first
    and cannot deadlock. A request for one entry, `work-1` or `push-1`, and no model key

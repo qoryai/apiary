@@ -134,6 +134,18 @@ defmodule Apiary.Runs.PushCredentialMigrationTest do
       refused("run_credentials_push_ref_check", fn -> set.(apply) end)
     end
 
+    # An apply value that is not an array: an object, a string, a number, a JSON null. A
+    # SQL NULL and an empty list are left out: the column's NOT NULL refuses the first, and
+    # the empty list is refused above.
+    for json <- [~s({"push_ref":"a"}), ~s("a"), "7", "null"] do
+      refused("run_credentials_push_ref_check", fn ->
+        Repo.query!(
+          "UPDATE run_credentials SET apply = $1::text::jsonb WHERE run_id = $2 AND purpose = 'push'",
+          [json, Ecto.UUID.dump!(ctx.run.id)]
+        )
+      end)
+    end
+
     assert %{num_rows: 1} = set.([ref.("a"), ref.("b")])
 
     # The work entry has no push_ref, and stays valid.

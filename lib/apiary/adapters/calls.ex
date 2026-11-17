@@ -250,9 +250,9 @@ defmodule Apiary.Adapters.Calls do
   # call's time: the lookup has no time limit of its own, so it runs in a task, and one
   # still running when the call's time ends is `:timeout`.
   defp address(adapter, deadline, settings) do
-    # The task is linked to the caller, so that a caller that is stopped, as a request that
-    # gives up its calls is, takes the call with it; it ends in a value, never in a crash,
-    # which would take the caller too.
+    # This task is linked to the process that makes the call: when that process is stopped,
+    # as a request that gives up its calls stops it, the task ends with it. The task ends
+    # in a value, never in a crash, which would take that process too.
     task =
       Task.Supervisor.async(__MODULE__.Supervisor, fn ->
         try do

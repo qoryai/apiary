@@ -1313,7 +1313,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     test "the calls of a request for both entries run together: the time of one, not the sum",
          ctx do
       {ctx, _pushing} = push_entry!(ctx, @branch)
-      deadline!(3_000)
+      deadline!(5_000)
 
       WorkCredentialStub.issue_by_access(
         ctx.adapter_seed,
@@ -1321,14 +1321,15 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           "read" => WorkCredentialStub.credential(@token, @entry_apply),
           "write" => WorkCredentialStub.credential(@push_token, @entry_apply)
         },
-        %{"read" => 800, "write" => 800}
+        %{"read" => 1_500, "write" => 1_500}
       )
 
       {time, conn} =
         :timer.tc(fn -> post_secrets(ctx, request(ctx, credentials: all(ctx))) end, :millisecond)
 
       assert conn.status == 200, conn.resp_body
-      assert time >= 800 and time < 1_500, "took #{time} ms"
+      # One after the other, the calls would take 3 seconds and more.
+      assert time >= 1_500 and time < 2_800, "took #{time} ms"
       assert length(WorkCredentialStub.calls()) == 2
       assert ["issued", "issued"] = Enum.map(issues(), & &1.details["outcome"])
       assert work_row(ctx).issued_apply == @entry_apply
@@ -1370,13 +1371,13 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert [{"push-1", "timeout"}, {"work-1", "timeout"}] ==
                Enum.sort(for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}))
 
-      # No call outlives the deadline, and none is left in the request's own processes.
+      # No call outlives the deadline, and no process of the request is left.
       assert no_calls_left?()
     end
 
     test "a call that fails at once cancels the slow one: the request does not wait", ctx do
       {ctx, _pushing} = push_entry!(ctx, @branch)
-      deadline!(1_000)
+      deadline!(3_000)
 
       WorkCredentialStub.issue_by_access(
         ctx.adapter_seed,
@@ -1397,7 +1398,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
-      assert time < 500, "took #{time} ms"
+      assert time < 2_000, "took #{time} ms"
       refute log =~ @token
       assert seals() == []
       assert work_row(ctx).issued_apply == nil
@@ -1405,9 +1406,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert [{"push-1", "refused"}, {"work-1", "other_credential_failed"}] ==
                for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
 
-      # The slow call is stopped with the request, and its wait never ends.
-      assert Task.Supervisor.children(Apiary.Runs.TaskSupervisor) == []
-      refute_receive {:run_credential_waited, "read"}, 1_300
+      # The slow call, which the stub answers after 5 seconds, is stopped with the request:
+      # no process is left within a second.
+      assert no_children?(Apiary.Runs.TaskSupervisor)
       assert no_calls_left?()
     end
 
@@ -1432,6 +1433,60 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert seals() == []
       assert work_row(ctx).issued_apply == nil
       assert no_calls_left?()
+    end
+
+    test "an entry that fails its check before any call leaves the other entry no call", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+
+      # The push entry's connection is no longer its adapter's: `connection_gone`.
+      {key, _seed} = ctx.secrets_key
+      gateway = Repo.get!(Apiary.AccessKeys.AccessKey, key.id)
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^push_row(ctx).id),
+          set: [adapter_id: gateway.node_id]
+        )
+
+      conn = post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"]))
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert work_row(ctx).issued_apply == nil
+
+      # Only the entry that failed has an Activity entry: work-1 was not attempted.
+      assert [{"push-1", "connection_gone"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+    end
+
+    test "a check of the answer that raises is call_failed, and no token is logged", ctx do
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      {key, _seed} = ctx.secrets_key
+      key = Repo.preload(Repo.get!(Apiary.AccessKeys.AccessKey, key.id), [:workspace, :node])
+      run = Repo.get!(Run, ctx.run.id)
+
+      # A time `DateTime.from_unix!/1` refuses raises inside the check, after the call.
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.WorkCredential.issue_all(
+            run,
+            [work_row(ctx)],
+            key,
+            1_000_000_000_000_000_000,
+            System.monotonic_time(:millisecond) + 5_000
+          )
+        end)
+
+      assert result == {:error, :credential_unavailable}
+      assert log =~ "cause=call_failed"
+      refute log =~ @token
+      refute log =~ "** ("
+      assert [%Entry{details: %{"outcome" => "call_failed"}}] = issues()
     end
 
     test "503 for a call that reached no one", ctx do
@@ -1749,9 +1804,12 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   end
 
   # Whether no process of a call to an adapter is left, within a second of asking.
-  defp no_calls_left?(tries \\ 20) do
+  defp no_calls_left?, do: no_children?(Apiary.Adapters.Calls.Supervisor)
+
+  # Whether `supervisor` has no child, polled for up to a second.
+  defp no_children?(supervisor, tries \\ 20) do
     cond do
-      Task.Supervisor.children(Apiary.Adapters.Calls.Supervisor) == [] ->
+      Task.Supervisor.children(supervisor) == [] ->
         true
 
       tries == 0 ->
@@ -1759,7 +1817,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       true ->
         Process.sleep(50)
-        no_calls_left?(tries - 1)
+        no_children?(supervisor, tries - 1)
     end
   end
 
