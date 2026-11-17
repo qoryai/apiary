@@ -190,8 +190,10 @@ defmodule Apiary.Artifacts do
   # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
   # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
   # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
-  # `{:error, {:withdraw, :type}}`, and a type with `withdrawable` false is
-  # `{:error, {:withdraw, :type_off}}`. Then, in the transaction, with the locks and the
+  # `{:error, {:withdraw, :type}}`, a type with `withdrawable` false is
+  # `{:error, {:withdraw, :type_off}}`, and the type in `submit.type` of the run's process
+  # version is `{:error, {:withdraw, :submit_type}}` (`withdrawable_type/2`). Then, in the
+  # transaction, with the locks and the
   # reads of a push's transaction, the artifact's newest version, leaving out versions by a
   # run a member cancelled, is read, and the withdrawal is refused, as
   # `{:error, {:withdraw, reason}}`, when it is:
@@ -698,6 +700,7 @@ defmodule Apiary.Artifacts do
              | {:withdraw,
                 :type
                 | :type_off
+                | :submit_type
                 | {:approved, pos_integer}
                 | :no_version
                 | {:withdrawn, pos_integer}
@@ -708,12 +711,17 @@ defmodule Apiary.Artifacts do
              | :run_cancelled}
   def withdraw(actor, work_item, type_name, opts \\ [])
 
-  def withdraw({:run, %DispatchRun{}} = actor, %WorkItem{} = work_item, type_name, opts) do
+  def withdraw(
+        {:run, %DispatchRun{} = dispatch_run} = actor,
+        %WorkItem{} = work_item,
+        type_name,
+        opts
+      ) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
-         :ok <- withdrawable_type(type),
+         :ok <- withdrawable_type(type, dispatch_run),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields) do
       writer |> write_withdrawal(work_item, type, fields) |> broadcast()
@@ -735,6 +743,21 @@ defmodule Apiary.Artifacts do
 
   def withdrawable_type(%Type{withdrawable: false}), do: {:error, {:withdraw, :type_off}}
   def withdrawable_type(%Type{}), do: :ok
+
+  # withdrawable_type/2 is `withdrawable_type/1`, and `{:error, {:withdraw, :submit_type}}`
+  # for the type in `submit.type` of the run's process version: the Submissions list
+  # (`Apiary.Submissions`) reads that type's versions, so a withdrawal would leave it with
+  # none.
+  @doc false
+  @spec withdrawable_type(Type.t(), DispatchRun.t()) ::
+          :ok | {:error, {:withdraw, :type | :type_off | :submit_type}}
+  def withdrawable_type(%Type{name: name} = type, %DispatchRun{} = dispatch_run) do
+    with :ok <- withdrawable_type(type) do
+      if name == submit_type(dispatch_run),
+        do: {:error, {:withdraw, :submit_type}},
+        else: :ok
+    end
+  end
 
   # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
   # when the artifact's newest version is a run's version with files (`withdrawable/3`).
@@ -1287,8 +1310,10 @@ defmodule Apiary.Artifacts do
     :ok
   end
 
-  # The type in `submit.type` of the run's process version, nil for none.
-  defp submit_type(%DispatchRun{process_version_id: id}) do
+  # submit_type/1 is the type in `submit.type` of the run's process version, nil for none.
+  @doc false
+  @spec submit_type(DispatchRun.t()) :: String.t() | nil
+  def submit_type(%DispatchRun{process_version_id: id}) do
     case Processes.harness_template(id) do
       %{"submit" => %{"type" => type}} when is_binary(type) -> type
       _none -> nil
