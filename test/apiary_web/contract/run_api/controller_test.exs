@@ -452,6 +452,37 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
     end
 
+    test "leaves out the move that resolved an escalation, and lists the escalation", ctx do
+      place!(ctx)
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+      now = DateTime.utc_now()
+
+      escalation =
+        Repo.insert!(%Apiary.Stages.Escalation{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          work_item_id: work_item.id,
+          process_version_id: Apiary.Processes.version_for(work_item).id,
+          stage_id: @explore,
+          round: 1,
+          cause: :run_stopped,
+          points: [],
+          resolution: :move_back,
+          note: "Start again.",
+          resolved_by_id: ctx.scope.user.id,
+          resolved_at: now,
+          inserted_at: now
+        })
+
+      decide!(ctx, :move, escalation_id: escalation.id, to_stage_id: @explore)
+      decide!(ctx, :move, note: "Back to Explore.")
+
+      assert [%{"kind" => "escalation", "note" => "Start again."}, %{"kind" => "move"} = move] =
+               json_response(read(ctx, "/work-item"), 200)["notes"]
+
+      assert move["note"] == "Back to Explore."
+    end
+
     test "a work item the stage runner has not placed has the run's stage id alone", ctx do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),

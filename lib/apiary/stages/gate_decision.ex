@@ -16,8 +16,8 @@ defmodule Apiary.Stages.GateDecision do
   # before it was kept), and `left_stage_entered_at`, when the work item had last entered
   # `stage_id` (`work_items.stage_entered_at`, which the move overwrites; nil for none).
   # `Apiary.Stages.inputs/1` reads the versions that `stage_id` made in between. The move
-  # back that resolves an escalation writes one too, with no note: its note is the
-  # escalation's.
+  # back that resolves an escalation writes one too, with no note and the `escalation_id` of
+  # the escalation it resolves: the escalation's own note is the one that `notes/1` lists.
   @moduledoc false
   use Ecto.Schema
 
@@ -44,5 +44,6 @@ defmodule Apiary.Stages.GateDecision do
     belongs_to :work_item, Apiary.WorkItems.WorkItem
     belongs_to :process_version, Apiary.Processes.Version
     belongs_to :user, Apiary.Accounts.User
+    belongs_to :escalation, Apiary.Stages.Escalation
   end
 end

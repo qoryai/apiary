@@ -17,8 +17,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   lists, for each output of the stage the work item left, the newest version made in that
   stage from the time the work item last entered it to the time it left, with
   `"from": "move"` and `"required": false`. A person's move back and an escalation's move
-  back count (the escalation's move back now also writes a `move` decision, with no note,
-  so it shows as a `move` entry in `notes`). The entries stay until the left stage's gate
+  back count (the escalation's move back now also writes a `move` decision with no note and
+  the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
+  leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
   to a stage after it, and are scoped to the take in. No approval lists these versions, and
   the page's missing inputs, the stage's checks and the other entries of `inputs` stay as

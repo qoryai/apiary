@@ -993,7 +993,7 @@ defmodule Apiary.Stages do
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
     with {:ok, _decision} <-
-           decide(scope, work_item, version, stage, :approve, covered, nil, note, track),
+           decide(scope, work_item, version, stage, :approve, covered, nil, note, track: track),
          {:ok, _entry} <-
            if(audit?, do: audit(scope, work_item, "approve", details), else: {:ok, nil}) do
       {work_item, _run} = advance(work_item, version, stage)
@@ -1078,7 +1078,10 @@ defmodule Apiary.Stages do
   defp resolve(scope, work_item, version, stage, escalation, {:move_back, stage_id}, note) do
     with {:ok, target} <- earlier(version, stage, stage_id),
          {:ok, _decision} <-
-           decide(scope, work_item, version, stage, :move, [], nil, nil, nil, target["id"]) do
+           decide(scope, work_item, version, stage, :move, [], nil, nil,
+             to_stage_id: target["id"],
+             escalation_id: escalation.id
+           ) do
       :ok = resolve!(escalation, :move_back, scope, note)
       {work_item, _run} = enter_locked(work_item, version, target, true)
       {:ok, work_item}
@@ -1113,7 +1116,10 @@ defmodule Apiary.Stages do
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
            {:ok, track} <- moved_track(work_item, version, stage, target),
            {:ok, _decision} <-
-             decide(scope, work_item, version, stage, :move, [], nil, note, track, target["id"]),
+             decide(scope, work_item, version, stage, :move, [], nil, note,
+               track: track,
+               to_stage_id: target["id"]
+             ),
            {:ok, _entry} <-
              audit(scope, work_item, "move", %{
                "from" => stage["id"],
@@ -1744,7 +1750,9 @@ defmodule Apiary.Stages do
     decisions =
       Repo.all(
         from d in GateDecision,
-          where: d.work_item_id == ^id and d.kind in [:request_changes, :move],
+          where:
+            d.work_item_id == ^id and d.kind in [:request_changes, :move] and
+              is_nil(d.escalation_id),
           select: %{
             kind: d.kind,
             stage_id: d.stage_id,
@@ -2746,8 +2754,7 @@ defmodule Apiary.Stages do
          covered,
          artifact_version_id,
          note,
-         track \\ nil,
-         to_stage_id \\ nil
+         fields \\ []
        ) do
     %GateDecision{
       organisation_id: work_item.organisation_id,
@@ -2761,9 +2768,10 @@ defmodule Apiary.Stages do
       versions: covered,
       artifact_version_id: artifact_version_id,
       note: note,
-      track: track,
+      track: fields[:track],
       left_stage_entered_at: if(kind == :move, do: work_item.stage_entered_at),
-      to_stage_id: to_stage_id,
+      to_stage_id: fields[:to_stage_id],
+      escalation_id: fields[:escalation_id],
       inserted_at: DateTime.utc_now()
     }
     |> Repo.insert()

@@ -4288,12 +4288,34 @@ defmodule Apiary.StagesTest do
 
       assert marked(shape) == [{"explainer", 1}]
 
-      # The resolution is a move like a person's: a `move` decision with the escalation's note
-      # left to the escalation.
-      assert [%GateDecision{stage_id: @build, to_stage_id: @shape, note: nil, user_id: user_id}] =
-               moves(work_item)
+      # The resolution is a move like a person's: a `move` decision that names the escalation
+      # and has none of its text, which the escalation keeps.
+      assert [
+               %GateDecision{
+                 stage_id: @build,
+                 to_stage_id: @shape,
+                 note: nil,
+                 user_id: user_id,
+                 escalation_id: escalation_id
+               }
+             ] = moves(work_item)
 
       assert user_id == scope.user.id
+      assert %Escalation{id: ^escalation_id} = Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      # The notes list the escalation once, and no entry for the move.
+      assert [%{kind: :escalation, note: "Not built"}] =
+               Enum.filter(Stages.notes(shape), &(&1.kind in [:move, :escalation]))
+    end
+
+    test "a person's move without text is listed in the notes", %{scope: scope} do
+      work_item = at_build!(scope)
+      shape = move_to!(scope, work_item, @shape)
+
+      assert [%GateDecision{escalation_id: nil, note: nil}] = moves(work_item)
+
+      assert [%{kind: :move, stage_id: @build, note: nil}] =
+               Enum.filter(Stages.notes(shape), &(&1.kind in [:move, :escalation]))
     end
 
     test "a move forward past the stage ends the rule", %{scope: scope} do
