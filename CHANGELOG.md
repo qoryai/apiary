@@ -1354,10 +1354,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `credential_unavailable`, with no call to the adapter. Only `push-1` has write access.
 <!-- /feature -->
 <!-- feature: factory -->
-- When a secrets request names several credentials and one of them fails, the Activity
-  entry of each credential that was issued before it shows the text “the request failed
-  for another credential of the run, so this one was not sent”. The request is refused
-  as a whole, and nothing is sealed or kept.
+- When a later credential of a secrets request is refused, because its adapter call or
+  its check fails, the Activity entry of each credential issued before it shows the text
+  “the request failed for another credential of the run, so this one was not sent”. A
+  seal or record failure shows its own text. The request is refused as a whole, and
+  nothing is sealed or kept.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
@@ -2222,8 +2223,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and `image_registry_unreachable`.
 <!-- feature: factory -->
 - Finish or cancel each run with `write` access that was claimed before the upgrade.
-  Its `work-1` has write access and the run has no `push-1`, so a renewal or a restart
-  of its work credential gets `409` `credential_unavailable`.
+  Its `work-1` has write access and the run has no `push-1`, so any request for its
+  `work-1`, the first one, a renewal or a restart, gets `409` `credential_unavailable`.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#53 or later,
