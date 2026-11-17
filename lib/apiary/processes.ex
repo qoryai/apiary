@@ -49,6 +49,14 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## Tracks
+
+  The document's `tracks` are the tracks a gate can offer, and a gate's `tracks` lists the
+  ids it offers, in order. The first is the default: an approval that picks none records
+  it, unless a run proposed another track the gate offers or the work item is on one the
+  gate offers. A work item on the gate's first track is offered no switch to another track
+  at an escalation.
+
   ## A first attempt
 
   A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
