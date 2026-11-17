@@ -2093,7 +2093,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
        when is_binary(tab) do
     frames =
       stage
-      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.frames(Stages.gate_numbers(assigns.row, stage.id, stage.outputs))
       |> then(&if &1 == [], do: StageTab.input_frames(assigns.flow, stage), else: &1)
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))

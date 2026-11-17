@@ -40,8 +40,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   ids on the run's work item is `422` `unknown_decision`. The next approval by a person at
   a gate lists the new version; a gate `none` lists no version that has a `decision`. Once
   a person's approval lists it, it is the approved version for every later run, also after
-  a move back to a stage at or before that approval. In `GET artifacts`, each version has
-  `decision` and `decision_at`, the time of that note.
+  a move back to a stage at or before that approval; the gate of that stage then shows and
+  approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
+  page. In `GET artifacts`, each version has `decision` and `decision_at`, the time of that
+  note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a

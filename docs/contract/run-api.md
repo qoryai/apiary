@@ -143,8 +143,10 @@ Returns `200` with the work item snapshot:
   run after that approval, in any stage, also after a move back to a stage at or before
   that approval.
   `questions` and `review-comments` are never a change.
-- `outputs` contains each output of the current stage with its newest version and its
-  check: `passed`, `missing` or `not_checked`.
+- `outputs` contains each output of the current stage with the version its gate shows
+  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
+  made in the stage, or a higher-numbered version of that artifact that a person's
+  approval lists, which every later run reads, also after a move back to the stage.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
   stage or an earlier run. At a run's end, the stage reads only a verdict that run pushed.
   `points` is its list of points, as the verdict's file has them, or null for a verdict

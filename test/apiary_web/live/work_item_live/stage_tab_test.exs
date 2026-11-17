@@ -2065,6 +2065,48 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "a gate after a move back (A-20)" do
+    test "Shape's tab and gate show the spec that a person's approval at Build listed",
+         %{conn: conn, scope: scope} do
+      # Shape's run pushes spec 1, and a person approves it.
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      # At Build, a person adds spec 2, and Build's approval lists it.
+      {:ok, _version} =
+        Stages.add_version(scope, reload(work_item), "spec", [
+          %{filename: "spec.md", content_type: "text/markdown", binary: "## Spec two"}
+        ])
+
+      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+      [spec] = for a <- Artifacts.list(at_verify), a.type == "spec", do: a
+      assert [%{number: 2} = two, %{number: 1}] = spec.versions
+
+      assert two.public_id in Enum.find(gate_approvals(at_verify), &(&1.stage_id == @build)).versions
+
+      # A person moves the work item back to Shape; its run pushes no spec.
+      {:ok, moved} = Stages.move(scope, at_verify, @shape, nil, expect_stage: at_verify.stage_id)
+      work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+
+      assert [%{type: "spec", version: 2, open: true} | _rest] =
+               :sys.get_state(view.pid).socket.assigns.frames
+
+      assert has_element?(view, "#work-item-tab-output-spec-fold[open]")
+      assert html =~ "Spec two"
+      refute html =~ "Spec one"
+    end
+
+    defp gate_approvals(work_item) do
+      Repo.all(
+        from d in Apiary.Stages.GateDecision,
+          where: d.work_item_id == ^work_item.id and d.kind == :approve
+      )
+    end
+  end
+
   describe "a stage with a workflow and no outputs" do
     test "its run reads the ticket and the stage's inputs", %{conn: conn, scope: scope} do
       process!(scope, %{"outputs" => []})
