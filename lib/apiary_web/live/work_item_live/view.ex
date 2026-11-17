@@ -142,8 +142,9 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
   defp shown(_none, _ctx), do: nil
 
-  # A question of the newest questions, with its context rendered and each answer's
-  # person.
+  # A question of the newest questions, with its context rendered, each answer's person and
+  # the path of the page of the run that asked it, nil where the reader may not read it
+  # (`run_path/2`).
   defp question(question, ctx) do
     %{
       question
@@ -151,6 +152,10 @@ defmodule ApiaryWeb.WorkItemLive.View do
         history: Enum.map(question.history, &answer(&1, ctx))
     }
     |> Map.put(:rendered, WorkItemComponents.markdown(question.context))
+    |> Map.put(
+      :run_path,
+      run_path(ctx, %{number: question.run, workspace_id: question.run_workspace_id})
+    )
   end
 
   defp answer(nil, _ctx), do: nil
@@ -232,7 +237,8 @@ defmodule ApiaryWeb.WorkItemLive.View do
 
     workspace_ids =
       Enum.map(all_runs, & &1.workspace_id) ++
-        for(%{run: %{workspace_id: id}} <- thread, do: id)
+        for(%{run: %{workspace_id: id}} <- thread, do: id) ++
+        for(question <- explore[:questions] || [], do: question.run_workspace_id)
 
     %{
       scope: scope,

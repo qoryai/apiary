@@ -780,8 +780,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       card(w, extra)
     end
 
-    test "a member who may act: the badge, the line, and the link to Explore" do
-      html = asked(3, explore_path: "/8wonders/main/work/94/explore", commenting: true)
+    test "a member who may act: the badge, the line, and the link to the Questions tab" do
+      html = asked(3, questions_path: "/8wonders/main/work/94/questions", commenting: true)
 
       assert text(html, "h2") == "Explore"
       assert text(html, ".q-wi-badge") == "Needs answers"
@@ -794,11 +794,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, ".q-wi-play") == 0
 
       assert text(html, "#work-item-step-explore") == "Answer the questions"
-      assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/94/explore"]
+      assert attr(html, "#work-item-step-explore", "href") == ["/8wonders/main/work/94/questions"]
       assert count(html, "button") == 0
     end
 
-    test "one question; on Explore's tab, no link" do
+    test "one question; on the Questions tab, no link" do
       html = asked(1, commenting: true)
 
       assert text(html, "#work-item-step-line") ==
@@ -806,7 +806,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert count(html, "#work-item-step-explore") == 0
 
-      linked = asked(1, explore_path: "/8wonders/main/work/94/explore")
+      linked = asked(1, questions_path: "/8wonders/main/work/94/questions")
       assert text(linked, "#work-item-step-explore") == "Answer the question"
     end
 
@@ -823,7 +823,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {3, "Next, a member answers the questions."},
             {1, "Next, a member answers the question."}
           ] do
-        html = asked(n, can_act: false, explore_path: "/8wonders/main/work/94/explore")
+        html = asked(n, can_act: false, questions_path: "/8wonders/main/work/94/questions")
         assert count(html, "#work-item-step-line") == 0
         refute html =~ "instead of a proposal"
         assert text(html, "#work-item-step-waits") == waits
@@ -1078,6 +1078,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         options: [],
         state: :open,
         asked_run: 41,
+        run: 41,
+        run_path: "/acme/main/runs/41",
+        stage_id: nil,
         answer: nil,
         history: [],
         follows: []
@@ -1291,7 +1294,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           earlier_runs: [run1_answered(), run2_answered()],
           proposal: proposal_v(2),
           questions: invoice_questions(),
-          questions_version: 2,
+          questions_path: "/acme/main/work/41/questions",
           review_comments: [comment("rc1")],
           reply_path: &"/acme/main/work/41/explore?reply=#{&1}"
         )
@@ -1309,9 +1312,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "work-item-explore-run",
                "work-item-explore-wait",
                "work-item-explore-proposal",
-               "work-item-explore-questions",
+               "work-item-explore-questions-line",
                "work-item-record"
              ]
+
+      # The questions are on the Questions tab: Explore's tab has the line that counts them.
+      assert text(html, "#work-item-explore-questions-line") |> String.replace(~r/\s+\./, ".") ==
+               "The agents of this stage asked 4 questions. See them on the Questions tab."
+
+      assert attr(html, "#work-item-explore-questions-line a", "href") ==
+               ["/acme/main/work/41/questions"]
 
       # While a run runs: no Add review comment, no gate, no form, no Reply.
       assert count(html, "#work-item-explore-proposal-review-add") == 0
@@ -1321,12 +1331,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "button[type=submit]") == 0
       assert count(html, "[id$='-reply']") == 0
 
-      # The open questions as text, with their options; the card shows that the run reads it.
-      assert count(html, "#work-item-explore-questions-cap") == 0
-      assert texts(html, "#work-item-explore-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
-
       assert text(html, "#work-item-explore-proposal-review-rc1-reading") ==
                "Attempt 3 (Run 43) reads this comment."
+
+      # On the Questions tab, the open questions are text, with their options, while a run
+      # runs: no form, no caption.
+      questions = questions_tab(form: false)
+      assert count(questions, "#work-item-questions-open-cap") == 0
+      assert texts(questions, "#work-item-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
     end
 
     test "the first run running: no answers, no frames" do
@@ -1918,73 +1930,141 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "explore_tab/1, the questions" do
+    # The Questions tab of a work item with no stage card: one group, Explore.
     defp questions_tab(extra) do
-      tab(
-        invoice_item(%{status: :questions}),
+      render_component(
+        &C.questions_tab/1,
         Keyword.merge(
-          [can_act: true, questions: invoice_questions(), questions_version: 2],
+          [
+            number: 41,
+            questions: invoice_questions(),
+            stages: [%{id: nil, name: "Explore"}],
+            stage: "Explore",
+            updates: :proposal,
+            form: true,
+            now: @now
+          ],
           extra
         )
       )
     end
 
-    test "the frame: the line, the closed questions folded, then the open ones in the form" do
+    test "the frames: the open questions in the form, then the answered ones folded by stage" do
       html = questions_tab([])
-      q = "#work-item-explore-questions"
+      open = "#work-item-questions-open"
+      answered = "#work-item-questions-answered"
 
-      assert text(html, "#{q}-h") == "Questions"
-      assert attr(html, "#{q} .q-xp-frame-i", "class") |> hd() =~ "hero-question-mark-circle"
+      assert text(html, "#{open}-h") == "Open questions"
+      assert attr(html, "#{open} .q-xp-frame-i", "class") |> hd() =~ "hero-question-mark-circle"
 
-      assert text(html, "#{q}-cap") ==
-               "Run another round starts the next run. That run reads your answers and updates the proposal."
+      assert text(html, "#{open}-cap") ==
+               "Run another round of Explore starts Explore's next run. That run reads your answers and updates Explore's proposal."
 
-      # Closed: answered and withdrawn, each folded to one line.
-      assert attr(html, "#{q}-closed > details", "id") == [
-               "work-item-explore-questions-question-1",
-               "work-item-explore-questions-question-4"
+      # No heading inside the open frame: the frame's heading says Open questions.
+      assert texts(html, "#{open} h3") == []
+
+      # Answered: the answered and the withdrawn question, each folded to one line, in
+      # one group, Explore.
+      assert text(html, "#{answered}-h") == "Answered questions"
+      assert texts(html, "#{answered} h3") == ["Explore"]
+
+      assert attr(html, "#{answered}-list details", "id") == [
+               "work-item-questions-question-1",
+               "work-item-questions-question-4"
              ]
 
-      assert attr(html, "#{q}-closed > details", "open") == []
+      assert attr(html, "#{answered}-list details", "open") == []
 
-      assert texts(html, "#{q}-closed summary") == [
+      assert texts(html, "#{answered}-list summary") == [
                "1. Which currency should the PDF show? The order's currency",
                "4. Is the old template still used? Withdrawn"
              ]
 
-      assert text(html, "#{q}-question-1 .q-xp-inner strong") == "currency"
-      assert text(html, "#{q}-question-1-answer") == "The order's currency"
-      assert text(html, "#{q}-question-1-answer-who") == "You answered 1 hour ago"
+      q = "#work-item-questions-question"
+      assert text(html, "#{q}-1 .q-xp-inner strong") == "currency"
+      assert text(html, "#{q}-1-answer") == "The order's currency"
+      assert text(html, "#{q}-1-answer-who") == "You answered 1 hour ago"
       # The piece wraps inside itself in a column narrower than it.
-      assert texts(html, "#{q}-question-1-answer-who > .q-xp-it.q-xp-by") ==
-               ["You answered 1 hour ago"]
+      assert texts(html, "#{q}-1-answer-who > .q-xp-it.q-xp-by") == ["You answered 1 hour ago"]
+
+      # Under each question, the stage and the run that asked it, the run linked.
+      assert texts(html, "#{q}-1 .q-xp-inner > p.q-xp-cm-m > .q-xp-by") ==
+               ["Asked in Explore, Run 41", "You answered 1 hour ago"]
+
+      assert attr(html, "#{q}-1 .q-xp-inner a.q-link", "href") == ["/acme/main/runs/41"]
+      assert "Asked in Explore, Run 41" in texts(html, "#{q}-2 .q-xp-cm-m > .q-xp-by")
 
       # Open: in the form, one Run another round for all.
-      assert texts(html, "#{q} .q-xp-sec > h3") == ["Open questions"]
-      assert attr(html, "#{q}-form", "phx-change") == ["answer_draft"]
-      assert attr(html, "#{q}-form", "phx-submit") == ["answer"]
-      assert attr(html, "#{q}-form input[type=hidden]", "value") == ["41"]
+      assert attr(html, "#{open}-form", "phx-change") == ["answer_draft"]
+      assert attr(html, "#{open}-form", "phx-submit") == ["answer"]
+      assert attr(html, "#{open}-form input[type=hidden]", "value") == ["41"]
 
-      assert attr(html, "#{q}-form ol > li", "id") == [
-               "#{String.trim_leading(q, "#")}-question-2",
-               "#{String.trim_leading(q, "#")}-question-3"
+      assert attr(html, "#{open}-form ol > li", "id") == [
+               "work-item-questions-question-2",
+               "work-item-questions-question-3"
              ]
 
-      assert texts(html, "#{q}-form .q-xp-qt") == [
+      assert texts(html, "#{open}-form .q-xp-qt") == [
                "Should the credit note PDF change too?",
                "Should customers get corrected PDFs for invoices already sent?"
              ]
 
       assert count(html, "button") == 1
-      assert text(html, "#{q}-go") == "Run another round"
-      assert attr(html, "#{q}-go .hero-play-micro", "class") != []
+      assert text(html, "#{open}-go") == "Run another round of Explore"
+      assert attr(html, "#{open}-go .hero-play-micro", "class") != []
       refute html =~ "Send answers"
       refute html =~ "Sending starts"
       refute html =~ "wrote this"
     end
 
+    test "the stage's name in the caption, the button, the comment's label and the stale error" do
+      html = questions_tab(stage: "Verify", updates: :outputs, commenting: true)
+
+      assert text(html, "#work-item-questions-open-cap") ==
+               "Run another round of Verify starts Verify's next run. That run reads your answers and your comment, and updates Verify's outputs."
+
+      assert text(html, "#work-item-questions-open-go") == "Run another round of Verify"
+
+      assert text(html, "label[for='work-item-questions-open-comment']") ==
+               "Comment on Verify's outputs"
+
+      assert text(
+               questions_tab(commenting: true),
+               "label[for='work-item-questions-open-comment']"
+             ) == "Comment on the whole proposal"
+
+      stale = questions_tab(stage: "Verify", form_error: :stale)
+
+      assert text(stale, "#work-item-questions-open-error") ==
+               "Check the questions and your answers, then click Run another round of Verify again. The questions changed after the page showed them, so no answer was sent."
+    end
+
+    test "a stage's group is under its name, in the process order; no stage card has Explore" do
+      stages = [%{id: "st_a", name: "Shape"}, %{id: "st_b", name: "Verify"}]
+
+      html =
+        questions_tab(
+          stages: stages,
+          stage: "Verify",
+          fallback: "st_a",
+          questions: [
+            q(1, %{state: :answered, answer: given(@dana, "Yes", nil, 60), stage_id: "st_b"}),
+            q(2, %{state: :withdrawn, stage_id: "st_a"}),
+            q(3, %{state: :withdrawn, stage_id: "st_gone"})
+          ]
+        )
+
+      assert texts(html, "#work-item-questions-answered h3") == ["Shape", "Verify"]
+
+      assert attr(html, "#work-item-questions-answered-group-0 + div > details", "id") ==
+               ["work-item-questions-question-2", "work-item-questions-question-3"]
+
+      assert "Asked in Verify, Run 41" in texts(html, "#work-item-questions-question-1 .q-xp-by")
+    end
+
     test "a closed question's summary: the chevron, then the question, which wraps beside it" do
       html = questions_tab([])
-      closed = "#work-item-explore-questions-closed.q-xp-closed > details > summary"
+      closed = "#work-item-questions-answered-list .q-xp-closed > details > summary"
 
       assert texts(html, "#{closed} > .q-xp-chev:first-child + .q-xp-it.q-xp-wrap") == [
                "1. Which currency should the PDF show?",
@@ -2017,11 +2097,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "each open question: its options, then Give your own option, then one field" do
       html = questions_tab([])
-      a = "#work-item-explore-questions-answer-2"
+      a = "#work-item-questions-open-answer-2"
       g = "#{a}-options"
 
       assert attr(html, g, "role") == ["radiogroup"]
-      assert attr(html, g, "aria-labelledby") == ["work-item-explore-questions-q-2"]
+      assert attr(html, g, "aria-labelledby") == ["work-item-questions-open-q-2"]
       assert attr(html, "#{g} input", "name") == List.duplicate("answers[q2][option]", 3)
       assert attr(html, "#{g} input", "value") == ["1", "2", "own"]
       assert attr(html, "#{g} input", "checked") == []
@@ -2030,22 +2110,22 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, a, "name") == ["answers[q2][note]"]
       assert attr(html, a, "placeholder") == ["Add details (optional)"]
       assert attr(html, a, "aria-label") == ["Add details (optional)"]
-      assert count(html, "label[for='work-item-explore-questions-answer-2']") == 0
+      assert count(html, "label[for='work-item-questions-open-answer-2']") == 0
 
       # A question without options has the field alone.
-      assert count(html, "#work-item-explore-questions-answer-3-options") == 0
-      assert count(html, "#work-item-explore-questions-answer-3-own") == 0
+      assert count(html, "#work-item-questions-open-answer-3-options") == 0
+      assert count(html, "#work-item-questions-open-answer-3-own") == 0
 
-      assert attr(html, "#work-item-explore-questions-answer-3", "placeholder") ==
+      assert attr(html, "#work-item-questions-open-answer-3", "placeholder") ==
                ["Give your own option"]
 
-      assert attr(html, "#work-item-explore-questions-answer-3", "name") ==
+      assert attr(html, "#work-item-questions-open-answer-3", "name") ==
                ["answers[q3][note]"]
     end
 
     test "a reopened question shows its earlier answer; one that follows links it" do
       html = questions_tab([])
-      q2 = "#work-item-explore-questions-question-2"
+      q2 = "#work-item-questions-question-2"
 
       assert texts(html, "#{q2}-earlier-who > span") ==
                ["Earlier answer", "Priya answered 2 hours ago"]
@@ -2088,10 +2168,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       # No white space of the template in the quote, whose white space is kept.
       assert html =~ ~r{<span class="block">No</span><span>Only invoices.</span></div>}
       assert attr(html, "#{q2}-earlier", "class") |> hd() =~ "q-xp-ans-old"
-      assert text(html, "#{q2} .q-xp-cm-m a") == "Follows question 1"
+      assert text(html, "#{q2} .q-xp-cm-m a.text-accent") == "Follows question 1"
 
-      assert attr(html, "#{q2} .q-xp-cm-m a", "href") == [
-               "#work-item-explore-questions-question-1"
+      assert attr(html, "#{q2} .q-xp-cm-m a.text-accent", "href") == [
+               "#work-item-questions-question-1"
              ]
     end
 
@@ -2108,11 +2188,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           }
         )
 
-      assert attr(html, "#work-item-explore-questions-answer-2-2", "checked") == [""]
-      assert text(html, "#work-item-explore-questions-answer-2") == "Only bank refunds."
-      assert attr(html, "#work-item-explore-questions-answer-3-own", "checked") == [""]
-      assert attr(html, "#work-item-explore-questions-answer-3", "placeholder") == ["Your option"]
-      assert attr(html, "#work-item-explore-questions-answer-3", "aria-label") == ["Your option"]
+      assert attr(html, "#work-item-questions-open-answer-2-2", "checked") == [""]
+      assert text(html, "#work-item-questions-open-answer-2") == "Only bank refunds."
+      assert attr(html, "#work-item-questions-open-answer-3-own", "checked") == [""]
+      assert attr(html, "#work-item-questions-open-answer-3", "placeholder") == ["Your option"]
+      assert attr(html, "#work-item-questions-open-answer-3", "aria-label") == ["Your option"]
     end
 
     test "the recommended option: the mark in its card's label, a line of its own, on no other card" do
@@ -2128,7 +2208,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           questions: [q(1, %{options: options}), q(2, %{options: currency_options()})]
         )
 
-      a = "#work-item-explore-questions-answer-1"
+      a = "#work-item-questions-open-answer-1"
 
       assert texts(html, "#{a}-options label[for$='-1'] .q-xp-opt-w > .badge") ==
                ["Recommended by the agent"]
@@ -2139,12 +2219,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert attr(html, "#{a}-options input", "checked") == []
 
       # A question stored before the mark looks as it did.
-      assert count(html, "#work-item-explore-questions-answer-2-options .badge") == 0
+      assert count(html, "#work-item-questions-open-answer-2-options .badge") == 0
     end
 
     test "the recommended option with the questions as text: the mark in its card" do
       options = [%{title: "Yes", explanation: "Change it.", recommended: true}]
-      html = questions_tab(can_act: false, questions: [q(1, %{options: options})])
+      html = questions_tab(form: false, questions: [q(1, %{options: options})])
 
       assert texts(html, ".q-xp-opts .q-xp-opt .badge") == ["Recommended by the agent"]
     end
@@ -2152,13 +2232,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a question with one option: its card, Give your own option, the field, nothing checked" do
       options = [%{title: "Yes", explanation: "Change it.", recommended: true}]
       html = questions_tab(questions: [q(1, %{options: options})])
-      a = "#work-item-explore-questions-answer-1"
+      a = "#work-item-questions-open-answer-1"
 
       assert attr(html, "#{a}-options input", "value") == ["1", "own"]
       assert attr(html, "#{a}-options input", "checked") == []
       assert texts(html, "#{a}-options .q-xp-opt-t") == ["Yes", "Give your own option"]
       assert attr(html, a, "name") == ["answers[q1][note]"]
-      assert count(html, "#work-item-explore-questions-closed") == 0
+      assert count(html, "#work-item-questions-answered") == 0
     end
 
     test "a closed answer: the mark on the recommended option alone" do
@@ -2186,7 +2266,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           ]
         )
 
-      q = "#work-item-explore-questions-question"
+      q = "#work-item-questions-question"
 
       assert texts(html, "#{q}-1-answer .badge") == ["Recommended by the agent"]
       assert text(html, "#{q}-1-answer") =~ "Yes"
@@ -2232,38 +2312,38 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           submits: 2
         )
 
-      a3 = "#work-item-explore-questions-answer-3"
+      a3 = "#work-item-questions-open-answer-3"
       assert attr(html, a3, "aria-invalid") == ["true"]
       assert text(html, "#{a3}-error") == "Write your option, or pick one above."
 
-      assert text(html, "#work-item-explore-questions-answer-2-error") ==
+      assert text(html, "#work-item-questions-open-answer-2-error") ==
                "Write at most 2,000 characters."
 
-      assert attr(html, "#work-item-explore-questions-focus-2-2", "phx-mounted") |> hd() =~
-               "#work-item-explore-questions-answer-2"
+      assert attr(html, "#work-item-questions-open-focus-2-2", "phx-mounted") |> hd() =~
+               "#work-item-questions-open-answer-2"
     end
 
     test "an empty send: the error over the button, in Explore's words" do
       html = questions_tab(form_error: :blank, submits: 1)
 
-      assert text(html, "#work-item-explore-questions-error") ==
+      assert text(html, "#work-item-questions-open-error") ==
                "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
 
-      assert attr(html, "#work-item-explore-questions-error", "role") == ["alert"]
+      assert attr(html, "#work-item-questions-open-error", "role") == ["alert"]
       assert count(html, "[aria-invalid]") == 0
     end
 
     test "a reader who may not act reads the questions and their options, with no input" do
-      html = questions_tab(can_act: false)
+      html = questions_tab(form: false)
 
       assert count(html, "form, input, textarea, button") == 0
-      assert count(html, "#work-item-explore-questions-cap") == 0
-      assert texts(html, "#work-item-explore-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
+      assert count(html, "#work-item-questions-open-cap") == 0
+      assert texts(html, "#work-item-questions-question-2 .q-xp-opt-t") == ["Yes", "No"]
     end
 
-    test "one question: Question" do
+    test "one question: the same heading as many" do
       html = questions_tab(questions: [q(1)])
-      assert text(html, "#work-item-explore-questions-h") == "Question"
+      assert text(html, "#work-item-questions-open-h") == "Open questions"
     end
 
     test "a hostile question: no script, no javascript: link, no image; mermaid is code text" do
@@ -2287,12 +2367,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         })
       ]
 
-      for can_act <- [true, false] do
-        html = questions_tab(questions: qs, can_act: can_act)
+      for form <- [true, false] do
+        html = questions_tab(questions: qs, form: form)
 
         refute html =~ "<script"
 
-        assert text(html, "#work-item-explore-questions-question-9 .q-xp-md p") =~
+        assert text(html, "#work-item-questions-question-9 .q-xp-md p") =~
                  "Which alert(1) one?"
 
         refute html =~ "javascript:"
@@ -2401,6 +2481,25 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert html =~ "And the &lt;b&gt;credit notes&lt;/b&gt;?"
     end
 
+    test "Asked as question is text where the Questions tab draws no such question" do
+      rail = fn numbers ->
+        render_component(&C.review_comments/1,
+          id: "work-item-review",
+          comments: invoice_comments(),
+          explore_path: "/acme/main/work/41/questions",
+          question_numbers: numbers
+        )
+      end
+
+      drawn = rail.(MapSet.new([2]))
+      assert text(drawn, "#work-item-review-rc2-reply-1 .q-rc-m") == "Asked as question 2"
+      assert count(drawn, "#work-item-review-rc2-reply-1 .q-rc-m a") == 1
+
+      absent = rail.(MapSet.new([1, 3]))
+      assert text(absent, "#work-item-review-rc2-reply-1 .q-rc-m") == "Asked as question 2"
+      assert count(absent, "#work-item-review-rc2-reply-1 .q-rc-m a") == 0
+    end
+
     test "replies: a run's outcome, Asked linked to its question; a member's reply by name" do
       html = comments_tab(invoice_comments())
       r = "#work-item-explore-proposal-review-rc2"
@@ -2408,15 +2507,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{r}-reply-1 .q-rc-m") == "Asked as question 2"
 
       assert attr(html, "#{r}-reply-1 .q-rc-m a", "href") == [
-               "#work-item-explore-questions-question-2"
+               "#work-item-questions-question-2"
              ]
 
-      # In the right column of the Ticket and Thread tabs: the Explore tab's question.
+      # In the right column of the Ticket and Thread tabs: the Questions tab's question.
       rail =
         render_component(&C.review_comments/1,
           id: "work-item-review",
           comments: invoice_comments(),
-          explore_path: "/acme/main/work/41/explore",
+          explore_path: "/acme/main/work/41/questions",
           level: "h2",
           tip: "tooltip-right"
         )
@@ -2427,7 +2526,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "abbr.tooltip-right") == 0
 
       assert attr(rail, "#work-item-review-rc2-reply-1 .q-rc-m a", "href") == [
-               "/acme/main/work/41/explore#work-item-explore-questions-question-2"
+               "/acme/main/work/41/questions#work-item-questions-question-2"
              ]
 
       assert attr(html, "#{r}-reply-1 .hero-play-circle", "class") != []
@@ -2556,7 +2655,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "explore_tab/1, the fold of the runs" do
-    test "one fold: how many runs, the proposal's and the questions' versions; closed" do
+    test "one fold: how many runs and the proposal's version, no questions' version; closed" do
       runs = [
         acme_run(%{
           id: "rn_0000000000000040",
@@ -2585,15 +2684,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html =
         tab(w,
           earlier_runs: [first],
-          proposal: proposal_v(2),
-          questions_version: 2
+          proposal: proposal_v(2)
         )
 
       r = "#work-item-record"
       assert attr(html, r, "aria-labelledby") == ["work-item-record-h"]
       assert text(html, "h2#work-item-record-h.sr-only") == "Runs and artifacts"
       assert attr(html, "#{r}-fold", "open") == []
-      assert text(html, "#{r}-fold > summary") == "2 runs proposal v2 questions v2"
+      # The questions are on the Questions tab: the fold has no "questions v2".
+      assert text(html, "#{r}-fold > summary") == "2 runs proposal v2"
       refute html =~ "Earlier runs of this take in"
 
       assert texts(html, "#{r} .q-xp-runrow") == [
@@ -2607,8 +2706,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       html =
         tab(invoice_item(%{run: last}),
-          proposal: proposal_v(nil),
-          questions_version: nil
+          proposal: proposal_v(nil)
         )
 
       assert texts(html, "#work-item-record-fold > summary .q-xp-it") == ["1 run"]
@@ -3717,10 +3815,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
           }),
           can_close: true
         ),
-        card(w94, explore_path: "/8wonders/main/work/94/explore"),
+        card(w94, questions_path: "/8wonders/main/work/94/questions"),
         tab(work_item(%{})),
-        tab(%{w94 | run: %{run1_answered() | answered_by: nil}},
-          can_act: true,
+        questions_tab(
+          number: 94,
           questions: [q(1, %{id: "qq_01", options: currency_options()})],
           errors: %{"qq_01" => :note_required}
         ),
@@ -3855,9 +3953,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       html = tab(w, can_act: true, questions: [q(1)])
       assert count(html, "#work-item-explore-limit") == 0
-      assert count(html, "#work-item-explore-questions-form") == 1
-      assert text(html, "#work-item-explore-questions-go") == "Run another round"
       refute html =~ "attempt 4 of 3"
+
+      # The form is on the Questions tab.
+      form = questions_tab(questions: [q(1)])
+      assert count(form, "#work-item-questions-open-form") == 1
+      assert text(form, "#work-item-questions-open-go") == "Run another round of Explore"
 
       assert text(card(w), ".q-wi-badge") == "Needs answers"
       refute C.status_words(w) == "Explore used its 3 runs"
@@ -3916,18 +4017,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   describe "the fields and the run's words, robustly" do
     defp form_tab(extra),
       do:
-        tab(
-          invoice_item(%{status: :questions}),
-          Keyword.merge(
-            [can_act: true, questions: [q(1, %{options: currency_options()}), q(2)]],
-            extra
-          )
+        questions_tab(
+          Keyword.merge([questions: [q(1, %{options: currency_options()}), q(2)]], extra)
         )
 
     test "a value that starts with a line break keeps it in its field" do
       [answer] =
         form_tab(answers: %{"q2" => %{"note" => "\nWeb only."}})
-        |> query("#work-item-explore-questions-answer-2")
+        |> query("#work-item-questions-open-answer-2")
         |> Enum.to_list()
 
       assert LazyHTML.text(answer) == "\nWeb only."
@@ -3949,7 +4046,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       html = form_tab(answers: %{"q1" => "old", "q2" => %{"option" => "9"}})
 
       assert attr(html, "input[type=radio]", "checked") == []
-      assert text(html, "#work-item-explore-questions-answer-1") == ""
+      assert text(html, "#work-item-questions-open-answer-1") == ""
     end
 
     test "an answer error without words marks nothing" do
@@ -3963,7 +4060,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "the focus span is new after each send, so the focus moves again" do
       for submits <- [1, 2] do
         html = form_tab(errors: %{"q2" => :note_required}, submits: submits)
-        assert count(html, "#work-item-explore-questions-focus-#{submits}-2") == 1
+        assert count(html, "#work-item-questions-open-focus-#{submits}-2") == 1
 
         page =
           render_component(&C.review_page/1,
@@ -4264,16 +4361,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "the comment on the whole proposal, under the questions" do
+    # The Questions tab as the page draws it: the comment field where the reader may send
+    # review comments and a proposal exists; the open review comments count where the
+    # reader may send them.
     defp commenting_tab(extra) do
-      tab(
-        invoice_item(%{status: :questions}),
+      {can_send, extra} = Keyword.pop(extra, :can_send, true)
+      {proposal, extra} = Keyword.pop(extra, :proposal, proposal_v(2))
+      {comments, extra} = Keyword.pop(extra, :review_comments, [])
+
+      questions_tab(
         Keyword.merge(
           [
-            can_act: true,
-            can_send: true,
-            proposal: proposal_v(2),
-            questions: invoice_questions(),
-            questions_version: 2
+            commenting: can_send and proposal != nil,
+            open_comments: if(can_send, do: Enum.count(comments, &(&1.state == :open)), else: 0)
           ],
           extra
         )
@@ -4282,7 +4382,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "one field below the last question and above the button; no button of its own" do
       html = commenting_tab([])
-      q = "#work-item-explore-questions"
+      q = "#work-item-questions-open"
 
       assert attr(html, "#{q}-form > *", "class") |> Enum.reject(&is_nil/1) ==
                ["q-xp-sec", "q-xp-comment", "q-xp-form-foot"]
@@ -4297,8 +4397,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Add anything the questions do not cover."
              ]
 
-      assert texts(html, "#{q}-form button") == ["Run another round"]
-      assert count(html, "#work-item-explore-gate") == 0
+      assert texts(html, "#{q}-form button") == ["Run another round of Explore"]
 
       # The field never words itself as a review comment.
       field = html |> query("#{q}-form .q-xp-comment") |> LazyHTML.to_html()
@@ -4306,26 +4405,26 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "only for a reader who may write review comments, where a proposal exists" do
-      q = "#work-item-explore-questions"
+      q = "#work-item-questions-open"
       assert count(commenting_tab(can_send: false), "#{q}-comment") == 0
       assert count(commenting_tab(proposal: nil), "#{q}-comment") == 0
       assert count(commenting_tab(can_send: false), "#{q}-go") == 1
     end
 
     test "the line above the questions names the comment only where the field shows" do
-      q = "#work-item-explore-questions"
+      q = "#work-item-questions-open"
 
       assert text(commenting_tab([]), "#{q}-cap") ==
-               "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
+               "Run another round of Explore starts Explore's next run. That run reads your answers and your comment, and updates Explore's proposal."
 
       for no_field <- [commenting_tab(can_send: false), commenting_tab(proposal: nil)] do
         assert text(no_field, "#{q}-cap") ==
-                 "Run another round starts the next run. That run reads your answers and updates the proposal."
+                 "Run another round of Explore starts Explore's next run. That run reads your answers and updates Explore's proposal."
       end
     end
 
     test "Run another round: disabled with nothing to send; an answer, a comment or an open review comment enables it" do
-      go = "#work-item-explore-questions-go"
+      go = "#work-item-questions-open-go"
       assert attr(commenting_tab([]), go, "disabled") == [""]
 
       for answers <- [
@@ -4421,41 +4520,46 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             can_send: true,
             can_change: true,
             proposal: proposal_v(2),
-            questions: questions,
-            questions_version: 3
+            questions: questions
           ],
           extra
         )
       )
     end
 
-    @ask "Run another round starts the next run. That run reads your answers, your changed decisions and your comment, and updates the proposal."
+    # The Questions tab, where the decisions sit in the open questions' form.
+    defp decisions_questions(questions, extra \\ []) do
+      {change, extra} = Keyword.pop(extra, :can_change, true)
+      commenting_tab(Keyword.merge([questions: questions, change: change], extra))
+    end
+
+    @ask "Run another round of Explore starts Explore's next run. That run reads your answers, your changed decisions and your comment, and updates Explore's proposal."
     @changed_cap "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
     @gate_cap "Run another round starts the next run. That run reads your comment and updates the proposal."
 
-    test "with open questions: in the questions frame, above the open questions, inside the form" do
-      html = decisions_tab(:questions, invoice_questions() ++ [decided(5)])
-      q = "#work-item-explore-questions"
+    test "with open questions: in the open questions frame, above the open questions, inside the form" do
+      html = decisions_questions(invoice_questions() ++ [decided(5)])
+      q = "#work-item-questions-open"
 
-      assert text(html, "#{q}-h") == "Questions and decisions"
+      assert text(html, "#{q}-h") == "Open questions"
       assert text(html, "#{q}-cap") == @ask
       assert count(html, "#work-item-explore-decisions") == 0
       assert count(html, "#work-item-explore-gate") == 0
 
-      # Answered and withdrawn questions stay at the top; then the decisions, then the
-      # open questions, then the comment and Run another round.
-      assert attr(html, "#{q}-closed > details", "id") == [
-               "work-item-explore-questions-question-1",
-               "work-item-explore-questions-question-4"
+      # Answered and withdrawn questions are in the frame below; in the form, the
+      # decisions, then the open questions, then the comment and Run another round.
+      assert attr(html, "#work-item-questions-answered-list details", "id") == [
+               "work-item-questions-question-1",
+               "work-item-questions-question-4"
              ]
 
-      assert texts(html, "#{q}-form > .q-xp-sec > h3") == ["Decisions", "Open questions"]
+      assert texts(html, "#{q}-form > .q-xp-sec > h3") == ["Decisions"]
 
       assert attr(html, "#{q}-form > *", "class") |> Enum.reject(&is_nil/1) ==
                ["q-xp-sec", "q-xp-sec", "q-xp-comment", "q-xp-form-foot"]
 
       assert attr(html, "#{q}-decisions .q-xp-decs > details", "id") ==
-               ["work-item-explore-questions-decision-5"]
+               ["work-item-questions-open-decision-5"]
 
       assert attr(html, "#{q}-comment", "placeholder") ==
                ["Add anything the questions and decisions do not cover."]
@@ -4478,7 +4582,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(html, "#{row} .q-xp-cm-m") == "Run 41 chose it 12 minutes ago"
 
-      field = "work-item-explore-questions-answer-5"
+      field = "work-item-questions-open-answer-5"
 
       assert attr(html, "##{field}-options input", "name") ==
                List.duplicate("answers[q5][option]", 3)
@@ -4500,13 +4604,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "Run another round: a changed decision enables it; the run's option again does not" do
-      go = "#work-item-explore-questions-go"
+      go = "#work-item-questions-open-go"
       questions = invoice_questions() ++ [decided(5)]
 
-      assert attr(decisions_tab(:questions, questions), go, "disabled") == [""]
+      assert attr(decisions_questions(questions), go, "disabled") == [""]
 
       for same <- [%{"option" => "1"}, %{"option" => "1", "note" => " "}, %{"option" => ""}] do
-        html = decisions_tab(:questions, questions, answers: %{"q5" => same})
+        html = decisions_questions(questions, answers: %{"q5" => same})
         assert attr(html, go, "disabled") == [""]
       end
 
@@ -4515,15 +4619,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             %{"option" => "own", "note" => "Only by phone."},
             %{"option" => "1", "note" => "And in the app."}
           ] do
-        html = decisions_tab(:questions, questions, answers: %{"q5" => change})
+        html = decisions_questions(questions, answers: %{"q5" => change})
         assert attr(html, go, "disabled") == []
         # The head keeps the run's option while the change is a draft.
-        assert text(html, "#work-item-explore-questions-decision-5 > summary > .q-xp-said") ==
+        assert text(html, "#work-item-questions-open-decision-5 > summary > .q-xp-said") ==
                  "In the account page"
       end
 
-      own = decisions_tab(:questions, questions, answers: %{"q5" => %{"option" => "own"}})
-      assert attr(own, "#work-item-explore-questions-answer-5", "placeholder") == ["Your option"]
+      own = decisions_questions(questions, answers: %{"q5" => %{"option" => "own"}})
+      assert attr(own, "#work-item-questions-open-answer-5", "placeholder") == ["Your option"]
     end
 
     test "without open questions: a frame between the proposal and the gate" do
@@ -4694,18 +4798,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#work-item-explore-gate-send") == 0
       assert attr(html, "#work-item-explore-gate-go", "disabled") == []
 
-      # While a run runs, the decisions in the questions frame are text too.
-      running =
-        tab(invoice_item(%{status: :running, run: running_run(3)}),
-          can_act: true,
-          can_change: true,
-          questions: invoice_questions() ++ [decided(5)]
-        )
+      # While a run runs, the decisions in the open questions frame are text too.
+      running = decisions_questions(invoice_questions() ++ [decided(5)], form: false)
 
-      assert count(running, "#work-item-explore-questions-decisions input") == 0
-
-      assert texts(running, "#work-item-explore-questions .q-xp-sec > h3") ==
-               ["Decisions", "Open questions"]
+      assert count(running, "#work-item-questions-open-decisions input") == 0
+      assert texts(running, "#work-item-questions-open h3") == ["Decisions"]
     end
 
     test "decision_changed?/2: another option, Give your own option, or a note" do
@@ -4727,7 +4824,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert css =~ ~r/\.q-xp-dec-said \{[^}]*text-overflow: ellipsis;/s
     end
 
-    @no_comment_cap "Run another round starts the next run. That run reads your answers and your changed decisions, and updates the proposal."
+    @no_comment_cap "Run another round of Explore starts Explore's next run. That run reads your answers and your changed decisions, and updates Explore's proposal."
     @gate_no_comment_cap "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
 
     test "may change them and may not comment: the caption at the gate has no comment" do
@@ -4748,8 +4845,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "may change them and may not comment: the caption under the questions has no comment" do
-      html = decisions_tab(:questions, invoice_questions() ++ [decided(5)], can_send: false)
-      q = "#work-item-explore-questions"
+      html = decisions_questions(invoice_questions() ++ [decided(5)], can_send: false)
+      q = "#work-item-questions-open"
 
       assert text(html, "#{q}-cap") == @no_comment_cap
       assert count(html, "#{q}-comment") == 0
@@ -4769,10 +4866,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-explore-gate .q-xp-cap") == @gate_cap
 
       # Under the questions the caption is about the answers and the comment.
-      html = decisions_tab(:questions, invoice_questions() ++ [changed(5, @dana, "A", nil)])
+      html = decisions_questions(invoice_questions() ++ [changed(5, @dana, "A", nil)])
 
-      assert text(html, "#work-item-explore-questions-cap") ==
-               "Run another round starts the next run. That run reads your answers and your comment, and updates the proposal."
+      assert text(html, "#work-item-questions-open-cap") ==
+               "Run another round of Explore starts Explore's next run. That run reads your answers and your comment, and updates Explore's proposal."
     end
 
     test "one decision sent and one not: the unsent one keeps its fields" do
@@ -4881,11 +4978,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#{gate}-hint") == 0
 
       html =
-        decisions_tab(:questions, invoice_questions() ++ [repeated(5)],
+        decisions_questions(invoice_questions() ++ [repeated(5)],
           answers: %{"q5" => %{"option" => "2"}}
         )
 
-      assert attr(html, "#work-item-explore-questions-go", "disabled") != []
+      assert attr(html, "#work-item-questions-open-go", "disabled") != []
     end
 
     test "a send that wrote nothing because the questions changed shows its line at the gate" do
@@ -4900,14 +4997,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "an error in a decision: its line under the field, and the fold opened after each send" do
-      for {frame, questions} <- [
-            {"#work-item-explore-decisions", [decided(1)]},
-            {"#work-item-explore-questions", [decided(1), q(2)]}
+      for {frame, render} <- [
+            {"#work-item-explore-decisions", &decisions_tab(:confirm, [decided(1)], &1)},
+            {"#work-item-questions-open", &decisions_questions([decided(1), q(2)], &1)}
           ] do
-        status = if length(questions) == 1, do: :confirm, else: :questions
-
         html =
-          decisions_tab(status, questions,
+          render.(
             answers: %{"q1" => %{"option" => "own", "note" => ""}},
             errors: %{"q1" => :note_required},
             submits: 3
@@ -4962,10 +5057,10 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "an error in a decision under the questions: focus moves there before an open question" do
-      q = "#work-item-explore-questions"
+      q = "#work-item-questions-open"
 
       html =
-        decisions_tab(:questions, [decided(1), q(2)],
+        decisions_questions([decided(1), q(2)],
           answers: %{"q1" => %{"option" => "own", "note" => ""}},
           errors: %{"q1" => :note_required, "q2" => :note_required},
           submits: 3
@@ -4978,16 +5073,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
     test "a question that follows a decision links to the decision's row" do
       html =
-        decisions_tab(:questions, [
+        decisions_questions([
           decided(1),
           q(2, %{text: "Which basket?", follows: [1]})
         ])
 
-      q = "work-item-explore-questions"
+      q = "work-item-questions"
 
-      assert text(html, "##{q}-question-2 a") == "Follows question 1"
-      assert attr(html, "##{q}-question-2 a", "href") == ["##{q}-question-1"]
-      assert text(html, "##{q}-decision-1 > summary ##{q}-question-1") =~ "1."
+      assert text(html, "##{q}-question-2 a.text-accent") == "Follows question 1"
+      assert attr(html, "##{q}-question-2 a.text-accent", "href") == ["##{q}-question-1"]
+      assert text(html, "##{q}-open-decision-1 > summary ##{q}-question-1") =~ "1."
     end
 
     test "a decision in its frame has the address a reply links to" do
@@ -4995,7 +5090,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
       assert text(
                html,
-               "#work-item-explore-decisions-decision-1 > summary #work-item-explore-questions-question-1"
+               "#work-item-explore-decisions-decision-1 > summary #work-item-questions-question-1"
              ) =~ "1."
     end
   end
