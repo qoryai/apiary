@@ -53,12 +53,13 @@ defmodule Apiary.Processes do
 
   A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
   ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
-  its output checks and its gate (`Apiary.Stages.Runner`). Another verdict acts as for any
-  entry. A loop's body refuses the key (`:schema`), because `passed` already leaves a loop.
+  its output checks and its gate (the stage runner, lib/apiary/stages/runner.ex). Another
+  verdict acts as for any entry. A loop's body refuses the key (`:schema`), because `passed`
+  already leaves a loop.
 
   An output takes `when` and `unless` like an input, with `{track: ID}` or `{input: T}`. It
   is required only while no condition holds it back, so a stage whose required output is
-  held back goes on to its gate without it (`Apiary.Stages.Runner.required?/2`).
+  held back goes on to its gate without it.
 
   ## Export
 
