@@ -447,11 +447,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:,
   # kind:}`, the first one `open`. A type with no such version has no frame, nor do the
   # review comments, the document a review comment is written to, and the questions, which
-  # are on the Questions tab. A frame's `kind` is `:output`. On the tab of a stage with a `verification` output, every frame is open; the
-  # scenarios' films and pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one
-  # frame of the kind `:scenarios`, in the place of the first, with the highest of their
-  # versions; and each output other than the verification is a frame of the kind `:row`,
-  # with its version and its artifact rows, and no text.
+  # are on the Questions tab. A frame's `kind` is `:output`. On the tab of a stage with a
+  # `verification` output, every frame is open; the scenarios' films and pictures
+  # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind `:scenarios`, in
+  # the place of the first, with the highest of their versions; and each output other than
+  # the verification is a frame of the kind `:row`, with its version and its artifact rows,
+  # and no text.
   @spec frames(map, %{String.t() => pos_integer}) :: [map]
   def frames(stage, newest) do
     types =
