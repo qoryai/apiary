@@ -1372,6 +1372,7 @@ defmodule Apiary.Stages do
         | missing_inputs: facts.missing_inputs -- [type],
           counted: added_counted(facts.counted, type, sizes)
       }
+      |> stored_now(type)
     end
 
     case on_version_added(work_item, stage) do
@@ -1400,6 +1401,25 @@ defmodule Apiary.Stages do
   end
 
   defp would_start(_work_item, _version, _stage, _act), do: :none
+
+  # The versions that a condition `{input: T, changed: true}` reads (`stored`), with the
+  # versions of the stage's outputs that an approval covers, `approved_at`, a list of
+  # `{type, stored_at}`, read as the stage's inputs of those types.
+  defp stored_as_approved(%{stored: stored} = facts, approved_at) do
+    stored =
+      Enum.reduce(approved_at, stored, fn {type, at}, stored ->
+        if Map.has_key?(stored, type),
+          do: Map.update!(stored, type, &(&1 ++ [%{at: at, by: nil}])),
+          else: stored
+      end)
+
+    %{facts | stored: stored}
+  end
+
+  defp stored_as_approved(facts, _approved_at), do: facts
+
+  # A version of `type` that a person added now, as `stored_as_approved/2` has it.
+  defp stored_now(facts, type), do: stored_as_approved(facts, [{type, DateTime.utc_now()}])
 
   # The input types that count, `counted`, with a version of `type` added whose files have
   # `sizes` (`counts?/1`); as they are for nil.
@@ -1459,6 +1479,9 @@ defmodule Apiary.Stages do
     counting =
       for a <- artifacts, v <- a.versions, v.public_id in ids, counts?(v), uniq: true, do: a.type
 
+    approved_at =
+      for a <- artifacts, v <- a.versions, v.public_id in ids, do: {a.type, v.inserted_at}
+
     fn facts ->
       facts = later.(facts)
 
@@ -1467,6 +1490,7 @@ defmodule Apiary.Stages do
         | missing_inputs: facts.missing_inputs -- covered,
           counted: Enum.uniq((facts.counted -- covered) ++ counting)
       })
+      |> stored_as_approved(approved_at)
     end
   end
 
@@ -1494,9 +1518,8 @@ defmodule Apiary.Stages do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       state = shown_state(work_item, stage, artifacts)
-      counted = counted(work_item, version, stage, artifacts)
-      track = track(work_item)
-      outputs = outputs(work_item, version, stage, artifacts, %{counted: counted, track: track})
+      facts = condition_facts(work_item, version, stage, artifacts, false)
+      outputs = outputs(work_item, version, stage, artifacts, facts)
       missing = missing(outputs)
 
       %{
@@ -1506,12 +1529,12 @@ defmodule Apiary.Stages do
         rounds: shown_rounds(stage, work_item.stage_entry),
         loop: is_integer(work_item.loop_entry),
         state: state,
-        gaps: shown_gaps(escalation, work_item, stage, artifacts, counted, track),
+        gaps: shown_gaps(escalation, work_item, stage, artifacts, facts),
         outputs: outputs,
         missing_outputs: missing,
-        inputs: inputs(work_item, version, stage, artifacts, %{counted: counted, track: track}),
+        inputs: inputs(work_item, version, stage, artifacts, facts),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
-        waiting_workflow: waiting_workflow(work_item, stage, counted, track),
+        waiting_workflow: waiting_workflow(work_item, stage, facts),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
@@ -1554,7 +1577,8 @@ defmodule Apiary.Stages do
     case placed(work_item) do
       {:ok, version, stage} ->
         artifacts = Artifacts.list(work_item)
-        read = inputs(work_item, version, stage, artifacts)
+        facts = condition_facts(work_item, version, stage, artifacts, false)
+        read = inputs(work_item, version, stage, artifacts, facts)
         read ++ moved_inputs(work_item, version, stage, artifacts, read)
 
       _other ->
@@ -1731,8 +1755,9 @@ defmodule Apiary.Stages do
   # current take in, because their condition was not met (`Apiary.Stages.Skip`), oldest
   # first: each with its stage, workflow, the condition that held it back as `input` (a
   # type) or `track` (an id, with `track_name`), `negated` (true for an `unless` that was
-  # met) and `after_attempt`, the newest attempt of the take in when the runner passed it
-  # over (0 for none); for an entry a first attempt passed over, `reason` is
+  # met), `changed` (true for a condition `{input: T, changed: true}`) and `after_attempt`,
+  # the newest attempt of the take in when the runner passed it over (0 for none); for an
+  # entry a first attempt passed over, `reason` is
   # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its
   # workflow (both nil for a condition). `earlier_skips/1` is those of the take ins before
   # the current one, each with its `take_in`; `stage_skips/1` the stages passed over whole
@@ -1797,6 +1822,7 @@ defmodule Apiary.Stages do
         track: skip.track,
         track_name: names[skip.track] || skip.track,
         negated: skip.negated,
+        changed: skip.changed,
         reason: skip.reason,
         cause_entry: skip.cause_entry,
         round: skip.round,
@@ -1818,6 +1844,7 @@ defmodule Apiary.Stages do
             track: skip.track,
             track_name: names[skip.track] || skip.track,
             negated: skip.negated,
+            changed: skip.changed,
             inserted_at: skip.inserted_at,
             approved: skip.track && approval_before(approvals, skip.inserted_at, names)
           }
@@ -2492,26 +2519,25 @@ defmodule Apiary.Stages do
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
 
     # Read once per event: the outputs' checks and the runner both use it.
-    counted = counted(work_item, version, stage, artifacts)
-    track = track(work_item)
+    conditions = condition_facts(work_item, version, stage, artifacts)
 
-    %{
+    Map.merge(conditions, %{
       missing_inputs:
         for(
           %{required: true, version: nil, type: type} <-
-            inputs(work_item, version, stage, artifacts, %{counted: counted, track: track}),
+            inputs(work_item, version, stage, artifacts, conditions),
           do: type
         ),
       undeclared:
-        undeclared(workspace, Map.take(declarations, Runner.workflows(stage, counted, track))),
+        undeclared(
+          workspace,
+          Map.take(declarations, Runner.workflows_met(stage, conditions))
+        ),
       declarations: declarations,
-      counted: counted,
-      track: track,
-      failed_checks:
-        missing(outputs(work_item, version, stage, artifacts, %{counted: counted, track: track})),
+      failed_checks: missing(outputs(work_item, version, stage, artifacts, conditions)),
       machine: version.document["machine"],
       test: work_item.test
-    }
+    })
   end
 
   # The stage's workflows that hold it back: with a snapshot of the names the workspace's
@@ -2632,6 +2658,7 @@ defmodule Apiary.Stages do
       input: spec.input,
       track: spec.track,
       negated: spec.negated,
+      changed: Map.get(spec, :changed, false),
       reason: Map.get(spec, :reason),
       cause_entry: Map.get(spec, :cause_entry),
       after_attempt: newest || 0,
@@ -3372,12 +3399,10 @@ defmodule Apiary.Stages do
   end
 
   # An output with a condition is required only while its condition does not hold it back
-  # (`Runner.required?/2`), with `facts` as `facts/3` reads them (`counted` and `track`), read
+  # (`Runner.required?/2`), with `facts` as `condition_facts/4` reads them, read
   # here for nil.
   defp outputs(work_item, version, stage, artifacts, facts \\ nil) do
-    facts =
-      facts ||
-        %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
+    facts = facts || condition_facts(work_item, version, stage, artifacts)
 
     for output <- Map.get(stage, "outputs", []) do
       type = output["type"]
@@ -3438,13 +3463,8 @@ defmodule Apiary.Stages do
   defp reported?(_output), do: false
 
   # `required` is false for an input whose condition holds it back (`Runner.unmet/2`): the
-  # stage does not wait for it. `facts` has the input types that count and the track, read
-  # here for nil.
-  defp inputs(work_item, version, stage, artifacts, facts \\ nil) do
-    facts =
-      facts ||
-        %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
-
+  # stage does not wait for it. `facts` are those of `condition_facts/5`.
+  defp inputs(work_item, version, stage, artifacts, facts) do
     for input <- Map.get(stage, "inputs", []) do
       type = input["type"]
       chosen = read_version(work_item, version, stage, artifacts, type)
@@ -3504,6 +3524,90 @@ defmodule Apiary.Stages do
 
   defp counts?(version), do: Enum.any?(version.files, &(&1.size > 0))
 
+  # The facts of the conditions of `stage` (`Runner.facts/0`): the input types that count,
+  # the track, and, for a stage whose workflow entry has a condition `{input: T, changed:
+  # true}`, `stored` and `passed` (`changed_facts/6`), which a stage with none does not read.
+  # A verdict whose file the store cannot read raises, as the runner's read of an end does,
+  # unless `strict?` is false, as for a page: the run then does not count as passed.
+  defp condition_facts(work_item, version, stage, artifacts, strict? \\ true) do
+    facts = %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
+
+    case Runner.changed_inputs(stage) do
+      [] ->
+        facts
+
+      types ->
+        Map.merge(facts, changed_facts(work_item, version, stage, artifacts, types, strict?))
+    end
+  end
+
+  # `stored`: for each type, the versions of it that a condition `{input: T, changed: true}`
+  # reads: the version the stage reads (`read_version/5`, whatever the size of its files),
+  # and each version that a run of the stage stored, so a version that an earlier entry of
+  # the stage stored counts (triage-review's, for one). Each has when it was stored and the
+  # place of the run that stored it (`Runner.stored_version/0`). `passed`: the runs of the
+  # stage on the work item, in every take in, that ended `passed` as the runner reads the
+  # end (`reported_verdict/1`), each with its place and when it was queued.
+  defp changed_facts(work_item, version, stage, artifacts, types, strict?) do
+    live = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
+
+    stored =
+      for type <- types, into: %{} do
+        read = read_version(work_item, version, stage, artifacts, type)
+
+        made =
+          for artifact <- live,
+              artifact.type == type,
+              v <- artifact.versions,
+              v.writer == :run and v.stage_id == stage["id"] and not v.withdrawn and
+                not Artifacts.cancelled?(v),
+              do: %{at: v.inserted_at, by: run_place(v)}
+
+        {type, if(read, do: [%{at: read.inserted_at, by: nil}], else: []) ++ made}
+      end
+
+    %{stored: stored, passed: passed_runs(work_item, stage, strict?)}
+  end
+
+  defp run_place(%{
+         run: %DispatchRun{stage_entry: entry, loop_entry: loop_entry, workflow: workflow}
+       })
+       when is_integer(entry) and is_binary(workflow),
+       do: {entry, loop_entry, workflow}
+
+  defp run_place(_version), do: nil
+
+  # The runs of `stage` on the work item that ended `passed`, as the runner reads the end:
+  # a run that ended by its exit, which no member cancelled, whose newest verdict `main` says
+  # `passed` (`reported_verdict/1`); a verdict whose file the store cannot read raises, as
+  # `verdict!/1` does, with `strict?`, and is no pass without it. Only the runs of the
+  # workflows of the entries that have a changed condition are read
+  # (`Runner.changed_workflows/1`), each at its position in the stage.
+  defp passed_runs(work_item, stage, strict?) do
+    workflows = Runner.changed_workflows(stage)
+
+    for run <-
+          Repo.all(
+            from d in DispatchRun,
+              where:
+                d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"] and
+                  d.state == :ended and d.end_cause == :run_ended and
+                  not is_nil(d.stage_entry) and d.workflow in ^workflows,
+              order_by: [d.queued_at, d.id]
+          ),
+        passed?(run, strict?) do
+      %{
+        entry: run.stage_entry,
+        loop_entry: run.loop_entry,
+        workflow: run.workflow,
+        queued_at: run.queued_at
+      }
+    end
+  end
+
+  defp passed?(run, true), do: match?({:verdict, :passed, _points}, verdict!(run))
+  defp passed?(run, false), do: match?({:verdict, :passed, _points}, reported_verdict(run))
+
   # The ids of the stages before `stage`, nearest first.
   defp earlier_stage_ids(version, stage) do
     version.document["stages"]
@@ -3548,13 +3652,11 @@ defmodule Apiary.Stages do
          %WorkItem{stage_state: :waiting_workflow} = work_item,
          stage,
          artifacts,
-         counted,
-         track
+         facts
        ) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    case {waiting_workflow(work_item, stage, counted, track),
-          Processes.declared_snapshot(workspace)} do
+    case {waiting_workflow(work_item, stage, facts), Processes.declared_snapshot(workspace)} do
       {workflow, %{read_at: read_at}} when is_binary(workflow) ->
         case Sources.chosen(workspace) do
           %{choice: :qory} -> not_in_qory(stage["name"], workflow)
@@ -3566,7 +3668,7 @@ defmodule Apiary.Stages do
     end
   end
 
-  defp shown_gaps(escalation, work_item, stage, artifacts, _counted, _track),
+  defp shown_gaps(escalation, work_item, stage, artifacts, _facts),
     do: gaps(escalation, work_item, stage, artifacts)
 
   # not_listed/4 is why a stage waits for a workflow its harness did not list.
@@ -3611,25 +3713,20 @@ defmodule Apiary.Stages do
        do: check.gaps
   end
 
-  # The first undeclared workflow of the stage whose condition is met, with `counted`.
-  defp waiting_workflow(
-         %WorkItem{stage_state: :waiting_workflow} = work_item,
-         stage,
-         counted,
-         track
-       ) do
+  # The first undeclared workflow of the stage whose condition is met, with `facts`.
+  defp waiting_workflow(%WorkItem{stage_state: :waiting_workflow} = work_item, stage, facts) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
     declarations =
       Map.new(
-        Runner.workflows(stage, counted, track),
+        Runner.workflows_met(stage, facts),
         &{&1, Processes.workflow_declaration(workspace, &1)}
       )
 
     workspace |> undeclared(declarations) |> List.first()
   end
 
-  defp waiting_workflow(_work_item, _stage, _counted, _track), do: nil
+  defp waiting_workflow(_work_item, _stage, _facts), do: nil
 
   ## Helpers
 
