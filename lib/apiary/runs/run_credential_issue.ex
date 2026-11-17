@@ -26,8 +26,10 @@ defmodule Apiary.Runs.RunCredentialIssue do
        plaintext's `apply` in the Forager contract. Each item is a map whose `hosts` are
        1 to 16 distinct strings, whose `scheme` is a string, whose `username` and
        `header` are strings when present, and whose `paths` are 1 to 32 distinct strings
-       of the path grammar `^/[^*?#\\s]*\\*?$` when present (`:apply_item_invalid`). No
-       item has a `token` (`:token_in_apply_item`).
+       of Forager's path grammar when present (`:apply_item_invalid`): a path from the root,
+       with `*` only at its end and no `{` or `}`, except a segment that is exactly `{}`,
+       which matches one segment that is not empty. No item has a `token`
+       (`:token_in_apply_item`).
     6. Each answer item lies inside one entry item: the same `scheme`, the same
        `username` and the same `header`, each both absent or equal
        (`:scheme_outside_entry`); every host among that entry item's hosts
@@ -39,7 +41,9 @@ defmodule Apiary.Runs.RunCredentialIssue do
        percent-decoding, and no trailing-slash or dot-segment normalisation. When no
        entry item matches the scheme, the cause is `:scheme_outside_entry`; when some
        match it and none contains the hosts, `:host_outside_entry`; otherwise
-       `:path_outside_entry`.
+       `:path_outside_entry`. An answer item has no `push_ref` (`:unknown_member`): a
+       checked item has the `push_ref` of the entry item it lies inside, if that item has
+       one.
     7. `expires_at`, when present, is an RFC 3339 date-time (`:expires_at_invalid`):
        `YYYY-MM-DD`, then `T` or `t`, then `hh:mm:ss`, then an optional fraction of
        one or more digits, then `Z`, `z` or an offset `+hh:mm` or `-hh:mm`, where
@@ -52,9 +56,10 @@ defmodule Apiary.Runs.RunCredentialIssue do
 
   The entry is a map with string keys: `"apply"`, a list of 1 to 16 apply items, each
   with `"hosts"` (a list of strings), `"scheme"` (`"bearer"`, `"basic"` or `"header"`)
-  and optional `"username"`, `"header"` and `"paths"`, with the paths filled; and
-  optional `"name"`, `"purpose"` and `"placeholders"`, a list of strings. This is the
-  host credential of the run configuration, so a composed entry fits as it is.
+  and optional `"username"`, `"header"` and `"paths"`, with the paths filled, and
+  `"push_ref"`, a string; and optional `"name"`, `"purpose"` and `"placeholders"`, a list
+  of strings. This is the host credential of the run configuration, so a composed entry
+  fits as it is.
 
   The module makes no call, reads no database and writes no log line or Activity entry.
   A refusal is an atom only: no cause contains the token or any part of the answer. The
@@ -71,7 +76,8 @@ defmodule Apiary.Runs.RunCredentialIssue do
   @typedoc """
   A checked credential: `value` returns the token through `value/1`, `expires_at` is
   the expiry in UTC or nil for none, and `apply` contains the answer's apply items as
-  the adapter sent them.
+  the adapter sent them, each with the `push_ref` of the entry item it lies inside, where
+  that item has one.
   """
   @type t :: %__MODULE__{
           value: (-> String.t()),
@@ -131,7 +137,7 @@ defmodule Apiary.Runs.RunCredentialIssue do
 
   # The members of a host credential and of its apply item in `run-configuration.schema.json`.
   @entry_members ["name", "purpose", "apply", "placeholders"]
-  @entry_item_members ["hosts", "scheme", "username", "header", "paths"]
+  @entry_item_members ["hosts", "scheme", "username", "header", "paths", "push_ref"]
   @schemes ["bearer", "basic", "header"]
 
   @max_items 16
@@ -141,7 +147,11 @@ defmodule Apiary.Runs.RunCredentialIssue do
   @min_lifetime 6 * 60
   @max_lifetime 24 * 60 * 60
 
-  @path ~r/\A\/[^*?#\s]*\*?\z/u
+  # Forager's path grammar for an item (`credential.schema.json`, `paths`): segments of any
+  # characters but `* ? # { }`, a space character and `/`, or exactly `{}`, which matches one
+  # segment that is not empty; a `*` only at the end. An answer path is checked against the
+  # entry's, which has no brace, by its text (`path_inside?/2`), so a `{}` segment narrows.
+  @path ~r/\A\/(?:\{\}|[^*?#\s\{\}\/]*)(?:\/(?:\{\}|[^*?#\s\{\}\/]*))*\*?\z/u
   # The date, the time, the fraction digits and the offset of an RFC 3339 date-time.
   @rfc3339 ~r/\A(\d{4}-\d{2}-\d{2})[Tt](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})\z/
 
@@ -199,7 +209,8 @@ defmodule Apiary.Runs.RunCredentialIssue do
   defp entry_item?(%{"hosts" => hosts, "scheme" => scheme} = item) do
     only_members?(item, @entry_item_members) and strings?(hosts) and hosts != [] and
       scheme in @schemes and optional_string?(item, "username") and
-      optional_string?(item, "header") and entry_paths?(Map.get(item, "paths", :absent))
+      optional_string?(item, "header") and entry_paths?(Map.get(item, "paths", :absent)) and
+      optional_string?(item, "push_ref")
   end
 
   defp entry_item?(_item), do: false
@@ -266,12 +277,17 @@ defmodule Apiary.Runs.RunCredentialIssue do
 
   defp check_apply(%{"apply" => items}, entry_items)
        when is_list(items) and items != [] and length(items) <= @max_items do
-    Enum.reduce_while(items, {:ok, items}, fn item, acc ->
+    items
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, checked} ->
       case check_item(item, entry_items) do
-        :ok -> {:cont, acc}
+        {:ok, item} -> {:cont, {:ok, [item | checked]}}
         error -> {:halt, error}
       end
     end)
+    |> case do
+      {:ok, checked} -> {:ok, Enum.reverse(checked)}
+      error -> error
+    end
   end
 
   defp check_apply(_credential, _entry_items), do: {:error, :apply_invalid}
@@ -305,12 +321,24 @@ defmodule Apiary.Runs.RunCredentialIssue do
     with_hosts = Enum.filter(same_scheme, &hosts_inside?(item, &1))
 
     cond do
-      same_scheme == [] -> {:error, :scheme_outside_entry}
-      with_hosts == [] -> {:error, :host_outside_entry}
-      Enum.any?(with_hosts, &paths_inside?(item, &1)) -> :ok
-      true -> {:error, :path_outside_entry}
+      same_scheme == [] ->
+        {:error, :scheme_outside_entry}
+
+      with_hosts == [] ->
+        {:error, :host_outside_entry}
+
+      entry_item = Enum.find(with_hosts, &paths_inside?(item, &1)) ->
+        {:ok, with_push_ref(item, entry_item)}
+
+      true ->
+        {:error, :path_outside_entry}
     end
   end
+
+  # The item the gateway sets: the answer's item with the `push_ref` of the entry item it
+  # lies inside. No adapter answer has one: the claim sets it on the entry.
+  defp with_push_ref(item, %{"push_ref" => push_ref}), do: Map.put(item, "push_ref", push_ref)
+  defp with_push_ref(item, _entry_item), do: item
 
   defp same_scheme?(item, entry_item) do
     Enum.all?(["scheme", "username", "header"], &(Map.get(item, &1) == Map.get(entry_item, &1)))

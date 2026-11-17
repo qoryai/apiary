@@ -82,11 +82,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # that goes with the provider (`Apiary.ModelChoices.Resolution`); then
   # `time_limit_minutes`, the minutes the time limits of the run's workspace and target
   # come to for the run's workflow
-  # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), left out when no limit
-  # resolves or the run has no workflow; with the workflow model, the lower of those
-  # minutes and the run's stage entry's time limit (`Apiary.Stages.limits/1`), which only
-  # lowers a limit that resolved and is left out with none. The workflow and the limits
-  # are read without a lock in `hold/1`. The documents have no key, no secret and no id of
+  # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), with the workflow model
+  # the workflow of its stage entry (`Apiary.Stages.run_workflow/1`); 180 minutes for a
+  # workflow with no limit (`Apiary.TimeLimits.default_minutes/0`), and left out when the
+  # run has no workflow. The process document has no time limit. The workflow and the
+  # limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of
   # a key, and neither has the stored copy. Beside it, the run keeps the provider's row
   # id, its keys' secret's row id, its keys (`runs.model_keys`: each key's row id, its
   # credential name `<provider's public id>-<place from 1>`, `start` on the start key, and
@@ -123,8 +123,6 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The step of the queue whose runs have `run_settings`.
   @step "explore"
-  # The fewest minutes of a run's time limit (the contract's `time_limit_minutes`).
-  @least_minutes 15
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
   # The most times `hold/1` locks providers: after each of the first three reads of the
@@ -173,7 +171,7 @@ defmodule Apiary.Dispatches.RunSettings do
             workspace: workspace,
             target: target,
             input: input,
-            time_limit: lowered(time_limit(workspace, target, workflow), dispatch_run)
+            time_limit: time_limit(workspace, target, workflow)
           }
 
         :unstable ->
@@ -209,30 +207,14 @@ defmodule Apiary.Dispatches.RunSettings do
   defp workflow(dispatch_run, workspace, target),
     do: Apiary.Stages.run_workflow(dispatch_run) || Stacks.workflow(workspace, target)
 
-  # The minutes the time limits come to for `workflow`, nil for no limit or no workflow.
+  # The minutes the time limits come to for `workflow`, the default for no limit; nil for
+  # no workflow.
   defp time_limit(_workspace, _target, nil), do: nil
 
   defp time_limit(%Workspace{} = workspace, target, workflow) do
     case TimeLimits.Resolution.resolve(TimeLimits.limits_for(workspace, target, workflow)) do
       {:ok, %TimeLimits.Resolution{minutes: minutes}} -> minutes
-      :none -> nil
-    end
-  end
-
-  # Hand-over: with the workflow model, a run the stage runner queued takes the lower of
-  # the minutes resolved here and its stage entry's time limit (`Apiary.Stages.limits/1`),
-  # in whole minutes rounded up, and at least 15, the contract's least. The entry only
-  # lowers: with no limit resolved here, the run has none, and the stack's default
-  # applies, which Qory Apiary does not know.
-  defp lowered(nil, _dispatch_run), do: nil
-
-  defp lowered(minutes, dispatch_run) do
-    case Apiary.Stages.limits(dispatch_run) do
-      %{time_limit: seconds} when is_integer(seconds) ->
-        min(minutes, max(div(seconds + 59, 60), @least_minutes))
-
-      _none ->
-        minutes
+      :none -> TimeLimits.default_minutes()
     end
   end
 
@@ -532,7 +514,7 @@ defmodule Apiary.Dispatches.RunSettings do
     }
   end
 
-  # `time_limit_minutes` after the other members, when a limit resolved.
+  # `time_limit_minutes` after the other members, for a run with a workflow.
   defp with_time_limit(built, %{time_limit: minutes}) when is_integer(minutes) do
     wire = Jason.OrderedObject.new(built.wire.values ++ [{"time_limit_minutes", minutes}])
     %{built | wire: wire, stored: Map.put(built.stored, "time_limit_minutes", minutes)}

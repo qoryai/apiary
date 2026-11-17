@@ -493,6 +493,40 @@ defmodule Apiary.Harnesses.ReaderTest do
       end
     end
 
+    test "takes withdrawable beside a standard name or a custom definition" do
+      text = """
+      artifact_types:
+        - name: mockup
+          withdrawable: false
+        - name: screenshot
+          withdrawable: true
+        - name: reply-draft
+          base_view: document
+          size_limit: 65536
+          max_files: 1
+          withdrawable: false
+      """
+
+      assert {:ok, template} = Reader.template(source(@template) <> text)
+
+      assert [
+               %{"name" => "mockup", "withdrawable" => false},
+               %{"name" => "screenshot", "withdrawable" => true},
+               %{"name" => "reply-draft", "withdrawable" => false}
+             ] = template.artifact_types
+    end
+
+    test "refuses withdrawable that is not a boolean, and a standard name with another key" do
+      for entry <- [
+            "{name: mockup, withdrawable: no-thanks}",
+            "{name: mockup, withdrawable: 0}",
+            "{name: mockup, withdrawable: false, base_view: image}",
+            "{name: mockup, withdrawable: false, size_limit: 10}"
+          ] do
+        assert {:error, {:invalid_artifact_type, "mockup"}} = entry |> with_types() |> read()
+      end
+    end
+
     test "takes a custom type of each base view, up to its most" do
       for {view, most} <- [
             {"document", 10_485_760},
@@ -627,10 +661,10 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "c0184bd720732a9ff8d8cff8be36e30077d19421"
+  @qory_ref "d295da8c0bdf64e783fa0f76c49fc1db8e4ad7a2"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "fc2e475e64a13f2549f7b72f86f477794a0cb766b5b2b426fa283b9a652dc28e"
+    "process.schema.json" => "79172443a77211cde7ac1f4f3a8aa00a996dd2bc3ec0979b09d418a0d3ea8872"
   }
 
   describe "the file vendored from qory" do

@@ -13,6 +13,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
+  of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
+  full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
+  them, stores a repeated commit once, and answers `204`. A run that ended gets `409`
+  `run_ended`, a run that has no write access `409` `not_writable`, a body over 64 KiB
+  `413` `payload_too_large`, and a body outside the contract `400` `invalid_request`. A cancel that a member requested does not refuse a
+  report; the report is refused once the run has ended. `GET work-item` has a new member,
+  `pushed_commits`: the commits that the work item's earlier runs reported, from every
+  stage, ordered by run number and then by when they were recorded, each with `run_id`,
+  `cancelled` and `at`. `cancelled` is true only when a member cancelled that run, not when
+  it ended at its time limit, was released or lost its machine. The migration adds the table
+  `run_pushed_commits`.
+<!-- /feature -->
+- A question in a run's questions may have a `criterion`: the id of the acceptance
+  criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
+  refuses a value that is not such an id. A run can change the criterion of an open
+  question. While a question stays answered, its criterion stays as it was, set or absent.
+<!-- feature: workflow_model -->
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -126,6 +144,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after a pass, a failure or an interrupt.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
+- A run_again point of a run's verdict may have `fix`, one line on what a person does
+  about it: the work item page shows it in place of "Run another round."
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
   Qory Apiary accepts requests for it from the gateway that started it, on the same node
   and instance. A run of a workspace's queue still ends 600 seconds after its last
@@ -271,8 +291,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
   `access: read` or `access: write-no-push` to lower the level the stack declares; the run
   has the lower of the two. A run of a stage whose version has no entry for its workflow
-  has `read`. The run and the integration contracts are vendored at integrations
-  `55a22cb`.
+  has `read`. The run contract is vendored at integrations `55a22cb`, and the
+  integration contract at `c6b7701`.
 - Workspace settings › Workflows: under the Machine type line, the row of a workflow the
   harness lists has one line with the access level of its runs, with no **Change**:
   “Access: Read only (set by the harness)”, or Write, no push or Write and push for the
@@ -1346,9 +1366,55 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   starts with `submit` alone where no adapter declares one. A start-up whose
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
   400 `invalid_request`, and nothing is stored.
+- A run that stores a version of its submission type, `submit.type` of its process
+  version, adds a `watch` entry to the change feed of the adapter of the work item's
+  target collection: the work item's public id and its page, `url`, as in a `work_item`
+  entry. Each stored version adds one entry, whatever source the work item came from.
+  A work item with no target, or a target that no collection matches, gets no entry, and
+  the version is stored all the same. Where `PUBLIC_URL` is plain http to a host other
+  than `localhost`, `127.0.0.1` or `[::1]`, or has a character outside RFC 3986, such as
+  a host in Unicode, the push of such a version is refused: the run API returns `503`
+  `unavailable`, no version and no file is stored, and the log line starts with "Set
+  PUBLIC_URL to an https:// address".
+- An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
+  type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
+  of that type, and it cannot withdraw a name whose newest version a member approved at a
+  gate: the run API returns `422` `type_not_withdrawable`.
 
 ### Changed
 
+<!-- feature: factory -->
+- In the run configuration, an apply item of the work credential `work-1` of a run with
+  `write` access has `push_ref`, `refs/heads/qory/` and the work item's public id, for
+  example `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create,
+  update or delete only that ref: Forager's gateway returns `403` for a push to any other
+  ref. Each item of the credential's value, sealed for the gateway, has the same
+  `push_ref`. A run with `read` or `write-no-push` access has none. The adapter's
+  run-credential call and answer have no `push_ref`, and an answer item that has one is
+  refused. The Forager contract is vendored at commit `3d4ec18`, which defines `push_ref`
+  and a path segment written `{}`.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run with `write` access and no work item ends before it starts, with the stop cause
+  `write_without_work_item`, because it has no branch to limit its push credential to. The
+  run's page reads: "Contact support: a run that writes needs a work item.", and in a
+  software workspace: "Contact support: a run that writes needs a branch, which comes from
+  its work item."
+<!-- /feature -->
+<!-- feature: factory -->
+- A target path with `{` or `}` ends the run `target_access_gone`, as one with `*`, `?`
+  or `#` does. Forager's path grammar reads a segment written `{}` as a wildcard for one
+  segment, so a brace in a target path could widen a run's access. A template of an
+  adapter's apply item has no brace either, but `{target.path}`. A path in an adapter's
+  answer, and in a sealed item, may have a segment that is exactly `{}`, as Forager reads
+  it, such as `/repos/acme/shop/pulls/{}`. Any other brace in them is refused.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A gateway's report of its model keys may have `session`, an integer of 1 or more, the
+  number of the session open when the gateway made the report. The report is stored and
+  answered as one without it. A `session` of 0, or one that is not an integer, is
+  `400` `invalid_request` with `names` `["session"]`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
@@ -1356,6 +1422,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   <outputs> before you approve this stage.", where it ended with the stage's name.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- The notes for the next run, on the work item and in `GET work-item`, list only open
+  notes. A note leaves the list once its stage is approved after it, by a member or
+  automatically, and a move once the stage it moved to is approved after it. A move
+  that resolves an open escalation is listed once, as the move.
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change
   it moved on with no approval, so a later stage's input from that stage had no version,
@@ -1986,6 +2056,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A question that was reopened after a decision and then answered is no longer refused
+  as too large.
 <!-- feature: secrets -->
 - A run that stops because its gateway's key does not allow stored secrets now shows
   who adds an allowed key and where, in place of Contact support.
@@ -2208,6 +2280,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` and `dispatches` (20261117130000): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `write_without_work_item`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes no
+  row.
+<!-- /feature -->
+<!-- feature: factory -->
+- `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
+  takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the
+  new check without a scan, and the second validates it with a scan that does not block
+  writes. It changes no row.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
   column `gate_decisions.track`, the track an approval chose, with a check that only an
@@ -2247,12 +2331,29 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   restores the check for an approval alone.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- `gate_decisions` (20261116170000 and 20261116170100): a nullable column
+  `to_stage_id`, the stage a move went to, with a check that only a move has one. The
+  column has no default, so adding it rewrites no row. The first migration adds the
+  check without a scan, and the second validates it with a scan that does not block
+  writes. The migration changes no row. A move made before has no `to_stage_id` and
+  stays in the notes for the next run. A gate none that passed on before 20261116100000
+  recorded no approval, so the notes of its stage stay there until the stage passes its
+  gate again. Rolling back drops `to_stage_id`.
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
   default, true for an approval that a gate `none` recorded with no member, with a check
   that such a row is an approval with no `user_id`. The default is a constant, so adding
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `artifact_types` and `workspaces` (20261116190000): a column `artifact_types.withdrawable`,
+  true by default, false for a custom type whose template sets `withdrawable: false`, and a
+  column `workspaces.locked_standard_types`, the standard types whose template entry sets
+  it, an empty list by default. Each default is a constant, so adding the columns rewrites
+  no row, and every type and workspace stored before has the default. Rolling back drops
+  both columns, with every `withdrawable: false` and every locked standard type that a
+  template set.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`

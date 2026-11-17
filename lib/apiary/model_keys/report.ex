@@ -6,7 +6,8 @@ defmodule Apiary.ModelKeys.Report do
 
   `parse/3` reads the body, as the contract's `model-keys-report.schema.json` has it:
   `version`, 1; `run_id`, the run id of the path; `time`, an RFC 3339 time in UTC to the
-  whole second, `2026-11-10T12:00:05Z`; and `keys`, at most 66, each item a key's state in
+  whole second, `2026-11-10T12:00:05Z`; `session`, optional, an integer of 1 or more, which
+  is checked and not stored or used; and `keys`, at most 66, each item a key's state in
   one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
   `rejected` and without it otherwise. A `resets_at` or a `cooldown_until` more than
@@ -60,7 +61,8 @@ defmodule Apiary.ModelKeys.Report do
   alias Apiary.ModelKeys.State
   alias Apiary.Runs.{Batch, Event, ProviderCredential, Registration, Run, RunKey, Sender}
 
-  @members ~w(version run_id time keys)
+  @required ~w(version run_id time keys)
+  @members @required ++ ~w(session)
   @required_item ~w(credential window status source observed_at)
   @item_members @required_item ++ ~w(resets_at utilization cooldown_until)
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
@@ -94,10 +96,11 @@ defmodule Apiary.ModelKeys.Report do
           {:ok, t} | {:error, :invalid_request, String.t()}
   def parse(raw_body, run_id, %DateTime{} = now) when is_binary(raw_body) do
     with {:ok, body} <- decode(raw_body),
-         {:ok, fields} <- object(body, @members, @members, "body"),
+         {:ok, fields} <- object(body, @required, @members, "body"),
          :ok <- check(fields["version"] === 1, "version"),
          :ok <- check(fields["run_id"] === run_id and Batch.uuid?(run_id), "run_id"),
          :ok <- check(whole_seconds?(fields["time"]), "time"),
+         :ok <- check(session?(fields), "session"),
          {:ok, time} <- time(fields["time"], "time"),
          {:ok, keys} <- keys(fields["keys"], now) do
       {:ok, %{time: time, keys: keys}}
@@ -108,6 +111,11 @@ defmodule Apiary.ModelKeys.Report do
   @spec fresh?(t, DateTime.t()) :: boolean
   def fresh?(%{time: time}, %DateTime{} = now),
     do: abs(DateTime.diff(time, now, :microsecond)) <= @max_skew_seconds * 1_000_000
+
+  # `session`, the number of the session open when the gateway made the report, is
+  # optional: an integer of 1 or more. It is checked and not read.
+  defp session?(%{"session" => session}), do: is_integer(session) and session >= 1
+  defp session?(_fields), do: true
 
   defp decode(raw_body) do
     case Jason.decode(raw_body, objects: :ordered_objects) do

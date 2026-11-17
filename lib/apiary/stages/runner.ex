@@ -62,9 +62,10 @@ defmodule Apiary.Stages.Runner do
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
   #     start for a stage with no loop.
-  #   * A queued run's time limit and access level are the lower of the entry's and the
-  #     workflow's declaration (addition 10); its machine type is the entry's, else the
-  #     document's.
+  #   * A queued run's access level is the lower of the entry's and the workflow's
+  #     declaration (addition 10); its machine type is the entry's, else the document's.
+  #     An entry has no time limit: the runs of a workflow take its limit in
+  #     `Apiary.TimeLimits`, which `Apiary.Dispatches.RunSettings` reads at the claim.
   #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
   #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
   #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
@@ -192,7 +193,6 @@ defmodule Apiary.Stages.Runner do
   @type run_spec :: %{
           workflow: String.t(),
           machine_type: String.t(),
-          time_limit: pos_integer | nil,
           access: :read | :write_no_push | :write | nil,
           entry: non_neg_integer,
           loop_entry: non_neg_integer | nil,
@@ -460,12 +460,11 @@ defmodule Apiary.Stages.Runner do
       %{state: :waiting_workflow, position: position, actions: []}
     else
       declaration = Map.get(Map.get(facts, :declarations, %{}), workflow)
-      %{time_limit: time_limit, access: access} = lowered(entry, declaration)
+      %{access: access} = lowered(entry, declaration)
 
       spec = %{
         workflow: workflow,
         machine_type: entry["machine"] || Map.get(facts, :machine) || "default",
-        time_limit: time_limit,
         access: access,
         entry: position.entry,
         loop_entry: position.loop_entry,
@@ -476,35 +475,28 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # limits/4 is the time limit, in seconds, and the access level of a run of the entry at
-  # `position` of `stage`, given the harness's declaration of its workflow (nil for
-  # none): the lower of the entry's and the declaration's (addition 10). nil where the
-  # position has no workflow entry.
+  # limits/4 is the access level of a run of the entry at `position` of `stage`, given the
+  # harness's declaration of its workflow (nil for none): the lower of the entry's and the
+  # declaration's (addition 10). nil where the position has no workflow entry.
   #
   # `workflow` is the workflow of a stage's run (`Apiary.Stages.run_workflow/1`), nil for
   # any other run. `Apiary.Processes.assign/3` moves a waiting run to a version that may
   # have another workflow at the run's position, or no entry. The level of that entry
-  # does not apply to the run, so its access level is `:read`. Its time limit is that
-  # entry's, nil for no entry.
+  # does not apply to the run, so its access level is `:read`.
   @doc false
   @spec limits(map, position, map | nil, String.t() | nil) ::
-          %{time_limit: pos_integer | nil, access: :read | :write_no_push | :write | nil} | nil
+          %{access: :read | :write_no_push | :write | nil} | nil
   def limits(stage, position, declaration, workflow \\ nil) do
     case entry_at(stage, position) do
       %{"workflow" => name} = entry when workflow in [nil, name] -> lowered(entry, declaration)
       %{"workflow" => _other} = entry -> %{lowered(entry, declaration) | access: :read}
       _none when is_nil(workflow) -> nil
-      _none -> %{time_limit: nil, access: :read}
+      _none -> %{access: :read}
     end
   end
 
-  defp lowered(entry, declaration) do
-    %{
-      time_limit:
-        lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
-      access: lower_access(entry["access"], declared(declaration, :access))
-    }
-  end
+  defp lowered(entry, declaration),
+    do: %{access: lower_access(entry["access"], declared(declaration, :access))}
 
   ## A run's end
 
@@ -797,36 +789,6 @@ defmodule Apiary.Stages.Runner do
 
   defp declared(nil, _key), do: nil
   defp declared(declaration, key), do: Map.get(declaration, key)
-
-  # seconds/1 is a duration of the process document (`1h30m`, `15m`, `90s`) in seconds;
-  # nil for none, and for one that is not a duration.
-  @doc false
-  @spec seconds(term) :: pos_integer | nil
-  def seconds(value) when is_binary(value) do
-    case Regex.run(~r/\A(?:(\d{1,3})h)?(?:(\d{1,4})m)?(?:(\d{1,5})s)?\z/, value) do
-      [_all | parts] when value != "" ->
-        [hours, minutes, secs] = Enum.map(parts ++ List.duplicate("", 3 - length(parts)), &int/1)
-
-        case hours * 3600 + minutes * 60 + secs do
-          0 -> nil
-          total -> total
-        end
-
-      _other ->
-        nil
-    end
-  end
-
-  def seconds(value) when is_integer(value) and value > 0, do: value
-  def seconds(_value), do: nil
-
-  defp int(""), do: 0
-  defp int(digits), do: String.to_integer(digits)
-
-  # The lower of two time limits; either may be nil, for none.
-  defp lower_time(nil, other), do: other
-  defp lower_time(one, nil), do: one
-  defp lower_time(one, other), do: min(one, other)
 
   # The lower of two access levels, from lowest to highest read, write-no-push (a writable
   # checkout that has no push credential) and write: read when either is read, then

@@ -54,6 +54,12 @@ defmodule Apiary.Artifacts.TypeRules do
         number: Type.max_files_limit()
       )
 
+  # withdrawable/0 is the line for a `withdrawable` of a template's type that is not a
+  # boolean.
+  @doc false
+  @spec withdrawable() :: String.t()
+  def withdrawable, do: gettext("Set withdrawable to true or false.")
+
   @doc false
   @spec schema() :: String.t()
   def schema,

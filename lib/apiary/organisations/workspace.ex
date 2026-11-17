@@ -44,6 +44,10 @@ defmodule Apiary.Organisations.Workspace do
     # type (`Apiary.Artifacts`). The list contains no always-on name
     # (`Apiary.Artifacts.Type.always_on/0`). Never cast.
     field :shown_standard_types, {:array, :string}
+    # The names of the standard artifact types a run cannot withdraw a name of, because
+    # the template entry of the type sets `withdrawable: false` (`Apiary.Artifacts`).
+    # Never cast.
+    field :locked_standard_types, {:array, :string}, default: []
     # The stack of the Qory harness the workspace uses, recorded when it is made from the
     # Qory template, nil for `core` (`qory_stack/1`). Never cast.
     field :qory_stack, :string
