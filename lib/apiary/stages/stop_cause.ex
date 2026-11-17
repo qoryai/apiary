@@ -359,7 +359,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :write_without_work_item}, _n, _ctx),
     do:
       {"The run did not start, because it writes and has no work item to take its branch from.",
-       "Report this run to your instance admin."}
+       "Contact support."}
 
   defp lines(%DispatchRun{end_cause: cause}, n, _ctx),
     do: unknown("The run ended before it started.", "end cause", cause, n)
