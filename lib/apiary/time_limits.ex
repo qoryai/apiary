@@ -2,7 +2,10 @@ defmodule Apiary.TimeLimits do
   # The time limits of a workspace: the whole minutes, 15 to 1440, that a run of one
   # workflow may take (`Apiary.TimeLimits.TimeLimit`), set at the workspace or at a target
   # of it, and resolved for each run by `Apiary.TimeLimits.Resolution`. A run's workflow
-  # is read from the stacks of its places (`Apiary.Stacks.workflow/2`).
+  # is read from the stacks of its places (`Apiary.Stacks.workflow/2`), or, with the
+  # workflow model, from its stage entry. A workflow with no limit at either place has
+  # the default, 180 minutes (`default_minutes/0`). This table is the one source of a
+  # limit: the process document has none, and a save here makes no process version.
   #
   # ## Places
   #
@@ -47,6 +50,7 @@ defmodule Apiary.TimeLimits do
   @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @min_minutes 15
   @max_minutes 1440
+  @default_minutes 180
 
   @typedoc "Whose limit: the scope's workspace, or a target of it."
   @type holder :: :workspace | Target.t()
@@ -55,6 +59,12 @@ defmodule Apiary.TimeLimits do
   # minutes_range/0 is the minutes a limit may have.
   @spec minutes_range() :: Range.t()
   def minutes_range, do: @min_minutes..@max_minutes
+
+  @doc false
+  # default_minutes/0 is the minutes of a workflow with no limit at the run's target or
+  # workspace: 3 hours.
+  @spec default_minutes() :: pos_integer
+  def default_minutes, do: @default_minutes
 
   ## Reading
 
@@ -129,7 +139,8 @@ defmodule Apiary.TimeLimits do
   # put_limit/4 sets the limit for the runs of `workflow` at `holder` to `minutes`,
   # replacing what the place had, under `time_limit.edit`, and leaves an entry of it in
   # the trail (the moduledoc). `{:ok, limit}`, or `{:error, refusal}`: a changeset with
-  # the reason on its field, or a reason of `Apiary.Access`. No page calls it yet.
+  # the reason on its field, or a reason of `Apiary.Access`. The stage panel of
+  # Workspace settings › Workflows calls it (`ApiaryWeb.StagesLive.Index`).
   @spec put_limit(Scope.t(), holder, String.t(), term) ::
           {:ok, TimeLimit.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
   def put_limit(%Scope{} = scope, holder, workflow, minutes) do
@@ -143,7 +154,8 @@ defmodule Apiary.TimeLimits do
   # delete_limit/3 removes the limit for the runs of `workflow` at `holder`, so the next
   # place in the order applies, under `time_limit.edit`, and leaves an entry of it in the
   # trail. `{:ok, limit}`, as it was, `{:error, :not_found}` for a place with no limit
-  # for the workflow, or another reason of `Apiary.Access`. No page calls it yet.
+  # for the workflow, or another reason of `Apiary.Access`. The stage panel calls it for
+  # a field left empty.
   @spec delete_limit(Scope.t(), holder, String.t()) ::
           {:ok, TimeLimit.t()} | {:error, Access.reason()}
   def delete_limit(%Scope{} = scope, holder, workflow) when is_binary(workflow) do
