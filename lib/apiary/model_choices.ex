@@ -47,28 +47,32 @@ defmodule Apiary.ModelChoices do
   #     model of the description, the effort is one of its offered effort values; with any
   #     other id, the choice sets no effort;
   #   * `tiers`: tiers among `Apiary.ModelChoices.Resolution.tiers/0`, each a model id, or
-  #     a map of `model` and `effort`. At levels 4, 5 and 6 every tier is needed, and the
-  #     first missing one, in the order of `tiers/0`, is refused. Each tier's model is one
-  #     of the provider's models as `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them:
-  #     of its description or of its suggestions (`priv/models/suggestions.json`), any id
-  #     where the description lists no model; a model of another provider is refused. Each
-  #     tier's effort is checked as `effort` is;
+  #     a map of `model` and `effort`. A tier with a blank model is left out, and so is a
+  #     blank effort, as a form posts them. At levels 4, 5 and 6 every tier is needed, and
+  #     the first missing one, in the order the pages show the tiers (`tiers/0` reversed),
+  #     is refused. Each tier's model is one of the provider's models as
+  #     `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them: of its description or of
+  #     its suggestions (`priv/models/suggestions.json`), any id where the description
+  #     lists no model; a model of another provider is refused. Each tier's effort is
+  #     checked as `effort` is;
   #   * `fallbacks`: a list of the providers runs use, in order, while every key of the
   #     choice's provider is in cooldown, each a map of `provider`, `model` and `effort`.
   #     A workflow's choice (levels 2 and 4) has none: runs use the fallbacks of the
-  #     choice without the workflow, and a save of levels 2 and 4 with fallbacks is
-  #     refused. Each fallback's provider is checked as `provider` is, and
-  #     its model and effort as `model` and `effort` are, against that provider; the
-  #     choice's provider and a provider of an earlier fallback are refused. Each refusal
-  #     is on `fallbacks`, with the fallback's index from 0 (`fallback`) and its field
-  #     (`field`). A save without `fallbacks` keeps the place's fallbacks, checked again
-  #     as sent ones are; an empty list leaves none. Either way, a save that chooses a
-  #     provider other than the place's drops a fallback of that provider, with no error.
-  #     No number bounds them: each is another provider of the organisation.
+  #     choice without the workflow. A save of levels 2 and 4 with fallbacks is refused,
+  #     and one without `fallbacks` keeps none of the place's. Each fallback's provider is
+  #     checked as `provider` is, and its model and effort as `model` and `effort` are,
+  #     against that provider; the choice's provider and a provider of an earlier fallback
+  #     are refused. Each refusal is on `fallbacks`, with the fallback's index from 0
+  #     (`fallback`) and its field (`field`). At levels 3, 5 and 6, a save without
+  #     `fallbacks` keeps the place's fallbacks, checked again as sent ones are; an empty
+  #     list leaves none. Either way, a save that chooses a provider other than the
+  #     place's drops a fallback of that provider, with no error. No number bounds them:
+  #     each is another provider of the organisation.
   #
   # A stored choice that these rules refuse (one without a provider, with fewer tiers at
-  # levels 4 to 6, with tiers of another provider, or with fallbacks at levels 2 and 4)
-  # stays as it is until its place is saved again; that save is refused until it fits.
+  # levels 4 to 6, or with tiers of another provider) stays as it is until its place is
+  # saved again; that save is refused until it fits. A stored choice of levels 2 and 4
+  # with fallbacks loses them at its next save.
   #
   # A model's **offered effort values** are the values that both the model's list in the
   # description and the runtime's (`Apiary.Kinds.Runtime`, `effort_values`) contain, in the
@@ -131,6 +135,11 @@ defmodule Apiary.ModelChoices do
                   {kind,
                    for(%{"id" => id, "title" => title} <- models, do: %{id: id, title: title})}
                 end)
+
+  # The ids of `@suggestions` by provider kind, as `resolution_provider/2` returns them.
+  @suggested_ids (for {kind, models} <- @suggestions, into: %{} do
+                    {kind, Enum.map(models, & &1.id)}
+                  end)
 
   @typedoc "Whose choice: the organisation's default, the scope's workspace, or a target of it."
   @type holder :: :organisation | :workspace | Target.t()
@@ -318,7 +327,7 @@ defmodule Apiary.ModelChoices do
           effort = model["effort"] || []
           %{model_id: model["id"], effort: if(effort == [], do: nil, else: effort)}
         end),
-      suggested: for(%{id: id} <- Map.get(@suggestions, provider.provider_kind, []), do: id)
+      suggested: Map.get(@suggested_ids, provider.provider_kind, [])
     }
   end
 
@@ -413,11 +422,14 @@ defmodule Apiary.ModelChoices do
   end
 
   # `attrs` with the place's fallbacks where they send none, as a save sends them, but a
-  # fallback of the provider `attrs` chooses: that provider is no fallback of itself. Read
-  # under the place's lock (`hold_place/4`): the workspace's row, or the organisation's
-  # integrations lock for its default, so no other save of the place runs meanwhile.
+  # fallback of the provider `attrs` chooses: that provider is no fallback of itself. A
+  # workflow's choice (levels 2 and 4) keeps none: a save of it with no fallbacks removes
+  # those stored before. Read under the place's lock (`hold_place/4`): the workspace's
+  # row, or the organisation's integrations lock for its default, so no other save of the
+  # place runs meanwhile.
   defp with_kept_fallbacks(attrs, at) do
-    if Map.has_key?(attrs, :fallbacks) or Map.has_key?(attrs, "fallbacks") do
+    if Map.has_key?(attrs, :fallbacks) or Map.has_key?(attrs, "fallbacks") or
+         at.level in [2, 4] do
       attrs
     else
       chosen = attrs[:provider] || attrs["provider"]
@@ -797,7 +809,7 @@ defmodule Apiary.ModelChoices do
 
     {%{}, types}
     |> cast(stringify(attrs), fields)
-    |> update_change(:tiers, &empty_to_nil/1)
+    |> update_change(:tiers, &without_blanks/1)
     |> validate_format(:model, @model_id, message: model_rule())
     |> validate_format(:effort, @effort, message: effort_rule())
     |> validate_runtime()
@@ -810,10 +822,11 @@ defmodule Apiary.ModelChoices do
   end
 
   # At levels 4, 5 and 6, a tier map with every tier: the first missing one, in the order
-  # of `Resolution.tiers/0`, is refused, unless the tier map is refused already.
+  # the pages show the tiers (`Resolution.tiers/0` reversed), is refused, unless the tier
+  # map is refused already.
   defp every_tier(changeset, level) when level in [4, 5, 6] do
     tiers = get_field(changeset, :tiers) || %{}
-    missing = Enum.reject(Resolution.tiers(), &Map.has_key?(tiers, &1))
+    missing = Resolution.tiers() |> Enum.reverse() |> Enum.reject(&Map.has_key?(tiers, &1))
 
     if missing == [] or Keyword.has_key?(changeset.errors, :tiers),
       do: changeset,
@@ -917,8 +930,35 @@ defmodule Apiary.ModelChoices do
 
   defp stringify(_attrs), do: %{}
 
-  defp empty_to_nil(tiers) when tiers == %{}, do: nil
-  defp empty_to_nil(tiers), do: tiers
+  # A tier map as a form posts it: a tier whose model is blank is left out, and so is a
+  # blank effort; nil where no tier is left.
+  defp without_blanks(tiers) do
+    kept =
+      Enum.reduce(tiers, %{}, fn {tier, entry}, kept ->
+        case without_blank(entry) do
+          nil -> kept
+          entry -> Map.put(kept, tier, entry)
+        end
+      end)
+
+    if kept == %{}, do: nil, else: kept
+  end
+
+  defp without_blank(model) when is_binary(model), do: if(blank?(model), do: nil, else: model)
+
+  defp without_blank(%{} = entry) do
+    entry = stringify(entry)
+
+    cond do
+      blank?(entry["model"]) -> nil
+      blank?(entry["effort"]) -> Map.delete(entry, "effort")
+      true -> entry
+    end
+  end
+
+  defp without_blank(entry), do: entry
+
+  defp blank?(value), do: is_binary(value) and String.trim(value) == ""
 
   # `field` is required once any of `with` is given.
   defp needs(changeset, field, with) do

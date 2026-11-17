@@ -512,6 +512,7 @@ defmodule Apiary.ModelChoicesTest do
     test "for a tier that is not light, fast or thinking (T15), or a tier effort its model has not",
          ctx do
       %{scope: scope, provider: provider} = ctx
+      [_light, middle, _thinking] = Resolution.tiers()
 
       assert errors(
                ModelChoices.put_choice(
@@ -527,7 +528,7 @@ defmodule Apiary.ModelChoicesTest do
                  scope,
                  ctx.target,
                  attrs(provider, %{
-                   tiers: %{"fast" => %{"model" => "claude-opus-4-8", "effort" => "low"}}
+                   tiers: %{middle => %{"model" => "claude-opus-4-8", "effort" => "low"}}
                  })
                )
              ) == %{
@@ -540,19 +541,21 @@ defmodule Apiary.ModelChoicesTest do
                ModelChoices.put_choice(
                  scope,
                  ctx.target,
-                 attrs(provider, %{tiers: %{"fast" => %{"model" => @model, "effort" => "nope"}}})
+                 attrs(provider, %{tiers: %{middle => %{"model" => @model, "effort" => "nope"}}})
                )
              ) == %{
                tiers: ["Choose one of #{@model}'s effort values: low, medium, high, xhigh, max."]
              }
 
       # A model of the suggestions alone is taken, with no effort.
-      assert {:ok, %ModelChoice{tiers: %{"fast" => %{"model" => "claude-opus-4-8"}}}} =
+      assert {:ok, %ModelChoice{tiers: tiers}} =
                ModelChoices.put_choice(
                  scope,
                  ctx.target,
-                 attrs(provider, %{tiers: %{"fast" => "claude-opus-4-8"}})
+                 attrs(provider, %{tiers: %{middle => "claude-opus-4-8"}})
                )
+
+      assert tiers == %{middle => %{"model" => "claude-opus-4-8"}}
     end
 
     test "for a model id, an effort or a tier entry that breaks its rule (T13, T14)", ctx do
@@ -618,32 +621,66 @@ defmodule Apiary.ModelChoicesTest do
 
     test "are all needed at levels 4, 5 and 6: the first missing one is refused", ctx do
       %{scope: scope, provider: provider} = ctx
-      [first, second, third] = Resolution.tiers()
+      # The pages show the tiers from the last of `Resolution.tiers/0` to the first, and
+      # the error names the first missing tier in that order.
+      [light, middle, thinking] = Resolution.tiers()
 
       for place <- [:organisation, :workspace, {:workspace, "hello"}] do
-        two = Map.delete(every_tier(@model), second)
+        two = Map.delete(every_tier(@model), middle)
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: two}))) ==
-                 %{tiers: ["Choose a model for each tier: #{second} has none."]}
+                 %{tiers: ["Choose a model for each tier: #{middle} has none."]}
 
         for none <- [%{}, nil] do
           assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: none}))) ==
-                   %{tiers: ["Choose a model for each tier: #{first} has none."]}
+                   %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
         end
 
         assert errors(ModelChoices.put_choice(scope, place, Map.delete(attrs(provider), :tiers))) ==
-                 %{tiers: ["Choose a model for each tier: #{first} has none."]}
+                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
 
-        one = Map.take(every_tier(@model), [first])
+        one = Map.take(every_tier(@model), [light])
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: one}))) ==
-                 %{tiers: ["Choose a model for each tier: #{second} has none."]}
+                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
 
         assert {:ok, %ModelChoice{tiers: tiers}} =
                  ModelChoices.put_choice(scope, place, attrs(provider))
 
-        assert Enum.sort(Map.keys(tiers)) == Enum.sort([first, second, third])
+        assert Enum.sort(Map.keys(tiers)) == Enum.sort([light, middle, thinking])
       end
+    end
+
+    test "leave out a tier with a blank model, and a blank effort, as a form posts them", ctx do
+      %{scope: scope, provider: provider, target: target} = ctx
+      [light, middle, thinking] = Resolution.tiers()
+      blank = %{"model" => "", "effort" => ""}
+
+      for place <- [:organisation, :workspace, {:workspace, "hello"}] do
+        posted = Map.put(every_tier(@model), middle, blank)
+
+        assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: posted}))) ==
+                 %{tiers: ["Choose a model for each tier: #{middle} has none."]}
+
+        all_blank = Map.new(Resolution.tiers(), &{&1, blank})
+
+        assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: all_blank}))) ==
+                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+
+        # A tier with a model and a blank effort is saved with no effort.
+        posted = Map.put(every_tier(@model), light, %{"model" => @model, "effort" => ""})
+
+        assert {:ok, %ModelChoice{tiers: tiers}} =
+                 ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: posted}))
+
+        assert tiers[light] == %{"model" => @model}
+      end
+
+      # At level 3 every tier may be blank: the choice has no tiers.
+      all_blank = Map.new(Resolution.tiers(), &{&1, blank})
+
+      assert {:ok, %ModelChoice{tiers: nil}} =
+               ModelChoices.put_choice(scope, target, attrs(provider, %{tiers: all_blank}))
     end
 
     test "may be some or none at levels 2 and 3", ctx do
@@ -793,6 +830,7 @@ defmodule Apiary.ModelChoicesTest do
   describe "resolve/3" do
     test "leaves out a tier whose effort its model has not", ctx do
       %{scope: scope, provider: provider} = ctx
+      [light, middle, _thinking] = Resolution.tiers()
 
       {:ok, choice} =
         ModelChoices.put_choice(
@@ -801,8 +839,8 @@ defmodule Apiary.ModelChoicesTest do
           attrs(provider, %{
             tiers:
               Map.merge(every_tier(@model), %{
-                "fast" => %{"model" => @model, "effort" => "low"},
-                "light" => "claude-opus-4-8"
+                middle => %{"model" => @model, "effort" => "low"},
+                light => "claude-opus-4-8"
               })
           })
         )
@@ -812,8 +850,8 @@ defmodule Apiary.ModelChoicesTest do
 
       assert tiers ==
                Map.merge(every_tier(@model), %{
-                 "fast" => %{"model" => @model, "effort" => "low"},
-                 "light" => %{"model" => "claude-opus-4-8"}
+                 middle => %{"model" => @model, "effort" => "low"},
+                 light => %{"model" => "claude-opus-4-8"}
                })
 
       # Rows a save refuses: an effort the description's model has not, and an effort with
@@ -821,8 +859,8 @@ defmodule Apiary.ModelChoicesTest do
       choice
       |> Ecto.Changeset.change(
         tiers: %{
-          "fast" => %{"model" => @model, "effort" => "turbo"},
-          "light" => %{"model" => "acme-small", "effort" => "low"}
+          middle => %{"model" => @model, "effort" => "turbo"},
+          light => %{"model" => "acme-small", "effort" => "low"}
         }
       )
       |> Repo.update!()
@@ -1401,29 +1439,30 @@ defmodule Apiary.ModelChoicesTest do
         assert stored(choice) == []
       end
 
-      # A row stored with fallbacks, as no save makes it now, is refused on its next save
-      # until the save sends none.
-      {:ok, workflow_choice} =
-        ModelChoices.put_choice(scope, {:workspace, "hello"}, attrs(provider))
+      # A row stored with fallbacks, as no save makes it now: a save that leaves out the
+      # fallbacks keeps none of them, and a save that sends fallbacks is refused.
+      for place <- [{:workspace, "hello"}, {target, "hello"}] do
+        {:ok, workflow_choice} = ModelChoices.put_choice(scope, place, attrs(provider))
 
-      Repo.insert!(%Apiary.ModelChoices.Fallback{
-        organisation_id: workflow_choice.organisation_id,
-        model_choice_id: workflow_choice.id,
-        position: 0,
-        connection_id: subscription.id
-      })
+        Repo.insert!(%Apiary.ModelChoices.Fallback{
+          organisation_id: workflow_choice.organisation_id,
+          model_choice_id: workflow_choice.id,
+          position: 0,
+          connection_id: subscription.id
+        })
 
-      assert %{fallbacks: ["Remove the fallbacks: " <> _rest]} =
-               errors(ModelChoices.put_choice(scope, {:workspace, "hello"}, attrs(provider)))
+        assert %{fallbacks: ["Remove the fallbacks: " <> _rest]} =
+                 errors(
+                   ModelChoices.put_choice(
+                     scope,
+                     place,
+                     attrs(provider, %{fallbacks: [fallback(subscription)]})
+                   )
+                 )
 
-      assert {:ok, saved} =
-               ModelChoices.put_choice(
-                 scope,
-                 {:workspace, "hello"},
-                 attrs(provider, %{fallbacks: []})
-               )
-
-      assert stored(saved) == []
+        assert {:ok, saved} = ModelChoices.put_choice(scope, place, attrs(provider))
+        assert stored(saved) == []
+      end
     end
 
     test "resolve/3 has them in their order, each with its provider, model and effort", ctx do
