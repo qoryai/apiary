@@ -2414,6 +2414,38 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, summary, "spec v1")
       refute has_element?(view, summary, "spec v2")
     end
+
+    # The gate card's line of `type` links to the page of `version`, as the Artifacts list
+    # at the foot of the Ticket tab does.
+    defp gate_link?(view, scope, work_item, type, version) do
+      path = ApiaryWeb.ArtifactComponents.version_path(scope, work_item.number, version)
+      has_element?(view, ~s(#work-item-stage-gate-output-#{type} a[href="#{path}"]))
+    end
+
+    test "the gate card links an upload at a stage with no workflow to its version",
+         %{conn: conn, scope: scope} do
+      process!(scope, %{"sequence" => [], "outputs" => [%{"type" => "spec", "required" => false}]})
+
+      work_item = at_shape!(scope)
+      version = add_spec!(scope, work_item, "## Spec by hand")
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tabs-ticket[aria-current=page]")
+      assert has_element?(view, "#work-item-stage-gate-output-spec a", "spec v1")
+      assert gate_link?(view, scope, work_item, "spec", version.public_id)
+    end
+
+    test "the gate card links a run's version at a stage with a workflow",
+         %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope)
+      [spec] = for a <- Artifacts.list(work_item), a.type == "spec", do: a
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert gate_link?(view, scope, work_item, "spec", hd(spec.versions).public_id)
+    end
   end
 
   describe "a stage with a workflow and no outputs" do

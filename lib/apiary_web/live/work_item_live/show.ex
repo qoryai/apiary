@@ -245,6 +245,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
+            version_path={&ArtifactComponents.version_path(@current_scope, @number, &1)}
             answers_path={
               tab_path(@current_scope, @number, StageTab.current(@flow) || :explore, @flow)
             }

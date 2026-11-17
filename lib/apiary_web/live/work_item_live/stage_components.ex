@@ -99,6 +99,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
+
+  attr :version_path, :any,
+    default: nil,
+    doc: "a function of a version's public id (`av_…`): its page; nil for no links"
+
   attr :answers_path, :string, default: nil, doc: "the current stage's tab, with the questions"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
@@ -148,6 +153,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         page={@page}
         number={@number}
         add_path={@add_path}
+        version_path={@version_path}
         answers_path={@answers_path}
         asking={@asking}
         error={@error}
@@ -238,6 +244,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
   attr :answers_path, :string, default: nil
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
@@ -342,6 +349,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       page={@page}
       number={@number}
       add_path={@add_path}
+      version_path={@version_path}
       asking={@asking}
       error={@error}
     />
@@ -390,6 +398,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
 
@@ -432,7 +441,17 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </p>
       <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
-          <span>{version_words(output.type, output.version)}</span>
+          <.link
+            :if={@version_path && output[:version_id]}
+            id={"#{@id}-version-#{output.type}"}
+            navigate={@version_path.(output.version_id)}
+            class="text-accent"
+          >
+            {version_words(output.type, output.version)}
+          </.link>
+          <span :if={!(@version_path && output[:version_id])}>
+            {version_words(output.type, output.version)}
+          </span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
           <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
         </li>
