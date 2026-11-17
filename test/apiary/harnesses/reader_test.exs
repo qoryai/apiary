@@ -661,7 +661,7 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
   # beside it, by its SHA-256 there.
-  @qory_ref "8d9b558b4f6c0dde8733247c01554327cb202deb"
+  @qory_ref "d295da8c0bdf64e783fa0f76c49fc1db8e4ad7a2"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
     "process.schema.json" => "79172443a77211cde7ac1f4f3a8aa00a996dd2bc3ec0979b09d418a0d3ea8872"
