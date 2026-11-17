@@ -119,4 +119,8 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   @spec notes(WorkItem.t()) :: [map]
   def notes(work_item), do: Apiary.Stages.notes(work_item)
+
+  # The commits the work item's earlier runs reported pushing (`Apiary.Runs.PushedCommit`).
+  @spec pushed_commits(WorkItem.t(), Apiary.Runs.Run.t()) :: [map]
+  def pushed_commits(work_item, run), do: Apiary.Runs.PushedCommit.for_run(work_item, run)
 end

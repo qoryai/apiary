@@ -11,7 +11,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   (`Apiary.Dispatches.Inputs.explore/4`, within its 768 KiB with the oldest comments
   #   left out), then the stage, its inputs, its outputs with each check result, the
   #   newest verdict with its points, the stage's gaps (why it waits for a workflow, or
-  #   the failed checks that started its round) and the work item's notes.
+  #   the failed checks that started its round), the work item's notes and the commits its
+  #   earlier runs pushed (`pushed_commits`).
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer, approvals (by a person, or `automatic` at a gate `none`), whether a run a
   #   member cancelled wrote it, whether it is a withdrawal, and the person's note that
@@ -79,9 +80,27 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
            {"gaps", get(status, :gaps)}
          ] ++
            Enum.filter(inputs.values, fn {key, _value} -> key in @from_explore end) ++
-           [{"notes", notes(Boundary.notes(work_item))}]
+           [
+             {"notes", notes(Boundary.notes(work_item))},
+             {"pushed_commits", pushed_commits(Boundary.pushed_commits(work_item, run))}
+           ]
        )}
     end
+  end
+
+  # The commits the work item's earlier runs reported pushing, in the order of the run's
+  # number and then the order the run reported them; `[]` for none.
+  defp pushed_commits(entries) do
+    Enum.map(entries, fn entry ->
+      object([
+        {"system", entry.system},
+        {"path", entry.path},
+        {"commit", entry.commit},
+        {"run_id", entry.run_id},
+        {"cancelled", entry.cancelled},
+        {"at", time(entry.at)}
+      ])
+    end)
   end
 
   # The stage as `Apiary.Stages.status/1` returns it: the stage of the process document,
