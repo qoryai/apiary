@@ -48,14 +48,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `{commit, commit_url}`, and `repositories[].commits`, `[{commit, step, commit_url}]`, in
   the order the run made them), the row has a fold, "<n> commits", with the base first
   ("Base: the head of Run <n>" where an earlier submission of the work item ends at that
-  commit in the same repository, else "Base: where the branch starts"), then each commit:
+  commit in the same repository; "Base: where the branch starts" where no earlier
+  submission can; the commit alone where a version that is not listed may), then each commit:
   its short id, a link where the submission has an `https` address for it, the step ("d-2
   · <text of the change>" for a deliverable of the build plan, read from the Change column
   of the plan's Deliverables table, or "d-2" alone where the plan has no such row; "Fix of
   review finding f1" for a fix; nothing for any other step) and the badge Head on the
   repository's head commit. The newest row's fold is open. A submission with no list shows
-  no Commits line. A fold lists at most 100 commits, the first 99 and the head, and its
-  count has them all. A stored value that is not of the form the contract has is left out:
+  no Commits line. A fold lists at most 100 commits, the first 100 or the first 99 and the head
+  where the head is a later one, and its count has them all. A commit with another step shows its short id
+  alone. The page reads the newest 50 versions; a stored text is cut to 200 characters, and
+  a submission over 1 MiB shows its row with no repository. A stored value that is not of the form the contract has is left out:
   a commit that is not 40 or 64 lowercase hex characters, a link that is not `https`.
 - A draft shows its number beside its system's mark, the integration of the workspace's
   collection for that system, with its title as a link: `#34 “Show delivery dates”`. A
@@ -1420,10 +1423,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: workflow_model -->
-- A run cannot withdraw a name of the type in `submit.type` of its process version: the
-  run API returns `422` `type_not_withdrawable`, with "Push a new version of <type>
-  instead", and stores nothing. The Submissions list reads the versions of that type, so a
-  withdrawal would leave it with none. A withdrawal of another custom type is as before.
+- A run cannot withdraw a name of the type in `submit.type` of its process version or of
+  its work item's process version: the run API returns `422` `type_not_withdrawable`, with
+  "Push a new version of <type> instead. Qory Apiary reads its newest version as the run's
+  submission, so a run cannot withdraw it.", and stores nothing. Versions stored earlier
+  stay listed. A withdrawal of another custom type is as before.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:

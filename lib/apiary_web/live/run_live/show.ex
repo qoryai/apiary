@@ -1741,6 +1741,7 @@ defmodule ApiaryWeb.RunLive.Show do
        preparation: nil,
        preparation_settled: false,
        submissions: nil,
+       submission_reads: %{},
        outputs: [],
        overview: [],
        overview_cx: false,
@@ -3962,6 +3963,9 @@ defmodule ApiaryWeb.RunLive.Show do
     was = layout(socket.assigns)
     preparation = Preparation.read(scope, run)
 
+    {submissions, reads} =
+      Submissions.for_run(scope, run, preparation.outputs, socket.assigns.submission_reads)
+
     socket
     |> assign(
       preparation: preparation,
@@ -3969,7 +3973,8 @@ defmodule ApiaryWeb.RunLive.Show do
         PreparationComponents.settled?(preparation, alive?(run)) or
           socket.assigns.index.session_items > 0,
       machine_log: machine_log(scope, preparation, socket.assigns.machine_log),
-      submissions: Submissions.for_run(scope, run, preparation.outputs)
+      submissions: submissions,
+      submission_reads: reads
     )
     |> assign_clean_up()
     |> resend_window(was)

@@ -591,6 +591,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            view: nil,
            frames: [],
            submissions: nil,
+           submission_reads: %{},
            frame_texts: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
@@ -2115,7 +2116,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
       end)
 
-    assign(socket, frames: frames, frame_texts: texts, submissions: submissions(socket, frames))
+    {submissions, reads} = submissions(socket, frames)
+
+    assign(socket,
+      frames: frames,
+      frame_texts: texts,
+      submissions: submissions,
+      submission_reads: reads
+    )
   end
 
   defp framed(socket), do: assign(socket, frames: [], submissions: nil)
@@ -2125,27 +2133,31 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # work item has no submission to list. The rows have the address of their run's page where
   # the reader may read runs (`Apiary.Submissions.list/4`).
   defp submissions(%{assigns: %{view: %{stage: stage}, row: row} = assigns} = socket, frames) do
-    type = if frames != [], do: Submissions.type(row)
+    reads = assigns.submission_reads
 
-    with true <-
-           is_binary(type) and type in stage.outputs and Enum.any?(frames, &(&1.type == type)),
-         [_row | _more] = rows <- Submissions.list(row, type, assigns.artifacts) do
-      scope = scope(socket)
-      ctx = %{scope: scope, readable: View.readable(scope, Enum.map(rows, & &1.workspace_id))}
-
-      rows =
-        Enum.map(rows, fn row ->
-          Map.put(
-            row,
-            :path,
-            View.run_path(ctx, %{number: row.run, workspace_id: row.workspace_id})
-          )
-        end)
-
-      names = Submissions.system_names(assigns.row, Submissions.draft_systems(rows))
-      %{type: type, rows: rows, names: names}
+    if frames == [] do
+      {nil, reads}
     else
-      _none -> nil
+      {type, reads} = Submissions.type_cached(row, reads)
+
+      with true <-
+             is_binary(type) and type in stage.outputs and Enum.any?(frames, &(&1.type == type)),
+           {[_row | _more] = rows, reads} <-
+             Submissions.list_cached(row, type, assigns.artifacts, nil, reads) do
+        scope = scope(socket)
+        ctx = %{scope: scope, readable: View.readable(scope, Enum.map(rows, & &1.workspace_id))}
+
+        rows =
+          Enum.map(rows, fn row ->
+            path = View.run_path(ctx, %{number: row.run, workspace_id: row.workspace_id})
+            Map.put(row, :path, path)
+          end)
+
+        names = Submissions.system_names(assigns.row, Submissions.draft_systems(rows))
+        {%{type: type, rows: rows, names: names}, reads}
+      else
+        _none -> {nil, reads}
+      end
     end
   end
 

@@ -68,7 +68,7 @@ defmodule ApiaryWeb.SubmissionComponents do
                     {run_words(row)}
                   </a>
                   <span :if={!row.path} class="font-medium">{run_words(row)}</span>
-                  <span class="text-[12.5px]/5 text-muted">
+                  <span class="min-w-0 text-[12.5px]/5 text-muted [overflow-wrap:anywhere]">
                     {when_words(row, @stage_names, @now)}
                   </span>
                 </:head>
@@ -147,7 +147,11 @@ defmodule ApiaryWeb.SubmissionComponents do
 
   defp repository(assigns) do
     ~H"""
-    <p :if={@named} id={"#{@id}-path"} class="text-[12.5px]/5 text-muted">
+    <p
+      :if={@named}
+      id={"#{@id}-path"}
+      class="min-w-0 text-[12.5px]/5 text-muted [overflow-wrap:anywhere]"
+    >
       <.external_text text={@repository.path} />
     </p>
     <dl class="q-prep-facts">
@@ -180,7 +184,9 @@ defmodule ApiaryWeb.SubmissionComponents do
               class="flex flex-wrap items-baseline gap-x-2"
             >
               <.commit url={@repository.base.url} short={@repository.base.short} />
-              <span class="text-muted">{base_words(@repository.base.line)}</span>
+              <span :if={base_words(@repository.base.line)} class="text-muted">
+                {base_words(@repository.base.line)}
+              </span>
             </li>
             <li
               :for={{entry, place} <- Enum.with_index(@repository.commits)}
@@ -211,7 +217,13 @@ defmodule ApiaryWeb.SubmissionComponents do
   # A commit's short id, a link where the submission has its address.
   defp commit(assigns) do
     ~H"""
-    <a :if={@url} href={@url} rel="noopener noreferrer nofollow" class="text-accent font-mono">
+    <a
+      :if={@url}
+      href={@url}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      class="text-accent font-mono"
+    >
       {@short}
     </a>
     <span :if={!@url} class="font-mono">{@short}</span>
@@ -224,19 +236,25 @@ defmodule ApiaryWeb.SubmissionComponents do
   # A draft: its system's mark beside its number, a link where the submission has its
   # address.
   defp draft(assigns) do
-    assigns =
-      assign(assigns,
-        words:
-          gettext("#%{number} “%{title}”",
-            number: assigns.draft.number,
-            title: Apiary.ExternalText.sent(assigns.draft.title)
-          )
-      )
+    title = Apiary.ExternalText.present(assigns.draft.title)
+
+    words =
+      if title,
+        do: gettext("#%{number} “%{title}”", number: assigns.draft.number, title: title),
+        else: "#" <> Integer.to_string(assigns.draft.number)
+
+    assigns = assign(assigns, words: words)
 
     ~H"""
     <span class="inline-flex flex-wrap items-baseline gap-x-1.5">
       <BacklogComponents.integration_tile name={@mark} class="q-bl-mk" />
-      <a :if={@draft.url} href={@draft.url} rel="noopener noreferrer nofollow" class="text-accent">
+      <a
+        :if={@draft.url}
+        href={@draft.url}
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        class="text-accent"
+      >
         {@words}
       </a>
       <span :if={!@draft.url}>{@words}</span>
@@ -275,6 +293,7 @@ defmodule ApiaryWeb.SubmissionComponents do
 
   defp base_words({:head, run}), do: gettext("Base: the head of Run %{run}", run: run)
   defp base_words(:start), do: gettext("Base: where the work starts")
+  defp base_words(:unknown), do: nil
 
   defp step_words({:change, id, nil}), do: Apiary.ExternalText.line(id)
 

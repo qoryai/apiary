@@ -517,8 +517,9 @@ Apiary reads them itself, and a run pushes a new version of them instead. It can
 withdraw a name of a type whose entry in the template's `artifact_types` sets
 `withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
 a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
-of the type in `submit.type` of its process version: the Submissions list reads that
-type's versions. It cannot withdraw a name whose newest version a member approved at a
+of the type in `submit.type` of its process version or of its work item's process
+version: Qory Apiary reads the newest version of that type as the run's submission.
+Versions stored earlier stay listed. It cannot withdraw a name whose newest version a member approved at a
 gate, and pushes a new version instead. An approval that the runner recorded for a gate
 `none` does not count, and neither does an approval of an older version.
 
@@ -528,8 +529,8 @@ Checks, in order, after the checks of every request:
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
 3. `questions`, `review-comments`, `verdict` or `proposal`, a type with
-   `withdrawable: false`, or the type in `submit.type` of the run's process version:
-   `422` `type_not_withdrawable`.
+   `withdrawable: false`, or the type in `submit.type` of the run's process version or of
+   the work item's: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
@@ -543,23 +544,31 @@ No version is stored for a refused withdrawal.
 
 Qory Apiary lists the versions of the type in `submit.type` of the work item's process
 version on the work item's pages (the Submissions list and a run's Submission block). It
-reads these members of a version's JSON file and leaves out any value that is not of the
-form below:
+reads these members of a version's JSON file, at most 1 MiB, and leaves out any value that
+is not of the form below. A stored text is cut to its first 200 characters.
 
 - `ref`: the branch, a string.
 - `repositories`: at most 20 objects, each with `system`, `path`, `commit` (the head, 40 or
   64 lowercase hex characters) and, optionally:
-  - `commit_url`: an `https` address of the head commit.
+  - `commit_url`: an `https` address of the head commit, at most 2048 characters.
   - `base`: `{commit, commit_url}`, the commit the run started at.
   - `commits`: `[{commit, step, commit_url}]`, the run's commits in the order it made
-    them, the head last. `step` is `deliverable:<id>`, the id of a row in the Id column of
-    the build plan's Deliverables table, or `fix:<finding id>`. A page lists at most 100
-    commits of a repository: the first 99 and the head.
+    them, the last the head. `step` is `deliverable:<id>`, the id of a row in the Id column
+    of the build plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
+    is not a full hex id is left out. The head is marked on the last entry whose `commit`
+    is the repository's `commit`; where no entry is, none is marked and the list is shown as
+    read. A page lists at most 100 entries of a repository: the first 100, or the first 99
+    and the head where the head is a later entry; the count has every entry.
   - `draft`: `{number, url, title}` for a draft sent to the destination, or `{none: <reason>}`.
 
-A link that is not `https` is not shown as a link. The text of a change comes from the Change
-column of the build plan (`build-plan`, the file `build-plan.md`) that was newest when the
-version was stored.
+A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>"
+where an earlier submission of the work item, among the newest 50 versions, ends at the base
+commit in the same repository. Where a version that is not listed (older than those, or
+written by a run a member cancelled) may end at it, the line shows the commit alone.
+
+The text of a change comes from the Change column of the first 200 rows of the build plan
+(`build-plan`, the file `build-plan.md`) that was newest when the version was stored. A plan
+over 256 KiB gives no change texts, and a stored submission over 1 MiB lists no repository.
 
 ## POST verdict
 
@@ -705,7 +714,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version, or of a name whose newest version a member approved at a gate |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
@@ -738,8 +747,8 @@ The messages:
   version of demo-script instead. The artifact type demo-script has withdrawable set to
   false, so a run cannot withdraw its names."
 - `type_not_withdrawable`, for the type in `submit.type` of the run's process version:
-  "Push a new version of submission instead. The submit step of this run's process stores
-  submission, and Qory Apiary reads its versions, so a run cannot withdraw its names."
+  "Push a new version of submission instead. Qory Apiary reads its newest version as the
+  run's submission, so a run cannot withdraw it."
 - `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
   version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
   a run cannot withdraw the name."

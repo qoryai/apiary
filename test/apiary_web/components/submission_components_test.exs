@@ -207,6 +207,45 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
     end
   end
 
+  describe "a base that may be a head the list does not show" do
+    test "shows the commit alone, with no words" do
+      base = %{
+        commit: hex("3"),
+        short: "3333333",
+        url: "#{@repo}/commit/#{hex("3")}",
+        line: :unknown
+      }
+
+      html = frame([row(%{repositories: [repository(%{base: base})]})])
+
+      assert texts(html, "#frame-av_one-r0-base") |> hd() |> squash() == "3333333"
+      refute text(html) =~ "Base:"
+    end
+  end
+
+  describe "links" do
+    test "open in a new tab and carry rel" do
+      html = frame([row()])
+
+      links =
+        html |> doc() |> LazyHTML.query("#frame-av_one-r0-commits a, #frame-av_one-r0-draft a")
+
+      assert Enum.count(links) == 5
+
+      for link <- links do
+        assert LazyHTML.attribute(link, "target") == ["_blank"]
+        assert LazyHTML.attribute(link, "rel") == ["noopener noreferrer nofollow"]
+      end
+    end
+
+    test "the path and the run line break inside a long word" do
+      html = frame([row(%{repositories: [repository(), repository(%{path: "a"})]})])
+
+      assert count(html, "#frame-av_one-r0-path.min-w-0") == 1
+      assert html =~ "[overflow-wrap:anywhere]"
+    end
+  end
+
   describe "the draft" do
     test "has its number beside its system's mark, with the title, as a link" do
       html = frame([row()])
@@ -231,6 +270,15 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
 
       assert count(html, "#frame-av_one-r0-draft a") == 0
       assert text(html) =~ "#34 “Show delivery dates”"
+    end
+
+    test "has its number alone where the title is empty" do
+      for title <- [nil, "", "   "] do
+        draft = {:draft, %{number: 34, url: "#{@repo}/pulls/34", title: title}}
+        html = frame([row(%{repositories: [repository(%{draft: draft})]})])
+
+        assert texts(html, "#frame-av_one-r0-draft a") |> hd() |> squash() == "#34"
+      end
     end
 
     test "a submission that sent none says so, and has no Draft line" do
