@@ -13,20 +13,31 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: factory -->
-- A work item has a **Questions** tab, before **Thread**, once an agent has asked a question.
-  It shows the number of open questions. Open questions come first, in the frame **Open
-  questions**, each with the line “Asked in Verify, Run 9”, the run linked. A member who may
-  answer picks an option or writes an answer there, and **Run another round of Verify**
-  sends the answers; it is the one place where a member answers. Answered and withdrawn
-  questions follow in the frame **Answered questions**, in groups under the names of the
-  stages in the process order, and “Explore” for a work item with no stage. The form names
-  the stage that waits: “Comment on Verify's outputs”, and the same name in the caption
-  above the form, in the button and in its confirmation. A work item that needs answers
+- A work item has a **Questions** tab, before **Thread**, once an agent has asked a
+  question that is not a decision. The tab label shows the number of open questions. The
+  frame **Open questions** comes first. Each question shows “Asked in Verify, Run 9”, with
+  the run linked where the reader may open it; “Asked in” names the run that reopened a
+  question, and that run's stage. A member who may answer picks an option or writes an
+  answer there. This tab is the only place where a member answers. The frame **Answered
+  questions** follows, in groups under the names of the stages in the process order, and
+  “Explore” where there is no stage card. A withdrawn question has the badge “Withdrawn”.
+  The form names the stage that waits. The caption reads “Run another round of Verify
+  starts Verify's next run. That run reads your answers and your comment, and updates
+  Verify's outputs.”, the field “Comment on Verify's outputs”, the button **Run another
+  round of Verify**, and its confirmation dialog “Run another round of Verify?”. At
+  Explore the caption ends “updates Explore's proposal.” and the field is “Comment on the
+  whole proposal”. While a question is open, the decisions of the stage that waits, which
+  a member may change, are in the frame **Open questions**. A work item that needs answers
   opens on this tab. The tab of a stage, and Explore's tab, no longer have the questions
-  or the output **Questions**; where agents asked questions, they show “The agents of this
-  stage asked 3 questions. See them on the Questions tab.” The runs fold no longer lists
-  “questions v5”. A question keeps its number when a run reopens it. Its group is the stage
-  of the run that reopened it.
+  or the output **Questions**. Where agents of that stage asked questions, they show one
+  line: “The agents of this stage asked 3 questions. See them on the Questions tab.”, or
+  “The agents of this stage asked 1 question. See it on the Questions tab.”, which counts
+  only the questions of that stage. The **Decisions** frame and the gate stay on the
+  stage's tab. The runs fold, the gate card's list of outputs and the **About** list of
+  **Request changes** no longer list “questions v5”; the list of **Artifacts** still lists
+  the questions artifact. The stage card's “Answer the questions”, the step card's link,
+  “Answer question 4.” in the wait block, “Follows question 1” and “Asked as question 2”
+  go to this tab. Each is a link only where the tab shows that question, else plain text.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
@@ -820,7 +831,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   written under “Qory Apiary does not draw this diagram, so it is shown as written.”,
   and one with an error under “This diagram has an error, so it is shown as written.”
   One fold at the foot of the tab lists each of Explore's runs in the take in; its first
-  line shows how many there are and the versions of the newest proposal and questions.
+  line shows how many there are and the version of the newest proposal.
   An earlier run that wrote a proposal opens to that version. The fold also lists the
   work item's artifacts under **Artifacts**, where, at the Explore stage, a version a run
   made reads “Run 14”, without its round; artifact pages keep “Run 14 · round 2”.
@@ -846,14 +857,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   work item opens on its current stage's tab from every link that names no tab, and on
   the **Ticket** tab at a stage with no workflow. `/work/<number>/explore` goes to the
   tab of the first stage with a proposal output. A stage's tab shows a frame for each
-  of the stage's outputs that has a version, the first one open, and the questions, runs
-  and artifacts of that stage's runs.
-- On the current stage's tab after Explore, **Run another round** works as on the
-  **Explore** tab. Where the stage waits for answers, it sends your answers; at the
-  stage's gate, the decisions of the stage's runs that you changed. It also sends one
+  of the stage's outputs that has a version, the first one open, then the runs and
+  artifacts of that stage's runs. Where agents of the stage asked questions, a line says
+  so and links to the **Questions** tab.
+- At the gate on the current stage's tab after Explore, **Run another round** works as on
+  the **Explore** tab. It sends the decisions of the stage's runs that you changed, one
   comment on the whole round, from the field **Comment on the stage's outputs**, and the
   open comments of that stage. The stage's next run reads them and updates the outputs.
-  The questions and comments of another stage stay on that stage's tab.
+  Where the stage waits for answers, **Run another round of Verify** on the **Questions**
+  tab sends the answers and the comment instead. The comments of another stage stay on
+  that stage's tab.
 - On a work item's **Explore** tab, step card and **Details**, a text about one run
   links to that run's page, and the link ends with the run's number in the workspace: a
   line with no attempt number, such as “Explore is running again, with your comments
@@ -881,33 +894,34 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   wider than the text column scrolls in a frame, and a long word wraps, so neither runs
   under **Details**. A proposal's **Sources** on that view are a closed fold under the
   text, as on the tab.
-- The **Questions** frame under the proposal lists the questions that a run of this take
-  in wrote or reopened. For a member who may answer, the first line is “Run another
-  round starts the next run. That run reads your answers and your comment, and updates
-  the proposal.”, or “Run another round starts the next run. That run reads your answers
-  and updates the proposal.” where the tab has no comment field. Answered questions fold
-  to one line; the open ones follow under “Open questions”. Each question shows the
-  options the run wrote as cards, up to 4, then the card “Give your own option”, and one
-  field with the placeholder “Add details (optional)”, or “Your option” while **Give
-  your own option** is picked. That field is then required: “Write your option, or pick
-  one above.” A question with no options shows the field alone, with the placeholder
-  “Give your own option”. The option a run recommends has the mark “Recommended by the
-  agent” on its card, and on a closed answer that chose it. A reopened question shows
-  its earlier answer under “Earlier answer”, a question that follows another links to it
-  with “Follows question 1”, and a withdrawn one has the badge “Withdrawn”. Under the
-  last question, a member who may write comments, where a proposal exists, has the field
-  **Comment on the whole proposal**. **Run another round** sends every answer given, the
-  comment and the open comments to one run, at any count of runs. It is enabled once an
-  answer, a comment or an open comment the member may send is there. A question with no
-  option and no text stays open. With every answer blank, a member who may send comments
-  (with the workflow model, only the stage's approvers, where the stage lists them)
-  sends the open comments of this take in instead. With none open, or for any other
-  member, the form shows “Choose an option or write an answer. If nobody knows, say so:
-  Explore reads that too.” Questions that changed after the page showed them get no
-  answer, and the form shows “Check the questions and your answers, then click Run
-  another round again. The questions changed after the page showed them, so no answer
-  was sent.” While a run runs, and to a person who may not answer, the open questions
-  show as text.
+- The frames of the **Questions** tab list the questions that a run of this take in wrote
+  or reopened. For a member who may answer, the frame **Open questions** starts with the
+  line “Run another round of Verify starts Verify's next run. That run reads your answers
+  and your comment, and updates Verify's outputs.” (at Explore, “…and updates Explore's
+  proposal.”), or the same line without “and your comment” where the tab has no comment
+  field. Answered questions are in the frame **Answered questions**, each folded to one
+  line. Each open question shows the options the run wrote as cards, up to 4, then the
+  card “Give your own option”, and one field with the placeholder “Add details
+  (optional)”, or “Your option” while **Give your own option** is picked. That field is
+  then required: “Write your option, or pick one above.” A question with no options shows
+  the field alone, with the placeholder “Give your own option”. The option a run
+  recommends has the mark “Recommended by the agent” on its card, and on a closed answer
+  that chose it. A reopened question shows its earlier answer under “Earlier answer”, a
+  question that follows another links to it with “Follows question 1”, and a withdrawn
+  one has the badge “Withdrawn”. Under the last question, a member who may write
+  comments, where a proposal exists, has the field **Comment on Verify's outputs**
+  (**Comment on the whole proposal** at Explore). **Run another round of Verify** sends
+  every answer given, the comment and the open comments to one run, at any count of runs.
+  It is enabled once an answer, a comment or an open comment the member may send is
+  there. A question with no option and no text stays open. With every answer blank, a
+  member who may send comments (with the workflow model, only the stage's approvers,
+  where the stage lists them) sends the open comments of this take in instead. With none
+  open, or for any other member, the form shows “Choose an option or write an answer. If
+  nobody knows, say so: Explore reads that too.” Questions that changed after the page
+  showed them get no answer, and the form shows “Check the questions and your answers,
+  then click Run another round of Verify again. The questions changed after the page
+  showed them, so no answer was sent.” While a run runs, and to a person who may not
+  answer, the open questions show as text.
 - Each card under **Comments** shows who wrote it and on which version (“You, on version
   1”), or, for a comment on the whole round, on which attempt (“You, on the round of
   attempt 3”). The card also has the badge “Open” or “Reopened”, the text, its replies,
@@ -965,10 +979,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   approval, a close or an undo by another member, and that page has no button to send
   it; “Try again in a minute. The artifact store cannot be reached.”; “Check the page,
   then send again. The work item changed after the page showed it, so nothing was sent.”
-  (the questions form shows its changed-questions text instead); “Reload the page. Your
-  access or the work item changed, so nothing was sent.”; “Send again. Qory Apiary could
-  not save it.” for any other error. At the run limit, no line shows. **Approve** shows
-  no line when it fails.
+  (the form on the **Questions** tab shows its changed-questions text instead); “Reload
+  the page. Your access or the work item changed, so nothing was sent.”; “Send again.
+  Qory Apiary could not save it.” for any other error. At the run limit, no line shows.
+  **Approve** shows no line when it fails.
 - A comment on the whole proposal shows in the work item's Thread as “Dana wrote a
   comment on the proposal”, or “You wrote a comment on the proposal”, with its text, and
   answers sent with a comment as “You answered 1 question and wrote a comment”, and a
@@ -1008,16 +1022,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Decisions**: one line each, with the question, the option the run chose and its
   reason. Opened, a decision shows the full reason, “Run 2 chose it 25 minutes ago” and
   the options, with “Chosen by the agent” on the run's option. A member who may answer
-  picks another option or writes one, and **Run another round** sends the change as that
-  member's answer; until then the change shows only to that member, and **Approve** is
-  disabled with “Run another round to apply your change.” A sent change shows
-  **Changed**, the member's option, who changed it and when, and under “Changed from”,
-  the run's option and reason. A note sent with the run's option shows under the
-  options, with who added it and when, and the decision shows no **Changed**. While
-  questions are open, the decisions sit in the questions frame, above the open
-  questions; otherwise in a **Decisions** frame above the comment field. Explore's rows
-  are numbered top to bottom, as they show; **Follows question** and **Asked as
-  question** use those numbers.
+  picks another option or writes one, and **Run another round** (on the **Questions** tab,
+  **Run another round of Verify**) sends the change as that member's answer; until then
+  the change shows only to that member, and **Approve** is disabled with “Run another
+  round to apply your change.” A sent change shows **Changed**, the member's option, who
+  changed it and when, and under “Changed from”, the run's option and reason. A note sent
+  with the run's option shows under the options, with who added it and when, and the
+  decision shows no **Changed**. While a question is open, the decisions of the stage that
+  waits sit in the frame **Open questions** of the **Questions** tab, above the open
+  questions; otherwise they are in a **Decisions** frame of the stage's tab or Explore's
+  tab, above the comment field. Explore's rows are numbered top to bottom, as they show;
+  **Follows question** and **Asked as question** use those numbers.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -1524,8 +1539,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - When a run escalates, the work item page shows the block “What the run needs from
   you”, with one numbered item for each point: the run's sentence on what is wrong or
   missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
-  question, or “Run another round.” A stop cause that has a fix, such as “Owners and
-  admins choose a harness.”, shows that fix in place of “Run another round.” The block
+  **Questions** tab, or “Run another round.” A stop cause that has a fix, such as
+  “Owners and admins choose a harness.”, shows that fix in place of “Run another round.”
+  The block
   takes the place of the red banner “The run ended without a result” at the top of the
   Explore tab or of the stage's area, and the stage's note field and **Run another
   round** sit in it. In the side panel, the line “Waits for you: 2 points” links to the
@@ -1539,10 +1555,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   After a failed check whose outputs were all stored since, it shows no point. An
   `answer` point whose question the run withdrew asks for another round instead. A run
   that leaves questions open and escalates waits for answers first: its escalation is
-  kept, the block shows its points above the questions, and the answers run the next
-  round and resolve it; **Accept as it is**, **Move back** and **Close** are refused
-  while the answers wait. “Waiting on you” counts an escalated work item for the
-  approvers its gate lists who may resolve the escalation, else for its owner. A work
+  kept, the block shows its points, the **Questions** tab shows the questions, and the
+  answers run the next round and resolve it; **Accept as it is**, **Move back** and
+  **Close** are refused while the answers wait. “Waiting on you” counts an escalated work
+  item for the approvers its gate lists who may resolve the escalation, else for its
+  owner. A work
   item that left Explore while its proposal still waits, as after Explore's gate `none`,
   is not highlighted in the Work items list and is not counted in “Waiting on you”.
   Where a run ends without a result, with an error, lost or cancelled, and a proposal of
