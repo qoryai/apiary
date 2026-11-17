@@ -153,13 +153,13 @@ defmodule Apiary.Artifacts do
   # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
   # stored all the same. A push of a standard type reads nothing for the entry. Where the
   # instance's public address is not one the entry takes (plain http to a host that is
-  # not `localhost` or a loopback address), the push is `{:error, :public_url}`, rolled
-  # back, with a log line that starts with the fix: set `PUBLIC_URL`. A withdrawal writes
-  # no entry. The workspace's lock comes first, as in the core's lock order
-  # (`Apiary.WorkItems`). An always-on type takes no lock on the workspace: verdicts are
-  # the most frequent pushes, and the stage runner pushes them inside transactions that
-  # already hold the work item. The work item's lock makes the transactions of pushes to
-  # one work item run one after the other, so the numbers of an
+  # not `localhost` or a loopback address), the push is `{:error, :public_url}` before
+  # any file is kept, with a log line that starts with the fix: set `PUBLIC_URL`. A
+  # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
+  # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
+  # verdicts are the most frequent pushes, and the stage runner pushes them inside
+  # transactions that already hold the work item. The work item's lock makes the
+  # transactions of pushes to one work item run one after the other, so the numbers of an
   # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
   # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is
   # written; without it, the stage is not compared. A refusal, or a failure of the
@@ -1116,9 +1116,10 @@ defmodule Apiary.Artifacts do
   end
 
   # The rows, with the staged files kept in the store after every check passed, last
-  # before the file rows. On a refusal, or an exception, which is raised again, every
-  # staged copy is dropped, those `integers/2` made included (`keep/6`), so a refused
-  # push keeps no file in the store.
+  # before the file rows. The checks include the run's watch entry (`watch_entry/3`), formed
+  # before `keep/6` and written after it. On a refusal, or an exception, which is raised
+  # again, every staged copy is dropped, those `integers/2` made included (`keep/6`), so a
+  # refused push keeps no file in the store.
   defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -1131,9 +1132,10 @@ defmodule Apiary.Artifacts do
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
+           {:ok, watched} <- watch_entry(writer, held, type),
            {:ok, kept} <- integers(type, staged),
-           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now),
-           :ok <- watch(writer, held, type, artifact) do
+           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
+        :ok = append_watch(watched)
         written
       else
         nil -> {:error, :not_found}
@@ -1174,57 +1176,64 @@ defmodule Apiary.Artifacts do
       reraise exception, __STACKTRACE__
   end
 
-  # A `watch` entry for the version a run stored of its submission type: the type in
+  # The `watch` entry for the version a run stores of its submission type: the type in
   # `submit.type` of the run's process version (`Processes.harness_template/1`). The entry
   # goes to the feed of the adapter of the work item's target collection, the collection
   # the run's work entry comes from (`RunCredentials.work_collection/3`), and contains the
-  # work item's public id and its stable url. It is written in the push's transaction, so
-  # the version and its entry commit together or not at all. Nothing is written for a
-  # person's version, a version of another type, a run whose process version has no
-  # submit, a work item with no target, or a target that no collection matches.
+  # work item's public id and its stable url. `{:ok, {adapter, entry}}` for an entry,
+  # `{:ok, nil}` for none: a person's version, a version of another type, a run whose
+  # process version has no submit, a work item with no target, or a target that no
+  # collection matches.
+  #
+  # The entry is formed before `keep/6`, and `append_watch/1` writes it after, in the
+  # push's transaction, so the version and its entry commit together or not at all. The
+  # work item's lock is held for both, and the feed's counter is taken last, as in the
+  # core's lock order (`Apiary.Adapters.Collections`).
   #
   # A standard type is never a submission type: a template's `submit.type` is a custom
   # type with `base_view: structured` (`Apiary.Artifacts.TemplateTypes`). A push of a
   # standard type, the verdict of every stage among them, returns before it reads the
-  # run or its process version. A withdrawal has no hook (`write_withdrawal/4`).
+  # run or its process version. A withdrawal has no entry (`write_withdrawal/4`).
   #
   # The lookup and `Processes.harness_template/1` only read the database: no message is
   # sent and no other system is called inside the transaction. `Feed.append/2` takes only
   # an adapter with no organisation, which the `nodes` check keeps true of every adapter;
   # any other node gets no entry.
   #
-  # `{:error, :public_url}`, which rolls the push back, where the stable url is not one a
-  # watch entry takes: the instance's `PUBLIC_URL` is plain http to a host other than
-  # `localhost` or a loopback address, or has a character outside RFC 3986, such as a
-  # host in Unicode. The boot accepts both (`config/runtime.exs`), and the error is
-  # logged with the fix.
-  defp watch(%{actor: :run, run_id: run_id}, held, %Type{standard: false}, %Artifact{type: type}) do
+  # `{:error, :public_url}` where the stable url is not one a watch entry takes: the
+  # instance's `PUBLIC_URL` is plain http to a host other than `localhost` or a loopback
+  # address, or has a character outside RFC 3986, such as a host in Unicode. The boot
+  # accepts both (`config/runtime.exs`), and the error is logged with the fix. It comes
+  # before `keep/6`, so a refused push keeps no file in the store.
+  defp watch_entry(%{actor: :run, run_id: run_id}, held, %Type{standard: false, name: name}) do
     with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
-         ^type <- submit_type(dispatch_run),
+         ^name <- submit_type(dispatch_run),
          %{} = target <- target(held),
          {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
            RunCredentials.work_collection(dispatch_run, held, target) do
-      append_watch(adapter, held)
+      url = WorkItems.stable_url(held)
+
+      if Feed.work_item_url?(url) do
+        {:ok, {adapter, %{kind: "watch", work_item_id: held.public_id, url: url}}}
+      else
+        Logger.error(
+          "Set PUBLIC_URL to an https:// address: a run cannot store its submission with this one."
+        )
+
+        {:error, :public_url}
+      end
     else
-      _no_entry -> :ok
+      _no_entry -> {:ok, nil}
     end
   end
 
-  defp watch(_writer, _held, _type, _artifact), do: :ok
+  defp watch_entry(_writer, _held, _type), do: {:ok, nil}
 
-  defp append_watch(adapter, %WorkItem{} = held) do
-    url = WorkItems.stable_url(held)
+  defp append_watch(nil), do: :ok
 
-    if Feed.work_item_url?(url) do
-      {:ok, _seq} = Feed.append(adapter, %{kind: "watch", work_item_id: held.public_id, url: url})
-      :ok
-    else
-      Logger.error(
-        "Set PUBLIC_URL to an https:// address: a run cannot store its submission with this one."
-      )
-
-      {:error, :public_url}
-    end
+  defp append_watch({adapter, entry}) do
+    {:ok, _seq} = Feed.append(adapter, entry)
+    :ok
   end
 
   # The type in `submit.type` of the run's process version, nil for none.

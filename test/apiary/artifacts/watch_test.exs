@@ -156,6 +156,12 @@ defmodule Apiary.Artifacts.WatchTest do
     if self() == pid, do: send(pid, {:query, query})
   end
 
+  # The files in the store, by content address, and the staged copies left in it.
+  defp stored_files(%{tmp_dir: tmp_dir}), do: Path.wildcard(Path.join(tmp_dir, "store/*/*/*"))
+
+  defp staged_files(%{tmp_dir: tmp_dir}),
+    do: Path.wildcard(Path.join(tmp_dir, "store/.staging-*"), match_dot: true)
+
   defp entries(adapter), do: Enum.map(Feed.entries(adapter), &Map.take(&1, [:kind, :data]))
 
   test "a run storing a submission version adds a watch entry to the target's adapter", ctx do
@@ -375,7 +381,7 @@ defmodule Apiary.Artifacts.WatchTest do
       :ok
     end
 
-    test "the push is refused, with a log line that starts with the fix, and stores nothing",
+    test "the push is refused, with a log line that starts with the fix, and keeps nothing",
          ctx do
       submits!(ctx, @submit)
       forge = forge!(ctx)
@@ -390,6 +396,9 @@ defmodule Apiary.Artifacts.WatchTest do
       assert log =~ "Set PUBLIC_URL to an https:// address:"
       assert Feed.entries(forge) == []
       assert Repo.aggregate(Version, :count) == 0
+      # The store holds no file of the refused push, kept or staged.
+      assert stored_files(ctx) == []
+      assert staged_files(ctx) == []
     end
 
     test "a push that adds no entry is not refused", ctx do
@@ -398,6 +407,9 @@ defmodule Apiary.Artifacts.WatchTest do
 
       assert {:ok, %Version{}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      # A push that is kept leaves its file in the store, so the empty store above counts.
+      assert [_one] = stored_files(ctx)
 
       assert {:ok, %Version{}} =
                Artifacts.push({:run, ctx.run}, ctx.work_item, "verdict", [

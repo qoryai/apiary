@@ -1299,8 +1299,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   A work item with no target, or a target that no collection matches, gets no entry, and
   the version is stored all the same. Where `PUBLIC_URL` is plain http to a host other
   than `localhost` or a loopback address, the push of such a version is refused: the run
-  API returns `503` `unavailable`, nothing is stored, and the log line starts with "Set
-  PUBLIC_URL to an https:// address".
+  API returns `503` `unavailable`, no version and no file is stored, and the log line
+  starts with "Set PUBLIC_URL to an https:// address".
 
 ### Changed
 
