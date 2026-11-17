@@ -270,6 +270,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
             no_pool={@no_pool}
             commenting={@can.send and @proposal != nil}
+            picks_track={track_offer(@flow, @track) != nil}
             points={waiting_points(@flow)}
             needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           >
@@ -389,6 +390,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             foot={@view.foot}
             verdicts={(@flow && @flow.runs) || []}
             no_pool={@no_pool}
+            track_offer={track_offer(@flow, @track)}
             cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
@@ -412,6 +414,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             runs={@view.runs}
             skips={@view.skips}
             passed_over={@view.passed_over}
+            proposal_version={@view.proposal_version}
+            entries={@view.entries}
+            document={@flow.document}
+            track_line={StageTab.track_line(@flow)}
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
@@ -590,6 +596,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            comment_count: 0,
            answers: %{},
            comment: "",
+           track: nil,
            errors: %{},
            form_error: nil,
            submits: 0,
@@ -1210,11 +1217,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Approve is disabled while a changed decision is a draft; a click that reaches the
-  # page then does nothing.
-  defp act("confirm", params, socket) do
+  # page then does nothing. The track it records is the page's draft (`socket.assigns.track`)
+  # where the gate offers it, else none: the click's own value is not read, so a click
+  # that outruns the last change of the radios records what the page shows.
+  defp act("confirm", _params, socket) do
     if changed_decision?(socket),
       do: {:noreply, socket},
-      else: confirm(socket, text(params["track"]))
+      else: confirm(socket, picked_track(socket))
   end
 
   # A reply goes to the review comment of the open Reply page; a `"reply"` with the id of
@@ -1552,10 +1561,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # After an action: no question showing, and the work item read again; after a refusal,
   # with the scope read again first.
+  # The track draft ends with the action, as the comment's does.
   defp done(socket, {:error, _refused}),
-    do: {:noreply, socket |> assign(:asking, nil) |> refresh()}
+    do: {:noreply, socket |> assign(asking: nil, track: nil) |> refresh()}
 
-  defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
+  defp done(socket, _result), do: {:noreply, socket |> assign(asking: nil, track: nil) |> load()}
 
   # Run another round, at the gate or under the questions, where the page counted the
   # reader as an approver (`can/4`) and the send's `Apiary.Access`
@@ -1621,7 +1631,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       case WorkItems.another_round(scope(socket), socket.assigns.row, attempt, round) do
         {:ok, _work_item} ->
           {:noreply,
-           socket |> assign(answers: %{}, comment: "", errors: %{}, form_error: nil) |> load()}
+           socket
+           |> assign(answers: %{}, comment: "", track: nil, errors: %{}, form_error: nil)
+           |> load()}
 
         {:error, {:invalid, %{comment: error}}} ->
           {:noreply,
@@ -1654,7 +1666,42 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     socket
     |> assign(:answers, drafted(params))
     |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
+    |> assign(:track, track_draft(params, socket.assigns.track))
   end
+
+  # The track draft after a change of the gate's form: the radio's value where the reader
+  # changed the radios (`_target` is `["track"]`), else the draft as it was. A change of the
+  # comment sends the selected radio too, which is no pick.
+  defp track_draft(%{"_target" => ["track"], "track" => track}, _draft) when is_binary(track),
+    do: track
+
+  defp track_draft(_params, draft), do: draft
+
+  # The track Approve records: the draft where the gate offers it, nil else, for the
+  # default of `Apiary.Stages.approve/4`.
+  defp picked_track(socket) do
+    case track_offer(socket.assigns.flow, socket.assigns.track) do
+      %{picked: picked} -> picked
+      nil -> nil
+    end
+  end
+
+  # The track picker of Explore's gate: the tracks the gate offers, the one selected and the
+  # one Explore proposed, `%{tracks:, selected:, proposed:, reason:, stage:}`; nil where the gate
+  # offers none or the work item is not at Confirm.
+  defp track_offer(%{confirm_gate: true, offers: [_ | _] = offers} = flow, draft) do
+    %{
+      tracks: offers,
+      selected: Workflow.picked(flow, draft),
+      # What the reader chose, which Approve sends; with no choice Approve records the default.
+      picked: if(draft in Enum.map(offers, & &1.id), do: draft),
+      proposed: flow.proposed,
+      reason: flow.proposed_reason,
+      stage: flow.stage.name
+    }
+  end
+
+  defp track_offer(_flow, _draft), do: nil
 
   # The comment on the whole proposal as the form sent it; nil for none or a blank one.
   defp comment_of(params), do: text(params["comment"])
@@ -1936,7 +1983,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       # (`Apiary.WorkItems.confirm/4`), so the stage card offers no second Approve there.
       # A proposal can still wait after the work item left Explore (a gate `none` passes
       # on), so the Confirm gate and the step card are Explore's.
-      flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
+      flow =
+        if Workflow.on?(scope),
+          do: Workflow.page(scope, row, proposal: explore.status == :confirm)
+
       {flow, reads} = with_drafts(flow, socket.assigns.stored_reads)
 
       flow =
@@ -1961,6 +2011,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         if stage_key(socket.assigns[:flow]) == stage_key(flow),
           do: socket,
           else: assign(socket, stage_asking: nil, stage_error: nil, stage_check: nil)
+
+      # The track picked at a gate ends with the stage and with the take in.
+      socket =
+        if stage_key(socket.assigns[:flow]) == stage_key(flow) and
+             (socket.assigns[:row] && socket.assigns.row.take_in) == row.take_in,
+           do: socket,
+           else: assign(socket, :track, nil)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its
       # record is live, its adapter is not removed, and its Backlog takes it in.
@@ -2073,6 +2130,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     frames =
       stage
       |> StageTab.frames(newest)
+      |> then(&if &1 == [], do: StageTab.input_frames(assigns.flow, stage), else: &1)
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 

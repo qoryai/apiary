@@ -372,10 +372,12 @@ replaces the navigation it is in.
   core's Mail (`/instance/mail`, `ApiaryWeb.InstanceLive.Mail`), the mail server, after a
   recent sign-in, and Configuration (`/instance/configuration`,
   `ApiaryWeb.InstanceLive.Configuration`, its `<h1>` Configuration): the instance's
-  settings. Retention, Deletion and Invitations are each a form with its Save: a field for
-  each setting the environment does not set, with its unit, days, where it has one, and the
-  hint "Empty: …", saved after a recent sign-in with a toast; a setting the environment
-  sets shows read only, with the variable that sets it. Then the edition's parts
+  settings. Retention, Prebuilds, Deletion and Invitations are each a form with its Save: a
+  field for each setting the environment does not set, with its unit, days or GB, where it
+  has one, and the hint "Empty: …", saved after a recent sign-in with a toast; a setting
+  the environment sets shows read only, with the variable that sets it. Prebuilds shows
+  only with the feature `registry`, and has Largest prebuilt image, in GB, which no
+  variable sets: empty, there is no limit. Then the edition's parts
   (`c:ApiaryWeb.Edition.configuration_parts/1`). Features and Run pruning are read only.
   Anyone else is answered not found. The sidebar stays the one
   the person came from, and the sections are the second column (`#instance-tabs`,

@@ -2014,6 +2014,7 @@ msgstr[1] ""
 msgid "%{number} B"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} GB"
@@ -3453,6 +3454,11 @@ msgstr ""
 msgid "%{stage} started in attempt %{attempt}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started no run."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
@@ -3480,6 +3486,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} · round %{round}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}'s reason: %{reason}"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -4154,6 +4165,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies to prebuilds that start after it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -6091,6 +6108,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approved v%{approved}; v%{newer} is newer"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approved without a member: %{stage}'s gate needs no member."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -9062,6 +9084,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Did not pass"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Did not run, because %{entry} passed on its first attempt."
 msgstr ""
 
@@ -9417,6 +9444,11 @@ msgstr ""
 msgid "Empty: %{default}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Empty: no limit."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
@@ -9460,6 +9492,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Ended well"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ended without a verdict"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10732,6 +10769,11 @@ msgstr ""
 msgid "Full screen"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "GB"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Gate"
@@ -11204,6 +11246,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "How it works"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "How large an image a prebuild may keep. A prebuild whose image is larger fails."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -12361,6 +12408,17 @@ msgstr ""
 msgid "Larger text"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image saved."
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -12822,6 +12880,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Looked up an integration's release"
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Loop of up to %{rounds} round"
+msgid_plural "Loop of up to %{rounds} rounds"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
@@ -14065,6 +14130,7 @@ msgid "No key yet"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -14848,6 +14914,12 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not ready: the pool's runs may not go through the chosen gateway"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not run"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -16070,6 +16142,7 @@ msgstr ""
 msgid "Pages are in English, the one language Qory Apiary offers."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Passed"
@@ -16140,6 +16213,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Paused"
 msgstr ""
@@ -16221,6 +16295,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type: no type has the key %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pick a track and approve the proposal, or add a comment and run another round."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
@@ -16414,6 +16493,11 @@ msgstr ""
 msgid "Prebuild"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Prebuilds"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Prebuilt for this target"
@@ -16551,6 +16635,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Proposal"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Proposed by %{stage}"
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -16934,6 +17023,11 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Questions"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Questions and decisions"
 msgstr ""
 
@@ -16999,6 +17093,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the cause in the log of %{pool} on its host."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the inputs below, then approve."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -19426,6 +19525,11 @@ msgstr ""
 msgid "Shape"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to."
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shared harness"
@@ -19973,6 +20077,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
@@ -23037,6 +23142,21 @@ msgstr ""
 msgid "Top bar"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track to run after you approve"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track: %{track}, approved at %{gate}'s gate"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Tracks"
@@ -24237,6 +24357,11 @@ msgstr ""
 msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Why"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Why it waits"
@@ -24438,6 +24563,7 @@ msgid "Work sources is set to All for this account. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -24451,6 +24577,7 @@ msgid "Workflow source"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Workflows"
 msgstr ""
@@ -27021,6 +27148,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the request failed for another credential of the run, so this one was not sent"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

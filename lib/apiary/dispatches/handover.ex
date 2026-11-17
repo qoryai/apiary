@@ -122,7 +122,8 @@ defmodule Apiary.Dispatches.Handover do
   #
   # A prebuild's documents have its destinations in the registry: `image_destination`,
   # and `environment_destination` or `environment_image`
-  # (`Apiary.Registry.RunAccess.destinations/1`). Its target is made in its workspace
+  # (`Apiary.Registry.RunAccess.destinations/1`), and `largest_prebuilt_image_bytes`
+  # where the instance has a largest prebuilt image. Its target is made in its workspace
   # where the workspace has no row of it.
   #
   # An explore run has `run_settings` with the features `factory` and `secrets` on
@@ -201,6 +202,7 @@ defmodule Apiary.Dispatches.Handover do
     AccessKeys,
     Dispatches,
     Gateways,
+    InstanceConfig,
     Nodes,
     Processes,
     PublicId,
@@ -425,6 +427,7 @@ defmodule Apiary.Dispatches.Handover do
             )
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
+          if formed.push, do: RunCredentials.insert!(formed.push, run)
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -784,10 +787,11 @@ defmodule Apiary.Dispatches.Handover do
 
   # The run's work credential entry, formed from what the run is formed from, with the
   # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
-  # none, or the cause its run of the queue ends for. An explore run's entry comes from the
-  # collection the claim read once (`work_collection/3`), from which `submitted/4` takes
-  # the submit_module, and which `with_collection/2` puts in the formed run; a prebuild's
-  # from the collection it builds, and reads.
+  # none, or the cause its run of the queue ends for. A run with access `write` has a push
+  # entry beside it (`Apiary.Runs.RunCredentials.push_from/3`). An explore run's entry
+  # comes from the collection the claim read once (`work_collection/3`), from which
+  # `submitted/4` takes the submit_module, and which `with_collection/2` puts in the
+  # formed run; a prebuild's from the collection it builds, and reads.
   defp with_work({:ok, %{answer: answer} = formed}) do
     level = Map.get(answer, :access, :read)
 
@@ -807,8 +811,12 @@ defmodule Apiary.Dispatches.Handover do
       end
 
     case work do
-      {:ok, work} -> {:ok, Map.put(formed, :work, work)}
-      {:end, _cause} = ended -> ended
+      {:ok, work} ->
+        push = RunCredentials.push_from(work, level, answer.work_item)
+        {:ok, formed |> Map.put(:work, work) |> Map.put(:push, push)}
+
+      {:end, _cause} = ended ->
+        ended
     end
   end
 
@@ -1143,7 +1151,8 @@ defmodule Apiary.Dispatches.Handover do
 
   # A prebuild's destinations in the registry, the documents' `image_destination`, then
   # `environment_destination` or `environment_image`: the names its tokens grant, read
-  # for its collection's target row (`Apiary.Registry.RunAccess.destinations/1`). The
+  # for its collection's target row (`Apiary.Registry.RunAccess.destinations/1`); then
+  # `largest_prebuilt_image_bytes` (`largest_prebuilt_image/0`). The
   # target image's name is made from the target's public id, so the target is made in the
   # workspace first where the workspace has no row of it, as an assign makes it
   # (`Apiary.Runs.Target.insert_new/3`). A claim takes a prebuild only on an instance with
@@ -1169,8 +1178,8 @@ defmodule Apiary.Dispatches.Handover do
             {:image, existing} -> {"environment_image", existing}
           end
 
-        {:ok,
-         put_in(formed, [:answer, :destinations], [{"image_destination", image}, environment])}
+        members = [{"image_destination", image}, environment | largest_prebuilt_image()]
+        {:ok, put_in(formed, [:answer, :destinations], members)}
 
       nil ->
         :no_destination
@@ -1178,6 +1187,16 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp destinations(not_formed, _dispatch_run, _target), do: not_formed
+
+  # The largest image a prebuild may keep, in bytes, as the instance has it at the claim
+  # (`Apiary.InstanceConfig`, saved in GB, a GB being 1,000,000,000 bytes); none for no
+  # limit.
+  defp largest_prebuilt_image do
+    case InstanceConfig.value(:prebuilt_image_max_gb) do
+      nil -> []
+      gb -> [{"largest_prebuilt_image_bytes", gb * 1_000_000_000}]
+    end
+  end
 
   # The id of the row of `target` in the prebuild's workspace, made where there is none.
   defp target_row_id(%DispatchRun{} = dispatch_run, %{system: system, path: path} = target) do

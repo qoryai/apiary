@@ -3127,6 +3127,38 @@ defmodule Apiary.StagesTest do
       end
     end
 
+    defp proposing_with(track_map) do
+      fn run, registered ->
+        proposal_only().(run, registered)
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "passed", "track" => track_map},
+            stage_id: run.stage_id
+          )
+      end
+    end
+
+    test "a blank reason of a proposed track is nil", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(proposing_with(%{"id" => "fast-track", "reason" => " "}))
+
+      assert Stages.proposed_track_with_reason(work_item) == %{id: "fast-track", reason: nil}
+      assert Stages.proposed_track(work_item) == "fast-track"
+    end
+
+    test "no proposed track has no reason", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert Stages.proposed_track_with_reason(work_item) == nil
+    end
+
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
 
     test "an approval with no track records the gate's first track, and the work item is on it",
@@ -3317,6 +3349,37 @@ defmodule Apiary.StagesTest do
       for condition <- [%{input: "spec"}, %{track: "fast-track", negated: true}] do
         assert %Stages.Skip{} = Repo.insert!(struct(Stages.Skip, Map.merge(skip, condition)))
       end
+    end
+
+    test "the reads that take what the caller read give what the plain reads give", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      version = Processes.version_for(work_item)
+      artifacts = Artifacts.list(work_item)
+
+      assert Stages.offered_tracks(work_item, version) == Stages.offered_tracks(work_item)
+      assert Stages.proposed_track(work_item, artifacts) == "fast-track"
+
+      assert Stages.proposed_track_with_reason(work_item, artifacts) ==
+               %{id: "fast-track", reason: "A small change."}
+
+      assert Stages.proposed_track_with_reason(work_item) ==
+               Stages.proposed_track_with_reason(work_item, artifacts)
+
+      assert Stages.artifact_index(work_item, artifacts) == Stages.artifact_index(work_item)
+      assert Stages.skip_records(work_item).track == nil
+
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.skip_records(moved).track == "standard"
+
+      {:ok, moved} =
+        Stages.approve(scope, reload(moved), nil, expect_stage: @shape, track: "fast-track")
+
+      assert Stages.skip_records(moved).track == Stages.track(moved)
+      assert Stages.skip_records(moved).track == "fast-track"
     end
 
     test "a later approval with another track changes the track", %{scope: scope} do

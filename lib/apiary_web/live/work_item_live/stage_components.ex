@@ -50,18 +50,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           class={[
             "q-wi-stage",
             "q-wi-stage-#{track_class(stage.at)}",
+            stage[:not_run] && "q-wi-stage-skipped",
             stage.at == :now && @wait && "q-wi-stage-wait"
           ]}
           aria-current={stage.at == :now && "step"}
         >
           <span class="q-wi-stage-n" aria-hidden="true">
-            <%= if stage.at == :done do %>
-              <.icon name="hero-check-micro" class="size-3" />
-            <% else %>
-              {i}
+            <%= cond do %>
+              <% stage[:not_run] -> %>
+              <% stage.at == :done -> %>
+                <.icon name="hero-check-micro" class="size-3" />
+              <% true -> %>
+                {i}
             <% end %>
           </span>
           {stage.name}
+          <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
+            {gettext("Not run")}
+          </span>
         </li>
       </ol>
     </div>
@@ -399,7 +405,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         shown: shown,
         drafts: Map.get(assigns.page, :drafts, []),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
-        decides: assigns.page.gate_kind != "none"
+        decides: assigns.page.gate_kind != "none",
+        started_no_run: started_no_run?(assigns.page),
+        # The list of outputs says nothing while no output has a version.
+        no_outputs_yet:
+          started_no_run?(assigns.page) and Enum.all?(assigns.page.outputs, &is_nil(&1.version))
       )
 
     ~H"""
@@ -410,11 +420,26 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           {gettext("the draft in %{repository}", repository: draft.path)}
         </.external_link>
       </p>
-      <h3 :if={@shown != [] or @page.outputs == []} class="text-sm font-semibold">
+      <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
+        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
+        <p>
+          <.badge color="success">{@page.track.name}</.badge>
+        </p>
+        <p :if={@started_no_run} id={"#{@id}-no-run"}>
+          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
+            " " <> gettext("Read the inputs below, then approve.")}
+        </p>
+      </div>
+      <h3
+        :if={not @no_outputs_yet and (@shown != [] or @page.outputs == [])}
+        class="text-sm font-semibold"
+      >
         {gettext("Outputs")}
       </h3>
-      <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
-      <ul :if={@shown != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+      <p :if={@page.outputs == [] and not @no_outputs_yet} id={"#{@id}-none"}>
+        {gettext("This stage has no outputs.")}
+      </p>
+      <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.key}"}>
           <span>{version_words(output.type, output.name, output.version)}</span>
           · <span id={"#{@id}-check-#{output.key}"}>{check_words(output)}</span>
@@ -493,6 +518,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  @doc false
+  # started_no_run?/1 is whether `page`'s stage, at a gate that offers no track, of a work
+  # item on a track, ran no workflow in the take in and has entries the runner passed over:
+  # there is no run of the stage to read. A work item on no track is never so.
+  @spec started_no_run?(map) :: boolean
+  def started_no_run?(%{
+        state: :at_gate,
+        track: %{},
+        offers: [],
+        stage: stage,
+        runs: runs,
+        skips: skips
+      }) do
+    not Enum.any?(runs, &(&1.stage_id == stage.id)) and
+      Enum.any?(skips, &(&1.stage_id == stage.id))
+  end
+
+  def started_no_run?(_page), do: false
 
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
     do: Enum.filter(outputs, & &1.version_id)
