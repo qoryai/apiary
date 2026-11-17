@@ -77,7 +77,8 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
             {"changes/feed-loopback.json", fresh()},
             {"changes/grants.json", fresh()},
             {"changes/comment.json", fresh()},
-            {"changes/empty.json", fresh()}
+            {"changes/empty.json", fresh()},
+            {"changes/watch.json", fresh()}
           ] do
         %{"changes" => written} = fixture(path)
         append!(adapter_ctx.adapter, Enum.map(written, &entry/1))

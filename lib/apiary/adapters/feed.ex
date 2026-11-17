@@ -3,10 +3,11 @@ defmodule Apiary.Adapters.Feed do
 
   # An adapter's change feed (the integration contract's `changes.schema.json`): one
   # append-only log per adapter, which the adapter reads back after a cursor, in order
-  # (`GET /v1/work-items/changes`, `ApiaryWeb.Contract.ChangesController`). It holds the
-  # work items taken in from the adapter's items, the comments members wrote on them for
-  # the source, the link state of the adapter's collections, the grants of the adapter's
-  # connections, and the adapter's interval, and nothing of any other adapter.
+  # (`GET /v1/work-items/changes`, `ApiaryWeb.Contract.ChangesController`). Its entries
+  # are the work items taken in from the adapter's items, the comments members wrote on
+  # them for the source, the work items on which a run stored a submission version, the
+  # link state of the adapter's collections, the grants of the adapter's connections, and
+  # the adapter's interval. No entry of another adapter is in it.
   #
   # ## Writing: `append/2`
   #
@@ -31,6 +32,11 @@ defmodule Apiary.Adapters.Feed do
   #     (`Apiary.Sources.Comment.member_name?/1`); `body` 1 to 65,000 characters of valid
   #     UTF-8, with no NUL. Written only for an adapter whose source takes comments
   #     (`Apiary.Nodes.Node`, `comments`).
+  #   * `%{kind: "watch", work_item_id: id, url: url}`: a work item on which a run stored a
+  #     submission version, in the feed of the adapter of the work item's target
+  #     collection (`Apiary.Artifacts.write/5`). Qory Apiary writes one entry per stored
+  #     version, whatever source the work item came from, and also for a work item that
+  #     came from no source. `id` and `url` follow the rules of a `work_item` entry.
   #   * `%{kind: "collection", collection_ref: ref, status: status}`: one of the adapter's
   #     collections linked (`"linked"`, `Apiary.Adapters.Collection.linked?/1`), or
   #     unlinked (`"unlinked"`). `ref`
@@ -53,10 +59,10 @@ defmodule Apiary.Adapters.Feed do
   # whenever a linked collection ends, by any path, its writer appends an `unlinked`
   # entry for it, so that the last entry per `collection_ref`, read from the start, is the
   # link state of the live collection with that ref, or `unlinked` when none is live; and
-  # the last entry per `work_item_id` is that work item's status; and the last `grant`
-  # entry per `connection_id` and `grant_ref` whether Qory Apiary holds that grant. The
-  # feed keeps the entries in the order they commit, which is what lets a reader rely on
-  # the last one.
+  # the last `work_item` entry per `work_item_id` is that work item's status; and the last
+  # `grant` entry per `connection_id` and `grant_ref` whether Qory Apiary holds that
+  # grant. The feed keeps the entries in the order they commit, which is what lets a
+  # reader rely on the last one.
   #
   # The number is taken from the adapter's row of `adapter_feed_counters` by an upsert
   # that adds one, inside the caller's transaction; the row stays locked until that
@@ -100,7 +106,8 @@ defmodule Apiary.Adapters.Feed do
     "comment" => 1,
     "collection" => 1,
     "sync" => 1,
-    "grant" => 1
+    "grant" => 1,
+    "watch" => 1
   }
   # The most bytes an answer's body has (`changes.schema.json`).
   @max_body 4_194_304
@@ -144,6 +151,7 @@ defmodule Apiary.Adapters.Feed do
               grant_ref: String.t(),
               status: String.t()
             }
+          | %{kind: String.t(), work_item_id: String.t(), url: String.t()}
 
   @doc false
   @spec append(Node.t(), entry) :: {:ok, pos_integer}
@@ -329,6 +337,8 @@ defmodule Apiary.Adapters.Feed do
   defp change("grant", data),
     do: ordered("grant", data, ~w(connection_id grant_ref status))
 
+  defp change("watch", data), do: ordered("watch", data, ~w(work_item_id url))
+
   defp ordered(kind, data, members) do
     Jason.OrderedObject.new([{"kind", kind} | Enum.map(members, &{&1, Map.fetch!(data, &1)})])
   end
@@ -336,19 +346,19 @@ defmodule Apiary.Adapters.Feed do
   # The entry's kind and its other members, as the feed stores them, string keys.
   defp shape!(%{kind: "work_item", work_item_id: id, ref: ref, status: status, url: url} = e)
        when map_size(e) == 5 do
-    unless is_binary(id) and Regex.match?(@work_item_id, id) do
-      raise ArgumentError, "a work_item entry's work_item_id is wi_ and 1 to 64 of A-Za-z0-9_-"
-    end
-
+    work_item_id!(id, "a work_item entry's work_item_id")
     ref!(ref, "a work_item entry's ref")
     status!(status, ~w(taken_in undone), "a work_item entry's status is taken_in or undone")
-
-    unless work_item_url?(url) do
-      raise ArgumentError,
-            "a work_item entry's url is https, or http to a loopback address, at most 2048 characters"
-    end
+    work_item_url!(url, "a work_item entry's url")
 
     {"work_item", %{"work_item_id" => id, "ref" => ref, "status" => status, "url" => url}}
+  end
+
+  defp shape!(%{kind: "watch", work_item_id: id, url: url} = entry) when map_size(entry) == 3 do
+    work_item_id!(id, "a watch entry's work_item_id")
+    work_item_url!(url, "a watch entry's url")
+
+    {"watch", %{"work_item_id" => id, "url" => url}}
   end
 
   defp shape!(%{kind: "comment", comment_id: id, ref: ref, author_name: name, body: body} = entry)
@@ -407,6 +417,19 @@ defmodule Apiary.Adapters.Feed do
 
     raise ArgumentError,
           "not an entry this feed writes (#{kind}), or not with its kind's members"
+  end
+
+  defp work_item_id!(id, what) do
+    unless is_binary(id) and Regex.match?(@work_item_id, id) do
+      raise ArgumentError, "#{what} is wi_ and 1 to 64 of A-Za-z0-9_-"
+    end
+  end
+
+  defp work_item_url!(url, what) do
+    unless work_item_url?(url) do
+      raise ArgumentError,
+            "#{what} is https, or http to a loopback address, at most 2048 characters"
+    end
   end
 
   defp ref!(ref, what) do
