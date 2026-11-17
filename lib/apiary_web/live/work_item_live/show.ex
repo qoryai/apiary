@@ -472,7 +472,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stages={question_stages(@flow)}
             fallback={question_fallback(@flow)}
             stage={stage_now(@flow)}
-            stage_id={@flow && @flow.stage.id}
+            stage_id={stage_id_now(@flow)}
             form={answering?(@can, @item)}
             answers={@answers}
             comment={@comment}
@@ -1140,6 +1140,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp stage_now(%{stage: %{name: name}}) when is_binary(name), do: name
   defp stage_now(_flow), do: gettext("Explore")
+
+  # The id of the stage that waits, nil with no stage card.
+  defp stage_id_now(%{stage: %{id: id}}), do: id
+  defp stage_id_now(_flow), do: nil
 
   # Whether Run another round sends anything: an answer, a changed decision, the
   # comment, or, with none, the open review comments (`comments_only?/1`).
