@@ -381,6 +381,137 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
            )
   end
 
+  describe "the type that the process's submit sets" do
+    @line_start "Runs of this workspace store their result as a submission version, checked against the schema in the harness commit that each run uses. So submission cannot be edited or deleted here."
+
+    # The current process version sets `submission`, as the Qory harness's does.
+    setup ctx do
+      version = Processes.current(ctx.scope.workspace)
+      submit = %{"type" => "submission", "send" => "end_of_run"}
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [template: Map.put(version.template || %{}, "submit", submit)]
+        )
+
+      submission =
+        Artifacts.type(ctx.scope.workspace, "submission") ||
+          custom!(ctx.scope, %{
+            "name" => "submission",
+            "base_view" => "structured",
+            "json_schema" => %{"type" => "object"}
+          })
+
+      other =
+        custom!(ctx.scope, %{
+          "name" => "bid-set",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      %{submission: submission, other: other}
+    end
+
+    test "shows the badge, no row menu, and the line with a link to Harness settings", ctx do
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+      row = "#artifact-type-#{ctx.submission.public_id}"
+
+      assert has_element?(view, row, "Set by the harness")
+      refute has_element?(view, "#{row}-menu")
+      refute has_element?(view, "#{row} a", "Edit")
+      refute has_element?(view, "#{row} a", "Delete")
+
+      # The other custom type keeps its menu and has no badge.
+      assert has_element?(view, "#artifact-type-#{ctx.other.public_id}-menu")
+      refute has_element?(view, "#artifact-type-#{ctx.other.public_id}", "Set by the harness")
+
+      line = "#artifact-type-submission-set-by-harness"
+
+      assert has_element?(
+               view,
+               line,
+               @line_start <>
+                 " To change the schema, change it in the harness, then choose Update from harness in Harness settings."
+             )
+
+      harness = ~p"/#{ctx.scope.organisation}/#{ctx.scope.workspace}/settings/harness"
+      assert has_element?(view, ~s(#{line} a[href="#{harness}"]), "Harness settings")
+    end
+
+    test "shows no badge and no line where no version sets the type", ctx do
+      {1, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.workspace_id == ^ctx.scope.workspace.id),
+          set: [template: nil]
+        )
+
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+      row = "#artifact-type-#{ctx.submission.public_id}"
+
+      assert has_element?(view, "#{row}-menu")
+      refute has_element?(view, row, "Set by the harness")
+      refute has_element?(view, "#artifact-type-submission-set-by-harness")
+    end
+
+    test "goes back to the list from the edit and delete paths, and changes nothing", ctx do
+      list = types_path(ctx.scope)
+
+      for tail <- ["edit", "delete"] do
+        path = types_path(ctx.scope, "/#{ctx.submission.public_id}/#{tail}")
+
+        assert {:error, {:live_redirect, %{to: ^list}}} = live(ctx.conn, path)
+        {:ok, view, _html} = live(ctx.conn, list)
+        refute has_element?(view, "#artifact-type-form")
+        refute has_element?(view, "#artifact-type-delete")
+        assert has_element?(view, "#artifact-type-submission-set-by-harness")
+      end
+
+      assert unchanged?(ctx)
+    end
+
+    test "refuses a save and a delete sent for the type, with no page that offers them", ctx do
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+
+      render_hook(view, "delete", %{"id" => ctx.submission.public_id})
+      assert_patch(view, types_path(ctx.scope))
+      assert unchanged?(ctx)
+      refute render(view) =~ "That type is no longer here."
+
+      # The type becomes one that the harness sets while its form is open.
+      version = Processes.current(ctx.scope.workspace)
+
+      set_template!(version, Map.delete(version.template, "submit"))
+
+      {:ok, view, _html} =
+        live(ctx.conn, types_path(ctx.scope, "/#{ctx.submission.public_id}/edit"))
+
+      set_template!(version, version.template)
+
+      view
+      |> form("#artifact-type-form",
+        artifact_type: %{size_mib: "0.5", json_schema: ~s({"type":"array"})}
+      )
+      |> render_submit()
+
+      assert_patch(view, types_path(ctx.scope))
+      assert unchanged?(ctx)
+    end
+
+    defp set_template!(version, template) do
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [template: template]
+        )
+    end
+
+    defp unchanged?(ctx) do
+      type = Artifacts.type(ctx.scope.workspace, "submission")
+
+      {type.size_limit, type.json_schema} ==
+        {ctx.submission.size_limit, ctx.submission.json_schema}
+    end
+  end
+
   describe "?name=" do
     test "opens the add form with a free, well-formed name filled in", ctx do
       {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "?name=demo-findings"))

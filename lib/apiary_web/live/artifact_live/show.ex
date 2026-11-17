@@ -13,7 +13,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # version id, of no work item or version the reader may read is not found. A reader who
   # may add a version (`artifact.write`) has Add a version on a version of a type the add
   # page lists (`Apiary.Artifacts.person_types/1`), so not on the questions or the review
-  # comments, which members write through Explore's actions. Add a version opens the add
+  # comments, which members write through Explore's actions, nor on the type that the
+  # process's `submit` sets (`Apiary.Artifacts.submit_types/1`). Add a version opens the add
   # page with the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
   #
   # **Live.** The page listens on its work item's artifacts topic
@@ -265,10 +266,12 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # True for exactly the types of `Artifacts.person_types/1`, without its 2 queries:
-  # `Artifacts.type/2` returns a type for exactly the names in `Artifacts.types/1`.
-  defp person_type?(scope, name),
-    do: name not in Artifacts.member_types() and Artifacts.type(scope.workspace, name) != nil
+  # True for exactly the types of `Artifacts.person_types/1`: `Artifacts.type/2` returns a
+  # type for exactly the names in `Artifacts.types/1`, and `submit_types/1` is the rest.
+  defp person_type?(scope, name) do
+    name not in Artifacts.member_types() and Artifacts.type(scope.workspace, name) != nil and
+      name not in Artifacts.submit_types(scope.workspace)
+  end
 
   defp add_path(scope, number, artifact),
     do:

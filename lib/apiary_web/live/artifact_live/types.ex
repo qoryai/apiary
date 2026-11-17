@@ -11,6 +11,11 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   # is kept, and a line under the table says why (`:in_use`). A type in use stays on, and
   # a line under the standard types shows why.
   #
+  # The type that the process's `submit` sets (`Apiary.Artifacts.submit_types/1`) shows the
+  # mark Set by the harness and has no Edit and no Delete: the harness sets its schema. The
+  # page shows a line under the table with the reason and a link to Harness settings. The
+  # edit and delete routes and events of such a type go back to the list.
+  #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
   #
@@ -91,7 +96,12 @@ defmodule ApiaryWeb.ArtifactLive.Types do
               row_id={&"artifact-type-#{&1.public_id}"}
               confirming={@deleting && "artifact-type-#{@deleting.public_id}"}
             >
-              <:col :let={type} label={gettext("Name")} kind="title">{type.name}</:col>
+              <:col :let={type} label={gettext("Name")} kind="title">
+                {type.name}
+                <.badge :if={type.name in @set_by_harness} class="ms-1.5">
+                  {gettext("Set by the harness")}
+                </.badge>
+              </:col>
               <:col :let={type} label={gettext("Base view")}>{Load.base_view(type.base_view)}</:col>
               <:col :let={type} label={gettext("Size limit")} kind="num">
                 {size(type.size_limit)}
@@ -101,6 +111,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
               </:col>
               <:action :let={type}>
                 <.row_menu
+                  :if={type.name not in @set_by_harness}
                   id={"artifact-type-#{type.public_id}-menu"}
                   label={gettext("Actions for %{name}", name: type.name)}
                 >
@@ -136,6 +147,13 @@ defmodule ApiaryWeb.ArtifactLive.Types do
                 </.inline_confirm>
               </:confirm>
             </.table>
+            <p
+              :for={name <- @set_by_harness}
+              id={"artifact-type-#{name}-set-by-harness"}
+              class="text-[13px]/5 text-muted"
+            >
+              <.rich text={harness_line(name, @harness_path)} />
+            </p>
             <p :if={@in_use} id="artifact-type-in-use" class="text-[13px]/5 text-error" role="alert">
               {gettext(
                 "%{name} cannot be deleted: work items of this workspace have artifacts of this type.",
@@ -301,12 +319,32 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   end
 
   defp load(socket) do
+    scope = socket.assigns.current_scope
+
     {standard, custom} =
-      socket.assigns.current_scope.workspace
+      scope.workspace
       |> Artifacts.all_types()
       |> Enum.split_with(& &1.standard)
 
-    assign(socket, standard: standard, custom: custom)
+    set_by_harness = Artifacts.submit_types(scope.workspace)
+
+    assign(socket,
+      standard: standard,
+      custom: custom,
+      set_by_harness:
+        Enum.filter(set_by_harness, fn name -> Enum.any?(custom, &(&1.name == name)) end),
+      harness_path: ~p"/#{scope.organisation}/#{scope.workspace}/settings/harness"
+    )
+  end
+
+  # The line under the table for the type `name` that the harness sets: the reason, then
+  # the step, Update from harness in Harness settings, which `path` links to.
+  defp harness_line(name, path) do
+    rich_gettext(
+      "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here. To change the schema, change it in the harness, then choose Update from harness in %{harness}.",
+      name: name,
+      harness: {:link, path, gettext("Harness settings")}
+    )
   end
 
   @impl true
@@ -351,7 +389,20 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     |> assign_form(params, [])
   end
 
-  defp apply_action(socket, :edit, %{"type_id" => id}) do
+  defp apply_action(socket, action, %{"type_id" => id} = params)
+       when action in [:edit, :delete] do
+    case custom(socket, id) do
+      %Type{name: name} ->
+        if name in socket.assigns.set_by_harness,
+          do: to_index(socket),
+          else: type_action(socket, action, params)
+
+      nil ->
+        gone(socket)
+    end
+  end
+
+  defp type_action(socket, :edit, %{"type_id" => id}) do
     case custom(socket, id) do
       %Type{} = type ->
         params = %{
@@ -377,7 +428,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     end
   end
 
-  defp apply_action(socket, :delete, %{"type_id" => id}) do
+  defp type_action(socket, :delete, %{"type_id" => id}) do
     case custom(socket, id) do
       %Type{} = type ->
         assign(socket,
@@ -393,6 +444,10 @@ defmodule ApiaryWeb.ArtifactLive.Types do
         gone(socket)
     end
   end
+
+  # The list, with the line that says why the type that the harness sets stays as it is.
+  defp to_index(socket),
+    do: push_patch(socket, to: types_path(socket.assigns.current_scope, :index))
 
   defp custom(socket, id), do: Enum.find(socket.assigns.custom, &(&1.public_id == id))
 
@@ -463,6 +518,9 @@ defmodule ApiaryWeb.ArtifactLive.Types do
           {:error, :forbidden} ->
             {:noreply, socket |> load() |> not_allowed()}
 
+          {:error, :set_by_harness} ->
+            {:noreply, socket |> load() |> to_index()}
+
           {:error, _refused} ->
             {:noreply, socket |> load() |> gone()}
         end
@@ -517,6 +575,10 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   end
 
   defp saved(socket, _params, {:error, :forbidden}), do: {:noreply, not_allowed(socket)}
+
+  defp saved(socket, _params, {:error, :set_by_harness}),
+    do: {:noreply, socket |> load() |> to_index()}
+
   defp saved(socket, _params, {:error, _refused}), do: {:noreply, gone(socket)}
 
   defp switch_line({:has_artifacts, name}),
