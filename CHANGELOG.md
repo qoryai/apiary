@@ -99,13 +99,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runs fold shows where the stage has a run, a skipped entry that the table does not list,
   an artifact, or a reader who may add a version (**Add a version** is in it). The table of
   entries stays.
-- A table in a run's report spans the width of its frame in the frames of a stage's tab, on
-  a screen 640px wide or wider; tables in Markdown on other pages keep their width.
-- A link in a run's Markdown to a page of this Qory Apiary, a path that starts with one `/`
-  or an `http` or `https` address of this instance's host, shows as a plain link in the same
-  tab, with no icon for a link out. Links to other sites keep the icon and open in a new
-  tab. Other relative links, `javascript:` and `data:` links are shown as their text, as
-  before.
+- A table in the frames of a stage's tab, a run's report among them, spans the width of its
+  frame. A table with columns too wide for the frame scrolls sideways in the frame, and
+  its words stay whole. Tables in Markdown on other pages keep their width.
+- A link in a run's Markdown to a page of this Qory Apiary shows as a plain link in the same
+  tab, with no icon for a link out. A page of this Qory Apiary is a path that starts with
+  one `/`, or an `http` or `https` address of this instance's host and port, with no user
+  name or password. A path with a character outside letters, digits and
+  `-._~!$&()*+,;=:@%/?#`, with an encoded `/` or `\`, or with a `.` or `..` segment stays
+  text, as do other relative links and `javascript:` and `data:` links. Links to other
+  sites keep the icon and open in a new tab.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

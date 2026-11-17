@@ -437,7 +437,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # this Qory Apiary, else nil: a path that starts with one `/` and has only the characters
   # of a URL path, or an absolute `http` or `https` URL of the host and port of
   # `ApiaryWeb.Endpoint` (no user name or password) with such a path. Anything else, such
-  # as `//host/x`, `/\host`, `x`, `?q`, `#f`, `javascript:` or `data:`, is nil.
+  # as `//host/x`, `/./x`, `/\host`, `x`, `?q`, `#f`, `javascript:` or `data:`, is nil.
   @doc false
   @spec site_path(term) :: String.t() | nil
   def site_path("/" <> _rest = url), do: if(site_path?(url), do: url)
@@ -458,8 +458,21 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
 
   # What a path of this Qory Apiary may have: no `//` start, no backslash, no whitespace
   # or control character (a browser removes a tab or a line break from an address, and
-  # reads `\` as `/`), no `<`, `>` or quote.
-  defp site_path?(path), do: Regex.match?(~r{\A/(?!/)[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*\z}, path)
+  # reads `\` as `/`), no `<`, `>` or quote, no encoded `/` or `\` (`%2F`, `%5C`), and no
+  # `.` or `..` segment, also as `%2E` (a browser resolves them, so `/.//host` is
+  # `//host`).
+  defp site_path?(path) do
+    Regex.match?(~r{\A/(?!/)[A-Za-z0-9\-._~!$&()*+,;=:@%/?#]*\z}, path) and
+      not Regex.match?(~r{%2f|%5c}i, path) and not dot_segment?(path)
+  end
+
+  defp dot_segment?(path) do
+    [before | _query] = String.split(path, ["?", "#"], parts: 2)
+
+    before
+    |> String.split("/")
+    |> Enum.any?(&(String.replace(&1, ~r{%2e}i, ".") in [".", ".."]))
+  end
 
   defp own_host?(%URI{host: host, port: port}) do
     own = ApiaryWeb.Endpoint.struct_url()

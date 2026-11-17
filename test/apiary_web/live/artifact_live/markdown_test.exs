@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
   # The Markdown of a document artifact as its view shows it
   # (`ApiaryWeb.ArtifactLive.Markdown`): no raw HTML, links of http, https and mailto and
-  # of the pages of this Qory Apiary only, no image loaded, headings two levels down, Mermaid blocks marked for the hook,
-  # and texts past the bounds as written.
+  # of the pages of this Qory Apiary only, no image loaded, headings two levels down,
+  # Mermaid blocks marked for the hook, and texts past the bounds as written.
   use ExUnit.Case, async: true
 
   alias ApiaryWeb.ArtifactLive.Markdown
@@ -90,6 +90,102 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     assert out =~ ~s(<h3><a href="#{@path}">h</a></h3>)
     assert out =~ ~s(<em><a href="#{@path}/files/a.md">e</a></em>)
     assert length(String.split(out, "q-ticket-ext")) == 2
+  end
+
+  test "a link or text with the marker host of a render is no link of this Qory Apiary" do
+    # The renderer's token is random per render, so a document cannot write the marker
+    # host: a link to an address like it is a link to another site, and text is text.
+    fake = "qint" <> String.duplicate("0", 32) <> ".invalid"
+
+    out = html("[a](https://#{fake}/x) https://#{fake}/y and `#{fake}` and #{fake}/z")
+
+    assert out =~ ~s(<a href="https://#{fake}/x" target="_blank")
+    assert out =~ "q-ticket-ext"
+    assert out =~ "<code>#{fake}</code>"
+    assert out =~ " and #{fake}/z"
+    refute out =~ ~s(<a href="/x")
+    refute out =~ ~s(<a href="/y")
+  end
+
+  test "a path with a character outside the allowed set, or an encoded slash, stays text" do
+    for url <- [
+          "/x>y",
+          "/x'y",
+          "/x\0y",
+          "/x\x7Fy",
+          "/x%2F%2Fevil",
+          "/x%2fevil",
+          "/x%5Cevil",
+          "/x%5cevil",
+          "/%2F%2Fevil.example",
+          "/%5Cevil.example"
+        ] do
+      assert Markdown.site_path(url) == nil, inspect(url)
+      refute html("[a](<#{url}>)") =~ "<a ", inspect(url)
+    end
+  end
+
+  test "a path with a dot segment stays text, also as %2e" do
+    for url <- [
+          "/.//evil.example",
+          "/./x",
+          "/a/./b",
+          "/a/../b",
+          "/..",
+          "/.",
+          "/%2e//evil.example",
+          "/%2E%2E/x",
+          "/.%2e/x",
+          "/a/%2e%2E",
+          "/a/..?q=1",
+          "/a/.#f"
+        ] do
+      assert Markdown.site_path(url) == nil, inspect(url)
+      refute html("[a](<#{url}>)") =~ "<a ", inspect(url)
+    end
+
+    # A dot inside a name, or in the query or fragment, is no dot segment.
+    for url <- ["/a.b/c", "/a/...", "/a/b.", "/a?q=/../x", "/a#/./x", "/.well-known/x"] do
+      assert Markdown.site_path(url) == url, inspect(url)
+    end
+  end
+
+  test "an absolute URL of this host and port keeps the rules of a path, the host exactly" do
+    own = ApiaryWeb.Endpoint.struct_url()
+    base = "#{own.scheme}://#{own.host}:#{own.port}"
+
+    # A path of `//` start, a dot segment, a host with a trailing dot, or another scheme's
+    # default port is another site: it keeps its icon.
+    out =
+      html(
+        "[a](#{base}//evil.example) [b](#{base}/./x) [c](#{own.scheme}://#{own.host}.:#{own.port}/x) " <>
+          "[d](#{own.scheme}://#{own.host}/x)"
+      )
+
+    assert length(String.split(out, "q-ticket-ext")) == 5
+    refute out =~ ~s(<a href="/)
+
+    # The host in another case is the same host.
+    upper = "#{own.scheme}://#{String.upcase(own.host)}:#{own.port}"
+    assert html("[a](#{upper}/x)") =~ ~s(<a href="/x">a</a>)
+  end
+
+  test "an entity in a link address is decoded before the check" do
+    for text <- ["[a](/x&quot;y)", "[a](/x&#10;y)", "[a](/x&#9;y)", "[a](/x&#92;y)"] do
+      out = html(text)
+      refute out =~ "<a ", inspect(text)
+    end
+
+    # The same address with an entity that is a safe character is a link.
+    assert html("[a](/x&amp;y)") =~ ~s(<a href="/x&amp;y">a</a>)
+  end
+
+  test "an image with a path is its words, never a link of this Qory Apiary" do
+    out = html("![Form](/acme/main/work/7/artifacts/av_1/files/form.png)")
+
+    refute out =~ "<a "
+    refute out =~ "<img"
+    assert out =~ "Image: Form"
   end
 
   test "site_path/1 takes a path that starts with one slash and the host of this Qory Apiary" do
