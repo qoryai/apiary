@@ -5954,10 +5954,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   # Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, ModelChoices}
+  alias Apiary.{Connections, ModelChoices, Repo}
+  alias Apiary.ModelChoices.ModelChoice
 
   setup %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -6026,6 +6028,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
              lv,
              ~s{#set-up-model-form input[name="model[source]"][value="#{ctx.litellm.public_id}"][checked]}
            )
+
+    lv |> form("#set-up-model-form") |> render_submit()
+
+    workspace_id = ctx.scope.workspace.id
+
+    # The step saves no model for a provider with no suggestions, flag on or off, so
+    # only the provider is checked.
+    assert [connection_id] =
+             Repo.all(
+               from c in ModelChoice,
+                 where: c.workspace_id == ^workspace_id and is_nil(c.target_id),
+                 select: c.connection_id
+             )
+
+    assert connection_id == ctx.litellm.id
 
     assert {keys, providers} = offers(ctx)
     assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])

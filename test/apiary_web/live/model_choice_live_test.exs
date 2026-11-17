@@ -803,6 +803,18 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
     assert has_element?(lv, "#model-fallback-none")
   end
 
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: with LiteLLM the one provider, Model is not shown and the page says to add one",
+       ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+    {:ok, _provider} = Connections.delete_provider(scope, anthropic)
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    refute in_model?(lv, litellm)
+    assert has_element?(lv, "#model-unserved #model-none")
+    refute has_element?(lv, "#model-other_runtime")
+  end
+
   @tag with_features: Apiary.Features.all()
   test "on: Model and a fallback row offer LiteLLM", ctx do
     %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx

@@ -450,7 +450,9 @@ defmodule Apiary.Kinds.ProvidersOfferedTest do
   end
 
   describe "with model_proxies" do
+    # with_model_proxies/1 turns it on over a set without it.
     @describetag needs: :secrets
+    @describetag with_features: Apiary.Features.all() -- [:model_proxies]
     setup {Apiary.DataCase, :with_model_proxies}
 
     test "every provider of the catalogue is offered" do
