@@ -6,6 +6,7 @@ defmodule Apiary.Artifacts.WatchTest do
   # application's setting.
   use Apiary.DataCase, async: false
 
+  import ExUnit.CaptureLog
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -350,5 +351,60 @@ defmodule Apiary.Artifacts.WatchTest do
              end)
 
     assert [%{kind: "watch"}] = Feed.entries(forge)
+  end
+
+  describe "where the instance's public address is plain http to a host that is not local" do
+    setup do
+      endpoint = Application.get_env(:apiary, ApiaryWeb.Endpoint)
+      running = :persistent_term.get({Phoenix.Endpoint, ApiaryWeb.Endpoint}, nil)
+
+      on_exit(fn ->
+        Application.put_env(:apiary, ApiaryWeb.Endpoint, endpoint)
+        if running, do: :persistent_term.put({Phoenix.Endpoint, ApiaryWeb.Endpoint}, running)
+      end)
+
+      # `Apiary.Setup.public_url/0` reads the configuration where no endpoint runs.
+      :persistent_term.erase({Phoenix.Endpoint, ApiaryWeb.Endpoint})
+
+      Application.put_env(
+        :apiary,
+        ApiaryWeb.Endpoint,
+        Keyword.put(endpoint, :url, scheme: "http", host: "qory.example", port: 4100)
+      )
+
+      :ok
+    end
+
+    test "the push is refused, with a log line that starts with the fix, and stores nothing",
+         ctx do
+      submits!(ctx, @submit)
+      forge = forge!(ctx)
+      assert WorkItems.stable_url(ctx.work_item) =~ ~r{\Ahttp://qory.example:4100/work-items/wi_}
+
+      log =
+        capture_log(fn ->
+          assert {:error, :public_url} =
+                   Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+        end)
+
+      assert log =~ "Set PUBLIC_URL to an https:// address:"
+      assert Feed.entries(forge) == []
+      assert Repo.aggregate(Version, :count) == 0
+    end
+
+    test "a push that adds no entry is not refused", ctx do
+      submits!(ctx, @submit)
+      forge = forge!(ctx)
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+
+      assert {:ok, %Version{}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "verdict", [
+                 json_file("verdict.json", %{"verdict" => "passed"})
+               ])
+
+      assert Feed.entries(forge) == []
+    end
   end
 end

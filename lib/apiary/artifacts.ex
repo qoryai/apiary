@@ -151,9 +151,12 @@ defmodule Apiary.Artifacts do
   # adapter of the work item's target collection (`Apiary.Adapters.Feed`), one per
   # version. A work item with no target, or a target that no collection matches
   # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
-  # stored all the same. A push of a standard type reads nothing for the entry. A
-  # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
-  # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace: verdicts are
+  # stored all the same. A push of a standard type reads nothing for the entry. Where the
+  # instance's public address is not one the entry takes (plain http to a host that is
+  # not `localhost` or a loopback address), the push is `{:error, :public_url}`, rolled
+  # back, with a log line that starts with the fix: set `PUBLIC_URL`. A withdrawal writes
+  # no entry. The workspace's lock comes first, as in the core's lock order
+  # (`Apiary.WorkItems`). An always-on type takes no lock on the workspace: verdicts are
   # the most frequent pushes, and the stage runner pushes them inside transactions that
   # already hold the work item. The work item's lock makes the transactions of pushes to
   # one work item run one after the other, so the numbers of an
@@ -639,7 +642,8 @@ defmodule Apiary.Artifacts do
              | :store_unavailable
              | :stage_changed
              | :run_ended
-             | :run_cancelled}
+             | :run_cancelled
+             | :public_url}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
@@ -1188,24 +1192,40 @@ defmodule Apiary.Artifacts do
   # sent and no other system is called inside the transaction. `Feed.append/2` takes only
   # an adapter with no organisation, which the `nodes` check keeps true of every adapter;
   # any other node gets no entry.
+  #
+  # `{:error, :public_url}`, which rolls the push back, where the stable url is not one a
+  # watch entry takes: the instance's `PUBLIC_URL` is plain http to a host other than
+  # `localhost` or a loopback address, or has a character outside RFC 3986, such as a
+  # host in Unicode. The boot accepts both (`config/runtime.exs`), and the error is
+  # logged with the fix.
   defp watch(%{actor: :run, run_id: run_id}, held, %Type{standard: false}, %Artifact{type: type}) do
     with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
          ^type <- submit_type(dispatch_run),
          %{} = target <- target(held),
          {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
            RunCredentials.work_collection(dispatch_run, held, target) do
-      {:ok, _seq} =
-        Feed.append(adapter, %{
-          kind: "watch",
-          work_item_id: held.public_id,
-          url: WorkItems.stable_url(held)
-        })
+      append_watch(adapter, held)
+    else
+      _no_entry -> :ok
     end
-
-    :ok
   end
 
   defp watch(_writer, _held, _type, _artifact), do: :ok
+
+  defp append_watch(adapter, %WorkItem{} = held) do
+    url = WorkItems.stable_url(held)
+
+    if Feed.work_item_url?(url) do
+      {:ok, _seq} = Feed.append(adapter, %{kind: "watch", work_item_id: held.public_id, url: url})
+      :ok
+    else
+      Logger.error(
+        "Set PUBLIC_URL to an https:// address: a run cannot store its submission with this one."
+      )
+
+      {:error, :public_url}
+    end
+  end
 
   # The type in `submit.type` of the run's process version, nil for none.
   defp submit_type(%DispatchRun{process_version_id: id}) do
