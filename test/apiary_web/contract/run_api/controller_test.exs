@@ -458,6 +458,104 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ]
     end
 
+    test "has only the open notes: a later approval of the stage closes them", ctx do
+      place!(ctx)
+      shape = "st_p9w5cvh311"
+      time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
+
+      # Explore's request and failed check, then Explore's approval.
+      decide!(ctx, :request_changes, note: "Add the empty cart.", inserted_at: time.(1))
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+
+      Repo.insert!(%Check{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: Apiary.Processes.version_for(work_item).id,
+        stage_id: @explore,
+        round: 2,
+        gaps: "proposal: no version of this stage.",
+        inserted_at: time.(1)
+      })
+
+      decide!(ctx, :approve, inserted_at: time.(2))
+      # A move from Shape back to Explore, which Explore has not passed since.
+      move =
+        decide!(ctx, :move,
+          stage_id: shape,
+          to_stage_id: @explore,
+          note: "Back to Explore.",
+          inserted_at: time.(3)
+        )
+
+      # Shape's request, then the automatic approval of Shape's gate none.
+      decide!(ctx, :request_changes, stage_id: shape, note: "Split it.", inserted_at: time.(4))
+
+      decide!(ctx, :approve,
+        stage_id: shape,
+        user_id: nil,
+        automatic: true,
+        inserted_at: time.(5)
+      )
+
+      open = decide!(ctx, :request_changes, note: "Keep the coupon.", inserted_at: time.(6))
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      name = Inputs.person_name(ctx.scope.user.id)
+
+      assert body["notes"] == [
+               %{
+                 "kind" => "move",
+                 "stage_id" => shape,
+                 "by" => %{"name" => name},
+                 "note" => "Back to Explore.",
+                 "artifact_version_id" => nil,
+                 "at" => at(move.inserted_at)
+               },
+               %{
+                 "kind" => "request_changes",
+                 "stage_id" => @explore,
+                 "by" => %{"name" => name},
+                 "note" => "Keep the coupon.",
+                 "artifact_version_id" => nil,
+                 "at" => at(open.inserted_at)
+               }
+             ]
+    end
+
+    test "keeps a move with no stage it went to open, whatever is approved after it", ctx do
+      place!(ctx)
+      shape = "st_p9w5cvh311"
+      time = fn seconds -> DateTime.add(DateTime.utc_now(), seconds - 60, :second) end
+
+      # A move kept before its stage was: no `to_stage_id`.
+      decide!(ctx, :move, stage_id: shape, note: "Back to Explore.", inserted_at: time.(1))
+      decide!(ctx, :approve, stage_id: shape, inserted_at: time.(2))
+      decide!(ctx, :approve, inserted_at: time.(3))
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      assert [%{"kind" => "move", "note" => "Back to Explore."}] = body["notes"]
+    end
+
+    test "keeps a note open beside an approval of its stage at the same time", ctx do
+      place!(ctx)
+      at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      decide!(ctx, :request_changes, note: "Add the empty cart.", inserted_at: at)
+      decide!(ctx, :approve, inserted_at: at)
+
+      body = json_response(read(ctx, "/work-item"), 200)
+      assert [%{"kind" => "request_changes", "note" => "Add the empty cart."}] = body["notes"]
+    end
+
+    test "the database refuses a stage it went to on a decision that is not a move", ctx do
+      place!(ctx)
+
+      assert_raise Ecto.ConstraintError, ~r/gate_decisions_to_stage_check/, fn ->
+        decide!(ctx, :approve, to_stage_id: @explore)
+      end
+    end
+
     test "has the newest verdict with its points", ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
 

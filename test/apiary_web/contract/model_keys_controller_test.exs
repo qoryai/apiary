@@ -225,6 +225,24 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert %{"keys" => [_, _]} = Jason.decode!(conn.resp_body)
     end
 
+    test "a report with a session is stored and answered as one without", ctx do
+      item = state(ctx, observed_at: now_z(-1))
+
+      without = post_report(ctx, report(ctx, [item]))
+      assert without.status == 200
+      stored = rows()
+
+      Repo.delete_all(State)
+      with_session = post_report(ctx, report(ctx, [item], session: 2))
+      assert with_session.status == 200
+      assert signed_answer?(with_session)
+
+      assert Jason.decode!(with_session.resp_body) == Jason.decode!(without.resp_body)
+
+      assert Enum.map(rows(), &Map.drop(&1, [:updated_at])) ==
+               Enum.map(stored, &Map.drop(&1, [:updated_at]))
+    end
+
     test "replayed older is answered the newer state, which stays", ctx do
       newer = state(ctx, observed_at: now_z(-1))
       assert post_report(ctx, report(ctx, [newer])).status == 200
@@ -377,6 +395,11 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
             {Jason.encode!(Map.delete(good, "time")), "body"},
             {Jason.encode!(Map.put(good, "run_id", Ecto.UUID.generate())), "run_id"},
             {Jason.encode!(Map.put(good, "time", "yesterday")), "time"},
+            {Jason.encode!(Map.put(good, "session", 0)), "session"},
+            {Jason.encode!(Map.put(good, "session", -1)), "session"},
+            {Jason.encode!(Map.put(good, "session", 1.5)), "session"},
+            {Jason.encode!(Map.put(good, "session", "1")), "session"},
+            {Jason.encode!(Map.put(good, "session", nil)), "session"},
             {Jason.encode!(Map.put(good, "keys", %{})), "keys"},
             {report(ctx, [Map.put(item, "extra", 1)]), "keys"},
             {report(ctx, [Map.delete(item, "source")]), "keys"},

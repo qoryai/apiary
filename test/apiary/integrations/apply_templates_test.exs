@@ -162,17 +162,22 @@ defmodule Apiary.Integrations.ApplyTemplatesTest do
              ]
     end
 
-    test "refuses a target path with .., //, *, ?, # or a space character, before filling" do
+    test "refuses a target path with .., //, *, ?, #, { or } or a space character, before filling" do
       items = [item(["/{target.path}/*"])]
 
       refused =
         ["a/../b", "..", "a//b", "a*", "a?b", "a#b", "", <<0xFF>>] ++
+          ["acme/sh{op", "acme/{}", "{}/{}", "}", "{", "a}b"] ++
           for(code <- @spaces, do: "a" <> <<code::utf8>> <> "b")
 
       for path <- refused do
         assert ApplyTemplates.fill(items, path) == {:error, :path_refused}, inspect(path)
         refute ApplyTemplates.target_path?(path), inspect(path)
       end
+
+      assert ApplyTemplates.refused_in("acme/sh{op") == {:character, "{"}
+      assert ApplyTemplates.refused_in("acme/}") == {:character, "}"}
+      assert ApplyTemplates.refused_in("acme/{}") == {:character, "{"}
 
       for path <- ["a.b", "a/.b", "a./b", "/a", "a/", "Ä/ö", "a%2F.b"] do
         assert {:ok, _items} = ApplyTemplates.fill(items, path), inspect(path)
