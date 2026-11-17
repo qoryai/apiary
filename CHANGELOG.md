@@ -18,7 +18,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   limit, the default. A change applies to prebuilds that start after it. A prebuild's run
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
-  the member. The run contract is vendored at integrations `dbc1ce5`.
+  the member. The run contract is vendored at integrations `dbc1ce5`, with the tier rename
+  of integrations `b22085a` applied on top.
 <!-- feature: workflow_model -->
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
@@ -1390,12 +1391,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
 - The model tier `fast` is renamed `balanced`: the tiers of a model choice are `light`,
   `balanced` and `thinking`. A saved model choice with the tier `fast` is deleted, with
   its fallbacks; set the choice again with the tier `balanced`. A save of a choice with
   `fast` fails with "Use light, balanced or thinking: fast is not a tier." A run's
   documents have `balanced` in place of `fast` under `run_settings.tiers`, as integrations
   `b22085a` describes.
+<!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
   `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
@@ -2294,6 +2297,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then upgrade Qory Apiary. A model key with a Use up to percentage has
   `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the run
   configuration schema of an earlier gateway does not define.
+- Upgrade qory on every machine first, to a qory built with the tier rename (`fast`
+  becomes `balanced`), then upgrade Qory Apiary. A run's documents can have the tier
+  `balanced` under `run_settings.tiers`, a key that the run documents schema of an
+  earlier qory does not define, and an earlier qory checks `run_settings` against that
+  schema. The upgrade deletes each model choice with the tier `fast` (Migrations, below);
+  set those choices again with the tier `balanced`. To go back to the previous release,
+  first take the schema back with `Apiary.Release.rollback(Apiary.Repo, 20261118120000)`
+  (Upgrading, Rolling back).
 <!-- /feature -->
 - On a stop, Qory Apiary finishes the open requests for up to 20 seconds in total, then
   the running jobs for up to 15 seconds. Give the container or the service a stop grace
@@ -2308,11 +2319,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
-- `model_choices` (20261118120000): the check `model_choice_tiers_valid` accepts the
-  tier `balanced` in place of `fast`. The migration deletes each model choice whose tier
-  map has `fast`, with its fallbacks, and moves no data. Rolling back restores the check
-  of `fast` and deletes each model choice whose tier map has `balanced`, with its
-  fallbacks.
+<!-- feature: factory, secrets -->
+- `model_choices` and `model_choice_fallbacks` (20261118120000): the function
+  `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
+  the tier `balanced` in place of `fast`. The migration deletes each model choice whose
+  tier map has `fast`, with its fallbacks, and moves no data. The delete scans
+  `model_choices`; the function change locks no table. The migration is short. Rolling
+  back restores the function with `fast` and deletes each model choice whose tier map
+  has `balanced`, with its fallbacks.
+<!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
   scans the table, which has one row, as it is added, under a lock that blocks reads and
