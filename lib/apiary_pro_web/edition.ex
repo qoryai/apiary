@@ -36,6 +36,9 @@ defmodule ApiaryProWeb.Edition do
   - The switcher's places: the workspaces a person reaches through an operator; and what
     the pages say to a person who reads an organisation as an instance admin or as a
     person of the operator of one of its workspaces (`ApiaryProWeb.Readers`).
+  - The sentence in place of a workflow's time limit in a workspace an operator operates,
+    to a person of the organisation, while the operator sets the time limits there
+    (`operator_sentence/2`).
   - The names no slug may be beyond the core's (`ApiaryWeb.ReservedSlugs`): the edition's pages
     of an organisation, its former top-level paths, and other reserved top-level names.
   """
@@ -46,6 +49,7 @@ defmodule ApiaryProWeb.Edition do
 
   alias Apiary.Access
   alias Apiary.Accounts.Scope
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryPro.{OperatedPlace, Transfers}
   alias ApiaryProWeb.SettingsLive.{Ownership, SecretsAndVariables}
   alias ApiaryWeb.Nav.Entry
@@ -233,6 +237,29 @@ defmodule ApiaryProWeb.Edition do
     do: gettext("A workspace with an operator cannot be deleted.")
 
   def refusal_sentence(_reason), do: nil
+
+  # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator of a workspace
+  # sets its time limits (`ApiaryPro.Access`): a person who acts there as a person of the
+  # organisation, not through the operator, is shown the limits with the operator's name
+  # and no way to change them.
+  @impl true
+  def operator_sentence(
+        :"time_limit.edit",
+        %Scope{organisation: %Organisation{} = organisation, workspace: %Workspace{} = workspace} =
+          scope
+      ) do
+    with true <- ApiaryPro.Flags.operator_infrastructure?(),
+         operator_id when is_binary(operator_id) <-
+           ApiaryPro.WorkspaceOperators.operator_id(organisation, workspace),
+         false <- ApiaryPro.Access.through_operator?(scope),
+         %Organisation{name: name} <- Apiary.Repo.get(Organisation, operator_id) do
+      gettext("Set by your operator, %{operator}. Ask them to change it.", operator: name)
+    else
+      _no_sentence -> nil
+    end
+  end
+
+  def operator_sentence(_about, _scope), do: nil
 
   # While `ApiaryPro.Flags.operator_infrastructure?/0` is on, an entry made in an operated
   # workspace by a person who acted there through its operator names the operator beside

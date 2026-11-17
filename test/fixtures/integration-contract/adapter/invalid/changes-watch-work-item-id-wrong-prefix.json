@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_1",
+  "changes": [
+    {
+      "kind": "watch",
+      "work_item_id": "wx_8Kx2mQ4vT9",
+      "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    }
+  ]
+}

@@ -489,8 +489,27 @@ defmodule Apiary.Artifacts.FormatTest do
 
       assert error =~ "not the title"
 
-      assert {:error, {:schema, %{path: "#/questions/0" <> _}}} =
+      # An answer with option null and no note names the missing note, in the answer and
+      # in the history.
+      assert {:error,
+              {:schema, %{path: "#/questions/0/answer", error: "property 'note' is required"}}} =
                questions(context, [answered.(%{"option" => nil, "by" => by, "at" => @at})])
+
+      assert {:error,
+              {:schema, %{path: "#/questions/0/history/0", error: "property 'note' is required"}}} =
+               questions(context, [
+                 question(%{
+                   "options" => options,
+                   "history" => [
+                     %{
+                       "option" => nil,
+                       "by" => by,
+                       "at" => @at,
+                       "reopened" => %{"run" => 13, "at" => @at}
+                     }
+                   ]
+                 })
+               ])
 
       # An earlier answer in the history too.
       reopened = %{"run" => 13, "at" => @at}

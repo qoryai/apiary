@@ -49,6 +49,18 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A first attempt
+
+  A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
+  ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
+  its output checks and its gate (the stage runner, lib/apiary/stages/runner.ex). Another
+  verdict acts as for any entry. A loop's body refuses the key (`:schema`), because `passed`
+  already leaves a loop.
+
+  An output takes `when` and `unless` like an input, with `{track: ID}` or `{input: T}`. It
+  is required only while no condition holds it back, so a stage whose required output is
+  held back goes on to its gate without it.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -95,14 +107,14 @@ defmodule Apiary.Processes do
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, a loop or a workflow entry, or in
-  `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
+  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
-  `:condition_both` for a stage, an input, a loop or a workflow entry with both `when` and
-  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
-  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
-  on a gate of kind `none`;
+  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
+  `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
+  for a track id in a gate's `tracks` that the document's `tracks` do not declare;
+  `:gate_none_tracks` for tracks on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -129,14 +141,12 @@ defmodule Apiary.Processes do
           | {:input_not_output, String.t(), String.t()}
 
   @typedoc """
-  What the harness declares of a workflow: its name, its access level and time limit
-  (nil where Qory Apiary does not keep them), and the artifact types it reads (nil for
-  any type).
+  What the harness declares of a workflow: its name, its access level (nil where Qory
+  Apiary does not keep it), and the artifact types it reads (nil for any type).
   """
   @type declaration :: %{
           name: String.t(),
           access: :read | :write_no_push | :write | nil,
-          time_limit: String.t() | nil,
           reads: [String.t()] | nil
         }
 
@@ -379,8 +389,8 @@ defmodule Apiary.Processes do
   # The conditions that no earlier stage can meet, in the document's order: an `input` type
   # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
   # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
-  # input, a workflow entry or a loop, those in a loop's body included, and in `when` on an
-  # output. The first stage has no earlier stage, so each of its conditions is refused.
+  # input, an output, a workflow entry or a loop, those in a loop's body included. The first
+  # stage has no earlier stage, so each of its conditions is refused.
   defp condition_errors(stages) do
     stages
     |> Enum.with_index()
@@ -1553,8 +1563,8 @@ defmodule Apiary.Processes do
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
   the level recorded with the saved workflow where one is, else nil: the level the
-  workflow declares in its stack. `time_limit` and `reads` are nil, since Qory Apiary
-  keeps neither of them: nil `reads` means any type.
+  workflow declares in its stack. `reads` is nil, since Qory Apiary does not keep it: nil
+  `reads` means any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
@@ -1567,7 +1577,7 @@ defmodule Apiary.Processes do
         |> Enum.sort_by(&(not is_nil(&1.target_id)))
         |> Enum.find_value(& &1.access)
 
-      %{name: name, access: access, time_limit: nil, reads: nil}
+      %{name: name, access: access, reads: nil}
     end
   end
 
