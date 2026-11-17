@@ -3673,24 +3673,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
 
     # Fast track at Verify's gate, with the build report and the submission that Build's
-    # run wrote, the report's text linking to the draft at the destination. The process is
-    # the one `screens!/1` and `reading!/3` saved.
-    defp at_verify_gate_with_submission!(scope) do
+    # run wrote. The report's text links to the draft at the destination, or, with
+    # `link: :version`, to the page of the submission's version. The process is the one
+    # `screens!/1` and `reading!/3` saved.
+    defp at_verify_gate_with_submission!(scope, link \\ :draft) do
       work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
       {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
 
       work_item
       |> reload()
       |> end_run!(fn run, _registered ->
-        push!(
-          run,
-          work_item,
-          "test-features",
-          "The submission has the link to the draft at the destination: " <>
-            "[submission v1](https://git.example.com/northfield/court-booking/pull/48)."
-        )
-
-        {:ok, _version} =
+        {:ok, submission} =
           Artifacts.push(
             {:run, run},
             reload(work_item),
@@ -3722,6 +3715,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
             ],
             stage_id: run.stage_id
           )
+
+        target =
+          case link do
+            :draft ->
+              "https://git.example.com/northfield/court-booking/pull/48"
+
+            :version ->
+              page(scope, work_item.number, "/artifacts/#{submission.public_id}")
+          end
+
+        push!(
+          run,
+          work_item,
+          "test-features",
+          "The submission has the link to the draft at the destination: [submission v1](#{target})."
+        )
 
         passed!(run)
       end)
@@ -3765,6 +3774,33 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                  "submission v1"
                )
       end
+    end
+
+    test "the report's link to the submission's version is a plain link of this Qory Apiary; a link out keeps its icon",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope, :version)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      version =
+        Repo.one!(
+          from v in Apiary.Artifacts.Version,
+            join: a in assoc(v, :artifact),
+            where: a.work_item_id == ^work_item.id and a.type == "submission",
+            select: v.public_id
+        )
+
+      path =
+        page(scope, work_item.number, "/artifacts/#{version}")
+
+      link = ~s(#work-item-tab-output-test-features-text a[href="#{path}"])
+
+      assert has_element?(view, link, "submission v1")
+      refute has_element?(view, "#{link}[target]")
+      refute has_element?(view, "#{link} .q-ticket-ext")
+      assert has_element?(view, "#work-item-tab.q-xp-stage")
     end
 
     defp build_run(work_item),

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
   # The Markdown of a document artifact as its view shows it
-  # (`ApiaryWeb.ArtifactLive.Markdown`): no raw HTML, links of http, https and mailto
-  # only, no image loaded, headings two levels down, Mermaid blocks marked for the hook,
+  # (`ApiaryWeb.ArtifactLive.Markdown`): no raw HTML, links of http, https and mailto and
+  # of the pages of this Qory Apiary only, no image loaded, headings two levels down, Mermaid blocks marked for the hook,
   # and texts past the bounds as written.
   use ExUnit.Case, async: true
 
@@ -31,7 +31,8 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     out =
       html("""
       [web](https://example.com/a) [plain](http://example.com/b) [mail](mailto:dana@example.com)
-      [js](javascript:alert(1)) [data](data:text/html,x) [rel](/admin) [user](https://a:b@example.com)
+      [js](javascript:alert(1)) [data](data:text/html,x) [user](https://a:b@example.com)
+      [word](admin) [dot](./admin) [query](?q=1) [frag](#f)
       """)
 
     assert out =~ ~s(href="https://example.com/a")
@@ -40,9 +41,93 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     refute out =~ "javascript:"
     refute out =~ "data:"
     refute out =~ ~s(href="/admin")
+    refute out =~ ~s(href="admin")
+    refute out =~ ~s(href="./admin")
+    refute out =~ ~s(href="?q=1")
+    refute out =~ ~s(href="#f")
     refute out =~ "a:b@"
     assert out =~ "js"
     assert out =~ ~s(rel="nofollow noopener noreferrer")
+  end
+
+  @path "/acme/main/work/7/artifacts/av_1"
+
+  test "a link to a page of this Qory Apiary is a plain link with no icon and no new tab" do
+    out = html("[submission v1](#{@path}?a=1&b=2#top) and [site](https://example.com/x)")
+
+    assert out =~ ~s(<a href="#{@path}?a=1&amp;b=2#top">submission v1</a>)
+    refute out =~ "qint"
+    refute out =~ ".invalid"
+
+    # The link to another site keeps its icon, its new tab and its words for a reader.
+    assert out =~
+             ~s(<a href="https://example.com/x" target="_blank" rel="nofollow noopener noreferrer">site<span class="q-ticket-ext)
+
+    assert out =~ "(opens in a new tab)"
+
+    assert length(String.split(out, "q-ticket-ext")) == 2
+  end
+
+  test "a link to the host of this Qory Apiary is a link to its path, with no icon" do
+    own = ApiaryWeb.Endpoint.struct_url()
+    base = "#{own.scheme}://#{own.host}:#{own.port}"
+
+    other = "#{own.scheme}://#{own.host}.example.com:#{own.port}"
+
+    out = html("[a](#{base}#{@path}) [b](#{base}) [c](#{other}/x) [d](#{base}1/x)")
+
+    assert out =~ ~s(<a href="#{@path}">a</a>)
+    assert out =~ ~s(<a href="/">b</a>)
+    # Another host, though its name starts with this one's, and another port, are other sites.
+    assert out =~ ~s(href="#{other}/x")
+    assert out =~ ~s(href="#{base}1/x")
+    assert length(String.split(out, "q-ticket-ext")) == 3
+  end
+
+  test "a link of this Qory Apiary has no icon in a list, a heading and under emphasis" do
+    out = html("# [h](#{@path})\n\n- *[e](#{@path}/files/a.md)*\n- [x](https://example.com)")
+
+    assert out =~ ~s(<h3><a href="#{@path}">h</a></h3>)
+    assert out =~ ~s(<em><a href="#{@path}/files/a.md">e</a></em>)
+    assert length(String.split(out, "q-ticket-ext")) == 2
+  end
+
+  test "site_path/1 takes a path that starts with one slash and the host of this Qory Apiary" do
+    own = ApiaryWeb.Endpoint.struct_url()
+
+    assert Markdown.site_path("/a") == "/a"
+    assert Markdown.site_path("/a/b?x=1&y=2#f") == "/a/b?x=1&y=2#f"
+    assert Markdown.site_path("/") == "/"
+    assert Markdown.site_path("http://#{own.host}:#{own.port}/a?b#c") == "/a?b#c"
+    assert Markdown.site_path("HTTP://#{String.upcase(own.host)}:#{own.port}") == "/"
+
+    for url <- [
+          "//example.com",
+          "//example.com/x",
+          "/\\example.com",
+          "\\/example.com",
+          "/\texample.com",
+          "/ a",
+          "/a\nb",
+          "/a\"b",
+          "/<a",
+          "/é",
+          "./x",
+          "../x",
+          "x",
+          "",
+          "?q",
+          "#f",
+          "javascript:alert(1)",
+          "data:text/html,x",
+          "mailto:a@example.com",
+          "https://example.com/a",
+          "https://a:b@#{own.host}:#{own.port}/a",
+          "ftp://#{own.host}:#{own.port}/a",
+          nil
+        ] do
+      assert Markdown.site_path(url) == nil, inspect(url)
+    end
   end
 
   test "loads no image: it is a link with its words" do

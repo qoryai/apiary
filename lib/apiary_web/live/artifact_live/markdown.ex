@@ -13,9 +13,11 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #   * The words of the document, its text, code and an image's alt text, are shown as
   #     an external system's text of several lines is (`Apiary.ExternalText.lines/1`).
   #   * A link keeps its address only where it is an absolute `http` or `https` URL with a
-  #     host and no user name or password, or a `mailto:` address; any other link is its
-  #     text, unlinked. A link's title is dropped, and a link opens in a new tab with
-  #     `rel="nofollow noopener noreferrer"`.
+  #     host and no user name or password, a `mailto:` address, or a page of this Qory
+  #     Apiary (`site_path/1`); any other link is its text, unlinked. A link's title is
+  #     dropped. A link to another site opens in a new tab with
+  #     `rel="nofollow noopener noreferrer"` and an icon that says so. A link to a page of
+  #     this Qory Apiary is a plain link to its path, with no icon, in the same tab.
   #   * An image of the version is shown: `render/2` takes `images`, a map (or a list of
   #     pairs) from a filename of a proposal version's images to its download address, or
   #     nil for a text of no such version. An image whose URL,
@@ -36,6 +38,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
+  # The path of a page of this Qory Apiary goes through it as an `https` address of a host
+  # the renderer makes up per render (`@site`), and takes its path back after sanitising.
   #
   # The work is bounded by the input and by a budget. A text over `max_bytes/0` bytes is
   # `:too_large`, and is not read at all (`ApiaryWeb.ArtifactLive.Load.content/3`). Every
@@ -75,7 +79,10 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @box_done ~s(<input type="checkbox" checked="" disabled="" /> )
   @box_open ~s(<input type="checkbox" disabled="" /> )
   @mermaid_open ~s(<pre><code class="language-mermaid">)
-  @link_end "</a>"
+  # The host that stands for this Qory Apiary while the HTML is sanitised: with the
+  # render's token, so no text of a document can write one.
+  @site "https://qint"
+  @site_host_end ".invalid"
 
   @sanitize [
     tags: ~w(a blockquote br code del em h3 h4 h5 h6 hr li ol p pre span strong table
@@ -203,7 +210,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     context = %{in_link: false, images: images, token: token}
 
     case walk_document(document.nodes, context) do
-      {:ok, nodes} -> {:ok, document |> Map.put(:nodes, nodes) |> html() |> images(context)}
+      {:ok, nodes} -> {:ok, document |> Map.put(:nodes, nodes) |> html(token) |> images(context)}
       :too_deep -> :too_deep
     end
   end
@@ -239,14 +246,34 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
 
   defp images(html, _context), do: html
 
-  defp html(document) do
+  defp html(document, token) do
+    site = @site <> token <> @site_host_end
+
     document
     |> MDEx.to_html!()
     |> String.replace(@box_done, box("☑", gettext("Done")))
     |> String.replace(@box_open, box("☐", gettext("Not done")))
     |> String.replace(@mermaid_open, ~s(<pre class="q-mermaid-source"><code>))
-    |> String.replace(@link_end, link_end())
+    |> link_ends(site)
     |> MDEx.safe_html(sanitize: sanitize(), escape: [content: false, curly_braces_in_code: false])
+    |> site_links(site)
+  end
+
+  # Each link of another site ends with the icon and the words for a screen reader. A link
+  # of this Qory Apiary, whose address starts with `site`, ends as it is. Links never
+  # nest, and the text between the tags is escaped, so the first `</a>` ends the link.
+  defp link_ends(html, site) do
+    Regex.replace(~r{<a href="([^"]*)"[^>]*>.*?</a>}s, html, fn whole, href ->
+      if String.starts_with?(href, site),
+        do: whole,
+        else: String.replace_suffix(whole, "</a>", link_end())
+    end)
+  end
+
+  # Each link of this Qory Apiary, sanitised, with its path as the address and nothing
+  # else: no `target` and no `rel`, so it opens in the same tab.
+  defp site_links(html, site) do
+    Regex.replace(~r{<a href="#{Regex.escape(site)}(/[^"]*)"[^>]*>}, html, ~s(<a href="\\1">))
   end
 
   defp sanitize do
@@ -287,11 +314,22 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   end
 
   defp shown(%MDEx.Link{url: url} = link, context, depth) do
-    if link?(url) and not context.in_link,
-      do: [
-        %{link | title: "", nodes: walk(link.nodes, %{context | in_link: true}, depth + 1)}
-      ],
-      else: walk(link.nodes, context, depth + 1)
+    nodes = fn -> walk(link.nodes, %{context | in_link: true}, depth + 1) end
+
+    cond do
+      context.in_link ->
+        walk(link.nodes, context, depth + 1)
+
+      path = site_path(url) ->
+        site = @site <> context.token <> @site_host_end
+        [%{link | url: site <> path, title: "", nodes: nodes.()}]
+
+      link?(url) ->
+        [%{link | title: "", nodes: nodes.()}]
+
+      true ->
+        walk(link.nodes, context, depth + 1)
+    end
   end
 
   defp shown(%MDEx.Image{url: url} = image, context, _depth) do
@@ -394,4 +432,37 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   end
 
   def link?(_url), do: false
+
+  # site_path/1 is the path, with its query and fragment, of `url` where it is a page of
+  # this Qory Apiary, else nil: a path that starts with one `/` and has only the characters
+  # of a URL path, or an absolute `http` or `https` URL of the host and port of
+  # `ApiaryWeb.Endpoint` (no user name or password) with such a path. Anything else, such
+  # as `//host/x`, `/\host`, `x`, `?q`, `#f`, `javascript:` or `data:`, is nil.
+  @doc false
+  @spec site_path(term) :: String.t() | nil
+  def site_path("/" <> _rest = url), do: if(site_path?(url), do: url)
+
+  def site_path(url) when is_binary(url) do
+    with {:ok, %URI{scheme: scheme, host: host, userinfo: nil} = uri} <- URI.new(url),
+         true <- is_binary(scheme) and String.downcase(scheme) in ["http", "https"],
+         true <- is_binary(host) and own_host?(uri) do
+      path = (uri.path || "/") <> if(uri.query, do: "?" <> uri.query, else: "")
+      path = if uri.fragment, do: path <> "#" <> uri.fragment, else: path
+      if site_path?(path), do: path
+    else
+      _not -> nil
+    end
+  end
+
+  def site_path(_url), do: nil
+
+  # What a path of this Qory Apiary may have: no `//` start, no backslash, no whitespace
+  # or control character (a browser removes a tab or a line break from an address, and
+  # reads `\` as `/`), no `<`, `>` or quote.
+  defp site_path?(path), do: Regex.match?(~r{\A/(?!/)[A-Za-z0-9\-._~!$&'()*+,;=:@%/?#]*\z}, path)
+
+  defp own_host?(%URI{host: host, port: port}) do
+    own = ApiaryWeb.Endpoint.struct_url()
+    String.downcase(host) == String.downcase(own.host || "") and port == own.port
+  end
 end

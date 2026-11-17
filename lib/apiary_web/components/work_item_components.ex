@@ -2202,7 +2202,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   A run's proposal and a question's context are untrusted Markdown, shown as
   `ApiaryWeb.ArtifactLive.Markdown.render/2` returns them: raw HTML dropped, http, https
-  and mailto links only, headings two levels down. Each map may have that render as
+  and mailto links and links to a page of this instance only, headings two levels down. Each map may have that render as
   `:rendered` (`markdown/1`), so the page renders once for what it read; without it, the
   component renders. A question, an option's title and explanation, an answer, a review
   comment and a reply are plain text: escaped, their line breaks kept, isolated from the
@@ -2658,7 +2658,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <div id={@id} class="q-xp">
+    <div id={@id} class="q-xp q-xp-stage">
       <section
         :if={@passed_over}
         id={"#{@id}-passed-over"}
