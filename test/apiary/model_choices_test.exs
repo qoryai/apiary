@@ -585,6 +585,7 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "resolve/3" do
+    # Changed: `acme-small` is in no list of the provider, so the resolution now leaves it out.
     test "leaves out a tier whose effort its model has not", ctx do
       %{scope: scope, provider: provider} = ctx
 
@@ -593,7 +594,10 @@ defmodule Apiary.ModelChoicesTest do
           scope,
           :workspace,
           attrs(provider, %{
-            tiers: %{"fast" => %{"model" => @model, "effort" => "low"}, "light" => "acme-small"}
+            tiers: %{
+              "fast" => %{"model" => @model, "effort" => "low"},
+              "light" => "claude-haiku-5-5"
+            }
           })
         )
 
@@ -602,7 +606,7 @@ defmodule Apiary.ModelChoicesTest do
 
       assert tiers == %{
                "fast" => %{"model" => @model, "effort" => "low"},
-               "light" => %{"model" => "acme-small"}
+               "light" => %{"model" => "claude-haiku-5-5"}
              }
 
       # Rows a save refuses: an effort the description's model has not, and an effort with

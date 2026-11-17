@@ -13,7 +13,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoices, Repo, Stacks}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}
@@ -27,6 +27,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   @runtime hd(Apiary.Kinds.Runtimes.list()).name
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+  @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+  @workflow "explore-a-ticket"
   @key "sk-ant-run-settings-0123456789"
   @efforts ~w(low medium high xhigh max)
   @messages %{
@@ -124,6 +126,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     choice
   end
 
+  # A tier map with `entry` on every tier.
+  defp all_tiers(entry), do: Map.new(Resolution.tiers(), &{&1, entry})
+
   defp models(efforts) do
     for id <- ~w(claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5 claude-fable-5-1),
         do: %{"id" => id, "effort" => efforts}
@@ -170,6 +175,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   end
 
   describe "a claim with a choice" do
+    # Changed: the tiers sat on a workspace choice with no provider; now one choice sets all.
     test "of a run with no target reads the workspace and organisation levels alone", ctx do
       scope = with_domain(ctx.scope, "example")
       target = Repo.insert!(target(scope, "acme/shop"))
@@ -177,10 +183,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       choose!(scope, :organisation, %{
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
-        effort: "high"
+        effort: "high",
+        tiers: %{"fast" => "claude-haiku-5-5"}
       })
-
-      choose!(scope, :workspace, %{tiers: %{"fast" => "claude-haiku-5-5"}})
 
       # Levels 2 and 3 belong to a target: a run without one reads neither.
       choose!(scope, target, %{
@@ -280,31 +285,46 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute Jason.encode!(api) =~ "sk-ant"
     end
 
-    test "lists the description's models, then each chosen model it does not list", ctx do
+    # Changed: a tier model no list has went with the provider; now it is left out.
+    test "lists the description's models, then the chosen model it does not list, and leaves out a tier model of no list",
+         ctx do
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         model: "acme-large",
+        tiers: %{"light" => "claude-haiku-5-5", "fast" => "acme-small"}
+      })
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      # `acme-small` is in neither the description nor the suggestions of Anthropic.
+      assert settings(handed) == %{
+               "runtime" => @runtime,
+               "model" => "acme-large",
+               "provider_models" => models(@efforts) ++ [%{"id" => "acme-large"}],
+               "tiers" => %{"light" => "claude-haiku-5-5"},
+               "time_limit_minutes" => 180
+             }
+    end
+
+    test "sends the thinking tier's model and effort as the run's", ctx do
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
         tiers: %{
-          "light" => "claude-haiku-5-5",
-          "fast" => "acme-small",
-          "thinking" => "acme-large"
+          "thinking" => %{"model" => "claude-opus-5-5", "effort" => "max"},
+          "light" => "claude-haiku-5-5"
         }
       })
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{
-               "runtime" => @runtime,
-               "model" => "acme-large",
-               "provider_models" =>
-                 models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
+      assert %{
+               "model" => "claude-opus-5-5",
+               "effort" => "max",
                "tiers" => %{
-                 "light" => "claude-haiku-5-5",
-                 "fast" => "acme-small",
-                 "thinking" => "acme-large"
-               },
-               "time_limit_minutes" => 180
-             }
+                 "thinking" => %{"model" => "claude-opus-5-5", "effort" => "max"},
+                 "light" => "claude-haiku-5-5"
+               }
+             } = settings(handed)
     end
   end
 
@@ -427,7 +447,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, queued, _dispatch} = handover!(ctx)
 
       assert queued.model_provider_ids == [ctx.provider.id, cooling.id, free.id]
-      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = settings(handed)
+
+      assert %{"model" => "claude-sonnet-5-5", "effort" => "high", "tiers" => tiers} =
+               settings(handed)
+
+      # The fallback's model and effort on every tier.
+      assert tiers == all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"})
 
       free_id = free.id
 
@@ -540,6 +565,211 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         refute Map.has_key?(start, "cooldown_until"), inspect(cooled)
         assert Enum.count(keys, &(&1["chosen"] == true)) == 1, inspect(cooled)
       end
+    end
+  end
+
+  describe "the keys of a claim under a workflow's override" do
+    # The run's workflow, from the workspace's stack row, and a provider for the override.
+    setup ctx do
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, @workflow}, @harness)
+
+      %{override: other_provider!(ctx.scope, "Override keys")}
+    end
+
+    defp override!(ctx, provider, tiers) do
+      choose!(ctx.scope, {:workspace, @workflow}, %{provider: provider.public_id, tiers: tiers})
+    end
+
+    # What a claim at this moment builds for a fresh run of the queue, without the claim.
+    defp built!(ctx) do
+      work_item = work_item_fixture(ctx.scope, %{external_ref: "acme/shop##{unique()}"})
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {queued, RunSettings.build(RunSettings.hold(queued), Dispatches.now())}
+    end
+
+    defp unique, do: System.unique_integer([:positive])
+
+    test "use the override's key and tiers while one of its keys is free", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5")
+      })
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == ctx.override.id
+
+      assert %{"model" => "claude-sonnet-5-5", "tiers" => tiers} = settings(handed)
+      assert tiers == all_tiers("claude-sonnet-5-5")
+    end
+
+    test "fall to the workspace default, with its key and tiers, while every key of the override is in cooldown",
+         ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        key: "spare",
+        tiers: %{
+          "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+          "light" => "claude-haiku-5-5"
+        }
+      })
+
+      state!(ctx.override, "main", until: in_seconds(3600))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      # The queue keeps the override's provider, then the default's, for the claim's filter.
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id]
+
+      run = Repo.get!(Run, handed.run.id)
+      assert run.provider_connection_id == ctx.provider.id
+      assert value_ids(run) == ["spare", "main"]
+      assert Enum.find(run.model_keys, & &1["chosen"])["id"] == value!(ctx.provider, "spare").id
+
+      assert %{"model" => "claude-opus-5-5", "effort" => "high", "tiers" => tiers} =
+               settings(handed)
+
+      assert tiers == %{
+               "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+               "light" => "claude-haiku-5-5"
+             }
+    end
+
+    test "fall to the default's fallbacks, not the override's stored ones, while the default cools too",
+         ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      unread = other_provider!(ctx.scope, "Unread keys")
+
+      # An override stored with a fallback, past the save: it is not read.
+      override = override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      Repo.insert!(%Apiary.ModelChoices.Fallback{
+        organisation_id: ctx.scope.organisation.id,
+        model_choice_id: override.id,
+        connection_id: unread.id,
+        position: 0
+      })
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [%{provider: free.public_id, model: "claude-haiku-5-5", effort: "low"}]
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == free.id
+
+      assert %{"model" => "claude-haiku-5-5", "effort" => "low", "tiers" => tiers} =
+               settings(handed)
+
+      assert tiers == all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"})
+    end
+
+    test "leave the run waiting for the override's and the default's providers", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5")
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      assert {_queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.override.id, ctx.provider.id]
+    end
+
+    test "try a provider once where the override and the default share it", ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      override!(ctx, ctx.provider, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [%{provider: free.public_id, model: "claude-haiku-5-5"}]
+      })
+
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+      state!(free, "main", until: in_seconds(3600))
+
+      assert {queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.provider.id, free.id]
+      assert queued.model_provider_ids == [ctx.provider.id, free.id]
+
+      # With the fallback's key free, the run takes the fallback.
+      state!(free, "main", until: in_seconds(-1))
+      assert {_queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
+      assert columns.provider_connection_id == free.id
+      assert stored["tiers"] == all_tiers("claude-haiku-5-5")
+    end
+
+    test "pass over a fallback that names the override's provider, whose keys are in cooldown",
+         ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [
+          %{provider: ctx.override.public_id, model: "claude-opus-5-5"},
+          %{provider: free.public_id, model: "claude-haiku-5-5"}
+        ]
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      assert {queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
+      assert columns.provider_connection_id == free.id
+      assert stored["model"] == "claude-haiku-5-5"
+
+      state!(free, "main", until: in_seconds(3600))
+      assert {_queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.override.id, ctx.provider.id, free.id]
+    end
+
+    test "never fall to the default while a lock of the workspace beats the override", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      locked =
+        choose!(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          tiers: all_tiers("claude-opus-5-5")
+        })
+
+      Repo.update!(Ecto.Changeset.change(locked, locked: true))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.provider.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == ctx.provider.id
+      assert %{"model" => "claude-opus-5-5"} = settings(handed)
     end
   end
 

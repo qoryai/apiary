@@ -521,24 +521,15 @@ defmodule Apiary.Dispatches do
     end
   end
 
-  # The model providers of the model choice in effect for the run of the queue
-  # `dispatch_run`: the choice's provider, then its fallbacks in their order
-  # (`Apiary.Dispatches.RunSettings.choice_in_effect/1`), while runs are given model
-  # keys (`Apiary.Runs.ProviderCredential.applies?/0`); none else.
+  # The model providers of the model choices for the run of the queue `dispatch_run`, in
+  # the order a claim tries them: the provider of the choice in effect, the default
+  # step's under a workflow's override, then the fallbacks
+  # (`Apiary.Dispatches.RunSettings.model_providers/1`), while runs are given model keys
+  # (`Apiary.Runs.ProviderCredential.applies?/0`); none else.
   defp model_providers(%DispatchRun{} = dispatch_run) do
-    with true <- ProviderCredential.applies?(),
-         {_level, choice} <- RunSettings.choice_in_effect(dispatch_run) do
-      fallbacks =
-        choice
-        |> Repo.preload(:fallbacks)
-        |> Map.fetch!(:fallbacks)
-        |> Enum.sort_by(& &1.position)
-        |> Enum.map(& &1.connection_id)
-
-      [choice.connection_id | fallbacks] |> Enum.reject(&is_nil/1) |> Enum.uniq()
-    else
-      _none -> []
-    end
+    if ProviderCredential.applies?(),
+      do: RunSettings.model_providers(dispatch_run),
+      else: []
   end
 
   @doc false
