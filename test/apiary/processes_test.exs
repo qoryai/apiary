@@ -505,25 +505,63 @@ defmodule Apiary.ProcessesTest do
              ) == :ok
     end
 
-    test "refuses a track condition and an unless on an output: an output keeps when {input} only" do
+    test "takes when and unless with a track or an input on an output, with the checks of any condition" do
       output = &(%{"type" => "mockup", "required" => true} |> Map.merge(&1))
 
+      document =
+        tracked()
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ])
+        |> with_gate_tracks(@explore, ["standard", "fast"])
+
       put =
-        &edit(tracked(), fn s ->
+        &edit(document, fn s ->
           if(s["id"] == @shape, do: Map.put(s, "outputs", [&1]), else: s)
         end)
 
-      assert errors(put.(output.(%{"when" => %{"track" => "standard"}}))) ==
-               expected([
-                 "#/stages/1/outputs/0/when",
-                 "#/stages/1/outputs/0/when",
-                 "#/stages/1/outputs/0/when/track"
-               ])
+      for condition <- [
+            %{"when" => %{"track" => "standard"}},
+            %{"unless" => %{"track" => "fast"}},
+            %{"when" => %{"input" => "proposal"}},
+            %{"unless" => %{"input" => "proposal"}}
+          ] do
+        assert Processes.validate(put.(output.(condition))) == :ok
+      end
 
-      assert errors(put.(output.(%{"unless" => %{"input" => "proposal"}}))) ==
-               chain("#/stages/1/outputs/0/unless")
+      assert errors(put.(output.(%{"unless" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/unless/track", :condition_track}]
 
-      assert Processes.validate(put.(output.(%{"when" => %{"input" => "proposal"}}))) == :ok
+      assert errors(put.(output.(%{"when" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/when/track", :condition_track}]
+
+      assert errors(put.(output.(%{"unless" => %{"input" => "mockup"}}))) ==
+               [{"#/stages/1/outputs/0/unless/input", :condition_input}]
+
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast"}}
+      assert errors(put.(output.(both))) == [{"#/stages/1/outputs/0", :condition_both}]
+
+      assert errors(put.(output.(%{"unless" => %{"track" => "fast", "input" => "proposal"}}))) !=
+               []
+    end
+
+    test "takes first_attempt on a workflow entry outside a loop, and refuses it in a loop body" do
+      entry = %{"workflow" => "make-a-small-change", "first_attempt" => true}
+
+      assert Processes.validate(put_sequence(default(), @shape, [entry])) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{entry | "first_attempt" => "yes"}])) ==
+               chain("#/stages/1/sequence/0")
+
+      for value <- [true, false] do
+        body = %{"loop" => %{"rounds" => 2, "body" => [%{entry | "first_attempt" => value}]}}
+
+        assert errors(put_sequence(default(), @shape, [body])) == chain("#/stages/1/sequence/0")
+      end
+
+      plain = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}
+      assert Processes.validate(put_sequence(default(), @shape, [plain])) == :ok
     end
 
     test "refuses a key of an input or a loop entry that the schema does not list" do

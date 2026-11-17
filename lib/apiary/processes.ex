@@ -49,6 +49,18 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A first attempt
+
+  A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
+  ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
+  its output checks and its gate (the stage runner, lib/apiary/stages/runner.ex). Another
+  verdict acts as for any entry. A loop's body refuses the key (`:schema`), because `passed`
+  already leaves a loop.
+
+  An output takes `when` and `unless` like an input, with `{track: ID}` or `{input: T}`. It
+  is required only while no condition holds it back, so a stage whose required output is
+  held back goes on to its gate without it.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -95,14 +107,14 @@ defmodule Apiary.Processes do
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, a loop or a workflow entry, or in
-  `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
+  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
-  `:condition_both` for a stage, an input, a loop or a workflow entry with both `when` and
-  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
-  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
-  on a gate of kind `none`;
+  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
+  `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
+  for a track id in a gate's `tracks` that the document's `tracks` do not declare;
+  `:gate_none_tracks` for tracks on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -379,8 +391,8 @@ defmodule Apiary.Processes do
   # The conditions that no earlier stage can meet, in the document's order: an `input` type
   # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
   # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
-  # input, a workflow entry or a loop, those in a loop's body included, and in `when` on an
-  # output. The first stage has no earlier stage, so each of its conditions is refused.
+  # input, an output, a workflow entry or a loop, those in a loop's body included. The first
+  # stage has no earlier stage, so each of its conditions is refused.
   defp condition_errors(stages) do
     stages
     |> Enum.with_index()
