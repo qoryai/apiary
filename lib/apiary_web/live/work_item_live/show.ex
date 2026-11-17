@@ -414,6 +414,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             runs={@view.runs}
             skips={@view.skips}
             passed_over={@view.passed_over}
+            proposal_version={@view.proposal_version}
             entries={@view.entries}
             document={@flow.document}
             track_line={StageTab.track_line(@flow)}

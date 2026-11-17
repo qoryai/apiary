@@ -103,6 +103,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `skips`: the stage's workflow entries the runner passed over in the take in;
   #   * `entries`: the rows of the table of the stage's entries, where it has a skip
   #     (`entries/3`);
+  #   * `proposal_version`: on the tab of Shape, passed over whole, the number of the proposal
+  #     version that Explore's approval lists (`proposal_version/3`), else nil;
   #   * `passed_over`: the record of the runner passing the stage over whole in the take in
   #     (`Apiary.Stages.stage_skips/1`), nil for none;
   #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
@@ -122,6 +124,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       skips: [],
       entries: [],
       passed_over: nil,
+      proposal_version: nil,
       take_ins: read.earlier_take_ins,
       questions: read.questions,
       questions_version: read.questions_version,
@@ -152,6 +155,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       skips: Map.get(flow, :skips, []),
       entries: [],
       passed_over: nil,
+      proposal_version: nil,
       take_ins: Enum.map(read.earlier_take_ins, &with_skips(&1, flow, nil)),
       questions: read.questions,
       questions_version: read.questions_version,
@@ -166,13 +170,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     runs = runs(flow, stage, read.earlier_runs ++ List.wrap(run && run[:workspace_id] && run))
     artifacts = artifacts(flow, stage, read.artifacts)
     explore? = stage.id == flow.explore_id
+    passed_over = passed_over(flow, stage, runs)
 
     %{
       stage: stage,
       runs: runs,
       skips: Enum.filter(Map.get(flow, :skips, []), &(&1.stage_id == stage.id)),
       entries: entries(flow, stage, Map.get(flow, :skips, [])),
-      passed_over: passed_over(flow, stage, runs),
+      passed_over: passed_over,
+      proposal_version: proposal_version(flow, stage, passed_over),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),
@@ -189,6 +195,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     if stage.id != flow.stage.id and runs == [],
       do: Enum.find(Map.get(flow, :stage_skips, []), &(&1.stage_id == stage.id))
   end
+
+  # The number of the proposal version that an approval at Explore's gate lists, for the tab
+  # of the stage Shape (the sentence says so) that the runner passed over whole; nil for any
+  # other stage, for a stage that ran, and where Explore's approval lists no proposal.
+  defp proposal_version(flow, %{name: "Shape"}, passed_over) when passed_over != nil do
+    Enum.find_value(Map.get(flow, :index, []), fn
+      %{type: "proposal", name: "main", approved: number, approval: %{stage_id: id}}
+      when is_integer(number) and id == flow.explore_id ->
+        number
+
+      _artifact ->
+        nil
+    end)
+  end
+
+  defp proposal_version(_flow, _stage, _passed_over), do: nil
 
   @doc """
   entries/3 is the rows of the table of a stage's workflow entries on its tab, in the order

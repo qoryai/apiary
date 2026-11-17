@@ -2805,6 +2805,56 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-passed-over-why", "Fast track skips Shape.")
     end
 
+    test "Shape's tab says which proposal version the next stages work to", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-proposal",
+               "The work item has no spec and no acceptance criteria. The exact change in proposal v1 is the one criterion."
+             )
+
+      assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+               Gettext.dgettext(
+                 ApiaryWeb.Gettext,
+                 "default",
+                 "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+                 version: "1"
+               )
+             end) ==
+               "Shape did not run, so the work item has no shaping outputs. Proposal v1, as approved, is what the next stages work to."
+    end
+
+    test "Shape's tab has no such line where Explore's approval lists no proposal version", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {_n, _rows} =
+        Repo.update_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [versions: []]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(view, "#work-item-tab-passed-over-h", "Shape did not run")
+      refute has_element?(view, "#work-item-tab-passed-over-proposal")
+    end
+
+    test "the line of the proposal version is on Shape's tab only", %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      refute has_element?(view, "#work-item-tab-passed-over-proposal")
+    end
+
     test "Build's tab lists every entry, with the entries that did not run", %{
       conn: conn,
       scope: scope

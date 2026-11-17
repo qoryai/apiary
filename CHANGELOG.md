@@ -67,7 +67,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
   <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
-  name in place of "You". The
+  name in place of "You". On Shape's tab, where Explore's approval lists a proposal version,
+  a second line reads "Shape did not run, so the work item has no shaping outputs. Proposal
+  v<n>, as approved, is what the next stages work to." (in a software workspace, "The work
+  item has no spec and no acceptance criteria. The exact change in proposal v<n> is the one
+  criterion."); with no version listed, there is no second line. The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not

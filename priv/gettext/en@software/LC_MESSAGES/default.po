@@ -19366,6 +19366,11 @@ msgstr ""
 msgid "Shape"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to."
+msgstr "The work item has no spec and no acceptance criteria. The exact change in proposal v%{version} is the one criterion."
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shared harness"
