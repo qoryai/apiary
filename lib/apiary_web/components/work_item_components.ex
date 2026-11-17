@@ -2599,7 +2599,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :item_noun, :map, default: nil
   slot :artifacts, doc: "the stage's artifacts, in the record block"
 
-  slot :row, doc: "an output's artifact row, for a version with no Markdown; takes its type"
+  slot :row,
+    doc:
+      "an output's body: its artifact rows, for a version with no Markdown, or the verification's or the scenarios' parts; takes its frame (`ApiaryWeb.WorkItemLive.StageTab.frames/2`)"
 
   attr :cancel, :map,
     default: nil,
@@ -2728,7 +2730,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         number={@work_item.number}
         output={output}
       >
-        {render_slot(@row, output.type)}
+        {render_slot(@row, output)}
       </.output_frame>
       <.decisions_frame
         :if={@decisions_frame != []}
@@ -3059,7 +3061,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     required: true,
     doc:
       "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
-        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
+        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); `:kind`, `:scenarios` " <>
+        "for the Scenarios frame, `:verification` for a verification the page read as its " <>
+        "parts, whose body is the slot's; `:row` for a frame with its artifact rows and no " <>
+        "text; `:caption`, the words after the icon in place of the version's, nil for those; " <>
+        "and `:accepted`, the member who accepted the stage's escalation as it is, shown " <>
+        "above a text"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
@@ -3083,7 +3090,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         body: %{rendered: body},
         sources: sources,
         count: count,
-        heading: output_heading(assigns.output.type),
+        heading: output_heading(assigns.output),
+        parts?: assigns.output[:kind] in [:verification, :scenarios],
         approval: assigns.output[:approval]
       )
 
@@ -3112,9 +3120,19 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-            <span>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+            <span>
+              {@output[:caption] ||
+                gettext("Version %{version}", version: Format.number(@output.version))}
+            </span>
           </p>
         </summary>
+        <p
+          :if={@text? and @output[:accepted]}
+          id={"#{@id}-accepted"}
+          class="px-3.5 pt-1 text-[12.5px]/5 text-muted"
+        >
+          {gettext("Accepted as it is by %{member}", member: @output[:accepted])}
+        </p>
         <div
           :if={@text?}
           id={"#{@id}-v#{@output.version}"}
@@ -3132,13 +3150,19 @@ defmodule ApiaryWeb.WorkItemComponents do
           <.run_text id={"#{@id}-text"} value={@body} key={:message} />
         </div>
         <.sources_fold :if={@sources} id={"#{@id}-sources"} sources={@sources} count={@count} />
-        <div :if={is_nil(@output.read)} class="q-xp-body">{render_slot(@inner_block)}</div>
+        <div :if={is_nil(@output.read) or @parts?} class="q-xp-body">
+          {render_slot(@inner_block)}
+        </div>
       </details>
     </section>
     """
   end
 
-  # A frame's heading: the type's words, with a capital first letter.
+  # A frame's heading: Scenarios for the scenarios' frame, else the type's words, with a
+  # capital first letter.
+  defp output_heading(%{kind: :scenarios}), do: gettext("Scenarios")
+  defp output_heading(%{type: type}), do: output_heading(type)
+
   defp output_heading(type) do
     {first, rest} = type |> StageComponents.type_words() |> String.split_at(1)
     String.upcase(first) <> rest

@@ -185,7 +185,12 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @spec budget() :: Apiary.Kinds.Budget.budget()
   def budget, do: @budget
 
-  defp formattable?(text), do: String.valid?(text) and table_cells(text) <= @max_cells
+  # formattable?/1 is whether `render/2` formats `text` as Markdown: valid UTF-8 whose
+  # tables could have at most `max_cells/0` cells. Call it before `MDEx.parse_document!/2`:
+  # the parser builds every cell in native memory, outside the budget.
+  @doc false
+  @spec formattable?(binary) :: boolean
+  def formattable?(text), do: String.valid?(text) and table_cells(text) <= @max_cells
 
   # The most cells a table of the text could have: a row is a line, and has as many
   # cells as the line with the most `|` has, plus one. With no `|`, there is no table.

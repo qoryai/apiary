@@ -20,6 +20,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
   the member. The run contract is vendored at integrations `dbc1ce5`.
 <!-- feature: workflow_model -->
+- The gate card of a stage starts with the draft of the work item's newest submission,
+  one line per repository that has one: “Submission: the draft in example/shop”, a link
+  that opens the draft in a new tab. A submission with no draft shows no line.
+- The tab of a stage with a `verification` output, such as Verify, shows the run's
+  verification as a table of the acceptance criteria with the columns Criterion, State
+  and Evidence and the states Met, Not met and Needs a person; the list “Not verified”,
+  each item with its reason under it; and the model families after the version, such as
+  “Version 1 · Model families: Build claude · Verify deepseek”, as the run wrote them.
+  When a member accepted the stage's escalation as it is after the run wrote the
+  verification, the frame starts with “Accepted as it is by dana”; the criteria keep the
+  states the run wrote. A verification with no such table shows as its Markdown, after
+  the same line. An Evidence cell links the phrases “Demo video: scenario 1”, “Pictures:
+  scenario 2” and “the pictures of scenario 2” to that scenario of the Scenarios frame.
+- On that tab, one frame “Scenarios” has the films and pictures of the verified commit,
+  in scenario order, in place of one frame per type: each film with its file name and
+  its captions, which start off, and, beside it, the scenario's title, each step with
+  its expected result, and the artifact row; for a pictures scenario, one picture per
+  step, each with the step's title and expected result. A scenario whose name is withdrawn
+  is left out, and so are the scenarios of an earlier take in.
+- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
+  Explainer, show the version and the artifact rows only, and a row names the artifact
+  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+  films and pictures together, in scenario order.
+- An output frame on a stage's tab lists the artifact row of each name of its type,
+  `main` first, and an output with only other names has a frame too.
+- A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
+  place of “Pushed”, and a version page's History shows it in place of “Version 3”,
+  with the artifact in the plain form of the gate card (the type with spaces, then the
+  name). The page of a withdrawn version shows that line in place of an empty view and
+  an empty list of files.
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
@@ -1473,6 +1503,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `400` `invalid_request` with `names` `["session"]`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- An approval at a stage's gate covers the newest version of each name of each output
+  type, such as one demo video per scenario, in place of only the newest version of each
+  type. The gate card lists one row per name, such as “demo video scenario-2 v1”, in the
+  order of the names, and **Request changes** offers each of them.
+- A version that a run a member cancelled wrote no longer counts as an artifact's newest
+  version: the work item's artifact list shows the newest version that counts, and the
+  approval marks show no “v2 is newer” or “Changed after approval” for it. In the run
+  API's artifact index, `newest_version` and `changed_after_approval` leave such
+  versions out too.
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
   stage?" and its button reads **Approve**. The line about a missing output reads "Add

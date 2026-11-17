@@ -2528,6 +2528,63 @@ defmodule Apiary.StagesTest do
       assert user_id == scope.user.id
     end
 
+    test "an approval covers the newest version of each name of an output type",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main", "scenario-2", "scenario-10"])
+
+      approved =
+        for %{type: "explainer", name: name, versions: [%{number: 1, approvals: [_one]}]} <-
+              Stages.artifact_index(work_item),
+            do: name
+
+      assert Enum.sort(approved) == ["main", "scenario-10", "scenario-2"]
+    end
+
+    test "an approval and the gate's outputs leave out a withdrawn name", %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "outputs" => [
+            %{"type" => "proposal", "required" => true},
+            %{"type" => "explainer", "required" => false}
+          ]
+        })
+      ])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(fn run, registered ->
+          Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
+          work_item = Repo.get!(WorkItem, run.work_item_id)
+
+          for name <- ["scenario-10", "scenario-2", "scenario-3"],
+              do: {:ok, _version} = push_explainer(run, name)
+
+          {:ok, _withdrawal} =
+            Artifacts.withdraw({:run, run}, work_item, "explainer",
+              name: "scenario-3",
+              stage_id: @explore
+            )
+        end)
+
+      assert %{outputs: outputs} = Stages.status(work_item)
+
+      assert [%{name: "scenario-2", number: 1}, %{name: "scenario-10", number: 1}] =
+               Enum.find(outputs, &(&1.type == "explainer")).names
+
+      {:ok, work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
+      approvals =
+        for %{type: "explainer", name: name, versions: versions} <-
+              Stages.artifact_index(work_item),
+            into: %{},
+            do: {name, Enum.flat_map(versions, & &1.approvals)}
+
+      assert [_approval] = approvals["scenario-2"]
+      assert [_approval] = approvals["scenario-10"]
+      assert approvals["scenario-3"] == []
+    end
+
     test "a run does not withdraw a name whose newest version a person approved",
          %{scope: scope} do
       work_item = done_with_explainers!(scope, ["main"], :person)
@@ -4179,6 +4236,42 @@ defmodule Apiary.StagesTest do
                  ]
                }
              ] = Enum.filter(Stages.artifact_index(work_item), &(&1.type == "proposal"))
+    end
+
+    test "a version a cancelled run wrote after an approval is not newer and marks no change",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]})
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
+      [proposal] = versions(work_item, "proposal")
+      id = proposal.public_id
+      run = live_run!(work_item)
+
+      {:ok, %{number: 2}} =
+        Stages.Artifacts.push({:run, run}, work_item, "proposal", a_proposal(),
+          stage_id: @explore
+        )
+
+      index = fn -> Enum.filter(Stages.artifact_index(work_item), &(&1.type == "proposal")) end
+      assert [%{changed_after_approval: true}] = index.()
+
+      cancel_run!(scope, run)
+
+      assert [
+               %{
+                 stage_id: @explore,
+                 approved_version: ^id,
+                 changed_after_approval: false,
+                 versions: [%{number: 2, cancelled: true}, %{number: 1, cancelled: false}]
+               }
+             ] = index.()
     end
 
     test "an input leaves out a withdrawn name; a push of files lists it again", %{
