@@ -7,7 +7,7 @@ defmodule Apiary.Repo.Migrations.LetATypeForbidWithdrawing do
   # gets true.
   #
   # `locked_standard_types` of `workspaces`: the names of the standard types whose
-  # template entry sets `withdrawable: false`, with no row of their own. Every workspace
+  # template entry sets `withdrawable: false`, with no row in `artifact_types`. Every workspace
   # has none today, so it gets the empty list. Both defaults are constants, so no row is
   # rewritten.
   def change do

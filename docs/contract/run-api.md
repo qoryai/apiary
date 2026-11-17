@@ -480,18 +480,17 @@ removed, with a push of `"withdraw": true` and no files:
 Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
 `withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
 the version, as a push does. Gates, stage inputs and the work item's pages leave out a
-withdrawn name. A stage done whose last approval, one that the runner recorded for a
-gate `none`, covered a version of that name is at its gate again. A later push of files is
-a new version, and lists the name again.
+withdrawn name. A stage done whose last approval covered a version of that name is at its
+gate again. A later push of files is a new version, and lists the name again.
 
 A run cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory
 Apiary reads them itself, and a run pushes a new version of them instead. It cannot
 withdraw a name of a type whose entry in the template's `artifact_types` sets
 `withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
-a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name whose
-newest version a member approved at a gate, and pushes a new version instead. An approval
-that the runner recorded for a gate `none` does not count, and neither does an approval
-of an older version.
+a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
+whose newest version a member approved at a gate, and pushes a new version instead. An
+approval that the runner recorded for a gate `none` does not count, and neither does an
+approval of an older version.
 
 Checks, in order, after the checks of every request:
 

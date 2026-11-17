@@ -198,8 +198,9 @@ defmodule Apiary.Artifacts do
   #
   #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
   #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
-  #     public id; a member whose account is gone has no `user_id`, and counts). The check comes before the three below, so that
-  #     a version a person wrote and approved is refused as approved;
+  #     public id; a member whose account is gone has no `user_id`, and counts). The check
+  #     comes before the three below, so that a version a person wrote and approved is
+  #     refused as approved;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
   #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
