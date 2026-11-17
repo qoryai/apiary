@@ -107,8 +107,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the card reads "Read the inputs below, then approve." (in a software workspace, "Read the
   build report below, then approve.") and leaves out the list of outputs, and the stage's tab
   shows the newest version of each of the stage's inputs. A work item on no track keeps both
-  as before. A gate card that every member may decide has no line about who approves; for a
-  stage that lists its approvers it reads "Only the members this stage lists can approve."
+  as before.
+- A gate card that every member may decide has no line about who approves; for a stage that
+  lists its approvers it reads "Only the members this stage lists can approve."
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

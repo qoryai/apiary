@@ -10,6 +10,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
@@ -3294,6 +3295,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+      scope = with_domain(scope, "example")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-no-run",
+               "Read the inputs below, then approve."
+             )
+
+      refute has_element?(view, "#work-item-stage-gate-no-run", "build report")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-proposal",
+               "Proposal v1, as approved, is what the next stages work to."
+             )
+
+      refute has_element?(view, "#work-item-tab-passed-over-proposal", "exact change")
     end
 
     test "Approve at Verify's gate passes the stage with the track the work item is on", %{
