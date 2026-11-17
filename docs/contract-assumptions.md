@@ -420,7 +420,10 @@ its oldest comments to fit, and a claim whose documents cannot fit is `503`
 `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`, or, where an environment
 record of the organisation has an image under that name, `environment_image`, that image
 by its digest (`Apiary.Registry.RunAccess`). They are the names the run's registry
-tokens grant. Prebuilds run only on an instance with a registry
+tokens grant. Where an instance admin saved a largest prebuilt image in Instance settings
+› Configuration, a prebuild's documents also have `largest_prebuilt_image_bytes`, that
+number of GB at the claim times 1,000,000,000; with none saved, and on any other run, the
+member is absent. Prebuilds run only on an instance with a registry
 (`Apiary.Registry.configured?/0`): the `registry` feature on, and `QORY_REGISTRY` set to
 an address whose host has a dot or a port, or is `localhost`. On any other instance no
 prebuild is queued or claimed, no run waits for one, and an explore run starts in its
