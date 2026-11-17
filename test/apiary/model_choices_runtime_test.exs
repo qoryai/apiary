@@ -173,7 +173,11 @@ defmodule Apiary.ModelChoicesRuntimeTest do
 
   test "a run whose choices name no provider sends the default runtime", ctx do
     place = handover_place_fixture(ctx.scope, allow_secrets: true)
-    assert claim!(ctx.scope, place) == %{"runtime" => ctx.release.name}
+
+    assert claim!(ctx.scope, place) == %{
+             "runtime" => ctx.release.name,
+             "time_limit_minutes" => 180
+           }
   end
 
   # A fresh work item's explore run, queued and claimed: its run settings.

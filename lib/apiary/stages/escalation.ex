@@ -1,10 +1,11 @@
 defmodule Apiary.Stages.Escalation do
   # A stage of a work item that waits for a person (`Apiary.Stages`): at `round`, for
   # `cause`, with the `points` a person reads, from the run of the queue `run_id` (nil for
-  # the output checks). Each point is `%{"text", "action", "question"?}`: the run's verdict
-  # writes them for `escalate`, and the stage runner writes them for the causes it sets
-  # (`Apiary.Stages.Runner`). Open while `resolved_at` is nil, at most one per work item.
-  # A person resolves it with `resolution`, with their `note`.
+  # the output checks). Each point is `%{"text", "action", "question"?, "fix"?}`
+  # (`Apiary.Stages.Points`): the run's verdict writes them for `escalate`, and the stage
+  # runner writes them for the causes it sets (`Apiary.Stages.Runner`). Open while
+  # `resolved_at` is nil, at most one per work item. A person resolves it with
+  # `resolution`, with their `note`.
   #
   # `public_id` is `es_` and sixteen lowercase Crockford base32 characters
   # (`Apiary.PublicId`): the id of the escalation in the run API's notes

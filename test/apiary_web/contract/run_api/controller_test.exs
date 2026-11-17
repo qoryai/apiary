@@ -473,7 +473,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "version" => %{"id" => passed.public_id, "number" => 1}
              }
 
-      points = [%{"text" => "The ticket has no test steps.", "action" => "run_again"}]
+      points = [
+        %{"text" => "The ticket has no test steps.", "action" => "run_again"},
+        %{
+          "text" => "The ledger of the run is full.",
+          "action" => "run_again",
+          "fix" => "Close the work item, or take the ticket in again."
+        }
+      ]
+
       assert write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points}).status == 201
 
       body = json_response(read(ctx, "/work-item"), 200)
@@ -1501,8 +1509,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context and options of each answered question in " <>
-           "questions.json as the newest version of questions has them."},
+         "Leave question, context, options and criterion of each answered question in " <>
+           "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
            "questions has it."},
@@ -1525,8 +1533,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context while it stays " <>
-           "decided or answered: to change them, withdraw the question and add a new one."},
+           "as the newest version of questions has them, and its context and criterion " <>
+           "while it stays decided or answered: to change them, withdraw the question and " <>
+           "add a new one."},
         {"questions", :decision_changed,
          "Leave the decision of each question in questions.json as the newest version of " <>
            "questions has it, and add none: only the run that adds a question records " <>
@@ -1962,6 +1971,123 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "refuses a custom type with withdrawable false, before the files", ctx do
+      {:ok, _type} =
+        Apiary.Artifacts.insert_template_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "demo-script",
+          "base_view" => "file",
+          "withdrawable" => false
+        })
+
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      for body <- [
+            withdrawal("demo-script", "scenario-2"),
+            push_body("demo-script", [{"a.txt", "text/plain", "a"}], %{
+              "name" => "scenario-2",
+              "withdraw" => true
+            })
+          ] do
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "type_not_withdrawable",
+                 "type" => "demo-script",
+                 "message" =>
+                   "Push a new version of demo-script instead. The artifact type " <>
+                     "demo-script has withdrawable set to false, so a run cannot withdraw " <>
+                     "its names."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "refuses a standard type its template sets withdrawable false for", ctx do
+      store!(ctx, "mockup", [file("one.png", "image/png", @png)], name: "home")
+
+      # Before the lock, a run withdraws the name; a lock on another name leaves it.
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["screenshot"]]
+        )
+
+      assert write(ctx, "/artifacts", withdrawal("mockup", "home")).status == 201
+      store!(ctx, "mockup", [file("two.png", "image/png", @png)], name: "home")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["mockup"]]
+        )
+
+      conn = write(ctx, "/artifacts", withdrawal("mockup", "home"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "mockup",
+               "message" =>
+                 "Push a new version of mockup instead. The artifact type mockup has " <>
+                   "withdrawable set to false, so a run cannot withdraw its names."
+             }
+    end
+
+    test "withdraws a name of a custom type that sets no withdrawable", ctx do
+      file_type!(ctx, "demo-script", 1000, 2)
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-script", "scenario-2"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
+    test "refuses a name whose newest version a person approved, before the other 409s",
+         ctx do
+      version =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      decide!(ctx, :approve, versions: [version.public_id])
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "screenshot",
+               "message" =>
+                 "Push a new version of screenshot/scenario-2 instead. A member approved its " <>
+                   "newest version, v1, so a run cannot withdraw the name."
+             }
+
+      # A name with no version is still 409 no_version.
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-3"))
+      assert json_response(conn, 409)["error"] == "no_version"
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "withdraws a name whose approval is automatic or of an older version", ctx do
+      automatic = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "auto")
+      decide!(ctx, :approve, versions: [automatic.public_id], user_id: nil, automatic: true)
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "auto")).status == 201
+
+      older = store!(ctx, "screenshot", [file("b.png", "image/png", @png)], name: "older")
+      decide!(ctx, :approve, versions: [older.public_id])
+      store!(ctx, "screenshot", [file("b.png", "image/png", @png <> "b")], name: "older")
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "older"))
+      assert %{"artifact" => %{"version" => %{"number" => 3}}} = json_response(conn, 201)
+    end
+
+    test "withdraws a name when a person only requested changes", ctx do
+      version = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "asked")
+      decide!(ctx, :request_changes, versions: [version.public_id])
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "asked")).status == 201
+    end
+
     test "a withdrawal by a run that ended or that a member cancelled is 409 run_ended",
          ctx do
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
@@ -2142,6 +2268,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/verdict", body).status == 201
       assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
       assert Jason.decode!(content) == body
+    end
+
+    test "a fix on an answer point is 422 invalid_artifact", ctx do
+      points = [
+        %{
+          "text" => "Which basket gets the sale?",
+          "action" => "answer",
+          "question" => "q2",
+          "fix" => "Answer it on the Explore tab."
+        }
+      ]
+
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix verdict.json to match the format of verdict: at #/points/0, " <>
+                   "property 'fix' is not allowed."
+             }
+
+      assert RunApiStubs.pushed() == []
     end
 
     test "a verdict without points is stored without the member, as its schema takes it",

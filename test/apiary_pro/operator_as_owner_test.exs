@@ -484,22 +484,79 @@ defmodule ApiaryPro.OperatorAsOwnerTest do
   describe "the time limits and retention of an operated workspace" do
     @limits_and_retention [:"time_limit.edit", :"retention.edit"]
 
-    test "are set by the organisation's owners and admins, and by the operator's owners and admins while the flag is on",
+    test "the retention is set by the organisation's owners and admins, and by the operator's owners and admins while the flag is on",
          ctx do
       for as <- [
             ctx.as_owner,
             ctx.as_admin,
             ctx.operated.owner.scope,
             ctx.organisation_admin.scope
-          ],
-          action <- @limits_and_retention do
-        assert Access.authorize(as, action, ctx.operated.workspace) == :ok, "#{action}"
+          ] do
+        assert Access.authorize(as, :"retention.edit", ctx.operated.workspace) == :ok
       end
 
-      for as <- [ctx.as_member, ctx.organisation_member.scope], action <- @limits_and_retention do
-        assert Access.authorize(as, action, ctx.operated.workspace) == {:error, :forbidden},
-               "#{action}"
+      for as <- [ctx.as_member, ctx.organisation_member.scope] do
+        assert Access.authorize(as, :"retention.edit", ctx.operated.workspace) ==
+                 {:error, :forbidden}
       end
+    end
+
+    test "the time limits are set by the operator's owners and admins alone while the flag is on",
+         ctx do
+      for as <- [ctx.as_owner, ctx.as_admin] do
+        assert Access.authorize(as, :"time_limit.edit", ctx.operated.workspace) == :ok
+        assert Access.can?(as, :"time_limit.edit", ctx.operated.workspace)
+      end
+
+      for as <- [
+            ctx.operated.owner.scope,
+            ctx.organisation_admin.scope,
+            ctx.as_member,
+            ctx.organisation_member.scope
+          ] do
+        assert Access.authorize(as, :"time_limit.edit", ctx.operated.workspace) ==
+                 {:error, :forbidden}
+
+        refute Access.can?(as, :"time_limit.edit", ctx.operated.workspace)
+      end
+
+      # The organisation's owners and admins set them in Platform, which has no operator.
+      platform_admin =
+        scope_in(ctx.organisation_admin.user, ctx.operated.organisation, ctx.platform)
+
+      assert Access.authorize(platform_admin, :"time_limit.edit", ctx.platform) == :ok
+    end
+
+    test "the time limits are set by someone in both only where their level in the operator is the higher",
+         ctx do
+      # An admin of both: the tie is not through the operator.
+      admin_of_both = ctx.operator_admin.user
+      # An owner of the operator who is an admin of the organisation.
+      %{user: owner_and_admin} = member_fixture(ctx.operator.scope, :owner)
+
+      Flags.put_operator_infrastructure(false)
+
+      for user <- [admin_of_both, owner_and_admin] do
+        %{membership: joined} = join_fixture(ctx.operated.owner.scope, user)
+        {:ok, _} = Organisations.set_member_level(ctx.operated.owner.scope, joined.id, :admin)
+      end
+
+      Flags.put_operator_infrastructure(true)
+      in_main = &scope_in(&1, ctx.operated.organisation, ctx.operated.workspace)
+
+      assert Access.authorize(
+               in_main.(owner_and_admin),
+               :"time_limit.edit",
+               ctx.operated.workspace
+             ) ==
+               :ok
+
+      assert Access.authorize(in_main.(admin_of_both), :"time_limit.edit", ctx.operated.workspace) ==
+               {:error, :forbidden}
+
+      # The admin of both keeps the retention, at their level in the organisation.
+      assert Access.authorize(in_main.(admin_of_both), :"retention.edit", ctx.operated.workspace) ==
+               :ok
     end
 
     test "are the organisation's alone with the flag off", ctx do

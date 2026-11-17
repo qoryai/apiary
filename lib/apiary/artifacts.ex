@@ -17,7 +17,9 @@ defmodule Apiary.Artifacts do
   # contains. `types/1` and `all_types/1` read the list from the database by the
   # workspace's id, and `type/2` reads it the same way for a standard type that can be
   # hidden and for no other name: a caller's struct can have the field unset, or be older
-  # than a change of the list.
+  # than a change of the list. A workspace's `locked_standard_types` is the list of the
+  # standard types a run cannot withdraw a name of, which the same three functions read
+  # into each type's `withdrawable`.
   #
   # `create_type/3`, `update_type/3` and `delete_type/2` edit a workspace's custom types,
   # the Artifact types section of its settings: each checks `artifact_type.edit` with
@@ -194,12 +196,18 @@ defmodule Apiary.Artifacts do
   # the next version with files lists it again. Only a run withdraws a name; any other
   # actor is `{:error, :not_found}`. The checks of the actor, the type and the options are
   # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
-  # `review-comments`, `verdict` or `proposal` (`withdrawable_type?/1`), is
-  # `{:error, {:withdraw, :type}}`. Then, in the transaction, with the locks and the reads
-  # of a push's transaction, the artifact's newest version, leaving out versions by a run a
-  # member cancelled, is read, and the withdrawal is refused, as
+  # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
+  # `{:error, {:withdraw, :type}}`, and a type with `withdrawable` false is
+  # `{:error, {:withdraw, :type_off}}`. Then, in the transaction, with the locks and the
+  # reads of a push's transaction, the artifact's newest version, leaving out versions by a
+  # run a member cancelled, is read, and the withdrawal is refused, as
   # `{:error, {:withdraw, reason}}`, when it is:
   #
+  #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
+  #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
+  #     public id; a member whose account is gone has no `user_id`, and counts). The check
+  #     comes before the three below, so that a version a person wrote and approved is
+  #     refused as approved;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`;
   #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
@@ -247,6 +255,7 @@ defmodule Apiary.Artifacts do
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
   alias Apiary.Runs.RunCredentials
+  alias Apiary.Stages.GateDecision
   alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
@@ -292,9 +301,12 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec types(Workspace.t()) :: [Type.t()]
   def types(%Workspace{id: workspace_id}) do
-    shown = shown_standard_types(workspace_id)
+    {shown, locked} = standard_state(workspace_id)
 
-    Enum.filter(Type.standard(), &shown?(&1.name, shown)) ++ custom_types(workspace_id)
+    shown_types =
+      for type <- Type.standard(), shown?(type.name, shown), do: with_lock(type, locked)
+
+    shown_types ++ custom_types(workspace_id)
   end
 
   # member_types/0 is the names of the types a person writes only through a member
@@ -313,9 +325,9 @@ defmodule Apiary.Artifacts do
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
   def all_types(%Workspace{id: workspace_id}) do
-    shown = shown_standard_types(workspace_id)
+    {shown, locked} = standard_state(workspace_id)
 
-    Enum.map(Type.standard(), &%{&1 | shown: shown?(&1.name, shown)}) ++
+    Enum.map(Type.standard(), &%{with_lock(&1, locked) | shown: shown?(&1.name, shown)}) ++
       custom_types(workspace_id)
   end
 
@@ -324,8 +336,13 @@ defmodule Apiary.Artifacts do
   def type(%Workspace{id: workspace_id}, name) when is_binary(name) do
     case Enum.find(Type.standard(), &(&1.name == name)) do
       %Type{} = standard ->
-        if name in Type.always_on() or shown?(name, shown_standard_types(workspace_id)),
-          do: standard
+        # An always-on type reads no list: a run cannot withdraw it by name anyway.
+        if name in Type.always_on() do
+          standard
+        else
+          {shown, locked} = standard_state(workspace_id)
+          if shown?(name, shown), do: with_lock(standard, locked)
+        end
 
       nil ->
         if Type.name?(name),
@@ -338,9 +355,18 @@ defmodule Apiary.Artifacts do
   defp custom_types(workspace_id),
     do: Repo.all(from t in Type, where: t.workspace_id == ^workspace_id, order_by: t.name)
 
-  defp shown_standard_types(workspace_id) do
-    Repo.one(from w in Workspace, where: w.id == ^workspace_id, select: w.shown_standard_types)
+  # The workspace's `shown_standard_types` and `locked_standard_types`; nil and no names for
+  # a workspace that is gone.
+  defp standard_state(workspace_id) do
+    Repo.one(
+      from w in Workspace,
+        where: w.id == ^workspace_id,
+        select: {w.shown_standard_types, w.locked_standard_types}
+    ) || {nil, []}
   end
+
+  # The standard type `type` with `withdrawable` false where the workspace locks it.
+  defp with_lock(%Type{name: name} = type, locked), do: %{type | withdrawable: name not in locked}
 
   defp shown?(_name, nil), do: true
   defp shown?(name, shown), do: name in Type.always_on() or name in shown
@@ -348,7 +374,8 @@ defmodule Apiary.Artifacts do
   # create_type/3 makes a custom type in `workspace`: `{:ok, type}`,
   # `{:error, :not_found | :forbidden}`, or `{:error, changeset}`. `attrs` has `name`,
   # `base_view`, `size_limit`, `max_files` and, for a structured type, `json_schema`, a
-  # map or its JSON text.
+  # map or its JSON text. A `withdrawable` in `attrs` is left out: only a template's
+  # `artifact_types` entry sets it (`insert_template_type/3`).
   @doc false
   @spec create_type(Scope.t(), Workspace.t(), map) ::
           {:ok, Type.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
@@ -357,7 +384,11 @@ defmodule Apiary.Artifacts do
       with :ok <- authorize(scope, @edit_types, workspace),
            {:ok, changeset} <-
              %Type{organisation_id: workspace.organisation_id, workspace_id: workspace.id}
-             |> Type.create_changeset(json_attrs(attrs))
+             |> Type.create_changeset(
+               attrs
+               |> json_attrs()
+               |> Map.drop([:withdrawable, "withdrawable"])
+             )
              |> checked_schema(),
            {:ok, type} <- PublicId.Insert.insert(changeset),
            {:ok, _entry} <- audit_type(scope, workspace, :create, type) do
@@ -674,6 +705,8 @@ defmodule Apiary.Artifacts do
              refusal
              | {:withdraw,
                 :type
+                | :type_off
+                | {:approved, pos_integer}
                 | :no_version
                 | {:withdrawn, pos_integer}
                 | {:person, pos_integer, Ecto.UUID.t() | nil}}
@@ -697,16 +730,19 @@ defmodule Apiary.Artifacts do
 
   def withdraw(_actor, _work_item, _type_name, _opts), do: {:error, :not_found}
 
-  # withdrawable_type?/1 is whether a run may withdraw a name of the type `name`: every
-  # type but those Qory Apiary reads itself, `questions`, `review-comments`, `verdict` and
-  # `proposal`. A withdrawal of one of those would leave the stage runner or Explore with
-  # a newest version that has no file to read.
+  # withdrawable_type/1 is `:ok` when a run may withdraw a name of `type`: every type but
+  # those Qory Apiary reads itself, `questions`, `review-comments`, `verdict` and
+  # `proposal`, and those a template sets `withdrawable: false`. A withdrawal of one of
+  # the first would leave the stage runner or Explore with a newest version that has no
+  # file to read. Else `{:error, {:withdraw, :type}}` for the first, and
+  # `{:error, {:withdraw, :type_off}}` for the second.
   @doc false
-  @spec withdrawable_type?(term) :: boolean
-  def withdrawable_type?(name), do: name not in @not_withdrawable
+  @spec withdrawable_type(Type.t()) :: :ok | {:error, {:withdraw, :type | :type_off}}
+  def withdrawable_type(%Type{name: name}) when name in @not_withdrawable,
+    do: {:error, {:withdraw, :type}}
 
-  defp withdrawable_type(%Type{name: name}),
-    do: if(withdrawable_type?(name), do: :ok, else: {:error, {:withdraw, :type}})
+  def withdrawable_type(%Type{withdrawable: false}), do: {:error, {:withdraw, :type_off}}
+  def withdrawable_type(%Type{}), do: :ok
 
   # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
   # when the artifact's newest version is a run's version with files (`withdrawable/3`).
@@ -749,15 +785,30 @@ defmodule Apiary.Artifacts do
       nil ->
         {:error, {:withdraw, :no_version}}
 
-      %Version{withdrawn: true, number: number} ->
-        {:error, {:withdraw, {:withdrawn, number}}}
-
-      %Version{writer: :person} = version ->
-        {:error, {:withdraw, {:person, version.number, version.user_id}}}
-
-      %Version{artifact: artifact} ->
-        {:ok, artifact}
+      %Version{} = version ->
+        if person_approved?(held, version),
+          do: {:error, {:withdraw, {:approved, version.number}}},
+          else: written_by_run(version)
     end
+  end
+
+  defp written_by_run(%Version{withdrawn: true, number: number}),
+    do: {:error, {:withdraw, {:withdrawn, number}}}
+
+  defp written_by_run(%Version{writer: :person} = version),
+    do: {:error, {:withdraw, {:person, version.number, version.user_id}}}
+
+  defp written_by_run(%Version{artifact: artifact}), do: {:ok, artifact}
+
+  # Whether a person approved `version` at a gate of the work item: a decision of kind
+  # `:approve` that is not `automatic` and covers the version's public id. A nil `user_id`
+  # is a member whose account is gone (`Apiary.Stages.GateDecision`), and counts.
+  defp person_approved?(held, %Version{public_id: public_id}) do
+    Repo.exists?(
+      from d in GateDecision,
+        where: d.work_item_id == ^held.id and d.kind == :approve and d.automatic == false,
+        where: fragment("? @> to_jsonb(?::text)", d.versions, ^public_id)
+    )
   end
 
   # log_refusal/3 writes one warning to the server log for a refused push that a page

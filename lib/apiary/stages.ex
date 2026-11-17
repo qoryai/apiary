@@ -445,14 +445,14 @@ defmodule Apiary.Stages do
       []
   end
 
-  # limits/1 is the lowered time limit, in seconds, and access level of the run of the
-  # queue `run` (`Apiary.Stages.Runner.limits/4`), read at its claim without a lock, with
+  # limits/1 is the lowered access level of the run of the queue `run`
+  # (`Apiary.Stages.Runner.limits/4`), read at its claim without a lock, with
   # the harness's declaration of its workflow as the claim reads it; nil for a run the
   # stage runner did not queue, or with the workflow model off. A stage its version does
   # not have counts as a stage with no entry.
   @doc false
   @spec limits(DispatchRun.t()) ::
-          %{time_limit: pos_integer | nil, access: :read | :write_no_push | :write | nil} | nil
+          %{access: :read | :write_no_push | :write | nil} | nil
   def limits(%DispatchRun{stage_id: stage_id, process_version_id: version_id} = run)
       when is_binary(stage_id) and is_binary(version_id) do
     with true <- on?(),
@@ -2557,10 +2557,11 @@ defmodule Apiary.Stages do
 
   defp open_points(verdict, _open), do: verdict
 
-  # The points of a verdict's file: its list of point objects, nil for none. A run's
-  # point never has `fix`, which only Core writes (`Apiary.Stages.Points`).
+  # The points of a verdict's file: its list of point objects, nil for none. A `run_again`
+  # point may have `fix`, which the page shows in place of "Run another round."
+  # (`Apiary.Stages.Points`).
   defp points(points) when is_list(points),
-    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question)))
+    do: for(%{} = point <- points, do: Map.take(point, ~w(text action question fix)))
 
   defp points(_none), do: nil
 

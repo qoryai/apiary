@@ -12,6 +12,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A question in a run's questions may have a `criterion`: the id of the acceptance
+  criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
+  refuses a value that is not such an id. A run can change the criterion of an open
+  question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
 - A run of a later stage, or a person by upload, can store a new version of an approved
   output, and every later run reads that version in place of the approved one. A run's
@@ -101,6 +105,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after a pass, a failure or an interrupt.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
+- A run_again point of a run's verdict may have `fix`, one line on what a person does
+  about it: the work item page shows it in place of "Run another round."
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
   Qory Apiary accepts requests for it from the gateway that started it, on the same node
   and instance. A run of a workspace's queue still ends 600 seconds after its last
@@ -1331,6 +1337,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a host in Unicode, the push of such a version is refused: the run API returns `503`
   `unavailable`, no version and no file is stored, and the log line starts with "Set
   PUBLIC_URL to an https:// address".
+- An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
+  type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
+  of that type, and it cannot withdraw a name whose newest version a member approved at a
+  gate: the run API returns `422` `type_not_withdrawable`.
 
 ### Changed
 
@@ -1971,6 +1981,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A question that was reopened after a decision and then answered is no longer refused
+  as too large.
 <!-- feature: secrets -->
 - A run that stops because its gateway's key does not allow stored secrets now shows
   who adds an allowed key and where, in place of Contact support.
@@ -2244,6 +2256,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `artifact_types` and `workspaces` (20261116190000): a column `artifact_types.withdrawable`,
+  true by default, false for a custom type whose template sets `withdrawable: false`, and a
+  column `workspaces.locked_standard_types`, the standard types whose template entry sets
+  it, an empty list by default. Each default is a constant, so adding the columns rewrites
+  no row, and every type and workspace stored before has the default. Rolling back drops
+  both columns, with every `withdrawable: false` and every locked standard type that a
+  template set.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`

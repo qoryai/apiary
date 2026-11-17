@@ -3907,6 +3907,16 @@ msgstr ""
 msgid "%{workflow}, machine type %{machine}"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow}, machine type %{machine}, time limit %{minutes} minutes"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow}, machine type %{machine}, time limit %{minutes} minutes (default)"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow}: a stage can run it"
@@ -4048,6 +4058,11 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #, elixir-autogen, elixir-format
 msgid "1.5x"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "15 to 1440 minutes. If you leave it empty, each session of this workflow stops after %{minutes} minutes."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -9496,6 +9511,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "key"
 msgid "Enter"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Enter 15 to 1440 minutes, or leave the field empty."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -18587,6 +18607,16 @@ msgstr ""
 msgid "Save the outputs"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Save the stage first to set this workflow's time limit."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Save time limit"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Save variable"
@@ -18651,6 +18681,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Saved."
 msgstr ""
 
 #: lib/apiary_web/live/harness_live.ex
@@ -19229,6 +19264,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set wall.setup to outside in the machine's forager.yaml, or remove it, then start the run again. A read-only run cannot run its setup inside the agent's container."
+msgstr ""
+
+#: lib/apiary/artifacts/type_rules.ex
+#, elixir-autogen, elixir-format
+msgid "Set withdrawable to true or false."
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -22737,6 +22777,21 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Time limit changed"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit, in minutes"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit: %{minutes} minutes"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit: %{minutes} minutes (default)"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
