@@ -15194,6 +15194,11 @@ msgstr ""
 msgid "Offer at most 10 tracks at the gate of %{stage}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Offers model providers whose description lists no models, such as LiteLLM."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Offers no track."

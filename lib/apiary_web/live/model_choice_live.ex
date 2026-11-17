@@ -118,14 +118,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # then, while a provider with its description is left, `:other_runtime` when another
   # runtime of the catalogue has a provider that serves it, else `:none`. A provider whose
   # settings check ran out of time or crashed has no line: it serves nothing on this
-  # read, and the next read checks it again. A provider that is not offered
-  # (`Apiary.Kinds.Providers.offered?/1`) counts as one that serves no runtime, so with
-  # only such providers, and none changed or unknown, the line is `:none`.
+  # read, and the next read checks it again. A provider with its description that is not
+  # offered (`Apiary.Kinds.Providers.offered?/1`) serves no runtime here, so with only
+  # such providers the line is `:none`.
   defp unserved(described, runtime, runtimes) do
-    descriptions =
-      for {_provider, {:ok, description}} <- described,
-          Providers.offered?(description),
-          do: description
+    descriptions = for {_provider, {:ok, description}} <- described, do: description
+    offered = Enum.filter(descriptions, &Providers.offered?/1)
 
     gone =
       for {provider, {:error, why}} <- described,
@@ -135,11 +133,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
     served_elsewhere? =
       Enum.any?(runtimes, fn other ->
         other.name != runtime.name and
-          Enum.any?(descriptions, &(Providers.serve(&1, other) == :ok))
+          Enum.any?(offered, &(Providers.serve(&1, other) == :ok))
       end)
 
     cond do
-      descriptions == [] and gone != [] -> gone
+      descriptions == [] -> gone
       served_elsewhere? -> gone ++ [:other_runtime]
       true -> gone ++ [:none]
     end

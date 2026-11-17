@@ -402,6 +402,9 @@ defmodule ApiaryWeb.InstanceLive.Features do
   defp sentence(:registry),
     do: gettext("Tokens for the private image registry, and each run's registry credential.")
 
+  defp sentence(:model_proxies),
+    do: gettext("Offers model providers whose description lists no models, such as LiteLLM.")
+
   defp sentence(:workflow_model),
     do:
       gettext(

@@ -123,11 +123,13 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse(nil) == Features.parse(nil, registry: setting)
     end
 
-    test "model_proxies is opt-in and needs secrets: on only where a list has it" do
+    test "model_proxies is opt-in and needs security and secrets: on only where a list has it" do
       assert :model_proxies in Features.opt_in()
       refute :model_proxies in Features.built()
       refute :model_proxies in Features.documented()
-      assert Features.needs(:model_proxies) == [:secrets]
+      assert Features.needs(:model_proxies) == [:security, :secrets]
+      refute :model_proxies in Features.closed(Features.all() -- [:security])
+      refute :model_proxies in Features.closed(Features.all() -- [:secrets])
 
       # QORY_REGISTRY turns on the registry alone.
       for value <- [nil, "", "  ", "all", "all-path_rules"],

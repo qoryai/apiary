@@ -187,8 +187,11 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
       assert text(view, "#feature-model_proxies-title") ==
                "Model proxies (providers with no model list)"
 
-      assert text(view, "#feature-model_proxies-needs") == "Needs Secrets and variables."
-      refute has_element?(view, "#feature-model_proxies-sentence")
+      assert text(view, "#feature-model_proxies-needs") ==
+               "Needs Security policy, and Secrets and variables."
+
+      assert text(view, "#feature-model_proxies-sentence") ==
+               "Offers model providers whose description lists no models, such as LiteLLM."
 
       refute :model_proxies in Features.enabled()
 

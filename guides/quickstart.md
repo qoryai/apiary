@@ -340,8 +340,9 @@ later.
    **Add a key**, the one option while Main has no model provider to reuse. In
    **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
    this step**, beside the form, shows where to get a key for the provider you choose.
-   Paste the key in **Key**. For LiteLLM, also enter the proxy's https address in
-   **Address**, such as `https://litellm.example.com`. **Runtime** shows **Claude
+   Paste the key in **Key**. For LiteLLM, which **Provider** lists only with the feature
+   `model_proxies` on, also enter the proxy's https address in **Address**, such as
+   `https://litellm.example.com`. **Runtime** shows **Claude
    Code**. In **Default model**, keep the first model or choose another, and select
    **Continue**. The key is a secret of Main: **Workspace settings › Secrets and
    variables** lists it, masked, and you replace it there. Only owners and admins add a
