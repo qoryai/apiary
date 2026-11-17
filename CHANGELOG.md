@@ -13,6 +13,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- A run of a later stage, or a person by upload, can store a new version of an approved
+  output, and every later run reads that version in place of the approved one. A run's
+  `POST artifacts` takes an optional `decision`: the `id` of the person's note that asked
+  for the version. Each person's note in `notes` of `GET work-item` has an `id`, `gd_…` for
+  a request for changes or a move and `es_…` for an escalation, null for an answer and a
+  check. A `decision` that is not a person's note on the run's work item is `422`
+  `unknown_decision`. The next approval by a person at a gate lists the new version; a
+  gate `none` leaves out a version that has a `decision`. In `GET artifacts`, each version
+  has `decision` and `decision_at`, the time of that note.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -2228,6 +2237,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   changes no row. Adding the column rewrites no row; a workspace has a value after the
   next read of its harness. Rolling back drops the column and makes each `write-no-push`
   run `read`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `gate_decisions`, `escalations` and `artifact_versions` (20261117100000 and
+  20261117100100): a column `public_id` on `gate_decisions` (`gd_…`) and on `escalations`
+  (`es_…`), unique, with a check of its shape, and a nullable column
+  `artifact_versions.decision_id`, the id of the note that asked for a version, with a
+  check of its shape. The default of `public_id` is a function that makes a new id, so
+  adding the column gives every stored decision and escalation an id and rewrites both
+  tables under a lock that blocks reads and writes. `decision_id` is nullable, so adding it
+  rewrites no row; the first migration adds its check without a scan, and the second
+  validates it with a scan that does not block writes. Rolling back drops the three
+  columns, with the decision of every version.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at

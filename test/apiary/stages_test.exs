@@ -3966,9 +3966,9 @@ defmodule Apiary.StagesTest do
   end
 
   describe "inputs and the artifact index" do
-    test "the next stage reads the approved version; a newer one is changed after approval", %{
-      scope: scope
-    } do
+    test "the next stage reads the approved version, then a person's newer one, changed " <>
+           "after approval",
+         %{scope: scope} do
       save!(scope, [
         explore_stage(),
         stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]})
@@ -3993,13 +3993,15 @@ defmodule Apiary.StagesTest do
 
       assert id == proposal.public_id
 
-      # The run ended and pushes nothing more; a person adds the newer version.
-      {:ok, _version} =
+      # The run ended and pushes nothing more; a person adds the newer version, which the
+      # next stage reads in place of the approved one (vault 0261, 624 (a)).
+      {:ok, newer} =
         Stages.Artifacts.push({:person, scope}, work_item, "proposal", a_proposal(),
           stage_id: @explore
         )
 
-      assert [%{id: ^id}] = Enum.map(Stages.inputs(work_item), & &1.version)
+      newer_id = newer.public_id
+      assert [%{id: ^newer_id, decision: nil}] = Enum.map(Stages.inputs(work_item), & &1.version)
 
       user_id = scope.user.id
 
@@ -4130,17 +4132,36 @@ defmodule Apiary.StagesTest do
       proposal_id = proposal.public_id
 
       assert [
-               %{kind: :answer, stage_id: @explore, user_id: ^user_id, note: "The sale price"},
-               %{kind: :answer, note: "Yes"},
-               %{kind: :escalation, stage_id: @explore, user_id: ^user_id, note: "Read the cart"},
                %{
+                 id: nil,
+                 kind: :answer,
+                 stage_id: @explore,
+                 user_id: ^user_id,
+                 note: "The sale price"
+               },
+               %{id: nil, kind: :answer, note: "Yes"},
+               %{
+                 id: "es_" <> _escalation,
+                 kind: :escalation,
+                 stage_id: @explore,
+                 user_id: ^user_id,
+                 note: "Read the cart"
+               },
+               %{
+                 id: "gd_" <> _request,
                  kind: :request_changes,
                  stage_id: @explore,
                  note: "Name the price rule",
                  artifact_version_id: ^proposal_id
                },
-               %{kind: :move, stage_id: @explore, note: "Shaped enough"}
-             ] = Stages.notes(work_item)
+               %{id: "gd_" <> _move, kind: :move, stage_id: @explore, note: "Shaped enough"}
+             ] = notes = Stages.notes(work_item)
+
+      # Each id is the row's public id, in the shape `Apiary.PublicId` makes.
+      for %{id: id} when is_binary(id) <- notes do
+        [prefix, _random] = String.split(id, "_")
+        assert Apiary.PublicId.valid?(prefix, id)
+      end
     end
   end
 
@@ -4859,6 +4880,247 @@ defmodule Apiary.StagesTest do
 
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = ended
       assert Stages.missing_outputs(ended) == []
+    end
+  end
+
+  describe "a person's change to an approved output (A-20)" do
+    @verify "st_m1mqbeywdg"
+
+    # Shape, where a person adds the acceptance criteria; Build, a loop with a gate none,
+    # as the software process has it, which reads the criteria and makes the explainer;
+    # and Verify, which reads both, with a person's gate.
+    defp criteria_process!(scope) do
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{
+          "outputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+        }),
+        stage(
+          @build,
+          "Build",
+          [
+            %{
+              "loop" => %{
+                "rounds" => 3,
+                "body" => [
+                  %{"workflow" => "implement-changes"},
+                  %{"workflow" => "review-changes"}
+                ]
+              }
+            }
+          ],
+          %{
+            "inputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+            "outputs" => [%{"type" => "explainer", "required" => true}],
+            "gate" => %{"kind" => "none"}
+          }
+        ),
+        stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket"}], %{
+          "inputs" => [
+            %{"type" => "acceptance-criteria", "required" => true},
+            %{"type" => "explainer", "required" => true}
+          ]
+        })
+      ])
+    end
+
+    # The end of a run that pushes a version of `type` with `opts`, such as a decision.
+    defp pushes_one(type, text, opts) do
+      fn run, _registered ->
+        {:ok, _version} =
+          Stages.Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            type,
+            [%{filename: "#{type}.md", content_type: "text/markdown", binary: text}],
+            Keyword.put(opts, :stage_id, run.stage_id)
+          )
+      end
+    end
+
+    defp both(first, second) do
+      fn run, registered ->
+        first.(run, registered)
+        second.(run, registered)
+      end
+    end
+
+    # The work item in Build after Shape's approval of the criteria a person added, and
+    # an escalation of Build's first round that a person answered with `note`: the work
+    # item, with Build's second round running, and the escalation.
+    defp asked_in_build!(scope, note) do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "acceptance-criteria", [
+          %{filename: "criteria.md", content_type: "text/markdown", binary: "# AC-1"}
+        ])
+
+      {:ok, work_item} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+
+      work_item =
+        work_item
+        |> end_run!(pushes_one("explainer", "# Explainer 1", []))
+        |> end_run!(verdict("escalate", [again("AC-2 does not cover the empty cart.")]))
+
+      assert %Escalation{} = escalation = escalation(work_item)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :another_round, note, expect_stage: @build)
+
+      {work_item, Repo.get!(Escalation, escalation.id)}
+    end
+
+    defp criteria(work_item, number),
+      do: Enum.find(versions(work_item, "acceptance-criteria"), &(&1.number == number))
+
+    test "Build's run stores a criterion's new version with the decision; Build and Verify " <>
+           "read it; Verify's gate lists it, Build's automatic gate does not",
+         %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision, resolved_at: at}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      assert "es_" <> _random = decision
+
+      changed =
+        pushes_one("acceptance-criteria", "# AC-2 with the empty cart", decision: decision)
+
+      work_item = end_run!(work_item, both(changed, pushes_one("explainer", "# Explainer 2", [])))
+
+      new = criteria(work_item, 2)
+      assert %{writer: :run, stage_id: @build, decision_id: ^decision} = new
+
+      # Build's next run reads the new version.
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "review-changes"} = newest_run(work_item)
+      new_id = new.public_id
+
+      assert [
+               %{
+                 type: "acceptance-criteria",
+                 version: %{id: ^new_id, decision: ^decision, decision_at: ^at}
+               }
+             ] = Stages.inputs(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      # Build's gate none lists its explainer and leaves out the new criteria.
+      explainer = Enum.find(versions(work_item, "explainer"), &(&1.number == 2)).public_id
+
+      assert [
+               %GateDecision{stage_id: @shape, automatic: false, versions: [shaped]},
+               %GateDecision{stage_id: @build, automatic: true, versions: [^explainer]}
+             ] =
+               Enum.filter(
+                 decisions(work_item),
+                 &(&1.kind == :approve and &1.stage_id != @explore)
+               )
+
+      assert shaped == criteria(work_item, 1).public_id
+
+      # Verify reads the new version in place of the one Shape's gate approved.
+      assert [
+               %{type: "acceptance-criteria", version: %{id: ^new_id, decision: ^decision}},
+               %{type: "explainer", version: %{id: ^explainer}}
+             ] = Stages.inputs(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+
+      user_id = scope.user.id
+
+      assert %GateDecision{automatic: false, user_id: ^user_id, versions: [^new_id]} =
+               Enum.find(decisions(work_item), &(&1.stage_id == @verify))
+
+      assert [
+               %{
+                 type: "acceptance-criteria",
+                 approved_version: ^new_id,
+                 versions: [
+                   %{id: ^new_id, decision: ^decision, decision_at: ^at, approvals: [approval]},
+                   %{number: 1, decision: nil, decision_at: nil}
+                 ]
+               }
+             ] =
+               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "acceptance-criteria"))
+
+      assert %{user_id: ^user_id, automatic: false, stage_id: @verify} = approval
+    end
+
+    test "a gate none leaves out its stage's output that has a decision, and the next stage " <>
+           "reads it",
+         %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Name the empty cart in the explainer.")
+
+      work_item =
+        work_item
+        |> end_run!(pushes_one("explainer", "# Explainer 2", decision: decision))
+        |> end_run!(verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      explainer = Enum.find(versions(work_item, "explainer"), &(&1.number == 2))
+      assert explainer.decision_id == decision
+
+      assert %GateDecision{automatic: true, versions: []} =
+               Enum.find(decisions(work_item), &(&1.stage_id == @build))
+
+      explainer_id = explainer.public_id
+
+      assert [_criteria, %{type: "explainer", version: %{id: ^explainer_id}}] =
+               Stages.inputs(work_item)
+    end
+
+    test "a push refuses a decision that is not a person's note on the work item", %{
+      scope: scope
+    } do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      run = newest_run(work_item)
+      file = [%{filename: "criteria.md", content_type: "text/markdown", binary: "# AC-2"}]
+
+      # Another work item's request for changes, an approval, which is no note, an id of
+      # no note, and malformed ids.
+      other = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _other} =
+        Stages.request_changes(scope, other, "Name the price rule.", nil, expect_stage: @explore)
+
+      [%GateDecision{kind: :request_changes, public_id: elsewhere}] = decisions(other)
+      approval = Enum.find(decisions(work_item), &(&1.stage_id == @shape))
+      assert "gd_" <> _random = approval.public_id
+
+      for id <- [elsewhere, approval.public_id, "es_0000000000000000", "es_x", "decision"] do
+        assert Stages.Artifacts.push({:run, run}, work_item, "acceptance-criteria", file,
+                 stage_id: @build,
+                 decision: id
+               ) == {:error, {:unknown_decision, id}}
+      end
+
+      assert Stages.Artifacts.push({:run, run}, work_item, "acceptance-criteria", file,
+               stage_id: @build,
+               decision: 42
+             ) == {:error, {:invalid, :decision}}
+
+      assert [%{number: 1}] = versions(work_item, "acceptance-criteria")
+
+      assert {:ok, %{decision_id: ^decision}} =
+               Stages.Artifacts.push({:run, run}, work_item, "acceptance-criteria", file,
+                 stage_id: @build,
+                 decision: decision
+               )
     end
   end
 end

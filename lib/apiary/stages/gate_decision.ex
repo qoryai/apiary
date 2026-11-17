@@ -11,15 +11,22 @@ defmodule Apiary.Stages.GateDecision do
   # and `process_version_id` are the stage and the version of the process it was made
   # under, and `take_in` the take in of the work item it was made in. Nothing changes a
   # decision once it is written.
+  #
+  # `public_id` is `gd_` and sixteen lowercase Crockford base32 characters
+  # (`Apiary.PublicId`): the id of a request for changes or a move in the run API's notes
+  # (`Apiary.Stages.Notes`), which a run's version may have as its `decision`.
   @moduledoc false
   use Ecto.Schema
 
   @typedoc "A decision at a stage's gate."
   @type t :: %__MODULE__{}
 
+  @prefix "gd"
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "gate_decisions" do
+    field :public_id, :string, read_after_writes: true
     field :stage_id, :string
     field :kind, Ecto.Enum, values: [:approve, :request_changes, :move]
     field :versions, {:array, :string}, default: []
@@ -36,4 +43,9 @@ defmodule Apiary.Stages.GateDecision do
     belongs_to :process_version, Apiary.Processes.Version
     belongs_to :user, Apiary.Accounts.User
   end
+
+  # prefix/0 is the prefix of a decision's public id, `gd`.
+  @doc false
+  @spec prefix() :: String.t()
+  def prefix, do: @prefix
 end

@@ -38,6 +38,15 @@ defmodule Apiary.Stages do
   # it has the member who accepted the escalation that ended the stage otherwise. It
   # writes no entry in the audit trail: no person acted, or the accept wrote its entry.
   #
+  # ## A person's change to an approved output
+  #
+  # A run of a later stage, or a person by upload, stores a new version of an approved
+  # output (vault 0261, 624 (a)). A run's push gives the person's note that asked for it,
+  # its `decision` (`Apiary.Stages.Notes`); a person's upload needs none. Every later run
+  # reads that version in place of the approved one (`read_version/5`), and the next
+  # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
+  # with a `decision`.
+  #
   # ## After the last stage
   #
   # A work item closes when its last stage finishes, in the same transaction, as the
@@ -123,15 +132,15 @@ defmodule Apiary.Stages do
   # The ends one stage sweep reads at most (`sweep/3`).
   @stage_batch 100
 
-  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
-  alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
-  alias Apiary.Stages.Skip
+  alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Notes, Points}
+  alias Apiary.Stages.{Runner, Skip}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -987,9 +996,14 @@ defmodule Apiary.Stages do
   end
 
   # An approval; `audit?` false where the confirmation of today's proposal wrote the act's
-  # one entry in the trail.
+  # one entry in the trail. It covers the stage's newest outputs, then each version a
+  # person's change made that no approval lists yet (`changed_versions/2`), as a person's
+  # approval is the one that lists such a version (vault 0261, 624 (a)).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
-    covered = Enum.map(newest_outputs(work_item, stage), & &1.public_id)
+    artifacts = Artifacts.list(work_item)
+    newest = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+    changed = Enum.map(changed_versions(work_item, artifacts), & &1.public_id)
+    covered = Enum.uniq(newest ++ changed)
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
     with {:ok, _decision} <-
@@ -1398,8 +1412,9 @@ defmodule Apiary.Stages do
   end
 
   # inputs/1 is, for each input of the work item's stage, the version it reads: a
-  # person's version added on the work item in this stage, else the version the gate of
-  # the stage that made it approved; nil for none. A name whose newest version is a
+  # person's change to it that no approval lists yet, else a person's version added on
+  # the work item in this stage, else the version the gate of the stage that made it
+  # approved; nil for none (`read_version/5`). A name whose newest version is a
   # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
@@ -1417,15 +1432,18 @@ defmodule Apiary.Stages do
   # wrote it (`Apiary.Artifacts.cancelled?/1`) and whether it is a withdrawal
   # (`Apiary.Artifacts.withdraw/4`), a withdrawn name included: for each artifact, the public id of
   # the newest approved version, and whether a version of an earlier stage's artifact was
-  # made after that approval ("changed after approval").
+  # made after that approval ("changed after approval"). Each version has `decision` and
+  # `decision_at`: the person's note that asked for it and the note's time, nil for none.
   @doc false
   @spec artifact_index(WorkItem.t()) :: [map]
   def artifact_index(%WorkItem{} = work_item) do
     work_item = Repo.get!(WorkItem, work_item.id)
     approvals = approvals_by_version(work_item)
+    artifacts = Artifacts.list(work_item)
+    times = decision_times(work_item, Enum.flat_map(artifacts, & &1.versions))
 
-    for artifact <- Artifacts.list(work_item) do
-      versions = Enum.map(artifact.versions, &version_map(&1, approvals))
+    for artifact <- artifacts do
+      versions = Enum.map(artifact.versions, &version_map(&1, approvals, times))
       newest = List.first(versions)
       approved_version = Enum.find(versions, &(&1.approvals != []))
       newer? = approved_version != nil and newest.number > approved_version.number
@@ -1650,15 +1668,17 @@ defmodule Apiary.Stages do
   # answers to a run's questions) and the gaps of failed checks that started a round
   # (`:check`, with no person). What members gave Explore (`Apiary.Explore.Given`) are
   # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
-  # `comment` true, as the run API sends them.
+  # `comment` true, as the run API sends them. A request for changes, a move and an
+  # escalation have `id`, their public id (`gd_…`, `es_…`), which a run's push may give as
+  # its `decision` (`Apiary.Stages.Notes`); an answer and a check have none.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id} = work_item) do
     decisions =
       Repo.all(
-        from d in GateDecision,
-          where: d.work_item_id == ^id and d.kind in [:request_changes, :move],
+        from d in Notes.gate_decisions(id),
           select: %{
+            id: d.public_id,
             kind: d.kind,
             stage_id: d.stage_id,
             user_id: d.user_id,
@@ -1670,9 +1690,9 @@ defmodule Apiary.Stages do
 
     escalations =
       Repo.all(
-        from e in Escalation,
-          where: e.work_item_id == ^id and not is_nil(e.resolved_at) and not is_nil(e.note),
+        from e in Notes.escalations(id),
           select: %{
+            id: e.public_id,
             kind: :escalation,
             stage_id: e.stage_id,
             user_id: e.resolved_by_id,
@@ -1687,6 +1707,7 @@ defmodule Apiary.Stages do
         from c in Check,
           where: c.work_item_id == ^id,
           select: %{
+            id: nil,
             kind: :check,
             stage_id: c.stage_id,
             user_id: nil,
@@ -1719,6 +1740,7 @@ defmodule Apiary.Stages do
 
         for entry <- given do
           %{
+            id: nil,
             kind: :answer,
             comment: entry.kind != :answer,
             stage_id: Map.get(stages, {entry.take_in, entry.attempt}),
@@ -1731,8 +1753,12 @@ defmodule Apiary.Stages do
     end
   end
 
-  # A version of an artifact as the reads give it, with the approvals that cover it.
-  defp version_map(version, approvals) do
+  # A version of an artifact as the reads give it, with the approvals that cover it, and
+  # `decision`, the id of the person's note that asked for it, with `decision_at`, the
+  # time of that note from `times` (`Apiary.Stages.Notes.times/2`); nil for none.
+  defp version_map(version, approvals, times) do
+    decision = Map.get(version, :decision_id)
+
     %{
       id: version.public_id,
       number: version.number,
@@ -1745,9 +1771,15 @@ defmodule Apiary.Stages do
       files: Map.get(version, :files, []),
       approvals: Map.get(approvals, version.public_id, []),
       cancelled: Artifacts.cancelled?(version),
-      withdrawn: Map.get(version, :withdrawn) == true
+      withdrawn: Map.get(version, :withdrawn) == true,
+      decision: decision,
+      decision_at: decision && Map.get(times, decision)
     }
   end
+
+  # The time of the note each of `versions` has as its `decision`.
+  defp decision_times(work_item, versions),
+    do: Notes.times(work_item.id, Enum.map(versions, &Map.get(&1, :decision_id)))
 
   # The approvals of the work item by the public id of each version they cover, oldest
   # first. `gate_none` is whether the stage's gate was `none` in the process version the
@@ -1881,9 +1913,11 @@ defmodule Apiary.Stages do
   # A gate `none` records the approval of the stage's newest outputs (vault 0252): with no
   # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
   # the escalation that ended the stage. The accept approves the newest versions that
-  # exist, as the stage's checks did not run.
+  # exist, as the stage's checks did not run. A version with a `decision` is left out: only
+  # a person's approval at a gate lists a person's change (vault 0261, 624 (a)).
   defp approve_none!(work_item, version, stage, by) do
     %GateDecision{
+      public_id: PublicId.generate(GateDecision.prefix()),
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
       work_item_id: work_item.id,
@@ -1893,10 +1927,11 @@ defmodule Apiary.Stages do
       automatic: is_nil(by),
       kind: :approve,
       take_in: work_item.take_in,
-      versions: Enum.map(newest_outputs(work_item, stage), & &1.public_id),
+      versions:
+        for(v <- newest_outputs(work_item, stage), is_nil(v.decision_id), do: v.public_id),
       inserted_at: DateTime.utc_now()
     }
-    |> Repo.insert!()
+    |> PublicId.Insert.insert!()
 
     :ok
   end
@@ -2228,6 +2263,7 @@ defmodule Apiary.Stages do
     :ok = close_open(work_item, :close, nil, nil)
 
     %Escalation{
+      public_id: PublicId.generate(Escalation.prefix()),
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
       work_item_id: work_item.id,
@@ -2239,7 +2275,7 @@ defmodule Apiary.Stages do
       run_id: run_id,
       inserted_at: DateTime.utc_now()
     }
-    |> Repo.insert!()
+    |> PublicId.Insert.insert!()
 
     :ok
   end
@@ -2662,6 +2698,7 @@ defmodule Apiary.Stages do
          track \\ nil
        ) do
     %GateDecision{
+      public_id: PublicId.generate(GateDecision.prefix()),
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
       work_item_id: work_item.id,
@@ -2676,7 +2713,7 @@ defmodule Apiary.Stages do
       track: track,
       inserted_at: DateTime.utc_now()
     }
-    |> Repo.insert()
+    |> PublicId.Insert.insert()
   end
 
   defp version_of(_work_item, nil), do: :ok
@@ -2723,7 +2760,7 @@ defmodule Apiary.Stages do
         escalation
 
       escalation = placed_escalation(work_item, version, stage) ->
-        Repo.insert!(escalation)
+        PublicId.Insert.insert!(escalation)
 
       true ->
         {:error, :not_escalated}
@@ -2742,6 +2779,7 @@ defmodule Apiary.Stages do
       )
 
     %Escalation{
+      public_id: PublicId.generate(Escalation.prefix()),
       organisation_id: work_item.organisation_id,
       workspace_id: work_item.workspace_id,
       work_item_id: work_item.id,
@@ -2998,17 +3036,25 @@ defmodule Apiary.Stages do
       %{
         type: type,
         required: Runner.input_required?(input, facts),
-        version: chosen && version_map(chosen, approvals_by_version(work_item))
+        version:
+          chosen &&
+            version_map(
+              chosen,
+              approvals_by_version(work_item),
+              decision_times(work_item, [chosen])
+            )
       }
     end
   end
 
   # The version of `type` that `stage` reads, whether or not the stage lists it as an
-  # input: a person's version added on the work item in this stage, else the version the
-  # gate of the nearest earlier stage that approved one approved; nil for none. A withdrawn
-  # name is never read (`Artifacts.withdrawn?/1`): neither a person's version nor an approved
-  # one of it.
+  # input: a person's change to it that no approval lists yet (`changed_version/3`), else
+  # a person's version added on the work item in this stage, else the version the gate of
+  # the nearest earlier stage that approved one approved; nil for none. A withdrawn name is
+  # never read (`Artifacts.withdrawn?/1`): neither a person's version nor an approved one
+  # of it.
   defp read_version(work_item, version, stage, artifacts, type) do
+    changed = changed_version(work_item, artifacts, type)
     artifacts = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
     by_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, v}}
 
@@ -3036,7 +3082,62 @@ defmodule Apiary.Stages do
         end
       end)
 
-    person || gated
+    changed || person || gated
+  end
+
+  # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,
+  # the person's note that asked for it, or that a person stored, in any stage. The
+  # version of `type` that every later run reads is the newest such version stored after
+  # the newest approval that lists a version of `type`, at any stage; with no such
+  # approval, the newest such version. Nil for none: today's rule then applies
+  # (`read_version/5`). A version of a withdrawn name, a withdrawal and a version by a run a
+  # member cancelled are never one. Nor is a version of the questions or the review
+  # comments, which a person writes as an answer or a review comment
+  # (`Artifacts.member_types/0`), not as a change.
+  defp changed_version(work_item, artifacts, type) do
+    if type in Artifacts.member_types() do
+      nil
+    else
+      of_type = Enum.filter(artifacts, &(&1.type == type))
+      since = listed_at(work_item, for(a <- of_type, v <- a.versions, do: v.public_id))
+
+      of_type
+      |> Enum.reject(&Artifacts.withdrawn?/1)
+      |> Enum.flat_map(& &1.versions)
+      |> Enum.filter(&changed?(&1, since))
+      |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
+    end
+  end
+
+  # The versions that `changed_version/3` reads, one for each type, in the order of the
+  # types' names.
+  defp changed_versions(work_item, artifacts) do
+    artifacts
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Enum.sort()
+    |> Enum.map(&changed_version(work_item, artifacts, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp changed?(version, since) do
+    (is_binary(version.decision_id) or version.writer == :person) and not version.withdrawn and
+      not Artifacts.cancelled?(version) and
+      (is_nil(since) or DateTime.compare(version.inserted_at, since) == :gt)
+  end
+
+  # When the newest approval of the work item that lists one of the versions `ids` was
+  # made, at any stage; nil for none.
+  defp listed_at(_work_item, []), do: nil
+
+  defp listed_at(work_item, ids) do
+    Repo.all(
+      from d in GateDecision,
+        where: d.work_item_id == ^work_item.id and d.kind == :approve,
+        order_by: [desc: d.inserted_at],
+        select: {d.inserted_at, d.versions}
+    )
+    |> Enum.find_value(fn {at, covered} -> if Enum.any?(covered, &(&1 in ids)), do: at end)
   end
 
   # The input types of the conditions of `stage` that count: each whose version the stage
