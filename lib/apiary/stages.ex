@@ -1419,12 +1419,12 @@ defmodule Apiary.Stages do
   # the newest approved version, and whether a version of an earlier stage's artifact was
   # made after that approval ("changed after approval").
   @doc false
-  @spec artifact_index(WorkItem.t()) :: [map]
-  def artifact_index(%WorkItem{} = work_item) do
+  @spec artifact_index(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: [map]
+  def artifact_index(%WorkItem{} = work_item, artifacts \\ nil) do
     work_item = Repo.get!(WorkItem, work_item.id)
     approvals = approvals_by_version(work_item)
 
-    for artifact <- Artifacts.list(work_item) do
+    for artifact <- artifacts || Artifacts.list(work_item) do
       versions = Enum.map(artifact.versions, &version_map(&1, approvals))
       newest = List.first(versions)
       approved_version = Enum.find(versions, &(&1.approvals != []))
@@ -1519,10 +1519,16 @@ defmodule Apiary.Stages do
   # approval with a track made in the take in before the stage was passed over, as
   # `%{kind, track_id, track_name, stage_id, user_id, at}`, `kind` `:approve` or `:move`; nil for none, and for a condition
   # that is no track's. `track_name` is the name the process version declares, else the id.
+  # `track` is the id of the track the work item is on, as `track/1` reads it, nil for none.
   # A stage's record is deleted when the stage is entered again (`enter_locked/4`), so a
   # stage has at most one, and none once it ran or waits at its gate.
   @doc false
-  @spec skip_records(WorkItem.t()) :: %{skips: [map], earlier_skips: [map], stage_skips: [map]}
+  @spec skip_records(WorkItem.t()) :: %{
+          skips: [map],
+          earlier_skips: [map],
+          stage_skips: [map],
+          track: String.t() | nil
+        }
   def skip_records(%WorkItem{id: id, take_in: take_in} = work_item) when is_integer(take_in) do
     names = track_names(work_item)
 
@@ -1561,6 +1567,7 @@ defmodule Apiary.Stages do
     end
 
     %{
+      track: newest_track(approvals),
       skips: for(skip <- entries, skip.take_in == take_in, do: entry.(skip)),
       earlier_skips: for(skip <- entries, skip.take_in < take_in, do: entry.(skip)),
       stage_skips:
@@ -1579,7 +1586,15 @@ defmodule Apiary.Stages do
     }
   end
 
-  def skip_records(%WorkItem{}), do: %{skips: [], earlier_skips: [], stage_skips: []}
+  def skip_records(%WorkItem{}), do: %{skips: [], earlier_skips: [], stage_skips: [], track: nil}
+
+  # The track of the newest of `approvals`, oldest first; nil for none.
+  defp newest_track(approvals) do
+    case List.last(approvals) do
+      nil -> nil
+      decision -> decision.track
+    end
+  end
 
   # The newest of `approvals`, oldest first, made at or before `at`, as a map of the
   # approval; nil for none.
@@ -1940,6 +1955,21 @@ defmodule Apiary.Stages do
     end
   end
 
+  @doc false
+  # offered_tracks/2 is `offered_tracks/1` for a caller that has read the work item's
+  # process version (`Apiary.Processes.version_for/1`): it reads nothing.
+  @spec offered_tracks(WorkItem.t(), Processes.Version.t()) :: [
+          %{id: String.t(), name: String.t(), description: String.t() | nil}
+        ]
+  def offered_tracks(%WorkItem{stage_id: stage_id}, version) when is_binary(stage_id) do
+    case Processes.stage(version, stage_id) do
+      nil -> []
+      stage -> gate_tracks(version, stage)
+    end
+  end
+
+  def offered_tracks(%WorkItem{}, _version), do: []
+
   defp gate_tracks(version, stage) do
     declared = Map.new(version.document["tracks"] || [], &{&1["id"], &1})
 
@@ -1957,9 +1987,9 @@ defmodule Apiary.Stages do
   against the gate: `chosen_track/3` does that, and refuses the approval where the store
   cannot be read.
   """
-  @spec proposed_track(WorkItem.t()) :: String.t() | nil
-  def proposed_track(%WorkItem{} = work_item) do
-    case proposal(work_item) do
+  @spec proposed_track(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: String.t() | nil
+  def proposed_track(%WorkItem{} = work_item, artifacts \\ nil) do
+    case proposal(work_item, artifacts) do
       {:ok, id} -> id
       {:error, :store_unavailable} -> nil
     end
@@ -1967,7 +1997,9 @@ defmodule Apiary.Stages do
 
   # `{:ok, id}` or `{:ok, nil}` for the track proposed; `{:error, :store_unavailable}` where
   # a verdict's file cannot be read from the store.
-  defp proposal(%WorkItem{stage_id: stage_id} = work_item) when is_binary(stage_id) do
+  defp proposal(work_item, artifacts \\ nil)
+
+  defp proposal(%WorkItem{stage_id: stage_id} = work_item, artifacts) when is_binary(stage_id) do
     runs =
       from d in DispatchRun,
         left_join: r in subquery(Run.registered()),
@@ -1991,8 +2023,7 @@ defmodule Apiary.Stages do
 
     # The versions are newest first: the first with a track is the newest, and the rest are
     # not read.
-    work_item
-    |> Artifacts.list()
+    (artifacts || Artifacts.list(work_item))
     |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
     |> Stream.flat_map(& &1.versions)
     |> Stream.filter(&(&1.run_id in run_ids))
@@ -2005,7 +2036,7 @@ defmodule Apiary.Stages do
     end)
   end
 
-  defp proposal(%WorkItem{}), do: {:ok, nil}
+  defp proposal(%WorkItem{}, _artifacts), do: {:ok, nil}
 
   # The track an approval at `stage`'s gate records: the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the track the

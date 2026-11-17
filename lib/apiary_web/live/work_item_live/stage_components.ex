@@ -66,7 +66,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           </span>
           {stage.name}
           <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
-            {gettext("not run")}
+            {gettext("Not run")}
           </span>
         </li>
       </ol>
@@ -417,10 +417,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <.badge color="success">{@page.track.name}</.badge>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
-          {gettext(
-            "%{stage} started no run. Read the build report and the draft, then approve.",
-            stage: @page.stage.name
-          )}
+          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
+            " " <> gettext("Read the run's outputs, then approve.")}
         </p>
       </div>
       <h3
@@ -510,10 +508,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   @doc false
-  # started_no_run?/1 is whether `page`'s stage, at its gate, ran no workflow in the take in
-  # and has entries the runner passed over: there is no run of the stage to read.
+  # started_no_run?/1 is whether `page`'s stage, at a gate that offers no track, of a work
+  # item on a track, ran no workflow in the take in and has entries the runner passed over:
+  # there is no run of the stage to read. A work item on no track is never so.
   @spec started_no_run?(map) :: boolean
-  def started_no_run?(%{state: :at_gate, stage: stage, runs: runs, skips: skips}) do
+  def started_no_run?(%{
+        state: :at_gate,
+        track: %{},
+        offers: [],
+        stage: stage,
+        runs: runs,
+        skips: skips
+      }) do
     not Enum.any?(runs, &(&1.stage_id == stage.id)) and
       Enum.any?(skips, &(&1.stage_id == stage.id))
   end
@@ -891,12 +897,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
-  @doc false
-  # run_state_words/1 is what a stage run shows, as `verdict_parts/2` words it.
-  def run_state_words(shows), do: shows_words(shows)
-
   defp shows_words(:passed), do: gettext("passed")
-  defp shows_words(:paused), do: gettext("paused")
   defp shows_words(:failed), do: gettext("did not pass")
   defp shows_words(:questions), do: gettext("questions")
   defp shows_words(:queued), do: gettext("queued")

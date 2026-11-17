@@ -1188,11 +1188,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # Approve is disabled while a changed decision is a draft; a click that reaches the
-  # page then does nothing.
-  defp act("confirm", params, socket) do
+  # page then does nothing. The track it records is the page's draft (`socket.assigns.track`)
+  # where the gate offers it, else none: the click's own value is not read, so a click
+  # that outruns the last change of the radios records what the page shows.
+  defp act("confirm", _params, socket) do
     if changed_decision?(socket),
       do: {:noreply, socket},
-      else: confirm(socket, text(params["track"]))
+      else: confirm(socket, picked_track(socket))
   end
 
   # A reply goes to the review comment of the open Reply page; a `"reply"` with the id of
@@ -1530,10 +1532,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # After an action: no question showing, and the work item read again; after a refusal,
   # with the scope read again first.
+  # The track draft ends with the action, as the comment's does.
   defp done(socket, {:error, _refused}),
-    do: {:noreply, socket |> assign(:asking, nil) |> refresh()}
+    do: {:noreply, socket |> assign(asking: nil, track: nil) |> refresh()}
 
-  defp done(socket, _result), do: {:noreply, socket |> assign(:asking, nil) |> load()}
+  defp done(socket, _result), do: {:noreply, socket |> assign(asking: nil, track: nil) |> load()}
 
   # Run another round, at the gate or under the questions, where the page counted the
   # reader as an approver (`can/4`) and the send's `Apiary.Access`
@@ -1634,10 +1637,24 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     socket
     |> assign(:answers, drafted(params))
     |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
-    |> assign(
-      :track,
-      if(is_binary(params["track"]), do: params["track"], else: socket.assigns.track)
-    )
+    |> assign(:track, track_draft(params, socket.assigns.track))
+  end
+
+  # The track draft after a change of the gate's form: the radio's value where the reader
+  # changed the radios (`_target` is `["track"]`), else the draft as it was. A change of the
+  # comment sends the selected radio too, which is no pick.
+  defp track_draft(%{"_target" => ["track"], "track" => track}, _draft) when is_binary(track),
+    do: track
+
+  defp track_draft(_params, draft), do: draft
+
+  # The track Approve records: the draft where the gate offers it, nil else, for the
+  # default of `Apiary.Stages.approve/4`.
+  defp picked_track(socket) do
+    case track_offer(socket.assigns.flow, socket.assigns.track) do
+      %{picked: picked} -> picked
+      nil -> nil
+    end
   end
 
   # The track picker of Explore's gate: the tracks the gate offers, the one selected and the
@@ -1936,7 +1953,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       # (`Apiary.WorkItems.confirm/4`), so the stage card offers no second Approve there.
       # A proposal can still wait after the work item left Explore (a gate `none` passes
       # on), so the Confirm gate and the step card are Explore's.
-      flow = if Workflow.on?(scope), do: Workflow.page(scope, row)
+      flow =
+        if Workflow.on?(scope),
+          do: Workflow.page(scope, row, proposal: explore.status == :confirm)
 
       flow =
         flow &&
@@ -1960,6 +1979,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         if stage_key(socket.assigns[:flow]) == stage_key(flow),
           do: socket,
           else: assign(socket, stage_asking: nil, stage_error: nil, stage_check: nil)
+
+      # The track picked at a gate ends with the stage and with the take in.
+      socket =
+        if stage_key(socket.assigns[:flow]) == stage_key(flow) and
+             (socket.assigns[:row] && socket.assigns.row.take_in) == row.take_in,
+           do: socket,
+           else: assign(socket, :track, nil)
 
       # Take in again is reached from the Backlog only while it shows the ticket: its
       # record is live, its adapter is not removed, and its Backlog takes it in.

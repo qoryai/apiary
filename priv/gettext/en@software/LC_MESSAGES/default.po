@@ -3450,7 +3450,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{stage} started no run. Read the build report and the draft, then approve."
+msgid "%{stage} started no run."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -9028,6 +9028,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Did not pass"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Did not run, because %{entry} passed on its first attempt."
 msgstr ""
 
@@ -9426,6 +9431,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Ended well"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ended without a verdict"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -14793,6 +14803,7 @@ msgid "Not ready: the pool's runs may not go through the chosen gateway"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Not run"
 msgstr ""
@@ -16083,6 +16094,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Paused"
 msgstr ""
@@ -16877,6 +16889,11 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Questions"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Questions and decisions"
 msgstr ""
 
@@ -16958,6 +16975,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Read the proposal"
 msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the run's outputs, then approve."
+msgstr "Read the build report and the draft, then approve."
 
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/live/workspace_type_live.ex
@@ -26317,11 +26339,6 @@ msgstr ""
 msgid "not recorded"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "not run"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "not seen"
@@ -26474,7 +26491,6 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/run_live/index.ex
-#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "paused"
 msgstr ""

@@ -3165,6 +3165,30 @@ defmodule Apiary.StagesTest do
       end
     end
 
+    test "the reads that take what the caller read give what the plain reads give", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
+      work_item = take_in!(scope) |> end_run!(proposing("fast-track"))
+
+      version = Processes.version_for(work_item)
+      artifacts = Artifacts.list(work_item)
+
+      assert Stages.offered_tracks(work_item, version) == Stages.offered_tracks(work_item)
+      assert Stages.proposed_track(work_item, artifacts) == "fast-track"
+      assert Stages.artifact_index(work_item, artifacts) == Stages.artifact_index(work_item)
+      assert Stages.skip_records(work_item).track == nil
+
+      {:ok, moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      assert Stages.skip_records(moved).track == "standard"
+
+      {:ok, moved} =
+        Stages.approve(scope, reload(moved), nil, expect_stage: @shape, track: "fast-track")
+
+      assert Stages.skip_records(moved).track == Stages.track(moved)
+      assert Stages.skip_records(moved).track == "fast-track"
+    end
+
     test "a later approval with another track changes the track", %{scope: scope} do
       tracked_process!(scope, ["standard", "fast-track"], ["standard", "fast-track"])
       work_item = take_in!(scope) |> end_run!(understood_result())

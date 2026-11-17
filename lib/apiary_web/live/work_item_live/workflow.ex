@@ -77,18 +77,21 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
   # escalation, the artifacts' approval marks, but those of a withdrawn name
   # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
-  # stage runner has not placed.
-  @spec page(Scope.t(), struct) :: map | nil
-  def page(scope, row) do
+  # stage runner has not placed. With `proposal: true`, the work item waits at Explore's
+  # Confirm gate and the page reads the track the runs proposed (`proposed`); with none,
+  # `proposed` is nil and no verdict is read.
+  @spec page(Scope.t(), struct, keyword) :: map | nil
+  def page(scope, row, opts \\ []) do
     case Stages.status(row, scope) do
       nil -> nil
-      status -> page(scope, row, status)
+      status -> page(scope, row, status, opts)
     end
   end
 
-  defp page(scope, row, status) do
+  defp page(scope, row, status, opts) do
     version = Processes.version_for(row)
-    index = Stages.artifact_index(row)
+    artifacts = Artifacts.list(row)
+    index = Stages.artifact_index(row, artifacts)
     runs = runs(row, index)
     document = get(version, :document) || %{}
     all = Enum.map(get(document, :stages) || [], &stage_map/1)
@@ -108,7 +111,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
     records = Stages.skip_records(row)
     gate_kind = get(get(status, :gate) || %{}, :kind)
-    offers = if state == :at_gate, do: Stages.offered_tracks(row), else: []
+    offers = if state == :at_gate, do: Stages.offered_tracks(row, version), else: []
+    at_explore = stage.id == explore_id
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -116,11 +120,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # The process version's document, for the words of an entry's condition.
       document: document,
       # The track the work item is on, `%{id:, name:}`, nil for none.
-      track: current_track(row, document),
+      track: current_track(records.track, document),
       # The tracks the stage's gate offers, each `%{id:, name:, description:}`, with the one
       # its runs proposed (`proposed`, an id, nil for none).
       offers: offers,
-      proposed: if(offers == [], do: nil, else: Stages.proposed_track(row)),
+      proposed:
+        if(offers != [] and at_explore and opts[:proposal] == true,
+          do: Stages.proposed_track(row, artifacts)
+        ),
       stage: stage,
       state: state,
       # The stage runs, and its newest run still waits for a machine.
@@ -152,7 +159,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
       explore: false,
-      at_explore: stage.id == explore_id,
+      at_explore: at_explore,
       explore_id: explore_id,
       tabs: [],
       ended: false,
@@ -162,12 +169,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   # The track the work item is on, with the name the process version declares, else the id.
-  defp current_track(row, document) do
-    case Stages.track(row) do
-      nil -> nil
-      id -> %{id: id, name: ApiaryWeb.StagesLive.Words.track_name(document, id)}
-    end
-  end
+  defp current_track(nil, _document), do: nil
+
+  defp current_track(id, document),
+    do: %{id: id, name: ApiaryWeb.StagesLive.Words.track_name(document, id)}
 
   # The stages the runner passed over whole in the take in, each with `not_run` true.
   defp not_run(stages, stage_skips) do

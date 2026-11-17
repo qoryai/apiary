@@ -2790,9 +2790,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         <table id={"#{@id}-table"}>
           <thead>
             <tr>
-              <th>{gettext("Workflow")}</th>
-              <th>{gettext("State")}</th>
-              <th>{gettext("Why")}</th>
+              <th scope="col">{gettext("Workflow")}</th>
+              <th scope="col">{gettext("State")}</th>
+              <th scope="col">{gettext("Why")}</th>
             </tr>
           </thead>
           <tbody>
@@ -2844,20 +2844,31 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp entry_name(%{name: name}), do: name
 
-  defp entry_state(%{attempt: attempt, shows: :passed}) when is_integer(attempt),
-    do: %{color: "success", words: gettext("Passed")}
-
   defp entry_state(%{attempt: attempt, shows: shows}) when is_integer(attempt),
-    do: %{color: "neutral", words: StageComponents.run_state_words(shows)}
+    do: %{
+      color: if(shows == :passed, do: "success", else: "neutral"),
+      words: entry_state_word(shows)
+    }
 
   defp entry_state(%{skip: %{}}), do: %{color: "neutral", words: gettext("Not run")}
   defp entry_state(_entry), do: nil
 
-  # Why an entry did not run: its condition on a track, else what the record of the skip
-  # says.
+  # The state words of the table, in sentence case, as the column reads one way. The fold
+  # of runs words the same states in lower case (`StageComponents`).
+  defp entry_state_word(:passed), do: gettext("Passed")
+  defp entry_state_word(:paused), do: gettext("Paused")
+  defp entry_state_word(:failed), do: gettext("Did not pass")
+  defp entry_state_word(:questions), do: gettext("Questions")
+  defp entry_state_word(:queued), do: gettext("Queued")
+  defp entry_state_word(:running), do: gettext("Running")
+  defp entry_state_word(:no_verdict), do: gettext("Ended without a verdict")
+  defp entry_state_word(:undone), do: gettext("Undone")
+
+  # Why an entry did not run: an earlier entry's first attempt that passed, a missing
+  # input, its condition on a track, else what the record of the skip says.
   defp why_skipped(nil, condition), do: condition
+  defp why_skipped(%{reason: "first_attempt_passed"} = skip, _condition), do: skip_words(skip)
   defp why_skipped(%{input: type} = skip, _condition) when is_binary(type), do: skip_words(skip)
-  defp why_skipped(%{reason: "first_attempt_passed"} = skip, nil), do: skip_words(skip)
   defp why_skipped(%{track: track} = skip, nil) when is_binary(track), do: skip_words(skip)
   defp why_skipped(_skip, condition), do: condition
 
@@ -3902,7 +3913,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # may change a decision and may not comment (`can_send`). Under them, why the last move
   # was not made (`error`), as the questions form shows its error. Where the gate offers
   # tracks (`track_offer`), the radios of the tracks sit between the comment and the buttons,
-  # for a reader who may confirm; Approve sends the one the reader picked, else none.
+  # for a reader who may confirm; Approve records the track the page holds as the draft.
   defp gate(assigns) do
     assigns =
       assign(assigns,
@@ -3972,7 +3983,6 @@ defmodule ApiaryWeb.WorkItemComponents do
             variant="primary"
             phx-click="confirm"
             phx-value-number={@number}
-            phx-value-track={@track_offer && @can_confirm && @track_offer.picked}
             disabled={@changed}
             aria-describedby={
               cond do
