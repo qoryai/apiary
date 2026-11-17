@@ -99,12 +99,13 @@
 # segment written `{}` in a policy's and an item's paths; and `session`, optional, on a model
 # keys report: the number of the session open when the gateway made it; and a host
 # credential's `purpose` `push`, the credential only the run's push proxy sets, for qory's
-# push and the calls of its submit step.
+# push and the calls of its submit step; and 1 to 16 credentials in a run configuration, a
+# secrets request and a sealed plaintext, at most 6 of them API credentials.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-a1c6146f7e83bd1c7203d6c3e1dc09bbe6ad665f
+ab37683e1673150eeea633036826106de60beb29
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.tool_result.schema.json
