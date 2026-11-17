@@ -1331,7 +1331,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - In the run configuration, an apply item of the work credential `work-1` of a run with
   `write` access has `push_ref`, `refs/heads/qory/` and the work item's public id, for
   example `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create,
-  update or delete only that ref: Forager's gateway answers `403` to a push to any other
+  update or delete only that ref: Forager's gateway returns `403` for a push to any other
   ref. Each item of the credential's value, sealed for the gateway, has the same
   `push_ref`. A run with `read` or `write-no-push` access has none. The adapter's
   run-credential call and answer have no `push_ref`, and an answer item that has one is
