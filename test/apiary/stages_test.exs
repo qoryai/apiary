@@ -5774,6 +5774,43 @@ defmodule Apiary.StagesTest do
       assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}] = Stages.inputs(work_item)
     end
 
+    test "after a move back to Shape, a newer approval of Shape that lists the older " <>
+           "criteria leaves Build on the change that Verify's approval listed",
+         %{scope: scope} do
+      criteria_process!(scope, :release)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      changed = pushes_one("acceptance-criteria", "# AC-2", decision: decision)
+
+      work_item =
+        work_item
+        |> end_run!(both(changed, pushes_one("explainer", "# Explainer 2", [])))
+        |> end_run!(verdict("passed"))
+        |> end_run!(verdict("passed"))
+
+      old_id = criteria(work_item, 1).public_id
+      new_id = criteria(work_item, 2).public_id
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+
+      # A person moves the work item from Release back to Shape, which pushes no criteria,
+      # and approves Shape again: the approval lists only Shape's newest output, version 1.
+      {:ok, work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @release)
+      {:ok, work_item} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+
+      shaped =
+        work_item
+        |> decisions()
+        |> Enum.filter(&(&1.kind == :approve and &1.stage_id == @shape))
+        |> List.last()
+
+      assert shaped.versions == [old_id]
+
+      assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}] = Stages.inputs(work_item)
+    end
+
     defp versions_of(work_item, ids) do
       for artifact <- Apiary.Artifacts.list(work_item),
           v <- artifact.versions,
