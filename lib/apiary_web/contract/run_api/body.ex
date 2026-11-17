@@ -14,9 +14,8 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   The points and the track pass as they are: the schema of the type `verdict` checks
   #   them (`priv/schemas/artifacts/verdict.schema.json`).
   # - `pushed_commits/1`: `{"repositories": [{"system", "path", "commit"}]}`, at most
-  #   `max_bytes(:pushed_commits)` bytes and `max_repositories/0` repositories. A body or a
-  #   list over its limit is `{:error, :invalid_request, member}`, as any body outside the
-  #   contract, not `:too_large`.
+  #   `max_bytes(:pushed_commits)` bytes, else `{:error, :too_large}`, and at most
+  #   `max_repositories/0` repositories, else `{:error, :invalid_request, "repositories"}`.
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -101,9 +100,10 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   @spec pushed_commits(binary) ::
           {:ok, [%{system: String.t(), path: String.t(), commit: String.t()}]}
+          | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def pushed_commits(raw_body) when byte_size(raw_body) > @pushed_commits_max_bytes,
-    do: invalid("body")
+    do: {:error, :too_large}
 
   def pushed_commits(raw_body) do
     with {:ok, body} <- object(raw_body),

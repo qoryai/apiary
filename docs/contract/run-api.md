@@ -627,12 +627,12 @@ of the work item can continue from them. The body, at most 64 KiB:
 - The run API lists the commits to later runs in `pushed_commits` of `GET work-item`.
 
 Checks, after checks 1 to 4 of the order of checks: a run that has not `write` access is
-`409` `not_writable`, before the body is read; a body that is over 64 KiB, is not an object
-with `repositories`, has more than 64 repositories, or has a member other than the ones
-above, or a `commit` that is not a full commit id, is `400` `invalid_request`, with the
-first member that failed in `names`, such as `repositories[1].commit`; `body` for a body
-over 64 KiB or that is not a JSON object, and `repositories` for a list that is empty, too
-long or not a list.
+`409` `not_writable`, before the body is read; a body over 64 KiB is `413`
+`payload_too_large`, as for a verdict; a body that is not an object with `repositories`,
+has more than 64 repositories, or has a member other than the ones above, or a `commit`
+that is not a full commit id, is `400` `invalid_request`, with the first member that failed
+in `names`, such as `repositories[1].commit`; `body` for a body that is not a JSON object,
+and `repositories` for a list that is empty, over 64 or not a list.
 
 ## GET resume/transcript
 
@@ -685,10 +685,10 @@ The messages:
   artifacts or give a verdict."
 - `run_ended`, for a report of pushed commits: "Start a new run to record pushed commits.
   This run ended, so it records no more commits."
-- `not_writable`: "Record pushed commits only from a run with write access. This run has
-  read access."
-- `invalid_request`, for a report of pushed commits: "Send each repository with system, path
-  and a full commit id of 40 or 64 lowercase hex characters."
+- `not_writable`: "Record pushed commits only from a run with write access. This run cannot
+  push."
+- `invalid_request`, for a report of pushed commits: "Send 1 to 64 repositories, each with
+  system, path and a full commit id of 40 or 64 lowercase hex characters."
 - `unknown_type`, for a custom name: "Define the artifact type demo-findings in the
   workspace's Artifact types, then run the round again."
 - `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type

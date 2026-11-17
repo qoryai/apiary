@@ -17,8 +17,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
   them, stores a repeated commit once, and answers `204`. A run that ended gets `409`
-  `run_ended`, a run that has no write access `409` `not_writable`, and a body outside the
-  limits `400` `invalid_request`. A cancel that a member requested does not refuse a
+  `run_ended`, a run that has no write access `409` `not_writable`, a body over 64 KiB
+  `413` `payload_too_large`, and a body outside the contract `400` `invalid_request`. A cancel that a member requested does not refuse a
   report; the report is refused once the run has ended. `GET work-item` has a new member,
   `pushed_commits`: the commits that the work item's earlier runs reported, from every
   stage, ordered by run number and then by when they were recorded, each with `run_id`,

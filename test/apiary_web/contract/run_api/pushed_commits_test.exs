@@ -186,7 +186,7 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
       assert length(rows(ctx.run)) == 2
 
       # One new commit among old ones takes the next position; the same commit twice in
-      # one body, and the same commit for another path, are each their own rows only once.
+      # one body, and the same commit for another path: each is stored once.
       assert write(ctx, report([repo(@b), repo(@c), repo(@c), repo(@b, "acme/docs")])).status ==
                204
 
@@ -236,7 +236,7 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
         assert json_response(conn, 409) == %{
                  "error" => "not_writable",
                  "message" =>
-                   "Record pushed commits only from a run with write access. This run has read access."
+                   "Record pushed commits only from a run with write access. This run cannot push."
                }
       end
 
@@ -279,7 +279,6 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
     test "a body outside the contract is 400 invalid_request with the member", ctx do
       too_many = report(for n <- 1..65, do: repo(@a, "acme/r#{n}"))
       at_limit = report(for n <- 1..64, do: repo(@a, "acme/r#{n}"))
-      over_size = report([repo(@a, String.duplicate("p", 64 * 1024))])
 
       cases = [
         {"not json", "body"},
@@ -301,8 +300,7 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
         {report([repo(String.duplicate("a", 41))]), "repositories[0].commit"},
         {report([repo(String.duplicate("g", 40))]), "repositories[0].commit"},
         {report([repo(String.duplicate("a", 63))]), "repositories[0].commit"},
-        {too_many, "repositories"},
-        {over_size, "body"}
+        {too_many, "repositories"}
       ]
 
       for {body, member} <- cases do
@@ -312,7 +310,8 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
         assert %{"error" => "invalid_request", "names" => [^member], "message" => message} =
                  json_response(conn, 400)
 
-        assert message =~ "Send each repository with system, path and a full commit id"
+        assert message ==
+                 "Send 1 to 64 repositories, each with system, path and a full commit id of 40 or 64 lowercase hex characters."
       end
 
       assert rows(ctx.run) == []
@@ -320,6 +319,38 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
       # The limit itself: 64 repositories.
       assert write(ctx, at_limit).status == 204
       assert length(rows(ctx.run)) == 64
+    end
+
+    test "a body over 64 KiB is 413 payload_too_large, signed, and stores nothing", ctx do
+      over_size = report([repo(@a, String.duplicate("p", 64 * 1024))])
+      assert byte_size(Jason.encode!(over_size)) > 64 * 1024
+
+      conn = write(ctx, over_size)
+      assert signed_answer?(conn)
+      assert json_response(conn, 413) == %{"error" => "payload_too_large"}
+      assert rows(ctx.run) == []
+
+      # The same report under the limit is stored.
+      assert write(ctx, report([repo(@a)])).status == 204
+    end
+
+    test "the check under the lock refuses a run whose run of the queue ended", ctx do
+      repositories = [%{system: "forge", path: "acme/shop", commit: @a}]
+      assert :ok = PushedCommit.record(ctx.work_item, ctx.run, repositories)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      assert {:error, :run_ended} =
+               PushedCommit.record(ctx.work_item, ctx.run, [
+                 %{system: "forge", path: "acme/shop", commit: @b}
+               ])
+
+      assert commits(ctx.run) == [@a]
+      assert PushedCommit.refusal(Repo.get!(DispatchRun, ctx.dispatch_run.id)) == :run_ended
+      assert PushedCommit.refusal(ctx.dispatch_run) == nil
     end
 
     test "a request while the cancel of a member is requested is kept, with its mark", ctx do
@@ -372,7 +403,7 @@ defmodule ApiaryWeb.Contract.RunApi.PushedCommitsTest do
     test "is [] for a work item with no earlier run's commits, and never null", ctx do
       assert %{"pushed_commits" => []} = json_response(read(ctx, "/work-item"), 200)
 
-      # The run's own commits are left out.
+      # The commits the requesting run reported are left out.
       assert write(ctx, report([repo(@a)])).status == 204
       assert listed(read(ctx, "/work-item")) == []
     end

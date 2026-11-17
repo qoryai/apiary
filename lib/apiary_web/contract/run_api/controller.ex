@@ -17,15 +17,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
-  #   3. for a push, a verdict and a report of pushed commits, a run that has ended is `409` `run_ended`, read here
-  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), and so is a
-  #      run a member cancelled, from the cancel on, with the message for a cancel; then a body
-  #      over its size `413` `payload_too_large`, then a body outside the contract `400`
-  #      `invalid_request` with the member in `names`;
-  #      (a report is not refused while a cancel is requested: only once the run's end is
-  #      recorded, `Apiary.Runs.PushedCommit.refusal/1`; a body over its size is `400`
-  #      `invalid_request`, and a run whose access is not `write` is `409` `not_writable`,
-  #      before the body);
+  #   3. for a push, a verdict and a report of pushed commits, a run that has ended is
+  #      `409` `run_ended`, read here and again under the work item's lock
+  #      (`Apiary.Artifacts.push/5`), and so is a run a member cancelled, from the cancel
+  #      on, with the message for a cancel; then a body over its size `413`
+  #      `payload_too_large`, then a body outside the contract `400` `invalid_request` with
+  #      the member in `names`. A report of pushed commits is not refused while a cancel is
+  #      requested, only once the run's end is recorded
+  #      (`Apiary.Runs.PushedCommit.refusal/1`), and a run whose access is not `write` is
+  #      `409` `not_writable`, before the body;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
   #      `422` `unknown_type`, with a message that starts with the step: define the type;
   #      for a standard type, switch it on; more files than the type takes `422`
@@ -221,7 +221,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       {:error, :not_writable} ->
         error(conn, 409, "not_writable",
           message:
-            "Record pushed commits only from a run with write access. This run has read access."
+            "Record pushed commits only from a run with write access. This run cannot push."
         )
 
       {:error, :run_ended} ->
@@ -237,7 +237,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           error: "invalid_request",
           names: [member],
           message:
-            "Send each repository with system, path and a full commit id of 40 or 64 lowercase hex characters."
+            "Send 1 to 64 repositories, each with system, path and a full commit id of 40 or 64 lowercase hex characters."
         })
 
       error ->

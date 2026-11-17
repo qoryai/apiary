@@ -90,7 +90,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   @secrets_path ["v1", "secrets"]
   @secrets_max_bytes 32 * 1024
   # The run API's pushes, verdicts and reports of pushed commits,
-  # `POST /v1/runs/<run_id>/artifacts`, `/verdict` and `/pushed-commits`, of the `workflow_model` feature: at most 32 MiB, base64 JSON
+  # `POST /v1/runs/<run_id>/artifacts`, `/verdict` and `/pushed-commits`, of the
+  # `workflow_model` feature: at most 32 MiB, base64 JSON
   # (`ApiaryWeb.Contract.RunApi.Body.max_bytes(:push)`), read the same way where the
   # feature is on or where the request has a signature. Past the first 64 KiB, only for
   # the key id of an active gateway key.
