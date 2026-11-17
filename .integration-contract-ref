@@ -26,4 +26,4 @@
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-55a22cb87e724df3008e511a7de84e1c710ac913
+c6b77016c47ddd29952718fb121646ff118fb474

@@ -151,8 +151,17 @@ defmodule Apiary.Artifacts do
   # `{:error, :run_cancelled}`; the artifact found or made; the
   # check of what members wrote and the integers, as above; the next number, one more
   # than the highest; the version and its audit entry; then every file is kept in the
-  # store, and its row written. The workspace's lock comes first, as in the core's
-  # lock order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
+  # store, and its row written; then, for a run's version of the submission type in
+  # `submit.type` of the run's process version, a `watch` entry in the feed of the
+  # adapter of the work item's target collection (`Apiary.Adapters.Feed`), one per
+  # version. A work item with no target, or a target that no collection matches
+  # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
+  # stored all the same. A push of a standard type reads nothing for the entry. Where the
+  # instance's public address is not one the entry takes (plain http to a host that is
+  # not `localhost`, `127.0.0.1` or `[::1]`), the push is `{:error, :public_url}` before
+  # any file is kept, with a log line that starts with the fix: set `PUBLIC_URL`. A
+  # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
+  # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
   # transactions that already hold the work item. The work item's lock makes the
   # transactions of pushes to one work item run one after the other, so the numbers of an
@@ -224,16 +233,19 @@ defmodule Apiary.Artifacts do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo}
+  alias Apiary.{Access, Audit, PublicId, Repo, WorkItems}
   alias Apiary.Accounts.Scope
+  alias Apiary.Adapters.Feed
   alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Mockup, Store}
   alias Apiary.Artifacts.Type
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.{Questions, ReviewComments}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.Runs.RunCredentials
   alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
@@ -637,7 +649,8 @@ defmodule Apiary.Artifacts do
              | :store_unavailable
              | :stage_changed
              | :run_ended
-             | :run_cancelled}
+             | :run_cancelled
+             | :public_url}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
@@ -1141,9 +1154,10 @@ defmodule Apiary.Artifacts do
   end
 
   # The rows, with the staged files kept in the store after every check passed, last
-  # before the file rows. On a refusal, or an exception, which is raised again, every
-  # staged copy is dropped, those `integers/2` made included (`keep/6`), so a refused
-  # push keeps no file in the store.
+  # before the file rows. The checks include the run's watch entry (`watch_entry/3`), formed
+  # before `keep/6` and written after it. On a refusal, or an exception, which is raised
+  # again, every staged copy is dropped, those `integers/2` made included (`keep/6`), so a
+  # refused push keeps no file in the store.
   defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -1156,9 +1170,12 @@ defmodule Apiary.Artifacts do
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
+           {:ok, watched} <- watch_entry(writer, held, type),
            {:ok, kept} <- integers(type, staged),
-           :ok <- decision_kept(held, fields.decision) do
-        keep(writer, held, artifact, fields, kept, now)
+           :ok <- decision_kept(held, fields.decision),
+           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
+        :ok = append_watch(watched)
+        written
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
@@ -1197,6 +1214,82 @@ defmodule Apiary.Artifacts do
       discard(kept)
       reraise exception, __STACKTRACE__
   end
+
+  # The `watch` entry for the version a run stores of its submission type: the type in
+  # `submit.type` of the run's process version (`Processes.harness_template/1`). The entry
+  # goes to the feed of the adapter of the work item's target collection, the collection
+  # the run's work entry comes from (`RunCredentials.work_collection/3`), and contains the
+  # work item's public id and its stable url. `{:ok, {adapter, entry}}` for an entry,
+  # `{:ok, nil}` for none: a person's version, a version of another type, a run whose
+  # process version has no submit, a work item with no target, or a target that no
+  # collection matches.
+  #
+  # The entry is formed before `keep/6`, and `append_watch/1` writes it after, in the
+  # push's transaction, so the version and its entry commit together or not at all. The
+  # work item's lock is held for both, and the feed's counter is taken last, as in the
+  # core's lock order (`Apiary.Adapters.Collections`).
+  #
+  # A standard type is never a submission type: a template's `submit.type` is a custom
+  # type with `base_view: structured` (`Apiary.Artifacts.TemplateTypes`). A push of a
+  # standard type, the verdict of every stage among them, returns before it reads the
+  # run or its process version. A withdrawal has no entry (`write_withdrawal/4`).
+  #
+  # The lookup and `Processes.harness_template/1` only read the database: no message is
+  # sent and no other system is called inside the transaction. `Feed.append/2` takes only
+  # an adapter with no organisation, which the `nodes` check keeps true of every adapter;
+  # any other node gets no entry.
+  #
+  # `{:error, :public_url}` where the stable url is not one a watch entry takes: the
+  # instance's `PUBLIC_URL` is plain http to a host other than `localhost`, `127.0.0.1`
+  # or `[::1]`, or has a character outside RFC 3986, such as a host in Unicode. The boot
+  # accepts both (`config/runtime.exs`), and the error is logged with the fix. It comes
+  # before `keep/6`, so a refused push keeps no file in the store.
+  defp watch_entry(%{actor: :run, run_id: run_id}, held, %Type{standard: false, name: name}) do
+    with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
+         ^name <- submit_type(dispatch_run),
+         %{} = target <- target(held),
+         {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
+           RunCredentials.work_collection(dispatch_run, held, target) do
+      url = WorkItems.stable_url(held)
+
+      if Feed.work_item_url?(url) do
+        {:ok, {adapter, %{kind: "watch", work_item_id: held.public_id, url: url}}}
+      else
+        Logger.error(
+          "Set PUBLIC_URL to an https:// address: a run cannot store its submission with this one."
+        )
+
+        {:error, :public_url}
+      end
+    else
+      _no_entry -> {:ok, nil}
+    end
+  end
+
+  defp watch_entry(_writer, _held, _type), do: {:ok, nil}
+
+  defp append_watch(nil), do: :ok
+
+  defp append_watch({adapter, entry}) do
+    {:ok, _seq} = Feed.append(adapter, entry)
+    :ok
+  end
+
+  # The type in `submit.type` of the run's process version, nil for none.
+  defp submit_type(%DispatchRun{process_version_id: id}) do
+    case Processes.harness_template(id) do
+      %{"submit" => %{"type" => type}} when is_binary(type) -> type
+      _none -> nil
+    end
+  end
+
+  # The work item's target, as a run's claim reads it (`Apiary.Dispatches.Handover`), nil
+  # for none.
+  defp target(%WorkItem{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path),
+       do: %{system: system, path: path}
+
+  defp target(%WorkItem{}), do: nil
 
   # Drops staged copies; one kept in the store already has no staged copy left.
   defp discard(staged) do
