@@ -152,7 +152,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
               id={"artifact-type-#{name}-set-by-harness"}
               class="text-[13px]/5 text-muted"
             >
-              <.rich text={harness_line(name, @harness_path)} />
+              <.rich text={harness_line(name, @schema_step)} />
             </p>
             <p :if={@in_use} id="artifact-type-in-use" class="text-[13px]/5 text-error" role="alert">
               {gettext(
@@ -333,18 +333,44 @@ defmodule ApiaryWeb.ArtifactLive.Types do
       custom: custom,
       set_by_harness:
         Enum.filter(set_by_harness, fn name -> Enum.any?(custom, &(&1.name == name)) end),
-      harness_path: ~p"/#{scope.organisation}/#{scope.workspace}/settings/harness"
+      schema_step: schema_step(scope)
     )
   end
 
+  # The last sentence of the line under the table for a type that the harness sets, the
+  # step to change the schema. Without the feature `factory` the workspace's people have no
+  # Harness settings, so the sentence has no step; where the edition says who changes the
+  # harness, its sentence stands in place of the link.
+  @doc false
+  def schema_step(scope) do
+    cond do
+      not Apiary.Features.visible?(scope, :factory) ->
+        gettext("The Qory harness sets this schema.")
+
+      line = Apiary.Edition.schema_change_line(scope) ->
+        line
+
+      true ->
+        rich_gettext(
+          "To change the schema, change it in the harness, then choose Update from harness in %{harness}.",
+          harness:
+            {:link, ~p"/#{scope.organisation}/#{scope.workspace}/settings/harness",
+             gettext("Harness settings")}
+        )
+    end
+  end
+
   # The line under the table for the type `name` that the harness sets: the reason, then
-  # the step, Update from harness in Harness settings, which `path` links to.
-  defp harness_line(name, path) do
-    rich_gettext(
-      "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here. To change the schema, change it in the harness, then choose Update from harness in %{harness}.",
-      name: name,
-      harness: {:link, path, gettext("Harness settings")}
-    )
+  # the step.
+  defp harness_line(name, step) do
+    [
+      rich_gettext(
+        "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here.",
+        name: name
+      ),
+      " ",
+      step
+    ]
   end
 
   @impl true

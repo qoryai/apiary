@@ -121,4 +121,40 @@ defmodule ApiaryPro.WorkspaceOperatorsTest do
       assert {:ok, _} = Deletion.delete_organisation(ctx.owner, ctx.organisation.slug)
     end
   end
+
+  describe "schema_change_line/1" do
+    @operator_step "To change the schema, ask the operator of this workspace."
+
+    test "is the step to ask the operator for the organisation's owner and admin", ctx do
+      workspace = ctx.owner.workspace
+      owner = scope_in(ctx.owner.user, ctx.organisation, workspace)
+
+      admin =
+        organisation_member_fixture(
+          %{organisation: ctx.organisation, workspace: workspace, owner: %{scope: ctx.owner}},
+          :admin
+        )
+
+      assert WorkspaceOperators.schema_change_line(owner) == @operator_step
+      assert WorkspaceOperators.schema_change_line(admin.scope) == @operator_step
+      assert Apiary.Edition.schema_change_line(owner) == @operator_step
+    end
+
+    test "is nil for the operator's person", ctx do
+      scope = scope_in(ctx.operator.user, ctx.organisation, ctx.owner.workspace)
+
+      assert WorkspaceOperators.schema_change_line(scope) == nil
+      assert Apiary.Edition.schema_change_line(scope) == nil
+    end
+
+    test "is nil in a workspace with no operator, and once the link ends", ctx do
+      %{scope: other} = sign_up_fixture()
+      assert WorkspaceOperators.schema_change_line(other) == nil
+      assert Apiary.Edition.schema_change_line(other) == nil
+
+      end_link!(ctx.owner.workspace.id)
+      scope = scope_in(ctx.owner.user, ctx.organisation, ctx.owner.workspace)
+      assert WorkspaceOperators.schema_change_line(scope) == nil
+    end
+  end
 end

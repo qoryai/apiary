@@ -19,8 +19,11 @@ defmodule ApiaryPro.WorkspaceOperators do
   `FOR NO KEY UPDATE` first, so that it waits for such a write.
   """
 
+  use Gettext, backend: ApiaryProWeb.Gettext
+
   import Ecto.Query, warn: false
 
+  alias Apiary.Accounts.Scope
   alias Apiary.Repo
   alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryPro.Operators.WorkspaceOperator
@@ -68,6 +71,21 @@ defmodule ApiaryPro.WorkspaceOperators do
   def operator_id(_organisation, nil), do: nil
   def operator_id(organisation, %Workspace{id: id}), do: operator_id(organisation, id)
   def operator_id(organisation, workspace_id), do: Map.get(operated(organisation), workspace_id)
+
+  @doc """
+  schema_change_line/1 is the step that the Artifact types page shows for a type that the
+  harness sets (`c:Apiary.Edition.schema_change_line/1`): "To change the schema, ask the
+  operator of this workspace." where the scope's workspace has an operator and the person
+  does not act there through it (`ApiaryPro.Access.through_operator?/1`). Nil otherwise:
+  the operator's people see the core's step. Translated when it is asked.
+  """
+  @spec schema_change_line(Scope.t()) :: String.t() | nil
+  def schema_change_line(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    if operator_id(organisation, scope.workspace) && not ApiaryPro.Access.through_operator?(scope),
+      do: gettext("To change the schema, ask the operator of this workspace.")
+  end
+
+  def schema_change_line(_scope), do: nil
 
   @doc """
   operator_ids/1 is the ids of the operators of `organisation`'s workspaces, each once, in

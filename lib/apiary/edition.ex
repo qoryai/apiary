@@ -191,6 +191,15 @@ defmodule Apiary.Edition do
   @callback workspace_limit_line(%Organisation{}) :: String.t()
 
   @doc """
+  The last sentence of the line under the Artifact types table for a type that the harness
+  sets (`ApiaryWeb.ArtifactLive.Types`), for the person of `scope` (the organisation and
+  the workspace): the step to change the schema, in place of the core's step in Harness
+  settings. Nil for the core's step. An edition where someone else changes the harness of
+  the workspace returns who. Translated when the callback runs.
+  """
+  @callback schema_change_line(Scope.t()) :: String.t() | nil
+
+  @doc """
   The line the workspace's overview (`/:org/:workspace`) shows, while the set-up is not
   finished, to the person of `scope` who may not take the action of the next step
   `step_id` (`ApiaryWeb.SetUpComponents.changes_step?/2`), one of `:name`, `:sources`,
@@ -686,6 +695,7 @@ defmodule Apiary.Edition do
     first_workspace_waiting_line: 1,
     connects_line: 2,
     workspace_limit_line: 1,
+    schema_change_line: 1,
     set_up_finishers_line: 2,
     set_up_steps: 2,
     set_up_title: 2,

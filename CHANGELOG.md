@@ -25,8 +25,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   harness, or that has no record.
 - On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
   and no **Edit** and no **Delete**, and the page shows a line under the table with the
-  reason and a link to **Harness settings**. The change and the delete are refused on the
-  server too. A type that an older process version in use sets stays set. **Add a version**
+  reason and the step: a link to **Harness settings**, or, for the organisation's owners
+  and admins in a workspace that an operator operates, to ask the operator, or, without
+  the feature `factory`, that the Qory harness sets the schema. The change and the delete
+  are refused on the server too. A type that an older process version in use sets stays set. **Add a version**
   does not offer the type, and a person's push of it is refused with `unknown_type`, as for
   `questions`.
 <!-- /feature -->
