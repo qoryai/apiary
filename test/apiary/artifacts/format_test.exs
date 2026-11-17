@@ -318,6 +318,55 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:ok, _} = questions(context, [question(%{"options" => []})])
     end
 
+    test "a criterion is optional, an acceptance criterion's id such as ac-3", context do
+      assert {:ok, _} = questions(context, [question()])
+
+      for id <- ["ac-1", "ac-3", "ac-10", "ac-9999"] do
+        assert {:ok, "application/json"} =
+                 questions(context, [question(%{"criterion" => id})])
+      end
+
+      assert {:error,
+              {:schema,
+               %{
+                 path: "#/questions/0/criterion",
+                 error: "value does not conform to pattern /^ac-[1-9][0-9]{0,3}\\z/"
+               }}} = questions(context, [question(%{"criterion" => "AC-3"})])
+
+      for id <- ["ac-0", "ac-03", "ac-10000", "ac-", "3", "q1", "", " ac-3", "ac-3\n"] do
+        assert {:error, {:schema, %{path: "#/questions/0/criterion"}}} =
+                 questions(context, [question(%{"criterion" => id})]),
+               inspect(id)
+      end
+
+      for value <- [3, nil, ["ac-3"]] do
+        assert {:error, {:schema, %{path: "#/questions/0/criterion"}}} =
+                 questions(context, [question(%{"criterion" => value})]),
+               inspect(value)
+      end
+    end
+
+    test "a question with each of its 11 members is taken", context do
+      option = %{"title" => "Yes", "explanation" => "Why."}
+      answer = %{"option" => "Yes", "by" => %{"name" => "Ann"}, "at" => @at}
+
+      full =
+        question(%{
+          "id" => "q2",
+          "context" => "The checkout.",
+          "options" => [option],
+          "state" => "answered",
+          "answer" => answer,
+          "decision" => %{"option" => "Yes", "reason" => "Why.", "run" => 12, "at" => @at},
+          "follows" => ["q1"],
+          "history" => [Map.put(answer, "reopened", %{"run" => 13, "at" => @at})],
+          "criterion" => "ac-3"
+        })
+
+      assert map_size(full) == 11
+      assert {:ok, "application/json"} = questions(context, [question(), full])
+    end
+
     test "an option's recommended is an optional boolean", context do
       option = %{"title" => "The small one", "explanation" => "The checkout shows it."}
 

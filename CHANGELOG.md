@@ -12,6 +12,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A question in a run's questions may have a `criterion`: the id of the acceptance
+  criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
+  refuses a value that is not such an id. A run can change the criterion of an open
+  question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
@@ -1968,6 +1972,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+- A question that was reopened after a decision and then answered is no longer refused
+  as too large.
 <!-- feature: secrets -->
 - A run that stops because its gateway's key does not allow stored secrets now shows
   who adds an allowed key and where, in place of Contact support.
