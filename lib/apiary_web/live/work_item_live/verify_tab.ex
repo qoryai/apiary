@@ -26,9 +26,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @states %{"Met" => :met, "Not met" => :not_met, "Needs a person" => :needs_person}
 
-  # The phrases of an Evidence cell that name a scenario (`evidence_parts/2`): "Demo video:
-  # scenario 1", "Pictures: scenario 2" and "the pictures of scenario 2".
-
   @doc false
   # media/0 is the types of a scenario's film or pictures.
   @spec media() :: [String.t()]
@@ -421,17 +418,17 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # whose number has a DOM id in `anchors` is `{:link, words, id}`, and the text around
   # it is a string. A reference is one of the phrases "Demo video: scenario 1", "Pictures:
   # scenario 2" and "the pictures of scenario 2", linked whole; any other text stays text,
-  # as does a phrase for a scenario not in `anchors`.
+  # as does a phrase for a scenario not in `anchors`. The phrases are case-sensitive, and
+  # the number is read as an integer, so "scenario 02" is scenario 2.
   @spec evidence_parts(String.t(), %{integer => String.t()}) ::
           [String.t() | {:link, String.t(), String.t()}]
   def evidence_parts(text, anchors) when map_size(anchors) == 0, do: [text]
 
   def evidence_parts(text, anchors) do
-    ~r/\b(?:Demo video: |Pictures: |the pictures of )scenario [0-9]+\b/
+    reference()
     |> Regex.split(text, include_captures: true)
     |> Enum.flat_map(fn part ->
-      with [_whole, number] <-
-             Regex.run(~r/^(?:Demo video: |Pictures: |the pictures of )scenario ([0-9]+)$/, part),
+      with [_whole, number] <- Regex.run(reference(), part),
            {number, ""} <- Integer.parse(number),
            %{^number => anchor} <- anchors do
         [{:link, part, anchor}]
@@ -445,6 +442,12 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       links -> links
     end)
     |> Enum.reject(&(&1 == ""))
+  end
+
+  # The one pattern for the phrases of an Evidence cell that name a scenario; the first
+  # group is the scenario's number.
+  defp reference do
+    ~r/\b(?:Demo video: |Pictures: |the pictures of )scenario ([0-9]+)\b/
   end
 
   attr :state, :any, required: true

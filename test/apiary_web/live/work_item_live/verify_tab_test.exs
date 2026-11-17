@@ -862,6 +862,21 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert VerifyTab.evidence_parts("Pictures: scenario 2", %{}) == ["Pictures: scenario 2"]
     end
+
+    test "evidence_parts/2 matches the phrases case-sensitively and reads the number as an integer" do
+      anchors = %{1 => "a-1", 2 => "a-2"}
+
+      for text <- [
+            "demo video: scenario 1",
+            "The pictures of scenario 2",
+            "pictures: scenario 2"
+          ] do
+        assert VerifyTab.evidence_parts(text, anchors) == [text]
+      end
+
+      assert VerifyTab.evidence_parts("Pictures: scenario 02", anchors) ==
+               [{:link, "Pictures: scenario 02", "a-2"}]
+    end
   end
 
   describe "the scenarios read" do

@@ -30,8 +30,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   in scenario order, in place of one frame per type: each film with its file name and
   its captions, which start off, and, beside it, the scenario's title, each step with
   its expected result, and the artifact row; for a pictures scenario, one picture per
-  step, each with the step's title and expected result. A scenario whose name is withdrawn is left out, and
-  so are the scenarios of an earlier take in.
+  step, each with the step's title and expected result. A scenario whose name is withdrawn
+  is left out, and so are the scenarios of an earlier take in.
 - On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
   Explainer, show the version and the artifact rows only, and a row names the artifact
   as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
