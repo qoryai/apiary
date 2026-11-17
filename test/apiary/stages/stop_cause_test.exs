@@ -367,6 +367,52 @@ defmodule Apiary.Stages.StopCauseTest do
     end
   end
 
+  describe "a run that writes and has no wall" do
+    @describetag needs: :factory
+
+    @fix "Set a wall in the machine's forager.yaml, then start the run again."
+
+    test "has its fix, then its cause, on a pool of the workspace" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      assert words(scope, "write_needs_wall", pool) ==
+               @fix <>
+                 " A run that writes to the checkout needs a wall, and this machine has none."
+    end
+
+    test "splits into the cause and the fix for the escalation's point" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+      {run, work_item} = read_run(scope, "write_needs_wall", pool)
+
+      assert StopCause.parts(run, work_item) ==
+               {"A run that writes to the checkout needs a wall, and this machine has none.",
+                @fix}
+    end
+
+    test "says checkout only in a software workspace" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [domain: "example"]
+        )
+
+      assert words(scope, "write_needs_wall", pool) ==
+               @fix <> " A run that writes needs a wall, and this machine has none."
+    end
+
+    test "a read-only reason is not one: a run with another reason ends without a result" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      assert words(scope, "write_needs_something", pool) == "The run ended without a result."
+    end
+  end
+
   describe "a run whose harness has no skill for its workflow" do
     @describetag needs: :factory
 

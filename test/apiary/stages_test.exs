@@ -1271,6 +1271,37 @@ defmodule Apiary.StagesTest do
                escalation(work_item)
     end
 
+    test "a run that writes and has no wall escalates run_stopped with its fix, for each kind of pool",
+         %{scope: scope} do
+      cause =
+        "The run stopped: a run that writes to the checkout needs a wall, and this machine has none."
+
+      for {pool, fix} <- [
+            {Apiary.NodesFixtures.pool_fixture(scope),
+             "Set a wall in the machine's forager.yaml, then start the run again."},
+            {Apiary.NodesFixtures.instance_pool_fixture(installed_as: "pool"), "Contact support."}
+          ] do
+        work_item =
+          scope
+          |> take_in!()
+          |> end_run!(nil, %{
+            state: "failed",
+            exit_state: "failed",
+            reason: "write_needs_wall",
+            node_id: pool.id,
+            outcome_state: nil,
+            outcome_time: nil,
+            outcome_received_at: nil,
+            outcome_digest: nil
+          })
+
+        assert %Escalation{
+                 cause: :run_stopped,
+                 points: [%{"text" => ^cause, "action" => "run_again", "fix" => ^fix}]
+               } = escalation(work_item)
+      end
+    end
+
     test "a run that pushed the verdict escalate escalates with its points, and nothing waits for Approve",
          %{scope: scope} do
       points = [

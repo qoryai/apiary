@@ -2720,6 +2720,30 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run that writes and qory closed for want of a wall: the fix, then the cause" do
+      body = fn installed ->
+        r =
+          run(%{
+            proposal: nil,
+            ended_at: ago(3600),
+            duration: "4 minutes",
+            outcome: :none,
+            write_needs: %{code: "write_needs_wall", installed: installed}
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        Enum.at(texts(html, "#work-item-explore-none p"), 1)
+      end
+
+      # The tab reads in a software workspace's words: the copy is a checkout.
+      cause = "A run that writes to the checkout needs a wall, and this machine has none."
+
+      assert body.(false) ==
+               "Set a wall in the machine's forager.yaml, then start the run again. " <> cause
+
+      assert body.(true) == "Contact support. " <> cause
+    end
+
     test "a write run with no work item: a branch is a software workspace's word for it" do
       r =
         run(%{

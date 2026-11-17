@@ -426,6 +426,11 @@ msgstr ""
 msgid "%{contact_support}. A read-only run needs a wall, and this machine has none."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A run that writes needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}. Machines can't reach %{url}, the address in this command."
@@ -19152,6 +19157,11 @@ msgstr ""
 msgid "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set aside: locked above the workspace"
@@ -27266,6 +27276,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "write"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "write run with no wall"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex

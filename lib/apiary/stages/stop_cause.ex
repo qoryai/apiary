@@ -21,7 +21,7 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
-  alias Apiary.Runs.{ReadNeeds, Run, Target}
+  alias Apiary.Runs.{ReadNeeds, Run, Target, WriteNeeds}
   alias Apiary.Targets
   alias Apiary.WorkItems.WorkItem
 
@@ -72,8 +72,8 @@ defmodule Apiary.Stages.StopCause do
   # fix, where a point says the cause in other words after "The run stopped:";
   # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
   # `{:lines, cause, fix}` for a run that ended before it started; and
-  # `{:fix_first, fix, cause}` for a read-only run that could not go on, whose text has the
-  # fix first.
+  # `{:fix_first, fix, cause}` for a read-only run that could not go on, or a run that writes
+  # and has no wall, whose text has the fix first.
   #
   # A run a member cancelled (`Apiary.Runs.Cancel`) stopped because they did, whatever it
   # ended by: "<person> cancelled it.", after "The run stopped:".
@@ -103,7 +103,8 @@ defmodule Apiary.Stages.StopCause do
   # A run that sent no result: qory closed it with `workflow_not_in_harness` when the
   # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`),
   # and with a `read_needs_*` reason when a read-only run could not go on
-  # (`Apiary.Runs.ReadNeeds`).
+  # (`Apiary.Runs.ReadNeeds`), or `write_needs_wall` when a run that writes has no wall
+  # (`Apiary.Runs.WriteNeeds`).
   defp stopped_split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
       %{} = facts -> workflow_gap(facts, work_item)
@@ -204,6 +205,13 @@ defmodule Apiary.Stages.StopCause do
   defp no_gap(run, work_item) do
     case ReadNeeds.of_dispatch_run(run) do
       %{} = facts -> read_needs(facts, work_item)
+      nil -> no_read_needs(run, work_item)
+    end
+  end
+
+  defp no_read_needs(run, work_item) do
+    case WriteNeeds.of_dispatch_run(run) do
+      %{} = facts -> write_needs(facts, work_item)
       nil -> {:one, "The run ended without a result."}
     end
   end
@@ -245,6 +253,20 @@ defmodule Apiary.Stages.StopCause do
     do:
       {:fix_first, "Start the run again.",
        "The setup container was not removed, so a process in it could still write the files."}
+
+  # What a person does about a run that writes and has no wall. The target's copy is a
+  # checkout in a software workspace. A person in an organisation cannot edit the
+  # forager.yaml of the instance's pool, so that pool's run has "Contact support.".
+  defp write_needs(%{installed: installed}, work_item) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+    what = if Domain.name(workspace) == "software", do: " to the checkout", else: ""
+    cause = "A run that writes#{what} needs a wall, and this machine has none."
+
+    if installed,
+      do: {:fix_first, "Contact support.", cause},
+      else:
+        {:fix_first, "Set a wall in the machine's forager.yaml, then start the run again.", cause}
+  end
 
   # The words of `ApiaryWeb.HarnessComponents.workflow_gap_words/1`, stored once in
   # English: the target is a repository in a software workspace.

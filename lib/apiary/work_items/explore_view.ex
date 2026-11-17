@@ -83,7 +83,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # workflow its harness had no skill for and where that harness came from
   # (`Apiary.Harnesses.WorkflowGap`), nil for any other run, `read_needs`, for a run qory
   # closed with a `read_needs_*` reason, the reason and whether the run's pool is the
-  # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run,
+  # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run, `write_needs`, for a run
+  # qory closed with `write_needs_wall`, the same facts (`Apiary.Runs.WriteNeeds`), nil for
+  # any other run,
   # and by what it gave: `proposal`, `%{message: text}`, the Markdown of the newest version
   # of the work item's proposal a run of the take in up to it pushed, nil for none, with
   # `version`, that version's number (`Apiary.WorkItems.Explore.proposal_version/3`), nil
@@ -166,7 +168,7 @@ defmodule Apiary.WorkItems.ExploreView do
   alias Apiary.Dispatches.{DispatchRun, Pause}
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.ReadNeeds
+  alias Apiary.Runs.{ReadNeeds, WriteNeeds}
   alias Apiary.Explore.{Given, Questions, ReviewComments}
   alias Apiary.WorkItems.{Confirmation, Explore, Proposal, State, WorkItem}
 
@@ -753,6 +755,7 @@ defmodule Apiary.WorkItems.ExploreView do
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
       read_needs: ReadNeeds.of_run(step.run),
+      write_needs: WriteNeeds.of_run(step.run),
       heard: heard(step.run),
       proposal: nil,
       version: nil,
