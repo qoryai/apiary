@@ -997,7 +997,7 @@ defmodule Apiary.Stages do
 
   # An approval; `audit?` false where the confirmation of today's proposal wrote the act's
   # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
-  # work item page frames (`gate_frames/2`).
+  # work item page frames (`gate_frames/3`).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     artifacts = Artifacts.list(work_item)
     approvals = approvals_by_version(work_item)
@@ -3166,27 +3166,36 @@ defmodule Apiary.Stages do
   # versions its gate shows (`gate_versions/3`), then, with `changes?`, each version a
   # person's change made that no approval lists yet (`changed_versions/2`), as a person's
   # approval is the one that lists such a version (vault 0261, 624 (a)). An approval is
-  # made only at the work item's stage, so only there are the changes the gate's.
+  # made only at the work item's stage, so only there are the changes the gate's. Of two
+  # versions of one artifact, such as a person's upload at the gate and a run's version
+  # after it, the higher-numbered one is taken, in the place of the first.
   defp recorded_versions(stage, artifacts, approvals, changes?) do
     changed = if changes?, do: changed_versions(artifacts, listed(approvals)), else: []
-    Enum.uniq_by(gate_versions(stage, artifacts, approvals) ++ changed, & &1.public_id)
+    versions = gate_versions(stage, artifacts, approvals) ++ changed
+
+    highest =
+      versions
+      |> Enum.group_by(& &1.artifact_id)
+      |> Map.new(fn {id, of_artifact} -> {id, Enum.max_by(of_artifact, & &1.number)} end)
+
+    versions |> Enum.uniq_by(& &1.artifact_id) |> Enum.map(&highest[&1.artifact_id])
   end
 
-  # gate_frames/2 is the versions the work item page frames on the tab of the stage
-  # `stage_id` (`ApiaryWeb.WorkItemLive.StageTab.frames/1`), each with its artifact's type
+  # gate_frames/3 is the versions the work item page frames on the tab of the stage
+  # `stage_id` of the process version `version`, the work item's
+  # (`ApiaryWeb.WorkItemLive.StageTab.frames/1`), each with its artifact's type
   # and name. At the work item's stage, until its last stage is done, they are the versions
   # an approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
   # At any other stage with a person's approval in this take in, they are the versions the
   # newest such approval recorded, in its order; with none, the versions its gate shows.
   # [] for a stage the work item's process version does not have.
   @doc false
-  @spec gate_frames(WorkItem.t(), String.t()) :: [
+  @spec gate_frames(WorkItem.t(), Processes.Version.t(), String.t()) :: [
           %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}
         ]
-  def gate_frames(%WorkItem{} = work_item, stage_id) when is_binary(stage_id) do
-    work_item = Repo.get!(WorkItem, work_item.id)
-
-    case Processes.stage(Processes.version_for(work_item), stage_id) do
+  def gate_frames(%WorkItem{} = work_item, %Processes.Version{} = version, stage_id)
+      when is_binary(stage_id) do
+    case Processes.stage(version, stage_id) do
       nil ->
         []
 
@@ -3220,18 +3229,30 @@ defmodule Apiary.Stages do
   end
 
   # The newest approval of the stage `stage_id` in the work item's take in that a person
-  # gave at the gate (`gate_none_approval?/1` false); nil for none.
+  # gave at the gate: not automatic, and at a gate that was not `none` in the process
+  # version it was recorded under, as `approvals_by_version/1` reads it; nil for none.
   defp last_person_approval(%WorkItem{take_in: nil}, _stage_id), do: nil
 
   defp last_person_approval(work_item, stage_id) do
-    Repo.all(
+    Repo.one(
       from d in GateDecision,
+        join: v in Processes.Version,
+        on: v.id == d.process_version_id,
         where:
           d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve and
-            d.take_in == ^work_item.take_in and not d.automatic,
-        order_by: [desc: d.inserted_at]
+            d.take_in == ^work_item.take_in and not d.automatic and
+            not fragment(
+              """
+              COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                        FROM jsonb_array_elements(? -> 'stages') AS s
+                        WHERE s ->> 'id' = ? LIMIT 1), false)
+              """,
+              v.document,
+              d.stage_id
+            ),
+        order_by: [desc: d.inserted_at],
+        limit: 1
     )
-    |> Enum.find(&(not gate_none_approval?(&1)))
   end
 
   # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),

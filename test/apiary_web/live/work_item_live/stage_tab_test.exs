@@ -414,11 +414,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(
                view,
-               "#work-item-tab-output-test-features-other-h",
+               "#work-item-tab-output-test-features--other-h",
                "Test features · other"
              )
 
-      view |> element("#work-item-tab-output-test-features-other-s") |> render_click()
+      view |> element("#work-item-tab-output-test-features--other-s") |> render_click()
       assert render(view) =~ "Another"
     end
 
@@ -2271,6 +2271,63 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ "Spec two"
 
       assert html =~ "Version 2 · #{scope.user.email}"
+    end
+
+    # At Shape's gate after its run wrote spec v1: `first` and then `second` each add one
+    # spec version, with a round between them that the person asks for. The approval and
+    # the frames have one spec version, the highest.
+    defp one_spec_version!(conn, scope, first, second) do
+      work_item = at_gate!(scope, "## Spec one")
+      work_item = first.(work_item)
+
+      {:ok, _round} =
+        Stages.request_changes(scope, reload(work_item), "Again.", nil, expect_stage: @shape)
+
+      work_item = work_item |> reload() |> second.() |> reload()
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+      frames = :sys.get_state(view.pid).socket.assigns.frames
+      {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      [spec] = for a <- Artifacts.list(work_item), a.type == "spec", do: a
+      spec_ids = MapSet.new(spec.versions, & &1.public_id)
+      three = Enum.find(spec.versions, &(&1.number == 3)).public_id
+
+      assert [%{version: 3}] = Enum.filter(frames, &(&1.type == "spec"))
+      assert Enum.filter(recorded(work_item, @shape), &(&1 in spec_ids)) == [three]
+    end
+
+    test "a person's upload, then a run's version: one frame, the run's",
+         %{conn: conn, scope: scope} do
+      one_spec_version!(
+        conn,
+        scope,
+        fn work_item ->
+          add_spec!(scope, work_item, "## Spec two")
+          work_item
+        end,
+        fn work_item ->
+          end_run!(work_item, fn run, _registered ->
+            push!(run, work_item, "spec", "## Spec three")
+            passed!(run)
+          end)
+        end
+      )
+    end
+
+    test "a run's version, then a person's upload: one frame, the upload",
+         %{conn: conn, scope: scope} do
+      one_spec_version!(conn, scope, & &1, fn work_item ->
+        work_item =
+          end_run!(work_item, fn run, _registered ->
+            push!(run, work_item, "spec", "## Spec two")
+            passed!(run)
+          end)
+
+        add_spec!(scope, reload(work_item), "## Spec three")
+        work_item
+      end)
     end
 
     test "a past stage's tab frames what its approval recorded", %{conn: conn, scope: scope} do

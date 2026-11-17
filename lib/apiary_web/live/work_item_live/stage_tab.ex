@@ -404,7 +404,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   # frames/1 is the output frames of a stage's tab: one for each version an approval of the
-  # stage records (`Apiary.Stages.gate_frames/2`), in that order, as
+  # stage records (`Apiary.Stages.gate_frames/3`), in that order, as
   # `%{type:, name:, version:, open:, writer:}`, the first one `open`. `version` is the
   # version's number; `writer` is the version where a person made it, for the frame's
   # caption, else nil. The review comments, the document a review comment is written to,

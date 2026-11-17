@@ -2097,7 +2097,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
        when is_binary(tab) do
     frames =
       assigns.row
-      |> Stages.gate_frames(stage.id)
+      |> Stages.gate_frames(assigns.row.process_version, stage.id)
       |> StageTab.frames()
       |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
       |> StageTab.approved(stage, assigns.flow.index)
