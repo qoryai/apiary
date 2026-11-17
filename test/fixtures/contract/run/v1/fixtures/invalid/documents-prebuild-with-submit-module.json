@@ -1,0 +1,22 @@
+{
+  "step": "prebuild",
+  "domain": "software",
+  "access": "read",
+  "target": {
+    "system": "code.example.com",
+    "path": "acme/shop"
+  },
+  "image_destination": "registry.example.com/targets/0123456789abcdef",
+  "environment_destination": "registry.example.com/environments/0123456789abcdef",
+  "inputs": {
+    "version": 1,
+    "environment_ref": "env-3f2a91c4"
+  },
+  "submit_module": {
+    "source": {
+      "git": "https://code.example.com/example-org/forge-module",
+      "ref": "9c1e5b7a3d2f4e6081a2b3c4d5e6f7089a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "path": "modules/forge-submit"
+    }
+  }
+}

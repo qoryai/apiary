@@ -2490,6 +2490,13 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: [],
     doc: "the earlier take ins with the stage's runs and the entries the runner passed over"
 
+  attr :passed_over, :map,
+    default: nil,
+    doc:
+      "the record of the runner passing the stage over whole in the take in (`Apiary.Stages.stage_skips/1`), nil for none"
+
+  attr :stage_names, :map, default: %{}, doc: "the process version's stage names, by stage id"
+
   attr :outputs, :list, default: []
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
@@ -2588,6 +2595,22 @@ defmodule ApiaryWeb.WorkItemComponents do
 
     ~H"""
     <div id={@id} class="q-xp">
+      <section
+        :if={@passed_over}
+        id={"#{@id}-passed-over"}
+        class="q-xp-frame"
+        aria-labelledby={"#{@id}-passed-over-h"}
+      >
+        <div class="q-xp-frame-h">
+          <.icon name="hero-minus-circle-micro" class="q-xp-frame-i size-4" />
+          <h2 id={"#{@id}-passed-over-h"} class="q-xp-frame-t">
+            {gettext("%{stage} did not run", stage: @stage.name)}
+          </h2>
+        </div>
+        <p id={"#{@id}-passed-over-why"} class="q-xp-cap">
+          {passed_over_words(@passed_over, @stage.name, @stage_names, @now)}
+        </p>
+      </section>
       <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} cancel={@cancel} />
       <.stage_wait
         :if={@running}
@@ -5216,8 +5239,70 @@ defmodule ApiaryWeb.WorkItemComponents do
     |> Enum.map(fn {{{_key, kind, row}, _place}, i} -> {kind, row, i} end)
   end
 
+  # Why a stage did not run: the approval that put the work item on the track that skips
+  # it, with `by`, the person who approved (`ApiaryWeb.WorkItemLive.View.person/2`), else
+  # the condition that held the stage back.
+  defp passed_over_words(%{approved: %{by: by} = approval}, stage, stage_names, now) do
+    values = [
+      track: approval.track_name,
+      gate: Map.get(stage_names, approval.stage_id) || gettext("an earlier stage"),
+      date: Format.day(approval.at, now),
+      stage: stage
+    ]
+
+    case {approval.kind, you?(by)} do
+      {:move, true} ->
+        gettext(
+          "You moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
+          values
+        )
+
+      {:move, false} ->
+        gettext(
+          "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}.",
+          [member: by.name] ++ values
+        )
+
+      {_approve, true} ->
+        gettext(
+          "You approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
+          values
+        )
+
+      {_approve, false} ->
+        gettext(
+          "%{member} approved %{track} at %{gate}'s gate on %{date}. %{track} skips %{stage}.",
+          [member: by.name] ++ values
+        )
+    end
+  end
+
+  defp passed_over_words(%{track: track} = skip, stage, _stage_names, _now)
+       when is_binary(track) do
+    if skip.negated,
+      do: gettext("%{stage} does not run on %{track}.", stage: stage, track: skip.track_name),
+      else: gettext("%{stage} runs on %{track} only.", stage: stage, track: skip.track_name)
+  end
+
+  defp passed_over_words(%{input: type} = skip, stage, _stage_names, _now) do
+    if skip.negated,
+      do:
+        gettext("%{stage} does not run while the work item has %{type}.",
+          stage: stage,
+          type: StageComponents.type_words(type)
+        ),
+      else:
+        gettext("%{stage} runs only while the work item has %{type}, and it has none.",
+          stage: stage,
+          type: StageComponents.type_words(type)
+        )
+  end
+
   attr :id, :string, required: true
-  attr :skip, :map, required: true, doc: "`%{workflow:, input:}`"
+
+  attr :skip, :map,
+    required: true,
+    doc: "`%{workflow:, input:, track:, negated:}`, or `%{workflow:, reason:, cause_entry:}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -5227,16 +5312,42 @@ defmodule ApiaryWeb.WorkItemComponents do
         <span class="q-xp-parts">
           <span class="q-xp-it"><b>{@skip.workflow}</b></span>
         </span>
-        <span>
-          {gettext("No %{type}: %{workflow} did not run.",
-            type: StageComponents.type_words(@skip.input),
-            workflow: @skip.workflow
-          )}
-        </span>
+        <span>{skip_words(@skip)}</span>
       </div>
     </div>
     """
   end
+
+  defp skip_words(%{reason: "first_attempt_passed", cause_entry: entry}),
+    do: gettext("Did not run, because %{entry} passed on its first attempt.", entry: entry)
+
+  defp skip_words(%{track: track} = skip) when is_binary(track) do
+    if skip.negated,
+      do:
+        gettext("%{workflow} did not run: it does not run on %{track}.",
+          workflow: skip.workflow,
+          track: skip.track_name
+        ),
+      else:
+        gettext("%{workflow} did not run: it runs on %{track} only.",
+          workflow: skip.workflow,
+          track: skip.track_name
+        )
+  end
+
+  defp skip_words(%{negated: true} = skip),
+    do:
+      gettext("%{workflow} did not run: the work item has %{type}.",
+        workflow: skip.workflow,
+        type: StageComponents.type_words(skip.input)
+      )
+
+  defp skip_words(skip),
+    do:
+      gettext("No %{type}: %{workflow} did not run.",
+        type: StageComponents.type_words(skip.input),
+        workflow: skip.workflow
+      )
 
   # The summary's pieces at Explore: the newest proposal's and questions' versions, each
   # where it has a number.

@@ -1,14 +1,21 @@
 defmodule Apiary.Stages.Skip do
-  # A workflow entry of a stage that the stage runner passed over, with no run, because
-  # its condition `when: {input: T}` was not met (`Apiary.Stages.Runner`): no version of
-  # `input` that the stage read had a file of more than 0 bytes. It has the take in, the
-  # entry's position and its workflow, and `after_attempt`, the newest attempt of the take
-  # in when the runner passed it over (0 for none), which places it among the runs on the
-  # work item page. Nothing changes a skip once it is written.
+  # A workflow entry of a stage, or a whole stage, that the stage runner passed over, with
+  # no run (`Apiary.Stages.Runner`). Either a condition held it back, `{input: T}` (`input`
+  # is the type) or `{track: ID}` (`track` is the id), or a first attempt before it passed
+  # (`reason` is `first_attempt_passed`, and `cause_entry` is the name of that entry, else
+  # its workflow). Exactly one of `input`, `track` and `reason` is set. `negated` is true
+  # where the condition was an `unless` that was met; for a `when`, the condition was not
+  # met. A stage passed over has no `workflow`, `stage_entry` or `loop_entry`, and `round`
+  # 1. A workflow entry has the take in, its position and its workflow. `after_attempt` is
+  # the newest attempt of the take in when the runner passed it over (0 for none), which
+  # places it among the runs on the work item page. Nothing changes a skip once it is
+  # written. The record of a stage passed over whole goes when the stage is entered again,
+  # and so do the records of a first attempt, which also go when Request changes or
+  # Another round runs the sequence again (`Apiary.Stages`).
   @moduledoc false
   use Ecto.Schema
 
-  @typedoc "A workflow entry passed over."
+  @typedoc "A workflow entry or a stage passed over."
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -21,6 +28,10 @@ defmodule Apiary.Stages.Skip do
     field :round, :integer
     field :workflow, :string
     field :input, :string
+    field :track, :string
+    field :negated, :boolean, default: false
+    field :reason, :string
+    field :cause_entry, :string
     field :after_attempt, :integer
     field :inserted_at, :utc_datetime_usec
 

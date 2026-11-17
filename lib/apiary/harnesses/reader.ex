@@ -250,16 +250,26 @@ defmodule Apiary.Harnesses.Reader do
 
   @doc """
   workflow_access/2 is the access level a stack's `workflows` declare for the workflow
-  `name`, `workflows.<name>.access`: `:write` for `write`, and `:read` for `read`, for
-  any other value, and where the key or the workflow is absent.
+  `name`, `workflows.<name>.access`: `:write` for `write`, `:write_no_push` for
+  `write-no-push` (a writable checkout that has no push credential), and `:read` for
+  `read`, for any other value, and where the key or the workflow is absent.
   """
-  @spec workflow_access(map, String.t()) :: :read | :write
+  @spec workflow_access(map, String.t()) :: :read | :write_no_push | :write
   def workflow_access(workflows, name) when is_map(workflows) and is_binary(name) do
     case workflows do
       %{^name => %{"access" => "write"}} -> :write
+      %{^name => %{"access" => "write-no-push"}} -> :write_no_push
       _read_or_none -> :read
     end
   end
+
+  @doc """
+  workflow_levels/1 is the access level of each workflow a stack's `workflows` list, by
+  name (`workflow_access/2`).
+  """
+  @spec workflow_levels(map) :: %{String.t() => :read | :write_no_push | :write}
+  def workflow_levels(workflows) when is_map(workflows),
+    do: Map.new(workflows, fn {name, _entry} -> {name, workflow_access(workflows, name)} end)
 
   @doc """
   exports/1 is the `exports` section of a root `qory.yaml` or `harness.yaml`: `{:ok,

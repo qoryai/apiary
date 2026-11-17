@@ -43,6 +43,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :may, :boolean, required: true
   attr :last, :boolean, default: false, doc: "whether the stage is the only one"
   attr :declared, :list, required: true
+
+  attr :declared_access, :map,
+    default: %{},
+    doc:
+      "the access level each workflow the harness lists declares, by name; a workflow with none has no Access line"
+
   attr :types, :list, required: true
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
@@ -60,6 +66,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :problems, :list, required: true
   attr :machine, :string, required: true
   attr :machine_types, :list, default: [], doc: "the instance's machine types, for the picker"
+
+  attr :doc, :map,
+    default: nil,
+    doc: "the process document, for the names of its tracks; nil shows no track or condition"
 
   attr :marks, :list,
     default: nil,
@@ -105,6 +115,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           <dd id="stage-panel-description" class="whitespace-pre-line break-words" phx-no-format>{description}</dd>
         </dl>
       <% end %>
+      <.condition_field stage={@stage} doc={@doc} />
       <.sect id="stage-inputs" title={gettext("Inputs")} heading="h3" class="q-sect-side">
         <ul class={read_lines()}>
           <li :for={item <- @stage["inputs"]}>{artifact_line(item)}</li>
@@ -113,8 +124,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       </.sect>
       <.sect id="stage-sequence" title={gettext("Sequence")} heading="h3" class="q-sect-side">
         <ul class={read_lines()}>
-          <li :for={{line, workflow} <- sequence_lines(@stage, @machine, @machine_types, @time_limit)}>
+          <li :for={
+            {line, workflow, notes} <-
+              sequence_lines(@stage, @machine, @machine_types, @doc, @time_limit)
+          }>
             {line}<.workflow_mark :if={workflow} workflow={workflow} marks={@marks} class="ml-2" />
+            <span :for={note <- notes} class="block text-muted">{note}</span>
           </li>
           <li :if={@stage["sequence"] == []}>{gettext("No workflow")}</li>
         </ul>
@@ -127,6 +142,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       </.sect>
       <.sect id="stage-gate" title={gettext("Gate")} heading="h3" class="q-sect-side">
         <p class={read_lines()}>{Words.gate_value(@stage, @people)}</p>
+        <p
+          :if={Words.offers(@stage, @doc)}
+          id="stage-gate-tracks"
+          class={["border-t border-line text-muted", read_lines()]}
+        >
+          {Words.offers(@stage, @doc)}
+        </p>
       </.sect>
     </section>
     """
@@ -183,6 +205,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           maxlength={Apiary.Processes.description_limit()}
           rows="3"
         />
+        <.condition_field stage={@stage} doc={@doc} />
 
         <.artifacts key="inputs" stage={@stage} types={@types} />
 
@@ -233,14 +256,23 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                       {gettext("Remove loop")}
                     </.button>
                   </div>
+                  <div
+                    :if={Words.condition(entry, @doc, @stage["id"])}
+                    id={"stage-loop-#{i}-condition"}
+                    class="border-b border-line px-3 py-1.5 text-[12.5px]/[18px] text-muted"
+                  >
+                    {Words.condition(entry, @doc, @stage["id"])}
+                  </div>
                   <div class="px-3">
                     <.entry
                       :for={{inner, j} <- Enum.with_index(loop["body"])}
+                      notes={Words.entry_notes(inner, @doc, @stage["id"])}
                       entry={inner}
                       name={"stage[sequence][#{i}][body][#{j}]"}
                       id={"stage-entry-#{i}-#{j}"}
                       stage_id={@stage["id"]}
                       declared={@declared}
+                      declared_access={@declared_access}
                       machine={@machine}
                       machine_types={@machine_types}
                       marks={@marks}
@@ -263,11 +295,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                 </div>
               <% else %>
                 <.entry
+                  notes={Words.entry_notes(entry, @doc, @stage["id"])}
                   entry={entry}
                   name={"stage[sequence][#{i}]"}
                   id={"stage-entry-#{i}"}
                   stage_id={@stage["id"]}
                   declared={@declared}
+                  declared_access={@declared_access}
                   machine={@machine}
                   machine_types={@machine_types}
                   marks={@marks}
@@ -371,6 +405,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
               )}
             </p>
           </fieldset>
+          <p
+            :if={Words.offers(@stage, @doc)}
+            id="stage-gate-tracks"
+            class="border-t border-line px-4 py-3 text-[13.5px]/5 text-muted"
+          >
+            {Words.offers(@stage, @doc)}
+          </p>
         </.sect>
       </.form>
       <%!-- The time limits' forms: each field in a workflow's fold belongs to one of these by
@@ -391,6 +432,27 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   end
 
   attr :stage, :map, required: true
+  attr :doc, :map, default: nil
+
+  # The stage's condition on a track as a read-only field, with the label Condition; nothing
+  # for a stage with none.
+  defp condition_field(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :text,
+        Words.condition(assigns.stage, assigns.doc, assigns.stage["id"], :stage)
+      )
+
+    ~H"""
+    <dl :if={@text} id="stage-condition" class="grid gap-1">
+      <dt class="text-[13px]/[18px] font-medium">{gettext("Condition")}</dt>
+      <dd class="text-[13.5px]/5">{@text}</dd>
+    </dl>
+    """
+  end
+
+  attr :stage, :map, required: true
   attr :problems, :list, required: true
   attr :harness, :atom, required: true
 
@@ -403,10 +465,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   end
 
   attr :entry, :map, required: true
+  attr :notes, :list, default: [], doc: "lines under the row: the entry's name and its condition"
   attr :name, :string, required: true
   attr :id, :string, required: true
   attr :stage_id, :string, required: true
   attr :declared, :list, required: true
+  attr :declared_access, :map, required: true
   attr :machine, :string, required: true
   attr :machine_types, :list, required: true
   attr :marks, :list, required: true
@@ -482,6 +546,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           class="w-full"
         />
       </div>
+      <p :for={note <- @notes} class="text-[12.5px]/[18px] text-muted">{note}</p>
       <details
         id={"#{@id}-settings-#{@stage_id}"}
         class="q-tool group"
@@ -553,9 +618,55 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           <.time_limit :if={@time_limit} id={"#{@id}-time-limit"} field={@time_limit} />
         </div>
       </details>
+      <p
+        :if={access = access_line(@entry, @marks, @declared_access)}
+        id={"#{@id}-access"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10"
+      >
+        <span class="size-3.5 shrink-0" aria-hidden="true"></span>
+        <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{access}</span>
+      </p>
     </div>
     """
   end
+
+  # The line under a workflow's machine type: the access level of the runs of the entry.
+  # The harness sets the level (`Apiary.Processes.declared_access/1`); the entry in
+  # `process.yaml` may lower it, never raise it (`Apiary.Stages.Runner.limits/4`). nil, so
+  # no line, for a workflow the harness does not list.
+  defp access_line(entry, marks, declared_access) do
+    with true <- listed?(entry, marks),
+         {:ok, harness} <- Map.fetch(declared_access, entry["workflow"]) do
+      level = entry_level(entry["access"])
+
+      if level != nil and rank(level) < rank(harness) do
+        gettext("Access: %{level} (set for this stage; the harness allows %{harness})",
+          level: level_words(level),
+          harness: level_words(harness)
+        )
+      else
+        gettext("Access: %{level} (set by the harness)", level: level_words(harness))
+      end
+    else
+      _not_listed -> nil
+    end
+  end
+
+  # The entry's level: nil for none. A value other than `write-no-push` counts as read, as
+  # the runner counts it.
+  defp entry_level(nil), do: nil
+  defp entry_level("write-no-push"), do: :write_no_push
+  defp entry_level(_read), do: :read
+
+  # From the lowest level to the highest: read, write-no-push (a writable checkout that
+  # has no push credential), write.
+  defp rank(:read), do: 0
+  defp rank(:write_no_push), do: 1
+  defp rank(:write), do: 2
+
+  defp level_words(:read), do: gettext("Read only")
+  defp level_words(:write_no_push), do: gettext("Write, no push")
+  defp level_words(:write), do: gettext("Write and push")
 
   attr :id, :string, required: true
   attr :field, :map, required: true, doc: "the row's time limit (`time_limit_field/4`)"
@@ -923,25 +1034,26 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   defp read_lines, do: "grid gap-1 px-4 py-3 text-[13.5px]/5 [overflow-wrap:anywhere]"
 
   # Each line of a member's Sequence, with the workflow a line runs, nil for a loop's
-  # label. A machine type is the default's words of the picker or a type's name
+  # label, and the notes under it: an entry's name and condition, a loop's condition. A
+  # machine type is the default's words of the picker or a type's name
   # (`MachineTypeWords.entry_words/3`). With time limits, a workflow's line ends with its
   # limit, the saved minutes or the default.
-  defp sequence_lines(stage, machine, types, time_limit) do
+  defp sequence_lines(stage, machine, types, doc, time_limit) do
     Enum.flat_map(stage["sequence"], fn
-      %{"loop" => %{"rounds" => rounds, "body" => body}} ->
+      %{"loop" => %{"rounds" => rounds, "body" => body}} = loop ->
         [
           {ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
              number: rounds
-           ), nil}
-          | Enum.map(body, &entry_line(&1, machine, types, time_limit))
+           ), nil, List.wrap(Words.condition(loop, doc, stage["id"]))}
+          | Enum.map(body, &entry_line(&1, machine, types, doc, stage["id"], time_limit))
         ]
 
       entry ->
-        [entry_line(entry, machine, types, time_limit)]
+        [entry_line(entry, machine, types, doc, stage["id"], time_limit)]
     end)
   end
 
-  defp entry_line(entry, machine, types, time_limit) do
+  defp entry_line(entry, machine, types, doc, stage_id, time_limit) do
     workflow = entry["workflow"]
     machine = MachineTypeWords.entry_words(types, machine, entry["machine"])
 
@@ -965,7 +1077,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           )
       end
 
-    {line, workflow}
+    {line, workflow, Words.entry_notes(entry, doc, stage_id)}
   end
 
   defp artifact_line(%{"type" => type, "required" => true}),

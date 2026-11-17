@@ -2562,6 +2562,40 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "a withdrawn name" do
+    test "is not in the artifact list; a push of files lists it again", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = explore_gate_fixture(scope)
+      run = stage_run!(work_item, @explore)
+      shown = fn -> live(conn, page(scope, work_item.number) <> "/explore") |> elem(1) end
+
+      {:ok, _version} =
+        Artifacts.push({:run, run}, work_item, "explainer", [sample("explainer")],
+          name: "draft",
+          stage_id: @explore
+        )
+
+      assert has_element?(shown.(), "#work-item-artifact-list", "explainer draft v1")
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, work_item, "explainer", name: "draft", stage_id: @explore)
+
+      view = shown.()
+      assert has_element?(view, "#work-item-artifact-list", "proposal v1")
+      refute has_element?(view, "#work-item-artifact-list", "explainer")
+
+      {:ok, _version} =
+        Artifacts.push({:run, run}, work_item, "explainer", [sample("explainer")],
+          name: "draft",
+          stage_id: @explore
+        )
+
+      assert has_element?(shown.(), "#work-item-artifact-list", "explainer draft v3")
+    end
+  end
+
   describe "a gate with a missing output" do
     # A work item at the gate of Shape, a stage with no workflow that has `outputs` as
     # required outputs and `gate` as its gate.
@@ -3504,7 +3538,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-notice",
-               "Add acceptance criteria before you approve Shape."
+               "Add acceptance criteria before you approve this stage."
              )
     end
   end
@@ -6309,7 +6343,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
       assert has_element?(view, "#work-item-stage-state", "At the gate")
-      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve Shape")
+      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve")
     end
   end
 
@@ -6799,8 +6833,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(runs)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
-      assert has_element?(view, "#spend-dialog-go", "Approve Shape")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
+      assert has_element?(view, "#spend-dialog-go", "Approve")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of implement on #{machine(scope)}. The run uses model tokens."
@@ -7080,7 +7114,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(approve)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of verify-change on #{machine(scope)}. The run uses model tokens."
