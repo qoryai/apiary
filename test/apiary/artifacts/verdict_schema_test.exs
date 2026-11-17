@@ -8,16 +8,16 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   alias Apiary.Kinds.Bounds
 
   @path Path.expand("../../../priv/schemas/artifacts/verdict.schema.json", __DIR__)
-  @sha256 "11a4590f794e03b4dded1a61af61d95a94b05eb81f35bd6d04f9941f7e5b92ad"
+  @sha256 "eb5c1c15f11a381d673a54eb2e7f5680ff8896cf2ecd9605df793887f656b348"
 
   test "is the bytes of the verdict schema the hash pins" do
     bytes = File.read!(@path)
     assert Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == @sha256
   end
 
-  test "limits a verdict to 20 points of at most 3 members each" do
+  test "limits a verdict to 20 points of at most 4 members each" do
     assert @path |> File.read!() |> Jason.decode!() |> Bounds.from_schema() ==
-             [list: 20, members: 3]
+             [list: 20, members: 4]
   end
 
   describe "track" do

@@ -1525,6 +1525,65 @@ defmodule Apiary.ArtifactsTest do
           ] do
         assert {:error, {:invalid, {:schema, 0, _error}}} = push.("verdict", document)
       end
+
+      # A run_again point with a question is refused at the point, with the member named.
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "property 'question' is not allowed"}}}} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [Map.put(run_again, "question", "q2")]
+               })
+    end
+
+    test "takes a fix on a run_again point, on one line of 1 to 500 characters",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
+
+      run_again = %{
+        "text" => "The build is at its limit of 100 steps, so another round stops at once.",
+        "action" => "run_again",
+        "fix" =>
+          "Accept the newest submission, or close this work item and make a new one " <>
+            "for the unfinished criteria."
+      }
+
+      for verdict <- ~w(escalate changes-requested) do
+        assert {:ok, _version} =
+                 push.("verdict", %{"verdict" => verdict, "points" => [run_again]})
+      end
+
+      assert {:ok, _version} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [%{run_again | "fix" => String.duplicate("x", 500)}]
+               })
+
+      # An answer point has no fix: a fix would take the place of "Answer question N.".
+      answer = %{
+        "text" => "Which basket gets the sale?",
+        "action" => "answer",
+        "question" => "q2",
+        "fix" => "Answer it on the Explore tab."
+      }
+
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "property 'fix' is not allowed"}}}} =
+               push.("verdict", %{"verdict" => "escalate", "points" => [answer]})
+
+      # A fix is a string on one line: no control character, no line feed, 1 to 500
+      # characters.
+      for point <- [
+            %{run_again | "fix" => ""},
+            %{run_again | "fix" => String.duplicate("x", 501)},
+            %{run_again | "fix" => "Close the work item.\u0007"},
+            %{run_again | "fix" => "Close the work item.\nTake it in again."},
+            %{run_again | "fix" => 1}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, _error}}} =
+                 push.("verdict", %{"verdict" => "escalate", "points" => [point]})
+      end
     end
 
     test "takes an answer point only about an open question of the current take in",
@@ -1749,6 +1808,37 @@ defmodule Apiary.ArtifactsTest do
                Repo.all(from e in Entry, where: e.action == "artifact.write")
 
       assert subject_id == context.work_item.id
+    end
+
+    test "a custom type's document that fails the then of an if is refused with the inner error",
+         %{scope: scope} = context do
+      member = member_fixture(scope)
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "bids",
+          "base_view" => "structured",
+          "json_schema" => %{
+            "type" => "object",
+            "properties" => %{
+              "kind" => %{"enum" => ["fixed", "open"]},
+              "price" => %{"type" => "number"}
+            },
+            "if" => %{"required" => ["kind"], "properties" => %{"kind" => %{"const" => "fixed"}}},
+            "then" => %{"required" => ["price"]}
+          }
+        })
+
+      push =
+        &Artifacts.push({:person, member.scope}, context.work_item, "bids", [
+          json("bids.json", &1)
+        ])
+
+      assert {:ok, _version} = push.(%{"kind" => "fixed", "price" => 12})
+
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#", error: "property 'price' is required"}}}} =
+               push.(%{"kind" => "fixed"})
     end
 
     test "is not found for a person of another organisation", context do

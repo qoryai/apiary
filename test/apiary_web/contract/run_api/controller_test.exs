@@ -470,7 +470,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "version" => %{"id" => passed.public_id, "number" => 1}
              }
 
-      points = [%{"text" => "The ticket has no test steps.", "action" => "run_again"}]
+      points = [
+        %{"text" => "The ticket has no test steps.", "action" => "run_again"},
+        %{
+          "text" => "The ledger of the run is full.",
+          "action" => "run_again",
+          "fix" => "Close the work item, or take the ticket in again."
+        }
+      ]
+
       assert write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points}).status == 201
 
       body = json_response(read(ctx, "/work-item"), 200)
@@ -2148,6 +2156,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/verdict", body).status == 201
       assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
       assert Jason.decode!(content) == body
+    end
+
+    test "a fix on an answer point is 422 invalid_artifact", ctx do
+      points = [
+        %{
+          "text" => "Which basket gets the sale?",
+          "action" => "answer",
+          "question" => "q2",
+          "fix" => "Answer it on the Explore tab."
+        }
+      ]
+
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix verdict.json to match the format of verdict: at #/points/0, " <>
+                   "property 'fix' is not allowed."
+             }
+
+      assert RunApiStubs.pushed() == []
     end
 
     test "a verdict without points is stored without the member, as its schema takes it",

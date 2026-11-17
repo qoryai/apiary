@@ -530,9 +530,13 @@ The body, at most 64 KiB:
   them as it shows every other member of the file. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
-  an open question, or `run_again`, without `question`. For an escalation, the work item
-  page adds the action's sentence: "Answer question 4." or "Run another round." The
-  schema of the type `verdict` checks them (`priv/schemas/artifacts/verdict.schema.json`).
+  an open question, or `run_again`, without `question`. A `run_again` point may also have
+  `fix`, one plain sentence on one line of 1 to 500 characters that states what a person
+  does about it; an `answer` point has no `fix`. For an escalation, the work item page
+  adds the action's sentence: "Answer question 4." or "Run another round." A point's
+  `fix` takes the place of "Run another round." The page shows `text` and `fix` as plain
+  text. The schema of the type `verdict` checks them
+  (`priv/schemas/artifacts/verdict.schema.json`).
   That file is the source of the schema, and qory keeps a byte copy of it at
   `contracts/harness/v1/verdict.schema.json`.
 - `track`: optional, for any verdict. The track the run proposes for the work item:

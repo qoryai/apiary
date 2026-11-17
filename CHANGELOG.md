@@ -92,6 +92,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after a pass, a failure or an interrupt.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
+- A run_again point of a run's verdict may have `fix`, one line on what a person does
+  about it: the work item page shows it in place of "Run another round."
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
   Qory Apiary accepts requests for it from the gateway that started it, on the same node
   and instance. A run of a workspace's queue still ends 600 seconds after its last
@@ -237,8 +239,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
   `access: read` or `access: write-no-push` to lower the level the stack declares; the run
   has the lower of the two. A run of a stage whose version has no entry for its workflow
-  has `read`. The run and the integration contracts are vendored at integrations
-  `55a22cb`.
+  has `read`. The run contract is vendored at integrations `55a22cb`, and the
+  integration contract at `c6b7701`.
 - Workspace settings › Workflows: under the Machine type line, the row of a workflow the
   harness lists has one line with the access level of its runs, with no **Change**:
   “Access: Read only (set by the harness)”, or Write, no push or Write and push for the
@@ -1312,6 +1314,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   starts with `submit` alone where no adapter declares one. A start-up whose
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
   400 `invalid_request`, and nothing is stored.
+- A run that stores a version of its submission type, `submit.type` of its process
+  version, adds a `watch` entry to the change feed of the adapter of the work item's
+  target collection: the work item's public id and its page, `url`, as in a `work_item`
+  entry. Each stored version adds one entry, whatever source the work item came from.
+  A work item with no target, or a target that no collection matches, gets no entry, and
+  the version is stored all the same. Where `PUBLIC_URL` is plain http to a host other
+  than `localhost`, `127.0.0.1` or `[::1]`, or has a character outside RFC 3986, such as
+  a host in Unicode, the push of such a version is refused: the run API returns `503`
+  `unavailable`, no version and no file is stored, and the log line starts with "Set
+  PUBLIC_URL to an https:// address".
 - An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
@@ -2178,6 +2190,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
+  takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the
+  new check without a scan, and the second validates it with a scan that does not block
+  writes. It changes no row.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
   column `gate_decisions.track`, the track an approval chose, with a check that only an
@@ -2223,6 +2241,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `artifact_types` and `workspaces` (20261116190000): a column `artifact_types.withdrawable`,
+  true by default, false for a custom type whose template sets `withdrawable: false`, and a
+  column `workspaces.locked_standard_types`, the standard types whose template entry sets
+  it, an empty list by default. Each default is a constant, so adding the columns rewrites
+  no row, and every type and workspace stored before has the default. Rolling back drops
+  both columns, with every `withdrawable: false` and every locked standard type that a
+  template set.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`

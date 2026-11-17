@@ -76,7 +76,8 @@ defmodule Apiary.Runs.RunCredentials do
   # `dispatch_run` comes from, `{collection, connection, adapter}`, nil for none (the
   # moduledoc), read once, without a lock, for both `work_from/4` and `submit_module/1`,
   # so the run's work entry and its submit_module come from one collection. Nil, with no
-  # query, for a run with no target, which has neither.
+  # query, for a run with no target, which has neither. `Apiary.Artifacts` reads it too,
+  # for the adapter whose feed gets the `watch` entry of a run's submission version.
   @spec work_collection(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
           {Collection.t(), Connection.t(), Node.t()} | nil
   def work_collection(%DispatchRun{}, _work_item, nil), do: nil

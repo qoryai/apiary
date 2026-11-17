@@ -7,10 +7,17 @@ defmodule Apiary.Artifacts.SchemaError do
   # "First" is in one order for one file and one schema: JSV's errors sorted by their
   # data path, segment by segment, then by keyword, the ties in JSV's order. An error
   # that only points at a deeper one, such as "property 'gaps' did not conform to the
-  # property schema", is passed over while a deeper error exists. With `unwrap: true`, as
-  # for the type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit
-  # on its length makes, is the errors of its schemas that failed, so "value did not
-  # conform to all of the given schemas" is replaced by the failing limit's message.
+  # property schema", is passed over while a deeper error exists. An `if` error is the
+  # errors of its failed `then` or `else` schema, each with its path, so "value validated
+  # 'if' but not 'then'" is replaced by a message such as "property 'fix' is not
+  # allowed"; an `if` error with none keeps its message. An `if` inside an `allOf` is
+  # read so only with `unwrap: true`. Outside an `allOf` are the check on a verdict's
+  # point (`verdict.schema.json`) and the two checks in `questions.schema.json` that an
+  # answer with option null has a note. A verdict's top-level checks and every `if` in
+  # `review-comments.schema.json` sit inside an `allOf`. With `unwrap: true`, as for the
+  # type `mockup`, an `allOf` error, which a `$ref` to a definition with a limit on its
+  # length makes, is the errors of its schemas that failed, so "value did not conform to
+  # all of the given schemas" is replaced by the failing limit's message.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
@@ -32,12 +39,13 @@ defmodule Apiary.Artifacts.SchemaError do
   @type t :: %{path: String.t(), error: String.t()}
 
   # first/2 is the first failing place of JSV's `error`; `opts` is `[]` or
-  # `[unwrap: true]`, which reads the errors inside an `allOf`.
+  # `[unwrap: true]`, which reads the errors inside an `allOf`. The errors inside an `if`
+  # are read with either.
   @doc false
   @spec first(JSV.ValidationError.t(), keyword) :: t
   def first(%JSV.ValidationError{errors: errors}, opts \\ []) do
-    errors =
-      if Keyword.get(opts, :unwrap, false), do: Enum.flat_map(errors, &failed/1), else: errors
+    all_of? = Keyword.get(opts, :unwrap, false)
+    errors = Enum.flat_map(errors, &failed(&1, all_of?))
 
     sorted = Enum.sort_by(errors, &{Enum.reverse(&1.data_path), &1.kind})
 
@@ -62,17 +70,31 @@ defmodule Apiary.Artifacts.SchemaError do
     }
   end
 
-  # An `allOf` error is the errors of its failed schemas, each read the same way.
-  defp failed(%{kind: :allOf, args: args} = error) do
+  # An `allOf` error, where `all_of?`, is the errors of its failed schemas, and an `if`
+  # error the errors of its failed `then` or `else` schema, each read the same way.
+  defp failed(%{kind: :allOf, args: args} = error, true) do
     nested =
       for {_index, %{errors: errors}} <- Keyword.get(args, :invalidated, []),
-          error <- errors,
+          error <- :lists.flatten(errors),
           do: error
 
-    if nested == [], do: [error], else: Enum.flat_map(nested, &failed/1)
+    unwrapped(error, nested, true)
   end
 
-  defp failed(error), do: [error]
+  defp failed(%{kind: :jsv@if, args: args} = error, all_of?) do
+    nested =
+      case Keyword.get(args, :after_err_vctx) do
+        %{errors: errors} -> :lists.flatten(errors)
+        _none -> []
+      end
+
+    unwrapped(error, nested, all_of?)
+  end
+
+  defp failed(error, _all_of?), do: [error]
+
+  defp unwrapped(error, [], _all_of?), do: [error]
+  defp unwrapped(_error, nested, all_of?), do: Enum.flat_map(nested, &failed(&1, all_of?))
 
   defp first_pointer([error | _rest]) do
     {_level, message} = message(error)
