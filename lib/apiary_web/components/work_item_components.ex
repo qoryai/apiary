@@ -3059,7 +3059,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # artifact's name after the type where it is not `main`, and a version a person made has
   # who made it after its number, as the record block's artifact rows have it
   # (`ApiaryWeb.ArtifactComponents.made_by/1`). An input frame's version that a run made has
-  # its source after its number: "Version 1 · from Build, Attempt 2 (Run 4)".
+  # its source after its number: "Version 1 · from Build, Attempt 2 (Run 4)", under the
+  # approval line where the frame has one.
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3101,7 +3102,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
             <span><.rich text={approval_caption(@output.version, @approval)} /></span>
           </p>
-          <p :if={!@approval} class="q-xp-cap">
+          <p :if={!@approval or @output[:source]} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span :if={!@output[:source]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · <ApiaryWeb.ArtifactComponents.made_by version={@output.writer} /><% end %></span>
             <span :if={@output[:source]} id={"#{@id}-source"}>{source_words(@output)}</span>

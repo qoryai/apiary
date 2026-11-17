@@ -478,10 +478,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
 
   The version that a run made has `source`, `%{stage:, attempt:, run:}`: the name of the
   stage whose run made it, the run's attempt and its number in the workspace (nil for a run
-  that is not registered), for the frame's caption. The version of the submission type, the
-  `submit.type` of the process version's harness template (`submit_type/1`), has no frame:
-  the build report links to it. `artifacts` are the work item's artifacts, as
-  `Apiary.Artifacts.list/1` reads them, and `version` is the work item's process version.
+  that is not registered), for the frame's caption. A version a person made, or one whose
+  stage the process version no longer has, has `source` nil. Where another input remains,
+  the version of the submission type, the `submit.type` of the process version's harness
+  template (`submit_type/1`), has no frame in this tab; it stays in the stage's artifacts.
+  Where it is the only input, it has the frame, open, so the tab is never empty.
+  `artifacts` are the work item's artifacts, as `Apiary.Artifacts.list/1` reads them, and
+  `version` is the work item's process version.
   """
   @spec input_frames(map, map, [map], Apiary.Processes.Version.t() | nil) :: [map]
   def input_frames(flow, stage, artifacts, version) do
@@ -489,8 +492,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       submit = submit_type(version)
       names = Map.new(flow.stages, &{&1.id, &1.name})
 
-      flow.inputs
-      |> Enum.filter(&(is_integer(&1.version) and &1.type not in ["review-comments", submit]))
+      read = Enum.filter(flow.inputs, &(is_integer(&1.version) and &1.type != "review-comments"))
+
+      shown =
+        case Enum.reject(read, &(&1.type == submit)) do
+          [] -> read
+          others -> others
+        end
+
+      shown
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
         %{

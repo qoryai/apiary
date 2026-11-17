@@ -50,8 +50,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   that approval recorded. In a stage that started no run, the input frames follow the
   output frames, folded; with no output frame, the first input frame is open. An input
   version that a run made has the caption "Version <n> · from <stage>, Attempt <a> (Run
-  <r>)". The version of the harness's submission type (`submit.type`) has no frame: the
-  build report links to it. In `GET artifacts`, each version has `decision` and
+  <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no registered
+  number. When another input remains, the version of the harness's submission type
+  (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where it is
+  the only input, it has the frame. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs

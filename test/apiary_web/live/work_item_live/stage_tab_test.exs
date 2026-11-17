@@ -3608,6 +3608,139 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       end
     end
 
+    defp build_run(work_item),
+      do:
+        Repo.one!(
+          from d in DispatchRun, where: d.work_item_id == ^work_item.id and d.stage_id == ^@build
+        )
+
+    defp source_text(view, type) do
+      view
+      |> element("#work-item-tab-output-#{type}-source")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+    end
+
+    test "the caption has the attempt and the number of the run that made the version",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+      run = build_run(work_item)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: [attempt: 3])
+
+      number =
+        Repo.one(
+          from r in Apiary.Runs.Run.registered(),
+            where: r.dispatch_run_id == ^run.id,
+            select: r.number
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert source_text(view, "test-features") ==
+               "Version 1 · from Build, Attempt 3 (Run #{number})"
+    end
+
+    test "a run with no registered number has the caption with no run number",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+      run = build_run(work_item)
+
+      {1, _rows} =
+        Repo.delete_all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert source_text(view, "test-features") == "Version 1 · from Build, Attempt 2"
+    end
+
+    test "a version from a stage the process version no longer has has no source",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+      run = build_run(work_item)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [stage_id: "st_zzzzzzzzzz"]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-tab-output-test-features-source")
+      assert has_element?(view, "#work-item-tab-output-test-features-s .q-xp-cap", "Version 1")
+      refute has_element?(view, "#work-item-tab-output-test-features-s", "from Build")
+    end
+
+    test "a version that a person made has no source", %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+
+      {:ok, _version} =
+        Stages.add_version(scope, reload(work_item), "test-features", [
+          %{
+            filename: "test-features.md",
+            content_type: "text/markdown",
+            binary: "A person's text"
+          }
+        ])
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-tab-output-test-features-source")
+      assert has_element?(view, "#work-item-tab-output-test-features-text", "A person's text")
+      refute has_element?(view, "#work-item-tab-output-test-features-s", "from Build")
+    end
+
+    test "the submission type alone keeps its frame, open, so the tab is not empty",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["submission"], "submission")
+      work_item = at_verify_gate_with_submission!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert frame_types(view) == ["submission"]
+      assert has_element?(view, "#work-item-tab-output-submission-fold[open]")
+      assert has_element?(view, "#work-item-tab-output-submission-source", "from Build")
+    end
+
+    test "an input frame with an approval line has its source under it" do
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Plan", outputs: ["proposal"]},
+          work_item: %{number: 1, status: :confirm, run: nil},
+          outputs: [
+            %{
+              type: "plan",
+              name: "main",
+              version: 1,
+              open: true,
+              read: nil,
+              source: %{stage: "Build", attempt: 2, run: 4},
+              approval: %{automatic: true, at: ~U[2026-11-15 10:00:00Z]}
+            }
+          ],
+          current: true
+        )
+
+      frame = html |> LazyHTML.from_fragment() |> LazyHTML.query("#work-item-tab-output-plan-s")
+
+      assert frame |> LazyHTML.query("#work-item-tab-output-plan-approval") |> LazyHTML.text() =~
+               "Approved automatically"
+
+      assert frame |> LazyHTML.query("#work-item-tab-output-plan-source") |> LazyHTML.text() ==
+               "Version 1 · from Build, Attempt 2 (Run 4)"
+    end
+
     test "a type that the harness does not submit keeps its input frame, folded, with its source",
          %{conn: conn, scope: scope} do
       screens!(scope)
