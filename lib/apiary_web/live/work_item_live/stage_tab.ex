@@ -65,15 +65,19 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     end
   end
 
-  # record?/3 is whether a stage's tab has the record block (`foot_record/1`), with the
-  # stage's `runs`, its `artifacts` and the `skips` the block lists (those the table of
-  # entries does not): every tab but during a first run with no output, and but where the
-  # stage has no run and no skip to list, which leaves the block no fold to draw.
-  @spec record?([map], [map], [map]) :: boolean
-  def record?(runs, artifacts, skips \\ [])
-  def record?([], _artifacts, skips), do: skips != []
-  def record?([%{place: place}], [], _skips) when place in [:queued, :running], do: false
-  def record?(_runs, _artifacts, _skips), do: true
+  # record?/4 is whether a stage's tab has the record block (`foot_record/1`), with the
+  # stage's `runs`, its `artifacts`, the `skips` the block lists (those the table of entries
+  # does not) and `can_add`, whether the reader may add a version, which the block offers:
+  # every tab but during a first run with no output, and but where the stage has no run, no
+  # skip to list, no artifact and nothing the reader can add, which leaves the block empty.
+  @spec record?([map], [map], [map], boolean) :: boolean
+  def record?(runs, artifacts, skips \\ [], can_add \\ false)
+  def record?([], artifacts, skips, can_add), do: skips != [] or artifacts != [] or can_add
+
+  def record?([%{place: place}], [], _skips, _can_add) when place in [:queued, :running],
+    do: false
+
+  def record?(_runs, _artifacts, _skips, _can_add), do: true
 
   # folded?/4 is whether a tab's runs fold lists every run of `flow` (`flow.runs`, the
   # stage runs of the take in), with `run`, the take in's latest run, and `earlier_runs`

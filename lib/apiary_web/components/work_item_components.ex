@@ -2541,7 +2541,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :has_outputs, :boolean,
     default: true,
     doc:
-      "whether the tab has an output frame, one for a version the stage's approval recorded, not an input frame; the gate's comment on the stage's outputs needs one"
+      "whether the tab has an output frame, one for a version the stage's approval recorded, not an input frame; the gate's comment on the stage's outputs needs one and Run another round"
 
   attr :runs_on_track, :boolean,
     default: true,
@@ -2613,10 +2613,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     form? = assigns.current and assigns.work_item.status == :questions and assigns.can_act
     round_gate = assigns.current and assigns.round_gate and not running and not open_questions?
 
-    # The gate's comment is on the stage's outputs, so it needs an output frame; its Run
-    # another round needs an entry that runs on the work item's track.
-    comment? = assigns.can_send and assigns.has_outputs
+    # The gate's Run another round needs an entry that runs on the work item's track. Its
+    # comment on the stage's outputs, which only Run another round sends, needs that and an
+    # output frame.
     rerun? = assigns.runs_on_track
+    comment? = assigns.can_send and assigns.has_outputs and rerun?
 
     # Sent decisions are text: only a decision still `:decided` takes a change.
     change =
@@ -2637,7 +2638,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         closed_questions: if(decisions_frame == [], do: assigns.questions, else: others),
         round:
           round_gate and
-            ((rerun? and assigns.can_send) or decisions_frame != [] or comment? or
+            ((rerun? and assigns.can_send) or decisions_frame != [] or
                not is_nil(assigns.move_error)),
         commenting: comment?,
         rerun: rerun?,

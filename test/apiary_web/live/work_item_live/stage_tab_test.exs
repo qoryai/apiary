@@ -860,7 +860,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record")
     end
 
-    test "on the stage's tab: none with no run and nothing to list, so no 0 runs fold", %{
+    test "on the stage's tab: kept for Add a version with no run and no artifact", %{
       conn: conn,
       scope: scope
     } do
@@ -872,9 +872,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      refute has_element?(view, "#work-item-record")
-      refute has_element?(view, "#work-item-record-fold")
-      refute render(view) =~ "0 runs"
+      assert has_element?(view, "#work-item-record-fold > summary", "0 runs")
+      assert has_element?(view, "#work-item-artifact-list-add", "Add a version")
     end
 
     test "on the stage's tab: kept with a run", %{conn: conn, scope: scope} do
@@ -885,15 +884,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-record-fold > summary", "1 run")
     end
 
-    test "record?/3 has a fold for a run, or for a skip the block lists, not for neither" do
+    test "record?/4 has a fold for a run, a skip, an artifact or an Add a version, not for none" do
       alias ApiaryWeb.WorkItemLive.StageTab
 
-      refute StageTab.record?([], [], [])
-      refute StageTab.record?([], [%{type: "spec"}], [])
-      assert StageTab.record?([], [], [%{workflow: "build-it"}])
-      assert StageTab.record?([%{place: :ended}], [], [])
-      refute StageTab.record?([%{place: :running}], [], [])
-      assert StageTab.record?([%{place: :running}], [%{type: "spec"}], [])
+      refute StageTab.record?([], [], [], false)
+      refute StageTab.record?([], [])
+      assert StageTab.record?([], [], [], true)
+      assert StageTab.record?([], [%{type: "spec"}], [], false)
+      assert StageTab.record?([], [], [%{workflow: "build-it"}], false)
+      assert StageTab.record?([%{place: :ended}], [], [], false)
+      refute StageTab.record?([%{place: :running}], [], [], true)
+      assert StageTab.record?([%{place: :running}], [%{type: "spec"}], [], false)
     end
 
     test "on the Ticket tab and the Thread: kept during a first run", %{
@@ -3972,7 +3973,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     defp track_flow(track, sequence),
       do: {%{track: track && %{id: track, name: track}}, %{sequence: sequence}}
 
-    test "Run another round, the comment and the fold: none at Verify's gate with no run, no entry on the track and no output frame",
+    test "Run another round and the comment: none at Verify's gate with no entry on the track and no output frame",
          %{conn: conn, scope: scope} do
       work_item = at_verify_gate!(scope)
 
@@ -3984,13 +3985,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-tab-gate")
       refute has_element?(view, "#work-item-tab-gate-send")
       refute has_element?(view, "#work-item-tab-gate-comment")
-      refute has_element?(view, "#work-item-record")
       refute render(view) =~ "Run another round"
       refute render(view) =~ "Comment on the stage&#39;s outputs"
-      refute render(view) =~ "0 runs"
+
+      # The reader may add a version, so the fold stays, for Add a version.
+      assert has_element?(view, "#work-item-record-fold > summary", "0 runs")
+      assert has_element?(view, "#work-item-artifact-list-add", "Add a version")
     end
 
-    test "with a person's upload at Verify: the comment returns with the output frame, Run another round stays hidden",
+    test "with a person's upload at Verify: an output frame, and still no Run another round and no comment",
          %{conn: conn, scope: scope} do
       work_item = scope |> at_verify_gate!() |> then(&with_upload!(scope, &1))
 
@@ -4003,11 +4006,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(view, "#work-item-tab-output-test-report-fold[open]")
 
-      assert has_element?(view, "#work-item-tab-gate-comment")
-      assert has_element?(view, "label", "Comment on the stage's outputs")
+      refute has_element?(view, "#work-item-tab-gate")
+      refute has_element?(view, "#work-item-tab-gate-comment")
       refute has_element?(view, "#work-item-tab-gate-send")
       refute render(view) =~ "Run another round"
-      refute has_element?(view, "#work-item-record-fold")
+      refute render(view) =~ "Comment on the stage&#39;s outputs"
     end
 
     test "the stage's tab keeps the comment and Run another round at a gate whose stage has an output frame and an entry on the track" do
@@ -4025,7 +4028,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ ~s(id="work-item-tab-gate-send")
     end
 
-    test "has_outputs: false hides the comment and keeps Run another round; runs_on_track: false hides Run another round and keeps the comment" do
+    test "has_outputs: false hides the comment and keeps Run another round; runs_on_track: false hides both" do
       render = fn assigns ->
         render_component(
           &ApiaryWeb.WorkItemComponents.stage_tab/1,
@@ -4049,9 +4052,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ ~s(id="work-item-tab-gate-send")
 
       html = render.(runs_on_track: false)
-      assert html =~ ~s(id="work-item-tab-gate-comment")
+      refute html =~ ~s(id="work-item-tab-gate-comment")
+      refute html =~ "Comment on the stage"
+      refute html =~ "reads your comment"
       refute html =~ ~s(id="work-item-tab-gate-send")
       refute html =~ "Run another round"
+      refute html =~ ~s(id="work-item-tab-gate")
 
       html = render.(has_outputs: false, runs_on_track: false)
       refute html =~ ~s(id="work-item-tab-gate")

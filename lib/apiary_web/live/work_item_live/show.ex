@@ -447,7 +447,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               StageTab.record?(
                 @view.runs,
                 @view.artifacts,
-                if(@view.entries == [], do: @view.skips, else: [])
+                if(@view.entries == [], do: @view.skips, else: []),
+                @flow.can_add
               )
             }
             verdicts={@flow.runs}
