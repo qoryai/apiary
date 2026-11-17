@@ -96,7 +96,8 @@
 # paused runs a continuation continues, optional; and `push_ref` on a host credential's
 # `apply` item, the one ref, in full, that a push through the item may create, update or
 # delete, in the item of a sealed value's `apply` as well, the same or none; and a path
-# segment written `{}` in a policy's and an item's paths.
+# segment written `{}` in a policy's and an item's paths; and `session`, optional, on a model
+# keys report: the number of the session open when the gateway made it.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
@@ -191,3 +192,5 @@ test/fixtures/forager-contract/invalid/event-target-write-without-path.json
 test/fixtures/forager-contract/run-configuration/credentials-forge-push.json
 test/fixtures/forager-contract/invalid/run-configuration-credentials-push-ref-branch-name.json
 test/fixtures/forager-contract/invalid/run-configuration-credentials-push-ref-tag.json
+test/fixtures/forager-contract/model-keys-report/report-session.json
+test/fixtures/forager-contract/invalid/model-keys-report-session-0.json
