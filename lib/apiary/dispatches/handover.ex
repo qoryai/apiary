@@ -780,7 +780,7 @@ defmodule Apiary.Dispatches.Handover do
   def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
 
   # The run's work credential entry, formed from what the run is formed from, with the
-  # access level its documents have (`Apiary.Runs.RunCredentials.work_from/4`): nil for
+  # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
   # none, or the cause its run of the queue ends for. An explore run's entry comes from the
   # collection the claim read once (`work_collection/3`), from which `submitted/4` takes
   # the submit_module, and which `with_collection/2` puts in the formed run; a prebuild's
@@ -791,7 +791,13 @@ defmodule Apiary.Dispatches.Handover do
     work =
       case formed do
         %{work_collection: collection} ->
-          RunCredentials.work_from(answer.dispatch_run, collection, answer.target, level)
+          RunCredentials.work_from(
+            answer.dispatch_run,
+            answer.work_item,
+            collection,
+            answer.target,
+            level
+          )
 
         _prebuild ->
           RunCredentials.form_work(answer.dispatch_run, answer.work_item, answer.target, level)

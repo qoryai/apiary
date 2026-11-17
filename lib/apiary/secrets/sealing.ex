@@ -28,7 +28,7 @@ defmodule Apiary.Secrets.Sealing do
   sorted by credential, quoted as Go's `jsontext` quotes. Each value is `credential`, then
   `value`, then `expires_at` and `apply` where it has them. `expires_at` is RFC 3339 with
   a zone, written as given. Each item of `apply` is `hosts`, `scheme`, `username`,
-  `header` and `paths`, in that order, each where the item has it.
+  `header`, `paths` and `push_ref`, in that order, each where the item has it.
 
   **What it refuses**, each with an atom and nothing of the input: a recipient that is not
   a map (`:recipient`); identifiers outside their forms (`:identifiers`); an access key
@@ -72,7 +72,7 @@ defmodule Apiary.Secrets.Sealing do
   # The forms of `sealed-plaintext.schema.json`'s `expires_at` and of an `apply` item
   # (`run-configuration.schema.json`, `$defs.apply`).
   @expires_at ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})\z/
-  @apply_members ~w(hosts scheme username header paths)
+  @apply_members ~w(hosts scheme username header paths push_ref)
   @max_apply 16
   @max_hosts 16
   @max_paths 32
@@ -84,6 +84,8 @@ defmodule Apiary.Secrets.Sealing do
   @username ~r/\A[^:\s]+\z/
   @header ~r/\A[!#$%&'*+.^_`|~0-9A-Za-z-]{1,64}\z/
   @path ~r/\A\/[^*?#\s]*\*?\z/
+  @push_ref ~r/\Arefs\/heads\/[^\s]+\z/u
+  @max_push_ref 255
 
   @typedoc """
   Whom and what the values are sealed for: the access key the request verified under, by
@@ -302,7 +304,8 @@ defmodule Apiary.Secrets.Sealing do
   defp apply_item?(%{"hosts" => hosts, "scheme" => scheme} = item) do
     Enum.all?(Map.keys(item), &(&1 in @apply_members)) and
       list_of?(hosts, @max_hosts, &host?/1) and scheme_members?(scheme, item) and
-      (not Map.has_key?(item, "paths") or list_of?(item["paths"], @max_paths, &path?/1))
+      (not Map.has_key?(item, "paths") or list_of?(item["paths"], @max_paths, &path?/1)) and
+      (not Map.has_key?(item, "push_ref") or push_ref?(item["push_ref"]))
   end
 
   defp apply_item?(_item), do: false
@@ -332,6 +335,11 @@ defmodule Apiary.Secrets.Sealing do
     do: byte_size(host) <= 253 and Enum.any?(@host_patterns, &Regex.match?(&1, host))
 
   defp path?(path), do: Regex.match?(@path, path)
+
+  defp push_ref?(ref),
+    do:
+      is_binary(ref) and String.valid?(ref) and String.length(ref) <= @max_push_ref and
+        Regex.match?(@push_ref, ref)
 
   defp value_json({credential, value, expires_at, apply}) do
     [

@@ -268,6 +268,46 @@ defmodule Apiary.Runs.RunCredentialIssueTest do
     end
   end
 
+  describe "push_ref" do
+    @branch "refs/heads/qory/wi_0123456789abcdef"
+
+    defp pushing(items), do: Enum.map(items, &Map.put(&1, "push_ref", @branch))
+
+    test "each item of an accepted answer has the push_ref of the entry item it lies inside" do
+      entry = entry(pushing([@code, @api, @files]))
+      assert {:ok, issue} = RunCredentialIssue.check(entry, answer(), @now)
+      assert issue.apply == pushing([@code, @api, @files])
+    end
+
+    test "an entry whose items have none gives the answer's items as they are" do
+      assert {:ok, %{apply: [@code, @api, @files]}} = check(answer())
+    end
+
+    test "an item inside an entry item with one has it, one inside an item without has none" do
+      entry = entry([Map.put(@code, "push_ref", @branch), @api, @files])
+      assert {:ok, issue} = RunCredentialIssue.check(entry, answer(), @now)
+      assert issue.apply == [Map.put(@code, "push_ref", @branch), @api, @files]
+    end
+
+    test "an answer item with a push_ref is refused, with the entry's or another" do
+      entry = entry(pushing([@code, @api, @files]))
+
+      for ref <- [@branch, "refs/heads/main"] do
+        refused = Map.put(@code, "push_ref", ref)
+
+        assert refused_with(entry, items([refused, @api, @files]), @now) == :unknown_member
+        assert refused(items([refused, @api, @files])) == :unknown_member
+      end
+    end
+
+    test "an entry item whose push_ref is not a string is refused" do
+      for ref <- [nil, 1, [@branch], %{}] do
+        entry = entry([Map.put(@code, "push_ref", ref)])
+        assert refused_with(entry, items([@code]), @now) == :entry_invalid
+      end
+    end
+  end
+
   describe "the apply member" do
     test "absent, not a list, empty or over 16 items is refused" do
       assert refused(Map.delete(answer(), "apply")) == :apply_invalid

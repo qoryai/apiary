@@ -26,8 +26,10 @@ defmodule Apiary.Integrations.ApplyTemplates do
            "\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}"
   @grammar Regex.compile!("\\A/[^*?\\#" <> @space <> "]*\\*?\\z", "u")
   @refused_target Regex.compile!("\\.\\.|//|[*?\\#" <> @space <> "]", "u")
-  # The members of an item, in the order a run configuration writes them.
-  @members ~w(hosts scheme username header paths)
+  # The members of an item, in the order a run configuration writes them. `push_ref` is not
+  # one an adapter's item has (the description schema refuses it): a claim sets it on an
+  # item (`Apiary.Runs.RunCredentials`).
+  @members ~w(hosts scheme username header paths push_ref)
 
   @typedoc "An apply item as decoded from JSON: `hosts`, `scheme`, and the members it has."
   @type item :: %{optional(String.t()) => term}

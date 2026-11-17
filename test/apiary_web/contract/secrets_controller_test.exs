@@ -823,6 +823,47 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       refute log =~ @token
     end
 
+    test "for a write entry, seals the answer's items with the entry's push_ref, which the call lacks",
+         ctx do
+      branch = "refs/heads/qory/wi_0123456789abcdef"
+      pushing = Enum.map(@entry_apply, &Map.put(&1, "push_ref", branch))
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+          set: [access: :write, apply: pushing]
+        )
+
+      # The run configuration the gateway reads again has the entry's push_ref.
+      {key, _seed} = ctx.secrets_key
+
+      assert {:ok, %{digest: digest, settings: settings}} =
+               Apiary.Runs.Registration.fetch(
+                 key,
+                 ctx.run.node_run_id,
+                 Apiary.ContractFixtures.instance_id()
+               )
+
+      assert settings =~ ~s("push_ref":"#{branch}")
+      ctx = put_in(ctx.attached.digest, digest)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 200, conn.resp_body
+      {bytes, plaintext} = opened(ctx, conn)
+      assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
+      assert %{"apply" => ^pushing} = value(plaintext, "work-1")
+      assert work_row(ctx).issued_apply == pushing
+
+      # The call has the access and no branch.
+      assert [{"/calls/run-credential", body}] = WorkCredentialStub.calls()
+      assert body["access"] == "write"
+      refute inspect(body) =~ "push_ref"
+    end
+
     test "at the run's start, takes the run's row before the work entry's, as a deletion does",
          ctx do
       WorkCredentialStub.issue(
