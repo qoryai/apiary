@@ -221,7 +221,12 @@ defmodule Apiary.Stacks.Sources do
   @type start :: %{source: source, commit: String.t(), template: template}
 
   @typedoc "A stack of a source: its export name, nil for none, the base a document extends, and its workflows."
-  @type stack :: %{name: String.t() | nil, base: map, workflows: [String.t()]}
+  @type stack :: %{
+          name: String.t() | nil,
+          base: map,
+          workflows: [String.t()],
+          access: %{String.t() => :read | :write_no_push | :write}
+        }
 
   @typedoc """
   A template of a source: `module`, the name of the module whose folder has its
@@ -810,8 +815,15 @@ defmodule Apiary.Stacks.Sources do
       |> Enum.take(@max_stacks)
       |> Enum.reduce_while([], fn stack, read ->
         case workflows(location, stack.file, version, deadline) do
-          {:ok, workflows} ->
-            {:cont, [%{name: stack.name, base: base(source, stack), workflows: workflows} | read]}
+          {:ok, access} ->
+            listed = %{
+              name: stack.name,
+              base: base(source, stack),
+              workflows: access |> Map.keys() |> Enum.sort(),
+              access: access
+            }
+
+            {:cont, [listed | read]}
 
           {:error, reason} ->
             {:halt, {:error, reason}}
@@ -1306,7 +1318,8 @@ defmodule Apiary.Stacks.Sources do
     end
   end
 
-  # The workflows of the stack file `file` at `location`, read at `at`, by name.
+  # The workflows of the stack file `file` at `location`, read at `at`, with the access
+  # level each declares, by name.
   defp workflows(location, file, at, deadline) do
     case read_file(location, file, at, deadline) do
       {:ok, nil, _version} ->
@@ -1314,7 +1327,7 @@ defmodule Apiary.Stacks.Sources do
 
       {:ok, content, _version} ->
         case Reader.stack(content) do
-          {:ok, %{workflows: workflows}} -> {:ok, workflows |> Map.keys() |> Enum.sort()}
+          {:ok, %{workflows: workflows}} -> {:ok, Reader.workflow_levels(workflows)}
           {:error, reason} -> {:error, refused_file(file, reason)}
         end
 
@@ -1526,27 +1539,38 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
-  # chosen_workflows/2 is the workflow names the harness the workspace chose lists, read
-  # as the scope's person (`chosen_source/1`, `read/2`): of its stack, or of every stack
-  # where the choice has none. A harness that follows a branch is read at the commit
-  # the runs of the workspace's current version compose, where it has one
-  # (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness is not read: its
-  # names are those of its stored files (`Apiary.Processes.qory_workflows/2`). The
-  # Workflows page, the Harness page and Check again on a work item read the snapshot
-  # (`Apiary.Processes.record_declared/2`) from here. `{:ok, names}`, or the read's
+  # chosen_declared/2 is the workflows the harness the workspace chose lists, with the
+  # access level each declares, read as the scope's person (`chosen_source/1`, `read/2`):
+  # of its stack, or of every stack where the choice has none. A harness that follows a
+  # branch is read at the commit the runs of the workspace's current version compose,
+  # where it has one (`Apiary.Processes.HarnessUpdate.in_use_commit/2`). The Qory harness
+  # is not read: its workflows are those of its stored files
+  # (`Apiary.Processes.qory_workflows/2`). The Workflows page, the Harness page and Check
+  # again on a work item keep the result as the snapshot
+  # (`Apiary.Processes.record_declared/2`). `{:ok, %{name => level}}`, or the read's
   # `{:error, reason}`.
-  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
-  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+  @spec chosen_declared(Scope.t(), Workspace.t()) ::
+          {:ok, %{String.t() => :read | :write_no_push | :write}} | {:error, term}
+  def chosen_declared(%Scope{} = scope, %Workspace{} = workspace) do
     case chosen(workspace) do
       %{choice: :qory} = qory ->
-        {:ok, Apiary.Processes.qory_workflows(qory, workspace)}
+        {:ok, Apiary.Processes.qory_workflow_levels(qory, workspace)}
 
       repository ->
         with {:ok, source, stack} <- chosen_source(workspace),
              {:ok, stacks} <- read(scope, at_in_use(source, workspace, repository)) do
-          {:ok, workflows_of(stacks, stack)}
+          {:ok, levels_of(stacks, stack)}
         end
     end
+  end
+
+  @doc false
+  # chosen_workflows/2 is the workflow names `chosen_declared/2` lists, sorted:
+  # `{:ok, names}`, or the read's `{:error, reason}`.
+  @spec chosen_workflows(Scope.t(), Workspace.t()) :: {:ok, [String.t()]} | {:error, term}
+  def chosen_workflows(%Scope{} = scope, %Workspace{} = workspace) do
+    with {:ok, levels} <- chosen_declared(scope, workspace),
+         do: {:ok, levels |> Map.keys() |> Enum.sort()}
   end
 
   # `source` at the commit the runs of the workspace's current version compose, where
@@ -1559,14 +1583,23 @@ defmodule Apiary.Stacks.Sources do
   end
 
   @doc false
-  # workflows_of/2 is the workflow names of `stacks`, as `read/2` returns them: of the
-  # stack named `stack`, or of every stack for nil.
-  @spec workflows_of([map], String.t() | nil) :: [String.t()]
-  def workflows_of(stacks, stack) do
+  # levels_of/2 is the access level of each workflow of `stacks`, as `read/2` returns
+  # them, by name: of the stack named `stack`, or of every stack for nil. A workflow that
+  # two stacks list takes the lower level.
+  @spec levels_of([map], String.t() | nil) :: %{
+          String.t() => :read | :write_no_push | :write
+        }
+  def levels_of(stacks, stack) do
+    rank = %{read: 0, write_no_push: 1, write: 2}
+
     stacks
     |> Enum.filter(&(is_nil(stack) or &1.name == stack))
-    |> Enum.flat_map(& &1.workflows)
-    |> Enum.uniq()
+    |> Enum.flat_map(&Map.to_list(&1.access))
+    |> Enum.reduce(%{}, fn {name, level}, levels ->
+      Map.update(levels, name, level, fn kept ->
+        if rank[level] < rank[kept], do: level, else: kept
+      end)
+    end)
   end
 
   @doc false

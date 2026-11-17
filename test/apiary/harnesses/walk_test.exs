@@ -770,6 +770,14 @@ defmodule Apiary.Harnesses.WalkTest do
       assert level(ctx, "  explore: {access: admin}\n", nil) == :read
     end
 
+    test "declared write-no-push: write-no-push, lowered to read by a recorded read", ctx do
+      declared = "  explore: {access: write-no-push}\n"
+
+      assert level(ctx, declared, nil) == :write_no_push
+      assert level(ctx, declared, :write) == :write_no_push
+      assert level(ctx, declared, :read) == :read
+    end
+
     # The level of a walk whose target's file `section` applies, with the workspace's row
     # for `explore` recording `recorded`, and the base's stack declaring `declared`.
     defp file_level(ctx, section, declared, recorded) do
@@ -831,6 +839,8 @@ defmodule Apiary.Harnesses.WalkTest do
             {"workflows:\n  explore: {access: write}\n", :write, :write},
             {"workflows:\n  explore: {access: write}\n", :read, :read},
             {"workflows:\n  explore: {access: read}\n", :write, :read},
+            {"workflows:\n  explore: {access: write-no-push}\n", nil, :write_no_push},
+            {"workflows:\n  explore: {access: write-no-push}\n", :read, :read},
             {"workflows:\n  review: {access: write}\n", nil, :read},
             {"", nil, :read}
           ] do

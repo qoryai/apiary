@@ -163,6 +163,14 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
         harness |> Ecto.Changeset.change(access_level: :write) |> Repo.update!()
     end
 
+    # The documents the claim sent a write run have `access` `write`.
+    documents = ctx.run.run_documents |> Jason.decode!() |> Map.put("access", "write")
+
+    {1, _rows} =
+      Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+        set: [run_documents: Jason.encode!(documents)]
+      )
+
     {:ok, lv, _html} = live(ctx.conn, explore(ctx.scope, ctx.work_item))
     lv |> element("#work-item-explore-run-cancel") |> render_click()
 

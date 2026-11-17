@@ -443,7 +443,7 @@ defmodule Apiary.Stages do
   # not have counts as a stage with no entry.
   @doc false
   @spec limits(DispatchRun.t()) ::
-          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+          %{time_limit: pos_integer | nil, access: :read | :write_no_push | :write | nil} | nil
   def limits(%DispatchRun{stage_id: stage_id, process_version_id: version_id} = run)
       when is_binary(stage_id) and is_binary(version_id) do
     with true <- on?(),
@@ -459,6 +459,38 @@ defmodule Apiary.Stages do
   end
 
   def limits(%DispatchRun{}), do: nil
+
+  # run_access/2 is the access level of the run of the queue `run` whose harness walk
+  # resolved `walk`, the harness's level: with the stage entry's level (`limits/1`) the
+  # lower of the two, from lowest to highest `:read`, `:write_no_push` and `:write`; the
+  # walk's with no entry level. A run of a stage with no limits (`limits/1` is nil: the
+  # stage's version has no entry for its workflow, or the workflow model is off) has
+  # `:read`. A run the stage runner did not queue has the walk's level.
+  #
+  # The claim computes the level once: the run's documents and its work credential row
+  # keep it (`Apiary.Dispatches.Handover`, `Apiary.Runs.RunCredentials`). A run claimed as
+  # write keeps renewing write tokens after a later process version lowers its entry, and
+  # a waiting run gets the level of the entry of its process version (`process_version_id`)
+  # when it is claimed.
+  @doc false
+  @spec run_access(:read | :write_no_push | :write, DispatchRun.t()) ::
+          :read | :write_no_push | :write
+  def run_access(:read, %DispatchRun{}), do: :read
+
+  def run_access(walk, %DispatchRun{stage_id: stage_id} = run) when is_binary(stage_id) do
+    case limits(run) do
+      nil -> :read
+      %{access: entry} when entry in [:read, :write_no_push] -> lower_level(walk, entry)
+      _no_level -> walk
+    end
+  end
+
+  def run_access(walk, %DispatchRun{}), do: walk
+
+  @levels [:read, :write_no_push, :write]
+
+  defp lower_level(one, other),
+    do: Enum.min_by([one, other], fn level -> Enum.find_index(@levels, &(&1 == level)) end)
 
   # run_workflow/1 is the workflow a run of a stage starts, its `workflow`, with the
   # workflow model on: the name its harness walk, its documents, its time limits and its
@@ -844,8 +876,9 @@ defmodule Apiary.Stages do
 
   defp on_version_added(%WorkItem{}, _stage), do: nil
 
-  # check_workflows/2 reads the workflow names the workspace's harness lists now, as the
-  # scope's person, through the harness sources (`Apiary.Stacks.Sources`), stores them as
+  # check_workflows/2 reads the workflows the workspace's harness lists now, with their
+  # access levels, as the scope's person, through the harness sources
+  # (`Apiary.Stacks.Sources`), stores them as
   # the workspace's snapshot, and starts the work item's stage when it waits for a
   # workflow the read found: `{:ok, work_item}`; `{:error, :still_missing}` when the
   # stage still waits; `{:error, :not_live}` for a work item that is not `:exploring`, read
@@ -855,13 +888,13 @@ defmodule Apiary.Stages do
   @doc false
   @spec check_workflows(Scope.t(), WorkItem.t(), (Scope.t(), Workspace.t() -> term)) ::
           {:ok, WorkItem.t()} | {:error, term}
-  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &Sources.chosen_workflows/2) do
+  def check_workflows(%Scope{} = scope, %WorkItem{id: id}, read \\ &Sources.chosen_declared/2) do
     with {:ok, id} <- Ecto.UUID.cast(id),
          {:ok, workspace} <- workspace(scope),
          %WorkItem{} = found <- in_workspace(workspace, id) || {:error, :not_found},
          :ok <- Access.authorize(scope, @action, found),
-         {:ok, names} <- read.(scope, workspace) do
-      :ok = Processes.record_declared(workspace, names)
+         {:ok, declared} <- read.(scope, workspace) do
+      :ok = Processes.record_declared(workspace, declared)
       start_found(id)
     else
       :error -> {:error, :not_found}

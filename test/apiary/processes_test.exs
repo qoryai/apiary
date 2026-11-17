@@ -205,6 +205,16 @@ defmodule Apiary.ProcessesTest do
                []
     end
 
+    test "takes a workflow entry with write-no-push access, a writable checkout that has no push credential" do
+      document =
+        put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "write-no-push"}])
+
+      assert Processes.validate(document) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "push"}])) !=
+               []
+    end
+
     test "takes a when condition on an output of an earlier stage, on an entry and an output" do
       shaped =
         default()
@@ -1081,6 +1091,53 @@ defmodule Apiary.ProcessesTest do
       assert DateTime.compare(read_at, first_read) in [:gt, :eq]
       assert Processes.declared_workflows(scope.workspace) == ["capture-demo", "explore-a-ticket"]
       assert Processes.workflow_declaration(scope.workspace, "review") == nil
+    end
+
+    test "keep the access level each workflow declares, which a list of names gives as read" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+
+      levels = %{"capture-demos" => :write_no_push, "implement" => :write, "review" => :read}
+      assert Processes.record_declared(scope.workspace, levels) == :ok
+
+      assert %{names: ["capture-demos", "implement", "review"], access: ^levels} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert Processes.declared_access(scope.workspace) == levels
+
+      :ok = Processes.record_declared(scope.workspace, ["review", "plan"])
+
+      assert %{names: ["plan", "review"], access: %{"plan" => :read, "review" => :read}} =
+               Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a snapshot kept before the levels were has no level for its names" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+      :ok = Processes.record_declared(scope.workspace, %{"implement" => :write})
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      assert %{names: ["implement"], access: access} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert access == %{}
+      assert Processes.declared_workflows(scope.workspace) == ["implement"]
+      assert Processes.declared_access(scope.workspace) == %{}
+    end
+
+    test "on the Qory harness have the levels of the stack's files, over the snapshot's" do
+      %{scope: scope} = sign_up_fixture()
+      :ok = Processes.record_declared(scope.workspace, %{"explore-a-ticket" => :write})
+
+      assert Processes.declared_access(scope.workspace) == %{"explore-a-ticket" => :read}
+
+      assert Sources.chosen_declared(scope, scope.workspace) ==
+               {:ok, %{"explore-a-ticket" => :read}}
     end
 
     test "on the Qory harness come from the stack the workspace recorded, not the definition's" do

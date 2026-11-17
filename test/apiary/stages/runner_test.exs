@@ -1068,6 +1068,40 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
+    test "limits/3 lowers to write-no-push for an entry of that level, and to read below it" do
+      seq = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :write_no_push
+
+      assert Runner.limits(seq, pos(0, nil, 1), nil).access == :write_no_push
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :read}).access == :read
+
+      # An entry value the schema does not take counts as read.
+      other = put_in(build(), ["sequence"], [wf("verify", %{"access" => "push"})])
+
+      assert Runner.limits(other, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :read
+
+      [{:queue, spec}] =
+        Runner.step(seq, nil, :enter, %{
+          declarations: %{"verify" => %{time_limit: nil, access: :write}}
+        }).actions
+
+      assert spec.access == :write_no_push
+    end
+
+    test "limits/3 takes a declared write-no-push level: an entry with none keeps it, read lowers it" do
+      none = put_in(build(), ["sequence"], [wf("verify", %{})])
+      read = put_in(build(), ["sequence"], [wf("verify", %{"access" => "read"})])
+      same = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+      declared = %{time_limit: nil, access: :write_no_push}
+
+      assert Runner.limits(none, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(same, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(read, pos(0, nil, 1), declared).access == :read
+    end
+
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do
       seq =
         put_in(build(), ["sequence"], [
