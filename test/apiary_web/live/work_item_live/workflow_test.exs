@@ -4664,7 +4664,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           stage_id: @build
         )
 
-      escalate!(work_item, :escalate, "A server check reads the button text.", escalated)
+      escalate!(
+        work_item,
+        :escalate,
+        [
+          %{
+            "text" => "A server check reads the button text.",
+            "action" => "run_again",
+            "fix" => "Add a check that reads the text of the button."
+          }
+        ],
+        escalated
+      )
 
       Repo.insert!(%GateDecision{
         organisation_id: work_item.organisation_id,
@@ -4734,9 +4745,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert positions == Enum.sort(positions)
       assert has_element?(view, "#work-item-needs-outputs-h", "The run's outputs")
 
-      # The point's action line is in its item, after the point's text.
+      # The point's fix line is in its item, after the point's text.
       assert line(view, "#work-item-needs-point-1") ==
-               "A server check reads the button text. Run another round."
+               "A server check reads the button text. Add a check that reads the text of the button."
+
+      # The fix line sits inside the point, after the outputs and before the note and
+      # Run another round.
+      [outputs, point, fix, note, another] =
+        for needle <- [
+              ~s(id="work-item-needs-outputs"),
+              ~s(id="work-item-needs-point-1"),
+              "Add a check that reads the text of the button.",
+              ~s(id="work-item-stage-escalation-note"),
+              ~s(id="work-item-stage-escalation-another")
+            ],
+            do: :binary.match(html, needle) |> elem(0)
+
+      assert outputs < point and point < fix and fix < note and note < another
 
       # The note field comes after the points as well, and Run another round last.
       [last_point, note, another] =

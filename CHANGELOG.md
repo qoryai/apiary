@@ -2368,13 +2368,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   escalations resolved with `switch`; the work items stay where the switch put them, and
   the gate decision of each switch stays with its track and loses its `escalation_id`.
 - `gate_decisions` (20261117090000, 20261117090100 and 20261117090200): nullable columns
-  `to_stage_id`, `left_stage_entered_at` and `escalation_id` (a foreign key to
-  `escalations`), kept on a `move`: the stage it moved to, when the work item had last
-  entered the stage it left, and the escalation it resolves. They have no default, so
-  adding them rewrites no row, and a move written before has none. The first migration adds
-  the key without a scan. The second indexes `escalation_id` for the rows that have one,
-  concurrently, outside a transaction. The third validates the key with a scan that does
-  not block writes. Rolling back drops the index, the key and the three columns.
+  `left_stage_entered_at` and `escalation_id` (a foreign key to `escalations`), kept on a
+  `move`: when the work item had last entered the stage it left, and the escalation it
+  resolves. The stage it moved to is `to_stage_id`, from 20261116170000. The columns have
+  no default, so adding them rewrites no row, and a move written before has none. The
+  first migration adds the key without a scan. The second indexes `escalation_id` for the
+  rows that have one, concurrently, outside a transaction. The third validates the key with
+  a scan that does not block writes. Rolling back drops the index, the key and the two
+  columns.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116170000 and 20261116170100): a nullable column
