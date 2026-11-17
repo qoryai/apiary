@@ -206,9 +206,10 @@ defmodule Apiary.Dispatches.HarnessReads do
   # version_commit/2 is `{:ok, commit}` where the run `run` composes the commit of
   # `template`, the harness record of its process version
   # (`Apiary.Processes.harness_template/1`): its walk's base follows a branch of the
-  # harness that `template` is of (`process_commit/4`). `:none` for a base at a tag or a
-  # commit, a record of another harness, and a run with no resolved walk: the claim may
-  # have read another commit for those.
+  # harness that `template` is of (`process_commit/4`), from a harness setting. `:none` for
+  # a base at a tag or a commit, a record of another harness, a walk from a file or of the
+  # built-in harness, and a run with no resolved walk: the claim may have read another
+  # commit for those.
   @spec version_commit(DispatchRun.t(), map | nil) :: {:ok, String.t()} | :none
   def version_commit(%DispatchRun{id: id}, template) do
     walk =

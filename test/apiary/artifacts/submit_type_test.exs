@@ -11,7 +11,7 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Artifacts, Processes, QoryHarnessFixture}
-  alias Apiary.Artifacts.Type
+  alias Apiary.Artifacts.{CustomSchema, Type}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.{Qory, RunHarness}
   alias Apiary.Processes.{HarnessUpdate, Version}
@@ -87,12 +87,16 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
       git = Keyword.get(opts, :git, Qory.git())
       kind = Keyword.get(opts, :ref_kind, :branch)
 
+      origin = Keyword.get(opts, :origin, :setting)
+      document = %{"extends" => %{"git" => git, "ref" => Keyword.get(opts, :ref, "main")}}
+
       Repo.insert!(%RunHarness{
         dispatch_run_id: run.id,
         state: :resolved,
-        origin: :setting,
+        origin: origin,
         ref_kind: kind,
-        document: %{"extends" => %{"git" => git, "ref" => Keyword.get(opts, :ref, "main")}}
+        # A walk from a file has no document (`run_harnesses_document_check`).
+        document: if(origin == :file, do: nil, else: document)
       })
     end
 
@@ -135,6 +139,13 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
 
       assert ctx.workspace |> Processes.current() |> Map.fetch!(:id) == current.id
       assert Artifacts.type(ctx.workspace, "submission").json_schema != @loose
+
+      # The workspace's type refuses what the older harness schema takes.
+      assert {:error, _refusal} =
+               CustomSchema.validate(
+                 @summary,
+                 Artifacts.type(ctx.workspace, "submission").json_schema
+               )
 
       assert {:ok, _version} = push(ctx, run_on!(ctx, older), @summary)
 
@@ -218,6 +229,12 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
         ctx,
         run_on!(ctx, ctx.version, ref: ctx.version.template["commit"], ref_kind: :commit)
       )
+    end
+
+    test "a base from a file, and a base of the built-in harness", ctx do
+      for origin <- [:file, :builtin] do
+        refused_as_the_workspace_type(ctx, run_on!(ctx, ctx.version, origin: origin))
+      end
     end
 
     test "a record of another harness", ctx do

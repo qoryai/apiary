@@ -368,10 +368,14 @@ defmodule Apiary.Artifacts.WatchTest do
     assert Feed.entries(forge) == []
 
     # A push of the submission type reads it twice, once to find the schema of the run's
-    # harness commit and once for the entry, so the count above can see a read.
+    # harness commit and once for the entry, so the count above can see a read. The run is
+    # read again: the push takes the process version from the run it is given, as the run
+    # API's push does.
+    run = Repo.get!(DispatchRun, ctx.run.id)
+
     assert {{:ok, %Version{}}, 2} =
              harness_reads(fn ->
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+               Artifacts.push({:run, run}, ctx.work_item, "submission", submission())
              end)
 
     assert [%{kind: "watch"}] = Feed.entries(forge)

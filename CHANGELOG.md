@@ -21,7 +21,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   checks against the workspace's type, as before, where it cannot find that schema: a
   version saved from a harness repository before this change, a Qory harness commit whose
   files it does not store, and a run whose base is pinned to a tag or a commit, whose
-  record is of another harness, or that has no record.
+  base comes from a file or from the built-in harness, whose record is of another
+  harness, or that has no record.
 - On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
   and no **Edit** and no **Delete**, and the page shows a line under the table with the
   reason and a link to **Harness settings**. The change and the delete are refused on the

@@ -432,14 +432,18 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # update_type/3 changes a custom type's size limit, most files and JSON Schema.
+  # update_type/3 changes a custom type's size limit, most files and JSON Schema. It and
+  # delete_type/2 hold the scope's places, the workspace `FOR NO KEY UPDATE` and the type's
+  # row, in that order, so a change of the process that makes the type one that its
+  # `submit` sets (`submit_types/1`) takes turns with them.
   @doc false
   @spec update_type(Scope.t(), Type.t(), map) ::
           {:ok, Type.t()}
           | {:error, :not_found | :forbidden | :set_by_harness | Ecto.Changeset.t()}
   def update_type(%Scope{} = scope, %Type{standard: false} = type, attrs) do
     Repo.transact(fn ->
-      with :ok <- authorize(scope, @edit_types, type),
+      with {:ok, scope, _workspace} <- held_workspace(scope, %Workspace{id: type.workspace_id}),
+           :ok <- authorize(scope, @edit_types, type),
            %Type{} = held <- held_type(type),
            :ok <- not_set_by_harness(held),
            {:ok, changeset} <-
@@ -463,7 +467,8 @@ defmodule Apiary.Artifacts do
           {:ok, Type.t()} | {:error, :not_found | :forbidden | :in_use | :set_by_harness}
   def delete_type(%Scope{} = scope, %Type{standard: false} = type) do
     Repo.transact(fn ->
-      with :ok <- authorize(scope, @edit_types, type),
+      with {:ok, scope, _workspace} <- held_workspace(scope, %Workspace{id: type.workspace_id}),
+           :ok <- authorize(scope, @edit_types, type),
            %Type{} = held <- held_type(type),
            :ok <- not_set_by_harness(held),
            false <- in_use?(held.workspace_id, held.name),
@@ -947,7 +952,7 @@ defmodule Apiary.Artifacts do
   defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item, _type_name)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
-      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil}},
+      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil, run: run}},
       else: {:error, :not_found}
   end
 
@@ -1123,15 +1128,13 @@ defmodule Apiary.Artifacts do
   # the run composes where `Processes.submit_schema/2` finds it, else against the
   # workspace's type.
   defp checked_type(
-         %{actor: :run, run_id: run_id},
+         %{actor: :run, run: %DispatchRun{} = run},
          %Type{standard: false, base_view: :structured} = type,
          _files
        ) do
-    with %DispatchRun{} = run <- Repo.get(DispatchRun, run_id),
-         {:ok, schema} <- Processes.submit_schema(run, type.name) do
-      %Type{type | json_schema: schema}
-    else
-      _fallback -> type
+    case Processes.submit_schema(run, type.name) do
+      {:ok, schema} -> %Type{type | json_schema: schema}
+      :none -> type
     end
   end
 
