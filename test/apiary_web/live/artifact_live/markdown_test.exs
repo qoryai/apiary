@@ -182,6 +182,96 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     refute out =~ "language-"
   end
 
+  describe "a diff block" do
+    @picture """
+    ```diff
+    --- a/src/components/CourtCard.tsx
+    +++ b/src/components/CourtCard.tsx
+    @@ -12,3 +12,3 @@
+           <button className="btn-primary">
+    -        Book now
+    +        Book this court
+           </button>
+    ```
+    """
+
+    test "is the diff box of the harness update page, with its path and one line changed" do
+      out = html(@picture)
+
+      assert out =~
+               ~s(<div class="q-diffbox q-diffbox-flat"><div class="q-dpanel">) <>
+                 ~s(<div><span>src/components/CourtCard.tsx</span><span>1 line changed</span></div>) <>
+                 ~s(<div class="q-dlines" tabindex="0">)
+
+      assert out =~
+               ~s(<div class="q-ctx"><i></i>      &lt;button className=&quot;btn-primary&quot;&gt;</div>)
+
+      assert out =~ ~s(<div class="q-del"><i>-</i>        Book now</div>)
+      assert out =~ ~s(<div class="q-add"><i>+</i>        Book this court</div>)
+      assert out =~ ~s(<div class="q-ctx"><i></i>      &lt;/button&gt;</div>)
+      refute out =~ "@@"
+      refute out =~ "+++"
+      refute out =~ "<pre"
+      refute out =~ "<p>"
+    end
+
+    test "counts the added and the removed lines, in the plural for several" do
+      out = html("```diff\n+++ b/a.txt\n-one\n-two\n+three\n four\n+five\n+six\n```")
+
+      assert out =~ "<span>a.txt</span><span>4 lines changed</span>"
+      assert out =~ ~s(<div class="q-ctx"><i></i>four</div>)
+    end
+
+    test "has the path of the +++ header, or the --- header, without a/ or b/" do
+      assert html("```diff\n+++ plain/x.ex\n+a\n```") =~ "<span>plain/x.ex</span>"
+      assert html("```diff\n--- a/old/y.ex\n+++ /dev/null\n-a\n```") =~ "<span>old/y.ex</span>"
+
+      assert html("```diff\n--- a/old/z.ex\n+++ b/new/z.ex\n-a\n+b\n```") =~
+               "<span>new/z.ex</span>"
+    end
+
+    test "has an empty path where the block has no header" do
+      out = html("```diff\n-old\n+new\n```")
+
+      assert out =~ "<span></span><span>1 line changed</span>"
+      assert out =~ ~s(<div class="q-del"><i>-</i>old</div>)
+    end
+
+    test "shows a removed line of dashes as a row, not as a header" do
+      out = html("```diff\n--- a/f.md\n+++ b/f.md\n--- old rule\n+new\n```")
+
+      assert out =~ ~s(<div class="q-del"><i>-</i>-- old rule</div>)
+      assert out =~ "1 line changed"
+    end
+
+    test "escapes the HTML of a line and of the path" do
+      out =
+        html(
+          "```diff\n+++ b/<img src=x onerror=alert(1)>.ex\n-<script>alert(1)</script>\n+<b onclick=\"x()\">&</b>\n```"
+        )
+
+      refute out =~ "<script"
+      refute out =~ "<img"
+      refute out =~ "<b "
+      assert out =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
+      assert out =~ "&lt;b onclick=&quot;x()&quot;&gt;&amp;&lt;/b&gt;"
+      assert out =~ "&lt;img src=x onerror=alert(1)&gt;.ex"
+    end
+
+    test "is a box inside a list item and a quote too" do
+      assert html("- item\n\n  ```diff\n  +a\n  ```") =~ "q-diffbox"
+      assert html("> ```diff\n> +a\n> ```") =~ "q-diffbox"
+    end
+
+    test "leaves a block of another language as it was" do
+      out = html("```elixir\nIO.puts(1)\n```\n\n```\n+not a diff\n```")
+
+      assert out =~ "<pre><code>IO.puts(1)"
+      assert out =~ "<pre><code>+not a diff"
+      refute out =~ "q-diffbox"
+    end
+  end
+
   test "moves headings down two levels" do
     out = html("# One\n\n## Two\n\n#### Four")
     assert out =~ "<h3>One</h3>"

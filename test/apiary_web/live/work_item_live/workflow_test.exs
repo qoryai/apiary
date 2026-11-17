@@ -4782,6 +4782,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-needs-outputs a", "explainer v1")
       refute has_element?(view, "#work-item-needs-outputs", "explainer other")
+      # The block's outputs carry the class that gives a report's headings the small bold
+      # lines of the block (app.css).
+      assert has_element?(view, "#work-item-needs-outputs.q-xp-needs-outputs")
       # The verdict, whose points the block shows, is not listed.
       refute has_element?(view, "#work-item-needs-outputs", "verdict")
     end

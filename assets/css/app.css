@@ -14303,6 +14303,17 @@
     margin-top: 14px;
     font-size: 0.8125rem;
   }
+  /* The headings of a run's report inside the block "What the run needs from you" are
+     small bold lines, as `.q-xp-sub`; other pages show them as `.q-ticket-formatted`
+     does. */
+  .q-xp-needs-outputs .q-ticket-formatted :where(h3, h4, h5, h6) {
+    margin: 14px 0 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  .q-xp-needs-outputs .q-ticket-formatted > :where(h3, h4, h5, h6):first-child {
+    margin-top: 0;
+  }
   .q-xp-sec {
     padding-top: 14px;
   }

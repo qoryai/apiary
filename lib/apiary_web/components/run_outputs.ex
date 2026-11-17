@@ -12,13 +12,15 @@ defmodule ApiaryWeb.RunOutputs do
   #       run_id={dispatch_run_id}
   #       heading={gettext("...")}
   #       skip={["some-type"]}
+  #       class="q-xp-needs-outputs"
   #     />
   #
   # `scope` and `number` are the reader's scope and the number of the work item, which the
   # reader must be able to read (`work_item.read`); `run_id` is the id of the run in the
   # queue (`Apiary.Dispatches.DispatchRun`), the `run_id` of its versions. `skip` lists the
   # artifact types it leaves out, and `heading` is the heading it shows above the versions,
-  # none where the run pushed none. Each version has its title as a link to its page.
+  # none where the run pushed none. `class`, optional, is the class of the component's
+  # `div`. Each version has its title as a link to its page.
   # Before the page connects, a document and a structured file show empty
   # (`ApiaryWeb.ArtifactLive.Load.content/3`). A version of a withdrawn name is left out.
   #
@@ -73,10 +75,13 @@ defmodule ApiaryWeb.RunOutputs do
 
   @impl true
   def render(assigns) do
-    assigns = assign_new(assigns, :heading, fn -> nil end)
+    assigns =
+      assigns
+      |> assign_new(:heading, fn -> nil end)
+      |> assign_new(:class, fn -> nil end)
 
     ~H"""
-    <div id={@id}>
+    <div id={@id} class={@class}>
       <section
         :if={@outputs != []}
         class="q-xp-sec"

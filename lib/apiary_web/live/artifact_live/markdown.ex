@@ -33,6 +33,12 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #   * A code block whose language is `mermaid` becomes
   #     `<pre class="q-mermaid-source"><code>…</code></pre>`, its text escaped; the
   #     Mermaid hook draws it in the browser (`assets/js/hooks/mermaid.js`).
+  #   * A code block whose language is `diff` is the diff box of the harness update page
+  #     (`q-diffbox`, in `diff_box/1`): a bar with the path of the block's `+++` header
+  #     (`---` for a file with none; `a/` and `b/` stripped) and the number of changed
+  #     lines (in each run of `+` and `-` lines, the larger of the two counts), then the lines, with the `---`, `+++` and
+  #     `@@` header lines left out. Every line is escaped, as the box is written after
+  #     sanitising, in place of a placeholder of the same random token as an image's.
   #
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
@@ -76,6 +82,7 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @box_open ~s(<input type="checkbox" disabled="" /> )
   @mermaid_open ~s(<pre><code class="language-mermaid">)
   @link_end "</a>"
+  @diff_context_header ~w(diff index new deleted similarity rename old copy Binary)
 
   @sanitize [
     tags: ~w(a blockquote br code del em h3 h4 h5 h6 hr li ol p pre span strong table
@@ -203,8 +210,11 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     context = %{in_link: false, images: images, token: token}
 
     case walk_document(document.nodes, context) do
-      {:ok, nodes} -> {:ok, document |> Map.put(:nodes, nodes) |> html() |> images(context)}
-      :too_deep -> :too_deep
+      {:ok, nodes} ->
+        {:ok, document |> Map.put(:nodes, nodes) |> html() |> images(context) |> diffs(context)}
+
+      :too_deep ->
+        :too_deep
     end
   end
 
@@ -238,6 +248,123 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   end
 
   defp images(html, _context), do: html
+
+  # A diff block is the text `QDIFF<token><text>Z` in a paragraph, the text in lowercase
+  # hexadecimal, which the renderer and the sanitiser leave as it is.
+  defp diff_placeholder(token, text),
+    do: "QDIFF" <> token <> Base.encode16(text, case: :lower) <> "Z"
+
+  # Each placeholder, after sanitising, as its diff box.
+  defp diffs(html, %{token: token}) do
+    Regex.replace(~r{(?:<p>)?QDIFF#{token}([0-9a-f]*)Z(?:</p>)?}, html, fn whole, hex ->
+      case Base.decode16(hex, case: :lower) do
+        {:ok, text} -> diff_box(text)
+        :error -> whole
+      end
+    end)
+  end
+
+  # diff_box/1 is `text`, a unified diff, as the box of the harness update page, in the
+  # markup of its panel: the path and the number of changed lines in the bar, then a row
+  # per line. A `--- ` line followed by a `+++ ` line is a file header, as is a line
+  # starting `@@`, `diff `, `index ` or the like; none is a row, nor is a `+++ ` line before
+  # the first row. A line of `+` or `-` is an added or a removed line, another line is
+  # context, with its one leading space left out.
+  defp diff_box(text) do
+    {path, rows} = diff_rows(String.split(text, ~r/\r\n|\r|\n/), nil, nil, [])
+    changed = changed_lines(rows)
+
+    count =
+      ngettext("%{count} line changed", "%{count} lines changed", changed)
+
+    lines = Enum.map_join(rows, &diff_row/1)
+
+    ~s(<div class="q-diffbox q-diffbox-flat"><div class="q-dpanel">) <>
+      ~s(<div><span>#{escape(path || "")}</span><span>#{escape(count)}</span></div>) <>
+      ~s(<div class="q-dlines" tabindex="0">#{lines}</div></div></div>)
+  end
+
+  # The changed lines: in each run of added and removed lines between context lines, the
+  # larger of the two counts, so a line that was replaced is one line changed.
+  defp changed_lines(rows) do
+    rows
+    |> Enum.chunk_by(&(elem(&1, 0) == :ctx))
+    |> Enum.reject(&match?([{:ctx, _line} | _], &1))
+    |> Enum.sum_by(fn run ->
+      added = Enum.count(run, &match?({:add, _line}, &1))
+      max(added, length(run) - added)
+    end)
+  end
+
+  defp diff_row({:add, line}), do: ~s(<div class="q-add"><i>+</i>#{escape(line)}</div>)
+  defp diff_row({:del, line}), do: ~s(<div class="q-del"><i>-</i>#{escape(line)}</div>)
+  defp diff_row({:ctx, line}), do: ~s(<div class="q-ctx"><i></i>#{escape(line)}</div>)
+
+  # The path and the rows of the lines; `old` and `new` are the paths of the first file
+  # header. The empty line a text ends with is no row.
+  defp diff_rows([], old, new, rows) do
+    rows = rows |> Enum.reverse() |> drop_last_empty()
+    {diff_path(new) || diff_path(old), rows}
+  end
+
+  defp diff_rows(["--- " <> old, "+++ " <> new | rest], old0, new0, rows),
+    do: diff_rows(rest, old0 || old, new0 || new, rows)
+
+  defp diff_rows(["+++ " <> new | rest], old, new0, []),
+    do: diff_rows(rest, old, new0 || new, [])
+
+  defp diff_rows(["@@" <> _hunk | rest], old, new, rows), do: diff_rows(rest, old, new, rows)
+  defp diff_rows(["\\" <> _note | rest], old, new, rows), do: diff_rows(rest, old, new, rows)
+
+  defp diff_rows(["+" <> line | rest], old, new, rows),
+    do: diff_rows(rest, old, new, [{:add, line} | rows])
+
+  defp diff_rows(["-" <> line | rest], old, new, rows),
+    do: diff_rows(rest, old, new, [{:del, line} | rows])
+
+  defp diff_rows([" " <> line | rest], old, new, rows),
+    do: diff_rows(rest, old, new, [{:ctx, line} | rows])
+
+  defp diff_rows([line | rest], old, new, rows) do
+    if diff_header?(line, rows),
+      do: diff_rows(rest, old, new, rows),
+      else: diff_rows(rest, old, new, [{:ctx, line} | rows])
+  end
+
+  # A `diff --git`, `index` or mode line before the first row is a header.
+  defp diff_header?(line, []) do
+    case String.split(line, " ", parts: 2) do
+      [word, _rest] -> word in @diff_context_header
+      _one -> false
+    end
+  end
+
+  defp diff_header?(_line, _rows), do: false
+
+  defp drop_last_empty([]), do: []
+
+  defp drop_last_empty(rows) do
+    case List.last(rows) do
+      {:ctx, ""} -> Enum.drop(rows, -1)
+      _row -> rows
+    end
+  end
+
+  # The path of a `---` or `+++` header: with no timestamp after a tab, no `a/` or `b/`,
+  # and nil for none or `/dev/null`.
+  defp diff_path(nil), do: nil
+
+  defp diff_path(header) do
+    path = header |> String.split("\t", parts: 2) |> hd() |> String.trim()
+
+    case path do
+      "" -> nil
+      "/dev/null" -> nil
+      "a/" <> rest when rest != "" -> rest
+      "b/" <> rest when rest != "" -> rest
+      other -> other
+    end
+  end
 
   defp html(document) do
     document
@@ -326,17 +453,18 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   end
 
   # A code block keeps only the first word of its info string, so its class is
-  # `language-<word>` and a Mermaid block's is `language-mermaid` exactly.
-  defp shown(%MDEx.CodeBlock{literal: literal, info: info} = block, _context, _depth) do
+  # `language-<word>` and a Mermaid block's is `language-mermaid` exactly. A `diff` block
+  # is a placeholder for its box.
+  defp shown(%MDEx.CodeBlock{literal: literal, info: info} = block, context, _depth) do
     language = info |> to_string() |> String.split(~r/\s/, parts: 2) |> hd()
+    text = Apiary.ExternalText.lines(literal)
 
-    [
-      %{
-        block
-        | literal: Apiary.ExternalText.lines(literal),
-          info: if(language == "mermaid", do: "mermaid", else: "")
-      }
-    ]
+    if language == "diff" do
+      placeholder = %MDEx.Text{literal: diff_placeholder(context.token, text)}
+      [%MDEx.Paragraph{nodes: [placeholder], sourcepos: block.sourcepos}]
+    else
+      [%{block | literal: text, info: if(language == "mermaid", do: "mermaid", else: "")}]
+    end
   end
 
   defp shown(%{nodes: nodes} = node, context, depth) when is_list(nodes),

@@ -750,6 +750,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           run_id={@page.escalation.run_id}
           heading={gettext("The run's outputs")}
           skip={["verdict"]}
+          class="q-xp-needs-outputs"
         />
         <ol
           :if={@points != []}
