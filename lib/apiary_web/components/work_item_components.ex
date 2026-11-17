@@ -5888,7 +5888,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :skip, :map,
     required: true,
-    doc: "`%{workflow:, input:, track:, negated:}`, or `%{workflow:, reason:, cause_entry:}`"
+    doc:
+      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -5920,6 +5921,20 @@ defmodule ApiaryWeb.WorkItemComponents do
           track: skip.track_name
         )
   end
+
+  defp skip_words(%{changed: true, negated: true} = skip),
+    do:
+      gettext("%{workflow} did not run: the %{type} changed since it last passed.",
+        workflow: skip.workflow,
+        type: StageComponents.type_words(skip.input)
+      )
+
+  defp skip_words(%{changed: true} = skip),
+    do:
+      gettext("%{workflow} did not run: the %{type} did not change since it last passed.",
+        workflow: skip.workflow,
+        type: StageComponents.type_words(skip.input)
+      )
 
   defp skip_words(%{negated: true} = skip),
     do:

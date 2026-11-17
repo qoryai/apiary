@@ -3946,6 +3946,16 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: the %{type} changed since it last passed."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: the %{type} did not change since it last passed."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: the work item has %{type}."
 msgstr ""
 
@@ -13581,6 +13591,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
