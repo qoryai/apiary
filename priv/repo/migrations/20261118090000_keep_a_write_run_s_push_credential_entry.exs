@@ -8,8 +8,10 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
   # before this migration stays valid. `issued_apply`, the apply items of the first
   # credential sealed for an entry, is allowed on a `push` entry as on a `work` one.
   #
-  # A `push` entry has a `push_ref` on every apply item, a string that is not empty
-  # (`run_credentials_push_ref_check`); the other purposes have no such rule. Each check
+  # A `push` entry has at least one apply item, and every item is an object whose
+  # `push_ref` is a string that is not empty (`run_credentials_push_ref_check`, a strict
+  # jsonpath, so an array-valued `push_ref` or an item that is not an object is refused);
+  # the other purposes have no such rule. Each check
   # is dropped and added again, and each new check scans the table as it is added. Every
   # stored row has the purpose `work` or `harness` and passes all of them. The unique
   # index is built without `CONCURRENTLY`, so writes to `run_credentials` wait while it
@@ -32,9 +34,11 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
              purpose <> 'push' OR (
                jsonb_typeof(apply) = 'array'
                AND jsonb_array_length(apply) >= 1
-               AND NOT jsonb_path_exists(
-                 apply,
-                 '$[*] ? (!exists(@.push_ref ? (@ like_regex "^.+")))'
+               AND jsonb_array_length(apply) = jsonb_array_length(
+                 jsonb_path_query_array(
+                   apply,
+                   'strict $[*] ? (@.type() == "object" && @.push_ref.type() == "string" && @.push_ref like_regex "^.+")'
+                 )
                )
              )
              """

@@ -109,6 +109,33 @@ defmodule Apiary.Runs.PushCredentialMigrationTest do
     Repo.insert!(%{ctx.push | apply: [item, Map.put(item, "push_ref", "refs/heads/qory/x")]})
     assert entry_names(ctx.run) == ["push-1", "work-1"]
 
+    # Values the schema's list of maps does not take are written as they are. A string
+    # push_ref on every item passes; a push_ref that is not a string, and an item that is
+    # not an object, do not.
+    set = fn apply ->
+      Repo.query!(
+        "UPDATE run_credentials SET apply = $1::jsonb WHERE run_id = $2 AND purpose = 'push'",
+        [apply, Ecto.UUID.dump!(ctx.run.id)]
+      )
+    end
+
+    ref = fn value -> Map.put(item, "push_ref", value) end
+
+    for apply <- [
+          [ref.(["a"])],
+          [ref.([["a"]])],
+          [ref.(true)],
+          [ref.(%{"a" => "b"})],
+          [ref.("a"), []],
+          [[ref.("a")]],
+          [ref.("a"), "a"],
+          [ref.("a"), nil]
+        ] do
+      refused("run_credentials_push_ref_check", fn -> set.(apply) end)
+    end
+
+    assert %{num_rows: 1} = set.([ref.("a"), ref.("b")])
+
     # The work entry has no push_ref, and stays valid.
     assert [%{"hosts" => _} = work_item] =
              Repo.get_by!(RunCredential, run_id: ctx.run.id, name: "work-1").apply
