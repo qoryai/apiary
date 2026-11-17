@@ -272,6 +272,7 @@ defmodule ApiaryWeb.Routes do
         get "/artifacts/:version_id/files/:filename", Controller, :file
         post "/artifacts", Controller, :push
         post "/verdict", Controller, :verdict
+        post "/pushed-commits", Controller, :pushed_commits
       end
 
       scope "/v1", ApiaryWeb.Contract do
