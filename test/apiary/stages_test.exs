@@ -3092,8 +3092,42 @@ defmodule Apiary.StagesTest do
         take_in!(scope)
         |> end_run!(proposing_with(%{"id" => "fast-track", "reason" => " "}))
 
-      assert Stages.proposed_track_with_reason(work_item) == %{id: "fast-track", reason: nil}
+      assert Stages.proposed_track_with_reason(work_item) == %{
+               id: "fast-track",
+               reason: nil,
+               kind: nil
+             }
+
       assert Stages.proposed_track(work_item) == "fast-track"
+    end
+
+    test "the kind of a proposed track is read as sent", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(
+          proposing_with(%{"id" => "fast-track", "reason" => "x", "kind" => "A kind <b>"})
+        )
+
+      assert Stages.proposed_track_with_reason(work_item) ==
+               %{id: "fast-track", reason: "x", kind: "A kind <b>"}
+    end
+
+    test "track_kind/3 is the kind that a verdict gave for the track", %{scope: scope} do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(
+          proposing_with(%{"id" => "fast-track", "reason" => "x", "kind" => "A kind <b>"})
+        )
+
+      artifacts = Artifacts.list(work_item)
+      assert Stages.track_kind(work_item, "fast-track", artifacts) == "A kind <b>"
+      assert Stages.track_kind(work_item, "fast-track") == "A kind <b>"
+      assert Stages.track_kind(work_item, "standard", artifacts) == nil
+      assert Stages.track_kind(work_item, nil, artifacts) == nil
     end
 
     test "no proposed track has no reason", %{scope: scope} do
@@ -3307,7 +3341,7 @@ defmodule Apiary.StagesTest do
       assert Stages.proposed_track(work_item, artifacts) == "fast-track"
 
       assert Stages.proposed_track_with_reason(work_item, artifacts) ==
-               %{id: "fast-track", reason: "A small change."}
+               %{id: "fast-track", reason: "A small change.", kind: nil}
 
       assert Stages.proposed_track_with_reason(work_item) ==
                Stages.proposed_track_with_reason(work_item, artifacts)

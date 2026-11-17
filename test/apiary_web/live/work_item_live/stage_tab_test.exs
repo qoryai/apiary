@@ -2492,10 +2492,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
 
     # The end of Explore's run: a proposal, and a verdict that proposes `track`.
-    defp proposing(track, reason \\ "A small change.") do
+    defp proposing(track, reason \\ "A small change.", kind \\ nil) do
       fn run, registered ->
         push_result!(run, registered, understood_result())
         proposal = %{"id" => track, "reason" => reason}
+        proposal = if kind, do: Map.put(proposal, "kind", kind), else: proposal
 
         {:ok, _version} =
           Stages.Artifacts.push_json(
@@ -2508,15 +2509,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       end
     end
 
-    defp at_explore_gate!(scope, proposed \\ "fast-track") do
+    defp at_explore_gate!(scope, proposed \\ "fast-track", kind \\ nil) do
       screens!(scope)
-      scope |> taken_in_fixture() |> end_run!(proposing(proposed))
+      scope |> taken_in_fixture() |> end_run!(proposing(proposed, "A small change.", kind))
     end
 
     # Explore's gate approved with the track `track`, and Build's first attempt run passed,
     # with test-features written. Verify's gate waits, and Verify started no run.
-    defp at_verify_gate!(scope, track \\ "fast-track") do
-      work_item = at_explore_gate!(scope)
+    defp at_verify_gate!(scope, track \\ "fast-track", kind \\ nil) do
+      work_item = at_explore_gate!(scope, "fast-track", kind)
       {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
 
       work_item
@@ -2602,6 +2603,56 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
 
       refute has_element?(view, "#work-item-explore-gate-track-standard-reason")
+    end
+
+    test "Explore's gate shows no kind line, with a kind or without", %{
+      conn: conn,
+      scope: scope
+    } do
+      screens!(scope)
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track", "x", "A kind"))
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track-reason")
+      refute html =~ "A kind"
+    end
+
+    test "Verify's card shows the kind of the track next to the badge, escaped", %{
+      conn: conn,
+      scope: scope
+    } do
+      payload = "<script>alert(1)</script>"
+      work_item = at_verify_gate!(scope, "fast-track", payload)
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-path .badge", "Fast track")
+      assert has_element?(view, "#work-item-stage-gate-kind", payload)
+      refute has_element?(view, "#work-item-stage-gate-kind script")
+      refute html =~ payload
+      assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
+    end
+
+    test "Verify's card shows no kind line without a kind", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
+      refute has_element?(view, "#work-item-stage-gate-kind")
+    end
+
+    test "Verify's card shows no kind of a track the member picked instead of the proposed one",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, "standard", "A kind")
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-track", "Standard")
+      refute has_element?(view, "#work-item-stage-gate-kind")
+      refute html =~ "A kind"
     end
 
     test "a blank reason shows no line of reason", %{conn: conn, scope: scope} do

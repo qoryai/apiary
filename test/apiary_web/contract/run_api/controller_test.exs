@@ -2527,6 +2527,35 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/artifacts", push_body("verdict", [file.(offered)])).status == 201
     end
 
+    test "a kind of at most 80 characters is stored as the run sent it", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+
+      for kind <- ["A text that the product shows", String.duplicate("k", 80)] do
+        track = Map.put(@track, "kind", kind)
+        assert write(ctx, "/verdict", %{"verdict" => "passed", "track" => track}).status == 201
+        version = List.last(RunApiStubs.pushed())
+        assert [%{content: content}] = version.files
+        assert Jason.decode!(content) == %{"verdict" => "passed", "track" => track}
+      end
+    end
+
+    test "a kind that is longer, blank, not a string or on two lines is 422 as a reason is",
+         ctx do
+      offering!(ctx, ["standard", "fast-track"])
+
+      for kind <- [String.duplicate("k", 81), "", "  ", 7, ["a"], "two\nlines"] do
+        track = Map.put(@track, "kind", kind)
+        conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => track})
+
+        assert %{"error" => "invalid_artifact", "names" => ["files[0]"], "message" => message} =
+                 json_response(conn, 422)
+
+        assert message =~ "verdict.json"
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a track the schema refuses is the schema's, with no id echoed", ctx do
       offering!(ctx, ["standard"])
       long = String.duplicate("a", 5_000)

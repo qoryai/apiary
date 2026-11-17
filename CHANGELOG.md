@@ -31,6 +31,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
+- A verdict's `track` may have `kind`, one line of 1 to 80 characters that is not blank, such
+  as "A text that the product shows". Qory Apiary refuses a longer or blank `kind`, one that
+  is not a string and one with a line break, with `422` `invalid_artifact`, as it refuses a
+  `reason` that breaks its rule, and stores it as the run sent it. The card of a gate that
+  follows Explore's, such as Verify's, shows it as a line of text next to the badge of the
+  work item's track, and no line where the verdict has none or the member picked another
+  track. Explore's gate shows no kind. Nothing decides by its value.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a

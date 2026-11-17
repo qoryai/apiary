@@ -413,8 +413,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     <div id={@id} class="flex flex-col gap-2">
       <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
         <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
-        <p>
+        <p id={"#{@id}-path"}>
           <.badge color="success">{@page.track.name}</.badge>
+          <span :if={@page.track[:kind]} id={"#{@id}-kind"}>{@page.track.kind}</span>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
           {gettext("%{stage} started no run.", stage: @page.stage.name) <>
