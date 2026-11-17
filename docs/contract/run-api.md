@@ -1,7 +1,7 @@
 # The run API
 
 A run, an agent on a machine, uses the run API to read its work item and the work
-item's artifacts, and to push artifacts and its verdict. Each request is signed with the
+item's artifacts, to push artifacts and its verdict, and to report the commits it pushed. Each request is signed with the
 access key of the gateway the run goes through; the run has no access key.
 
 The run API is part of the feature `workflow_model`, which is off by default. On an
@@ -44,6 +44,7 @@ serves, and a request for a run the key does not serve gets `404` `not_found`.
 | `GET artifacts/<version_id>/files/<filename>` | One file of one version, as a download |
 | `POST artifacts` | Stores a new version of an artifact, or a withdrawal of its name; returns the version |
 | `POST verdict` | Stores the run's verdict as a version of the `verdict` artifact |
+| `POST pushed-commits` | Adds the commits the run pushed to the run's list |
 | `GET resume/transcript` | The transcript of the paused run that the run continues, as a download |
 
 ### Signing and the order of checks
@@ -80,8 +81,8 @@ The checks run in this order:
    seconds without a heartbeat or is past its backstop; until then the gateway that
    attached it, restarted, attaches it again and pushes for it. A run a member cancelled
    is `409` `run_ended` too, from the commit of the cancel, whatever its state, with the
-   message for a cancelled run. A run reads its work item after it ends; it writes
-   nothing.
+   message for a cancelled run, except for `POST pushed-commits`, which a cancel does not
+   refuse (see that request). A run reads its work item after it ends; it writes nothing.
    A push or a verdict checks the run of the queue, and the cancel, again when it stores
    the version, under the lock of the work item that the end of a run and a cancel also
    take: a run whose run of the queue ended, or that a member cancelled, between the two
@@ -119,6 +120,10 @@ Returns `200` with the work item snapshot:
   "notes": [
     {"kind": "request_changes", "stage_id": "st_...", "by": {"name": "dana"},
      "note": "Add the empty cart.", "artifact_version_id": "av_...", "at": "..."}
+  ],
+  "pushed_commits": [
+    {"system": "forge", "path": "acme/shop", "commit": "0123456789abcdef0123456789abcdef01234567",
+     "run_id": "<run_id>", "cancelled": false, "at": "2026-11-17T09:00:00Z"}
   ]
 }
 ```
@@ -148,6 +153,25 @@ Returns `200` with the work item snapshot:
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
+  `notes` contains only open notes. A note closes once the stage `stage_id` has an
+  approval after `at`, and a `move` once the stage it moved to has one: a member's, or
+  the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
+  open. A move that resolves an open escalation is one `move` note, with no
+  `escalation` note. Two records are missing from before Qory Apiary kept them: a
+  `move` written then has no stage it moved to, so it stays open; and a gate `none`
+  that passed on then recorded no approval, so the notes of that stage stay open until
+  the stage passes its gate again.
+- `pushed_commits` contains the commits that the earlier runs of the work item reported with
+  `POST pushed-commits`, from every stage, and none that the requesting run reported. An earlier
+  run is a run of the work item with a lower `run.number`. Entries are ordered by the run's
+  number, then by the order in which Qory Apiary recorded the run's commits: entries of
+  one run are in the order Apiary recorded them, and two posts in the same second keep that
+  order. `run_id` is the id of the run that reported the commit, as in `writer` of an
+  artifact version. `cancelled` is true when a member cancelled that run, and false for a
+  run that ended at its time limit, was released or lost its machine. `cancelled` is read
+  when the work item is read, so a cancel after the report marks the run's earlier commits
+  too. `at` is when Qory Apiary recorded the commit. The list is `[]`, never null, when
+  there is none.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
@@ -583,6 +607,43 @@ take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
 question in verdict.json: point 2 is about question q7, which is not open."
 
+## POST pushed-commits
+
+A run reports the commits it pushed to its targets, after each push, so that the next run
+of the work item can continue from them. The body, at most 64 KiB:
+
+```json
+{"repositories": [
+  {"system": "forge", "path": "acme/shop", "commit": "0123456789abcdef0123456789abcdef01234567"}
+]}
+```
+
+- `repositories`: 1 to 64 objects, each with exactly `system`, `path` and `commit`. Send
+  every repository the push moved. `system` and `path` are the place the commit went to, as
+  a target label (1 to 256 bytes, no control character). `commit` is the full commit id:
+  40 or 64 lowercase hexadecimal characters. Qory Apiary reads no git and checks only that
+  form; whether a commit descends from another is the run's check.
+- Qory Apiary appends one entry for each commit and place, in the order of `repositories`,
+  to the run's list. A commit that the run reported before for the same `system` and
+  `path`, or twice in one body, is stored once and takes no position: the run may send
+  a report again. Entries of one run are in the order Apiary recorded them, and two posts
+  in the same second keep that order.
+- Returns `204`, signed, with no body.
+- The report is stored under the lock of the work item that a push, a verdict, the end of a
+  run and a cancel also take. A cancel that a member requested does not refuse it: the
+  run goes on until its exit arrives, and what it pushed before then is on the forge. Such
+  a commit is listed with `cancelled` true. A report is refused with `409` `run_ended` only
+  once the run's end is recorded.
+- The run API lists the commits to later runs in `pushed_commits` of `GET work-item`.
+
+Checks, after checks 1 to 4 of the order of checks: a run that has not `write` access is
+`409` `not_writable`, before the body is read; a body over 64 KiB is `413`
+`payload_too_large`, as for a verdict; a body that is not an object with `repositories`,
+has more than 64 repositories, or has a member other than the ones above, or a `commit`
+that is not a full commit id, is `400` `invalid_request`, with the first member that failed
+in `names`, such as `repositories[1].commit`; `body` for a body that is not a JSON object,
+and `repositories` for a list that is empty, over 64 or not a list.
+
 ## GET resume/transcript
 
 The session of a run that continues a paused run reads the paused run's transcript with
@@ -607,11 +668,12 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 
 | Status | `error` | Other members | When |
 |---|---|---|---|
-| `400` | `invalid_request` | `names` | A body that is not the request's object, or a content that is not strict base64 |
+| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served |
 | `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
-| `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored |
+| `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
+| `409` | `not_writable` | `message` | A report of pushed commits from a run whose access is not `write` |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
 | `409` | `already_withdrawn` | `type`, `message` | A withdrawal of a name whose newest version is a withdrawal |
@@ -631,6 +693,12 @@ The messages:
 - `run_ended`: "The run has ended, so it can no longer push artifacts or give a verdict."
   For a run a member cancelled: "The run was cancelled, so it can no longer push
   artifacts or give a verdict."
+- `run_ended`, for a report of pushed commits: "Start a new run to record pushed commits.
+  This run ended, so it records no more commits."
+- `not_writable`: "Record pushed commits only from a run with write access. This run cannot
+  push."
+- `invalid_request`, for a report of pushed commits: "Send 1 to 64 repositories, each with
+  system, path and a full commit id of 40 or 64 lowercase hex characters."
 - `unknown_type`, for a custom name: "Define the artifact type demo-findings in the
   workspace's Artifact types, then run the round again."
 - `unknown_type`, for a standard type the workspace hides: "Switch on the artifact type

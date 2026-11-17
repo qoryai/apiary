@@ -19,7 +19,8 @@ defmodule Apiary.Contract.ModelKeysFixturesTest do
 
   test "each report fixture passes the schema and is read as it is" do
     for path <- ~w(model-keys-report/report.json model-keys-report/report-cooldowns.json
-                   model-keys-report/report-empty.json) do
+                   model-keys-report/report-empty.json
+                   model-keys-report/report-session.json) do
       assert (@fixtures <> path) in Apiary.ContractFixtures.vendored(), path
       bytes = fixture(path)
       body = Jason.decode!(bytes)
@@ -43,6 +44,7 @@ defmodule Apiary.Contract.ModelKeysFixturesTest do
     for {file, name} <- [
           {"model-keys-report-cooldown-allowed.json", "keys.cooldown_until"},
           {"model-keys-report-no-observed-at.json", "keys"},
+          {"model-keys-report-session-0.json", "session"},
           {"model-keys-report-rejected-without-cooldown.json", "keys.cooldown_until"},
           {"model-keys-report-time-fraction.json", "time"},
           {"model-keys-report-unknown-source.json", "keys.source"},

@@ -1581,13 +1581,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record #work-item-artifacts")
     end
 
-    test "the notes above the tabs keep the comments", %{conn: conn, scope: scope} do
+    test "the notes above the tabs leave out a comment that Explore's approval closed",
+         %{conn: conn, scope: scope} do
       work_item = decided_at_gate!(scope)
       {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
 
-      assert has_element?(view, "#work-item-flow", "On the proposal.")
+      refute has_element?(view, "#work-item-flow", "On the proposal.")
+    end
+
+    test "the notes above the tabs list a note written after Explore's approval",
+         %{conn: conn, scope: scope} do
+      work_item = decided_at_gate!(scope)
+
+      {:ok, _moved} =
+        Stages.move(scope, work_item, @explore, "Check the totals.", expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
+
+      assert has_element?(view, "#work-item-flow", "Check the totals.")
+      refute has_element?(view, "#work-item-flow", "On the proposal.")
     end
   end
 

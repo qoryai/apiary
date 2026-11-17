@@ -5437,6 +5437,58 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-notes-1", "The plan has no test step.")
     end
 
+    test "a request for changes leaves the list once its stage is approved; the run API sends the same list",
+         %{
+           conn: conn,
+           scope: scope
+         } do
+      work_item = explore_gate_fixture(scope)
+
+      {:ok, _work_item} =
+        Stages.request_changes(scope, work_item, "Change the credit note PDF too.", nil,
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _work_item} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      {:ok, _work_item} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      {:ok, _work_item} =
+        Stages.move(scope, work_item, @build, "Build it as planned.", expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-notes-h", "Notes for the next run")
+
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Changes requested · Shape",
+               "Moved · Shape"
+             ]
+
+      assert has_element?(view, "#work-item-notes-0", "Split the plan in two")
+      refute render(view) =~ "Change the credit note PDF too."
+
+      # The run API's notes (`GET work-item`) are the same, in the same order.
+      sent =
+        work_item
+        |> ApiaryWeb.Contract.RunApi.Boundary.notes()
+        |> ApiaryWeb.Contract.RunApi.Wire.notes()
+        |> Jason.encode!()
+        |> Jason.decode!()
+
+      assert Enum.map(sent, &{&1["kind"], &1["note"]}) == [
+               {"request_changes", "Split the plan in two"},
+               {"move", "Build it as planned."}
+             ]
+
+      assert texts(view, "#work-item-notes li > p:nth-child(2)") ==
+               Enum.map(sent, & &1["note"])
+    end
+
     test "a review comment on the proposal is a card at Explore, for the next run", %{
       conn: conn,
       scope: scope

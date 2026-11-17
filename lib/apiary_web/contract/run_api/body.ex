@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.RunApi.Body do
   @moduledoc false
 
-  # The bodies of the run API's two POSTs, read from the raw bytes the request was signed
+  # The bodies of the run API's three POSTs, read from the raw bytes the request was signed
   # over, each held to its size before it is decoded.
   #
   # - `push/1`: `{"type", "name"?, "note"?, "files": [{"filename", "content_type",
@@ -13,6 +13,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # - `verdict/1`: `{"verdict", "points"?, "track"?}`, at most `max_bytes(:verdict)` bytes.
   #   The points and the track pass as they are: the schema of the type `verdict` checks
   #   them (`priv/schemas/artifacts/verdict.schema.json`).
+  # - `pushed_commits/1`: `{"repositories": [{"system", "path", "commit"}]}`, at most
+  #   `max_bytes(:pushed_commits)` bytes, else `{:error, :too_large}`, and at most
+  #   `max_repositories/0` repositories, else `{:error, :invalid_request, "repositories"}`.
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -25,6 +28,8 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # version cannot be pushed through this API, whatever the type's size limit.
   @push_max_bytes 32 * 1024 * 1024
   @verdict_max_bytes 64 * 1024
+  @pushed_commits_max_bytes 64 * 1024
+  @max_repositories 64
 
   # A media type: `type/subtype`, without parameters.
   @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\z/
@@ -38,9 +43,14 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   @verdicts ["passed", "changes-requested", "escalate"]
 
-  @spec max_bytes(:push | :verdict) :: pos_integer
+  @spec max_bytes(:push | :verdict | :pushed_commits) :: pos_integer
   def max_bytes(:push), do: @push_max_bytes
   def max_bytes(:verdict), do: @verdict_max_bytes
+  def max_bytes(:pushed_commits), do: @pushed_commits_max_bytes
+
+  @doc "The most repositories one report of pushed commits has."
+  @spec max_repositories() :: pos_integer
+  def max_repositories, do: @max_repositories
 
   @spec verdicts() :: [String.t()]
   def verdicts, do: @verdicts
@@ -87,6 +97,53 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
       {:ok, %{verdict: verdict, points: Map.get(body, "points"), track: Map.get(body, "track")}}
     end
   end
+
+  @spec pushed_commits(binary) ::
+          {:ok, [%{system: String.t(), path: String.t(), commit: String.t()}]}
+          | {:error, :too_large}
+          | {:error, :invalid_request, String.t()}
+  def pushed_commits(raw_body) when byte_size(raw_body) > @pushed_commits_max_bytes,
+    do: {:error, :too_large}
+
+  def pushed_commits(raw_body) do
+    with {:ok, body} <- object(raw_body),
+         :ok <- members(body, ~w(repositories)) do
+      repositories(body["repositories"])
+    end
+  end
+
+  defp repositories([_ | _] = repositories) when length(repositories) <= @max_repositories do
+    repositories
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {repository, index}, {:ok, read} ->
+      case repository(repository, index) do
+        {:ok, repository} -> {:cont, {:ok, [repository | read]}}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, read} -> {:ok, Enum.reverse(read)}
+      error -> error
+    end
+  end
+
+  defp repositories(_repositories), do: invalid("repositories")
+
+  defp repository(%{} = repository, index) do
+    member = &"repositories[#{index}].#{&1}"
+
+    with :ok <- prefixed(members(repository, ~w(system path commit)), member),
+         {:ok, system} <- prefixed(required(repository, "system", &label?/1), member),
+         {:ok, path} <- prefixed(required(repository, "path", &label?/1), member),
+         {:ok, commit} <-
+           prefixed(required(repository, "commit", &Apiary.Runs.PushedCommit.commit?/1), member) do
+      {:ok, %{system: system, path: path, commit: commit}}
+    end
+  end
+
+  defp repository(_repository, index), do: invalid("repositories[#{index}]")
+
+  defp label?(value), do: Apiary.Runs.Target.label(value) != nil
 
   # decoded_size/1 is the size in bytes of a file's content once decoded, read from the
   # length of its base64 alone.
