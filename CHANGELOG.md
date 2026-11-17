@@ -87,13 +87,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reads "<stage> started no run. Read the inputs below, then approve." (in a software
   workspace, "Read the build report and the draft, then approve.") and leaves out the list of
   outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
-  item on no track keeps both as before. On the stage's tab at that gate, **Run another
-  round** shows only where the stage has a workflow entry that runs on the work item's track
-  (a condition on the track, "Runs on <track> only", holds an entry back), and **Comment on
-  the stage's outputs**, which that button sends, shows only with it and where the tab has
-  an output frame. The runs fold shows where the stage has a run, a skipped entry that the
-  table does not list, an artifact, or a reader who may add a version (**Add a version** is
-  in it). The table of entries stays.
+  item on no track keeps both as before.
+- On the current stage's tab, at the gate of any stage after Explore, **Run another round**
+  shows only where the stage has a workflow entry that runs on the work item's track (a
+  condition on the track, "Runs on <track> only", holds an entry back); a work item on no
+  track keeps **Run another round**. **Comment on the stage's outputs**, which that button
+  sends, shows only with it and where the tab has an output frame. The runs fold shows where
+  the stage has a run, a skipped entry that the table does not list, an artifact, or a
+  reader who may add a version (**Add a version** is in it). The table of entries stays.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

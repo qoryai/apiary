@@ -331,9 +331,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   runs_on_track?/2 is whether `stage` has a workflow entry that runs on the track the work
   item is on (`flow.track`, `Apiary.Stages.track/1`): an entry, in a loop or not, that no
   condition on a track holds back, as the Workflows table words it ("Runs on Standard
-  only"). True for a work item on no track, and for a stage with no entry that holds back
-  on a track. Only the conditions on a track count: a condition on an input does not hold
-  an entry back here, as the page does not read which inputs count.
+  only"). For a work item on a track it is false where a condition on that track holds back
+  every workflow entry of the stage, and where the stage has no workflow entry. For a work
+  item on no track it is true. Only the conditions on a track count: a condition on an input does not hold an
+  entry back here, as the page does not read which inputs count.
   """
   @spec runs_on_track?(map, map) :: boolean
   def runs_on_track?(%{track: %{id: track}}, stage) do

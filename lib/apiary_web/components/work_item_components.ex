@@ -2541,7 +2541,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :has_outputs, :boolean,
     default: true,
     doc:
-      "whether the tab has an output frame, one for a version the stage's approval recorded, not an input frame; the gate's comment on the stage's outputs needs one and Run another round"
+      "whether the tab has an output frame, one for a version the stage's approval recorded, not an input frame; the gate's comment on the stage's outputs needs one, and needs Run another round to be shown"
 
   attr :runs_on_track, :boolean,
     default: true,
