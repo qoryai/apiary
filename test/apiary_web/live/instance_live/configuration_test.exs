@@ -3,11 +3,11 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
   Instance settings › Configuration (`ApiaryWeb.InstanceLive.Configuration`): the
   instance's settings, for the instance's admins after a recent sign-in, behind the Qory
   Apiary menu's Instance settings; anyone else is answered as a path that does not exist.
-  Retention, Deletion and Invitations each have a form with its Save, a field for each
-  setting the server's environment does not set; the rest is read only. The suite's
-  instance has had its first sign-up; a test that needs an instance admin hides its
-  organisation inside its sandbox (`Apiary.EditionKit`), so the organisation it signs up
-  is the instance's.
+  Retention, Prebuilds (with the `registry` feature), Deletion and Invitations each have
+  a form with its Save, a field for each setting the server's environment does not set;
+  the rest is read only. The suite's instance has had its first sign-up; a test that
+  needs an instance admin hides its organisation inside its sandbox
+  (`Apiary.EditionKit`), so the organisation it signs up is the instance's.
   """
   # Not async: hiding the instance's organisation acts on the row every test shares, and
   # the environment's values are the whole node's.
@@ -65,8 +65,9 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
   end
 
   # The variables of the instance's settings, none set: the environment's value of each
-  # is nil.
-  defp unset_variables, do: put_settings(Enum.map(InstanceConfig.keys(), &{&1, nil}))
+  # is nil. The largest prebuilt image has no variable.
+  defp unset_variables,
+    do: put_settings(Enum.map(InstanceConfig.keys() -- [:prebuilt_image_max_gb], &{&1, nil}))
 
   # Submits a part's form with `attrs`, by the fields' names.
   defp save(view, part, attrs),
@@ -391,6 +392,82 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#flash-info") =~ "Grace period saved."
       refute has_element?(view, "#config-grace-error")
       assert has_element?(view, "#config-invitations-per-day-error")
+    end
+
+    @tag needs: :registry
+    test "Prebuilds, between Retention and Deletion: the largest prebuilt image, in GB, empty for no limit",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/instance/configuration")
+
+      order =
+        for id <- ["config-retention", "config-prebuilds", "config-deletion"] do
+          {at, _length} = :binary.match(html, ~s(id="#{id}"))
+          at
+        end
+
+      assert order == Enum.sort(order)
+      assert text(view, "#config-prebuilds h2") == "Prebuilds"
+      assert text(view, "#config-prebuilt-image dt label") == "Largest prebuilt image"
+
+      assert has_element?(
+               view,
+               "#config-prebuilt-image input#config-prebuilt-image-input[type='text'][inputmode='numeric'][placeholder='No limit']"
+             )
+
+      refute has_element?(view, "#config-prebuilt-image-input[value]:not([value=''])")
+      assert text(view, "#config-prebuilt-image-unit") == "GB"
+      assert text(view, "#config-prebuilt-image-hint") == "Empty: no limit."
+
+      assert text(view, "#config-prebuilt-image") =~
+               "How large an image a prebuild may keep. A prebuild whose image is larger fails."
+
+      refute has_element?(view, "#config-prebuilt-image-source")
+
+      assert text(view, "#config-prebuilds-save > span") ==
+               "A change applies to prebuilds that start after it."
+
+      # Saved, the field shows the number; emptied, there is no limit again.
+      save(view, :prebuilds, %{prebuilt_image_max_gb: " 20 "})
+      assert text(view, "#flash-info") =~ "Largest prebuilt image saved."
+      assert has_element?(view, "#config-prebuilt-image-input[value='20']")
+      assert InstanceConfig.load().prebuilt_image_max_gb == 20
+
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+      assert has_element?(view, "#config-prebuilt-image-input[value='20']")
+
+      save(view, :prebuilds, %{prebuilt_image_max_gb: ""})
+      assert InstanceConfig.load().prebuilt_image_max_gb == nil
+      refute has_element?(view, "#config-prebuilt-image-input[value]:not([value=''])")
+
+      # A number out of bounds, or not whole, is said under the field, and saves nothing.
+      for value <- ["0", "2.5", "10001"] do
+        save(view, :prebuilds, %{prebuilt_image_max_gb: value})
+
+        assert text(view, "#config-prebuilt-image-error") ==
+                 "Enter a whole number from 1 to 10,000, or leave it empty for no limit."
+
+        assert has_element?(view, "#config-prebuilt-image-input[aria-invalid='true']")
+        assert has_element?(view, "#config-prebuilt-image-input[value='#{value}']")
+        assert InstanceConfig.load().prebuilt_image_max_gb == nil
+      end
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:registry]
+    test "has no Prebuilds without the registry feature, and saves none", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/instance/configuration")
+
+      refute has_element?(view, "#config-prebuilds")
+      refute html =~ "Largest prebuilt image"
+      assert has_element?(view, "#config-retention-form")
+      assert has_element?(view, "#config-deletion-form")
+
+      render_hook(view, "save", %{
+        "part" => "prebuilds",
+        "config" => %{"prebuilt_image_max_gb" => "20"}
+      })
+
+      assert InstanceConfig.load().prebuilt_image_max_gb == nil
+      refute has_element?(view, "#flash-info")
     end
 
     test "refuses a trail's period shorter than the IP addresses the environment keeps",

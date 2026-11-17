@@ -31,10 +31,11 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `target` (none for a run without a target), its `target_version`, its `work_item`
   # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
   # its `workflow`, `harness_hidden`, `harness`, `submit_module` and `submit`
-  # (`harness/1`), a prebuild's
-  # destinations, `image_destination` and then `environment_destination` or
-  # `environment_image` (`:destinations`, `{name, value}` members, none for any other
-  # run), and its `inputs`. The claim measures them (`Apiary.Dispatches.Handover`).
+  # (`harness/1`), a prebuild's destinations, `image_destination` and then
+  # `environment_destination` or `environment_image`, and
+  # `largest_prebuilt_image_bytes` where it has one (`:destinations`, `{name, value}`
+  # members, none for any other run), and its `inputs`. The claim measures them
+  # (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -44,7 +45,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:run_settings) => Jason.OrderedObject.t() | nil,
           required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
-          optional(:destinations) => [{String.t(), String.t()}],
+          optional(:destinations) => [{String.t(), String.t() | pos_integer}],
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
   def documents(%{step: step} = run) do

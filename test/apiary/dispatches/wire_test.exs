@@ -105,15 +105,16 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at different integrations commits. The provisioner and run
-  # contracts are at 55a22cb8, which adds the access value write-no-push to the run
-  # documents. That commit comes after 0506879f, which binds a group role to a list of
-  # agents. The integration contract is at c6b77016, which adds the watch kind to the
+  # The vendored contracts are at different integrations commits. The provisioner contract
+  # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
+  # commit comes after 0506879f, which binds a group role to a list of agents. The run
+  # contract is at dbc1ce51, which adds largest_prebuilt_image_bytes to a prebuild's
+  # documents. The integration contract is at c6b77016, which adds the watch kind to the
   # change feed.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
-          {"run/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
+          {"run/v1", "dbc1ce51ad47806febc95940c409d0817398a981"},
           {"integration/v1", "c6b77016c47ddd29952718fb121646ff118fb474"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
@@ -129,8 +130,8 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     valid = Path.wildcard(Path.join(fixtures, "documents/*.json"))
     invalid = Path.wildcard(Path.join(fixtures, "invalid/*.json"))
-    assert length(valid) == 29 and length(invalid) == 118
-    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 29 + 118
+    assert length(valid) == 31 and length(invalid) == 124
+    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 31 + 124
 
     for path <- valid ++ invalid do
       relative = Path.relative_to(path, fixtures)
