@@ -165,7 +165,16 @@ defmodule Apiary.WorkItems.WorkList do
   @views [:open, :you, :closed]
   @sorts [:updated, :created]
   @stages [:explore, :confirm, :shape]
-  @explore_statuses [:queued, :running, :questions, :no_result, :lost, :cancelled, :used_up]
+  @explore_statuses [
+    :queued,
+    :running,
+    :questions,
+    :no_result,
+    :lost,
+    :time_limit,
+    :cancelled,
+    :used_up
+  ]
   @no_counts %{open: 0, you: 0, closed: 0}
   @no_stages %{
     explore: 0,
@@ -238,9 +247,9 @@ defmodule Apiary.WorkItems.WorkList do
   @typedoc """
   The live work items in each stage, and what in each needs a look: how many Explore
   is running on (`exploring`), how many wait for answers (`answers`), how many Explore left
-  without a result (`no_result`: no result, lost or cancelled), how many wait at Confirm
-  (`waiting`) and how many of those for the reader (`waiting_you`), and how many are
-  ready for Shape (`ready`).
+  without a result (`no_result`: no result, lost, at its time limit or cancelled), how
+  many wait at Confirm (`waiting`) and how many of those for the reader (`waiting_you`),
+  and how many are ready for Shape (`ready`).
   """
   @type stages :: %{
           explore: non_neg_integer,
@@ -1016,8 +1025,9 @@ defmodule Apiary.WorkItems.WorkList do
   defp attention(acc, :running, n, _mine), do: bump(acc, :stages, :exploring, n)
   defp attention(acc, :questions, n, _mine), do: bump(acc, :stages, :answers, n)
 
-  defp attention(acc, status, n, _mine) when status in [:no_result, :lost, :cancelled],
-    do: bump(acc, :stages, :no_result, n)
+  defp attention(acc, status, n, _mine)
+       when status in [:no_result, :lost, :time_limit, :cancelled],
+       do: bump(acc, :stages, :no_result, n)
 
   defp attention(acc, :confirm, _n, {mine, listed, at_explore}) do
     acc

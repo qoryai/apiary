@@ -958,6 +958,80 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert run_id == other.run_id
     end
+
+    @tag needs: [:workflow_model, :factory, :secrets, :observability]
+    test "newest_version and changed_after_approval leave out a cancelled run's versions",
+         ctx do
+      place!(ctx)
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png <> "a"}])
+             ).status == 201
+
+      [first] = RunApiStubs.pushed()
+      decide!(ctx, :approve, versions: [first.public_id])
+
+      # Another run of the work item stores version 2 of the screenshot and the only
+      # version of the explainer; the work item then moves on to another stage.
+      other =
+        Repo.insert!(%DispatchRun{
+          organisation_id: ctx.dispatch_run.organisation_id,
+          workspace_id: ctx.dispatch_run.workspace_id,
+          work_item_id: ctx.work_item.id,
+          run_id: Ecto.UUID.generate(),
+          step: ctx.dispatch_run.step,
+          take_in: ctx.dispatch_run.take_in,
+          attempt: ctx.dispatch_run.attempt + 1,
+          of: ctx.dispatch_run.of + 1,
+          queued_at: Apiary.Dispatches.now()
+        })
+
+      registered =
+        Apiary.RunEventsFixtures.run_fixture(ctx.scope, %{
+          dispatch_run_id: other.id,
+          state: "running",
+          started_at: DateTime.utc_now()
+        })
+
+      for {type, filename, content_type, binary} <- [
+            {"screenshot", "one.png", "image/png", @png <> "b"},
+            {"explainer", "notes.md", "text/markdown", "x"}
+          ] do
+        store!(%{ctx | dispatch_run: other}, type, [file(filename, content_type, binary)],
+          stage_id: @explore
+        )
+      end
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_id: "st_p9w5cvh311"]
+        )
+
+      by_type = fn ->
+        body = json_response(read(ctx, "/artifacts"), 200)
+        Map.new(body["artifacts"], &{&1["type"], &1})
+      end
+
+      assert %{"newest_version" => 2, "changed_after_approval" => true} =
+               by_type.()["screenshot"]
+
+      assert %{"newest_version" => 1} = by_type.()["explainer"]
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^registered.id),
+          set: [cancel_requested_at: DateTime.utc_now()]
+        )
+
+      artifacts = by_type.()
+
+      assert %{"newest_version" => 1, "changed_after_approval" => false} =
+               artifacts["screenshot"]
+
+      assert %{"newest_version" => nil, "changed_after_approval" => false} =
+               artifacts["explainer"]
+    end
   end
 
   defp file(filename, content_type, binary),
