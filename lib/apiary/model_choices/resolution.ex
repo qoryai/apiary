@@ -26,20 +26,25 @@ defmodule Apiary.ModelChoices.Resolution do
   # effort or one of that model's effort values in the provider's description. Where the
   # input has `effort_values`, the effort values of each runtime by its name, a model's
   # effort values are those its runtime has too. A model that only the suggestions list,
-  # and any model of a provider whose description lists none, takes no effort. No tier
-  # comes from another level, so one run never mixes the tiers of two providers. A tier
-  # the choice leaves out or whose entry does not go with the provider is left out.
+  # and any model of a provider whose description lists none, takes no effort: an entry
+  # of such a model with an effort is left out. No tier comes from another level, so one
+  # run never mixes the tiers of two providers. A tier the choice leaves out or whose
+  # entry does not go with the provider is left out.
   #
   # **The model and the effort** of the run are those of the `thinking` tier. A choice
-  # with no such tier gives its `model_id` and `effort`; without a model, the provider's
+  # whose `thinking` entry does not go with the provider has no model, and the claim ends
+  # the run `model_gone` (`Apiary.Dispatches.RunSettings`). A choice that maps no
+  # `thinking` tier gives its `model_id` and `effort`; without a model, the provider's
   # default model, the first of its description's, with no effort, so the runtime uses
   # its default effort. A provider whose description lists no model has no default: the
   # resolution then has no model.
   #
   # **The default step.** Where the choice in effect is a workflow's override, the
   # resolution has a `default`: the next choice in the order at a level without a
-  # workflow (3, 5 or 6) that chose a provider, resolved as above, with its runtime, key
-  # and tiers. A run uses it while every key of the override's provider is in cooldown.
+  # workflow (3, 5 or 6) below the override's level that chose a provider, resolved as
+  # above, with its runtime, key and tiers. Under an override at level 4, that is level
+  # 5, then 6; at level 2, level 3, then 5, then 6. A run uses it while every key of the
+  # override's provider is in cooldown.
   # Its provider not among `providers`, or no such choice, gives no default step.
   #
   # **The fallbacks** come from the default step under an override, else from the choice
@@ -174,17 +179,18 @@ defmodule Apiary.ModelChoices.Resolution do
   @doc false
   # default/1 is the choice of `input` that the default step comes from, as
   # `{level, choice}`: where the choice in effect is a workflow's override, the next in
-  # the order at a level without a workflow that chose a provider; nil for none, and
-  # where the choice in effect is no override. It reads only `input.choices` and the
-  # run's places.
+  # the order at a level without a workflow, below the override's level, that chose a
+  # provider; nil for none, and where the choice in effect is no override. It reads
+  # only `input.choices` and the run's places.
   @spec default(map) :: {ModelChoice.level(), ModelChoice.t()} | nil
   def default(%{} = input) do
     order = order(input)
 
     case Enum.find(order, &chose_provider?/1) do
-      {level, _override} when level in @override_levels ->
+      {override_level, _override} when override_level in @override_levels ->
         Enum.find(order, fn {level, _choice} = placed ->
-          level not in @override_levels and chose_provider?(placed)
+          level > override_level and level not in @override_levels and
+            chose_provider?(placed)
         end)
 
       _no_override ->
@@ -332,15 +338,16 @@ defmodule Apiary.ModelChoices.Resolution do
     tiers =
       for tier <- @tiers,
           entry = entry((choice.tiers || %{})[tier]),
-          entry != nil and goes_with?(provider, entry),
+          goes_with?(provider, entry),
           into: %{},
           do: {tier, entry}
 
     {model_id, effort} =
-      case {tiers[@run_tier], choice.model_id} do
-        {%{"model" => model_id} = entry, _model} -> {model_id, entry["effort"]}
-        {nil, nil} -> {provider.default_model_id, nil}
-        {nil, model_id} -> {model_id, choice.effort}
+      cond do
+        entry = tiers[@run_tier] -> {entry["model"], entry["effort"]}
+        entry((choice.tiers || %{})[@run_tier]) -> {nil, nil}
+        choice.model_id -> {choice.model_id, choice.effort}
+        true -> {provider.default_model_id, nil}
       end
 
     %__MODULE__{

@@ -50,11 +50,13 @@ defmodule Apiary.Dispatches.RunSettings do
   #   * `provider_gone`: the endpoint of that API is a setting whose address
   #     `Apiary.Kinds.Endpoint` refuses;
   #   * `key_gone`: the chosen key is no longer one of the provider's keys;
-  #   * `model_gone`: no model resolves: the choice has no `thinking` tier that goes with
-  #     its provider, no model, and a provider whose description lists none; or the
-  #     run's effort value is no longer among both the model's effort values in the
+  #   * `model_gone`: no model resolves: the choice maps a `thinking` tier whose entry
+  #     does not go with its provider (`Apiary.ModelChoices.Resolution`), or it maps
+  #     none and has no model and a provider whose description lists none; or the run's
+  #     effort value is no longer among both the model's effort values in the
   #     description and the runtime's, which a model the description no longer lists has
-  #     none of. A model the description does not list ends no run by itself.
+  #     none of. A choice's `model` that the description does not list ends no run by
+  #     itself.
   #
   # Then the keys, at the claim's clock (`build/2`). The run takes the provider's keys
   # where one of them is not in cooldown (`Apiary.ModelKeys`). Else it walks the later
@@ -68,7 +70,8 @@ defmodule Apiary.Dispatches.RunSettings do
   #      (`Apiary.ModelChoices.Resolution.fallback/3`).
   #
   # A step whose provider's keys were already found in cooldown is passed over: its keys
-  # are the same. A step that does not form is passed over and ends nothing. A run takes
+  # are the same, so the skip only saves work and changes no result. A step that does not
+  # form is passed over and ends nothing. A run takes
   # the keys of one provider alone. With none, `build/2` returns `{:cooling, built,
   # ids}`: the claim checks what can end the run first, then leaves it waiting with `ids`
   # as the providers it waits for (`Apiary.Dispatches.Handover`): the choice's provider,
@@ -217,7 +220,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # queue `dispatch_run` would try if it ran now, read without a lock, each once, in the
   # order the claim tries them: the provider of the choice in effect, the default step's
   # under a workflow's override, then the fallbacks of the choice they follow
-  # (`Apiary.ModelChoices.Resolution.walk/1`); none for a run of another step.
+  # (`Apiary.ModelChoices.Resolution.walk/1`); none for a run of another step. As in the
+  # resolution, a default step whose provider is gone is left out with its fallbacks, and
+  # so is a fallback whose provider is gone (`providers/1`).
   @doc false
   @spec model_providers(DispatchRun.t()) :: [Ecto.UUID.t()]
   def model_providers(
@@ -238,6 +243,19 @@ defmodule Apiary.Dispatches.RunSettings do
           |> Repo.preload(:fallbacks)
           |> Map.fetch!(:fallbacks)
           |> Enum.sort_by(& &1.position)
+      end
+
+    present =
+      present_providers(
+        workspace.organisation_id,
+        Enum.map(Enum.drop(choices, 1), & &1.connection_id) ++
+          Enum.map(fallbacks, & &1.connection_id)
+      )
+
+    {choices, fallbacks} =
+      case choices do
+        [in_effect, %{connection_id: id}] when not is_map_key(present, id) -> {[in_effect], []}
+        _present -> {choices, Enum.filter(fallbacks, &is_map_key(present, &1.connection_id))}
       end
 
     (Enum.map(choices, & &1.connection_id) ++ Enum.map(fallbacks, & &1.connection_id))
@@ -522,6 +540,20 @@ defmodule Apiary.Dispatches.RunSettings do
         is_binary(id),
         uniq: true,
         do: id
+  end
+
+  # The row ids among `ids` of the organisation's model providers that are there, the
+  # rows `providers/1` reads, as a map of each to true.
+  defp present_providers(_organisation_id, []), do: %{}
+
+  defp present_providers(organisation_id, ids) do
+    from(c in Connection,
+      where: c.id in ^Enum.reject(ids, &is_nil/1) and c.organisation_id == ^organisation_id,
+      where: not is_nil(c.provider_kind) and c.chain == "organisation",
+      select: {c.id, true}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   # The providers the choices and their fallbacks name, as they are now: with the

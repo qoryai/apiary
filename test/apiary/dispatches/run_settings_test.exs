@@ -699,7 +699,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert ids == [ctx.override.id, ctx.provider.id]
     end
 
-    test "try a provider once where the override and the default share it", ctx do
+    test "wait for a provider once where the override and the default share it, then take the default's fallback",
+         ctx do
       free = other_provider!(ctx.scope, "Free keys")
       override!(ctx, ctx.provider, all_tiers("claude-sonnet-5-5"))
 
@@ -723,7 +724,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert stored["tiers"] == all_tiers("claude-haiku-5-5")
     end
 
-    test "pass over a fallback that names the override's provider, whose keys are in cooldown",
+    test "take the next fallback after one that names the override's provider, whose keys are in cooldown",
          ctx do
       free = other_provider!(ctx.scope, "Free keys")
       override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
@@ -770,6 +771,14 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert queued.model_provider_ids == [ctx.provider.id]
       assert Repo.get!(Run, handed.run.id).provider_connection_id == ctx.provider.id
       assert %{"model" => "claude-opus-5-5"} = settings(handed)
+
+      # With every key of the locked provider in cooldown, the run waits for it alone: the
+      # override's provider, whose key is free, is not taken.
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+
+      provider_id = ctx.provider.id
+      assert {queued, {:cooling, _built, [^provider_id]}} = built!(ctx)
+      assert queued.model_provider_ids == [provider_id]
     end
   end
 
@@ -914,6 +923,30 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {answer, queued, dispatch} = handover!(ctx)
       assert answer == {:error, :gone}
       ended!(queued, dispatch, :model_gone)
+    end
+
+    test "model_gone for a thinking entry that does not go with the provider", ctx do
+      # Past the save, which refuses each: a model in no list, and an effort it lacks.
+      for {thinking, n} <-
+            Enum.with_index([
+              "acme-large",
+              %{"model" => "claude-opus-5-5", "effort" => "turbo"}
+            ]) do
+        Repo.delete_all(ModelChoice)
+
+        Repo.insert!(%ModelChoice{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          connection_id: ctx.provider.id,
+          model_id: "claude-opus-5-5",
+          effort: "high",
+          tiers: %{"thinking" => thinking, "light" => "claude-haiku-5-5"}
+        })
+
+        {answer, queued, dispatch} = handover!(ctx, %{external_ref: "acme/shop##{40 + n}"})
+        assert answer == {:error, :gone}, inspect(thinking)
+        ended!(queued, dispatch, :model_gone)
+      end
     end
 
     test "never for a model the description does not list", ctx do

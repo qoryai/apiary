@@ -310,14 +310,24 @@ defmodule Apiary.ModelChoices.ResolutionTest do
                resolved(input([at(5, tiers: %{"thinking" => "small"})]))
     end
 
-    test "are the choice's model, else the provider's default, without a thinking tier that goes with the provider" do
+    test "are the choice's model, else the provider's default, where the choice maps no thinking tier" do
       assert %{model_id: "mid", effort: "high"} =
                resolved(
                  input([at(5, model_id: "mid", effort: "high", tiers: %{"light" => "small"})])
                )
 
-      not_listed = %{"thinking" => "not-listed"}
-      assert %{model_id: "big", effort: nil} = resolved(input([at(5, tiers: not_listed)]))
+      assert %{model_id: "big", effort: nil} =
+               resolved(input([at(5, tiers: %{"light" => "small"})]))
+    end
+
+    test "are none where the thinking entry does not go with the provider, so the run ends model_gone" do
+      # A model neither list has, and an effort the model does not list.
+      for thinking <- ["not-listed", %{"model" => "mid", "effort" => "low"}] do
+        tiers = %{"thinking" => thinking, "light" => "small"}
+
+        assert %{model_id: nil, effort: nil, tiers: %{"light" => %{"model" => "small"}}} =
+                 resolved(input([at(5, model_id: "mid", effort: "high", tiers: tiers)]))
+      end
     end
   end
 
@@ -392,11 +402,20 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
     test "follows the order under an override of the target's workflow: the target's choice first" do
       override = at(2, connection_id: @beta)
-      other_workflow = at(4, connection_id: @gamma)
-      choices = [override, other_workflow, at(3, value_id: "k3"), at(5, value_id: "k5")]
+      workspace_override = at(4, connection_id: @gamma)
+      choices = [override, workspace_override, at(3, value_id: "k3"), at(5, value_id: "k5")]
 
       assert %{default: %{level: 3, value_id: "k3"}} = resolved(input(choices))
       assert %{default: %{level: 5}} = resolved(input([override, at(5), at(6)]))
+    end
+
+    test "comes from a level below the override: a locked level 4 falls to 5, never to 3" do
+      choices = [at(4, locked: true, connection_id: @beta), at(3, value_id: "k3"), at(5)]
+      assert %{level: 4, default: %{level: 5}} = resolved(input(choices))
+
+      # An override at level 2 with a provider at level 4 and none at level 3.
+      choices = [at(2, connection_id: @beta), at(4, connection_id: @gamma), at(5)]
+      assert %{level: 2, default: %{level: 5}} = resolved(input(choices))
     end
 
     test "is none without an override, without a choice below it, or for a provider that is gone" do
