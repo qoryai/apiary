@@ -487,7 +487,8 @@ gateway's secrets request:
   check gets `404`, with no call to the adapter and no Activity entry.
 
 While `factory` is off and `registry` is on, a request for the registry alone gets `200`.
-A request for the work entry gets that `404`, even for a run made while `factory` was on.
+A request for the work entry or the push entry gets that `404`, even for a run made while
+`factory` was on.
 A request for a model key gets `409` `credentials_differ`, because no model key exists
 without `factory`. The run key, the sender and `allow_secrets` stay checks of the
 secrets request: they are data of the run and of the key it verified under.
@@ -843,15 +844,18 @@ for each other and never on each other at once:
    and the key's row in `secret_values` `FOR KEY SHARE`, then writes the key's row in
    `model_key_copies`, then the audit entry `secret.seal`: a key or a run deleted
    meanwhile is left out of the copies. A request for the model keys alone ends there. A
-   request that also lists the work entry then, in the same transaction, writes the apply
-   items on the entry's row in `run_credentials`, and last the Activity entry
-   `run_credential.issue`. A run's deletion locks the run's row, then its rows in
-   `model_key_copies` and `run_credentials`, so both take the run's row first and cannot
-   deadlock. A request for the work entry alone takes no lock on the run's row. A
-   deletion of a secret, as when a provider is deleted with its keys, locks the rows of
-   its values `FOR UPDATE` by id before it deletes the secret, as the delete's cascade
-   would take them in an order the statement does not fix. So the deletion and a secrets
-   request take the keys' rows in the same order, and cannot deadlock.
+   request that also lists the work entry or the push entry then, in the same
+   transaction, writes the apply items on each entry's row in `run_credentials`, and last
+   the Activity entry `run_credential.issue`. A run's deletion locks the run's row, then
+   its rows in `model_key_copies` and `run_credentials`, so both take the run's row first
+   and cannot deadlock. A request for one entry, `work-1` or `push-1`, and no model key
+   takes no lock on the run's row. A request that names both takes the run's row `FOR KEY
+   SHARE` before it updates the first row (`lock_run/2` in `Apiary.Runs.SecretsRequest`),
+   because a deletion removes the two rows in no fixed order. A deletion of a secret, as
+   when a provider is deleted with its keys, locks the rows of its values `FOR UPDATE` by
+   id before it deletes the secret, as the delete's cascade would take them in an order
+   the statement does not fix. So the deletion and a secrets request take the keys' rows
+   in the same order, and cannot deadlock.
    A member's cancel of a running run, or of a lost run that may still attach again
    (`run.cancel`, "cancel a running run, or a lost run that may still attach again, so it
    changes nothing more"; `Apiary.Runs.cancel/2`), which every member may take, takes the
