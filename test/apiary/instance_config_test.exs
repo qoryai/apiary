@@ -21,6 +21,7 @@ defmodule Apiary.InstanceConfigTest do
 
   @days "must be between %{min} and %{max} days, or empty for the default"
   @invitations "must be a whole number from 1 to 1,000,000, or empty for the default"
+  @prebuilt_image "Enter a whole number from 1 to 10,000, or leave it empty for no limit."
 
   @env_keys ~w(audit_retention_days audit_address_retention_days deletion_grace_days
                invitations_per_day machine_log_retention_days)a
@@ -81,10 +82,11 @@ defmodule Apiary.InstanceConfigTest do
   end
 
   describe "value/1 and source/1" do
-    test "with nothing set, the default: 90, 90, 30 days, 20 and 30 days" do
+    test "with nothing set, the default: 90, 90, no limit, 30 days, 20 and 30 days" do
       assert InstanceConfig.values(InstanceConfig.load()) == %{
                audit_retention_days: 90,
                audit_address_retention_days: 90,
+               prebuilt_image_max_gb: nil,
                deletion_grace_days: 30,
                invitations_per_day: 20,
                machine_log_retention_days: 30
@@ -100,12 +102,14 @@ defmodule Apiary.InstanceConfigTest do
       assert Deletion.grace_days() == 30
       assert Instance.invitations_per_day() == 20
       assert MachineLogs.retention_days() == 30
+      assert InstanceConfig.value(:prebuilt_image_max_gb) == nil
     end
 
     test "the saved value, where the environment sets none" do
       saved!(%{
         audit_retention_days: 60,
         audit_address_retention_days: 14,
+        prebuilt_image_max_gb: 40,
         deletion_grace_days: 7,
         invitations_per_day: 50,
         machine_log_retention_days: 21
@@ -116,6 +120,7 @@ defmodule Apiary.InstanceConfigTest do
       assert Deletion.grace_days() == 7
       assert Instance.invitations_per_day() == 50
       assert MachineLogs.retention_days() == 21
+      assert InstanceConfig.value(:prebuilt_image_max_gb) == 40
       for key <- InstanceConfig.keys(), do: assert(InstanceConfig.source(key) == :saved)
     end
 
@@ -139,7 +144,7 @@ defmodule Apiary.InstanceConfigTest do
       assert Deletion.grace_days() == 3
       assert Instance.invitations_per_day() == 5
       assert MachineLogs.retention_days() == 14
-      for key <- InstanceConfig.keys(), do: assert(InstanceConfig.source(key) == :env)
+      for key <- @env_keys, do: assert(InstanceConfig.source(key) == :env)
     end
 
     test "a blank variable is kept as none, so the saved value applies; a set one is kept" do
@@ -256,6 +261,7 @@ defmodule Apiary.InstanceConfigTest do
       assert values == %{
                audit_retention_days: 60,
                audit_address_retention_days: 14,
+               prebuilt_image_max_gb: nil,
                deletion_grace_days: 30,
                invitations_per_day: 20,
                machine_log_retention_days: 30
@@ -264,6 +270,7 @@ defmodule Apiary.InstanceConfigTest do
       assert InstanceConfig.load() == %{
                audit_retention_days: 60,
                audit_address_retention_days: 14,
+               prebuilt_image_max_gb: nil,
                deletion_grace_days: nil,
                invitations_per_day: nil,
                machine_log_retention_days: nil
@@ -281,9 +288,13 @@ defmodule Apiary.InstanceConfigTest do
       assert {:ok, _values} =
                InstanceConfig.save(scope, :machine_logs, %{"machine_log_retention_days" => "21"})
 
+      assert {:ok, _values} =
+               InstanceConfig.save(scope, :prebuilds, %{"prebuilt_image_max_gb" => "40"})
+
       assert InstanceConfig.load() == %{
                audit_retention_days: 60,
                audit_address_retention_days: 14,
+               prebuilt_image_max_gb: 40,
                deletion_grace_days: 7,
                invitations_per_day: 50,
                machine_log_retention_days: 21
@@ -436,6 +447,28 @@ defmodule Apiary.InstanceConfigTest do
         assert {:ok, %{invitations_per_day: ^limit}} = save.(value)
       end
     end
+
+    test "the largest prebuilt image: 1 to 10,000 GB, a whole number, empty for no limit",
+         %{scope: scope} do
+      save = &InstanceConfig.save(scope, :prebuilds, %{"prebuilt_image_max_gb" => &1})
+
+      for value <- ["0", "-5", "2.5", "10001", "twenty", "99999999999999"] do
+        assert errors(save.(value)) == %{prebuilt_image_max_gb: [@prebuilt_image]}, value
+      end
+
+      assert InstanceConfig.load().prebuilt_image_max_gb == nil
+
+      for {value, limit} <- [{"1", 1}, {" 20 ", 20}, {"10000", 10_000}] do
+        assert {:ok, %{prebuilt_image_max_gb: ^limit}} = save.(value)
+        assert InstanceConfig.value(:prebuilt_image_max_gb) == limit
+      end
+
+      # Cleared, there is no limit again.
+      assert {:ok, %{prebuilt_image_max_gb: nil}} = save.("")
+      assert InstanceConfig.load().prebuilt_image_max_gb == nil
+      assert InstanceConfig.value(:prebuilt_image_max_gb) == nil
+      assert InstanceConfig.source(:prebuilt_image_max_gb) == :default
+    end
   end
 
   describe "save/3, who may" do
@@ -486,6 +519,21 @@ defmodule Apiary.InstanceConfigTest do
 
       assert {entry.before, entry.after} ==
                {%{"invitations_per_day" => 20}, %{"invitations_per_day" => 50}}
+    end
+
+    test "a change of the largest prebuilt image, from and to no limit", %{scope: scope} do
+      save = &InstanceConfig.save(scope, :prebuilds, %{"prebuilt_image_max_gb" => &1})
+
+      assert {:ok, _values} = save.("20")
+      assert {:ok, _values} = save.("")
+
+      assert [set, cleared] = entries()
+
+      assert {set.before, set.after} ==
+               {%{"prebuilt_image_max_gb" => nil}, %{"prebuilt_image_max_gb" => 20}}
+
+      assert {cleared.before, cleared.after} ==
+               {%{"prebuilt_image_max_gb" => 20}, %{"prebuilt_image_max_gb" => nil}}
     end
 
     test "a shorter trail that shortens the address's period says both", %{scope: scope} do
@@ -577,7 +625,9 @@ defmodule Apiary.InstanceConfigTest do
             deletion_grace_days: 0,
             invitations_per_day: 0,
             machine_log_retention_days: 0,
-            machine_log_retention_days: 366
+            machine_log_retention_days: 366,
+            prebuilt_image_max_gb: 0,
+            prebuilt_image_max_gb: 10_001
           ] do
         assert_raise Postgrex.Error, ~r/instance_settings_#{field}_check/, fn ->
           Repo.transaction(fn -> Repo.update_all(Row, set: [{field, value}]) end)

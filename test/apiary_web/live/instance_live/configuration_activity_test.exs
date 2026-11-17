@@ -24,7 +24,8 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationActivityTest do
 
   setup do
     # The variables, whatever the shell running the suite set: none.
-    for key <- InstanceConfig.keys() do
+    # The largest prebuilt image has no variable.
+    for key <- InstanceConfig.keys() -- [:prebuilt_image_max_gb] do
       previous = Application.fetch_env!(:apiary, key)
       Application.put_env(:apiary, key, nil)
       on_exit(fn -> Application.put_env(:apiary, key, previous) end)
@@ -42,16 +43,18 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationActivityTest do
     {:ok, _} = InstanceConfig.save(admin, :retention, %{"audit_retention_days" => "60"})
     {:ok, _} = InstanceConfig.save(admin, :deletion, %{"deletion_grace_days" => "1"})
     {:ok, _} = InstanceConfig.save(admin, :invitations, %{"invitations_per_day" => "1500"})
+    {:ok, _} = InstanceConfig.save(admin, :prebuilds, %{"prebuilt_image_max_gb" => "1200"})
+    {:ok, _} = InstanceConfig.save(admin, :prebuilds, %{"prebuilt_image_max_gb" => ""})
 
     {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
     render_async(view)
 
-    {:ok, %{entries: [invitations, deletion, retention | _]}} =
+    {:ok, %{entries: [cleared, set, invitations, deletion, retention | _]}} =
       Apiary.Audit.list_entries(scope, %{action: "instance.configure"})
 
     assert has_element?(view, "#filter-action-form li", "Configuration changed")
 
-    for entry <- [retention, deletion, invitations] do
+    for entry <- [retention, deletion, invitations, set, cleared] do
       assert text(view, "#entry-#{entry.id}-action") =~ "Changed the configuration of Qory Apiary"
       assert text(view, "#entry-#{entry.id}-actor") =~ scope.user.email
     end
@@ -70,5 +73,11 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationActivityTest do
 
     assert text(view, "#entry-#{deletion.id}-change") == "Grace period: 30 days → 1 day"
     assert text(view, "#entry-#{invitations.id}-change") == "Invitations a day: 20 → 1,500"
+
+    assert text(view, "#entry-#{set.id}-change") ==
+             "Largest prebuilt image: No limit → 1,200 GB"
+
+    assert text(view, "#entry-#{cleared.id}-change") ==
+             "Largest prebuilt image: 1,200 GB → No limit"
   end
 end

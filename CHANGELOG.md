@@ -12,6 +12,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
+  between Retention and Deletion, with the setting Largest prebuilt image: how large an
+  image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
+  limit, the default. A change applies to prebuilds that start after it. A prebuild's run
+  documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
+  times 1,000,000,000. When the setting is empty, the member is absent. No other run has
+  the member. The run contract is vendored at integrations `dbc1ce5`.
 <!-- feature: workflow_model -->
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
@@ -2295,6 +2302,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+- `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
+  largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
+  scans the table, which has one row, as it is added, under a lock that blocks reads and
+  writes. It changes no row.
 <!-- feature: factory -->
 - `run_credentials` (20261118090000): the check on its entries takes the purpose `push`,
   with access `write` and the name `push-<n>`; the check on `issued_apply` takes a `push`
