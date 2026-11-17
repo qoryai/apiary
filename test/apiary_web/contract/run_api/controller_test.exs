@@ -470,7 +470,15 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                "version" => %{"id" => passed.public_id, "number" => 1}
              }
 
-      points = [%{"text" => "The ticket has no test steps.", "action" => "run_again"}]
+      points = [
+        %{"text" => "The ticket has no test steps.", "action" => "run_again"},
+        %{
+          "text" => "The ledger of the run is full.",
+          "action" => "run_again",
+          "fix" => "Close the work item, or take the ticket in again."
+        }
+      ]
+
       assert write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points}).status == 201
 
       body = json_response(read(ctx, "/work-item"), 200)
@@ -1570,8 +1578,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context and options of each answered question in " <>
-           "questions.json as the newest version of questions has them."},
+         "Leave question, context, options and criterion of each answered question in " <>
+           "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
            "questions has it."},
@@ -1594,8 +1602,9 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context while it stays " <>
-           "decided or answered: to change them, withdraw the question and add a new one."},
+           "as the newest version of questions has them, and its context and criterion " <>
+           "while it stays decided or answered: to change them, withdraw the question and " <>
+           "add a new one."},
         {"questions", :decision_changed,
          "Leave the decision of each question in questions.json as the newest version of " <>
            "questions has it, and add none: only the run that adds a question records " <>
@@ -1925,6 +1934,123 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "refuses a custom type with withdrawable false, before the files", ctx do
+      {:ok, _type} =
+        Apiary.Artifacts.insert_template_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "demo-script",
+          "base_view" => "file",
+          "withdrawable" => false
+        })
+
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      for body <- [
+            withdrawal("demo-script", "scenario-2"),
+            push_body("demo-script", [{"a.txt", "text/plain", "a"}], %{
+              "name" => "scenario-2",
+              "withdraw" => true
+            })
+          ] do
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "type_not_withdrawable",
+                 "type" => "demo-script",
+                 "message" =>
+                   "Push a new version of demo-script instead. The artifact type " <>
+                     "demo-script has withdrawable set to false, so a run cannot withdraw " <>
+                     "its names."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "refuses a standard type its template sets withdrawable false for", ctx do
+      store!(ctx, "mockup", [file("one.png", "image/png", @png)], name: "home")
+
+      # Before the lock, a run withdraws the name; a lock on another name leaves it.
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["screenshot"]]
+        )
+
+      assert write(ctx, "/artifacts", withdrawal("mockup", "home")).status == 201
+      store!(ctx, "mockup", [file("two.png", "image/png", @png)], name: "home")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item.workspace_id),
+          set: [locked_standard_types: ["mockup"]]
+        )
+
+      conn = write(ctx, "/artifacts", withdrawal("mockup", "home"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "mockup",
+               "message" =>
+                 "Push a new version of mockup instead. The artifact type mockup has " <>
+                   "withdrawable set to false, so a run cannot withdraw its names."
+             }
+    end
+
+    test "withdraws a name of a custom type that sets no withdrawable", ctx do
+      file_type!(ctx, "demo-script", 1000, 2)
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-script", "scenario-2"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
+    test "refuses a name whose newest version a person approved, before the other 409s",
+         ctx do
+      version =
+        store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      decide!(ctx, :approve, versions: [version.public_id])
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 422) == %{
+               "error" => "type_not_withdrawable",
+               "type" => "screenshot",
+               "message" =>
+                 "Push a new version of screenshot/scenario-2 instead. A member approved its " <>
+                   "newest version, v1, so a run cannot withdraw the name."
+             }
+
+      # A name with no version is still 409 no_version.
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-3"))
+      assert json_response(conn, 409)["error"] == "no_version"
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "withdraws a name whose approval is automatic or of an older version", ctx do
+      automatic = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "auto")
+      decide!(ctx, :approve, versions: [automatic.public_id], user_id: nil, automatic: true)
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "auto")).status == 201
+
+      older = store!(ctx, "screenshot", [file("b.png", "image/png", @png)], name: "older")
+      decide!(ctx, :approve, versions: [older.public_id])
+      store!(ctx, "screenshot", [file("b.png", "image/png", @png <> "b")], name: "older")
+
+      conn = write(ctx, "/artifacts", withdrawal("screenshot", "older"))
+      assert %{"artifact" => %{"version" => %{"number" => 3}}} = json_response(conn, 201)
+    end
+
+    test "withdraws a name when a person only requested changes", ctx do
+      version = store!(ctx, "screenshot", [file("a.png", "image/png", @png)], name: "asked")
+      decide!(ctx, :request_changes, versions: [version.public_id])
+
+      assert write(ctx, "/artifacts", withdrawal("screenshot", "asked")).status == 201
+    end
+
     test "a withdrawal by a run that ended or that a member cancelled is 409 run_ended",
          ctx do
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
@@ -2107,6 +2233,29 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Jason.decode!(content) == body
     end
 
+    test "a fix on an answer point is 422 invalid_artifact", ctx do
+      points = [
+        %{
+          "text" => "Which basket gets the sale?",
+          "action" => "answer",
+          "question" => "q2",
+          "fix" => "Answer it on the Explore tab."
+        }
+      ]
+
+      conn = write(ctx, "/verdict", %{"verdict" => "escalate", "points" => points})
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix verdict.json to match the format of verdict: at #/points/0, " <>
+                   "property 'fix' is not allowed."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a verdict without points is stored without the member, as its schema takes it",
          ctx do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
@@ -2242,6 +2391,180 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert %{"error" => "invalid_artifact", "message" => message} = json_response(conn, 422)
       assert message == not_open.(2, "q7")
+    end
+  end
+
+  describe "POST verdict with a track (A-23)" do
+    @tracks [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast track"}
+    ]
+    @track %{"id" => "fast-track", "reason" => "The change touches one file."}
+
+    # The run placed in Explore, whose gate offers the tracks `ids` of the process.
+    defp offering!(ctx, ids) do
+      document =
+        "software"
+        |> Apiary.Processes.default_document()
+        |> Map.put("tracks", @tracks)
+        |> ApiaryWeb.StagesLive.Draft.update_stage(@explore, fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ids)}
+        end)
+
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [process_version_id: version.id, stage_id: @explore]
+        )
+
+      # The gate is the one of the work item's version.
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [process_version_id: version.id]
+        )
+    end
+
+    test "stores a track the gate offers in the verdict's file", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert conn.status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed", "track" => @track}
+    end
+
+    test "a track the gate does not offer is 422 invalid_artifact for track, the fix first",
+         ctx do
+      offering!(ctx, ["standard"])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{"error" => "invalid_artifact", "names" => ["track"], "message" => message} =
+               json_response(conn, 422)
+
+      assert message ==
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a gate that offers no track, and a run in no stage, refuse a track", ctx do
+      offering!(ctx, [])
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{"names" => ["track"], "message" => message} = json_response(conn, 422)
+      assert message == "Leave track out of the verdict: the gate of Explore offers no track."
+
+      # A stage the version does not have offers no track.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [stage_id: "st_zzzzzzzzzz"]
+        )
+
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+
+      assert %{
+               "message" =>
+                 "Leave track out of the verdict: the gate of the run's stage offers no track."
+             } =
+               json_response(conn, 422)
+
+      # A run with no stage is a run of Explore: its gate is Explore's.
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^ctx.dispatch_run.id),
+          set: [stage_id: nil]
+        )
+
+      conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => @track})
+      assert %{"message" => message} = json_response(conn, 422)
+      assert message == "Leave track out of the verdict: the gate of Explore offers no track."
+    end
+
+    test "a verdict pushed as an artifact is checked as POST verdict is", ctx do
+      offering!(ctx, ["standard"])
+
+      file = fn track ->
+        {"verdict.json", "application/json",
+         Jason.encode!(%{"verdict" => "passed", "track" => track})}
+      end
+
+      conn = write(ctx, "/artifacts", push_body("verdict", [file.(@track)]))
+
+      assert %{"error" => "invalid_artifact", "names" => ["track"], "message" => message} =
+               json_response(conn, 422)
+
+      assert message ==
+               "Set track.id to a track that the gate of Explore offers (standard), or leave track out of the verdict. The track fast-track is not offered."
+
+      assert RunApiStubs.pushed() == []
+
+      offered = %{"id" => "standard", "reason" => "The usual change."}
+      assert write(ctx, "/artifacts", push_body("verdict", [file.(offered)])).status == 201
+    end
+
+    test "a track the schema refuses is the schema's, with no id echoed", ctx do
+      offering!(ctx, ["standard"])
+      long = String.duplicate("a", 5_000)
+
+      for id <- [long, "Fast Track", 7] do
+        conn =
+          write(ctx, "/verdict", %{
+            "verdict" => "passed",
+            "track" => %{"id" => id, "reason" => "x"}
+          })
+
+        assert %{"names" => names, "message" => message} = json_response(conn, 422)
+        assert message =~ "verdict.json"
+        refute message =~ long
+        assert names == ["files[0]"]
+      end
+    end
+
+    test "a verdict file that is not JSON is 422 invalid_artifact, as before", ctx do
+      offering!(ctx, ["standard"])
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("verdict", [{"verdict.json", "application/json", "{not json"}])
+        )
+
+      assert %{"error" => "invalid_artifact", "names" => ["files[0]"]} = json_response(conn, 422)
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a null track is no track, and is stored without the member", ctx do
+      offering!(ctx, ["standard"])
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "track" => nil}).status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a verdict with no track is stored as before where the gate offers tracks", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+      assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
+      [version] = RunApiStubs.pushed()
+      assert [%{content: content}] = version.files
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a track of another form is the schema's to refuse, at files[0]", ctx do
+      offering!(ctx, ["standard", "fast-track"])
+
+      for track <- [
+            %{"id" => "fast-track"},
+            %{"id" => "fast-track", "reason" => ""},
+            %{"id" => "fast-track", "reason" => "ok", "value" => 1},
+            "fast-track"
+          ] do
+        conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => track})
+
+        assert %{"error" => "invalid_artifact", "names" => ["files[0]"]} =
+                 json_response(conn, 422)
+      end
     end
   end
 

@@ -2034,6 +2034,50 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
+    test "a run's point with fix: the fix line, escaped, in place of Run another round", %{
+      conn: conn,
+      scope: scope
+    } do
+      text = "The build is at its limit of 100 steps, so another round stops at once."
+
+      fix =
+        "Accept the newest submission, or close this work item and make a new one " <>
+          "for the unfinished criteria."
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, understood_result())
+
+          push_verdict!(run, [
+            %{"text" => text, "action" => "run_again", "fix" => fix},
+            %{"text" => "The ticket describes two baskets.", "action" => "run_again"},
+            %{
+              "text" => "The ledger of the run is full.",
+              "action" => "run_again",
+              "fix" => "Close the work item, or take the <b>ticket</b> in again."
+            }
+          ])
+        end)
+
+      assert %Escalation{cause: :escalate} = escalation(work_item)
+      {:ok, view, html} = live(conn, page(scope, work_item.number) <> "/explore")
+
+      assert line(view, "#work-item-needs-point-1") == text <> " " <> fix
+      refute has_element?(view, "#work-item-needs-point-1", "Run another round.")
+
+      # A point without fix has the action's sentence.
+      assert line(view, "#work-item-needs-point-2") ==
+               "The ticket describes two baskets. Run another round."
+
+      # The fix is text: its HTML is shown, not rendered.
+      assert line(view, "#work-item-needs-point-3") ==
+               "The ledger of the run is full. Close the work item, or take the <b>ticket</b> in again."
+
+      refute html =~ "<b>ticket</b>"
+    end
+
     test "a run that asks and escalates: the block above the questions, and no note field", %{
       conn: conn,
       scope: scope
@@ -3713,7 +3757,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-notice",
-               "Add acceptance criteria before you approve Shape."
+               "Add acceptance criteria before you approve this stage."
              )
     end
   end
@@ -6518,7 +6562,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
       assert has_element?(view, ~s|#work-item-head-stages-#{@shape}[aria-current="step"]|)
       assert has_element?(view, "#work-item-stage-state", "At the gate")
-      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve Shape")
+      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve")
     end
   end
 
@@ -7008,8 +7052,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(runs)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
-      assert has_element?(view, "#spend-dialog-go", "Approve Shape")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
+      assert has_element?(view, "#spend-dialog-go", "Approve")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of implement on #{machine(scope)}. The run uses model tokens."
@@ -7289,7 +7333,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       before = spend_runs(approve)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
-      assert has_element?(view, "#spend-dialog-title", "Approve Shape?")
+      assert has_element?(view, "#spend-dialog-title", "Approve this stage?")
 
       assert line(view, "#spend-dialog-line") ==
                "Starts a run of verify-change on #{machine(scope)}. The run uses model tokens."

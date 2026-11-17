@@ -25,7 +25,8 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
   # and admins change those. Of what the organisation has as a whole, a person of the
   # operator with no membership there finds nothing. The organisation's people act in
   # Main, by their membership, as in any organisation, on everything the operator changes
-  # there too.
+  # there too but the time limits, which only a person acting through the operator sets
+  # (`ApiaryPro.Access`'s `@operator_alone`).
 
   import ApiaryPro.OperatorsFixtures
   import Apiary.OrganisationsFixtures
@@ -77,12 +78,20 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
 
   # What the operator changes in Main: the organisation's owners and admins change it too.
   @operator_changes [
-    :"time_limit.edit",
     :"retention.edit",
     :"process.edit",
     :"artifact_type.edit",
     :"model_choice.write"
   ]
+
+  # What the operator alone changes in Main: the time limits.
+  @operator_alone [:"time_limit.edit"]
+
+  # The people who act in Main through the operator: the operator's owners and admins with
+  # no membership in the organisation, and an owner of the operator who is a member there.
+  # A member of the operator who is an admin of the organisation, and an admin of the
+  # operator who is an owner there, act at their level in the organisation.
+  @through_operator [:operator_owner, :operator_admin, :owner_and_operated_member]
 
   # The organisation's model providers and runtimes, which it owns as a whole: its owners
   # and admins change them, and a level in the operator counts for nothing there.
@@ -250,6 +259,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
         @operator_changes,
         &{&1, yes: Enum.uniq(@own_admins ++ @operator_owners_admins)}
       ) ++
+      Enum.map(@operator_alone, &{&1, yes: @through_operator}) ++
       Enum.map(@organisation_models, &{&1, yes: @own_admins}) ++
       Enum.map(@adapter_keys, &{&1, yes: [], on: :adapter}) ++
       Enum.map(@pool_keys, &{&1, yes: []}) ++
@@ -330,7 +340,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       actor in @operator_only and
           (match?(%Apiary.Organisations.Organisation{id: id} when is_binary(id), subject) or
              (Apiary.Access.action(action).asked_of == :organisation and
-                action not in @operator_changes)) ->
+                action not in (@operator_changes ++ @operator_alone))) ->
         :not_found
 
       # The workspace's secrets and variables are not there for the operator's people.

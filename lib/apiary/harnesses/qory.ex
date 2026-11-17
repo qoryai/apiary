@@ -454,19 +454,28 @@ defmodule Apiary.Harnesses.Qory do
   # workflows/2 is the workflow names the stack `stack` lists at `commit`, sorted; empty
   # for a stack it does not export, and for a commit with no files kept.
   @spec workflows(String.t() | nil, String.t() | nil) :: [String.t()]
-  def workflows(commit, stack) when is_binary(stack) do
-    decoded(commit, {:workflows, stack}, fn files, exports ->
+  def workflows(commit, stack),
+    do: commit |> workflow_levels(stack) |> Map.keys() |> Enum.sort()
+
+  @doc false
+  # workflow_levels/2 is the access level each workflow the stack `stack` lists at
+  # `commit` declares (`Apiary.Harnesses.Reader.workflow_access/2`), by name; empty for a
+  # stack it does not export, and for a commit with no files kept.
+  @spec workflow_levels(String.t() | nil, String.t() | nil) ::
+          %{String.t() => :read | :write_no_push | :write}
+  def workflow_levels(commit, stack) when is_binary(stack) do
+    decoded(commit, {:workflow_levels, stack}, fn files, exports ->
       with true <- stack in valid_stacks(exports),
            content when is_binary(content) <- Map.get(files, Reader.stack_file(exports, stack)),
            {:ok, %{workflows: workflows}} <- Reader.stack(content) do
-        workflows |> Map.keys() |> Enum.sort()
+        Reader.workflow_levels(workflows)
       else
-        _none -> []
+        _none -> %{}
       end
-    end) || []
+    end) || %{}
   end
 
-  def workflows(_commit, nil), do: []
+  def workflow_levels(_commit, nil), do: %{}
 
   # What `decode` makes of the files of `commit` and their exports, kept by commit; nil
   # for a commit with no files kept.

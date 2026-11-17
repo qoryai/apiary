@@ -402,7 +402,8 @@ defmodule Apiary.Stacks.SourcesTest do
       assert {:error, {:limited, _seconds}} = Sources.exports(ctx.scope, harness)
     end
 
-    test "reading one gives its workflows and the base a document extends", ctx do
+    test "reading one gives its workflows, the level each declares and the base a document extends",
+         ctx do
       serve_calls([ctx.adapter], covered: ctx.covered, files: @files)
       [_app, source] = Sources.repositories(ctx.scope)
 
@@ -411,8 +412,20 @@ defmodule Apiary.Stacks.SourcesTest do
       assert stack == %{
                name: "triage",
                base: %{"git" => @harness, "ref" => "HEAD", "stack" => "triage"},
-               workflows: ["fix", "triage"]
+               workflows: ["fix", "triage"],
+               access: %{"fix" => :write, "triage" => :read}
              }
+    end
+
+    test "levels_of/2 takes the lower level of a workflow two stacks list", _ctx do
+      stacks = [
+        %{name: "a", workflows: ["fix", "plan"], access: %{"fix" => :write, "plan" => :read}},
+        %{name: "b", workflows: ["fix"], access: %{"fix" => :write_no_push}}
+      ]
+
+      assert Sources.levels_of(stacks, nil) == %{"fix" => :write_no_push, "plan" => :read}
+      assert Sources.levels_of(stacks, "a") == %{"fix" => :write, "plan" => :read}
+      assert Sources.levels_of(stacks, "missing") == %{}
     end
   end
 
@@ -471,7 +484,8 @@ defmodule Apiary.Stacks.SourcesTest do
       assert stack == %{
                name: nil,
                base: %{"git" => @team, "ref" => "v1"},
-               workflows: ["review"]
+               workflows: ["review"],
+               access: %{"review" => :read}
              }
     end
 

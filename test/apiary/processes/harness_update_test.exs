@@ -554,6 +554,9 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
       assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
                {:ok, ["explore-a-ticket", "plan-a-ticket"]}
+
+      assert Stacks.Sources.chosen_declared(ctx.scope, ctx.workspace) ==
+               {:ok, %{"explore-a-ticket" => :read, "plan-a-ticket" => :read}}
     end
 
     test "a pinned harness has no commit in use: its runs compose the pin", ctx do
