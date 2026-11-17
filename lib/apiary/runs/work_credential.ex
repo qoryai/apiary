@@ -12,8 +12,10 @@ defmodule Apiary.Runs.WorkCredential do
   #
   # `issue/4` asks `Apiary.Access` first: `run_credential.issue` on the run, for the
   # gateway's key. A refusal is `{:error, :not_found}`, with a log line, no call and no
-  # Activity entry, since nothing was attempted. Then, in this order, it stops at the first
-  # refusal:
+  # Activity entry, since nothing was attempted. A work entry with access `write` is
+  # refused next, `{:error, :credential_unavailable}`, with a log line that has the entry's
+  # name, no call and no Activity entry: only a push entry writes. Then, in this order, it
+  # stops at the first refusal:
   #
   #   1. The entry's connection is connected, of the run's organisation and of the
   #      entry's adapter (`:connection_gone`), and the adapter is not deleted and has an
@@ -41,7 +43,9 @@ defmodule Apiary.Runs.WorkCredential do
   # Each attempt writes one Activity entry, `run_credential.issue`, in the run's
   # organisation, about the run, by the gateway's key, unless the write fails: `issued`,
   # written last before the answer, or the cause of the refusal, with `:seal_failed` and
-  # `:not_recorded` for a seal or a write that failed after the call (`refused/4`). Its
+  # `:not_recorded` for a seal or a write that failed after the call, and
+  # `:other_credential_failed` for a credential issued before another entry's of the same
+  # request failed, so it was not sent (`refused/4`). Its
   # details: the run's id, the connection's, the adapter's and the collection's public
   # ids, the target's path, the access, the purpose, the entry's name, the expiry when
   # issued and the outcome. Every detail comes from the entry, the connection, the
@@ -89,6 +93,7 @@ defmodule Apiary.Runs.WorkCredential do
           | :seal_failed
           | :apply_moved
           | :not_recorded
+          | :other_credential_failed
 
   @typedoc """
   A credential `issue/4` issued and checked, with the entry it was issued for and the
@@ -102,7 +107,8 @@ defmodule Apiary.Runs.WorkCredential do
   def causes do
     [:connection_gone, :adapter_key_missing, :call_failed] ++
       CallFailure.causes() ++
-      RunCredentialIssue.causes() ++ [:run_not_live, :seal_failed, :apply_moved, :not_recorded]
+      RunCredentialIssue.causes() ++
+      [:run_not_live, :seal_failed, :apply_moved, :not_recorded, :other_credential_failed]
   end
 
   @doc false
@@ -133,9 +139,24 @@ defmodule Apiary.Runs.WorkCredential do
   # the action, with no call and no entry.
   @spec issue(Run.t(), RunCredential.t(), AccessKey.t(), integer) ::
           {:ok, t} | {:error, :not_found | :unavailable | :gone | :credential_unavailable}
-  def issue(%Run{} = run, %RunCredential{purpose: purpose} = row, %AccessKey{} = access_key, now)
+  def issue(
+        %Run{} = run,
+        %RunCredential{purpose: purpose, access: access} = row,
+        %AccessKey{} = access_key,
+        now
+      )
       when purpose in [:work, :push] and is_integer(now) do
     case may_issue(access_key, run) do
+      :ok when purpose == :work and access == :write ->
+        # A work entry stored with write access, before the push entry existed, is for the
+        # run's sessions: only the push entry gets a write credential.
+        Logger.warning(
+          "a work credential for the run #{run.node_run_id} was not issued: " <>
+            "the entry #{row.name} has write access"
+        )
+
+        {:error, :credential_unavailable}
+
       :ok ->
         attempt(run, row, access_key, now)
 
@@ -175,10 +196,14 @@ defmodule Apiary.Runs.WorkCredential do
   # apply items, and its Activity entry. `{:error, :credential_unavailable}` for
   # `:apply_moved` and `:seal_failed`, `{:error, :unavailable}` for `:not_recorded` and
   # where the Activity entry cannot be written.
-  @spec refused(AccessKey.t(), Run.t(), t, :seal_failed | :apply_moved | :not_recorded) ::
-          {:error, :unavailable | :credential_unavailable}
+  @spec refused(
+          AccessKey.t(),
+          Run.t(),
+          t,
+          :seal_failed | :apply_moved | :not_recorded | :other_credential_failed
+        ) :: {:error, :unavailable | :credential_unavailable}
   def refused(%AccessKey{} = access_key, %Run{} = run, %{row: row, place: place}, cause)
-      when cause in [:seal_failed, :apply_moved, :not_recorded] do
+      when cause in [:seal_failed, :apply_moved, :not_recorded, :other_credential_failed] do
     refusal(access_key, run, row, place, cause, nil)
   end
 

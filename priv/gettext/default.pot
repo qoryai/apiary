@@ -26912,6 +26912,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "the request failed for another credential of the run, so this one was not sent"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "the run ended before the credential could be sealed"
 msgstr ""
 

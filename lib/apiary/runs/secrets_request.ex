@@ -91,7 +91,7 @@ defmodule Apiary.Runs.SecretsRequest do
   # writes one `run_credential.issue` Activity entry per entry: its refusal, or, last
   # before the answer and in one transaction with its apply items and the seal's audit
   # entry, `issued`. A request for both entries fails whole: the entry that failed has its
-  # cause, and an entry whose credential was issued before has `not_recorded`.
+  # cause, and an entry whose credential was issued before has `other_credential_failed`.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
@@ -440,7 +440,7 @@ defmodule Apiary.Runs.SecretsRequest do
   # The credentials of the entries the request names, from their adapter, one call each, in
   # the order of the run configuration (`Apiary.Runs.WorkCredential.issue/4`): `{:ok, []}`
   # where the request names no entry. The first refusal is the request's, and an
-  # entry issued before it is refused, never sent (`not_recorded`). Every step before it
+  # entry issued before it is refused, never sent (`other_credential_failed`). Every step before it
   # needs no token.
   defp issued(run, works, access_key, now) do
     Enum.reduce_while(works, {:ok, []}, fn %{row: row}, {:ok, issued} ->
@@ -449,7 +449,11 @@ defmodule Apiary.Runs.SecretsRequest do
           {:cont, {:ok, issued ++ [credential]}}
 
         {:error, _refusal} = error ->
-          Enum.each(issued, &WorkCredential.refused(access_key, run, &1, :not_recorded))
+          Enum.each(
+            issued,
+            &WorkCredential.refused(access_key, run, &1, :other_credential_failed)
+          )
+
           {:halt, error}
       end
     end)
