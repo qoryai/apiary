@@ -5639,6 +5639,169 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the findings of a return reach Build as inputs" do
+    @verify "st_m1mqbeywdg"
+    @findings [%{"text" => "The export has no PDF.", "action" => "run_again"}]
+
+    # Build: a loop of implement-changes and review-changes, gate none. Verify: one run that
+    # returns to Build on changes-requested, at most 5 times.
+    defp loop_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      loop = %{
+        "loop" => %{
+          "rounds" => 3,
+          "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+        }
+      }
+
+      save!(scope, [
+        stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}}),
+        stage(@verify, "Verify", [
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 5}}
+        ])
+      ])
+    end
+
+    # What Verify's run pushes: a verification (unless `nil`), then its verdict.
+    defp verifying(verdict, verification) do
+      fn run, registered ->
+        if verification do
+          {:ok, _version} =
+            Artifacts.push(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verification",
+              [%{filename: "v.md", content_type: "text/markdown", binary: verification}],
+              name: "main",
+              stage_id: run.stage_id
+            )
+        end
+
+        verdict(verdict, @findings).(run, registered)
+      end
+    end
+
+    defp in_verify!(scope) do
+      loop_process!(scope)
+      work_item = take_in!(scope) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      work_item
+    end
+
+    defp returned_by(work_item, verification) do
+      work_item = end_run!(work_item, verifying("changes-requested", verification))
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = work_item
+      work_item
+    end
+
+    defp from_return(work_item) do
+      for %{from: :return, type: type, required: false, version: %{id: id}} <-
+            Stages.inputs(work_item),
+          do: {type, id}
+    end
+
+    defp newest_id(work_item, type) do
+      work_item |> versions(type) |> Enum.max_by(& &1.number) |> Map.fetch!(:public_id)
+    end
+
+    test "each run of Build after a return lists the newest verdict and verification",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+
+      verdict = newest_id(work_item, "verdict")
+      verification = newest_id(work_item, "verification")
+
+      assert [
+               %{type: "verdict", required: false, from: :return, version: %{id: ^verdict}},
+               %{
+                 type: "verification",
+                 required: false,
+                 from: :return,
+                 version: %{id: ^verification}
+               }
+             ] = Stages.inputs(work_item)
+
+      # The loop's next run of the entry still lists them.
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert from_return(work_item) == [{"verdict", verdict}, {"verification", verification}]
+
+      # The findings are no person's note.
+      assert Stages.notes(work_item) == []
+    end
+
+    test "after Build's gate passes, a later run lists none", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      assert from_return(work_item) == []
+
+      # A second return of Verify's run lists them again.
+      returned = end_run!(work_item, verifying("changes-requested", "# Again"))
+      assert %WorkItem{stage_id: @build} = returned
+      assert [_verdict, _verification] = from_return(returned)
+    end
+
+    test "a work item moved to Build by a person lists none through a return", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      work_item = end_run!(work_item, verdict("passed"))
+      assert from_return(work_item) == []
+
+      {:ok, moved} =
+        Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+
+      assert %WorkItem{stage_id: @build} = moved
+      assert from_return(moved) == []
+    end
+
+    test "with no verification, only the verdict is listed", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by(nil)
+      verdict = newest_id(work_item, "verdict")
+
+      assert [%{type: "verdict", from: :return, version: %{id: ^verdict}}] =
+               Enum.filter(Stages.inputs(work_item), &(&1[:from] == :return))
+    end
+
+    test "an approval lists no version through the return", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      # Build's gate `none` approved twice, with the versions of Build's outputs: none.
+      assert [[], []] = for(d <- decisions(work_item), d.stage_id == @build, do: d.versions)
+
+      for type <- ["verdict", "verification"] do
+        assert [%{approved_version: nil, versions: versions}] =
+                 Enum.filter(Stages.artifact_index(work_item), &(&1.type == type))
+
+        assert Enum.all?(versions, &(&1.approvals == []))
+      end
+    end
+
+    test "a second return lists the newer versions", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# First")
+      first = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = returned_by(work_item, "# Second")
+      second = from_return(work_item)
+
+      assert [{"verdict", verdict}, {"verification", verification}] = second
+      assert verdict == newest_id(work_item, "verdict")
+      assert verification == newest_id(work_item, "verification")
+      assert second != first
+      assert length(versions(work_item, "verification")) == 2
+    end
+  end
+
   describe "a work item that is not live" do
     defp closed_waiting_workflow!(scope) do
       :ok = Processes.record_declared(scope.workspace, ["review"])

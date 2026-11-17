@@ -333,6 +333,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not earlier. A workflow with a return reads `returns to <stage> at most <n> times` in a
   member's Sequence box, and its card on the canvas has the line `Returns to <stage>, at
   most <n> times` under its name.
+- After a run's return (the `return` key above), `inputs` in `GET work-item` also lists,
+  for each run of the stage it returned the work item to, the newest `verdict` and the
+  newest `verification` made in the stage that returned it, with `"from": "return"` and
+  `"required": false`; a type with no version has no entry. The entries stay until a
+  decision of the take in is made after the returning run: an approval (so the returned
+  stage's gate passing again), a move or a Request changes. A later return lists its newer
+  versions. No approval lists these versions, an entry is left out when an input above it
+  already has that version, and the findings are not a person's note: `notes` is the same
+  as before.
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold

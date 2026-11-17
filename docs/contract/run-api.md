@@ -141,8 +141,17 @@ Returns `200` with the work item snapshot:
   approval of that stage, by a person or automatic) or a later move takes the work item to
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
-  that version. The key `from` is present only on these entries, and no approval lists such
+  that version. The key `from` is present on these entries, and no approval lists such
   a version.
+- After a run of a stage returns the work item to an earlier stage (the `return` key of a
+  workflow entry), `inputs` ends with the newest `verdict` and then the newest
+  `verification` made in the stage that returned it, each as
+  `{"type": "verdict", "required": false, "version": {"id": "av_...", "number": 2},
+  "from": "return"}`. A type with no such version has no entry, and an entry is left out
+  when an input above it already has that version. The entries last until a decision of
+  the take in is made after the returning run: an approval of any stage (so the gate of
+  the stage that the work item returned to passes), a move or a Request changes. A later
+  return lists the newer versions. No approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier

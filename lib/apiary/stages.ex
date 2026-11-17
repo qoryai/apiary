@@ -139,6 +139,8 @@ defmodule Apiary.Stages do
   # The runs a workflow outside a loop may have in one round of its entry: its first,
   # and one after each set of answers, as today's Explore has in one take in.
   @question_runs 3
+  # The types of a stage's run that a return lists as inputs (`returned_inputs/4`).
+  @returned_types ["verdict", "verification"]
   @action :"gate.approve"
   @max_note 4000
 
@@ -1547,8 +1549,9 @@ defmodule Apiary.Stages do
   #
   # After a person moved the work item to an earlier stage, it ends with one entry for each
   # output of each stage the work item left that way (`moved_inputs/5`), marked
-  # `from: :move`. No other entry has `from`, and the entries `status/1` and the stage's
-  # checks read are the unmarked ones.
+  # `from: :move`. After a return (`returned_inputs/5`), it ends with the newest `verdict`
+  # and `verification` of the stage that returned it, marked `from: :return`. No other entry
+  # has `from`, and the entries `status/1` and the stage's checks read are the unmarked ones.
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
   def inputs(%WorkItem{} = work_item) do
@@ -1558,7 +1561,8 @@ defmodule Apiary.Stages do
       {:ok, version, stage} ->
         artifacts = Artifacts.list(work_item)
         read = inputs(work_item, version, stage, artifacts)
-        read ++ moved_inputs(work_item, version, stage, artifacts, read)
+        moved = moved_inputs(work_item, version, stage, artifacts, read)
+        read ++ moved ++ returned_inputs(work_item, stage, artifacts, read ++ moved)
 
       _other ->
         []
@@ -1600,6 +1604,58 @@ defmodule Apiary.Stages do
         from: :move
       }
     end
+  end
+
+  # returned_inputs/4 is, for a work item whose stage was last entered by a return of a
+  # later stage's run (`returned!/2`), the newest version of `verdict` and then of
+  # `verification` made in the stage that run belongs to, marked `from: :return` and not
+  # required; a type with no such version has no entry. A version in `listed` (the entries
+  # already there) is left out. The entries last until a decision of the take in is made
+  # after that run: an approval of any stage, so the gate of this stage passing, a move, or
+  # a Request changes, each of which enters a stage by another route. A newer return
+  # replaces them. They are not the stage's outputs, so no approval lists them, and they
+  # are no person's note (`{feedback: new}` stays false).
+  defp returned_inputs(%WorkItem{take_in: take_in} = work_item, stage, artifacts, listed)
+       when is_integer(take_in) do
+    with %DispatchRun{} = run <- returning_run(work_item, stage),
+         false <- decided_since?(work_item, run) do
+      listed_ids = for %{version: %{id: id}} <- listed, do: id
+
+      for type <- @returned_types,
+          found = newest_made_in(artifacts, type, run.stage_id),
+          found.public_id not in listed_ids do
+        %{
+          type: type,
+          required: false,
+          version: version_map(found, approvals_by_version(work_item)),
+          from: :return
+        }
+      end
+    else
+      _none -> []
+    end
+  end
+
+  defp returned_inputs(%WorkItem{}, _stage, _artifacts, _listed), do: []
+
+  # The newest run of the work item's take in that returned it to `stage` (`returned_to`),
+  # nil for none. The run's `updated_at` is the time it ended and returned the work item.
+  defp returning_run(%WorkItem{id: id, take_in: take_in}, stage) do
+    Repo.one(
+      from d in DispatchRun,
+        where: d.work_item_id == ^id and d.take_in == ^take_in and d.returned_to == ^stage["id"],
+        order_by: [desc: d.updated_at, desc: d.id],
+        limit: 1
+    )
+  end
+
+  defp decided_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{updated_at: ended}) do
+    Repo.exists?(
+      from d in GateDecision,
+        where:
+          d.work_item_id == ^id and d.take_in == ^take_in and
+            d.kind in [:approve, :move, :request_changes] and d.inserted_at > ^ended
+    )
   end
 
   # departures/2 is the decisions of the work item's take in that moved it out of a stage to
