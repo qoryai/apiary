@@ -139,7 +139,9 @@ Returns `200` with the work item snapshot:
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.
   Where it lists several names of one type, the input is the name whose listed version
-  is newest.
+  is newest. A version that a person's approval listed is the approved version for every
+  run after that approval, in any stage, also after a move back to a stage at or before
+  that approval.
   `questions` and `review-comments` are never a change.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.

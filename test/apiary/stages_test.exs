@@ -5743,6 +5743,37 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
     end
 
+    test "after a move back to Build, Build reads the change that Verify's approval listed",
+         %{scope: scope} do
+      criteria_process!(scope, :release)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      changed = pushes_one("acceptance-criteria", "# AC-2", decision: decision)
+
+      work_item =
+        work_item
+        |> end_run!(both(changed, pushes_one("explainer", "# Explainer 2", [])))
+        |> end_run!(verdict("passed"))
+        |> end_run!(verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      new_id = criteria(work_item, 2).public_id
+
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+
+      assert %GateDecision{versions: [^new_id]} =
+               Enum.find(decisions(work_item), &(&1.stage_id == @verify))
+
+      # A person moves the work item from Release back to Build, before Verify's gate.
+      assert %WorkItem{stage_id: @release} = work_item
+      {:ok, work_item} = Stages.move(scope, work_item, @build, nil, expect_stage: @release)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+
+      assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}] = Stages.inputs(work_item)
+    end
+
     defp versions_of(work_item, ids) do
       for artifact <- Apiary.Artifacts.list(work_item),
           v <- artifact.versions,

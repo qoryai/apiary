@@ -1841,6 +1841,22 @@ defmodule Apiary.Stages do
   defp decision_times(work_item, versions),
     do: Notes.times(work_item.id, Enum.map(versions, &Map.get(&1, :decision_id)))
 
+  # Whether the stage `stage_id` of the process document `document` has a gate `none`, in
+  # SQL. It reads only that stage's gate kind, not the whole document.
+  defmacrop gate_none(document, stage_id) do
+    quote do
+      fragment(
+        """
+        COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                  FROM jsonb_array_elements(? -> 'stages') AS s
+                  WHERE s ->> 'id' = ? LIMIT 1), false)
+        """,
+        unquote(document),
+        unquote(stage_id)
+      )
+    end
+  end
+
   # The approvals of the work item by the public id of each version they cover, oldest
   # first. `gate_none` is whether the stage's gate was `none` in the process version the
   # approval was recorded under, which a later version may change. The query reads only
@@ -1852,17 +1868,7 @@ defmodule Apiary.Stages do
         on: v.id == d.process_version_id,
         where: d.work_item_id == ^work_item.id and d.kind == :approve,
         order_by: d.inserted_at,
-        select:
-          {d,
-           fragment(
-             """
-             COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
-                       FROM jsonb_array_elements(? -> 'stages') AS s
-                       WHERE s ->> 'id' = ? LIMIT 1), false)
-             """,
-             v.document,
-             d.stage_id
-           )}
+        select: {d, gate_none(v.document, d.stage_id)}
     )
     |> Enum.flat_map(fn {decision, gate_none} ->
       approval = %{
@@ -3196,13 +3202,14 @@ defmodule Apiary.Stages do
 
   # The version of `type` that `stage` reads, whether or not the stage lists it as an
   # input: a person's change to it that no approval lists yet (`changed_version/3`), else
-  # a person's version added on the work item in this stage, else the version the gate of
-  # the nearest earlier stage that approved one approved; nil for none. Where that approval
-  # lists several versions of one artifact, as a person's approval that lists a change
-  # beside an older output does, the read is the highest-numbered of them. A withdrawn name
-  # is never read (`Artifacts.withdrawn?/1`): neither a person's version nor an approved one
-  # of it. `listed` is the public ids of the versions that an approval lists
-  # (`listed_ids/1`).
+  # a person's version added on the work item in this stage, else the approved version:
+  # what the gate of the nearest earlier stage that approved one approved, or what a
+  # person's approval at this stage or a later one listed, whichever approval is newer
+  # (`listed_later/5`); nil for none. Where an approval lists several versions of one
+  # artifact, as a person's approval that lists a change beside an older output does, the
+  # read is the highest-numbered of them (`approved_version/3`). A withdrawn name is never
+  # read (`Artifacts.withdrawn?/1`): neither a person's version nor an approved one of it.
+  # `listed` is the public ids of the versions that an approval lists (`listed_ids/1`).
   defp read_version(work_item, version, stage, artifacts, type, listed) do
     changed = changed_version(artifacts, type, listed)
     artifacts = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
@@ -3217,19 +3224,57 @@ defmodule Apiary.Stages do
       |> Enum.filter(&(&1.writer == :person and &1.stage_id in [nil, stage["id"]]))
       |> Enum.max_by(& &1.number, fn -> nil end)
 
-    gated =
-      earlier_stage_ids(version, stage)
-      |> Enum.find_value(fn stage_id ->
-        case last_approval(work_item, stage_id) do
-          %GateDecision{versions: covered} ->
-            approved_version(covered, by_id, type)
+    earlier = earlier_stage_ids(version, stage)
 
-          nil ->
-            nil
+    gated =
+      Enum.find_value(earlier, fn stage_id ->
+        with %GateDecision{versions: covered, inserted_at: at} <-
+               last_approval(work_item, stage_id),
+             %{} = found <- approved_version(covered, by_id, type) do
+          {at, found}
+        else
+          _none -> nil
         end
       end)
 
-    changed || person || gated
+    approved =
+      case {gated, listed_later(work_item, earlier, by_id, type)} do
+        {gated, nil} ->
+          gated && elem(gated, 1)
+
+        {nil, {_at, later}} ->
+          later
+
+        {{at, gated}, {later_at, later}} ->
+          if DateTime.after?(later_at, at), do: later, else: gated
+      end
+
+    changed || person || approved
+  end
+
+  # The version of `type` that the newest person's approval at a stage not in `earlier`
+  # (this stage or a later one) listed, with the approval's time; nil for none. Such a
+  # version is the approved version for every run after that approval, after a move back
+  # too (624 (a)). An approval at a gate `none` is no person's approval, also where a
+  # member accepted the escalation that ended the stage (`approve_none!/4`).
+  defp listed_later(work_item, earlier, by_id, type) do
+    Repo.all(
+      from d in GateDecision,
+        join: v in Processes.Version,
+        on: v.id == d.process_version_id,
+        where:
+          d.work_item_id == ^work_item.id and d.kind == :approve and not d.automatic and
+            d.stage_id not in ^earlier,
+        where: not gate_none(v.document, d.stage_id),
+        order_by: [desc: d.inserted_at],
+        select: {d.inserted_at, d.versions}
+    )
+    |> Enum.find_value(fn {at, covered} ->
+      case approved_version(covered, by_id, type) do
+        nil -> nil
+        found -> {at, found}
+      end
+    end)
   end
 
   # The version of `type` that an approval covering `covered` approved: of each artifact of
