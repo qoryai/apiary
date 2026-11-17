@@ -170,7 +170,7 @@ defmodule Apiary.Explore.QuestionsTest do
                {:error, :asked_changed}
     end
 
-    test "refuses the question, context or options of an answered question changed" do
+    test "refuses the question, context, options or criterion of an answered question changed" do
       question =
         "q1"
         |> answered(12)
@@ -202,6 +202,22 @@ defmodule Apiary.Explore.QuestionsTest do
 
       assert Questions.check_run(newest, doc([Map.delete(question, "context")]), 13) ==
                {:error, :answered_changed}
+
+      # The criterion stays as the answered question has it, set or absent: a run changes
+      # it, drops it or adds it on no answered question.
+      with_criterion = Map.put(question, "criterion", "ac-3")
+
+      for {earlier, given} <- [
+            {with_criterion, Map.put(with_criterion, "criterion", "ac-4")},
+            {with_criterion, question},
+            {question, with_criterion}
+          ] do
+        assert Questions.check_run(doc([earlier]), doc([given]), 13) ==
+                 {:error, :answered_changed},
+               inspect({earlier["criterion"], given["criterion"]})
+      end
+
+      assert Questions.check_run(doc([with_criterion]), doc([with_criterion]), 13) == :ok
 
       # An option's recommended is part of the options: a run adds it, removes it or moves
       # it on no answered question.
@@ -247,6 +263,25 @@ defmodule Apiary.Explore.QuestionsTest do
                  question |> reopened(13) |> Map.put("question", "Delete the 2020 records?"),
                  Map.put(open, "question", "Which month of 2020?")
                ]),
+               13
+             ) == :ok
+
+      # An open question's criterion is the run's to add, change or drop, and so is a
+      # reopened one's.
+      aimed = Map.put(open, "criterion", "ac-3")
+
+      for {earlier, given} <- [
+            {open, aimed},
+            {aimed, Map.put(aimed, "criterion", "ac-4")},
+            {aimed, open}
+          ] do
+        assert Questions.check_run(doc([earlier]), doc([given]), 13) == :ok,
+               inspect({earlier["criterion"], given["criterion"]})
+      end
+
+      assert Questions.check_run(
+               doc([question]),
+               doc([question |> reopened(13) |> Map.put("criterion", "ac-3")]),
                13
              ) == :ok
     end
@@ -500,11 +535,12 @@ defmodule Apiary.Explore.QuestionsTest do
                14
              ) == {:error, :decided_changed}
 
-      # While it stays decided or answered, the context stays too.
-      for earlier <- [decided, answered] do
+      # While it stays decided or answered, the context and the criterion stay too.
+      for earlier <- [decided, answered],
+          {key, value} <- [{"context", "The baskets move."}, {"criterion", "ac-3"}] do
         assert Questions.check_run(
                  doc([earlier]),
-                 doc([Map.put(earlier, "context", "The baskets move.")]),
+                 doc([Map.put(earlier, key, value)]),
                  14
                ) ==
                  {:error, if(earlier == answered, do: :answered_changed, else: :decided_changed)}
@@ -656,6 +692,21 @@ defmodule Apiary.Explore.QuestionsTest do
   end
 
   describe "answer/4" do
+    test "keeps a question's criterion beside the answer" do
+      document = doc([Map.put(open("q1", 12), "criterion", "ac-3"), open("q2", 12)])
+
+      assert {:ok, %{"questions" => [q1, q2]}} =
+               Questions.answer(
+                 document,
+                 [{"q1", nil, "Yes."}, {"q2", nil, "No."}],
+                 "Ann Example",
+                 ~U[2026-11-04 12:00:00Z]
+               )
+
+      assert %{"state" => "answered", "criterion" => "ac-3"} = q1
+      refute Map.has_key?(q2, "criterion")
+    end
+
     test "keeps an option's recommended on the question it answers" do
       options = [
         %{"title" => "Yes", "explanation" => "Why.", "recommended" => true},

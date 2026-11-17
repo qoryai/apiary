@@ -576,8 +576,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "to this run's number."
 
       :answered_changed ->
-        "Leave question, context and options of each answered question in " <>
-          "#{filename} as the newest version of questions has them."
+        "Leave question, context, options and criterion of each answered question in " <>
+          "#{filename} as the newest version of questions has them, set or absent."
 
       :new_not_open ->
         "Add each question in #{filename} as open, with no decision, or as decided, " <>
@@ -600,8 +600,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
       :decided_changed ->
         "Leave question and options of each question with a decision in #{filename} " <>
-          "as the newest version of questions has them, and its context while it stays " <>
-          "decided or answered: to change them, withdraw the question and add a new one."
+          "as the newest version of questions has them, and its context and criterion " <>
+          "while it stays decided or answered: to change them, withdraw the question and " <>
+          "add a new one."
 
       :decision_changed ->
         "Leave the decision of each question in #{filename} as the newest version of " <>

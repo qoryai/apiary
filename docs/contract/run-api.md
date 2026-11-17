@@ -302,7 +302,11 @@ Checks, in order, after the checks of every request:
    twice is refused at the object's place, such as "at #/questions/0, the object has the
    key state twice", before the schema check. A question in `questions` has 0 to 4
    `options`, and at most one option has `recommended` true: a fifth option is refused
-   as "at #/questions/0/options, value should have at most 4 items, got 5".
+   as "at #/questions/0/options, value should have at most 4 items, got 5". A question
+   may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
+   number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
+   the run pushed it. Another value, such as `AC-3`, is refused at
+   `#/questions/0/criterion`.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -431,12 +435,13 @@ Checks, in order, after the checks of every request:
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
-   changes none, keeps each `history`, keeps `question`, `context` and `options` of each
-   question that stays `answered`, each option's `recommended` included, moves the
-   answer of a question it reopens unchanged to the end of its `history` with
-   `reopened.run` set to its `run.number`, and adds each question with `asked.run` set
-   to its `run.number` and with `follows`, if any, set to ids of questions before it in
-   the version; an absent `follows` and an empty one are the same.
+   changes none, keeps each `history`, keeps `question`, `context`, `options` and
+   `criterion` of each question that stays `answered`, set or absent, each option's
+   `recommended` included, moves the answer of a question it reopens unchanged to the
+   end of its `history` with `reopened.run` set to its `run.number`, and adds each
+   question with `asked.run` set to its `run.number` and with `follows`, if any, set to
+   ids of questions before it in the version; an absent `follows` and an empty one are
+   the same. The run may add, change or drop the `criterion` of an open question.
 
    The `decision` rules:
 
@@ -451,8 +456,8 @@ Checks, in order, after the checks of every request:
      unchanged, also when it withdraws or reopens the question, and adds a `decision`
      to none of them.
    - The run keeps `question` and `options` of each question that has a `decision`, in
-     every state, each option's `recommended` included, and its `context` while it
-     stays `decided` or `answered`.
+     every state, each option's `recommended` included, and its `context` and
+     `criterion` while it stays `decided` or `answered`.
 
    In `review-comments`, the run keeps every review comment and every earlier reply
    unchanged, adds no review comment, and adds at most one reply to an open review
