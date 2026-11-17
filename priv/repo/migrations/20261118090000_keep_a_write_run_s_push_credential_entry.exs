@@ -8,10 +8,13 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
   # before this migration stays valid. `issued_apply`, the apply items of the first
   # credential sealed for an entry, is allowed on a `push` entry as on a `work` one.
   #
-  # Each check is dropped and added again, and the new check scans the table as it is
-  # added. Every stored row has the purpose `work` or `harness` and passes both. Rolled
-  # back, the checks and the index are as before, and the rollback fails while a `push`
-  # row exists.
+  # A `push` entry has a `push_ref` on every apply item, a string that is not empty
+  # (`run_credentials_push_ref_check`); the other purposes have no such rule. Each check
+  # is dropped and added again, and each new check scans the table as it is added. Every
+  # stored row has the purpose `work` or `harness` and passes all of them. The unique
+  # index is built without `CONCURRENTLY`, so writes to `run_credentials` wait while it
+  # builds. Rolled back, the checks and the index are as before, and the rollback fails
+  # while a `push` row exists.
   def up do
     entry_check("""
     purpose IN ('work', 'harness', 'push')
@@ -23,6 +26,19 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
     """)
 
     issued_apply_check("purpose IN ('work', 'push')")
+
+    create constraint(:run_credentials, :run_credentials_push_ref_check,
+             check: """
+             purpose <> 'push' OR (
+               jsonb_typeof(apply) = 'array'
+               AND jsonb_array_length(apply) >= 1
+               AND NOT jsonb_path_exists(
+                 apply,
+                 '$[*] ? (!exists(@.push_ref ? (@ like_regex "^.+")))'
+               )
+             )
+             """
+           )
 
     create unique_index(:run_credentials, [:run_id],
              where: "purpose = 'push'",
@@ -43,6 +59,7 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
     """
 
     drop index(:run_credentials, [:run_id], name: :run_credentials_push_index)
+    drop constraint(:run_credentials, :run_credentials_push_ref_check)
 
     issued_apply_check("purpose = 'work'")
 

@@ -89,6 +89,33 @@ defmodule Apiary.Runs.PushCredentialMigrationTest do
       )
   end
 
+  test "up takes a push entry only with a push_ref, not empty, on every apply item", ctx do
+    item = hd(ctx.push.apply)
+    bare = Map.delete(item, "push_ref")
+
+    for apply <- [
+          [bare],
+          [item, bare],
+          [Map.put(item, "push_ref", "")],
+          [Map.put(item, "push_ref", 7)],
+          [Map.put(item, "push_ref", nil)],
+          []
+        ] do
+      refused("run_credentials_push_ref_check", fn ->
+        Repo.insert!(%{ctx.push | apply: apply})
+      end)
+    end
+
+    Repo.insert!(%{ctx.push | apply: [item, Map.put(item, "push_ref", "refs/heads/qory/x")]})
+    assert entry_names(ctx.run) == ["push-1", "work-1"]
+
+    # The work entry has no push_ref, and stays valid.
+    assert [%{"hosts" => _} = work_item] =
+             Repo.get_by!(RunCredential, run_id: ctx.run.id, name: "work-1").apply
+
+    refute Map.has_key?(work_item, "push_ref")
+  end
+
   test "down refuses while a push entry exists, then takes the purpose and its index away",
        ctx do
     Repo.insert!(ctx.push)
