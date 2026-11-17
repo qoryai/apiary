@@ -6,8 +6,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # the catalogue has more than one; with one, the choice names none and its runs use that
   # one (`Apiary.ModelChoices.default_runtime/0`). Model: a choice of the models the page
   # suggests (`Apiary.ModelChoices.suggestions/2`) for each model provider of the
-  # organisation that applies to the workspace and serves the chosen runtime
-  # (`Apiary.Kinds.Providers.serve/2`), grouped by provider where there are several, each
+  # organisation that applies to the workspace, serves the chosen runtime
+  # (`Apiary.Kinds.Providers.serve/2`) and is offered (`Apiary.Kinds.Providers.offered?/1`)
+  # or is the saved choice's, grouped by provider where there are several, each
   # provider's list ending with Another model, which opens a text field for any model id.
   # With none, one line per cause says what to do instead (`unserved/3`). Effort shows
   # where the chosen model has effort values to choose from. With no choice saved, the first provider's first
@@ -18,10 +19,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # Fallbacks, below them: the providers runs use, in order, while every key of the chosen
   # provider is in cooldown, each a row of Provider, Model, Another model and Effort as
   # above, with Move up, Move down and Remove. Add fallback adds a row of the first
-  # provider left: one that applies to the workspace and serves the chosen runtime, and is
-  # neither the chosen provider nor in a row. A new row's model, and a row's model after
-  # its provider changes, is the chosen model where the provider has a model of the same
-  # id, else the provider's first. Save writes the rows with the choice; each refusal
+  # provider left: one that applies to the workspace, serves the chosen runtime and is
+  # offered, and is neither the chosen provider nor in a row. A new row's model, and a
+  # row's model after its provider changes, is the chosen model where the provider has a
+  # model of the same id, else the provider's first. Save writes the rows with the choice; each refusal
   # shows under its row's field.
   #
   # Every member reads it (`connection.read`); owners and admins change it
@@ -85,17 +86,28 @@ defmodule ApiaryWeb.ModelChoiceLive do
     |> then(&assign_fallbacks(&1, fallback_rows(choice, &1.assigns.providers), %{}))
   end
 
-  # The runtime the form has chosen, and the providers that serve it, each with its
-  # suggestions; `described` is each applicable provider with its description, or why it
-  # has none (`Apiary.Connections.provider/1`).
+  # The runtime the form has chosen, and the providers that serve it and are offered
+  # (`Apiary.Kinds.Providers.offered?/1`), each with its suggestions; `described` is each
+  # applicable provider with its description, or why it has none
+  # (`Apiary.Connections.provider/1`). The provider of the saved choice stays listed while
+  # it is not offered, so a save keeps it unless the person chooses another; a new
+  # fallback row is not offered it (`left/2`).
   defp assign_runtime(socket, %Runtime{} = runtime) do
     described =
       for provider <- socket.assigns.applicable, do: {provider, Connections.provider(provider)}
 
+    saved = socket.assigns.choice && socket.assigns.choice.connection_id
+
     providers =
       for {provider, {:ok, description}} <- described,
           Providers.serve(description, runtime) == :ok,
-          do: %{provider: provider, models: ModelChoices.suggestions(provider, runtime)}
+          offered <- [Providers.offered?(description)],
+          offered or provider.id == saved,
+          do: %{
+            provider: provider,
+            models: ModelChoices.suggestions(provider, runtime),
+            offered: offered
+          }
 
     assign(socket, runtime: runtime, providers: providers, described: described)
   end
@@ -297,15 +309,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   defp sent_rows(socket, _params), do: socket.assigns.fallbacks
 
-  # The providers a new row may have: those that serve the chosen runtime, but the chosen
-  # provider and those of the rows but `except`.
+  # The providers a new row may have: those that serve the chosen runtime and are offered,
+  # but the chosen provider and those of the rows but `except`.
   defp left(assigns, except \\ nil) do
     taken =
       for {row, i} <- Enum.with_index(assigns.fallbacks), i != except, do: row["provider"]
 
     main = main_provider(assigns)
 
-    for %{provider: provider} <- assigns.providers,
+    for %{provider: provider, offered: true} <- assigns.providers,
         provider.public_id not in taken,
         main == nil or provider.id != main.id,
         do: provider

@@ -13412,6 +13412,11 @@ msgstr ""
 msgid "Model providers"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/features.ex
+#, elixir-autogen, elixir-format
+msgid "Model proxies (providers with no model list)"
+msgstr ""
+
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Model saved."

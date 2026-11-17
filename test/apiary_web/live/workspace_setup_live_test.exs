@@ -4722,6 +4722,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert_posts_without_key(LazyHTML.from_fragment(render(lv)))
   end
 
+  # LiteLLM is offered with model_proxies alone.
+  @tag needs: [:factory, :secrets, :model_proxies]
   test "a save refused with a key typed shows the key nowhere and keeps it nowhere", %{
     conn: conn
   } do
@@ -5943,5 +5945,97 @@ defmodule ApiaryWeb.WorkspaceSetupLive.HarnessLaterTest do
 
     assert versions(ctx) =~
              "Always the latest on a branch: a run uses the branch's newest commit."
+  end
+end
+
+defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
+  # The Model step's Key and, under Add a key, its Provider leave out a provider whose
+  # description lists no models, such as LiteLLM, unless the feature `model_proxies` is on.
+  # Not async: the features are the whole node's.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.{Connections, ModelChoices}
+
+  setup %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, %{provider: "anthropic"})
+
+    litellm =
+      provider!(scope, %{
+        provider: "litellm",
+        settings: %{"address" => "https://litellm.example.com"}
+      })
+
+    %{
+      conn: log_in_user(conn, user),
+      organisation: organisation,
+      scope: scope,
+      anthropic: anthropic,
+      litellm: litellm
+    }
+  end
+
+  defp provider!(scope, attrs) do
+    {:ok, provider} =
+      Connections.create_provider(
+        scope,
+        Map.put(attrs, :keys, [%{value_id: "main", value: "sk-set-up-proxies-0123456789"}])
+      )
+
+    provider
+  end
+
+  # Key's values, then Provider's under Add a key.
+  defp offers(ctx) do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+    keys = values(lv, "model[source]")
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    {keys, values(lv, "model[provider]")}
+  end
+
+  defp values(lv, name) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(~s{#set-up-model-form input[type=radio][name="#{name}"]})
+    |> LazyHTML.attribute("value")
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: Key and Provider leave out LiteLLM", ctx do
+    assert offers(ctx) ==
+             {[ctx.anthropic.public_id, "add"],
+              ~w(anthropic claude-subscription deepseek openrouter)}
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: the workspace's LiteLLM choice stays chosen in Key; Provider leaves it out",
+       ctx do
+    {:ok, _choice} =
+      ModelChoices.put_choice(ctx.scope, :workspace, %{
+        provider: ctx.litellm.public_id,
+        model: "claude-opus-5-5"
+      })
+
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-form input[name="model[source]"][value="#{ctx.litellm.public_id}"][checked]}
+           )
+
+    assert {keys, providers} = offers(ctx)
+    assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])
+    refute "litellm" in providers
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: Key and Provider offer LiteLLM", ctx do
+    {keys, providers} = offers(ctx)
+    assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])
+    assert providers == ~w(anthropic claude-subscription deepseek litellm openrouter)
   end
 end

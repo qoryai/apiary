@@ -21,9 +21,10 @@ defmodule Apiary.FeatureSetsScan do
   A test sets its features first with `with_features:`
   (`Apiary.DataCase.setup_features/1`) alone: it then runs once, in the run with every
   feature on, under the features it lists. The scan does not count a `put_env` of
-  `:features` or `setup {Apiary.DataCase, :without_registry}` as setting them, because
-  `without_registry` keeps the set's other features, so a test that reads them after
-  either takes the tag.
+  `:features`, `setup {Apiary.DataCase, :without_registry}` or
+  `setup {Apiary.DataCase, :with_model_proxies}` as setting them, because the two
+  helpers keep the set's other features, so a test that reads them after any of these
+  takes the tag.
 
   `violations/2` scans `<dir>/**/*_test.exs` and `<dir>/support/**/*.ex` of each
   directory it is given, and returns a violation for:

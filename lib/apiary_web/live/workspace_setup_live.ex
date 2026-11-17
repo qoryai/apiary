@@ -483,10 +483,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
     %{current_scope: scope, flow: flow} = socket.assigns
-    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace))
+    choice = workspace_choice(scope, flow.workspace)
+    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace, choice))
     providers = shared ++ others
     may_add = Access.can?(scope, :"provider.write", scope.organisation)
-    choice = workspace_choice(scope, flow.workspace)
 
     socket
     |> assign(
@@ -884,18 +884,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   ## The Model step's form
 
   # The organisation's model providers with a key that reach `workspace`: those that apply
-  # to every workspace, and those that list it.
-  defp reusable_providers(scope, workspace) do
+  # to every workspace, and those that list it; of a kind that is offered
+  # (`Providers.offered?/1`) or the catalogue does not have, or the provider of `choice`,
+  # the workspace's choice, so that Continue keeps it unless the person chooses another.
+  defp reusable_providers(scope, workspace, choice) do
+    saved = choice && choice.connection_id
+
     case Connections.list_providers(scope) do
       {:ok, providers} ->
         Enum.filter(
           providers,
           &(keys(&1) > 0 and
-              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)))
+              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)) and
+              (offered_kind?(&1) or &1.id == saved))
         )
 
       {:error, _reason} ->
         []
+    end
+  end
+
+  defp offered_kind?(provider) do
+    case catalogue(provider.provider_kind) do
+      nil -> true
+      described -> Providers.offered?(described)
     end
   end
 
@@ -937,7 +949,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp first_provider, do: Providers.list() |> hd() |> Map.fetch!(:name)
+  defp first_provider, do: Providers.offered() |> hd() |> Map.fetch!(:name)
 
   # The key `params` chose: a provider to reuse, or `:add`, for a person who may add one.
   # Anything else is the first provider to reuse, and `:add` where there is none.

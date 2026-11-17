@@ -359,6 +359,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
       end
     end
 
+    # LiteLLM is offered with model_proxies alone.
+    @tag needs: [:factory, :secrets, :model_proxies]
     test "About model providers has what a key is for, and where to get the chosen one", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
@@ -443,6 +445,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
              )
     end
 
+    # LiteLLM is offered with model_proxies alone.
+    @tag needs: [:factory, :secrets, :model_proxies]
     test "Provider is a choice: each provider's title and its description's text", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
@@ -450,7 +454,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(lv, "button#provider_provider", "Anthropic API key")
       refute has_element?(lv, "select#provider_provider")
 
-      for {provider, index} <- Enum.with_index(Providers.list()) do
+      for {provider, index} <- Enum.with_index(Providers.offered()) do
         assert has_element?(
                  lv,
                  ~s{#provider_provider-#{index}[type=radio][name="provider[provider]"][value="#{provider.name}"]}
@@ -460,7 +464,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       end
 
       # A subtitle is plain text: no backticks, and the terms' address is on About model providers.
-      subscription = Enum.find_index(Providers.list(), &(&1.name == "claude-subscription"))
+      subscription = Enum.find_index(Providers.offered(), &(&1.name == "claude-subscription"))
       subtitle = lv |> element("#provider_provider-#{subscription}-s") |> render()
       assert subtitle =~ "an access token that claude setup-token creates."
       assert subtitle =~ "on behalf of other users."
@@ -477,7 +481,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
       radio = ~s{#new-provider-form input[type=radio][name="provider[provider]"]}
-      [first | _rest] = providers = Providers.list()
+      [first | _rest] = providers = Providers.offered()
       provider = List.last(providers)
       refute provider.name == first.name
 
@@ -517,6 +521,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert {:ok, []} = Connections.list_providers(scope)
     end
 
+    # LiteLLM is offered with model_proxies alone.
+    @tag needs: [:factory, :secrets, :model_proxies]
     test "posts its form, and the key's field has no value", %{conn: conn, scope: scope} do
       # The page before it connects: a submit there is the browser's, with the form's method.
       html = conn |> get(new_path(scope)) |> html_response(200)
@@ -536,6 +542,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert_posts_without_key(LazyHTML.from_fragment(html))
     end
 
+    # LiteLLM is offered with model_proxies alone.
+    @tag needs: [:factory, :secrets, :model_proxies]
     test "LiteLLM asks its address, and the endpoint rule checks it", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))

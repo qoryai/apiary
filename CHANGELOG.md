@@ -19,6 +19,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
   the member. The run contract is vendored at integrations `dbc1ce5`.
+<!-- feature: secrets -->
+- Providers whose description lists no models, such as LiteLLM, are hidden where a
+  provider is offered, unless the feature `model_proxies` is on (off by default).
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch

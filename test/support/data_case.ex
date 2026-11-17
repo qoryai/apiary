@@ -221,6 +221,40 @@ defmodule Apiary.DataCase do
   end
 
   @doc """
+  Turns the `model_proxies` feature on for one test, beside the features the suite runs
+  under, and puts back the features afterwards:
+  `setup {Apiary.DataCase, :with_model_proxies}`. For a test of a list that offers a
+  provider whose description lists no models, such as LiteLLM. The feature needs
+  `secrets`, so tag the test `needs: :secrets` or a list with it. The features are the
+  whole node's, so the test must not be async.
+  """
+  def with_model_proxies(tags) do
+    if tags[:async] do
+      raise ArgumentError,
+            "with_model_proxies changes the whole node, so the test must not be async"
+    end
+
+    enabled = Apiary.Features.enabled()
+
+    if :secrets not in enabled do
+      raise ArgumentError,
+            "Tag the test needs: :secrets. model_proxies needs secrets, and the suite " <>
+              "runs without it: #{inspect(enabled)}"
+    end
+
+    previous = Application.get_env(:apiary, :features)
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Enum.filter(Apiary.Features.all(), &(&1 in [:model_proxies | enabled]))
+    )
+
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    :ok
+  end
+
+  @doc """
   A helper that transforms changeset errors into a map of messages.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})

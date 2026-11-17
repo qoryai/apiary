@@ -181,6 +181,27 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
       assert :feature_visibility in Features.enabled()
     end
 
+    test "model proxies: off until turned on, with its title and what it needs", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/features")
+
+      assert text(view, "#feature-model_proxies-title") ==
+               "Model proxies (providers with no model list)"
+
+      assert text(view, "#feature-model_proxies-needs") == "Needs Secrets and variables."
+      refute has_element?(view, "#feature-model_proxies-sentence")
+
+      refute :model_proxies in Features.enabled()
+
+      assert has_element?(
+               view,
+               "#feature-model_proxies-switch[aria-checked='false']:not([disabled])"
+             )
+
+      toggle(view, :model_proxies)
+      assert save(view) =~ "Features saved."
+      assert :model_proxies in Features.enabled()
+    end
+
     # Operators running their clients is a flag of the server's config, not a feature: the
     # page has no row for it, and a save leaves it as the config has it.
     test "operator_infrastructure has no row and follows the config", %{conn: conn} do
@@ -279,7 +300,7 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
       toggle(view, :secrets)
 
       assert text(view, "#features-preview-secrets") ==
-               "Turning off Secrets and variables also turns off Work items, Process versions, and Organisation secrets and variables."
+               "Turning off Secrets and variables also turns off Work items, Model proxies (providers with no model list), Process versions, and Organisation secrets and variables."
     end
 
     test "a switch turned off turns off what needs it in the form; back on, they stay off",
@@ -299,7 +320,7 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
 
       # The line of the row turned off stays, and the rows it lists have none.
       assert text(view, "#features-preview-secrets") ==
-               "Turning off Secrets and variables also turns off Work items, Process versions, and Organisation secrets and variables."
+               "Turning off Secrets and variables also turns off Work items, Model proxies (providers with no model list), Process versions, and Organisation secrets and variables."
 
       refute has_element?(view, "#features-preview-factory")
 

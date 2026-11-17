@@ -370,6 +370,7 @@ defmodule ApiaryWeb.InstanceLive.Features do
   defp title_of(:path_rules), do: gettext("Paths in policy rules")
   defp title_of(:factory), do: gettext("Work items")
   defp title_of(:registry), do: gettext("Image registry")
+  defp title_of(:model_proxies), do: gettext("Model proxies (providers with no model list)")
   defp title_of(:workflow_model), do: gettext("Process versions")
   defp title_of(:managed_organisations), do: gettext("Operators")
   defp title_of(:organisation_policy), do: gettext("Organisation policy")
