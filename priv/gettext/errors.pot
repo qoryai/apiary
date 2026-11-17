@@ -38,6 +38,11 @@ msgstr ""
 msgid "Change the model choices that use the key %{value} first: %{places}."
 msgstr ""
 
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a model for each tier: %{tier} has none."
+msgstr ""
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a name with at least one letter or digit from A to Z or 0 to 9. The address is made from those characters."
@@ -97,6 +102,11 @@ msgstr ""
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is not used in this workspace."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose models of %{provider}: %{model} is not one of its models."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -198,6 +208,11 @@ msgstr ""
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the %{character} and everything after it. The address takes a path, but no query or fragment."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the fallbacks: a workflow's model choice uses the workspace's fallbacks."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex

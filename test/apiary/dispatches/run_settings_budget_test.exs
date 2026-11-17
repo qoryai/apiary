@@ -29,24 +29,24 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
-  # The anthropic provider, chosen for the workspace with a model and the three tiers that
-  # its description does not list, each id 200 characters, the most a model id has: the
-  # run settings list the description's models and these four.
+  # A LiteLLM provider, whose description lists no model, so a tier takes any model id,
+  # chosen for the workspace with a model and the three tiers, each id 200 characters,
+  # the most a model id has: the run settings list these four.
   defp provider_with_long_ids!(scope) do
     {:ok, provider} =
       Connections.create_provider(scope, %{
-        provider: "anthropic",
-        keys: [%{value_id: "main", value: "sk-ant-budget-0123456789"}]
+        provider: "litellm",
+        settings: %{"address" => "https://litellm.example.com"},
+        keys: [%{value_id: "main", value: "sk-litellm-budget-0123456789"}]
       })
 
-    [model, light, fast, thinking] =
-      for n <- 1..4, do: String.pad_trailing("team-#{n}-", 200, "x")
+    [model | tier_models] = for n <- 1..4, do: String.pad_trailing("team-#{n}-", 200, "x")
 
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         model: model,
-        tiers: %{"light" => light, "fast" => fast, "thinking" => thinking}
+        tiers: Map.new(Enum.zip(Apiary.ModelChoices.Resolution.tiers(), tier_models))
       })
 
     provider
@@ -124,7 +124,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       handed = claimed!(ctx)
 
       settings = Jason.encode!(handed.run_settings)
-      assert length(Jason.decode!(settings)["provider_models"]) == 8
+      assert length(Jason.decode!(settings)["provider_models"]) == 4
       assert omitted(handed) > 0
 
       # The 201 carries the documents the claim stored, and fits 1 MiB with the margin
@@ -195,7 +195,9 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
         })
 
       {:ok, _choice} =
-        ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
+        Apiary.ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: provider.public_id
+        })
 
       Application.put_env(:apiary, :features, off)
 

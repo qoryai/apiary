@@ -18,7 +18,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, ModelKeys, Repo}
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
@@ -51,7 +51,10 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id, key: "spare"})
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        key: "spare"
+      })
 
     %{scope: scope, key: key, provider: provider}
   end

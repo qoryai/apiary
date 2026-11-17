@@ -16,7 +16,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
   import Apiary.WorkItemsFixtures
   import ExUnit.CaptureLog
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Repo}
   alias Apiary.Connections.SettingsFit
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
 
@@ -41,7 +41,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     provider = provider!(scope, n, kind)
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
     provider
   end
@@ -150,7 +150,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, place, %{
+      ModelChoicesFixtures.put_choice(scope, place, %{
         provider: cooling.public_id,
         fallbacks: [%{provider: fallback.public_id, model: nil, effort: nil}]
       })
@@ -168,7 +168,10 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     # The second run's target chooses an API provider, whose check fits.
     target = target!(scope, "acme/site")
     {:ok, good} = Connections.create_provider(scope, %{provider: "anthropic", keys: [@api_key]})
-    {:ok, _choice} = ModelChoices.put_choice(scope, target, %{provider: good.public_id})
+
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(scope, target, %{provider: good.public_id})
+
     second = queued!(scope, %{target_system: target.system, target_path: target.path})
     subscription_stops()
 
@@ -281,7 +284,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     stopping = provider!(scope, 1)
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: good.public_id,
         fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
       })
@@ -309,7 +312,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, good} = Connections.create_provider(scope, %{provider: "anthropic", keys: [@api_key]})
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, target, %{
+      ModelChoicesFixtures.put_choice(scope, target, %{
         provider: good.public_id,
         fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
       })
@@ -336,7 +339,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     stopping = provider!(scope, 1)
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: cooling.public_id,
         fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
       })
@@ -384,7 +387,9 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
         keys: [@api_key]
       })
 
-    {:ok, _choice} = ModelChoices.put_choice(scope, target, %{provider: good.public_id})
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(scope, target, %{provider: good.public_id})
+
     plain = queued!(scope, %{target_system: target.system, target_path: target.path})
     calls = subscription_stops()
 

@@ -9,6 +9,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelChoicesFixtures, only: [every_tier: 1]
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
@@ -120,7 +121,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   defp state!(provider, value_id, attrs), do: key_state!(provider, value_id, attrs)
 
   defp choose!(scope, place, attrs) do
-    {:ok, choice} = ModelChoices.put_choice(scope, place, attrs)
+    {:ok, choice} = Apiary.ModelChoicesFixtures.put_choice(scope, place, attrs)
     choice
   end
 
@@ -177,16 +178,23 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       choose!(scope, :organisation, %{
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
-        effort: "high"
+        effort: "high",
+        tiers: every_tier("claude-opus-5-5")
       })
 
-      choose!(scope, :workspace, %{tiers: %{"fast" => "claude-haiku-5-5"}})
+      # The workspace's choice (level 5) comes before the organisation's default (level 6).
+      choose!(scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        model: "claude-haiku-5-5",
+        effort: "low",
+        tiers: every_tier("claude-haiku-5-5")
+      })
 
       # Levels 2 and 3 belong to a target: a run without one reads neither.
       choose!(scope, target, %{
         provider: ctx.provider.public_id,
         model: "claude-sonnet-5-5",
-        tiers: %{"fast" => "claude-sonnet-5-5"}
+        tiers: every_tier("claude-sonnet-5-5")
       })
 
       {{:ok, handed}, _queued, _dispatch} =
@@ -196,10 +204,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert settings(handed) == %{
                "runtime" => @runtime,
-               "model" => "claude-opus-5-5",
-               "effort" => "high",
+               "model" => "claude-haiku-5-5",
+               "effort" => "low",
                "provider_models" => models(@efforts),
-               "tiers" => %{"fast" => "claude-haiku-5-5"},
+               "tiers" => Map.new(Resolution.tiers(), &{&1, "claude-haiku-5-5"}),
                "time_limit_minutes" => 180
              }
 
@@ -252,6 +260,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "provider_models" => models(@efforts),
+               "tiers" => Map.new(Resolution.tiers(), &{&1, "claude-opus-5-5"}),
                "time_limit_minutes" => 180
              }
     end
@@ -281,14 +290,20 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
 
     test "lists the description's models, then each chosen model it does not list", ctx do
+      # A tier takes a model of the provider's suggestions that its description does not
+      # list.
+      [light, middle, thinking] = Resolution.tiers()
+
+      tiers = %{
+        light => "claude-haiku-5-5",
+        middle => "claude-sonnet-4-6",
+        thinking => "claude-opus-4-8"
+      }
+
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         model: "acme-large",
-        tiers: %{
-          "light" => "claude-haiku-5-5",
-          "fast" => "acme-small",
-          "thinking" => "acme-large"
-        }
+        tiers: tiers
       })
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
@@ -297,12 +312,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "runtime" => @runtime,
                "model" => "acme-large",
                "provider_models" =>
-                 models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
-               "tiers" => %{
-                 "light" => "claude-haiku-5-5",
-                 "fast" => "acme-small",
-                 "thinking" => "acme-large"
-               },
+                 models(@efforts) ++
+                   [
+                     %{"id" => "acme-large"},
+                     %{"id" => "claude-sonnet-4-6"},
+                     %{"id" => "claude-opus-4-8"}
+                   ],
+               "tiers" => tiers,
                "time_limit_minutes" => 180
              }
     end

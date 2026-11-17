@@ -42,15 +42,17 @@ defmodule Apiary.ModelChoices.Resolution do
 
   @typedoc """
   A provider as the resolution reads it: the value id of its default key, the id of its
-  default model (nil for none), and its description's models, each with its `model_id`
-  and its `effort` values (nil for none).
+  default model (nil for none), its description's models, each with its `model_id` and
+  its `effort` values (nil for none), and the ids of the models suggested for its kind
+  (`suggested`, from `priv/models/suggestions.json`; none where the map leaves it out).
   """
   @type provider :: %{
           required(:default_value_id) => String.t() | nil,
           required(:default_model_id) => String.t() | nil,
           required(:models) => [
             %{required(:model_id) => String.t(), required(:effort) => [String.t()] | nil}
-          ]
+          ],
+          optional(:suggested) => [String.t()]
         }
 
   @typedoc """
@@ -114,6 +116,18 @@ defmodule Apiary.ModelChoices.Resolution do
   # tiers/0 is the tiers a tier map may set.
   @spec tiers() :: [String.t()]
   def tiers, do: @tiers
+
+  @doc false
+  # tier_ok?/2 is whether a tier may use the model `model_id` of `provider`: a model of
+  # its description or of its suggestions; any id for a provider whose description lists
+  # no model. A save of a choice checks its tiers with it. The effort is checked apart.
+  @spec tier_ok?(provider, String.t()) :: boolean
+  def tier_ok?(%{models: []}, model_id) when is_binary(model_id), do: true
+
+  def tier_ok?(%{models: models} = provider, model_id) when is_binary(model_id),
+    do:
+      Enum.any?(models, &(&1.model_id == model_id)) or
+        model_id in Map.get(provider, :suggested, [])
 
   @doc false
   # resolve/1 is what `input` comes to: `{:ok, resolution}`, `:none` where no choice has a

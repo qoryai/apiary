@@ -297,7 +297,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
         })
 
       {:ok, _choice} =
-        Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
       {_work_item, queued} = queue!(scope)
       now = DateTime.utc_now()

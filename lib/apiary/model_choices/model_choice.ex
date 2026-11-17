@@ -3,10 +3,11 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # a name of `Apiary.Kinds.Runtimes`), its model provider (`connection_id`, an
   # `Apiary.Connections.Connection` with a `provider_kind`), the value id of one of the
   # provider's keys (`value_id`), a model id (`model_id`), of the provider's description or
-  # any other, an effort value of that model (`effort`), and a tier map (`tiers`). Each
-  # field but the provider or the tier map may be empty: the catalogue's default runtime
-  # (`Apiary.ModelChoices.default_runtime/0`), the provider's default key, the provider's
-  # default model, and the runtime's default effort.
+  # any other, an effort value of that model (`effort`), and a tier map (`tiers`). A save
+  # needs the provider, and at levels 4 to 6 the tier map too; every other field may be
+  # empty: the catalogue's default runtime (`Apiary.ModelChoices.default_runtime/0`), the
+  # provider's default key, the provider's default model, and the runtime's default
+  # effort.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -22,11 +23,13 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # which an operator's chain served other organisations; no code writes or resolves a row
   # of that chain. Only a row of levels 4 and 5 is `locked`.
   #
-  # A tier map has one to three of the tiers `light`, `fast` and `thinking`, each an object
-  # of a `model` id and, when it sets one, an `effort` value.
+  # A tier map has some of the tiers of `Apiary.ModelChoices.Resolution.tiers/0`, each an
+  # object of a `model` id of the choice's provider and, when it sets one, an `effort`
+  # value. A save at levels 4, 5 and 6 sets every tier.
   #
   # `fallbacks` are the providers runs use, in order, while every key of the choice's
-  # provider is in cooldown (`Apiary.ModelChoices.Fallback`), read in their order.
+  # provider is in cooldown (`Apiary.ModelChoices.Fallback`), read in their order. A save
+  # at levels 2 and 4, a workflow's choice, sets none.
   #
   # Changed only through `Apiary.ModelChoices`.
   @moduledoc false
