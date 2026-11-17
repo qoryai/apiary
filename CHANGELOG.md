@@ -22,15 +22,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   track is as before.
 - The stage track under the work item's title marks a stage that a track passed over whole
   with "not run", in place of its number.
-- The tab of a stage that has an entry the runner passed over starts with the table
-  "Workflows": each entry of the stage's sequence in order, with its state (Passed, Not run, or
-  the run's state) and why. The line above the table reads "Track: <track>, approved at
-  <stage>'s gate" where an approval chose the track. An entry that has a name shows it, with its
+- The tab of a stage of a work item on a track, where the runner passed over an entry, starts
+  with the table "Workflows": each entry of the stage's sequence in order, with its state
+  (Passed, Not run, or the run's state) and why. The line above it reads "Track: <track>, approved at <stage>'s
+  gate", where an approval chose the track. An entry that has a name shows it, with its
   workflow under it; a loop reads "Loop of up to <n> rounds", with its workflows under it. Why
-  is the entry's condition ("Runs on <track>.", "Runs on <track> only."), else "No <type>." for
-  an input that is missing, else "Did not run, because <entry> passed on its first attempt."
-  Under the table, a gate that needs no member reads "Approved without a member: <stage>'s gate
-  needs no member." The runs fold of that tab no longer repeats the entries.
+  is the entry's condition ("Runs on <track>.", "Runs on <track> only."), else the reason the
+  record of the skip gives, as the runs fold gave it. Under the table, a gate that needs no
+  member reads "Approved without a member: <stage>'s gate needs no member." The runs fold of
+  that tab no longer repeats the entries. A sequence that names one workflow twice keeps the
+  fold's rows and has no table.
 - The gate of a later stage for a work item on a track shows "Track" and the track's name, and
   offers no choice. For a stage that started no run, the card reads "<stage> started no run. Read
   the build report and the draft, then approve." and leaves out the list of outputs, and the

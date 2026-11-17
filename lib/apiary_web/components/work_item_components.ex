@@ -2293,7 +2293,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :track_offer, :map,
     default: nil,
     doc:
-      "the tracks Explore's gate offers, `%{tracks:, selected:, proposed:, stage:}`: each track `%{id:, name:, description:}`, the id selected, the id the runs proposed, and the stage's name; nil where the gate offers none"
+      "the tracks Explore's gate offers, `%{tracks:, selected:, picked:, proposed:, stage:}`: each track `%{id:, name:, description:}`, the id selected, the id the reader chose (nil for none), the id the runs proposed, and the stage's name; nil where the gate offers none"
 
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
@@ -2777,16 +2777,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-bars-3-bottom-left" class="q-xp-frame-i size-4" />
         <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("Workflows")}</h2>
       </div>
-      <p :if={@track_line} id={"#{@id}-track"} class="q-xp-cap">
+      <p :if={@track_line && @track_line.gate} id={"#{@id}-track"} class="q-xp-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span :if={@track_line.gate}>
+        <span>
           {gettext("Track: %{track}, approved at %{gate}'s gate",
             track: @track_line.name,
             gate: @track_line.gate
           )}
-        </span>
-        <span :if={!@track_line.gate}>
-          {gettext("Track: %{track}", track: @track_line.name)}
         </span>
       </p>
       <div class="q-xp-body q-xp-entries">
@@ -2859,14 +2856,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # Why an entry did not run: its condition on a track, else what the record of the skip
   # says.
   defp why_skipped(nil, condition), do: condition
-
-  defp why_skipped(%{input: type, negated: negated}, _condition) when is_binary(type),
-    do:
-      if(negated,
-        do: gettext("The work item has %{type}.", type: StageComponents.type_words(type)),
-        else: gettext("No %{type}.", type: StageComponents.type_words(type))
-      )
-
+  defp why_skipped(%{input: type} = skip, _condition) when is_binary(type), do: skip_words(skip)
   defp why_skipped(%{reason: "first_attempt_passed"} = skip, nil), do: skip_words(skip)
   defp why_skipped(%{track: track} = skip, nil) when is_binary(track), do: skip_words(skip)
   defp why_skipped(_skip, condition), do: condition
@@ -3898,7 +3888,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :track_offer, :map,
     default: nil,
     doc:
-      "the tracks the gate offers, `%{tracks:, selected:, proposed:, stage:}` (`explore_tab/1`); nil for none"
+      "the tracks the gate offers, `%{tracks:, selected:, picked:, proposed:, stage:}` (`explore_tab/1`); nil for none"
 
   # The gate under the proposal: for a reader who may send review comments, the comment on
   # the whole proposal; for a reader who may send them or change the decisions above the
@@ -3912,7 +3902,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # may change a decision and may not comment (`can_send`). Under them, why the last move
   # was not made (`error`), as the questions form shows its error. Where the gate offers
   # tracks (`track_offer`), the radios of the tracks sit between the comment and the buttons,
-  # for a reader who may confirm; Approve sends the selected one.
+  # for a reader who may confirm; Approve sends the one the reader picked, else none.
   defp gate(assigns) do
     assigns =
       assign(assigns,
@@ -3982,7 +3972,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             variant="primary"
             phx-click="confirm"
             phx-value-number={@number}
-            phx-value-track={@track_offer && @can_confirm && @track_offer.selected}
+            phx-value-track={@track_offer && @can_confirm && @track_offer.picked}
             disabled={@changed}
             aria-describedby={
               cond do
@@ -4017,7 +4007,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :offer, :map,
     required: true,
-    doc: "`%{tracks:, selected:, proposed:, stage:}` (`explore_tab/1`)"
+    doc: "`%{tracks:, selected:, picked:, proposed:, stage:}` (`explore_tab/1`)"
 
   # The tracks the gate offers, one radio each in the gate's order with the track's
   # description, the selected one marked; the track the runs proposed has the badge

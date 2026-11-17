@@ -403,7 +403,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         shown: shown_outputs(assigns.page),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none",
-        started_no_run: started_no_run?(assigns.page)
+        started_no_run: started_no_run?(assigns.page),
+        # The list of outputs says nothing while no output has a version.
+        no_outputs_yet:
+          started_no_run?(assigns.page) and Enum.all?(assigns.page.outputs, &is_nil(&1.version))
       )
 
     ~H"""
@@ -421,15 +424,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </p>
       </div>
       <h3
-        :if={not @started_no_run and (@shown != [] or @page.outputs == [])}
+        :if={not @no_outputs_yet and (@shown != [] or @page.outputs == [])}
         class="text-sm font-semibold"
       >
         {gettext("Outputs")}
       </h3>
-      <p :if={@page.outputs == [] and not @started_no_run} id={"#{@id}-none"}>
+      <p :if={@page.outputs == [] and not @no_outputs_yet} id={"#{@id}-none"}>
         {gettext("This stage has no outputs.")}
       </p>
-      <ul :if={@shown != [] and not @started_no_run} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+      <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
           <span>{version_words(output.type, output.version)}</span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
@@ -893,6 +896,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   def run_state_words(shows), do: shows_words(shows)
 
   defp shows_words(:passed), do: gettext("passed")
+  defp shows_words(:paused), do: gettext("paused")
   defp shows_words(:failed), do: gettext("did not pass")
   defp shows_words(:questions), do: gettext("questions")
   defp shows_words(:queued), do: gettext("queued")

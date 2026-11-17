@@ -1647,6 +1647,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     %{
       tracks: offers,
       selected: Workflow.picked(flow, draft),
+      # What the reader chose, which Approve sends; with no choice Approve records the default.
+      picked: if(draft in Enum.map(offers, & &1.id), do: draft),
       proposed: flow.proposed,
       stage: flow.stage.name
     }

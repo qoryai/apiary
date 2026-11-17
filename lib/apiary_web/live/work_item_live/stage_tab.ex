@@ -192,8 +192,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
 
   @doc """
   entries/3 is the rows of the table of a stage's workflow entries on its tab, in the order
-  of the stage's sequence, for a stage with at least one entry the runner passed over in
-  the take in (`skips`, `Apiary.Stages.skips/1`); `[]` for any other stage, and for Explore's.
+  of the stage's sequence, for a work item on a track and a stage with at least one entry
+  the runner passed over in the take in (`skips`, `Apiary.Stages.skips/1`); `[]` for any
+  other stage, for Explore's, and for a stage where a workflow occurs twice in the sequence.
   Each row is `%{item:, kind:, name:, note:, rounds:, attempt:, shows:, skip:}`: `item` the
   entry as the document has it (a workflow entry, or a loop with its body), `kind` `:entry`
   or `:loop`, `name` the entry's name, else its workflow, `note` the workflow under a name
@@ -205,9 +206,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   @spec entries(map, map, [map]) :: [map]
   def entries(flow, stage, skips) do
     skips = Enum.filter(skips, &(&1.stage_id == stage.id))
-    runs = Enum.filter(flow.runs, &(&1.stage_id == stage.id))
+    runs = Enum.filter(Map.get(flow, :runs, []), &(&1.stage_id == stage.id))
 
-    if skips == [] or stage.id == flow.explore_id do
+    # A record of a skipped entry has no position: where a workflow occurs twice in the
+    # sequence, its row cannot tell which entry a run or a record belongs to.
+    if skips == [] or is_nil(Map.get(flow, :track)) or stage.id == flow.explore_id or
+         repeats?(stage.sequence) do
       []
     else
       for {item, index} <- Enum.with_index(stage.sequence),
@@ -215,6 +219,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
         row
       end
     end
+  end
+
+  defp repeats?(sequence) do
+    names =
+      Enum.flat_map(sequence, fn
+        %{"loop" => %{"body" => body}} -> for %{"workflow" => name} <- body, do: name
+        %{"workflow" => name} -> [name]
+        _item -> []
+      end)
+
+    length(names) != length(Enum.uniq(names))
   end
 
   defp entry(%{"loop" => %{"body" => body} = loop} = item, index, stage, runs, skips) do

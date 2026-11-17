@@ -13807,11 +13807,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "No %{type}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "No %{type}: %{workflow} did not run."
 msgstr ""
 
@@ -22176,11 +22171,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "The work item has %{type}."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "The work item stays in Qory Apiary, closed."
 msgstr ""
 
@@ -22943,11 +22933,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Track to run after you approve"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Track: %{track}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -26489,6 +26474,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "paused"
 msgstr ""
