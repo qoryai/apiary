@@ -2720,6 +2720,30 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a write run with no work item: a branch is a software workspace's word for it" do
+      r =
+        run(%{
+          id: nil,
+          path: nil,
+          state: :failed,
+          outcome: :error,
+          end_cause: :write_without_work_item,
+          proposal: nil,
+          started_at: nil,
+          ended_at: ago(3600),
+          duration: nil
+        })
+
+      Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == [
+                 "The run did not start.",
+                 "Contact support: a run that writes needs a work item."
+               ]
+      end)
+    end
+
     test "a read-only run's target is a repository only in a software workspace" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         assert read_needs_body("read_needs_no_nested_docker", false) ==
@@ -2797,6 +2821,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             # A software workspace's word for the target.
             {:target_access_gone,
              "Check the integration that brings in this repository on the organisation's Integrations page, then run Explore again. The run had no access to its repository: the integration no longer reaches it, or the repository's path has a character that access rules do not allow."},
+            {:write_without_work_item,
+             "Contact support: a run that writes needs a branch, which comes from its work item."},
             {:build_failed,
              "Check why the build failed on the repository's page, then run Explore again. The run did not start because Qory Apiary could not build its environment image."}
           ] do

@@ -108,7 +108,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   end
 
   # verdict/2 is the newest verdict as the work item's answer has it: its value, its
-  # points (`{text, action, question?}`, nil for none) and its version, or nil for none.
+  # points (`{text, action, question?, fix?}`, nil for none) and its version, or nil for
+  # none.
   @spec verdict(map | nil, map | nil) :: Jason.OrderedObject.t() | nil
   def verdict(nil, _content), do: nil
 
@@ -126,7 +127,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     for %{} = point <- points do
       object(
         [{"text", point["text"]}, {"action", point["action"]}] ++
-          if(Map.has_key?(point, "question"), do: [{"question", point["question"]}], else: [])
+          for(key <- ~w(question fix), Map.has_key?(point, key), do: {key, point[key]})
       )
     end
   end
@@ -222,7 +223,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # notes/1 is the notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
+  # notes/1 is the open notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
   # started a round.

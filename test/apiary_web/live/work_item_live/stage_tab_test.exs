@@ -1573,13 +1573,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record #work-item-artifacts")
     end
 
-    test "the notes above the tabs keep the comments", %{conn: conn, scope: scope} do
+    test "the notes above the tabs leave out a comment that Explore's approval closed",
+         %{conn: conn, scope: scope} do
       work_item = decided_at_gate!(scope)
       {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
 
-      assert has_element?(view, "#work-item-flow", "On the proposal.")
+      refute has_element?(view, "#work-item-flow", "On the proposal.")
+    end
+
+    test "the notes above the tabs list a note written after Explore's approval",
+         %{conn: conn, scope: scope} do
+      work_item = decided_at_gate!(scope)
+
+      {:ok, _moved} =
+        Stages.move(scope, work_item, @explore, "Check the totals.", expect_stage: @shape)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
+
+      assert has_element?(view, "#work-item-flow", "Check the totals.")
+      refute has_element?(view, "#work-item-flow", "On the proposal.")
     end
   end
 
@@ -1740,6 +1754,65 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "#work-item-record-skip-1",
                "shape-a-ticket did not run: it does not run on Fast track."
              )
+    end
+
+    test "the record of a stage lists the entries a passed first attempt passed over, with the reason",
+         %{conn: conn, scope: scope} do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast"])}
+
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "when", %{"track" => "standard"})
+
+          %{"id" => @build} = stage ->
+            %{
+              stage
+              | "sequence" => [
+                  %{"workflow" => "build-it", "first_attempt" => true, "name" => "Quick fix"},
+                  %{"workflow" => "shape-a-ticket"},
+                  %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "build-it"}]}}
+                ]
+            }
+
+          stage ->
+            stage
+        end)
+
+      document =
+        document
+        |> Map.put("stages", stages)
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ])
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(understood_result())
+
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+
+      work_item = work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      for {i, workflow} <- [{1, "shape-a-ticket"}, {2, "build-it"}] do
+        assert has_element?(view, "#work-item-record-skip-#{i}", workflow)
+
+        assert has_element?(
+                 view,
+                 "#work-item-record-skip-#{i}",
+                 "Did not run, because Quick fix passed on its first attempt."
+               )
+      end
     end
 
     test "the tab of a stage the work item went through has no such block", %{

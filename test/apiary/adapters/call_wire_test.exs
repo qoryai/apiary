@@ -133,7 +133,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 46
+    assert length(names) == 47
     assert "read-public-with-grant-ref.json" in names
 
     for name <- names do
@@ -182,7 +182,8 @@ defmodule Apiary.Adapters.CallWireTest do
       for good <- [
             item,
             %{item | "scheme" => "header"} |> Map.put("header", "X-Token"),
-            Map.put(item, "paths", ["/", "/api/*"])
+            Map.put(item, "paths", ["/", "/api/*"]),
+            Map.put(item, "paths", ["/repos/acme/shop/pulls/{}", "/a/{}/b", "/a/{}/{}*"])
           ] do
         assert {:ok, _} = answer("run-credential", credential(%{"apply" => [good]})),
                inspect(good)
@@ -200,6 +201,17 @@ defmodule Apiary.Adapters.CallWireTest do
             Map.put(item, "paths", []),
             Map.put(item, "paths", ["api/*"]),
             Map.put(item, "paths", ["/a*b"]),
+            Map.put(item, "paths", ["/a{b"]),
+            Map.put(item, "paths", ["/a/{x}"]),
+            Map.put(item, "paths", ["/a/{"]),
+            Map.put(item, "paths", ["/a/}"]),
+            Map.put(item, "paths", ["/a/a{}"]),
+            Map.put(item, "paths", ["/a/{}b"]),
+            Map.put(item, "paths", ["/a/{}x"]),
+            Map.put(item, "paths", ["/a/{{}"]),
+            Map.put(item, "paths", ["/a/{}}"]),
+            Map.put(item, "push_ref", "refs/heads/qory/wi_0123456789abcdef"),
+            Map.put(item, "push_ref", "refs/heads/main"),
             Map.put(item, "other", 1)
           ] do
         assert answer("run-credential", credential(%{"apply" => [bad]})) == :error, inspect(bad)

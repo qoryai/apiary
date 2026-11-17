@@ -271,6 +271,16 @@ defmodule Apiary.Runs.RunCredentialsTest do
       version
     end
 
+    # The run's documents, changed by `change` on their decoded form.
+    defp documents!(run, change) do
+      documents = Repo.get!(Run, run.id).run_documents |> Jason.decode!() |> change.()
+      set!(Run, run.id, run_documents: Jason.encode!(documents))
+    end
+
+    # The documents the claim sent the run of the queue `queued`, decoded.
+    defp sent_documents(queued),
+      do: Jason.decode!(Repo.get_by!(Run, dispatch_run_id: queued.id).run_documents)
+
     # A run of the queue under a version with `from`, moved to a version with `to`.
     defp moved!(ctx, from, to) do
       process!(ctx, from)
@@ -279,11 +289,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
       queued
     end
 
-    # The level of the claim of `queued`, whose walk resolved `write`: its documents' and
-    # its token's.
-    defp claimed_levels(ctx, queued) do
+    # The level of the claim of `queued`, whose walk resolved `walk`, `write` unless given:
+    # its documents' and its token's.
+    defp claimed_levels(ctx, queued, walk \\ :write) do
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
-      walk_resolved!(queued, origin: :setting, document: section, access_level: :write)
+      walk_resolved!(queued, origin: :setting, document: section, access_level: walk)
 
       assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
       assert [%RunCredential{access: token}] = entries()
@@ -314,6 +324,140 @@ defmodule Apiary.Runs.RunCredentialsTest do
       set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
 
       assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a write-no-push entry gets a read credential, and its documents write-no-push",
+         ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose walk resolved write-no-push keeps it where its entry sets no level", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :write_no_push) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an entry never raises the level its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :read) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose stage has no limits reads, whatever its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued, :write) == {:read, :read}
+      assert %{"access" => "read"} = sent_documents(queued)
+    end
+
+    # Cancel run's confirm says a write run's changes are not pushed
+    # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
+    # by its work entry, then by the documents the claim sent it, then by its stage entry.
+    for {access, write?} <- [{"write-no-push", false}, {"read", false}, {nil, true}] do
+      @tag needs: [:factory, :workflow_model]
+      test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
+           ctx do
+        entry =
+          Map.reject(%{"workflow" => "build", "access" => unquote(access)}, &is_nil(elem(&1, 1)))
+
+        process!(ctx, [entry])
+        {_work_item, queued} = queued!(ctx)
+        claimed_levels(ctx, queued)
+        run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        set!(Run, run.id, run_documents: nil)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+      end
+    end
+
+    # Cancel run reads the first source the run has: its work entry before its documents,
+    # its documents before its stage entry. Each case gives the sources different levels.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run takes the work entry first, then the documents", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+      # A work entry of write, with documents that say read.
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.run_id == ^run.id),
+          set: [access: :write]
+        )
+
+      assert sent_documents(queued)["access"] == "read"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      # No work entry, documents that say write, and a stage entry that lowers to read.
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+      documents!(run, &Map.put(&1, "access", "write"))
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      set!(Run, run.id, run_documents: nil)
+      refute Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+    end
+
+    # A text of the documents may have a NUL, which JSON writes as an escape.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run reads the access of documents with a NUL in a text", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+
+      documents!(run, fn documents ->
+        documents
+        |> Map.put("access", "write")
+        |> put_in(["work_item", "title"], "Checkout \u0000 storefront")
+      end)
+
+      assert Repo.get!(Run, run.id).run_documents =~ "\\u0000"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+    end
+
+    # The claim reads the run's level once, for its documents and its work entry: the entry
+    # takes the level it is given, not one read again.
+    test "form_work/4 gives the work entry the access of the level it is given", ctx do
+      {work_item, queued} = queued!(ctx)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: :write
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: :write)
+      end
+
+      assert RunCredentials.run_access(queued) == :write
+
+      for {level, access} <- [read: :read, write_no_push: :read, write: :write] do
+        assert {:ok, %RunCredential{access: ^access}} =
+                 RunCredentials.form_work(queued, work_item, @target, level)
+      end
     end
 
     @tag needs: [:factory, :workflow_model]
@@ -650,6 +794,194 @@ defmodule Apiary.Runs.RunCredentialsTest do
              ] = entries()
 
       assert collection_id == collection.id
+    end
+  end
+
+  describe "the branch a write run may push to" do
+    # A run of the queue for a new work item, whose harness walk has `level`.
+    defp queued_at!(ctx, level) do
+      {work_item, queued} = queued!(ctx)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: level
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: level)
+      end
+
+      {work_item, queued}
+    end
+
+    defp branch(%WorkItem{public_id: public_id}), do: "refs/heads/qory/" <> public_id
+
+    # The run configuration with the work entry of the claimed run `run`, as it is sent.
+    defp document(run) do
+      %{entry: entry} = RunCredentials.work(run)
+      Jason.encode!(%{"version" => 1, "credentials" => [entry]})
+    end
+
+    test "a write entry has the work item's branch on each of its apply items", ctx do
+      {work_item, _queued} = queued_at!(ctx, :write)
+      assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
+
+      assert [%RunCredential{access: :write, apply: [_code, _api] = apply}] = entries()
+      assert work_item.public_id =~ ~r/\Awi_[0-9a-z]{16}\z/
+      assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
+
+      # The run configuration has it last in each item, as the schema orders the members.
+      %{entry: %{values: values}} = RunCredentials.work(run)
+      {"apply", items} = List.keyfind(values, "apply", 0)
+
+      for item <- items,
+          do: assert({"push_ref", branch(work_item)} == List.last(item.values))
+
+      [credential] = Jason.decode!(document(run))["credentials"]
+
+      assert Enum.map(credential["apply"], & &1["push_ref"]) == [
+               branch(work_item),
+               branch(work_item)
+             ]
+    end
+
+    for level <- [:read, :write_no_push] do
+      test "a #{level} entry has no push_ref", ctx do
+        {_work_item, _queued} = queued_at!(ctx, unquote(level))
+        assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
+
+        assert [%RunCredential{access: :read, apply: apply}] = entries()
+        assert length(apply) == 2
+        refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+        refute document(run) =~ "push_ref"
+      end
+    end
+
+    test "the same work item has the same branch each time, another work item its own", ctx do
+      {work_item, queued} = queued!(ctx)
+      {other, other_queued} = queued!(ctx)
+      assert work_item.public_id != other.public_id
+
+      refs = fn work_item, queued ->
+        for _again <- 1..2 do
+          assert {:ok, %RunCredential{apply: apply}} =
+                   RunCredentials.form_work(queued, work_item, @target, :write)
+
+          apply |> Enum.map(& &1["push_ref"]) |> Enum.uniq()
+        end
+      end
+
+      assert refs.(work_item, queued) == [[branch(work_item)], [branch(work_item)]]
+      assert refs.(other, other_queued) == [[branch(other)], [branch(other)]]
+    end
+
+    test "a push_ref in an adapter's template is dropped, and only a write entry gets one", ctx do
+      template = Enum.map(@apply, &Map.put(&1, "push_ref", "refs/heads/main"))
+      work_item = work_item_fixture(ctx.scope)
+      set!(Node, work_item.adapter_id, source_apply: template)
+      target_candidate!(work_item)
+      queued = queue!(work_item)
+
+      for level <- [:read, :write_no_push] do
+        assert {:ok, %RunCredential{apply: apply}} =
+                 RunCredentials.form_work(queued, work_item, @target, level)
+
+        assert length(apply) == 2
+        refute Enum.any?(apply, &Map.has_key?(&1, "push_ref")), inspect(level)
+      end
+
+      assert {:ok, %RunCredential{apply: apply}} =
+               RunCredentials.form_work(queued, work_item, @target, :write)
+
+      assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
+
+      # A work item with no public id, which the database does not store, ends the run.
+      nil_item = %{work_item | public_id: nil}
+
+      assert RunCredentials.form_work(queued, nil_item, @target, :write) ==
+               {:end, :write_without_work_item}
+    end
+
+    test "a write run with no work item ends write_without_work_item and has no entry", ctx do
+      {work_item, queued} = queued!(ctx)
+      collection = RunCredentials.work_collection(queued, work_item, @target)
+
+      assert RunCredentials.work_from(queued, nil, collection, @target, :write) ==
+               {:end, :write_without_work_item}
+
+      assert RunCredentials.form_work(queued, nil, @target, :write) == {:ok, nil}
+      assert entries() == []
+
+      # A work item with no public id has no branch either: the database refuses to store
+      # one, so only a struct is such.
+      assert RunCredentials.work_from(
+               queued,
+               %{work_item | public_id: nil},
+               collection,
+               @target,
+               :write
+             ) == {:end, :write_without_work_item}
+    end
+
+    test "a read or write-no-push run with no work item has an entry with no push_ref", ctx do
+      {work_item, queued} = queued!(ctx)
+      collection = RunCredentials.work_collection(queued, work_item, @target)
+
+      for level <- [:read, :write_no_push] do
+        assert {:ok, %RunCredential{access: :read, apply: apply}} =
+                 RunCredentials.work_from(queued, nil, collection, @target, level)
+
+        assert length(apply) == 2
+        refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+      end
+    end
+
+    test "the branch of a work item is the fixed string refs/heads/qory/<public id>", ctx do
+      {work_item, queued} = queued!(ctx)
+      collection = RunCredentials.work_collection(queued, work_item, @target)
+      pinned = %{work_item | public_id: "wi_01HZX"}
+
+      assert {:ok, %RunCredential{apply: apply}} =
+               RunCredentials.work_from(queued, pinned, collection, @target, :write)
+
+      assert Enum.map(apply, & &1["push_ref"]) == [
+               "refs/heads/qory/wi_01HZX",
+               "refs/heads/qory/wi_01HZX"
+             ]
+    end
+
+    test "a prebuild has no push_ref", ctx do
+      collection = collection_fixture(ctx.scope, target_path: "acme/app")
+      set!(Node, collection.adapter_id, source_apply: @apply)
+      forge_collection!(ctx, %{system: "code.example.com", path: "acme/app"})
+
+      {:ok, _run} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
+
+      assert {:ok, %{registered: %Run{}}} = claim(ctx)
+      assert [%RunCredential{apply: apply}] = entries()
+      refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+    end
+
+    test "the run configuration with push_ref passes the schema, one with another member fails",
+         ctx do
+      {_work_item, _queued} = queued_at!(ctx, :write)
+      assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
+      assert Apiary.Policy.Schema.validate(document(run)) == :ok
+
+      for {name, change} <- [
+            {"another member", &Map.put(&1, "branch", "main")},
+            {"a tag", &Map.put(&1, "push_ref", "refs/tags/v1")},
+            {"a name that is no ref", &Map.put(&1, "push_ref", "qory/wi_01")}
+          ] do
+        decoded = Jason.decode!(document(run))
+        changed = update_in(decoded, ["credentials", Access.at(0), "apply", Access.at(0)], change)
+        assert {:error, _} = Apiary.Policy.Schema.validate(Jason.encode!(changed)), name
+      end
     end
   end
 

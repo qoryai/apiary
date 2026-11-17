@@ -23,6 +23,7 @@ defmodule ApiaryWeb.StagesLiveTest do
 
   alias Apiary.Processes
   alias Apiary.Repo
+  alias Apiary.TimeLimits
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.StagesLive.{Draft, Words}
 
@@ -1042,6 +1043,9 @@ defmodule ApiaryWeb.StagesLiveTest do
         |> Map.put("inputs", [
           %{"type" => "proposal", "required" => true, "unless" => @fast}
         ])
+        |> Map.put("outputs", [
+          %{"type" => "demo-video", "required" => true, "unless" => @fast}
+        ])
         |> Map.put("sequence", [
           %{"workflow" => "capture-demos", "unless" => @fast},
           %{
@@ -1081,6 +1085,10 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert build["name"] == "Build it"
       assert build["when"] == @fast
       assert build["inputs"] == [%{"type" => "proposal", "required" => true, "unless" => @fast}]
+
+      assert build["outputs"] == [
+               %{"type" => "demo-video", "required" => true, "unless" => @fast}
+             ]
 
       assert build["sequence"] == [
                %{"workflow" => "record-demos", "machine" => "default", "unless" => @fast},
@@ -2414,6 +2422,75 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
+    # A stage Build whose sequence is `entries`, saved as the current version.
+    defp build_with!(scope, entries) do
+      document = Processes.default_document("software")
+      at = Enum.find_index(document["stages"], &(&1["name"] == "Build"))
+      document = put_in(document, ["stages", Access.at(at), "sequence"], entries)
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      :ok
+    end
+
+    defp access_line(view, entry),
+      do:
+        view
+        |> element("#stage-entry-#{entry}-access")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.trim()
+
+    test "a row shows the harness's access level as one read-only line", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      render_async(view)
+
+      # The Explore stage's first workflow, which the Qory harness's stack declares read.
+      assert has_element?(
+               view,
+               "p#stage-entry-0-access",
+               "Access: Read only (set by the harness)"
+             )
+
+      assert access_line(view, 0) == "Access: Read only (set by the harness)"
+
+      # No fold, no Change, no field: the level is set by the harness, or in process.yaml.
+      refute has_element?(view, ~s{details[id^="stage-entry-0-access"]})
+      refute has_element?(view, "#stage-entry-0-access button, #stage-entry-0-access a")
+      refute has_element?(view, ~s{select[name$="[access]"]})
+      refute has_element?(view, ~s{[name$="[access]"]})
+    end
+
+    test "a save writes no access of its own, and keeps the entry's from process.yaml", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"}
+      ])
+
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "standard"}}})
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+
+      build =
+        Enum.find(Processes.current(scope.workspace).document["stages"], &(&1["name"] == "Build"))
+
+      assert build["sequence"] == [
+               %{"workflow" => "plan-the-build", "access" => "read", "machine" => "standard"},
+               %{"workflow" => "write-checks"}
+             ]
+    end
+
     test "a type of 64 characters beside an empty stage name has no mark", %{
       conn: conn,
       path: path
@@ -3132,6 +3209,291 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "a workflow's time limit" do
+    # The field of Explore's first row, explore-a-ticket, with its form, its button and its
+    # lines.
+    @field "#stage-entry-0-time-limit"
+    @form "#stage-entry-0-time-limit-form"
+    @hint "15 to 1440 minutes. If you leave it empty, each session of this workflow stops after 180 minutes."
+    @error "Enter 15 to 1440 minutes, or leave the field empty."
+
+    defp limit(scope) do
+      {:ok, limits} = TimeLimits.list_limits(scope)
+      for %{target_id: nil} = l <- limits, into: %{}, do: {l.workflow, l.minutes}
+    end
+
+    defp change_limit(view, minutes),
+      do: view |> element(@form) |> render_change(%{"time_limit" => %{"minutes" => minutes}})
+
+    defp save_limit(view, minutes),
+      do: view |> element(@form) |> render_submit(%{"time_limit" => %{"minutes" => minutes}})
+
+    defp leave_limit(view, minutes),
+      do: view |> element(@field) |> render_blur(%{"value" => minutes})
+
+    test "with none saved: the default, an empty field, its hint, and nothing to save", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      summary = ~s{details[id^="stage-entry-0-settings-"] > summary}
+
+      assert has_element?(view, summary, "Machine type: Workspace default (Standard)")
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      assert has_element?(
+               view,
+               ~s{label[for="stage-entry-0-time-limit"]},
+               "Time limit, in minutes"
+             )
+
+      # A text field with the numeric keyboard: a number field's text that is no number
+      # reaches the page as an empty value.
+      assert has_element?(view, ~s{#{@field}[type="text"][inputmode="numeric"][value=""]})
+      assert has_element?(view, ~s{#{@field}[form="stage-entry-0-time-limit-form"]})
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]", "Save time limit")
+
+      # The field is not in the stage's form: a change of it changes no draft.
+      refute has_element?(view, "#stage-form #{@form}")
+      change_limit(view, "240")
+      assert has_element?(view, "#stages-save[disabled]")
+      refute has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+    end
+
+    test "Save time limit writes the limit at once, outside the process, and an empty field clears it",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, view, _html} = live(conn, path)
+      versions = length(Processes.list_versions(scope.workspace))
+
+      change_limit(view, "240")
+      save_limit(view, "240")
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
+      assert length(Processes.list_versions(scope.workspace)) == versions
+      assert has_element?(view, "#stages-save[disabled]")
+      assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+      refute has_element?(view, "#stage-entry-0-time-limit-line", "default")
+      assert has_element?(view, "#stage-entry-0-time-limit-saved[role=status]", "Saved.")
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+
+      # The page loaded again shows the saved minutes in the field.
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, ~s{#{@field}[value="240"]})
+      refute has_element?(view, "#stage-entry-0-time-limit-saved")
+
+      change_limit(view, "")
+      refute has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+      save_limit(view, "")
+
+      assert limit(scope) == %{}
+      assert length(Processes.list_versions(scope.workspace)) == versions
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      assert has_element?(view, "#stage-entry-0-time-limit-saved", "Saved.")
+    end
+
+    test "14 and 1441 minutes are refused with the panel's text, and nothing is saved", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _} = TimeLimits.put_limit(scope, :workspace, "explore-a-ticket", 240)
+      {:ok, view, _html} = live(conn, path)
+
+      # Until the field first loses the focus, the disabled button alone shows the value is
+      # not one to save; from then on, the error shows as the value changes.
+      change_limit(view, "14")
+      assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+      refute has_element?(view, "#stage-entry-0-time-limit-error")
+
+      for minutes <- ~w(14 1441 90.5 24x) do
+        change_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-save[disabled]")
+        leave_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-error", @error)
+        assert has_element?(view, ~s{#{@field}.input-error[aria-invalid="true"]})
+        refute has_element?(view, "#stage-entry-0-time-limit-hint")
+
+        save_limit(view, minutes)
+        assert has_element?(view, "#stage-entry-0-time-limit-error", @error)
+        refute has_element?(view, "#stage-entry-0-time-limit-saved")
+        assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+        assert limit(scope) == %{"explore-a-ticket" => 240}
+      end
+
+      change_limit(view, "15")
+      refute has_element?(view, "#stage-entry-0-time-limit-error")
+      save_limit(view, "15")
+      assert limit(scope) == %{"explore-a-ticket" => 15}
+    end
+
+    test "a member reads the limit on the row's line, and a save is refused", %{scope: scope} do
+      %{user: user} = member_fixture(scope)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), user), workspace_path(scope, "/settings/workflows"))
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "explore-a-ticket, machine type Workspace default (Standard), time limit 180 minutes (default)"
+             )
+
+      {:ok, _} = TimeLimits.put_limit(scope, :workspace, "explore-a-ticket", 240)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), user), workspace_path(scope, "/settings/workflows"))
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "explore-a-ticket, machine type Workspace default (Standard), time limit 240 minutes"
+             )
+
+      refute has_element?(view, "#stage-sequence li", "default)")
+      refute has_element?(view, "#stage-panel input")
+
+      html =
+        render_hook(view, "time_limit_save", %{
+          "time_limit" => %{
+            "row" => "#{id_of("Explore")}/stage-entry-0",
+            "workflow" => "explore-a-ticket",
+            "minutes" => "30"
+          }
+        })
+
+      assert html =~ "Only owners and admins can change the stages."
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
+    end
+
+    test "an admin saves a limit", %{path: path, scope: scope} do
+      %{user: user} = member_fixture(scope, :admin)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+
+      change_limit(view, "300")
+      save_limit(view, "300")
+
+      assert limit(scope) == %{"explore-a-ticket" => 300}
+      assert has_element?(view, "#stage-entry-0-time-limit-saved", "Saved.")
+    end
+
+    test "a workflow in two rows and two stages has one limit, shown in each", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      twice = [%{"workflow" => "explore-a-ticket"}, %{"workflow" => "explore-a-ticket"}]
+
+      document =
+        Processes.default_document("software")
+        |> Draft.update_stage(id_of("Explore"), &Map.put(&1, "sequence", twice))
+        |> Draft.update_stage(
+          id_of("Shape"),
+          &Map.put(&1, "sequence", [%{"workflow" => "explore-a-ticket"}])
+        )
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      change_limit(view, "240")
+      save_limit(view, "240")
+
+      assert limit(scope) == %{"explore-a-ticket" => 240}
+
+      for row <- ~w(stage-entry-0 stage-entry-1) do
+        assert has_element?(view, "##{row}-time-limit-line", "Time limit: 240 minutes")
+      end
+
+      # The second row's field shows the saved minutes, with nothing to save.
+      assert has_element?(view, ~s{#stage-entry-1-time-limit[value="240"]})
+      assert has_element?(view, "#stage-entry-1-time-limit-save[disabled]")
+
+      select(view, "Shape")
+      assert has_element?(view, "#stage-entry-0-time-limit-line", "Time limit: 240 minutes")
+      assert has_element?(view, ~s{#stage-entry-0-time-limit[value="240"]})
+    end
+
+    test "a workflow of the draft alone has a disabled field, no button, and a hint to save the stage first",
+         %{conn: conn, path: path} do
+      {:ok, view, _html} = live(conn, path)
+
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
+
+      assert has_element?(view, ~s{#{@field}[disabled]})
+      refute has_element?(view, "#stage-entry-0-time-limit-save")
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-hint",
+               "Save the stage first to set this workflow's time limit."
+             )
+
+      refute has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      # Back to a workflow of the saved process, the field and its button come back.
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "explore-a-ticket"}}})
+      refute has_element?(view, ~s{#{@field}[disabled]})
+      assert has_element?(view, "#stage-entry-0-time-limit-hint", @hint)
+      assert has_element?(view, "#stage-entry-0-time-limit-save")
+    end
+
+    test "a row the stage does not show, or a workflow the saved process does not have, saves nothing",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, view, _html} = live(conn, path)
+      explore = id_of("Explore")
+
+      for {row, workflow} <- [
+            {"x/stage-entry-0", "explore-a-ticket"},
+            {"#{explore}/stage-entry-9", "explore-a-ticket"},
+            {"#{explore}/stage-entry-0", "implement-changes"},
+            {"#{explore}/stage-entry-0", "Bad Name"}
+          ] do
+        html =
+          render_hook(view, "time_limit_save", %{
+            "time_limit" => %{"row" => row, "workflow" => workflow, "minutes" => "30"}
+          })
+
+        refute html =~ "Only owners and admins can change the stages.", "#{row} #{workflow}"
+        refute has_element?(view, "#stage-entry-0-time-limit-saved")
+      end
+
+      # A workflow of the draft alone: a save sent anyway writes nothing.
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
+
+      html =
+        render_hook(view, "time_limit_save", %{
+          "time_limit" => %{
+            "row" => "#{explore}/stage-entry-0",
+            "workflow" => "write-a-brief",
+            "minutes" => "30"
+          }
+        })
+
+      refute html =~ "Only owners and admins can change the stages."
+      refute has_element?(view, "#stage-entry-0-time-limit-saved")
+      assert limit(scope) == %{}
+    end
+  end
+
   describe "a member's panel" do
     setup %{scope: scope} do
       %{user: user} = member_fixture(scope)
@@ -3594,6 +3956,79 @@ defmodule ApiaryWeb.StagesLiveTest do
 
       # The same read as Check again on a work item.
       assert Apiary.Stacks.Sources.chosen_workflows(scope, scope.workspace) == {:ok, ["review"]}
+    end
+
+    test "a row shows the level the harness's stack declares, and the lower level its entry sets",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      stack =
+        @stack <>
+          """
+          workflows:
+            plan-the-build: {access: write}
+            write-checks: {access: write}
+            verify: {access: write}
+            capture-demos: {access: write-no-push}
+            implement: {access: write-no-push}
+            explore-a-ticket: {access: read}
+          """
+
+      files = Map.put(@files, {"R_harness", "stacks/other/qory-stack.yaml"}, stack)
+
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"},
+        %{"workflow" => "verify", "access" => "write-no-push"},
+        %{"workflow" => "capture-demos", "access" => "write-no-push"},
+        %{"workflow" => "unlisted-one"},
+        %{"workflow" => "explore-a-ticket", "access" => "write-no-push"},
+        %{"workflow" => "implement"}
+      ])
+
+      serve_calls([adapter], covered: covered, files: files)
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      # A stage lowers the level in process.yaml, and the line gives both levels.
+      assert access_line(view, 0) ==
+               "Access: Read only (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 1) == "Access: Write and push (set by the harness)"
+
+      assert access_line(view, 2) ==
+               "Access: Write, no push (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 3) == "Access: Write, no push (set by the harness)"
+
+      # A workflow the harness does not list has no line, and its row has the mark.
+      refute has_element?(view, "#stage-entry-4-access")
+      assert has_element?(view, "#stage-entry-4-workflow-mark[data-mark=missing]")
+
+      # An entry never raises the level: Write, no push under a harness that declares read.
+      assert access_line(view, 5) == "Access: Read only (set by the harness)"
+      assert access_line(view, 6) == "Access: Write, no push (set by the harness)"
+    end
+
+    test "a row has no Access line while the level the harness declares is unknown",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      # A snapshot kept before the levels were: the names, and no level.
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      build_with!(scope, [%{"workflow" => "review"}])
+      serve_calls([adapter], covered: covered, files: @files, down: true)
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      assert has_element?(view, "#stage-entry-0-workflow-mark[data-mark=listed]")
+      refute has_element?(view, "#stage-entry-0-access")
     end
 
     test "a read that fails keeps the list of the last read, with the cause",

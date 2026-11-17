@@ -49,6 +49,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   ]
 
   @token "fixture-work-token-for-tests-only-7f3a"
+  @branch "refs/heads/qory/wi_0123456789abcdef"
 
   setup ctx do
     %{scope: scope} = sign_up_fixture()
@@ -823,6 +824,58 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       refute log =~ @token
     end
 
+    test "for a write entry, seals the answer's items with the entry's push_ref, which the call lacks",
+         ctx do
+      {ctx, pushing} = write_entry!(ctx, @branch)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 200, conn.resp_body
+      {bytes, plaintext} = opened(ctx, conn)
+      assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
+      assert %{"apply" => ^pushing} = value(plaintext, "work-1")
+      assert work_row(ctx).issued_apply == pushing
+
+      # The call has the access and no branch.
+      assert [{"/calls/run-credential", body}] = WorkCredentialStub.calls()
+      assert body["access"] == "write"
+      refute inspect(body) =~ "push_ref"
+    end
+
+    test "at a renewal, items whose push_ref differs from the start's are refused", ctx do
+      {ctx, pushing} = write_entry!(ctx, @branch)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      assert post_secrets(ctx, request(ctx, credentials: names(ctx))).status == 200
+      assert work_row(ctx).issued_apply == pushing
+
+      # The start's items had another branch.
+      started =
+        Enum.map(@entry_apply, &Map.put(&1, "push_ref", "refs/heads/qory/wi_ffffffffffffffff"))
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+          set: [issued_apply: started]
+        )
+
+      running!(ctx)
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["work-1"])) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert work_row(ctx).issued_apply == started
+      assert ["issued", "apply_moved"] = Enum.map(issues(), & &1.details["outcome"])
+      assert log =~ "cause=apply_moved"
+    end
+
     test "at the run's start, takes the run's row before the work entry's, as a deletion does",
          ctx do
       WorkCredentialStub.issue(
@@ -1245,6 +1298,30 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   end
 
   defp ended_lost!(ctx, changes), do: lost!(ctx, changes)
+
+  # The work entry of the run made a write entry whose items have the push_ref `branch`,
+  # as a claim of a write run records it, and the run configuration's digest after it.
+  # `{ctx, items}`, the context with the new digest.
+  defp write_entry!(ctx, branch) do
+    pushing = Enum.map(@entry_apply, &Map.put(&1, "push_ref", branch))
+
+    {1, _rows} =
+      Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+        set: [access: :write, apply: pushing]
+      )
+
+    {key, _seed} = ctx.secrets_key
+
+    assert {:ok, %{digest: digest, settings: settings}} =
+             Apiary.Runs.Registration.fetch(
+               key,
+               ctx.run.node_run_id,
+               Apiary.ContractFixtures.instance_id()
+             )
+
+    assert settings =~ ~s("push_ref":"#{branch}")
+    {put_in(ctx.attached.digest, digest), pushing}
+  end
 
   defp running!(ctx) do
     {1, _rows} =

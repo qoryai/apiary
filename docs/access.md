@@ -1190,11 +1190,13 @@ which, and the scope carries it (`Apiary.Accounts.Scope`, its `reach`;
    `ApiaryPro.Flags.operator_infrastructure?/0` is on, the operator's owners and admins
    act in such a workspace at their level there, on the workspace's time limits and
    retention, its process and artifact types, and its model choices. They change no node
-   or access key there and save no harness document; the organisation's owners and
-   admins keep every action in the workspace. A person of the operator who also holds a membership in
-   the organisation acts at that membership's level, and in an operated workspace at the
-   higher of their two levels on what the operator changes there. A workspace with an
-   operator is not deleted (`:operated`), and an operator is neither
+   or access key there and save no harness document. Only the operator's owners and
+   admins set the workspace's time limits there; the organisation's owners and admins
+   keep every other action in the workspace. A person of the operator who also holds a
+   membership in the organisation acts at that membership's level, and in an operated
+   workspace at the higher of their two levels on what the operator changes there; they
+   set its time limits only where their level in the operator is the higher. A workspace
+   with an operator is not deleted (`:operated`), and an operator is neither
    deleted nor made an organisation while it operates a workspace
    (`:has_operated_workspaces`). A suspended operator's workspaces keep running; its
    people reach nothing. An instance admin who is a person of the operator, with no

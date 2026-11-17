@@ -181,11 +181,11 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "takes a workflow entry with a machine, a lower time limit and read access, and a reported check" do
+    test "takes a workflow entry with a machine and read access, and a reported check" do
       document =
         default()
         |> put_sequence(@shape, [
-          %{"workflow" => "write-specs", "machine" => "large", "time_limit" => "1h30m"},
+          %{"workflow" => "write-specs", "machine" => "large"},
           %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "review", "access" => "read"}]}}
         ])
         |> edit(fn
@@ -202,6 +202,16 @@ defmodule Apiary.ProcessesTest do
       assert errors(put_sequence(default(), @shape, [%{"workflow" => "Write Specs"}])) != []
 
       assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "write"}])) !=
+               []
+    end
+
+    test "takes a workflow entry with write-no-push access, a writable checkout that has no push credential" do
+      document =
+        put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "write-no-push"}])
+
+      assert Processes.validate(document) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "push"}])) !=
                []
     end
 
@@ -495,25 +505,63 @@ defmodule Apiary.ProcessesTest do
              ) == :ok
     end
 
-    test "refuses a track condition and an unless on an output: an output keeps when {input} only" do
+    test "takes when and unless with a track or an input on an output, with the checks of any condition" do
       output = &(%{"type" => "mockup", "required" => true} |> Map.merge(&1))
 
+      document =
+        tracked()
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ])
+        |> with_gate_tracks(@explore, ["standard", "fast"])
+
       put =
-        &edit(tracked(), fn s ->
+        &edit(document, fn s ->
           if(s["id"] == @shape, do: Map.put(s, "outputs", [&1]), else: s)
         end)
 
-      assert errors(put.(output.(%{"when" => %{"track" => "standard"}}))) ==
-               expected([
-                 "#/stages/1/outputs/0/when",
-                 "#/stages/1/outputs/0/when",
-                 "#/stages/1/outputs/0/when/track"
-               ])
+      for condition <- [
+            %{"when" => %{"track" => "standard"}},
+            %{"unless" => %{"track" => "fast"}},
+            %{"when" => %{"input" => "proposal"}},
+            %{"unless" => %{"input" => "proposal"}}
+          ] do
+        assert Processes.validate(put.(output.(condition))) == :ok
+      end
 
-      assert errors(put.(output.(%{"unless" => %{"input" => "proposal"}}))) ==
-               chain("#/stages/1/outputs/0/unless")
+      assert errors(put.(output.(%{"unless" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/unless/track", :condition_track}]
 
-      assert Processes.validate(put.(output.(%{"when" => %{"input" => "proposal"}}))) == :ok
+      assert errors(put.(output.(%{"when" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/when/track", :condition_track}]
+
+      assert errors(put.(output.(%{"unless" => %{"input" => "mockup"}}))) ==
+               [{"#/stages/1/outputs/0/unless/input", :condition_input}]
+
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast"}}
+      assert errors(put.(output.(both))) == [{"#/stages/1/outputs/0", :condition_both}]
+
+      assert errors(put.(output.(%{"unless" => %{"track" => "fast", "input" => "proposal"}}))) !=
+               []
+    end
+
+    test "takes first_attempt on a workflow entry outside a loop, and refuses it in a loop body" do
+      entry = %{"workflow" => "make-a-small-change", "first_attempt" => true}
+
+      assert Processes.validate(put_sequence(default(), @shape, [entry])) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{entry | "first_attempt" => "yes"}])) ==
+               chain("#/stages/1/sequence/0")
+
+      for value <- [true, false] do
+        body = %{"loop" => %{"rounds" => 2, "body" => [%{entry | "first_attempt" => value}]}}
+
+        assert errors(put_sequence(default(), @shape, [body])) == chain("#/stages/1/sequence/0")
+      end
+
+      plain = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}
+      assert Processes.validate(put_sequence(default(), @shape, [plain])) == :ok
     end
 
     test "refuses a key of an input or a loop entry that the schema does not list" do
@@ -618,6 +666,19 @@ defmodule Apiary.ProcessesTest do
 
       assert Processes.with_description_line_breaks(%{"stages" => [blank]}) ==
                %{"stages" => [Map.delete(stage, "description")]}
+    end
+
+    test "has no time limit on a workflow entry: a workflow's limit is in the time limits" do
+      schema =
+        :apiary
+        |> Application.app_dir("priv/schemas/process/v1.schema.json")
+        |> File.read!()
+
+      keys = Map.keys(Jason.decode!(schema)["$defs"]["workflow_entry"]["properties"])
+
+      assert "workflow" in keys
+      refute Enum.any?(keys, &(&1 =~ ~r/limit|time/))
+      refute schema =~ "time_limit"
     end
 
     test "keeps fields the schema does not list" do
@@ -1045,10 +1106,10 @@ defmodule Apiary.ProcessesTest do
       assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket", "implement"]
 
       assert Processes.workflow_declaration(scope.workspace, "implement") ==
-               %{name: "implement", access: :write, time_limit: nil, reads: nil}
+               %{name: "implement", access: :write, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "explore-a-ticket") ==
-               %{name: "explore-a-ticket", access: nil, time_limit: nil, reads: nil}
+               %{name: "explore-a-ticket", access: nil, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "capture-demo") == nil
     end
@@ -1067,7 +1128,7 @@ defmodule Apiary.ProcessesTest do
                ["explore-a-ticket", "implement", "review"]
 
       assert Processes.workflow_declaration(scope.workspace, "review") ==
-               %{name: "review", access: nil, time_limit: nil, reads: nil}
+               %{name: "review", access: nil, reads: nil}
 
       # `workspace_fixture/2` records no stack, so `other` composes `core`, which lists none.
       assert Processes.declared_snapshot(other) == nil
@@ -1081,6 +1142,53 @@ defmodule Apiary.ProcessesTest do
       assert DateTime.compare(read_at, first_read) in [:gt, :eq]
       assert Processes.declared_workflows(scope.workspace) == ["capture-demo", "explore-a-ticket"]
       assert Processes.workflow_declaration(scope.workspace, "review") == nil
+    end
+
+    test "keep the access level each workflow declares, which a list of names gives as read" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+
+      levels = %{"capture-demos" => :write_no_push, "implement" => :write, "review" => :read}
+      assert Processes.record_declared(scope.workspace, levels) == :ok
+
+      assert %{names: ["capture-demos", "implement", "review"], access: ^levels} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert Processes.declared_access(scope.workspace) == levels
+
+      :ok = Processes.record_declared(scope.workspace, ["review", "plan"])
+
+      assert %{names: ["plan", "review"], access: %{"plan" => :read, "review" => :read}} =
+               Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a snapshot kept before the levels were has no level for its names" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+      :ok = Processes.record_declared(scope.workspace, %{"implement" => :write})
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      assert %{names: ["implement"], access: access} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert access == %{}
+      assert Processes.declared_workflows(scope.workspace) == ["implement"]
+      assert Processes.declared_access(scope.workspace) == %{}
+    end
+
+    test "on the Qory harness have the levels of the stack's files, over the snapshot's" do
+      %{scope: scope} = sign_up_fixture()
+      :ok = Processes.record_declared(scope.workspace, %{"explore-a-ticket" => :write})
+
+      assert Processes.declared_access(scope.workspace) == %{"explore-a-ticket" => :read}
+
+      assert Sources.chosen_declared(scope, scope.workspace) ==
+               {:ok, %{"explore-a-ticket" => :read}}
     end
 
     test "on the Qory harness come from the stack the workspace recorded, not the definition's" do

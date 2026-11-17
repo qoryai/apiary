@@ -49,6 +49,18 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A first attempt
+
+  A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
+  ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
+  its output checks and its gate (the stage runner, lib/apiary/stages/runner.ex). Another
+  verdict acts as for any entry. A loop's body refuses the key (`:schema`), because `passed`
+  already leaves a loop.
+
+  An output takes `when` and `unless` like an input, with `{track: ID}` or `{input: T}`. It
+  is required only while no condition holds it back, so a stage whose required output is
+  held back goes on to its gate without it.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -96,14 +108,14 @@ defmodule Apiary.Processes do
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:return_not_earlier` for a workflow entry's
   `return` whose stage is not one before the entry's stage; `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, a loop or a workflow entry, or in
-  `when` on an output, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
+  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
-  `:condition_both` for a stage, an input, a loop or a workflow entry with both `when` and
-  `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track` for a track id in a
-  gate's `tracks` that the document's `tracks` do not declare; `:gate_none_tracks` for tracks
-  on a gate of kind `none`;
+  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
+  `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
+  for a track id in a gate's `tracks` that the document's `tracks` do not declare;
+  `:gate_none_tracks` for tracks on a gate of kind `none`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -130,14 +142,12 @@ defmodule Apiary.Processes do
           | {:input_not_output, String.t(), String.t()}
 
   @typedoc """
-  What the harness declares of a workflow: its name, its access level and time limit
-  (nil where Qory Apiary does not keep them), and the artifact types it reads (nil for
-  any type).
+  What the harness declares of a workflow: its name, its access level (nil where Qory
+  Apiary does not keep it), and the artifact types it reads (nil for any type).
   """
   @type declaration :: %{
           name: String.t(),
-          access: :read | :write | nil,
-          time_limit: String.t() | nil,
+          access: :read | :write_no_push | :write | nil,
           reads: [String.t()] | nil
         }
 
@@ -270,6 +280,25 @@ defmodule Apiary.Processes do
   def qory_workflows(%{choice: :qory}, %Workspace{}), do: []
 
   @doc """
+  qory_workflow_levels/2 is the access level each workflow of `qory_workflows/2` declares
+  (Apiary.Harnesses.Reader.workflow_access/2), by name, at the same commit.
+  """
+  @spec qory_workflow_levels(%{choice: :qory, stack: String.t() | nil}, %Workspace{}) ::
+          %{String.t() => :read | :write_no_push | :write}
+  def qory_workflow_levels(%{choice: :qory, stack: stack} = chosen, %Workspace{} = workspace)
+      when is_binary(stack) do
+    commit =
+      case HarnessUpdate.in_use_commit(workspace, chosen) do
+        {:qory, commit} -> commit
+        _other -> Qory.chosen_commit(chosen)
+      end
+
+    Qory.workflow_levels(commit, stack)
+  end
+
+  def qory_workflow_levels(%{choice: :qory}, %Workspace{}), do: %{}
+
+  @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
   and the rules it cannot say: every stage id and every stage name once, the stage of each workflow entry's `return` before the entry's stage, every track id
   once, each track a gate offers declared, the input of each condition an output of an earlier
@@ -376,8 +405,8 @@ defmodule Apiary.Processes do
   # The conditions that no earlier stage can meet, in the document's order: an `input` type
   # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
   # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
-  # input, a workflow entry or a loop, those in a loop's body included, and in `when` on an
-  # output. The first stage has no earlier stage, so each of its conditions is refused.
+  # input, an output, a workflow entry or a loop, those in a loop's body included. The first
+  # stage has no earlier stage, so each of its conditions is refused.
   defp condition_errors(stages) do
     stages
     |> Enum.with_index()
@@ -1399,21 +1428,25 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   @doc """
-  record_declared/2 keeps `names` as the workflows the workspace's harness lists now: it
-  replaces the names the workspace kept, with the time of this call
-  (`declared_snapshot/1`). Call it with the names that
-  Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
-  choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/2`, with no read. The Workflows page calls it on open, Workspace
-  settings › Harness on open and after a harness choice is saved, and Check again on a
-  work item; a saved workflow does not change it. Each name is kept once, sorted, at
-  most 1,000. `:ok`.
+  record_declared/2 keeps `declared` as the workflows the workspace's harness lists now:
+  it replaces the workflows the workspace kept, with the time of this call
+  (`declared_snapshot/1`). `declared` is the names, or a map of each name to the access
+  level it declares, as Apiary.Stacks.Sources.chosen_declared/2 returns it for the
+  workspace's harness: its choice, else the harness the organisation shares, else the Qory
+  harness, whose workflows are `qory_workflows/2`, with no read. A name given with no
+  level declares `:read`. The Workflows page calls it on open, Workspace settings ›
+  Harness on open and after a harness choice is saved, and Check again on a work item; a
+  saved workflow does not change it. Each name is kept once, sorted, at most 1,000. `:ok`.
   """
-  @spec record_declared(%Workspace{}, [String.t()]) :: :ok
-  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
-      when is_list(names) do
-    names =
-      names |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort() |> Enum.take(@max_declared)
+  @spec record_declared(%Workspace{}, [String.t()] | %{String.t() => atom}) :: :ok
+  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, declared)
+      when is_list(declared) or is_map(declared) do
+    levels =
+      declared
+      |> declared_levels()
+      |> Enum.filter(fn {name, _level} -> is_binary(name) end)
+      |> Enum.sort()
+      |> Enum.take(@max_declared)
 
     {_one_or_none, _} =
       Repo.update_all(
@@ -1421,29 +1454,63 @@ defmodule Apiary.Processes do
           where: w.id == type(^id, :binary_id),
           where: w.organisation_id == type(^organisation_id, :binary_id)
         ),
-        set: [declared_workflows: names, declared_workflows_read_at: DateTime.utc_now()]
+        set: [
+          declared_workflows: Enum.uniq(Enum.map(levels, &elem(&1, 0))),
+          declared_access: Map.new(levels, fn {name, level} -> {name, level_text(level)} end),
+          declared_workflows_read_at: DateTime.utc_now()
+        ]
       )
 
     :ok
   end
 
+  defp declared_levels(names) when is_list(names), do: Enum.map(names, &{&1, :read})
+  defp declared_levels(levels) when is_map(levels), do: Map.to_list(levels)
+
+  defp level_text(:write), do: "write"
+  defp level_text(:write_no_push), do: "write-no-push"
+  defp level_text(_read), do: "read"
+
+  defp level_atom("write"), do: :write
+  defp level_atom("write-no-push"), do: :write_no_push
+  defp level_atom(_read), do: :read
+
   @doc """
-  declared_snapshot/1 is the workflow names the workspace kept at the last
-  `record_declared/2`: `%{names: names, read_at: time}`, or nil before the first. It
-  covers only the workspace's harness as Apiary.Stacks.Sources.chosen_workflows/2
-  finds it (the choice, else the harness the organisation shares, else the Qory
-  harness): not a harness file of a repository, and not the stack chosen for a target.
+  declared_snapshot/1 is the workflows the workspace kept at the last `record_declared/2`:
+  `%{names: names, access: levels, read_at: time}`, `levels` the access level each name
+  declares, or nil before the first. It covers only the workspace's harness as
+  Apiary.Stacks.Sources.chosen_declared/2 finds it (the choice, else the harness the
+  organisation shares, else the Qory harness): not a harness file of a repository, and not
+  the stack chosen for a target. A snapshot kept before the levels were kept has no level
+  for its names, and `access` is empty.
   """
-  @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
+  @spec declared_snapshot(%Workspace{}) ::
+          %{names: [String.t()], access: %{String.t() => atom}, read_at: DateTime.t()} | nil
   def declared_snapshot(%Workspace{id: id}) do
     Repo.one(
       from w in "workspaces",
         where: w.id == type(^id, :binary_id) and not is_nil(w.declared_workflows_read_at),
         select: %{
           names: w.declared_workflows,
+          access: w.declared_access,
           read_at: type(w.declared_workflows_read_at, :utc_datetime_usec)
         }
     )
+    |> case do
+      nil ->
+        nil
+
+      %{names: names, access: access} = snapshot ->
+        access = access || %{}
+
+        %{
+          snapshot
+          | access:
+              for name <- names, Map.has_key?(access, name), into: %{} do
+                {name, level_atom(access[name])}
+              end
+        }
+    end
   end
 
   @doc """
@@ -1460,6 +1527,33 @@ defmodule Apiary.Processes do
     |> declared_names(saved_workflows(workspace))
     |> Enum.uniq()
     |> Enum.sort()
+  end
+
+  @doc """
+  declared_access/1 is the access level each workflow of `declared_workflows/1` declares in
+  the workspace's harness, by name: for a workspace on the Qory harness, the levels of
+  `qory_workflow_levels/2`; for another harness, the levels of the workspace's snapshot
+  (`declared_snapshot/1`). A workflow with no level known, such as the workflow saved on
+  the Harness page, or a name of a snapshot kept before the levels were, has no key.
+  """
+  @spec declared_access(%Workspace{}) :: %{String.t() => :read | :write_no_push | :write}
+  def declared_access(%Workspace{} = workspace) do
+    known =
+      case Sources.chosen(workspace) do
+        %{choice: :qory} = qory -> qory_workflow_levels(qory, workspace)
+        _repository -> %{}
+      end
+
+    snapshot =
+      case declared_snapshot(workspace) do
+        %{access: access} -> access
+        nil -> %{}
+      end
+
+    for name <- declared_workflows(workspace),
+        level = Map.get(known, name) || Map.get(snapshot, name),
+        into: %{},
+        do: {name, level}
   end
 
   # Transition: the saved workflow is added by hand for a workspace with no snapshot or a
@@ -1485,8 +1579,8 @@ defmodule Apiary.Processes do
   workflow_declaration/2 is what the workspace's harness declares of the workflow `name`
   (`t:declaration/0`), nil for a name `declared_workflows/1` does not have. `access` is
   the level recorded with the saved workflow where one is, else nil: the level the
-  workflow declares in its stack. `time_limit` and `reads` are nil, since Qory Apiary
-  keeps neither of them: nil `reads` means any type.
+  workflow declares in its stack. `reads` is nil, since Qory Apiary does not keep it: nil
+  `reads` means any type.
   """
   @spec workflow_declaration(%Workspace{}, String.t()) :: declaration | nil
   def workflow_declaration(%Workspace{} = workspace, name) when is_binary(name) do
@@ -1499,7 +1593,7 @@ defmodule Apiary.Processes do
         |> Enum.sort_by(&(not is_nil(&1.target_id)))
         |> Enum.find_value(& &1.access)
 
-      %{name: name, access: access, time_limit: nil, reads: nil}
+      %{name: name, access: access, reads: nil}
     end
   end
 

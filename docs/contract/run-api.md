@@ -11,6 +11,23 @@ a signature gets the `404` of a path the router does not know.
 
 The code is in `lib/apiary_web/contract/run_api/`.
 
+## The run's access level
+
+The `access` of the run's documents is `read`, `write-no-push` or `write`
+(`documents.schema.json` of the run contract). It sets what the run may do on its target,
+not what it may do through the run API: a run of any level reads its work item and pushes
+artifacts and a verdict. A run with `write-no-push` has a writable checkout and a work
+credential with read access, so its credential cannot push to the target; only a
+run with `write` has `submit`.
+
+Qory Apiary computes the level once, when it claims the run. The level is the lower of two
+levels, from lowest to highest `read`, `write-no-push` and `write`: the level the run's
+workflow declares in the harness's stack (`workflows.<workflow>.access`), and the `access`
+of the workflow's entry in the stage of `process.yaml`, which may be `read` or
+`write-no-push`. An entry with no `access` leaves the stack's level; a workflow that sets
+none declares `read`. A run of a stage whose version has no entry for its workflow has
+`read`.
+
 ## Requests
 
 Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id: `run_id` in
@@ -131,6 +148,14 @@ Returns `200` with the work item snapshot:
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
+  `notes` contains only open notes. A note closes once the stage `stage_id` has an
+  approval after `at`, and a `move` once the stage it moved to has one: a member's, or
+  the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
+  open. A move that resolves an open escalation is one `move` note, with no
+  `escalation` note. Two records are missing from before Qory Apiary kept them: a
+  `move` written then has no stage it moved to, so it stays open; and a gate `none`
+  that passed on then recorded no approval, so the notes of that stage stay open until
+  the stage passes its gate again.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
   `state` are null; `inputs` and `outputs` are empty lists.
@@ -285,7 +310,11 @@ Checks, in order, after the checks of every request:
    twice is refused at the object's place, such as "at #/questions/0, the object has the
    key state twice", before the schema check. A question in `questions` has 0 to 4
    `options`, and at most one option has `recommended` true: a fifth option is refused
-   as "at #/questions/0/options, value should have at most 4 items, got 5".
+   as "at #/questions/0/options, value should have at most 4 items, got 5". A question
+   may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
+   number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
+   the run pushed it. Another value, such as `AC-3`, is refused at
+   `#/questions/0/criterion`.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -414,12 +443,13 @@ Checks, in order, after the checks of every request:
    and the rule it breaks in `message`. In `questions`, the run keeps every `id` and the
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
-   changes none, keeps each `history`, keeps `question`, `context` and `options` of each
-   question that stays `answered`, each option's `recommended` included, moves the
-   answer of a question it reopens unchanged to the end of its `history` with
-   `reopened.run` set to its `run.number`, and adds each question with `asked.run` set
-   to its `run.number` and with `follows`, if any, set to ids of questions before it in
-   the version; an absent `follows` and an empty one are the same.
+   changes none, keeps each `history`, keeps `question`, `context`, `options` and
+   `criterion` of each question that stays `answered`, set or absent, each option's
+   `recommended` included, moves the answer of a question it reopens unchanged to the
+   end of its `history` with `reopened.run` set to its `run.number`, and adds each
+   question with `asked.run` set to its `run.number` and with `follows`, if any, set to
+   ids of questions before it in the version; an absent `follows` and an empty one are
+   the same. The run may add, change or drop the `criterion` of an open question.
 
    The `decision` rules:
 
@@ -434,8 +464,8 @@ Checks, in order, after the checks of every request:
      unchanged, also when it withdraws or reopens the question, and adds a `decision`
      to none of them.
    - The run keeps `question` and `options` of each question that has a `decision`, in
-     every state, each option's `recommended` included, and its `context` while it
-     stays `decided` or `answered`.
+     every state, each option's `recommended` included, and its `context` and
+     `criterion` while it stays `decided` or `answered`.
 
    In `review-comments`, the run keeps every review comment and every earlier reply
    unchanged, adds no review comment, and adds at most one reply to an open review
@@ -464,20 +494,28 @@ Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
 `withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
 the version, as a push does. Gates, stage inputs and the work item's pages leave out a
 withdrawn name. A stage done whose last approval covered a version of that name is at its
-gate again. A later push of files is a new version, and lists the name again. A run
-cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory Apiary
-reads them itself, and a run pushes a new version of them instead.
+gate again. A later push of files is a new version, and lists the name again.
+
+A run cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory
+Apiary reads them itself, and a run pushes a new version of them instead. It cannot
+withdraw a name of a type whose entry in the template's `artifact_types` sets
+`withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
+a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
+whose newest version a member approved at a gate, and pushes a new version instead. An
+approval that the runner recorded for a gate `none` does not count, and neither does an
+approval of an older version.
 
 Checks, in order, after the checks of every request:
 
 1. A body that is not the push's object, as for a push: `400` `invalid_request`.
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
-3. `questions`, `review-comments`, `verdict` or `proposal`: `422`
-   `type_not_withdrawable`.
+3. `questions`, `review-comments`, `verdict` or `proposal`, or a type with
+   `withdrawable: false`: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
-   of the name, leaving out versions by a run a member cancelled: none, `409`
+   of the name, leaving out versions by a run a member cancelled: one that a member
+   approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
    `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
    `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
 
@@ -504,9 +542,13 @@ The body, at most 64 KiB:
   them as it shows every other member of the file. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
-  an open question, or `run_again`, without `question`. For an escalation, the work item
-  page adds the action's sentence: "Answer question 4." or "Run another round." The
-  schema of the type `verdict` checks them (`priv/schemas/artifacts/verdict.schema.json`).
+  an open question, or `run_again`, without `question`. A `run_again` point may also have
+  `fix`, one plain sentence on one line of 1 to 500 characters that states what a person
+  does about it; an `answer` point has no `fix`. For an escalation, the work item page
+  adds the action's sentence: "Answer question 4." or "Run another round." A point's
+  `fix` takes the place of "Run another round." The page shows `text` and `fix` as plain
+  text. The schema of the type `verdict` checks them
+  (`priv/schemas/artifacts/verdict.schema.json`).
   That file is the source of the schema, and qory keeps a byte copy of it at
   `contracts/harness/v1/verdict.schema.json`.
 - `track`: optional, for any verdict. The track the run proposes for the work item:
@@ -585,7 +627,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal` |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
@@ -608,6 +650,12 @@ The messages:
 - `type_not_withdrawable`: "Push a new version of questions instead. Qory Apiary reads
   questions, review-comments, verdict and proposal itself, so a run cannot withdraw
   them."
+- `type_not_withdrawable`, for a type with `withdrawable: false`: "Push a new
+  version of demo-script instead. The artifact type demo-script has withdrawable set to
+  false, so a run cannot withdraw its names."
+- `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
+  version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
+  a run cannot withdraw the name."
 - `withdrawal_with_files`: "Push either files or a withdrawal. A withdrawal of
   demo-script/scenario-2 stores no files, and the push has 1 file."
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a

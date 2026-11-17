@@ -24,6 +24,7 @@ defmodule Apiary.StagesTest do
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
+  @verify "st_m1mqbeywdg"
   # The point of a run outside a loop that ended with no verdict (`Apiary.Stages.Points`).
   @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
@@ -123,6 +124,17 @@ defmodule Apiary.StagesTest do
       dispatch_run_id: run.id,
       cancel_requested_at: DateTime.utc_now()
     })
+  end
+
+  # The approvals of the work item as a gate `none` records them: with no member, so that a
+  # run may withdraw the versions they cover.
+  defp automatic_approval!(work_item) do
+    {1, _rows} =
+      Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
+        set: [user_id: nil, automatic: true]
+      )
+
+    :ok
   end
 
   # A version of the explainer `name` that the run of the queue `run` pushes at Explore.
@@ -2388,7 +2400,9 @@ defmodule Apiary.StagesTest do
 
     # The last stage, Explore, with the output explainer beside the proposal; its run
     # pushes the proposal and an explainer of each of `names`, and the stage is approved.
-    defp done_with_explainers!(scope, names) do
+    # `by` is who approved the gate: `:automatic`, as a gate `none` records it, with no
+    # member, or `:person`, the member who approved.
+    defp done_with_explainers!(scope, names, by \\ :automatic) do
       save!(scope, [
         explore_stage(%{
           "outputs" => [
@@ -2410,6 +2424,8 @@ defmodule Apiary.StagesTest do
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       assert Stages.status(work_item).state == :done
+
+      if by == :automatic, do: automatic_approval!(work_item)
       work_item
     end
 
@@ -2510,6 +2526,87 @@ defmodule Apiary.StagesTest do
 
       assert upload.number == 1
       assert user_id == scope.user.id
+    end
+
+    test "a run does not withdraw a name whose newest version a person approved",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+
+      assert Stages.status(work_item).state == :done
+      assert [%{number: 1}] = versions(work_item, "explainer")
+    end
+
+    test "a run does not withdraw a name a member approved whose account is gone",
+         %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+
+      {1, _rows} =
+        Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [user_id: nil]
+        )
+
+      assert [%GateDecision{user_id: nil, automatic: false}] = decisions(work_item)
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a run withdraws a name whose approval is automatic", %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :automatic)
+
+      assert {:ok, %{number: 2, withdrawn: true}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a person's approval is read before the writer of the version", %{scope: scope} do
+      work_item = done_with_explainers!(scope, [], :person)
+
+      {:ok, upload} =
+        Stages.Artifacts.push(
+          {:person, scope},
+          work_item,
+          "explainer",
+          [%{filename: "explainer.md", content_type: "text/markdown", binary: "# P"}],
+          stage_id: @explore
+        )
+
+      [%GateDecision{} = earlier | _rest] = decisions(work_item)
+
+      Repo.insert!(%GateDecision{
+        organisation_id: earlier.organisation_id,
+        workspace_id: earlier.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: earlier.process_version_id,
+        user_id: scope.user.id,
+        stage_id: @explore,
+        kind: :approve,
+        versions: [upload.public_id],
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert {:error, {:withdraw, {:approved, 1}}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
+    end
+
+    test "a run withdraws a name whose newer version no person approved", %{scope: scope} do
+      work_item = done_with_explainers!(scope, ["main"], :person)
+      {:ok, %{number: 2}} = push_explainer(live_run!(work_item), "main")
+
+      assert {:ok, %{number: 3, withdrawn: true}} =
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+                 stage_id: @explore
+               )
     end
   end
 
@@ -4044,6 +4141,7 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
+      automatic_approval!(work_item)
       [explainer] = versions(work_item, "explainer")
       assert [%{version: %{id: id}}] = Stages.inputs(work_item)
       assert id == explainer.public_id
@@ -4087,6 +4185,7 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
+      automatic_approval!(work_item)
       [explainer] = versions(work_item, "explainer")
       run = live_run!(work_item)
 
@@ -4141,6 +4240,305 @@ defmodule Apiary.StagesTest do
                },
                %{kind: :move, stage_id: @explore, note: "Shaped enough"}
              ] = Stages.notes(work_item)
+    end
+
+    # Explore, then Shape, Build and Verify, three stages with no workflow, each at a
+    # person's gate.
+    defp four_stages!(scope, explore_gate \\ %{"kind" => "person", "approvers" => "members"}) do
+      save!(scope, [
+        explore_stage(%{"gate" => explore_gate}),
+        stage(@shape, "Shape", []),
+        stage(@build, "Build", []),
+        stage(@verify, "Verify", [])
+      ])
+    end
+
+    defp texts(work_item), do: Enum.map(Stages.notes(work_item), & &1.note)
+
+    # The work item approved at each stage before `stage_id`, at that stage's gate.
+    defp approved_up_to!(scope, work_item, stage_id) do
+      Enum.reduce_while([@explore, @shape, @build], work_item, fn at, work_item ->
+        if at == stage_id do
+          {:halt, work_item}
+        else
+          {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: at)
+          {:cont, reload(work_item)}
+        end
+      end)
+    end
+
+    # A run of Explore that stopped: the stage escalates, `run_stopped`.
+    defp stopped_run, do: %{exit_state: "failed", outcome_state: "failed"}
+
+    test "Shape's request for changes is gone once Shape is approved again", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = approved_up_to!(scope, work_item, @verify)
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Back to Shape", expect_stage: @verify)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert texts(work_item) == ["Back to Shape", "Split the plan in two"]
+
+      # Shape's first approval came before both notes; its second closes both.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert %{stage_id: @build} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "Verify's request for changes stays open until Verify is approved", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      work_item = approved_up_to!(scope, work_item, @verify)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Show the refund", nil, expect_stage: @verify)
+
+      {:ok, _} = Stages.move(scope, work_item, @build, "Fix the refund", expect_stage: @verify)
+
+      assert [
+               %{kind: :request_changes, stage_id: @verify, note: "Show the refund"},
+               %{kind: :move, stage_id: @verify, note: "Fix the refund"}
+             ] = Stages.notes(work_item)
+
+      # Build's approval closes the move to Build; Verify's request stays.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %{stage_id: @verify, stage_state: :at_gate} = reload(work_item)
+      assert texts(work_item) == ["Show the refund"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an approval before a note leaves it open", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+      work_item = end_run!(work_item, understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Keep the coupon", nil, expect_stage: @explore)
+
+      # The approval came before the move and the second request: it closes only the
+      # first request.
+      assert texts(work_item) == ["Read the cart", "Keep the coupon"]
+    end
+
+    test "a note that a finished run already read stays open until its stage is approved",
+         %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      # The next run of Explore reads the note and ends; the note is still listed for the
+      # run after it.
+      work_item = end_run!(work_item, understood_result())
+      assert texts(work_item) == ["Name the price rule"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a note that an approval closed stays closed when a newer output reopens the stage",
+         %{scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"outputs" => [%{"type" => "spec", "required" => false}]})
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      work_item = reload(work_item)
+
+      spec = fn text ->
+        [%{filename: "spec.md", content_type: "text/markdown", binary: text}]
+      end
+
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The spec"),
+          stage_id: @shape
+        )
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert texts(work_item) == ["Split the plan in two"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+      assert Stages.status(work_item).state == :done
+
+      # A newer version of Shape's output, the last stage's, reopens Shape's gate; the
+      # closed note stays out.
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The new spec"),
+          stage_id: @shape
+        )
+
+      assert [_first, _second] = versions(work_item, "spec")
+      assert Stages.status(work_item).state == :at_gate
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move closes when the stage it went to is approved, not the one it left",
+         %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+
+      assert [%GateDecision{kind: :move, stage_id: @shape, to_stage_id: @explore}] =
+               Enum.filter(decisions(work_item), &(&1.kind == :move))
+
+      work_item = end_run!(work_item, understood_result())
+      assert [%{kind: :move, stage_id: @shape, note: "Read the cart"}] = Stages.notes(work_item)
+
+      # Shape, the stage it left, is not approved again: Explore's approval closes it.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an escalation's note closes when its stage is approved", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+
+      {:ok, _} =
+        Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart",
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      assert [%{kind: :escalation, stage_id: @explore}] = Stages.notes(work_item)
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "the automatic approval of a gate none closes the notes of its stage", %{
+      scope: scope
+    } do
+      four_stages!(scope, %{"kind" => "none"})
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+
+      {:ok, _} =
+        Stages.resolve_escalation(scope, work_item, :another_round, "Read the cart",
+          expect_stage: @explore
+        )
+
+      assert texts(work_item) == ["Read the cart"]
+      work_item = end_run!(work_item, understood_result())
+
+      assert %{stage_id: @shape} = reload(work_item)
+
+      assert [%GateDecision{kind: :approve, automatic: true, stage_id: @explore, user_id: nil}] =
+               decisions(work_item)
+
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move closes when the stage it went to is approved automatically", %{scope: scope} do
+      four_stages!(scope, %{"kind" => "none"})
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      assert %{stage_id: @shape} = reload(work_item)
+
+      {:ok, _} = Stages.move(scope, work_item, @explore, "Read the cart", expect_stage: @shape)
+      assert texts(work_item) == ["Read the cart"]
+
+      work_item = end_run!(work_item, understood_result())
+
+      assert %{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "an answer closes when its stage is approved after it", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(questions_result())
+      {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
+      work_item = end_run!(work_item, understood_result())
+
+      assert [%{kind: :answer, stage_id: @explore}, %{kind: :answer}] = Stages.notes(work_item)
+      assert texts(work_item) == ["The sale price", "Yes"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+
+      assert %{stage_id: @shape} = reload(work_item)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a move that resolves an open escalation is one note, the move's", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(nil, stopped_run())
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough", expect_stage: @explore)
+
+      assert %Escalation{resolution: :move_back, note: nil} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+
+      assert [%{kind: :move, stage_id: @explore, note: "Shaped enough"}] =
+               Stages.notes(work_item)
+
+      # The move closes once Shape, the stage it went to, is approved.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "open notes of several stages are listed together, oldest first", %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      work_item = end_run!(work_item, understood_result())
+      {:ok, _} = Stages.move(scope, work_item, @shape, "Shaped enough", expect_stage: @explore)
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert [
+               %{kind: :request_changes, stage_id: @explore},
+               %{kind: :move, stage_id: @explore},
+               %{kind: :request_changes, stage_id: @shape}
+             ] = Stages.notes(work_item)
+
+      # Shape's approval closes the move to Shape and Shape's request; Explore's request
+      # stays open, as Explore is not approved after it.
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      assert %{stage_id: @build} = reload(work_item)
+      assert texts(work_item) == ["Name the price rule"]
     end
   end
 
@@ -4933,6 +5331,232 @@ defmodule Apiary.StagesTest do
 
       assert %WorkItem{state: :closed, stage_id: @shape, stage_state: :at_gate} =
                reload(work_item)
+    end
+  end
+
+  describe "a first attempt, and Verify with no run" do
+    @verify "st_m1mqbeywdg"
+    @on_fast %{"track" => "fast"}
+    @tracks_of_process [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast", "name" => "Fast track"}
+    ]
+
+    # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
+    # ends its sequence when it passes, then plan-the-build and, on Fast track,
+    # write-the-checks; Verify, whose run and whose output `verification` Fast track does
+    # without.
+    defp first_attempt_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast"])),
+          stage(@build, "Build", [
+            %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+            %{"workflow" => "plan-the-build"},
+            %{"workflow" => "write-the-checks", "when" => @on_fast}
+          ]),
+          stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket", "unless" => @on_fast}], %{
+            "outputs" => [
+              %{"type" => "verification", "required" => true, "unless" => @on_fast}
+            ]
+          })
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    end
+
+    defp in_build!(scope, track) do
+      first_attempt_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    defp verified_with(type) do
+      fn run, registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            type,
+            [%{filename: "#{type}.md", content_type: "text/markdown", binary: "# Checked"}],
+            name: "main",
+            stage_id: run.stage_id
+          )
+
+        verdict("passed").(run, registered)
+      end
+    end
+
+    test "a passed first attempt ends Build's sequence, and Verify's gate opens with no run and no verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "make-a-small-change", stage_entry: 0} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+
+      assert Enum.map(runs(work_item), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = verifying
+
+      assert Enum.map(runs(verifying), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      refute escalation(verifying)
+      assert Stages.missing_outputs(verifying) == []
+
+      assert %{state: :at_gate, outputs: [%{type: "verification", required: false}]} =
+               Stages.status(verifying, scope)
+
+      assert {:ok, %WorkItem{state: :closed}} =
+               Stages.approve(scope, verifying, nil, expect_stage: @verify)
+    end
+
+    test "a passed first attempt leaves one skip for each later workflow, until the stage runs again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+
+      assert [
+               %{stage_id: @build, workflow: "plan-the-build", reason: "first_attempt_passed"},
+               %{stage_id: @build, workflow: "write-the-checks", reason: "first_attempt_passed"}
+             ] = skips = Stages.skips(work_item)
+
+      assert Enum.all?(skips, &(&1.cause_entry == "make-a-small-change" and &1.input == nil))
+      assert Enum.all?(skips, &(&1.track == nil and &1.negated == false and &1.round == 1))
+
+      # Approving Build and moving back into it runs the stage again, from its first entry.
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+      assert Enum.count(Stages.skips(verifying), &(&1.stage_id == @build)) == 2
+
+      {:ok, again} = Stages.move(scope, verifying, @build, "Again.", expect_stage: @verify)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = again
+      assert Enum.filter(Stages.skips(again), & &1.reason) == []
+    end
+
+    test "Request changes clears the skips of a first attempt, and its next pass writes them again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+      assert length(Stages.skips(work_item)) == 2
+      [proposal] = versions(work_item, "proposal")
+
+      {:ok, again} =
+        Stages.request_changes(scope, work_item, "Redo it.", proposal.public_id,
+          expect_stage: @build
+        )
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = again
+      assert Stages.skips(again) == []
+
+      again = end_run!(again, verdict("passed"))
+      assert [_plan, _checks] = Stages.skips(again)
+    end
+
+    test "Another round after a failed check clears the skips of the last loop only",
+         %{scope: scope} do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast"])),
+          stage(
+            @build,
+            "Build",
+            [
+              %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+              %{"workflow" => "plan-the-build"},
+              %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "check-it"}]}}
+            ],
+            %{"outputs" => [%{"type" => "submission", "required" => true}]}
+          )
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+
+      # The first attempt passes with no submission: the check fails and the stage escalates.
+      work_item = reload(work_item) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+
+      assert ["plan-the-build", "check-it"] ==
+               for(
+                 %{reason: "first_attempt_passed", workflow: w} <- Stages.skips(work_item),
+                 do: w
+               )
+
+      {:ok, again} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @build)
+
+      # The loop runs again, so its skip goes; plan-the-build still does not run.
+      assert %DispatchRun{workflow: "check-it"} = newest_run(again)
+
+      assert ["plan-the-build"] ==
+               for(%{reason: "first_attempt_passed", workflow: w} <- Stages.skips(again), do: w)
+    end
+
+    test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
+      work_item = in_build!(scope, "fast")
+      work_item = end_run!(work_item, verdict("changes-requested"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+    end
+
+    test "on Standard the first attempt does not run, and Verify still needs verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "standard")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = verifying
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(verifying)
+
+      ended = end_run!(verifying, verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = ended
+      assert %Escalation{cause: :check_failed} = escalation(ended)
+      assert Stages.missing_outputs(ended) == ["verification"]
+
+      assert %{outputs: [%{type: "verification", required: true, check: :missing}]} =
+               Stages.status(ended, scope)
+    end
+
+    test "on Standard, Verify's gate opens once verification is stored", %{scope: scope} do
+      work_item = in_build!(scope, "standard") |> end_run!(verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      ended = end_run!(verifying, verified_with("verification"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = ended
+      assert Stages.missing_outputs(ended) == []
     end
   end
 end

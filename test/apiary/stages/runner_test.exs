@@ -318,6 +318,137 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
+  describe "a first attempt" do
+    defp attempt,
+      do: stage([wf("small-change", %{"first_attempt" => true}), wf("plan"), wf("check")])
+
+    defp first_attempt_skip(workflow, entry, loop_entry \\ nil, cause \\ "small-change"),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: nil,
+           track: nil,
+           negated: false,
+           reason: "first_attempt_passed",
+           cause_entry: cause,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: 1
+         }}
+
+    test "passed ends the sequence: the rest is passed over and the gate follows" do
+      assert %{
+               state: :at_gate,
+               position: %{entry: 3, loop_entry: nil},
+               actions: [skip_plan, skip_check]
+             } = Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skip_plan == first_attempt_skip("plan", 1)
+      assert skip_check == first_attempt_skip("check", 2)
+    end
+
+    test "passed writes a skip for each workflow of a later loop, and names the entry by its name" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true, "name" => "Quick fix"}),
+          loop([wf("review"), wf("fix")])
+        ])
+
+      assert %{state: :at_gate, actions: skips} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skips == [
+               first_attempt_skip("review", 1, 0, "Quick fix"),
+               first_attempt_skip("fix", 1, 1, "Quick fix")
+             ]
+    end
+
+    test "no skip for an entry before the first attempt, or when it does not pass" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert %{actions: [{:skip, %{workflow: "c", entry: 2}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert %{actions: [{:queue, %{workflow: "c"}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :changes_requested, nil}})
+    end
+
+    test "passed goes to a gate none's approval and advance" do
+      stage = %{attempt() | "gate" => %{"kind" => "none"}}
+
+      assert %{state: :done, actions: [{:skip, _}, {:skip, _}, :approve, :advance]} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "passed runs the Exists checks before the gate" do
+      assert %{
+               state: :escalated,
+               actions: [{:skip, _}, {:skip, _}, {:escalate, :check_failed, _}]
+             } =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+                 failed_checks: ["submission"]
+               })
+    end
+
+    test "a failed check after a passed first attempt escalates check_failed, with no loop restart" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true}),
+          loop([wf("review"), wf("fix")])
+        ])
+        |> Map.put("outputs", [%{"type" => "submission", "required" => true}])
+
+      outcome =
+        Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["submission"]
+        })
+
+      assert %{state: :escalated, position: %{entry: 2, loop_entry: nil}} = outcome
+
+      assert [
+               {:skip, %{workflow: "review"}},
+               {:skip, %{workflow: "fix"}},
+               {:escalate, :check_failed, [_point]}
+             ] = outcome.actions
+
+      refute Enum.any?(outcome.actions, &match?({:queue, _}, &1))
+      refute Enum.any?(outcome.actions, &match?({:checks_failed, _, _}, &1))
+    end
+
+    test "changes-requested goes on with the sequence" do
+      assert queued(
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :changes_requested, nil}})
+             ) ==
+               {"plan", 1, nil, 1}
+    end
+
+    test "escalate escalates and a run with no verdict escalates run_stopped" do
+      assert %{actions: [{:escalate, :escalate, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :escalate, nil}})
+
+      assert %{actions: [{:escalate, :run_stopped, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, nil, nil}})
+    end
+
+    test "an entry after a first attempt that passed is not a first attempt" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
+
+      assert %{state: :at_gate} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "first_attempt: false, or none, goes on" do
+      stage = stage([wf("a", %{"first_attempt" => false}), wf("b")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
+    end
+  end
+
   describe "a run's end in a loop" do
     test "passed from any workflow leaves the loop at once" do
       assert %{state: :at_gate} =
@@ -704,7 +835,9 @@ defmodule Apiary.Stages.RunnerTest do
       film = Map.merge(%{"type" => "demo-video", "required" => true}, @demos)
 
       # The failed checks as `Apiary.Stages` reads them: each required output, missing.
-      failed = fn counted -> for o <- [film], Runner.required?(o, counted), do: o["type"] end
+      failed = fn counted ->
+        for o <- [film], Runner.required?(o, %{counted: counted}), do: o["type"]
+      end
 
       assert failed.([]) == []
 
@@ -904,10 +1037,13 @@ defmodule Apiary.Stages.RunnerTest do
     test "an output with a condition is required only while its input counts" do
       output = %{"type" => "demo-video", "required" => true} |> Map.merge(@demos)
 
-      refute Runner.required?(output, [])
-      assert Runner.required?(output, ["demo-scenarios"])
-      assert Runner.required?(%{"type" => "verification", "required" => true}, [])
-      refute Runner.required?(%{"type" => "explainer", "required" => false}, ["demo-scenarios"])
+      refute Runner.required?(output, %{counted: []})
+      assert Runner.required?(output, %{counted: ["demo-scenarios"]})
+      assert Runner.required?(%{"type" => "verification", "required" => true}, %{counted: []})
+
+      refute Runner.required?(%{"type" => "explainer", "required" => false}, %{
+               counted: ["demo-scenarios"]
+             })
     end
 
     test "condition_inputs/1 lists the input types of the stage's conditions once" do
@@ -1106,41 +1242,31 @@ defmodule Apiary.Stages.RunnerTest do
       assert c.machine_type == "default"
     end
 
-    test "takes the lower time limit and access level of the entry and the declaration" do
+    test "takes the lower access level of the entry and the declaration, and no time limit" do
       seq = stage([wf("a", %{"time_limit" => "10m", "access" => "read"})])
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{
-          declarations: %{"a" => %{time_limit: "1h", access: :write}}
-        }).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :write}}}).actions
 
-      assert spec.time_limit == 600
       assert spec.access == :read
-
-      [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: "5m", access: nil}}}).actions
-
-      assert spec.time_limit == 300
+      refute Map.has_key?(spec, :time_limit)
 
       seq = stage([wf("a")])
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{
-          declarations: %{"a" => %{time_limit: nil, access: :write}}
-        }).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :write}}}).actions
 
-      assert spec.time_limit == nil
       assert spec.access == :write
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: nil, access: :read}}}).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :read}}}).actions
 
       assert spec.access == :read
     end
 
-    test "limits/3 is the lowered limits of the entry at a position" do
+    test "limits/3 is the lowered access level of the entry at a position" do
       seq = build()
-      declaration = %{time_limit: "20m", access: :write}
+      declaration = %{access: :write}
 
       seq =
         put_in(seq, ["sequence"], [
@@ -1148,61 +1274,73 @@ defmodule Apiary.Stages.RunnerTest do
           loop([wf("capture-demo", %{"access" => "read"}), wf("fix-demo-findings")])
         ])
 
-      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{
-               time_limit: 1200,
-               access: :write
-             }
-
-      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{time_limit: nil, access: :read}
-      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{time_limit: nil, access: nil}
+      # A time limit an older document has on its entry is not read.
+      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{access: :write}
+      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{access: :read}
+      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{access: nil}
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
+    end
+
+    test "limits/3 lowers to write-no-push for an entry of that level, and to read below it" do
+      seq = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :write_no_push
+
+      assert Runner.limits(seq, pos(0, nil, 1), nil).access == :write_no_push
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :read}).access == :read
+
+      # An entry value the schema does not take counts as read.
+      other = put_in(build(), ["sequence"], [wf("verify", %{"access" => "push"})])
+
+      assert Runner.limits(other, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :read
+
+      [{:queue, spec}] =
+        Runner.step(seq, nil, :enter, %{
+          declarations: %{"verify" => %{time_limit: nil, access: :write}}
+        }).actions
+
+      assert spec.access == :write_no_push
+    end
+
+    test "limits/3 takes a declared write-no-push level: an entry with none keeps it, read lowers it" do
+      none = put_in(build(), ["sequence"], [wf("verify", %{})])
+      read = put_in(build(), ["sequence"], [wf("verify", %{"access" => "read"})])
+      same = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+      declared = %{time_limit: nil, access: :write_no_push}
+
+      assert Runner.limits(none, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(same, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(read, pos(0, nil, 1), declared).access == :read
     end
 
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do
       seq =
         put_in(build(), ["sequence"], [
-          wf("implement", %{"time_limit" => "1h"}),
+          wf("implement"),
           loop([wf("capture-demo"), wf("fix-demo-findings")])
         ])
 
-      declaration = %{time_limit: nil, access: :write}
+      declaration = %{access: :write}
 
-      assert Runner.limits(seq, pos(0, nil, 1), declaration, "lint") == %{
-               time_limit: 3600,
-               access: :read
-             }
-
+      assert Runner.limits(seq, pos(0, nil, 1), declaration, "lint") == %{access: :read}
       assert Runner.limits(seq, pos(1, 1, 1), declaration, "lint").access == :read
 
       for {position, stage} <- [{pos(2, nil, 1), seq}, {pos(0, nil, 1), %{}}] do
-        assert Runner.limits(stage, position, declaration, "lint") == %{
-                 time_limit: nil,
-                 access: :read
-               }
+        assert Runner.limits(stage, position, declaration, "lint") == %{access: :read}
       end
     end
 
     test "limits/4 leaves a run alone at an entry of its workflow, or with no workflow" do
-      seq = put_in(build(), ["sequence"], [wf("implement", %{"time_limit" => "1h"})])
-      declaration = %{time_limit: nil, access: :write}
-      limits = %{time_limit: 3600, access: :write}
+      seq = put_in(build(), ["sequence"], [wf("implement")])
+      declaration = %{access: :write}
+      limits = %{access: :write}
 
       assert Runner.limits(seq, pos(0, nil, 1), declaration, "implement") == limits
       assert Runner.limits(seq, pos(0, nil, 1), declaration, nil) == limits
       assert Runner.limits(seq, pos(1, nil, 1), declaration, nil) == nil
       assert Runner.limits(%{}, pos(0, nil, 1), declaration, nil) == nil
-    end
-
-    test "reads durations" do
-      assert Runner.seconds("1h30m") == 5400
-      assert Runner.seconds("15m") == 900
-      assert Runner.seconds("90s") == 90
-      assert Runner.seconds("1h") == 3600
-      assert Runner.seconds("1m5s") == 65
-      assert Runner.seconds("") == nil
-      assert Runner.seconds("0m") == nil
-      assert Runner.seconds("soon") == nil
-      assert Runner.seconds(nil) == nil
     end
   end
 

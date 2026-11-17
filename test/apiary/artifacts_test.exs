@@ -396,6 +396,19 @@ defmodule Apiary.ArtifactsTest do
                type_entries()
     end
 
+    test "stores withdrawable true for a form payload that sets false", %{scope: scope} do
+      for {name, payload} <- [
+            {"bids-a", %{"name" => "bids-a", "base_view" => "file", "withdrawable" => false}},
+            {"bids-b", %{"name" => "bids-b", "base_view" => "file", "withdrawable" => "false"}},
+            {"bids-c", %{name: "bids-c", base_view: "file", withdrawable: false}}
+          ] do
+        assert {:ok, %Type{name: ^name, withdrawable: true}} =
+                 Artifacts.create_type(scope, scope.workspace, payload)
+
+        assert %Type{withdrawable: true} = Artifacts.type(scope.workspace, name)
+      end
+    end
+
     test "takes a structured type's schema as a map or as JSON text", %{scope: scope} do
       schema = %{"type" => "object", "properties" => %{"bid" => %{"type" => "number"}}}
 
@@ -1093,6 +1106,35 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 1
     end
 
+    test "stores a question's criterion as the run pushed it, and refuses one not an id",
+         %{run: run} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          json("questions.json", %{"questions" => &1})
+        ])
+
+      stored = fn %Version{files: [file]} ->
+        {:ok, path} = Artifacts.open_file(file)
+        path |> File.read!() |> Jason.decode!()
+      end
+
+      with_criterion = Map.put(asked(run, "q1", "Which basket?"), "criterion", "ac-3")
+      without = asked(run, "q2", "Which sale?")
+
+      for id <- ["AC-3", "ac-0", "criterion-3"] do
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/criterion"}}}} =
+                 push.([Map.put(with_criterion, "criterion", id)]),
+               id
+      end
+
+      assert count(Version) == 0
+
+      # The version keeps the criterion of q1, and q2 without one, as the run pushed them.
+      assert {:ok, %Version{number: 1} = version} = push.([with_criterion, without])
+
+      assert stored.(version) == %{"questions" => [with_criterion, without]}
+    end
+
     test "a refused or normalised version of the questions keeps no file without a version",
          %{run: run, root: root} = context do
       push =
@@ -1512,6 +1554,65 @@ defmodule Apiary.ArtifactsTest do
           ] do
         assert {:error, {:invalid, {:schema, 0, _error}}} = push.("verdict", document)
       end
+
+      # A run_again point with a question is refused at the point, with the member named.
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "property 'question' is not allowed"}}}} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [Map.put(run_again, "question", "q2")]
+               })
+    end
+
+    test "takes a fix on a run_again point, on one line of 1 to 500 characters",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [json("a.json", &2)])
+
+      run_again = %{
+        "text" => "The build is at its limit of 100 steps, so another round stops at once.",
+        "action" => "run_again",
+        "fix" =>
+          "Accept the newest submission, or close this work item and make a new one " <>
+            "for the unfinished criteria."
+      }
+
+      for verdict <- ~w(escalate changes-requested) do
+        assert {:ok, _version} =
+                 push.("verdict", %{"verdict" => verdict, "points" => [run_again]})
+      end
+
+      assert {:ok, _version} =
+               push.("verdict", %{
+                 "verdict" => "escalate",
+                 "points" => [%{run_again | "fix" => String.duplicate("x", 500)}]
+               })
+
+      # An answer point has no fix: a fix would take the place of "Answer question N.".
+      answer = %{
+        "text" => "Which basket gets the sale?",
+        "action" => "answer",
+        "question" => "q2",
+        "fix" => "Answer it on the Explore tab."
+      }
+
+      assert {:error,
+              {:invalid,
+               {:schema, 0, %{path: "#/points/0", error: "property 'fix' is not allowed"}}}} =
+               push.("verdict", %{"verdict" => "escalate", "points" => [answer]})
+
+      # A fix is a string on one line: no control character, no line feed, 1 to 500
+      # characters.
+      for point <- [
+            %{run_again | "fix" => ""},
+            %{run_again | "fix" => String.duplicate("x", 501)},
+            %{run_again | "fix" => "Close the work item.\u0007"},
+            %{run_again | "fix" => "Close the work item.\nTake it in again."},
+            %{run_again | "fix" => 1}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, _error}}} =
+                 push.("verdict", %{"verdict" => "escalate", "points" => [point]})
+      end
     end
 
     test "takes an answer point only about an open question of the current take in",
@@ -1736,6 +1837,37 @@ defmodule Apiary.ArtifactsTest do
                Repo.all(from e in Entry, where: e.action == "artifact.write")
 
       assert subject_id == context.work_item.id
+    end
+
+    test "a custom type's document that fails the then of an if is refused with the inner error",
+         %{scope: scope} = context do
+      member = member_fixture(scope)
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "bids",
+          "base_view" => "structured",
+          "json_schema" => %{
+            "type" => "object",
+            "properties" => %{
+              "kind" => %{"enum" => ["fixed", "open"]},
+              "price" => %{"type" => "number"}
+            },
+            "if" => %{"required" => ["kind"], "properties" => %{"kind" => %{"const" => "fixed"}}},
+            "then" => %{"required" => ["price"]}
+          }
+        })
+
+      push =
+        &Artifacts.push({:person, member.scope}, context.work_item, "bids", [
+          json("bids.json", &1)
+        ])
+
+      assert {:ok, _version} = push.(%{"kind" => "fixed", "price" => 12})
+
+      assert {:error,
+              {:invalid, {:schema, 0, %{path: "#", error: "property 'price' is required"}}}} =
+               push.(%{"kind" => "fixed"})
     end
 
     test "is not found for a person of another organisation", context do

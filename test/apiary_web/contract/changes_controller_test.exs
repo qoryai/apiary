@@ -77,7 +77,8 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
             {"changes/feed-loopback.json", fresh()},
             {"changes/grants.json", fresh()},
             {"changes/comment.json", fresh()},
-            {"changes/empty.json", fresh()}
+            {"changes/empty.json", fresh()},
+            {"changes/watch.json", fresh()}
           ] do
         %{"changes" => written} = fixture(path)
         append!(adapter_ctx.adapter, Enum.map(written, &entry/1))
@@ -103,7 +104,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
               &1 == "invalid/changes-without-revision.json")
         )
 
-      assert length(paths) == 15
+      assert length(paths) == 19
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
 
       for path <- paths, change <- fixture(path)["changes"] do

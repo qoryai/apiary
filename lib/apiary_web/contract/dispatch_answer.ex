@@ -11,15 +11,16 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @typedoc """
   The harness members of an explore run's documents, from its harness walk: the target's
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
-  resolved; and the harness document the walk took, nil where the target's harness file
-  applies. A run with write access whose process version has a submit step also has
-  `submit` and `submit_module`, nil for none (`Apiary.Dispatches.Handover`).
+  resolved, lowered by the run's stage entry; and the harness document the walk took, nil
+  where the target's harness file applies. A run with write access whose process version
+  has a submit step also has `submit` and `submit_module`, nil for none
+  (`Apiary.Dispatches.Handover`).
   """
   @type harness :: %{
           required(:target_version) => String.t() | nil,
           required(:workflow) => String.t(),
           required(:harness_hidden) => boolean,
-          required(:access) => :read | :write,
+          required(:access) => :read | :write_no_push | :write,
           required(:harness) => map | nil,
           optional(:submit) => %{type: String.t(), send: String.t()},
           optional(:submit_module) => map | nil
@@ -119,10 +120,13 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   end
 
   # access/1 is what a run with the harness members `harness` may do on its target: the
-  # level its harness walk resolved, `read` or `write`. A run with no harness members, a
-  # prebuild or an explore run with no workflow, reads.
+  # level its harness walk resolved, lowered by its stage entry: `read`, `write-no-push`
+  # (a writable checkout that has no push credential) or `write`. A run with no harness
+  # members, a prebuild or an explore run with no workflow, reads. The work credential of
+  # a `write-no-push` run has read access (`Apiary.Runs.RunCredentials`).
   @doc false
   @spec access(harness | nil) :: String.t()
+  def access(%{access: :write_no_push}), do: "write-no-push"
   def access(%{access: level}) when level in [:read, :write], do: Atom.to_string(level)
   def access(_none), do: "read"
 

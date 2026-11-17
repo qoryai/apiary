@@ -22,6 +22,10 @@ defmodule Apiary.Stages.Runner do
   #     ring goes back to the first, which starts the next round. At the round limit the
   #     stage escalates, `round_limit`, with a point that says so
   #     (`Apiary.Stages.Points`).
+  #   * A workflow entry outside a loop with `first_attempt: true` ends the sequence when its
+  #     run ends `passed`: each workflow after it is passed over (`{:skip, spec}` with the
+  #     reason `first_attempt_passed`, those in a loop's body included), and the Exists
+  #     checks and the gate follow. Another verdict acts as for any entry.
   #   * Outside a loop, the sequence goes on after a run with `passed` or
   #     `changes-requested`, except on an entry with a return key (`return`, choice 10):
   #     its `changes-requested` returns the work item to the key's stage, an earlier stage
@@ -67,13 +71,15 @@ defmodule Apiary.Stages.Runner do
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
   #     start for a stage with no loop.
-  #   * A queued run's time limit and access level are the lower of the entry's and the
-  #     workflow's declaration (addition 10); its machine type is the entry's, else the
-  #     document's.
-  #   * A stage, a loop, a workflow entry and an input take `when` and `unless`, each with
-  #     one condition: `{input: T}`, met while `T` counts (the version of `T` that the stage
-  #     reads has a file of more than 0 bytes, `facts.counted`), or `{track: ID}`, met while
-  #     the work item is on the track `ID` (`facts.track`, `Apiary.Stages.track/1`). `when`
+  #   * A queued run's access level is the lower of the entry's and the workflow's
+  #     declaration (addition 10); its machine type is the entry's, else the document's.
+  #     An entry has no time limit: the runs of a workflow take its limit in
+  #     `Apiary.TimeLimits`, which `Apiary.Dispatches.RunSettings` reads at the claim.
+  #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
+  #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
+  #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
+  #     `{track: ID}`, met while the work item is on the track `ID`
+  #     (`facts.track`, `Apiary.Stages.track/1`). `when`
   #     holds the item back while its condition is not met, `unless` while it is met
   #     (`unmet/2` is the reason, or nil). A stage whose condition holds it back is passed
   #     over when it is entered, before it waits for anything, with no run
@@ -85,9 +91,10 @@ defmodule Apiary.Stages.Runner do
   #     on, as after a run with no verdict. A loop whose every entry is passed over is
   #     passed over too: once, with no round counted, and Request changes, Run another
   #     round and a failed check never start it again. A stage does not wait for an
-  #     undeclared workflow whose condition holds it back. An output with `when: {input: T}`
-  #     is required only while `T` counts (`required?/2`). A loop with a condition that
-  #     holds it back is passed over whole, each of its entries with that reason.
+  #     undeclared workflow whose condition holds it back. An output whose condition holds it
+  #     back is not required (`required?/2`, by `unmet/2` as for any item), so the stage goes
+  #     on to its gate. A loop with a condition that holds it back is passed over whole, each
+  #     of its entries with that reason.
   @moduledoc false
 
   alias Apiary.Stages.Points
@@ -181,24 +188,26 @@ defmodule Apiary.Stages.Runner do
   @typedoc """
   A workflow entry passed over, at the position it would run at: its workflow and the
   condition that held it back, as `input` (a type) or `track` (an id), exactly one of them,
-  with `negated` for an `unless`.
+  with `negated` for an `unless`; or, with neither, `reason` `first_attempt_passed` and
+  `cause_entry`, the name of the first attempt's entry, else its workflow.
   """
   @type skip_spec :: %{
-          workflow: String.t(),
-          input: String.t() | nil,
-          track: String.t() | nil,
-          negated: boolean,
-          entry: non_neg_integer,
-          loop_entry: non_neg_integer | nil,
-          round: pos_integer
+          :workflow => String.t(),
+          :input => String.t() | nil,
+          :track => String.t() | nil,
+          :negated => boolean,
+          optional(:reason) => String.t(),
+          optional(:cause_entry) => String.t(),
+          :entry => non_neg_integer,
+          :loop_entry => non_neg_integer | nil,
+          :round => pos_integer
         }
 
   @typedoc "A run to queue, at the position it runs at."
   @type run_spec :: %{
           workflow: String.t(),
           machine_type: String.t(),
-          time_limit: pos_integer | nil,
-          access: :read | :write | nil,
+          access: :read | :write_no_push | :write | nil,
           entry: non_neg_integer,
           loop_entry: non_neg_integer | nil,
           round: pos_integer
@@ -453,26 +462,25 @@ defmodule Apiary.Stages.Runner do
         do: type
   end
 
-  # required?/2 is whether `output`, an output of a stage, is required, with the input
-  # types that count, `counted`: its `required`, while its condition is met.
+  # required?/2 is whether `output`, an output of a stage, is required, with the facts of
+  # `unmet/2` (the input types that count, `counted`, and the work item's `track`): its
+  # `required`, while nothing holds the output back, as it does a stage, a loop, an entry
+  # and an input.
   @doc false
-  @spec required?(map, [String.t()]) :: boolean
-  def required?(output, counted),
-    do:
-      output["required"] == true and
-        is_nil(unmet(Map.take(output, ["when"]), %{counted: counted}))
+  @spec required?(map, map) :: boolean
+  def required?(output, facts),
+    do: output["required"] == true and is_nil(unmet(output, facts))
 
   defp queue(%{"workflow" => workflow} = entry, position, facts) do
     if workflow in undeclared(facts) do
       %{state: :waiting_workflow, position: position, actions: []}
     else
       declaration = Map.get(Map.get(facts, :declarations, %{}), workflow)
-      %{time_limit: time_limit, access: access} = lowered(entry, declaration)
+      %{access: access} = lowered(entry, declaration)
 
       spec = %{
         workflow: workflow,
         machine_type: entry["machine"] || Map.get(facts, :machine) || "default",
-        time_limit: time_limit,
         access: access,
         entry: position.entry,
         loop_entry: position.loop_entry,
@@ -483,40 +491,43 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # limits/4 is the time limit, in seconds, and the access level of a run of the entry at
-  # `position` of `stage`, given the harness's declaration of its workflow (nil for
-  # none): the lower of the entry's and the declaration's (addition 10). nil where the
-  # position has no workflow entry.
+  # limits/4 is the access level of a run of the entry at `position` of `stage`, given the
+  # harness's declaration of its workflow (nil for none): the lower of the entry's and the
+  # declaration's (addition 10). nil where the position has no workflow entry.
   #
   # `workflow` is the workflow of a stage's run (`Apiary.Stages.run_workflow/1`), nil for
   # any other run. `Apiary.Processes.assign/3` moves a waiting run to a version that may
   # have another workflow at the run's position, or no entry. The level of that entry
-  # does not apply to the run, so its access level is `:read`. Its time limit is that
-  # entry's, nil for no entry.
+  # does not apply to the run, so its access level is `:read`.
   @doc false
   @spec limits(map, position, map | nil, String.t() | nil) ::
-          %{time_limit: pos_integer | nil, access: :read | :write | nil} | nil
+          %{access: :read | :write_no_push | :write | nil} | nil
   def limits(stage, position, declaration, workflow \\ nil) do
     case entry_at(stage, position) do
       %{"workflow" => name} = entry when workflow in [nil, name] -> lowered(entry, declaration)
       %{"workflow" => _other} = entry -> %{lowered(entry, declaration) | access: :read}
       _none when is_nil(workflow) -> nil
-      _none -> %{time_limit: nil, access: :read}
+      _none -> %{access: :read}
     end
   end
 
-  defp lowered(entry, declaration) do
-    %{
-      time_limit:
-        lower_time(seconds(entry["time_limit"]), seconds(declared(declaration, :time_limit))),
-      access: lower_access(entry["access"], declared(declaration, :access))
-    }
-  end
+  defp lowered(entry, declaration),
+    do: %{access: lower_access(entry["access"], declared(declaration, :access))}
 
   ## A run's end
 
-  defp run_ended(stage, position, {:verdict, :passed, _points}, facts),
-    do: start(stage, next(stage, position, facts), facts)
+  # `passed` from a first attempt (an entry outside a loop with `first_attempt: true`) ends
+  # the sequence: the rest of it is passed over, and the checks and the gate follow. In a
+  # loop `passed` already leaves the loop.
+  defp run_ended(stage, position, {:verdict, :passed, _points}, facts) do
+    if first_attempt?(stage, position) do
+      end_position = %{position | entry: length(sequence(stage)), loop_entry: nil}
+      outcome = finish(stage, end_position, facts, false)
+      skipped(first_attempt_skips(stage, position), outcome)
+    else
+      start(stage, next(stage, position, facts), facts)
+    end
+  end
 
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
     do: escalate(:escalate, points || [], position)
@@ -637,7 +648,10 @@ defmodule Apiary.Stages.Runner do
 
   ## The end of the sequence
 
-  defp finish(stage, position, facts) do
+  # `restart?` is false after a passed first attempt: a failed check then escalates
+  # `check_failed` at once, since a loop that starts again would run entries the first
+  # attempt passed over.
+  defp finish(stage, position, facts, restart? \\ true) do
     failed = Map.get(facts, :failed_checks, [])
 
     cond do
@@ -651,8 +665,8 @@ defmodule Apiary.Stages.Runner do
       true ->
         gaps = check_gaps(failed)
 
-        case List.last(loops(stage, facts)) do
-          nil ->
+        case restart? && List.last(loops(stage, facts)) do
+          falsy when falsy in [nil, false] ->
             escalate(:check_failed, Points.check_failed(failed), position)
 
           index ->
@@ -708,6 +722,41 @@ defmodule Apiary.Stages.Runner do
 
   defp next(stage, position, facts), do: at(stage, position.entry + 1, position.round, facts)
 
+  # A skip for each workflow after the first attempt at `position`, those in a loop's body
+  # included, with the reason `first_attempt_passed` and the name of the first attempt's
+  # entry, else its workflow, as `cause_entry`. No condition holds them back.
+  defp first_attempt_skips(stage, position) do
+    entry = entry_at(stage, position)
+    cause = entry["name"] || entry["workflow"]
+
+    for {item, i} <- Enum.with_index(sequence(stage)),
+        i > position.entry,
+        {workflow, j} <- later_workflows(item),
+        do:
+          {:skip,
+           %{
+             workflow: workflow,
+             input: nil,
+             track: nil,
+             negated: false,
+             reason: "first_attempt_passed",
+             cause_entry: cause,
+             entry: i,
+             loop_entry: j,
+             round: 1
+           }}
+  end
+
+  defp later_workflows(%{"loop" => %{"body" => body}}),
+    do: for({%{"workflow" => name}, j} <- Enum.with_index(body), do: {name, j})
+
+  defp later_workflows(%{"workflow" => name}), do: [{name, nil}]
+
+  defp first_attempt?(stage, position),
+    do:
+      not in_loop?(position) and
+        Map.get(entry_at(stage, position) || %{}, "first_attempt") == true
+
   defp entry_at(stage, %{entry: index, loop_entry: loop_entry}) do
     case Enum.at(sequence(stage), index) do
       %{"loop" => %{"body" => body}} -> Enum.at(body, loop_entry || 0)
@@ -749,7 +798,9 @@ defmodule Apiary.Stages.Runner do
 
   # loops/2 is the indexes of the stage's loops that are not passed over with `facts`
   # (`passed_over?/3`), in order.
-  defp loops(stage, facts) do
+  @doc false
+  @spec loops(map, map) :: [non_neg_integer]
+  def loops(stage, facts) do
     for {%{"loop" => _loop}, index} <- Enum.with_index(sequence(stage)),
         not passed_over?(stage, index, facts),
         do: index
@@ -819,40 +870,16 @@ defmodule Apiary.Stages.Runner do
   defp declared(nil, _key), do: nil
   defp declared(declaration, key), do: Map.get(declaration, key)
 
-  # seconds/1 is a duration of the process document (`1h30m`, `15m`, `90s`) in seconds;
-  # nil for none, and for one that is not a duration.
-  @doc false
-  @spec seconds(term) :: pos_integer | nil
-  def seconds(value) when is_binary(value) do
-    case Regex.run(~r/\A(?:(\d{1,3})h)?(?:(\d{1,4})m)?(?:(\d{1,5})s)?\z/, value) do
-      [_all | parts] when value != "" ->
-        [hours, minutes, secs] = Enum.map(parts ++ List.duplicate("", 3 - length(parts)), &int/1)
-
-        case hours * 3600 + minutes * 60 + secs do
-          0 -> nil
-          total -> total
-        end
-
-      _other ->
-        nil
-    end
-  end
-
-  def seconds(value) when is_integer(value) and value > 0, do: value
-  def seconds(_value), do: nil
-
-  defp int(""), do: 0
-  defp int(digits), do: String.to_integer(digits)
-
-  # The lower of two time limits; either may be nil, for none.
-  defp lower_time(nil, other), do: other
-  defp lower_time(one, nil), do: one
-  defp lower_time(one, other), do: min(one, other)
-
-  # The lower of two access levels: read when either is read.
+  # The lower of two access levels, from lowest to highest read, write-no-push (a writable
+  # checkout that has no push credential) and write: read when either is read, then
+  # write-no-push when the entry's or the declared one is. An entry value other than `read`
+  # or `write-no-push` counts as read. nil where neither sets a level.
   defp lower_access(entry, declared) do
     cond do
-      read?(entry) or read?(declared) -> :read
+      read?(declared) -> :read
+      entry == "write-no-push" -> :write_no_push
+      not is_nil(entry) -> :read
+      declared in [:write_no_push, "write-no-push"] -> :write_no_push
       declared in [:write, "write"] -> :write
       true -> nil
     end
