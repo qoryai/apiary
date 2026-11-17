@@ -2537,6 +2537,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
+
+  attr :suite, :map,
+    default: nil,
+    doc:
+      "the full test suite result shown under the build report's frame: `Apiary.Stages.full_suite/2` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
+
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
   attr :current, :boolean, default: false, doc: "whether it is the current stage's tab"
@@ -2702,14 +2708,18 @@ defmodule ApiaryWeb.WorkItemComponents do
         open_comments={@sendable}
         updates={:outputs}
       />
-      <.output_frame
-        :for={output <- @outputs}
-        id={"#{@id}-output-#{output.type}"}
-        number={@work_item.number}
-        output={output}
-      >
-        {render_slot(@row, output.type)}
-      </.output_frame>
+      <%= for output <- @outputs do %>
+        <.output_frame id={"#{@id}-output-#{output.type}"} number={@work_item.number} output={output}>
+          {render_slot(@row, output.type)}
+        </.output_frame>
+        <p
+          :if={@suite && output.type == "build-report"}
+          id="work-item-suite-line"
+          class="mt-3 text-sm"
+        >
+          {suite_words(@suite)}
+        </p>
+      <% end %>
       <.decisions_frame
         :if={@decisions_frame != []}
         id={"#{@id}-decisions"}
@@ -2768,6 +2778,58 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  # The line under the build report's frame for a full test suite result
+  # (`Apiary.Stages.full_suite/2`). The two Standard track lines say "version" in their
+  # source text and "commit" in the software domain's catalogue. A suite that did not run shows its reason as the run
+  # sent it, without a final full stop, which the line adds. The track `fast-track` has no
+  # minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for 4.5.
+  defp suite_words(%{state: :not_run, reason: reason}),
+    do:
+      gettext("The full test suite did not run: %{reason}.",
+        reason: String.trim_trailing(reason, ".")
+      )
+
+  defp suite_words(%{fast: true, state: :passed} = suite) do
+    gettext("The full test suite passed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{fast: true, state: :failed} = suite) do
+    gettext("The full test suite failed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{state: :passed} = suite) do
+    gettext(
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed} = suite) do
+    gettext(
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_minutes(minutes) when is_float(minutes) and minutes == trunc(minutes),
+    do: Format.number(trunc(minutes))
+
+  defp suite_minutes(minutes), do: Format.number(minutes)
 
   attr :id, :string, required: true
   attr :stage, :map, required: true

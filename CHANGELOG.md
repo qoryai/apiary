@@ -12,6 +12,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- The work item page shows the result of the full test suite in one line under the build
+  report's frame at a stage that has one, from the `full_suite` member of the newest
+  verdict of the take in: on the Standard track, "The full test suite passed on that
+  commit: 412 passed, 0 failed, 3 skipped, in 6 minutes." (or "failed"); on the Fast
+  track, the same without the commit and the minutes; for a suite that did not run, "The
+  full test suite did not run: <reason>." with the reason as the run sent it. A verdict
+  with no `full_suite` has no line.
 - A run's verdict may have the optional member `full_suite`, the result of the full test
   suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the counts
   `passed`, `failed` and `skipped` and the number `minutes`; with `not_run`, a `reason` of

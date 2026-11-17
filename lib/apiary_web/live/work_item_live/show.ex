@@ -428,6 +428,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            suite={@suite}
             questions={@view.questions}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}
@@ -596,6 +597,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           suite: nil,
            frame_texts: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
@@ -2151,10 +2153,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
       end)
 
-    assign(socket, frames: frames, frame_texts: texts)
+    assign(socket, frames: frames, frame_texts: texts, suite: suite(assigns, frames))
   end
 
-  defp framed(socket), do: assign(socket, :frames, [])
+  defp framed(socket), do: assign(socket, frames: [], suite: nil)
+
+  # The full test suite result under the build report's frame (`Stages.full_suite/2`), read
+  # from the artifacts the page loaded, and only where the tab has that frame. `fast` is
+  # whether the work item is on the track `fast-track`; any other track, and none, have
+  # the words of the standard track.
+  defp suite(assigns, frames) do
+    with true <- Enum.any?(frames, &(&1.type == "build-report")),
+         %{} = suite <- Stages.full_suite(assigns.row, assigns.artifacts) do
+      Map.put(suite, :fast, match?(%{id: "fast-track"}, assigns.flow.track))
+    else
+      _none -> nil
+    end
+  end
 
   # The member of a frame's approval (`StageTab.approved/3`) as the components show a
   # person (`View.person/2`), Former member for one whose account is gone: read for that
