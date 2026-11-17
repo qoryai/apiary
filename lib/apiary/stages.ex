@@ -3187,10 +3187,10 @@ defmodule Apiary.Stages do
   defp counts?(version), do: Enum.any?(version.files, &(&1.size > 0))
 
   # The facts of the conditions of `stage` (`Runner.facts/0`): the input types that count,
-  # the track, and, for a stage whose workflow entry has a condition `{input: T, changed: true}`, `stored` and
-  # `passed` (`changed_facts/6`), which a stage with none does not read. A verdict whose
-  # file the store cannot read raises, as the runner's read of an end does, unless `strict?`
-  # is false, as for a page: the run then does not count as passed.
+  # the track, and, for a stage whose workflow entry has a condition `{input: T, changed:
+  # true}`, `stored` and `passed` (`changed_facts/6`), which a stage with none does not read.
+  # A verdict whose file the store cannot read raises, as the runner's read of an end does,
+  # unless `strict?` is false, as for a page: the run then does not count as passed.
   defp condition_facts(work_item, version, stage, artifacts, strict? \\ true) do
     facts = %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
 

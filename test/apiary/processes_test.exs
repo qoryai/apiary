@@ -325,6 +325,25 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
+    test "a workflow key on a stage, an input or an output does not make it an entry (A-47)" do
+      changed = %{"input" => "proposal", "changed" => true}
+
+      on_stage =
+        edit(
+          &if(&1["id"] == @shape,
+            do: Map.merge(&1, %{"workflow" => "x", "when" => changed}),
+            else: &1
+          )
+        )
+
+      assert errors(on_stage) == [{"#/stages/1/when/changed", :condition_changed_entry_only}]
+
+      output = %{"type" => "mockup", "required" => true, "workflow" => "x", "when" => changed}
+
+      assert errors(edit(&if(&1["id"] == @shape, do: Map.put(&1, "outputs", [output]), else: &1))) ==
+               [{"#/stages/1/outputs/0/when/changed", :condition_changed_entry_only}]
+    end
+
     test "refuses changed: true on an unknown type and a non-entry with both errors, the type first (A-47)" do
       on = %{"input" => "demo-scenarios", "changed" => true}
       loop = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, "when" => on}

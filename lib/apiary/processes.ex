@@ -406,25 +406,25 @@ defmodule Apiary.Processes do
         |> Enum.with_index()
         |> Enum.flat_map(fn
           {%{"loop" => %{"body" => body}} = loop, i} ->
-            [{loop, "#{at}/sequence/#{i}"}] ++
+            [{loop, "#{at}/sequence/#{i}", false}] ++
               for {entry, j} <- Enum.with_index(body),
-                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}", true}
 
           {entry, i} ->
-            [{entry, "#{at}/sequence/#{i}"}]
+            [{entry, "#{at}/sequence/#{i}", true}]
         end)
 
       inputs =
         for {input, k} <- Enum.with_index(stage["inputs"] || []),
-            do: {input, "#{at}/inputs/#{k}"}
+            do: {input, "#{at}/inputs/#{k}", false}
 
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
-            do: {output, "#{at}/outputs/#{k}"}
+            do: {output, "#{at}/outputs/#{k}", false}
 
       errors =
-        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
-            error <- item_errors(item, path, earlier),
+        for {item, path, entry?} <- [{stage, at, false}] ++ inputs ++ entries ++ outputs,
+            error <- item_errors(item, path, earlier, entry?),
             do: error
 
       made = for o <- stage["outputs"] || [], do: o["type"]
@@ -434,10 +434,9 @@ defmodule Apiary.Processes do
   end
 
   # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
-  # item's place).
-  defp item_errors(item, path, earlier) do
-    entry? = is_binary(item["workflow"])
-
+  # item's place). `entry?` is whether the item is a workflow entry by its place: an element
+  # of a stage's sequence that is no loop, or of a loop's body; no key of the item decides it.
+  defp item_errors(item, path, earlier, entry?) do
     both =
       if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
         do: [%{path: path, error: :condition_both, detail: nil}],
