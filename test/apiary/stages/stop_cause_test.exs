@@ -413,6 +413,73 @@ defmodule Apiary.Stages.StopCauseTest do
     end
   end
 
+  describe "a run that reached its time limit" do
+    @describetag needs: [:factory, :workflow_model]
+
+    @stage "st_6ns22c4pav"
+
+    # The run of `read_run/3` as the third attempt, in the stage `name` of a saved process.
+    defp placed(scope, reason, name) do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          %{
+            "id" => @stage,
+            "name" => name,
+            "inputs" => [],
+            "sequence" => [%{"workflow" => "capture-demo"}],
+            "outputs" => [],
+            "gate" => %{"kind" => "none"}
+          }
+        ]
+      }
+
+      {:ok, version} = Apiary.Processes.save(scope, scope.workspace, document)
+      {run, work_item} = read_run(scope, reason, nil)
+
+      {%{run | attempt: 3, stage_id: @stage, process_version_id: version.id}, work_item}
+    end
+
+    test "has the attempt and the stage's name, and no fix", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Build")
+      cause = "Attempt 3 reached its time limit, so Build has no result."
+
+      assert StopCause.text(run, work_item) == cause
+      assert StopCause.parts(run, work_item) == {cause, nil}
+    end
+
+    test "names the stage of the work item for a run with no stage", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Verify")
+      work_item = %{work_item | stage_id: @stage, process_version_id: run.process_version_id}
+
+      assert StopCause.text(%{run | stage_id: nil, process_version_id: nil}, work_item) ==
+               "Attempt 3 reached its time limit, so Verify has no result."
+    end
+
+    test "says the stage for a run placed in no stage", %{scope: scope} do
+      {run, work_item} = read_run(scope, "timeout", nil)
+      work_item = %{work_item | stage_id: nil, process_version_id: nil}
+      run = %{run | attempt: 2, stage_id: nil, process_version_id: nil}
+
+      assert StopCause.text(run, work_item) ==
+               "Attempt 2 reached its time limit, so the stage has no result."
+    end
+
+    test "a lost run keeps its line", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Build")
+
+      assert StopCause.text(%{run | end_cause: :lost}, work_item) ==
+               "The run stopped reporting and was marked lost."
+    end
+
+    test "a run with another reason keeps its line", %{scope: scope} do
+      {run, work_item} = placed(scope, "no_session", "Build")
+
+      assert StopCause.text(run, work_item) == "The run ended without a result."
+    end
+  end
+
   describe "a run whose harness has no skill for its workflow" do
     @describetag needs: :factory
 

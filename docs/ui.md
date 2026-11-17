@@ -2483,8 +2483,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   wall in the machine's forager.yaml, then start the run again. A run that writes to the
   checkout needs a wall, and this machine has none." ("A run that writes needs a wall,
   and this machine has none." outside a software workspace), and on the Qory Pool
-  "Contact support." replaces the fix. Any other code is the run's starter's, shown as
-  given with spaces for underscores: "no longer needed".
+  "Contact support." replaces the fix. A run that ended with `timeout` reads "time limit
+  reached" on its run page; the work item shows "Attempt 3 reached its time limit, so
+  Build has no result." ("Attempt" stays capitalised after "The run stopped:"; "Build" is
+  the stage's name, and "the stage" stands for a run with no stage), with no fix: another
+  round is the next step. A lost run and a run with another end keep their lines. Any
+  other code is the run's starter's, shown as given with spaces for underscores: "no
+  longer needed".
   A run a pool's claim registered whose machine never started it reads its cause in
   the meta line, the rail and the preview: "No machine was made: <the starter's reason>."
   when the starter released its dispatch, "The pool did not start a machine within 10

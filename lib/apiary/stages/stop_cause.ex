@@ -20,6 +20,8 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Processes
+  alias Apiary.Processes.Version
   alias Apiary.Repo
   alias Apiary.Runs.{ReadNeeds, Run, Target, WriteNeeds}
   alias Apiary.Targets
@@ -104,7 +106,7 @@ defmodule Apiary.Stages.StopCause do
   # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`),
   # and with a `read_needs_*` reason when a read-only run could not go on
   # (`Apiary.Runs.ReadNeeds`), or `write_needs_wall` when a run that writes has no wall
-  # (`Apiary.Runs.WriteNeeds`).
+  # (`Apiary.Runs.WriteNeeds`), or `timeout` when it reached its time limit.
   defp stopped_split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
       %{} = facts -> workflow_gap(facts, work_item)
@@ -212,7 +214,41 @@ defmodule Apiary.Stages.StopCause do
   defp no_read_needs(run, work_item) do
     case WriteNeeds.of_dispatch_run(run) do
       %{} = facts -> write_needs(facts, work_item)
-      nil -> {:one, "The run ended without a result."}
+      nil -> no_write_needs(run, work_item)
+    end
+  end
+
+  # A run whose registered run ended with the reason `timeout` reached its time limit. The
+  # words follow "Attempt 2 ended with an error, so Build has no result"
+  # (`ApiaryWeb.WorkItemComponents`); no fix, only another round helps.
+  defp no_write_needs(run, work_item) do
+    if timed_out?(run),
+      do:
+        {:one,
+         "Attempt #{run.attempt} reached its time limit, so #{stage_name(run, work_item)} has no result."},
+      else: {:one, "The run ended without a result."}
+  end
+
+  defp timed_out?(%DispatchRun{id: id}) do
+    Repo.exists?(
+      from r in Run.registered(), where: r.dispatch_run_id == ^id and r.reason == "timeout"
+    )
+  end
+
+  # The name of the stage the run was in, from the process version the run started under,
+  # else the work item's; "the stage" for a run placed in no stage or no version.
+  defp stage_name(run, work_item) do
+    stage_id = run.stage_id || work_item.stage_id
+
+    version =
+      case run.process_version_id || work_item.process_version_id do
+        id when is_binary(id) -> Repo.get(Version, id)
+        nil -> nil
+      end
+
+    case version && Processes.stage(version, stage_id) do
+      %{"name" => name} when is_binary(name) and name != "" -> name
+      _none -> "the stage"
     end
   end
 

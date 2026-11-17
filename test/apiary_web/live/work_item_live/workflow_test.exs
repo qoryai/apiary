@@ -4943,6 +4943,36 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
+  describe "a run that reached its time limit" do
+    # Qory closed the run `failed` with `timeout`; the stage runner escalated it from the
+    # stop cause (`Apiary.Stages.StopCause`): the attempt and the stage, and no fix line
+    # (the page shows "Run another round." in its place).
+    test "shows its stop cause with the attempt and the stage on the work item", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{
+          state: "failed",
+          exit_state: "failed",
+          reason: "timeout",
+          outcome_state: nil,
+          outcome_time: nil,
+          outcome_received_at: nil,
+          outcome_digest: nil
+        })
+
+      assert work_item.stage_state == :escalated
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped: Attempt 1 reached its time limit, so Explore has no result. Run another round."
+    end
+  end
+
   describe "an escalation with no points" do
     # As an escalation open when points replaced gaps reads: the points the stage runner
     # writes for its cause, from what the stage reads now.

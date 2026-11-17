@@ -1302,6 +1302,35 @@ defmodule Apiary.StagesTest do
       end
     end
 
+    test "a run that reached its time limit escalates run_stopped with its attempt and stage, and no fix",
+         %{scope: scope} do
+      save!(scope, [stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
+      work_item = take_in!(scope)
+      live_run!(work_item)
+
+      work_item =
+        end_run!(work_item, nil, %{
+          state: "failed",
+          exit_state: "failed",
+          reason: "timeout",
+          outcome_state: nil,
+          outcome_time: nil,
+          outcome_received_at: nil,
+          outcome_digest: nil
+        })
+
+      assert work_item.stage_state == :escalated
+
+      assert %Escalation{cause: :run_stopped, points: [point]} = escalation(work_item)
+
+      assert point ==
+               %{
+                 "text" =>
+                   "The run stopped: Attempt 2 reached its time limit, so Build has no result.",
+                 "action" => "run_again"
+               }
+    end
+
     test "a run that pushed the verdict escalate escalates with its points, and nothing waits for Approve",
          %{scope: scope} do
       points = [
