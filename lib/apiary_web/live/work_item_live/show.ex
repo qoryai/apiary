@@ -245,6 +245,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
+            version_path={&ArtifactComponents.version_path(@current_scope, @number, &1)}
+            recorded={@gate_recorded}
             answers_path={
               tab_path(@current_scope, @number, StageTab.current(@flow) || :explore, @flow)
             }
@@ -589,6 +591,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            can_review: false,
            cancel: nil,
            flow: nil,
+           gate_recorded: [],
            artifacts: [],
            view: nil,
            frames: [],
@@ -2038,6 +2041,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can: can(scope, row, explore.status, flow),
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
+        gate_recorded: gate_recorded(row, flow),
         artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
@@ -2097,8 +2101,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      assigns.row
-      |> Stages.gate_frames(assigns.row.process_version, stage.id)
+      assigns
+      |> recorded(stage.id)
       |> StageTab.frames()
       |> StageTab.with_inputs(
         StageTab.input_frames(assigns.flow, stage, assigns.artifacts, assigns.row.process_version)
@@ -2418,6 +2422,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The work item's artifacts that its page lists: every one but a name whose newest
   # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
   defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
+
+  # The versions an approval at the current stage's gate would record, which the stage
+  # card lists (`Apiary.Stages.gate_frames/3`, the set `Apiary.Stages.approve/4` records);
+  # [] while the stage is not at its gate.
+  defp gate_recorded(row, %{state: :at_gate, stage: %{id: id}}),
+    do: Stages.gate_frames(row, row.process_version, id)
+
+  defp gate_recorded(_row, _flow), do: []
+
+  # The versions the tab of the stage `stage_id` frames (`Apiary.Stages.gate_frames/3`): at
+  # the current stage's gate, the set `load/1` read for the stage card (`gate_recorded/2`),
+  # so a load reads it once.
+  defp recorded(%{flow: %{state: :at_gate, stage: %{id: id}}} = assigns, id),
+    do: assigns.gate_recorded
+
+  defp recorded(assigns, stage_id),
+    do: Stages.gate_frames(assigns.row, assigns.row.process_version, stage_id)
 
   # While the work item's latest run waits in the queue, before a pool claims it (no state
   # yet), whatever Explore's status (a run after a move back to Explore, or a later

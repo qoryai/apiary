@@ -45,15 +45,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page. The stage's tab has a frame for every version that an approval at its gate
   records: one that only a person uploaded, one of an earlier take in, and a change. A
   frame of an artifact not named `main` has the name after the type in its heading. A
-  person's version has the caption "Version <n> · <who made it>". Once the work item has
-  left a stage that a person approved, the stage's tab shows a frame for each version
-  that approval recorded. In a stage that started no run, the input frames follow the
-  output frames, folded; with no output frame, the first input frame is open. An input
-  version that a run made has the caption "Version <n> · from <stage>, Attempt <a> (Run
-  <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no registered
-  number. When another input remains, the version of the harness's submission type
-  (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where it is
-  the only input, it has the frame. In `GET artifacts`, each version has `decision` and
+  person's version has the caption "Version <n> · <the member's short name>". Once the
+  work item has left a stage that a person approved, the stage's tab shows a frame for
+  each version that approval recorded. In a stage that started no run, the input frames
+  follow the output frames, folded; with no output frame, the first input frame is open.
+  An input version that a run made has the caption "Version <n> · from <stage>, Attempt
+  <a> (Run <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no
+  registered number. When another input remains, the version of the harness's submission
+  type (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where
+  it is the only input, it has the frame. On the stage card, each output's version at the
+  gate links to that version's page, and the gate also links every further version that
+  an approval would record. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs

@@ -99,6 +99,17 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
+
+  attr :version_path, :any,
+    default: nil,
+    doc: "a function of a version's public id (`av_…`): its page; nil for no links"
+
+  attr :recorded, :list,
+    default: [],
+    doc:
+      "the versions an approval at the gate records (`Apiary.Stages.gate_frames/3`), " <>
+        "`%{type, name, version}`; the gate lists those no output line shows"
+
   attr :answers_path, :string, default: nil, doc: "the current stage's tab, with the questions"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
@@ -148,6 +159,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         page={@page}
         number={@number}
         add_path={@add_path}
+        version_path={@version_path}
+        recorded={@recorded}
         answers_path={@answers_path}
         asking={@asking}
         error={@error}
@@ -238,6 +251,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
+  attr :recorded, :list, default: []
   attr :answers_path, :string, default: nil
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
@@ -342,6 +357,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       page={@page}
       number={@number}
       add_path={@add_path}
+      version_path={@version_path}
+      recorded={@recorded}
       asking={@asking}
       error={@error}
     />
@@ -390,17 +407,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
+  attr :recorded, :list, default: []
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
+    # At a Confirm gate the proposal can exist with no artifact, so an output with no
+    # version is not shown as missing.
+    shown = shown_outputs(assigns.page)
+    on_lines = MapSet.new(shown, & &1[:version_id])
+
     assigns =
       assign(assigns,
         marks: Map.new(assigns.page.index, &{&1.type, &1}),
         versions: Enum.filter(assigns.page.outputs, & &1.version_id),
-        # At a Confirm gate the proposal can exist with no artifact, so an output with no
-        # version is not shown as missing.
-        shown: shown_outputs(assigns.page),
+        shown: shown,
+        # The other versions the approval records, each on a line of its own.
+        others: Enum.reject(assigns.recorded, &MapSet.member?(on_lines, &1.version.public_id)),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none",
         started_no_run: started_no_run?(assigns.page),
@@ -432,9 +456,30 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       </p>
       <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
-          <span>{version_words(output.type, output.version)}</span>
+          <.link
+            :if={@version_path && output[:version_id]}
+            id={"#{@id}-version-#{output.type}"}
+            navigate={@version_path.(output.version_id)}
+            class="text-accent"
+          >
+            {version_words(output.type, output.version)}
+          </.link>
+          <span :if={!(@version_path && output[:version_id])}>
+            {version_words(output.type, output.version)}
+          </span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
           <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
+        </li>
+      </ul>
+      <ul :if={@others != []} id={"#{@id}-recorded"} class="flex flex-col gap-1">
+        <li :for={other <- @others} id={"#{@id}-recorded-#{frame_key(other)}"}>
+          <.link
+            :if={@version_path}
+            navigate={@version_path.(other.version.public_id)}
+            class="text-accent"
+            phx-no-format
+          >{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></.link>
+          <span :if={!@version_path} phx-no-format>{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></span>
         </li>
       </ul>
       <.needs
