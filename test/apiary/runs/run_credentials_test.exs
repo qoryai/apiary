@@ -1125,12 +1125,28 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
 
       assert {1, _rows} = insert.(%{name: "harness-1", purpose: "harness"})
-      assert {1, _rows} = insert.(%{name: "push-1", purpose: "push", access: "write"})
+
+      # A push entry has a push_ref on every apply item.
+      pushing = %{
+        name: "push-1",
+        purpose: "push",
+        access: "write",
+        apply: [
+          %{
+            "hosts" => ["git.example.com"],
+            "scheme" => "bearer",
+            "push_ref" => "refs/heads/qory/x"
+          }
+        ]
+      }
+
+      error = assert_raise Postgrex.Error, fn -> insert.(Map.delete(pushing, :apply)) end
+      assert error.postgres.constraint == "run_credentials_push_ref_check"
+
+      assert {1, _rows} = insert.(pushing)
 
       error =
-        assert_raise Postgrex.Error, fn ->
-          insert.(%{name: "push-2", purpose: "push", access: "write"})
-        end
+        assert_raise Postgrex.Error, fn -> insert.(%{pushing | name: "push-2"}) end
 
       assert error.postgres.constraint == "run_credentials_push_index"
 
