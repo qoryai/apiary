@@ -4268,8 +4268,7 @@ defmodule Apiary.StagesTest do
 
       save!(scope, [
         explore_stage(),
-        stage(@shape, "Shape", [], %{"outputs" => [%{"type" => "spec", "required" => false}]}),
-        stage(@build, "Build", [])
+        stage(@shape, "Shape", [], %{"outputs" => [%{"type" => "spec", "required" => false}]})
       ])
 
       work_item = take_in!(scope) |> end_run!(understood_result())
@@ -4294,14 +4293,17 @@ defmodule Apiary.StagesTest do
 
       {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert Stages.notes(work_item) == []
+      assert Stages.status(work_item).state == :done
 
-      # A newer version of Shape's output reopens Shape's gate; the closed note stays out.
+      # A newer version of Shape's output, the last stage's, reopens Shape's gate; the
+      # closed note stays out.
       {:ok, _version} =
         Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The new spec"),
           stage_id: @shape
         )
 
       assert [_first, _second] = versions(work_item, "spec")
+      assert Stages.status(work_item).state == :at_gate
       assert Stages.notes(work_item) == []
     end
 
