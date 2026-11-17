@@ -2357,6 +2357,64 @@ defmodule Apiary.Stages do
     end
   end
 
+  @doc false
+  # full_suite/2 is the full test suite result of the newest verdict of `work_item`'s current
+  # take in: the `full_suite` member of the verdict's file, as
+  # `%{state:, passed:, failed:, skipped:, minutes:, reason:}`. `state` is `:passed`,
+  # `:failed` or `:not_run`; `reason` is the line of a `:not_run` result and nil otherwise;
+  # the counts and `minutes` are nil for `:not_run`. nil where the take in has no verdict, the
+  # newest verdict has no `full_suite`, or the artifact store cannot be read. Only the newest
+  # verdict is read: an older verdict's result is not the result of the work as it stands.
+  # `artifacts`, the work item's artifacts (`Apiary.Artifacts.list/1`) where the caller has
+  # read them, spare that read; the versions' runs come with them, so nothing else is read
+  # from the database.
+  @spec full_suite(WorkItem.t(), [Artifacts.Artifact.t()] | nil) ::
+          %{
+            state: :passed | :failed | :not_run,
+            passed: non_neg_integer | nil,
+            failed: non_neg_integer | nil,
+            skipped: non_neg_integer | nil,
+            minutes: number | nil,
+            reason: String.t() | nil
+          }
+          | nil
+  def full_suite(work_item, artifacts \\ nil)
+
+  def full_suite(%WorkItem{take_in: take_in} = work_item, artifacts) when is_integer(take_in) do
+    newest =
+      (artifacts || Artifacts.list(work_item))
+      |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
+      |> Stream.flat_map(& &1.versions)
+      |> Enum.find(&match?(%{run: %{take_in: ^take_in}}, &1))
+
+    with %{} = version <- newest,
+         {:ok, %{"full_suite" => %{} = suite}} <- Artifacts.stored_json(version) do
+      suite_result(suite)
+    else
+      _none -> nil
+    end
+  end
+
+  def full_suite(%WorkItem{}, _artifacts), do: nil
+
+  defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed not_run) do
+    %{
+      state: String.to_existing_atom(state),
+      passed: suite_count(suite["passed"]),
+      failed: suite_count(suite["failed"]),
+      skipped: suite_count(suite["skipped"]),
+      minutes: if(is_number(suite["minutes"]), do: suite["minutes"]),
+      reason: if(is_binary(suite["reason"]), do: suite["reason"])
+    }
+  end
+
+  defp suite_result(_suite), do: nil
+
+  # A count the file has as 12.0 is the whole number 12.
+  defp suite_count(count) when is_integer(count), do: count
+  defp suite_count(count) when is_float(count) and count == trunc(count), do: trunc(count)
+  defp suite_count(_count), do: nil
+
   # `{:ok, %{id:, reason:}}` or `{:ok, nil}` for the track proposed; `{:error,
   # :store_unavailable}` where a verdict's file cannot be read from the store.
   defp proposal(work_item, artifacts \\ nil)

@@ -3102,6 +3102,133 @@ defmodule Apiary.StagesTest do
       assert Stages.proposed_track_with_reason(work_item) == nil
     end
 
+    # The end of a run that pushes a proposal and then each of the verdict files `documents`,
+    # oldest first.
+    defp pushing_verdicts(documents) do
+      fn run, registered ->
+        proposal_only().(run, registered)
+
+        for document <- documents do
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              document,
+              stage_id: run.stage_id
+            )
+        end
+      end
+    end
+
+    @suite_passed %{
+      "state" => "passed",
+      "passed" => 120,
+      "failed" => 0,
+      "skipped" => 3,
+      "minutes" => 4.5
+    }
+
+    test "the full suite is the member of the newest verdict, as the run sent it", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      failed = %{
+        "state" => "failed",
+        "passed" => 9,
+        "failed" => 2,
+        "skipped" => 0,
+        "minutes" => 1
+      }
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(
+          pushing_verdicts([
+            %{"verdict" => "changes-requested", "full_suite" => failed},
+            %{"verdict" => "passed", "full_suite" => @suite_passed}
+          ])
+        )
+
+      assert Stages.full_suite(work_item) == %{
+               state: :passed,
+               passed: 120,
+               failed: 0,
+               skipped: 3,
+               minutes: 4.5,
+               reason: nil
+             }
+
+      artifacts = Artifacts.list(work_item)
+      assert Stages.full_suite(work_item, artifacts) == Stages.full_suite(work_item)
+
+      assert %{"full_suite" => @suite_passed} =
+               work_item
+               |> Artifacts.newest("verdict")
+               |> Stages.Artifacts.stored_json()
+               |> elem(1)
+    end
+
+    test "the full suite of a suite that did not run has a reason and no counts", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"])
+      suite = %{"state" => "not_run", "reason" => "The checkout has no test command."}
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(pushing_verdicts([%{"verdict" => "passed", "full_suite" => suite}]))
+
+      assert Stages.full_suite(work_item) == %{
+               state: :not_run,
+               passed: nil,
+               failed: nil,
+               skipped: nil,
+               minutes: nil,
+               reason: "The checkout has no test command."
+             }
+    end
+
+    test "the full suite is nil without a verdict, and where the newest verdict has none", %{
+      scope: scope
+    } do
+      tracked_process!(scope, ["standard", "fast-track"])
+
+      assert take_in!(scope) |> end_run!(understood_result()) |> Stages.full_suite() == nil
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(
+          pushing_verdicts([
+            %{"verdict" => "changes-requested", "full_suite" => @suite_passed},
+            %{"verdict" => "passed"}
+          ])
+        )
+
+      assert Stages.full_suite(work_item) == nil
+    end
+
+    test "the full suite of an earlier take in is not read", %{scope: scope} do
+      runner_process!(scope)
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+
+      work_item =
+        work_item
+        |> reload()
+        |> end_run!(pushing_verdicts([%{"verdict" => "passed", "full_suite" => @suite_passed}]))
+
+      assert %{state: :passed} = Stages.full_suite(work_item)
+
+      {:ok, _closed} = WorkItems.close(scope, work_item)
+      {:ok, _again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+      again = reload(work_item)
+
+      assert again.take_in == 2
+      assert Stages.full_suite(again) == nil
+    end
+
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
 
     test "an approval with no track records the gate's first track, and the work item is on it",

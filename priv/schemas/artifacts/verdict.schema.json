@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/harness/v1/verdict.schema.json",
   "title": "The verdict format, version 1",
-  "description": "A run's verdict on the work of its round: the file of a version of the artifact type verdict, which qory run verdict stores. passed: the work meets the bar. changes-requested: the work needs another round. escalate: a person must act, and points lists what is wrong or missing and what the person can do. changes-requested may have points too, each a run_again point: what is wrong or missing, for the next round. A verdict of any kind may have a track: the track the run proposes for the work item, where the gate of the run's stage offers tracks. A track the gate does not offer is rejected with 422. The question of an answer point is open in the work item's newest questions version, which a JSON Schema cannot check. No object has a member this schema does not define.",
+  "description": "A run's verdict on the work of its round: the file of a version of the artifact type verdict, which qory run verdict stores. passed: the work meets the bar. changes-requested: the work needs another round. escalate: a person must act, and points lists what is wrong or missing and what the person can do. changes-requested may have points too, each a run_again point: what is wrong or missing, for the next round. A verdict of any kind may have a track: the track the run proposes for the work item, where the gate of the run's stage offers tracks. A track the gate does not offer is rejected with 422. A verdict of any kind may also have full_suite: the result of the run of the full test suite, as the run reports it. The question of an answer point is open in the work item's newest questions version, which a JSON Schema cannot check. No object has a member this schema does not define.",
   "type": "object",
   "required": ["verdict"],
   "additionalProperties": false,
@@ -15,7 +15,8 @@
       "maxItems": 20,
       "items": {"$ref": "#/$defs/point"}
     },
-    "track": {"$ref": "#/$defs/track"}
+    "track": {"$ref": "#/$defs/track"},
+    "full_suite": {"$ref": "#/$defs/full_suite"}
   },
   "allOf": [
     {
@@ -41,6 +42,29 @@
         "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$", "maxLength": 40},
         "reason": {"description": "Why the run proposes this track, 1 to 300 characters.", "$ref": "#/$defs/line", "minLength": 1, "maxLength": 300}
       }
+    },
+    "full_suite": {
+      "description": "The result of the run of the full test suite. state is passed, failed or not_run. With passed or failed, passed, failed and skipped are the counts of tests, whole numbers from 0 to 1000000000, and minutes is how long the run took, a number from 0 to 100000, and reason is absent. With not_run, only state and reason are present: reason is why the suite did not run, in one sentence on one line of 1 to 300 characters. A verdict with no full_suite reports no result.",
+      "type": "object",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {"description": "passed, failed or not_run.", "enum": ["passed", "failed", "not_run"]},
+        "passed": {"description": "The count of tests that passed.", "$ref": "#/$defs/count"},
+        "failed": {"description": "The count of tests that failed.", "$ref": "#/$defs/count"},
+        "skipped": {"description": "The count of tests that were skipped.", "$ref": "#/$defs/count"},
+        "minutes": {"description": "How long the run took, in minutes.", "type": "number", "minimum": 0, "maximum": 100000},
+        "reason": {"description": "Why the suite did not run, 1 to 300 characters.", "$ref": "#/$defs/line", "minLength": 1, "maxLength": 300}
+      },
+      "if": {"required": ["state"], "properties": {"state": {"const": "not_run"}}},
+      "then": {"required": ["reason"], "properties": {"passed": false, "failed": false, "skipped": false, "minutes": false}},
+      "else": {"required": ["passed", "failed", "skipped", "minutes"], "properties": {"reason": false}}
+    },
+    "count": {
+      "description": "A count: a whole number from 0 to 1000000000.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000000
     },
     "point": {
       "description": "One point: what is wrong or missing and its action. question is required when action is answer, and absent when action is run_again. fix is optional when action is run_again, and absent when action is answer. An answer point comes only with escalate.",

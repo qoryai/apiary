@@ -12,6 +12,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- A run's verdict may have the optional member `full_suite`, the result of the full test
+  suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the counts
+  `passed`, `failed` and `skipped` and the number `minutes`; with `not_run`, a `reason` of
+  one line and no counts. A member, state, type or negative count the schema does not allow
+  is `422` `invalid_artifact`. A verdict with no `full_suite` is valid as before.
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an
   image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
