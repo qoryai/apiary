@@ -2605,17 +2605,34 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-explore-gate-track-standard-reason")
     end
 
-    test "Explore's gate shows no kind line, with a kind or without", %{
+    test "Explore's gate shows no kind line for a work item that has a track", %{
       conn: conn,
       scope: scope
     } do
       screens!(scope)
       work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track", "x", "A kind"))
 
+      # The work item is on a track while it waits at Explore's gate.
+      Repo.insert!(%Stages.GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: work_item.stage_id,
+        kind: :approve,
+        track: "fast-track",
+        take_in: work_item.take_in,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert Stages.track(work_item) == "fast-track"
+
       {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
 
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track")
       assert has_element?(view, "#work-item-explore-gate-track-fast-track-reason")
       refute html =~ "A kind"
+      refute has_element?(view, "[id$=-kind]")
     end
 
     test "Verify's card shows the kind of the track next to the badge, escaped", %{
@@ -2642,6 +2659,19 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
       refute has_element?(view, "#work-item-stage-gate-kind")
+    end
+
+    for {name, kind} <- [braille: "\u2800", joiner: "\u200D"] do
+      test "Verify's card shows no kind line for a kind that draws nothing (#{name})", %{
+        conn: conn,
+        scope: scope
+      } do
+        work_item = at_verify_gate!(scope, "fast-track", unquote(kind))
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
+        refute has_element?(view, "#work-item-stage-gate-kind")
+      end
     end
 
     test "Verify's card shows no kind of a track the member picked instead of the proposed one",

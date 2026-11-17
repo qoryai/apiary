@@ -2543,7 +2543,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          ctx do
       offering!(ctx, ["standard", "fast-track"])
 
-      for kind <- [String.duplicate("k", 81), "", "  ", 7, ["a"], "two\nlines"] do
+      for kind <- [
+            String.duplicate("k", 81),
+            "",
+            "  ",
+            7,
+            ["a"],
+            "two\nlines",
+            "one\rtwo",
+            "tab\there"
+          ] do
         track = Map.put(@track, "kind", kind)
         conn = write(ctx, "/verdict", %{"verdict" => "passed", "track" => track})
 

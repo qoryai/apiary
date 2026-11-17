@@ -571,12 +571,16 @@ The body, at most 64 KiB:
   `id`, the id of a track that the gate of the run's stage offers, and `reason`, why, in
   one sentence on one line of 1 to 300 characters. Both are required when `track` is
   present. `track` may also have `kind`, one line of 1 to 80 characters with something
-  other than spaces in it, such as "A text that the product shows". Qory Apiary shows it as
-  text next to the track's badge on the card of a gate after Explore's, such as Verify's,
-  and decides nothing by it. A `kind` that
-  is longer, is empty or only spaces, is not a string, or has a line break or another
-  control character is `422` `invalid_artifact`, as a `reason` that breaks its rule is;
-  a verdict with no `kind` is as before. The verdict file stores `kind` as the run sent it.
+  other than spaces in it, such as "A text that the product shows". A `kind` that is
+  longer, is empty or only spaces, is not a string, or has a line break, another control
+  character, a bidirectional control character or a format character (the rule of a line
+  in the schema) is `422` `invalid_artifact`, as a `reason` that breaks its rule is. A
+  verdict with no `kind` is as before. The verdict file stores `kind` as the run sent it.
+  The card of a gate after Explore's, such as Verify's, shows the `kind` of the newest
+  verdict that has a track, next to the badge of the work item's track, as plain text
+  without the spaces around it. It shows no line where that verdict's track is not the
+  work item's track, or where `kind` has no letter, number, punctuation mark or symbol
+  that draws something. Qory Apiary decides nothing by `kind`.
   When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
 

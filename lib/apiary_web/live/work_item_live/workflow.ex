@@ -79,7 +79,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
   # stage runner has not placed. With `proposal: true`, the work item waits at Explore's
   # Confirm gate and the page reads the track the runs proposed (`proposed`); with none,
-  # `proposed` is nil and no verdict is read.
+  # `proposed` is nil and no verdict is read. The kind of the work item's track
+  # (`track.kind`) is read only at a gate after Explore's that offers no track, which is
+  # where the card shows it; elsewhere it is nil and no verdict is read for it.
   @spec page(Scope.t(), struct, keyword) :: map | nil
   def page(scope, row, opts \\ []) do
     case Stages.status(row, scope) do
@@ -113,6 +115,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     gate_kind = get(get(status, :gate) || %{}, :kind)
     offers = if state == :at_gate, do: Stages.offered_tracks(row, version), else: []
     at_explore = stage.id == explore_id
+    track = current_track(records.track, document)
+
+    track =
+      if track != nil and state == :at_gate and offers == [] and not at_explore,
+        do: %{track | kind: Stages.track_kind(row, track.id, artifacts)},
+        else: track
 
     proposal =
       if offers != [] and at_explore and opts[:proposal] == true,
@@ -123,8 +131,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       stages: all |> track(at, state) |> not_run(records.stage_skips),
       # The process version's document, for the words of an entry's condition.
       document: document,
-      # The track the work item is on, `%{id:, name:}`, nil for none.
-      track: current_track(records.track, document, row, artifacts),
+      # The track the work item is on, `%{id:, name:, kind:}`, nil for none; `kind` is nil
+      # except where the card of the gate shows it.
+      track: track,
       # The tracks the stage's gate offers, each `%{id:, name:, description:}`, with the one
       # its runs proposed (`proposed`, an id, nil for none).
       offers: offers,
@@ -172,16 +181,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   # The track the work item is on, with the name the process version declares, else the id.
-  # `kind` is the kind line a verdict gave for the track, nil for none (`Stages.track_kind/3`).
-  defp current_track(nil, _document, _row, _artifacts), do: nil
+  defp current_track(nil, _document), do: nil
 
-  defp current_track(id, document, row, artifacts) do
-    %{
-      id: id,
-      name: ApiaryWeb.StagesLive.Words.track_name(document, id),
-      kind: Stages.track_kind(row, id, artifacts)
-    }
-  end
+  defp current_track(id, document),
+    do: %{id: id, name: ApiaryWeb.StagesLive.Words.track_name(document, id), kind: nil}
 
   # The stages the runner passed over whole in the take in, each with `not_run` true.
   defp not_run(stages, stage_skips) do

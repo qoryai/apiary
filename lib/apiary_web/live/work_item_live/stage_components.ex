@@ -415,7 +415,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
         <p id={"#{@id}-path"}>
           <.badge color="success">{@page.track.name}</.badge>
-          <span :if={@page.track[:kind]} id={"#{@id}-kind"}>{@page.track.kind}</span>
+          <span :if={@page.track[:kind]} id={"#{@id}-kind"} class="[overflow-wrap:anywhere]">
+            {@page.track.kind}
+          </span>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
           {gettext("%{stage} started no run.", stage: @page.stage.name) <>
