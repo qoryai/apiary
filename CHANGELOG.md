@@ -99,8 +99,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runs fold shows where the stage has a run, a skipped entry that the table does not list,
   an artifact, or a reader who may add a version (**Add a version** is in it). The table of
   entries stays.
-- A table in a run's report spans the width of its frame in the frames of a stage's tab;
-  tables in Markdown on other pages keep their width.
+- A table in a run's report spans the width of its frame in the frames of a stage's tab, on
+  a screen 640px wide or wider; tables in Markdown on other pages keep their width.
 - A link in a run's Markdown to a page of this Qory Apiary, a path that starts with one `/`
   or an `http` or `https` address of this instance's host, shows as a plain link in the same
   tab, with no icon for a link out. Links to other sites keep the icon and open in a new
