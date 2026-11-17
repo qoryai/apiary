@@ -3169,7 +3169,8 @@ defmodule ApiaryWeb.StagesLiveTest do
   end
 
   describe "a workflow's return on its card and in a member's panel (choice 10)" do
-    # Verify with capture-demos, then verify-a-ticket, which returns to Build with `key`.
+    # Verify with capture-demos, then verify-a-ticket, which returns to Build with `key`
+    # (no return for nil).
     setup %{scope: scope} do
       build = id_of("Build")
       verify = id_of("Verify")
@@ -3184,7 +3185,10 @@ defmodule ApiaryWeb.StagesLiveTest do
                 stage
                 | "sequence" => [
                     %{"workflow" => "capture-demos"},
-                    %{"workflow" => "verify-a-ticket", "return" => key}
+                    Map.merge(
+                      %{"workflow" => "verify-a-ticket"},
+                      if(key, do: %{"return" => key}, else: %{})
+                    )
                   ]
               }
 
@@ -3236,6 +3240,41 @@ defmodule ApiaryWeb.StagesLiveTest do
       for other <- canvas_view(view)["stages"], other["name"] != "Verify" do
         refute Enum.any?(other["sequence"], &Map.has_key?(&1, "returns"))
       end
+    end
+
+    test "a saved return shows in a fresh mount: the select for the editor, the line for a member",
+         %{conn: conn, member: member, path: path, build: build, returning: returning} do
+      returning.(nil)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+      change_stage(view, %{"sequence" => %{"1" => %{"return" => build}}})
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version")
+
+      # A new mount reads the saved version, not the draft of the first page.
+      {:ok, fresh, _html} = live(conn, path)
+      select(fresh, "Verify")
+
+      assert workflow_options(fresh, "stage-entry-1-return") |> Enum.filter(&elem(&1, 1)) == [
+               {build, true}
+             ]
+
+      assert has_element?(
+               fresh,
+               "select#stage-entry-1-return option[value='#{build}'][selected]",
+               "Build"
+             )
+
+      {:ok, read_only, _html} = live(member, path)
+      select(read_only, "Verify")
+      line = read_only |> element("#stage-sequence li", "verify-a-ticket") |> render()
+      text = line |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim()
+
+      # The workflow's mark (a check or a cross, with its words) follows the line.
+      assert String.starts_with?(
+               text,
+               "verify-a-ticket, machine type Workspace default (Standard), returns to Build at most 2 times"
+             )
     end
 
     test "the singular, at a limit of 1", %{
