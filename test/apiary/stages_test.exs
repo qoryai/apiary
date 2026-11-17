@@ -5302,8 +5302,8 @@ defmodule Apiary.StagesTest do
       work_item = escalated_in_build!(scope, "fast-track")
       before = decisions(work_item)
 
-      # A track the gate does not list, and the track the work item is on, with their own
-      # reasons.
+      # A track the gate does not list, and the track the work item is on, are refused with
+      # different reasons.
       assert switch(scope, work_item, "express") ==
                {:error, {:track_not_offered, "express", "Explore"}}
 
