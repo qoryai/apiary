@@ -129,9 +129,10 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.stack("workflows: {}\n") == {:error, :invalid_stack}
     end
 
-    test "a workflow declares write only with access: write, and read otherwise" do
+    test "a workflow declares write with access: write, write-no-push with access: write-no-push, and read otherwise" do
       workflows = %{
         "explore" => %{"access" => "write"},
+        "verify" => %{"access" => "write-no-push"},
         "review" => %{"access" => "read"},
         "fix" => %{"time_limit" => "45m"},
         "plan" => %{"access" => "admin"},
@@ -139,11 +140,31 @@ defmodule Apiary.Harnesses.ReaderTest do
       }
 
       assert Reader.workflow_access(workflows, "explore") == :write
+      assert Reader.workflow_access(workflows, "verify") == :write_no_push
 
       for name <- ~w(review fix plan test absent),
           do: assert(Reader.workflow_access(workflows, name) == :read, name)
 
       assert Reader.workflow_access(%{}, "explore") == :read
+    end
+
+    test "workflow_levels/1 is the level of each listed workflow, by name" do
+      workflows = %{
+        "explore" => %{"access" => "write"},
+        "verify" => %{"access" => "write-no-push"},
+        "review" => %{"access" => "read"},
+        "fix" => %{"time_limit" => "45m"}
+      }
+
+      assert Reader.workflow_levels(workflows) ==
+               %{
+                 "explore" => :write,
+                 "verify" => :write_no_push,
+                 "review" => :read,
+                 "fix" => :read
+               }
+
+      assert Reader.workflow_levels(%{}) == %{}
     end
   end
 

@@ -24,7 +24,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   # A stage's workflow is a dropdown of `Apiary.Processes.declared_workflows/1`, with the
   # entry's workflow last when the list does not have it. Once the page is connected, for
   # whoever may save the harness (`harness.save`), it reads the workspace's harness as
-  # Check again on a work item does (`Apiary.Stacks.Sources.chosen_workflows/2`, outside
+  # Check again on a work item does (`Apiary.Stacks.Sources.chosen_declared/2`, outside
   # the page's process): the choice, else the harness the organisation shares, else the
   # Qory harness. It records the names as the workspace's snapshot; a read that fails
   # keeps the list of the last read, with its error, which shows above the workflows on
@@ -73,6 +73,7 @@ defmodule ApiaryWeb.StagesLive.Index do
         qory_workflows: qory_workflows(Sources.chosen(workspace), workspace),
         may_harness: Apiary.Access.can?(scope, :"harness.save", workspace),
         declared: Processes.declared_workflows(workspace),
+        declared_access: Processes.declared_access(workspace),
         snapshot: Processes.declared_snapshot(workspace),
         harness_source: nil,
         declared_error: nil,
@@ -117,25 +118,27 @@ defmodule ApiaryWeb.StagesLive.Index do
 
       socket
       |> assign(harness_source: %{source: source, chosen: chosen})
-      |> start_async(:declared, fn -> Sources.chosen_workflows(scope, workspace) end)
+      |> start_async(:declared, fn -> Sources.chosen_declared(scope, workspace) end)
     else
       _no_read -> socket
     end
   end
 
   @impl true
-  def handle_async(:declared, {:ok, {:ok, names}}, socket) when is_list(names) do
+  def handle_async(:declared, {:ok, {:ok, declared}}, socket)
+      when is_list(declared) or is_map(declared) do
     workspace = socket.assigns.current_scope.workspace
 
     # A harness chosen while the read ran has a newer snapshot, which this read does not
     # replace.
     if Sources.chosen(workspace) == socket.assigns.harness_source.chosen,
-      do: :ok = Processes.record_declared(workspace, names)
+      do: :ok = Processes.record_declared(workspace, declared)
 
     {:noreply,
      socket
      |> assign(
        declared: Processes.declared_workflows(workspace),
+       declared_access: Processes.declared_access(workspace),
        snapshot: Processes.declared_snapshot(workspace),
        declared_error: nil
      )
@@ -664,9 +667,11 @@ defmodule ApiaryWeb.StagesLive.Index do
               <Inspector.stage_panel
                 :if={@stage}
                 stage={@stage}
+                doc={@draft}
                 may={@may}
                 last={length(@draft["stages"]) == 1}
                 declared={@declared}
+                declared_access={@declared_access}
                 types={@types}
                 members={@members}
                 people={@people}
@@ -687,10 +692,17 @@ defmodule ApiaryWeb.StagesLive.Index do
 
           <div :if={@tab == :details} id="stages-details" class="grid gap-6">
             <p id="stages-details-line" class="text-[13.5px]/5 text-muted">
-              {gettext(
-                "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
-                workspace: @workspace
-              )}
+              <%= if @draft["tracks"] in [nil, []] do %>
+                {gettext(
+                  "Every work item of %{workspace} goes through these stages, in order. Each save makes a new version.",
+                  workspace: @workspace
+                )}
+              <% else %>
+                {gettext(
+                  "Every work item of %{workspace} goes through these stages in order, except a stage that its track skips. Each save makes a new version.",
+                  workspace: @workspace
+                )}
+              <% end %>
             </p>
             <p id="stages-harness" class="text-[13.5px]/5">
               <.rich :if={!@in_use} text={gettext("Harness: %{harness}", harness: @harness)} />
@@ -746,6 +758,25 @@ defmodule ApiaryWeb.StagesLive.Index do
                 machine: MachineTypeWords.default_words(@machine_types, @draft["machine"])
               )}
             </p>
+
+            <section
+              :if={@draft["tracks"] not in [nil, []]}
+              id="stages-tracks"
+              aria-labelledby="stages-tracks-title"
+              class="grid gap-2"
+            >
+              <h2 id="stages-tracks-title" class="text-[15px]/6 font-semibold">
+                {gettext("Tracks")}
+              </h2>
+              <ul class="grid max-w-[60rem] gap-3">
+                <li :for={track <- @draft["tracks"]} class="grid gap-0.5">
+                  <p class="text-[13.5px]/5 font-medium">{track["name"]}</p>
+                  <p :if={track["description"] not in [nil, ""]} class="text-[13.5px]/5">
+                    {track["description"]}
+                  </p>
+                </li>
+              </ul>
+            </section>
 
             <section id="stages-check" aria-labelledby="stages-check-title" class="grid gap-2">
               <h2 id="stages-check-title" class="text-[15px]/6 font-semibold">

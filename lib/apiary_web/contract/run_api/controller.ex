@@ -201,12 +201,17 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # The verdict's file, as the schema of the type `verdict` takes it: `points` only where
-  # the body has them, which the schema then checks.
-  defp verdict_json(%{verdict: verdict, points: nil}), do: Jason.encode!(%{"verdict" => verdict})
+  # The verdict's file, as the schema of the type `verdict` takes it: `points` and `track`
+  # only where the body has them, which the schema then checks.
+  defp verdict_json(%{verdict: verdict} = body) do
+    members =
+      [{"verdict", verdict}] ++
+        for {key, value} <- [{"points", body.points}, {"track", body.track}], value != nil do
+          {key, value}
+        end
 
-  defp verdict_json(%{verdict: verdict, points: points}),
-    do: Jason.encode!(Jason.OrderedObject.new([{"verdict", verdict}, {"points", points}]))
+    Jason.encode!(Jason.OrderedObject.new(members))
+  end
 
   ## The feature
 
@@ -396,6 +401,29 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
+  # The message for a track the gate does not offer. The sentence that names the track
+  # comes only for an id of the form the schema takes, at most 40 characters.
+  @track_id ~r/\A[a-z][a-z0-9]*(-[a-z0-9]+)*\z/
+
+  defp track_not_offered(%{stage: stage, ids: ids, id: id}) do
+    gate = "the gate of #{stage || "the run's stage"}"
+
+    case ids do
+      [] ->
+        "Leave track out of the verdict: #{gate} offers no track."
+
+      ids ->
+        "Set track.id to a track that #{gate} offers (#{Enum.join(ids, ", ")}), " <>
+          "or leave track out of the verdict." <> named(id)
+    end
+  end
+
+  defp named(id) when is_binary(id) and byte_size(id) <= 40 do
+    if Regex.match?(@track_id, id), do: " The track #{id} is not offered.", else: ""
+  end
+
+  defp named(_id), do: ""
+
   # What `Apiary.Artifacts.push/5` returns, turned into the run API's errors: the push's
   # type, the type's limit and the member at fault, never another detail of the push.
   # `push` has the type's name (`name`), the type (`type`, nil where it was not read) and
@@ -416,6 +444,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     do: {:error, :invalid_request, Atom.to_string(member)}
 
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
+
+  # A verdict whose `track` the gate of the version's stage does not offer: `422`
+  # `invalid_artifact` for `track`, with the fix first.
+  defp refused({:invalid, {:track_not_offered, info}}, _push),
+    do: {:error, {:invalid_artifact, "track", track_not_offered(info)}}
 
   defp refused({:invalid, {:file, index}}, _push) when is_integer(index),
     do: {:error, :invalid_request, "files[#{index}]"}

@@ -1023,6 +1023,645 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
+  describe "tracks, when and unless (A-23)" do
+    @fast %{"track" => "fast-track"}
+
+    defp tracked_document do
+      "software"
+      |> Processes.default_document()
+      |> Map.put("tracks", [
+        %{"id" => "standard", "name" => "Standard", "description" => "Every stage runs."},
+        %{"id" => "fast-track", "name" => "Fast track"}
+      ])
+      |> Draft.update_stage(id_of("Explore"), fn stage ->
+        %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard", "fast-track"])}
+      end)
+      |> Draft.update_stage(id_of("Build"), fn stage ->
+        stage
+        |> Map.put("when", @fast)
+        |> Map.put("inputs", [
+          %{"type" => "proposal", "required" => true, "unless" => @fast}
+        ])
+        |> Map.put("outputs", [
+          %{"type" => "demo-video", "required" => true, "unless" => @fast}
+        ])
+        |> Map.put("sequence", [
+          %{"workflow" => "capture-demos", "unless" => @fast},
+          %{
+            "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos", "when" => @fast}]},
+            "when" => %{"track" => "standard"}
+          }
+        ])
+      end)
+    end
+
+    test "survive an edit of the stage, and the gate's tracks survive a change of its approvers",
+         %{conn: conn, path: path, scope: scope} do
+      document = tracked_document()
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      select(view, "Build")
+
+      change_stage(view, %{
+        "name" => "Build it",
+        "sequence" => %{
+          "0" => %{"workflow" => "record-demos", "machine" => "default"},
+          "1" => %{"rounds" => "3", "body" => %{"0" => %{"workflow" => "fix-demos"}}}
+        }
+      })
+
+      select(view, "Explore")
+      change_stage(view, %{"gate" => %{"kind" => "person", "approvers" => "members"}})
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+
+      saved = Processes.current(scope.workspace).document
+      assert saved["tracks"] == document["tracks"]
+
+      [explore, _shape, build | _rest] = saved["stages"]
+      assert explore["gate"]["tracks"] == ["standard", "fast-track"]
+      assert build["name"] == "Build it"
+      assert build["when"] == @fast
+      assert build["inputs"] == [%{"type" => "proposal", "required" => true, "unless" => @fast}]
+
+      assert build["outputs"] == [
+               %{"type" => "demo-video", "required" => true, "unless" => @fast}
+             ]
+
+      assert build["sequence"] == [
+               %{"workflow" => "record-demos", "machine" => "default", "unless" => @fast},
+               %{
+                 "loop" => %{
+                   "rounds" => 3,
+                   "body" => [%{"workflow" => "fix-demos", "when" => @fast}]
+                 },
+                 "when" => %{"track" => "standard"}
+               }
+             ]
+    end
+
+    test "Remove loop moves the loop's condition onto each workflow",
+         %{conn: conn, path: path, scope: scope} do
+      document =
+        Draft.update_stage(tracked_document(), id_of("Build"), fn stage ->
+          %{
+            stage
+            | "sequence" => [
+                %{
+                  "loop" => %{
+                    "rounds" => 2,
+                    "body" => [%{"workflow" => "capture-demos"}, %{"workflow" => "fix-demos"}]
+                  },
+                  "unless" => @fast
+                }
+              ]
+          }
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view |> element(~s(#stage-loop-0 button[phx-click="remove_loop"])) |> render_click()
+      refute has_element?(view, "#stage-loop-0")
+      refute has_element?(view, "[data-save-error]")
+
+      view |> element("#stages-save") |> render_click()
+      assert has_element?(view, "#stages-notice", "Saved as version 3.")
+
+      build =
+        Enum.find(Processes.current(scope.workspace).document["stages"], &(&1["name"] == "Build"))
+
+      assert build["sequence"] == [
+               %{"workflow" => "capture-demos", "unless" => @fast},
+               %{"workflow" => "fix-demos", "unless" => @fast}
+             ]
+    end
+
+    test "Remove loop keeps a loop whose condition cannot move to a workflow that has one",
+         %{conn: conn, path: path, scope: scope} do
+      {:ok, _version} = Processes.save(scope, scope.workspace, tracked_document())
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view |> element(~s(#stage-loop-1 button[phx-click="remove_loop"])) |> render_click()
+
+      assert has_element?(view, "#stage-loop-1")
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Keep this loop. Its condition cannot move to fix-demos, which has a condition already."
+             )
+
+      # The first sentence is the fix, at most 100 characters, and has no workflow name.
+      [first | _rest] = String.split(Words.loop_kept("fix-demos"), ". ", parts: 2)
+      assert first == "Keep this loop"
+      refute first =~ "fix-demos"
+    end
+
+    test "a gate changed to no approval offers no track", %{conn: conn, path: path, scope: scope} do
+      document =
+        Map.put(tracked_document(), "stages", Processes.default_document("software")["stages"])
+
+      document =
+        Draft.update_stage(document, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard"])}
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      select(view, "Explore")
+      change_stage(view, %{"gate" => %{"kind" => "none"}})
+      view |> element("#stages-save") |> render_click()
+
+      [explore | _rest] = Processes.current(scope.workspace).document["stages"]
+      assert explore["gate"] == %{"kind" => "none"}
+      assert Processes.current(scope.workspace).document["tracks"] == tracked_document()["tracks"]
+    end
+  end
+
+  describe "tracks and conditions on the page, read-only (A-23)" do
+    @on_fast %{"track" => "fast-track"}
+
+    # Explore offers both tracks; Shape is skipped on Fast track; Build has an entry that
+    # runs on Fast track, one and a loop that run on the other track.
+    defp shown_document do
+      "software"
+      |> Processes.default_document()
+      |> Map.put("tracks", [
+        %{"id" => "standard", "name" => "Standard", "description" => "Every stage runs."},
+        %{"id" => "fast-track", "name" => "Fast track", "description" => "Skips Shape."}
+      ])
+      |> Draft.update_stage(id_of("Explore"), fn stage ->
+        %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard", "fast-track"])}
+      end)
+      |> Draft.update_stage(id_of("Shape"), fn stage ->
+        stage |> Map.put("unless", @on_fast) |> Map.put("description", "Plan it.")
+      end)
+      |> Draft.update_stage(id_of("Build"), fn stage ->
+        Map.put(stage, "sequence", [
+          %{"workflow" => "make-a-small-change", "name" => "Quick change", "when" => @on_fast},
+          %{"workflow" => "plan-the-build", "unless" => @on_fast},
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [
+                %{"workflow" => "implement-changes"},
+                %{
+                  "workflow" => "review-changes",
+                  "name" => "Review round",
+                  "when" => %{"track" => "standard"}
+                }
+              ]
+            },
+            "unless" => @on_fast
+          }
+        ])
+      end)
+    end
+
+    defp save_shown(%{scope: scope}),
+      do: {:ok, _version} = Processes.save(scope, scope.workspace, shown_document())
+
+    test "the cards show what the gate offers and each condition",
+         %{conn: conn, path: path} = ctx do
+      save_shown(ctx)
+      {:ok, view, _html} = live(conn, path)
+
+      explore = card(view, "Explore")
+      assert explore["offers"] == "Offers: Standard, Fast track"
+      assert explore["label"] =~ "Gate: a member approves. Offers: Standard, Fast track"
+      assert explore["condition"] == nil
+
+      shape = card(view, "Shape")
+      assert shape["condition"] == "Skipped on Fast track"
+      assert shape["offers"] == nil
+      assert shape["label"] =~ ~r/\AShape\. Skipped on Fast track\. Plan it\. /
+
+      build = card(view, "Build")
+
+      assert build["sequence"] == [
+               %{"workflow" => "make-a-small-change", "condition" => "Runs on Fast track."},
+               %{"workflow" => "plan-the-build", "condition" => "Runs on Standard only."},
+               %{
+                 "loop" => "at most 3 rounds",
+                 "workflows" => ["implement-changes", "review-changes"],
+                 "conditions" => [nil, "Runs on Standard."],
+                 "condition" => "Runs on Standard only."
+               }
+             ]
+
+      assert build["label"] =~ "make-a-small-change, Runs on Fast track"
+      assert build["label"] =~ "plan-the-build, Runs on Standard only"
+
+      assert build["label"] =~
+               "a loop of implement-changes, review-changes (Runs on Standard), at most 3 rounds, Runs on Standard only"
+    end
+
+    test "Explore's gate and Shape's condition show in the editor's panel, with no field",
+         %{
+           conn: conn,
+           path: path
+         } = ctx do
+      save_shown(ctx)
+      {:ok, view, _html} = live(conn, path)
+
+      select(view, "Explore")
+      assert has_element?(view, "#stage-gate #stage-gate-tracks", "Offers: Standard, Fast track")
+      refute has_element?(view, "#stage-condition")
+
+      select(view, "Shape")
+      assert has_element?(view, "#stage-condition dt", "Condition")
+      assert has_element?(view, "#stage-condition dd", "Skipped on Fast track")
+      refute has_element?(view, "#stage-gate-tracks")
+      refute has_element?(view, "#stage-condition input, #stage-condition select")
+    end
+
+    test "Build's panel shows each entry's name and condition, and the loop's",
+         %{
+           conn: conn,
+           path: path
+         } = ctx do
+      save_shown(ctx)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      assert has_element?(view, "#stage-entry-0", "Name: Quick change")
+      assert has_element?(view, "#stage-entry-0", "Runs on Fast track.")
+      refute has_element?(view, "#stage-entry-1", "Name:")
+      assert has_element?(view, "#stage-entry-1", "Runs on Standard only.")
+      assert has_element?(view, "#stage-loop-2-condition", "Runs on Standard only.")
+      refute has_element?(view, "#stage-entry-2-0", "Runs on")
+      assert has_element?(view, "#stage-entry-2-1", "Name: Review round")
+      assert has_element?(view, "#stage-entry-2-1", "Runs on Standard.")
+      refute has_element?(view, "#stage-condition")
+
+      # The conditions are text: the form has no field for a track or a condition.
+      html = view |> element("#stage-form") |> render()
+      refute html =~ "unless"
+      refute html =~ "[track]"
+    end
+
+    test "a member's panel reads the same lines, with no field", %{path: path} = ctx do
+      save_shown(ctx)
+      %{user: user} = member_fixture(ctx.scope)
+      {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
+
+      select(view, "Explore")
+      assert has_element?(view, "#stage-gate-tracks", "Offers: Standard, Fast track")
+
+      select(view, "Shape")
+      assert has_element?(view, "#stage-condition dt", "Condition")
+      assert has_element?(view, "#stage-condition dd", "Skipped on Fast track")
+
+      select(view, "Build")
+      assert has_element?(view, "#stage-sequence li", "Name: Quick change")
+      assert has_element?(view, "#stage-sequence li", "Runs on Fast track.")
+      assert has_element?(view, "#stage-sequence li", "Runs on Standard only.")
+      refute has_element?(view, "#stage-panel input")
+      refute has_element?(view, "#stage-panel button")
+    end
+
+    test "a track that is not the other offered one is named in an unless", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      document =
+        shown_document()
+        |> Map.update!("tracks", &(&1 ++ [%{"id" => "slow", "name" => "Slow"}]))
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{
+            stage
+            | "gate" => Map.put(stage["gate"], "tracks", ["standard", "fast-track", "slow"])
+          }
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      assert [_, %{"condition" => "Runs on Standard or Slow only."} | _] =
+               card(view, "Build")["sequence"]
+
+      urgent =
+        document
+        |> Map.update!("tracks", &(&1 ++ [%{"id" => "urgent", "name" => "Urgent"}]))
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{
+            stage
+            | "gate" =>
+                Map.put(stage["gate"], "tracks", ["standard", "fast-track", "slow", "urgent"])
+          }
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, urgent)
+      {:ok, view, _html} = live(conn, path)
+
+      assert [_, %{"condition" => "Runs on Standard, Slow or Urgent only."} | _] =
+               card(view, "Build")["sequence"]
+    end
+
+    test "a process with no tracks and no condition shows none of it", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, view, html} = live(conn, path)
+
+      for stage <- canvas_view(view)["stages"] do
+        refute Map.has_key?(stage, "condition")
+        refute Map.has_key?(stage, "offers")
+        refute Enum.any?(stage["sequence"], &Map.has_key?(&1, "condition"))
+        refute stage["label"] =~ "Offers"
+      end
+
+      for name <- ["Explore", "Shape", "Build"] do
+        select(view, name)
+        refute has_element?(view, "#stage-condition")
+        refute has_element?(view, "#stage-gate-tracks")
+        refute has_element?(view, "#stage-form p", "Name:")
+      end
+
+      refute html =~ "Offers:"
+
+      details(view, path)
+      refute has_element?(view, "#stages-tracks")
+
+      assert has_element?(
+               view,
+               "#stages-details-line",
+               "Every work item of #{scope.workspace.name} goes through these stages, in order. Each save makes a new version."
+             )
+    end
+
+    test "the Details tab lists the tracks before the placement check, and says a track skips",
+         %{conn: conn, path: path} = ctx do
+      save_shown(ctx)
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+
+      assert has_element?(view, "#stages-tracks h2", "Tracks")
+      assert has_element?(view, "#stages-tracks li", "Standard")
+      assert has_element?(view, "#stages-tracks li", "Every stage runs.")
+      assert has_element?(view, "#stages-tracks li", "Fast track")
+      assert has_element?(view, "#stages-tracks li", "Skips Shape.")
+
+      html = render(view)
+      {tracks, _} = :binary.match(html, ~s(id="stages-tracks"))
+      {check, _} = :binary.match(html, ~s(id="stages-check"))
+      assert tracks < check
+
+      line = view |> element("#stages-details-line") |> render()
+      assert line =~ "goes through these stages in order, except a stage that its track skips."
+      assert line =~ "Each save makes a new version."
+      refute line =~ "stages, in order"
+    end
+
+    test "a stage that runs only on a track shows it on its card and in its panel", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      document =
+        Draft.update_stage(shown_document(), id_of("Build"), &Map.put(&1, "when", @on_fast))
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      {:ok, view, _html} = live(conn, path)
+
+      build = card(view, "Build")
+      assert build["condition"] == "Runs on Fast track."
+      assert build["label"] =~ ~r/\ABuild\. Runs on Fast track\. /
+
+      select(view, "Build")
+      assert has_element?(view, "#stage-condition dt", "Condition")
+      assert has_element?(view, "#stage-condition dd", "Runs on Fast track.")
+    end
+
+    test "a save that changes one stage's condition lists that stage only", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _version} = Processes.save(scope, scope.workspace, shown_document())
+
+      changed =
+        Draft.update_stage(shown_document(), id_of("Build"), &Map.put(&1, "when", @on_fast))
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, changed)
+
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+
+      assert has_element?(view, "#stages-version-3", "Build: condition changed.")
+
+      for other <- ["Explore", "Shape", "Verify", "Release"] do
+        refute has_element?(view, "#stages-version-3", "#{other}: condition changed.")
+      end
+
+      assert view
+             |> element("#stages-version-3")
+             |> render()
+             |> String.split("condition changed")
+             |> length() == 2
+    end
+
+    test "the history says when only the tracks, or only a condition, changed", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      {:ok, _version} = Processes.save(scope, scope.workspace, shown_document())
+
+      renamed =
+        Map.update!(shown_document(), "tracks", fn [first, second] ->
+          [%{first | "name" => "Normal"}, second]
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, renamed)
+
+      loosened = Draft.update_stage(renamed, id_of("Shape"), &Map.delete(&1, "unless"))
+      {:ok, _version} = Processes.save(scope, scope.workspace, loosened)
+
+      {:ok, view, _html} = live(conn, path)
+      details(view, path)
+
+      assert has_element?(view, "#stages-version-2", "Tracks changed.")
+
+      assert has_element?(
+               view,
+               "#stages-version-2",
+               "Changed the gate of Explore: any member approves. Offers: Standard, Fast track."
+             )
+
+      assert has_element?(view, "#stages-version-3", "Tracks changed.")
+      assert has_element?(view, "#stages-version-4", "Shape: condition changed.")
+      refute has_element?(view, "#stages-version-4", "Tracks changed.")
+      refute has_element?(view, "#stages-version-3", "condition changed")
+    end
+  end
+
+  describe "a refused track or condition (A-23)" do
+    defp refusals(document) do
+      assert {:error, errors} = Processes.validate(document)
+      Enum.map(errors, &Words.refusal(&1, document))
+    end
+
+    test "the refusal says what to remove or add, with the stage and the track or type" do
+      on = %{"track" => "fast-track"}
+      doc = Processes.default_document("software")
+
+      document =
+        doc
+        |> Map.put("tracks", [%{"id" => "fast-track", "name" => "Fast track"}])
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          Map.put(stage, "when", on)
+        end)
+        |> Draft.update_stage(id_of("Build"), fn stage ->
+          stage
+          |> Map.put("unless", %{"input" => "demo-scenarios"})
+          |> Map.put("inputs", [
+            %{"type" => "proposal", "required" => true, "when" => on},
+            %{"type" => "mockup", "required" => true, "unless" => %{"input" => "demo-scenarios"}}
+          ])
+          |> Map.put("sequence", [
+            %{"workflow" => "capture-demos", "unless" => on},
+            %{
+              "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos"}]},
+              "when" => on
+            }
+          ])
+        end)
+
+      assert refusals(document) == [
+               "Remove the condition on Explore, or let an earlier stage offer the track fast-track at its gate.",
+               "Remove the condition on Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on the input proposal in Build, or let an earlier stage offer the track fast-track at its gate.",
+               "Remove the condition on the input mockup in Build, or add an earlier stage that makes demo-scenarios.",
+               "Remove the condition on capture-demos in Build, or let an earlier stage offer the track fast-track at its gate.",
+               "Remove the condition on a loop in Build, or let an earlier stage offer the track fast-track at its gate."
+             ]
+    end
+
+    test "the refusal of both when and unless names the item" do
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "standard"}}
+
+      document =
+        "software"
+        |> Processes.default_document()
+        |> Map.put("tracks", [%{"id" => "standard", "name" => "Standard"}])
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard"])}
+        end)
+        |> Draft.update_stage(id_of("Build"), fn stage ->
+          stage
+          |> Map.merge(both)
+          |> Map.put("inputs", [Map.merge(%{"type" => "proposal", "required" => true}, both)])
+          |> Map.put("sequence", [
+            Map.merge(%{"workflow" => "capture-demos"}, both),
+            Map.merge(
+              %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix-demos"}]}},
+              both
+            )
+          ])
+        end)
+
+      assert refusals(document) == [
+               "Keep one condition on Build: remove its when or its unless.",
+               "Keep one condition on the input proposal in Build: remove its when or its unless.",
+               "Keep one condition on capture-demos in Build: remove its when or its unless.",
+               "Keep one condition on a loop in Build: remove its when or its unless."
+             ]
+    end
+
+    test "the refusal of a track id twice, a gate's undeclared track, and tracks on a gate with no approval" do
+      doc = Processes.default_document("software")
+
+      duplicate =
+        Map.put(doc, "tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "standard", "name" => "Standard again"}
+        ])
+
+      assert refusals(duplicate) == [
+               "Give each track a different id. Two tracks have the id standard."
+             ]
+
+      undeclared =
+        Draft.update_stage(doc, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["express"])}
+        end)
+
+      assert refusals(undeclared) == [
+               "Remove the track express from the gate of Explore, or add it to the tracks of the process."
+             ]
+
+      none =
+        doc
+        |> Map.put("tracks", [%{"id" => "standard", "name" => "Standard"}])
+        |> Draft.update_stage(id_of("Explore"), fn stage ->
+          %{stage | "gate" => %{"kind" => "none", "tracks" => ["standard"]}}
+        end)
+
+      assert refusals(none) == [
+               "Remove the tracks from the gate of Explore, or let a person approve at it. A gate with no approval offers no track."
+             ]
+    end
+
+    test "the refusal of too many tracks, a description that is too long, and a gate that lists a track twice" do
+      doc = Processes.default_document("software")
+
+      eleven = for n <- 1..11, do: %{"id" => "track-#{n}", "name" => "Track #{n}"}
+      assert "Keep at most 10 tracks in the process." in refusals(Map.put(doc, "tracks", eleven))
+
+      long = [
+        %{"id" => "fast", "name" => "Fast track", "description" => String.duplicate("a", 501)}
+      ]
+
+      assert "Shorten the description of Fast track to at most 500 characters." in refusals(
+               Map.put(doc, "tracks", long)
+             )
+
+      declared = Map.put(doc, "tracks", [%{"id" => "standard", "name" => "Standard"}])
+
+      twice =
+        Draft.update_stage(declared, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["standard", "standard"])}
+        end)
+
+      assert "List each track once in the gate of Explore." in refusals(twice)
+
+      many =
+        Draft.update_stage(declared, id_of("Explore"), fn stage ->
+          ids = for n <- 1..11, do: "track-#{n}"
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ids)}
+        end)
+
+      assert "Offer at most 10 tracks at the gate of Explore." in refusals(many)
+    end
+
+    test "the refusal of a track with an id or a name that breaks the schema" do
+      doc = Processes.default_document("software")
+      track = Map.put(doc, "tracks", [%{"id" => "Fast", "name" => "Fast track"}])
+
+      text =
+        "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
+
+      assert text in refusals(track)
+
+      gate =
+        Draft.update_stage(doc, id_of("Explore"), fn stage ->
+          %{stage | "gate" => Map.put(stage["gate"], "tracks", ["Small Change"])}
+        end)
+
+      assert "Write each track of the gate of Explore as an id of lower-case words joined by hyphens, such as small-change." in refusals(
+               gate
+             )
+    end
+  end
+
   describe "a workspace with no template" do
     test "the harness line shows the stack core", %{conn: conn, path: path, scope: scope} do
       {1, _rows} =
@@ -1782,6 +2421,75 @@ defmodule ApiaryWeb.StagesLiveTest do
              )
     end
 
+    # A stage Build whose sequence is `entries`, saved as the current version.
+    defp build_with!(scope, entries) do
+      document = Processes.default_document("software")
+      at = Enum.find_index(document["stages"], &(&1["name"] == "Build"))
+      document = put_in(document, ["stages", Access.at(at), "sequence"], entries)
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      :ok
+    end
+
+    defp access_line(view, entry),
+      do:
+        view
+        |> element("#stage-entry-#{entry}-access")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.trim()
+
+    test "a row shows the harness's access level as one read-only line", %{
+      conn: conn,
+      path: path
+    } do
+      {:ok, view, _html} = live(conn, path)
+      render_async(view)
+
+      # The Explore stage's first workflow, which the Qory harness's stack declares read.
+      assert has_element?(
+               view,
+               "p#stage-entry-0-access",
+               "Access: Read only (set by the harness)"
+             )
+
+      assert access_line(view, 0) == "Access: Read only (set by the harness)"
+
+      # No fold, no Change, no field: the level is set by the harness, or in process.yaml.
+      refute has_element?(view, ~s{details[id^="stage-entry-0-access"]})
+      refute has_element?(view, "#stage-entry-0-access button, #stage-entry-0-access a")
+      refute has_element?(view, ~s{select[name$="[access]"]})
+      refute has_element?(view, ~s{[name$="[access]"]})
+    end
+
+    test "a save writes no access of its own, and keeps the entry's from process.yaml", %{
+      conn: conn,
+      path: path,
+      scope: scope
+    } do
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"}
+      ])
+
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Build")
+
+      view
+      |> form("#stage-form", stage: %{sequence: %{"0" => %{machine: "standard"}}})
+      |> render_change()
+
+      view |> element("#stages-save") |> render_click()
+
+      build =
+        Enum.find(Processes.current(scope.workspace).document["stages"], &(&1["name"] == "Build"))
+
+      assert build["sequence"] == [
+               %{"workflow" => "plan-the-build", "access" => "read", "machine" => "standard"},
+               %{"workflow" => "write-checks"}
+             ]
+    end
+
     test "a type of 64 characters beside an empty stage name has no mark", %{
       conn: conn,
       path: path
@@ -2455,6 +3163,79 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert Apiary.Stacks.Sources.chosen_workflows(scope, scope.workspace) == {:ok, ["review"]}
     end
 
+    test "a row shows the level the harness's stack declares, and the lower level its entry sets",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      stack =
+        @stack <>
+          """
+          workflows:
+            plan-the-build: {access: write}
+            write-checks: {access: write}
+            verify: {access: write}
+            capture-demos: {access: write-no-push}
+            implement: {access: write-no-push}
+            explore-a-ticket: {access: read}
+          """
+
+      files = Map.put(@files, {"R_harness", "stacks/other/qory-stack.yaml"}, stack)
+
+      build_with!(scope, [
+        %{"workflow" => "plan-the-build", "access" => "read"},
+        %{"workflow" => "write-checks"},
+        %{"workflow" => "verify", "access" => "write-no-push"},
+        %{"workflow" => "capture-demos", "access" => "write-no-push"},
+        %{"workflow" => "unlisted-one"},
+        %{"workflow" => "explore-a-ticket", "access" => "write-no-push"},
+        %{"workflow" => "implement"}
+      ])
+
+      serve_calls([adapter], covered: covered, files: files)
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      # A stage lowers the level in process.yaml, and the line gives both levels.
+      assert access_line(view, 0) ==
+               "Access: Read only (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 1) == "Access: Write and push (set by the harness)"
+
+      assert access_line(view, 2) ==
+               "Access: Write, no push (set for this stage; the harness allows Write and push)"
+
+      assert access_line(view, 3) == "Access: Write, no push (set by the harness)"
+
+      # A workflow the harness does not list has no line, and its row has the mark.
+      refute has_element?(view, "#stage-entry-4-access")
+      assert has_element?(view, "#stage-entry-4-workflow-mark[data-mark=missing]")
+
+      # An entry never raises the level: Write, no push under a harness that declares read.
+      assert access_line(view, 5) == "Access: Read only (set by the harness)"
+      assert access_line(view, 6) == "Access: Write, no push (set by the harness)"
+    end
+
+    test "a row has no Access line while the level the harness declares is unknown",
+         %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
+      # A snapshot kept before the levels were: the names, and no level.
+      :ok = Processes.record_declared(scope.workspace, ["review"])
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      build_with!(scope, [%{"workflow" => "review"}])
+      serve_calls([adapter], covered: covered, files: @files, down: true)
+
+      {:ok, view, _html} = live(conn, path)
+      render_async(view, 5_000)
+      select(view, "Build")
+
+      assert has_element?(view, "#stage-entry-0-workflow-mark[data-mark=listed]")
+      refute has_element?(view, "#stage-entry-0-access")
+    end
+
     test "a read that fails keeps the list of the last read, with the cause",
          %{conn: conn, path: path, scope: scope, adapter: adapter, covered: covered} do
       :ok = Processes.record_declared(scope.workspace, ["triage"])
@@ -3114,6 +3895,29 @@ defmodule ApiaryWeb.StagesLiveTest do
   end
 
   describe "the words" do
+    test "a gate that stops offering tracks says so" do
+      offering = shown_document()
+      explore = id_of("Explore")
+
+      offering_none =
+        Draft.update_stage(offering, explore, fn stage ->
+          Map.update!(stage, "gate", &Map.delete(&1, "tracks"))
+        end)
+
+      gate_line = fn older, newer ->
+        for {:gate_changed, _id, _detail} = change <- Processes.diff(older, newer),
+            do: Words.change(change, older, newer)
+      end
+
+      assert gate_line.(offering, offering_none) ==
+               ["Changed the gate of Explore: any member approves. Offers no track."]
+
+      assert gate_line.(offering_none, offering) ==
+               [
+                 "Changed the gate of Explore: any member approves. Offers: Standard, Fast track."
+               ]
+    end
+
     test "each change of a version reads in plain words" do
       old = Processes.default_document("software")
 

@@ -271,6 +271,16 @@ defmodule Apiary.Runs.RunCredentialsTest do
       version
     end
 
+    # The run's documents, changed by `change` on their decoded form.
+    defp documents!(run, change) do
+      documents = Repo.get!(Run, run.id).run_documents |> Jason.decode!() |> change.()
+      set!(Run, run.id, run_documents: Jason.encode!(documents))
+    end
+
+    # The documents the claim sent the run of the queue `queued`, decoded.
+    defp sent_documents(queued),
+      do: Jason.decode!(Repo.get_by!(Run, dispatch_run_id: queued.id).run_documents)
+
     # A run of the queue under a version with `from`, moved to a version with `to`.
     defp moved!(ctx, from, to) do
       process!(ctx, from)
@@ -279,11 +289,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
       queued
     end
 
-    # The level of the claim of `queued`, whose walk resolved `write`: its documents' and
-    # its token's.
-    defp claimed_levels(ctx, queued) do
+    # The level of the claim of `queued`, whose walk resolved `walk`, `write` unless given:
+    # its documents' and its token's.
+    defp claimed_levels(ctx, queued, walk \\ :write) do
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
-      walk_resolved!(queued, origin: :setting, document: section, access_level: :write)
+      walk_resolved!(queued, origin: :setting, document: section, access_level: walk)
 
       assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
       assert [%RunCredential{access: token}] = entries()
@@ -314,6 +324,140 @@ defmodule Apiary.Runs.RunCredentialsTest do
       set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
 
       assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a write-no-push entry gets a read credential, and its documents write-no-push",
+         ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose walk resolved write-no-push keeps it where its entry sets no level", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :write_no_push) == {:write_no_push, :read}
+      assert %{"access" => "write-no-push"} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "an entry never raises the level its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "write-no-push"}])
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued, :read) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run whose stage has no limits reads, whatever its walk resolved", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      set!(DispatchRun, queued.id, stage_id: "st_p9w5cvh311")
+
+      assert claimed_levels(ctx, queued, :write) == {:read, :read}
+      assert %{"access" => "read"} = sent_documents(queued)
+    end
+
+    # Cancel run's confirm says a write run's changes are not pushed
+    # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
+    # by its work entry, then by the documents the claim sent it, then by its stage entry.
+    for {access, write?} <- [{"write-no-push", false}, {"read", false}, {nil, true}] do
+      @tag needs: [:factory, :workflow_model]
+      test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
+           ctx do
+        entry =
+          Map.reject(%{"workflow" => "build", "access" => unquote(access)}, &is_nil(elem(&1, 1)))
+
+        process!(ctx, [entry])
+        {_work_item, queued} = queued!(ctx)
+        claimed_levels(ctx, queued)
+        run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+
+        set!(Run, run.id, run_documents: nil)
+        assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run) == unquote(write?)
+      end
+    end
+
+    # Cancel run reads the first source the run has: its work entry before its documents,
+    # its documents before its stage entry. Each case gives the sources different levels.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run takes the work entry first, then the documents", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+      # A work entry of write, with documents that say read.
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.run_id == ^run.id),
+          set: [access: :write]
+        )
+
+      assert sent_documents(queued)["access"] == "read"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      # No work entry, documents that say write, and a stage entry that lowers to read.
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+      documents!(run, &Map.put(&1, "access", "write"))
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+
+      set!(Run, run.id, run_documents: nil)
+      refute Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+    end
+
+    # A text of the documents may have a NUL, which JSON writes as an escape.
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run reads the access of documents with a NUL in a text", ctx do
+      process!(ctx, [%{"workflow" => "build"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+      Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
+
+      documents!(run, fn documents ->
+        documents
+        |> Map.put("access", "write")
+        |> put_in(["work_item", "title"], "Checkout \u0000 storefront")
+      end)
+
+      assert Repo.get!(Run, run.id).run_documents =~ "\\u0000"
+      assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
+    end
+
+    # The claim reads the run's level once, for its documents and its work entry: the entry
+    # takes the level it is given, not one read again.
+    test "form_work/4 gives the work entry the access of the level it is given", ctx do
+      {work_item, queued} = queued!(ctx)
+
+      case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
+        nil ->
+          Repo.insert!(%RunHarness{
+            dispatch_run_id: queued.id,
+            state: :resolved,
+            origin: :none,
+            access_level: :write
+          })
+
+        walk ->
+          set!(RunHarness, walk.id, access_level: :write)
+      end
+
+      assert RunCredentials.run_access(queued) == :write
+
+      for {level, access} <- [read: :read, write_no_push: :read, write: :write] do
+        assert {:ok, %RunCredential{access: ^access}} =
+                 RunCredentials.form_work(queued, work_item, @target, level)
+      end
     end
 
     @tag needs: [:factory, :workflow_model]

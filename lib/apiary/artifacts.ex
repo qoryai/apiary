@@ -125,7 +125,10 @@ defmodule Apiary.Artifacts do
   # version of the verdict, from any writer, has each `answer` point about a question that
   # is open in the newest questions of the work item's current take in, else
   # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, `point` counted from 1: the run
-  # pushes its questions first (`points_open/3`).
+  # pushes its questions first (`verdict_kept/4`). A verdict's `track`, which the format check
+  # passed, is a track that the gate of the stage the version is made in offers, in the
+  # work item's process version, else
+  # `{:invalid, {:track_not_offered, %{stage: name | nil, ids: offered, id: track}}}`.
   #
   # Then a version of the questions or the review comments, from any writer, is stored
   # with each number that is an integer in value written as an integer: a file with
@@ -1159,7 +1162,7 @@ defmodule Apiary.Artifacts do
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
-           :ok <- points_open(held, artifact, staged),
+           :ok <- verdict_kept(held, artifact, fields, staged),
            {:ok, kept} <- integers(type, staged) do
         keep(writer, held, artifact, fields, kept, now)
       else
@@ -1241,25 +1244,45 @@ defmodule Apiary.Artifacts do
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
 
-  # A verdict, checked under the work item's lock: the question of each `answer` point is
-  # open in the newest questions, and is a question of the work item's current take in
-  # (`Apiary.Explore.Questions.open_in_take_in/2`), so the person can answer it; else
-  # `{:invalid, {:kept, 0, {:not_open, point, question}}}`, with `point` counted from 1.
-  # The format check passed, so the file is one JSON document of the verdict's format. The
-  # newest questions, where their file cannot be read, are `{:error, :store_unavailable}`.
-  defp points_open(%WorkItem{} = held, %Artifact{type: "verdict"}, [file]) do
+  # A verdict, checked under the work item's lock: its `track`, where it has one, is a track
+  # that the gate of the stage the version is made in offers (`track_offered/3`); and the
+  # question of each `answer` point is open in the newest questions, and is a question of the
+  # work item's current take in (`Apiary.Explore.Questions.open_in_take_in/2`), so the person
+  # can answer it; else `{:invalid, {:kept, 0, {:not_open, point, question}}}`, with `point`
+  # counted from 1. The format check passed, so the file is one JSON document of the
+  # verdict's format. The newest questions, where their file cannot be read, are
+  # `{:error, :store_unavailable}`.
+  defp verdict_kept(%WorkItem{} = held, %Artifact{type: "verdict"}, fields, [file]) do
     with {:ok, text} <- File.read(file.staged.path),
-         {:ok, %{} = document} <- Jason.decode(text) do
+         {:ok, %{} = document} <- Jason.decode(text),
+         :ok <- track_offered(held, fields.stage_id, document) do
       case answer_points(document) do
         [] -> :ok
         answers -> answers_open(held, answers)
       end
     else
+      {:error, {:invalid, _reason}} = refused -> refused
       _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
     end
   end
 
-  defp points_open(_held, _artifact, _staged), do: :ok
+  defp verdict_kept(_held, _artifact, _fields, _staged), do: :ok
+
+  # The gate of the stage `stage_id` of the work item's process version offers the track of
+  # the verdict, `%{"track" => %{"id" => id}}`; no stage, or a stage whose gate offers none,
+  # offers none.
+  defp track_offered(held, stage_id, %{"track" => %{"id" => id}}) when is_binary(id) do
+    stage = held |> Processes.version_for() |> Processes.stage(stage_id)
+    ids = (stage && get_in(stage, ["gate", "tracks"])) || []
+
+    if id in ids,
+      do: :ok,
+      else:
+        {:error,
+         {:invalid, {:track_not_offered, %{stage: stage && stage["name"], ids: ids, id: id}}}}
+  end
+
+  defp track_offered(_held, _stage_id, _document), do: :ok
 
   defp answer_points(%{"points" => points}) when is_list(points) do
     for {%{"action" => "answer", "question" => question}, point} <- Enum.with_index(points, 1),
