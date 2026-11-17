@@ -26,9 +26,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @states %{"Met" => :met, "Not met" => :not_met, "Needs a person" => :needs_person}
 
-  # A reference to a scenario in an Evidence cell, the whole of a part
-  # (`evidence_parts/2`).
-  @reference ~r/^(?:(?:Demo video|Pictures): )?scenario[ -]([0-9]+)$/i
+  # The phrases of an Evidence cell that name a scenario (`evidence_parts/2`): "Demo video:
+  # scenario 1", "Pictures: scenario 2" and "the pictures of scenario 2".
 
   @doc false
   # media/0 is the types of a scenario's film or pictures.
@@ -420,19 +419,19 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   @doc false
   # evidence_parts/2 is the Evidence cell `text` in parts: each reference to a scenario
   # whose number has a DOM id in `anchors` is `{:link, words, id}`, and the text around
-  # it is a string. A reference is the scenario's id or its words, "scenario-2" or
-  # "scenario 2", after "Demo video: " or "Pictures: " where the cell has them, so
-  # "Pictures: scenario 2" is one link. A reference to a scenario not in `anchors` stays
-  # text.
+  # it is a string. A reference is one of the phrases "Demo video: scenario 1", "Pictures:
+  # scenario 2" and "the pictures of scenario 2", linked whole; any other text stays text,
+  # as does a phrase for a scenario not in `anchors`.
   @spec evidence_parts(String.t(), %{integer => String.t()}) ::
           [String.t() | {:link, String.t(), String.t()}]
   def evidence_parts(text, anchors) when map_size(anchors) == 0, do: [text]
 
   def evidence_parts(text, anchors) do
-    ~r/(?:(?:Demo video|Pictures): )?\bscenario[ -]([0-9]+)\b/i
+    ~r/\b(?:Demo video: |Pictures: |the pictures of )scenario [0-9]+\b/
     |> Regex.split(text, include_captures: true)
     |> Enum.flat_map(fn part ->
-      with [_whole, number] <- Regex.run(@reference, part),
+      with [_whole, number] <-
+             Regex.run(~r/^(?:Demo video: |Pictures: |the pictures of )scenario ([0-9]+)$/, part),
            {number, ""} <- Integer.parse(number),
            %{^number => anchor} <- anchors do
         [{:link, part, anchor}]
@@ -512,12 +511,12 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
             aria-label={file.filename}
           >
             <source src={file_src(assigns, file)} type={file.content_type} />
+            <%!-- No track is `default`: the captions start off, on every film of the tab. --%>
             <track
-              :for={{track, index} <- Enum.with_index(@subtitles)}
+              :for={track <- @subtitles}
               kind="captions"
               label={track.filename}
               src={file_src(assigns, track)}
-              default={index == 0}
             />
           </video>
           <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>

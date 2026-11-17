@@ -443,6 +443,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#{film} figcaption", "scenario-1.mp4")
 
+      # The captions start off: no track is the default one.
+      refute has_element?(view, "#{film} video track[default]")
+      refute has_element?(view, "#work-item-tab-scenarios video track[default]")
+
       assert texts(view, "#{film}-steps li") == [
                "Step 1: Open scenario-1 Expected: Result 1 of Open scenario-1.",
                "Step 2: Reload scenario-1 Expected: Result 2 of Reload scenario-1."
@@ -811,7 +815,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         assert has_element?(
                  view,
                  ~s|#{matrix}-1 #{cell} a[href="#work-item-tab-scenarios-scenario-2"]|,
-                 "scenario 2"
+                 "the pictures of scenario 2"
                )
       end
 
@@ -827,14 +831,34 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       refute has_element?(view, "#{matrix} img")
     end
 
-    test "evidence_parts/2 links a scenario's id or words, and no other number" do
+    test "evidence_parts/2 links the three phrases whole, and no other text" do
       anchors = %{1 => "a-1", 2 => "a-2"}
 
-      assert VerifyTab.evidence_parts("Film: demo-video scenario-1 v1, scenario-12 too.", anchors) ==
-               ["Film: demo-video ", {:link, "scenario-1", "a-1"}, " v1, scenario-12 too."]
+      assert VerifyTab.evidence_parts("Demo video: scenario 1", anchors) ==
+               [{:link, "Demo video: scenario 1", "a-1"}]
 
       assert VerifyTab.evidence_parts("Pictures: scenario 2", anchors) ==
                [{:link, "Pictures: scenario 2", "a-2"}]
+
+      assert VerifyTab.evidence_parts(
+               "Check that the voucher line fits in the pictures of scenario 2, because the run could not.",
+               anchors
+             ) ==
+               [
+                 "Check that the voucher line fits in ",
+                 {:link, "the pictures of scenario 2", "a-2"},
+                 ", because the run could not."
+               ]
+
+      # Another number, another wording and a scenario not listed stay text.
+      for text <- [
+            "Film: demo-video scenario-1 v1, scenario-12 too.",
+            "scenario 2 passed",
+            "Demo video: scenario 7",
+            "Pictures: scenario 12"
+          ] do
+        assert VerifyTab.evidence_parts(text, anchors) == [text]
+      end
 
       assert VerifyTab.evidence_parts("Pictures: scenario 2", %{}) == ["Pictures: scenario 2"]
     end
