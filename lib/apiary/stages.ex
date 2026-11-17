@@ -1379,9 +1379,9 @@ defmodule Apiary.Stages do
          {:ok, version, stage} <- placed(work_item) do
       artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
-      state = shown_state(work_item, stage, artifacts)
-      # Read once: the inputs and the condition inputs that count both use them.
+      # Read once: the shown state, the inputs and the condition inputs that count use them.
       approvals = approvals_by_version(work_item)
+      state = shown_state(work_item, stage, artifacts, approvals)
       counted = counted(work_item, version, stage, artifacts, approvals)
       track = track(work_item)
       facts = %{counted: counted, track: track}
@@ -2787,12 +2787,15 @@ defmodule Apiary.Stages do
   end
 
   # The state as a person sees it: a stage done whose output has a version newer than its
-  # last approval is at its gate again.
-  defp shown_state(%WorkItem{stage_state: :done} = work_item, stage, artifacts) do
-    if reopened?(work_item, stage, artifacts), do: :at_gate, else: :done
+  # last approval is at its gate again. `approvals` is `approvals_by_version/1`, read where
+  # needed for nil.
+  defp shown_state(work_item, stage, artifacts, approvals \\ nil)
+
+  defp shown_state(%WorkItem{stage_state: :done} = work_item, stage, artifacts, approvals) do
+    if reopened?(work_item, stage, artifacts, approvals), do: :at_gate, else: :done
   end
 
-  defp shown_state(%WorkItem{stage_state: state}, _stage, _artifacts), do: state
+  defp shown_state(%WorkItem{stage_state: state}, _stage, _artifacts, _approvals), do: state
 
   # A withdrawal is a version too: a name the last approval covered whose newest version is
   # now a withdrawal reopens the gate. Where another name of the type is left, its version
@@ -2801,8 +2804,9 @@ defmodule Apiary.Stages do
   # person's approval, the gate compares the versions it shows (`gate_versions/3`), which
   # that approval covered. After a gate `none` approval, it compares the newest outputs,
   # where one with a `decision` does not reopen the gate: `approve_none!/4` leaves such a
-  # version out, and only a person's approval lists it.
-  defp reopened?(work_item, stage, artifacts) do
+  # version out, and only a person's approval lists it. `approvals` is
+  # `approvals_by_version/1`, read here for nil.
+  defp reopened?(work_item, stage, artifacts, approvals) do
     case last_approval(work_item, stage["id"]) do
       %GateDecision{versions: covered} = approval ->
         newest =
@@ -2812,7 +2816,7 @@ defmodule Apiary.Stages do
                 do: v.public_id
           else
             Enum.map(
-              gate_versions(stage, artifacts, approvals_by_version(work_item)),
+              gate_versions(stage, artifacts, approvals || approvals_by_version(work_item)),
               & &1.public_id
             )
           end
