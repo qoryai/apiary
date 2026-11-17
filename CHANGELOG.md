@@ -13,6 +13,28 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- Explore's gate lists the tracks it offers above Approve, each with its description, in the
+  gate's order, under "Track to run after you approve". The track that the stage's runs
+  proposed is selected and has the badge "Proposed by <stage>"; with none proposed, the track the
+  work item is on is selected, else the gate's first. The member keeps it or picks another, and
+  Approve records the track that is selected. The line in the gate's card reads "Pick a track
+  and approve the proposal, or add a comment and run another round." A gate that offers no
+  track is as before.
+- The stage track under the work item's title marks a stage that a track passed over whole
+  with "not run", in place of its number.
+- The tab of a stage that has an entry the runner passed over starts with the table
+  "Workflows": each entry of the stage's sequence in order, with its state (Passed, Not run, or
+  the run's state) and why. The line above the table reads "Track: <track>, approved at
+  <stage>'s gate" where an approval chose the track. An entry that has a name shows it, with its
+  workflow under it; a loop reads "Loop of up to <n> rounds", with its workflows under it. Why
+  is the entry's condition ("Runs on <track>.", "Runs on <track> only."), else "No <type>." for
+  an input that is missing, else "Did not run, because <entry> passed on its first attempt."
+  Under the table, a gate that needs no member reads "Approved without a member: <stage>'s gate
+  needs no member." The runs fold of that tab no longer repeats the entries.
+- The gate of a later stage for a work item on a track shows "Track" and the track's name, and
+  offers no choice. For a stage that started no run, the card reads "<stage> started no run. Read
+  the build report and the draft, then approve." and leaves out the list of outputs, and the
+  stage's tab shows the newest version of each of the stage's inputs.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is

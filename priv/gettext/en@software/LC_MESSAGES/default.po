@@ -3448,6 +3448,11 @@ msgstr ""
 msgid "%{stage} started in attempt %{attempt}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} started no run. Read the build report and the draft, then approve."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
@@ -6057,6 +6062,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approved v%{approved}; v%{newer} is newer"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approved without a member: %{stage}'s gate needs no member."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex
@@ -12763,6 +12773,13 @@ msgstr ""
 msgid "Looked up an integration's release"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Loop of up to %{rounds} round"
+msgid_plural "Loop of up to %{rounds} rounds"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Loop: at most %{number} round"
@@ -13790,6 +13807,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "No %{type}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "No %{type}: %{workflow} did not run."
 msgstr ""
 
@@ -14773,6 +14795,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not ready: the pool's runs may not go through the chosen gateway"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not run"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -15990,6 +16017,7 @@ msgstr ""
 msgid "Pages are in English, the one language Qory Apiary offers."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Passed"
@@ -16141,6 +16169,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type: no type has the key %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pick a track and approve the proposal, or add a comment and run another round."
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex
@@ -16461,6 +16494,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Proposal"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Proposed by %{stage}"
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -19853,6 +19891,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/instance_live/adapters.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
@@ -22137,6 +22176,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "The work item has %{type}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "The work item stays in Qory Apiary, closed."
 msgstr ""
 
@@ -22889,6 +22933,26 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track to run after you approve"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track: %{track}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Track: %{track}, approved at %{gate}'s gate"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/index.ex
@@ -24079,6 +24143,11 @@ msgstr ""
 msgid "Whoever maintains %{source} makes it smaller, or owners and admins of %{ws} choose another harness on the set-up step Harness. %{source} is larger than Qory Apiary reads."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Why"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Why it waits"
@@ -24270,6 +24339,7 @@ msgid "Work sources is set to All for this account. Change it there first."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/harness_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -24283,6 +24353,7 @@ msgid "Workflow source"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Workflows"
 msgstr ""
@@ -26259,6 +26330,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "not recorded"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "not run"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

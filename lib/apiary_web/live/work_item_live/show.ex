@@ -270,6 +270,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
             no_pool={@no_pool}
             commenting={@can.send and @proposal != nil}
+            picks_track={track_offer(@flow, @track) != nil}
             points={waiting_points(@flow)}
             needs_path={needs_path(@flow, @tab, @current_scope, @number)}
           >
@@ -389,6 +390,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             foot={@view.foot}
             verdicts={(@flow && @flow.runs) || []}
             no_pool={@no_pool}
+            track_offer={track_offer(@flow, @track)}
             cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
@@ -412,6 +414,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             runs={@view.runs}
             skips={@view.skips}
             passed_over={@view.passed_over}
+            entries={@view.entries}
+            document={@flow.document}
+            track_line={StageTab.track_line(@flow)}
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
@@ -563,6 +568,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            comment_count: 0,
            answers: %{},
            comment: "",
+           track: nil,
            errors: %{},
            form_error: nil,
            submits: 0,
@@ -1593,7 +1599,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       case WorkItems.another_round(scope(socket), socket.assigns.row, attempt, round) do
         {:ok, _work_item} ->
           {:noreply,
-           socket |> assign(answers: %{}, comment: "", errors: %{}, form_error: nil) |> load()}
+           socket
+           |> assign(answers: %{}, comment: "", track: nil, errors: %{}, form_error: nil)
+           |> load()}
 
         {:error, {:invalid, %{comment: error}}} ->
           {:noreply,
@@ -1626,7 +1634,25 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     socket
     |> assign(:answers, drafted(params))
     |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
+    |> assign(
+      :track,
+      if(is_binary(params["track"]), do: params["track"], else: socket.assigns.track)
+    )
   end
+
+  # The track picker of Explore's gate: the tracks the gate offers, the one selected and the
+  # one Explore proposed, `%{tracks:, selected:, proposed:, stage:}`; nil where the gate
+  # offers none or the work item is not at Confirm.
+  defp track_offer(%{confirm_gate: true, offers: [_ | _] = offers} = flow, draft) do
+    %{
+      tracks: offers,
+      selected: Workflow.picked(flow, draft),
+      proposed: flow.proposed,
+      stage: flow.stage.name
+    }
+  end
+
+  defp track_offer(_flow, _draft), do: nil
 
   # The comment on the whole proposal as the form sent it; nil for none or a blank one.
   defp comment_of(params), do: text(params["comment"])
@@ -2038,6 +2064,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     frames =
       stage
       |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> then(&if &1 == [], do: StageTab.input_frames(assigns.flow, stage), else: &1)
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 

@@ -101,6 +101,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `stage`: the tab's stage, on a stage tab, else nil;
   #   * `runs`: the stage's runs of the take in, oldest first;
   #   * `skips`: the stage's workflow entries the runner passed over in the take in;
+  #   * `entries`: the rows of the table of the stage's entries, where it has a skip
+  #     (`entries/3`);
   #   * `passed_over`: the record of the runner passing the stage over whole in the take in
   #     (`Apiary.Stages.stage_skips/1`), nil for none;
   #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
@@ -118,6 +120,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       stage: nil,
       runs: [],
       skips: [],
+      entries: [],
       passed_over: nil,
       take_ins: read.earlier_take_ins,
       questions: read.questions,
@@ -147,6 +150,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       stage: nil,
       runs: read.earlier_runs,
       skips: Map.get(flow, :skips, []),
+      entries: [],
       passed_over: nil,
       take_ins: Enum.map(read.earlier_take_ins, &with_skips(&1, flow, nil)),
       questions: read.questions,
@@ -167,6 +171,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       stage: stage,
       runs: runs,
       skips: Enum.filter(Map.get(flow, :skips, []), &(&1.stage_id == stage.id)),
+      entries: entries(flow, stage, Map.get(flow, :skips, [])),
       passed_over: passed_over(flow, stage, runs),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
@@ -184,6 +189,93 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     if stage.id != flow.stage.id and runs == [],
       do: Enum.find(Map.get(flow, :stage_skips, []), &(&1.stage_id == stage.id))
   end
+
+  @doc """
+  entries/3 is the rows of the table of a stage's workflow entries on its tab, in the order
+  of the stage's sequence, for a stage with at least one entry the runner passed over in
+  the take in (`skips`, `Apiary.Stages.skips/1`); `[]` for any other stage, and for Explore's.
+  Each row is `%{item:, kind:, name:, note:, rounds:, attempt:, shows:, skip:}`: `item` the
+  entry as the document has it (a workflow entry, or a loop with its body), `kind` `:entry`
+  or `:loop`, `name` the entry's name, else its workflow, `note` the workflow under a name
+  that differs from it, or a loop's workflows, `rounds` a loop's limit, `attempt` and `shows`
+  those of the newest run of the entry among `flow.runs` (nil for none), and `skip` the
+  record of the runner passing the entry over, nil for none. Every entry of a loop's body
+  that was passed over has a record, so the loop's `skip` is the first of them.
+  """
+  @spec entries(map, map, [map]) :: [map]
+  def entries(flow, stage, skips) do
+    skips = Enum.filter(skips, &(&1.stage_id == stage.id))
+    runs = Enum.filter(flow.runs, &(&1.stage_id == stage.id))
+
+    if skips == [] or stage.id == flow.explore_id do
+      []
+    else
+      for {item, index} <- Enum.with_index(stage.sequence),
+          row = entry(item, index, stage, runs, skips) do
+        row
+      end
+    end
+  end
+
+  defp entry(%{"loop" => %{"body" => body} = loop} = item, index, stage, runs, skips) do
+    workflows = for %{"workflow" => workflow} <- body, do: workflow
+    newest = newest_run(runs, workflows)
+
+    %{
+      item: item,
+      kind: :loop,
+      name: nil,
+      note: Enum.join(workflows, ", "),
+      rounds: Runner.rounds(%{"sequence" => stage.sequence}, index) || loop["rounds"],
+      attempt: newest && newest.attempt,
+      shows: newest && newest.shows,
+      skip: Enum.find(skips, &(&1.workflow in workflows))
+    }
+  end
+
+  defp entry(%{"workflow" => workflow} = item, _index, _stage, runs, skips) do
+    name = item["name"]
+    newest = newest_run(runs, [workflow])
+
+    %{
+      item: item,
+      kind: :entry,
+      name: if(is_binary(name) and name != "", do: name, else: workflow),
+      note: if(is_binary(name) and name not in ["", workflow], do: workflow),
+      rounds: nil,
+      attempt: newest && newest.attempt,
+      shows: newest && newest.shows,
+      skip: Enum.find(skips, &(&1.workflow == workflow))
+    }
+  end
+
+  defp entry(_item, _index, _stage, _runs, _skips), do: nil
+
+  @doc """
+  track_line/1 is the track the work item is on and where an approval put it there:
+  `%{name:, gate:}`, `gate` the name of the stage whose gate the approval passed, nil where
+  no approval that the stages passed over whole record made it (a move forward, or a stage
+  that no track skipped); nil for a work item on no track.
+  """
+  @spec track_line(map) :: %{name: String.t(), gate: String.t() | nil} | nil
+  def track_line(%{track: %{id: id, name: name}} = flow) do
+    gate =
+      Enum.find_value(Map.get(flow, :stage_skips, []), fn
+        %{approved: %{kind: :approve, track_id: ^id, stage_id: stage_id}} ->
+          Enum.find_value(flow.stages, &(&1.id == stage_id && &1.name))
+
+        _skip ->
+          nil
+      end)
+
+    %{name: name, gate: gate}
+  end
+
+  def track_line(_flow), do: nil
+
+  # The newest of `runs` (the stage's runs of the take in, `Workflow.page/2`'s `runs`,
+  # newest first) of one of `workflows`; nil for none.
+  defp newest_run(runs, workflows), do: Enum.find(runs, &(&1.workflow in workflows))
 
   # The stage of a run, a question or a version: one with none belongs to Explore.
   defp stage_of(row, flow), do: Map.get(row, :stage_id) || flow.explore_id
@@ -284,6 +376,26 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     |> Enum.filter(&(Map.has_key?(newest, &1) and &1 != "review-comments"))
     |> Enum.with_index()
     |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
+  end
+
+  @doc """
+  input_frames/2 is, for the current stage's tab where the stage started no run
+  (`StageComponents.started_no_run?/1`), the frames of the newest versions of the stage's
+  inputs: the person at the gate reads what earlier stages made. `[]` for any other tab.
+  The first is `open`, as `frames/2` opens the first of the outputs.
+  """
+  @spec input_frames(map, map) :: [map]
+  def input_frames(flow, stage) do
+    if stage.id == flow.stage.id and StageComponents.started_no_run?(flow) do
+      flow.inputs
+      |> Enum.filter(&(is_integer(&1.version) and &1.type != "review-comments"))
+      |> Enum.with_index()
+      |> Enum.map(fn {input, place} ->
+        %{type: input.type, version: input.version, open: place == 0}
+      end)
+    else
+      []
+    end
   end
 
   # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for

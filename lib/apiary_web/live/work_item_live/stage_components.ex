@@ -50,18 +50,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           class={[
             "q-wi-stage",
             "q-wi-stage-#{track_class(stage.at)}",
+            stage[:not_run] && "q-wi-stage-skipped",
             stage.at == :now && @wait && "q-wi-stage-wait"
           ]}
           aria-current={stage.at == :now && "step"}
         >
           <span class="q-wi-stage-n" aria-hidden="true">
-            <%= if stage.at == :done do %>
-              <.icon name="hero-check-micro" class="size-3" />
-            <% else %>
-              {i}
+            <%= cond do %>
+              <% stage[:not_run] -> %>
+              <% stage.at == :done -> %>
+                <.icon name="hero-check-micro" class="size-3" />
+              <% true -> %>
+                {i}
             <% end %>
           </span>
           {stage.name}
+          <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
+            {gettext("not run")}
+          </span>
         </li>
       </ol>
     </div>
@@ -396,16 +402,34 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         # version is not shown as missing.
         shown: shown_outputs(assigns.page),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
-        decides: assigns.page.gate_kind != "none"
+        decides: assigns.page.gate_kind != "none",
+        started_no_run: started_no_run?(assigns.page)
       )
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
-      <h3 :if={@shown != [] or @page.outputs == []} class="text-sm font-semibold">
+      <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
+        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
+        <p>
+          <.badge color="success">{@page.track.name}</.badge>
+        </p>
+        <p :if={@started_no_run} id={"#{@id}-no-run"}>
+          {gettext(
+            "%{stage} started no run. Read the build report and the draft, then approve.",
+            stage: @page.stage.name
+          )}
+        </p>
+      </div>
+      <h3
+        :if={not @started_no_run and (@shown != [] or @page.outputs == [])}
+        class="text-sm font-semibold"
+      >
         {gettext("Outputs")}
       </h3>
-      <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
-      <ul :if={@shown != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+      <p :if={@page.outputs == [] and not @started_no_run} id={"#{@id}-none"}>
+        {gettext("This stage has no outputs.")}
+      </p>
+      <ul :if={@shown != [] and not @started_no_run} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
           <span>{version_words(output.type, output.version)}</span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
@@ -481,6 +505,17 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  @doc false
+  # started_no_run?/1 is whether `page`'s stage, at its gate, ran no workflow in the take in
+  # and has entries the runner passed over: there is no run of the stage to read.
+  @spec started_no_run?(map) :: boolean
+  def started_no_run?(%{state: :at_gate, stage: stage, runs: runs, skips: skips}) do
+    not Enum.any?(runs, &(&1.stage_id == stage.id)) and
+      Enum.any?(skips, &(&1.stage_id == stage.id))
+  end
+
+  def started_no_run?(_page), do: false
 
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
     do: Enum.filter(outputs, & &1.version_id)
@@ -852,6 +887,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     <span class={@class}>{@word}</span>
     """
   end
+
+  @doc false
+  # run_state_words/1 is what a stage run shows, as `verdict_parts/2` words it.
+  def run_state_words(shows), do: shows_words(shows)
 
   defp shows_words(:passed), do: gettext("passed")
   defp shows_words(:failed), do: gettext("did not pass")

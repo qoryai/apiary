@@ -107,10 +107,20 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     explore_id = Stages.explore_stage_id(row)
     runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
     records = Stages.skip_records(row)
+    gate_kind = get(get(status, :gate) || %{}, :kind)
+    offers = if state == :at_gate, do: Stages.offered_tracks(row), else: []
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
-      stages: track(all, at, state),
+      stages: all |> track(at, state) |> not_run(records.stage_skips),
+      # The process version's document, for the words of an entry's condition.
+      document: document,
+      # The track the work item is on, `%{id:, name:}`, nil for none.
+      track: current_track(row, document),
+      # The tracks the stage's gate offers, each `%{id:, name:, description:}`, with the one
+      # its runs proposed (`proposed`, an id, nil for none).
+      offers: offers,
+      proposed: if(offers == [], do: nil, else: Stages.proposed_track(row)),
       stage: stage,
       state: state,
       # The stage runs, and its newest run still waits for a machine.
@@ -134,7 +144,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
-      gate_kind: get(get(status, :gate) || %{}, :kind),
+      gate_kind: gate_kind,
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
@@ -149,6 +159,40 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       can_decide: Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }
+  end
+
+  # The track the work item is on, with the name the process version declares, else the id.
+  defp current_track(row, document) do
+    case Stages.track(row) do
+      nil -> nil
+      id -> %{id: id, name: ApiaryWeb.StagesLive.Words.track_name(document, id)}
+    end
+  end
+
+  # The stages the runner passed over whole in the take in, each with `not_run` true.
+  defp not_run(stages, stage_skips) do
+    passed_over = MapSet.new(stage_skips, & &1.stage_id)
+
+    for stage <- stages,
+        do: Map.put(stage, :not_run, stage.at != :now and MapSet.member?(passed_over, stage.id))
+  end
+
+  @doc false
+  # picked/2 is the track the gate's picker has selected for `page`, a map of `page/2`, with
+  # `draft`, the id the reader chose, nil for none: the draft where the gate offers it, else
+  # the track its runs proposed, else the track the work item is on, else the gate's first
+  # track, as `Apiary.Stages.approve/4` records it; nil where the gate offers none.
+  @spec picked(map, String.t() | nil) :: String.t() | nil
+  def picked(%{offers: offers} = page, draft) do
+    ids = Enum.map(offers, & &1.id)
+    current = page.track && page.track.id
+
+    cond do
+      draft in ids -> draft
+      page.proposed in ids -> page.proposed
+      current in ids -> current
+      true -> List.first(ids)
+    end
   end
 
   # The round limit as the card counts it: Run another round at the limit runs one round
