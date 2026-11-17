@@ -8,8 +8,7 @@ defmodule Apiary.Runs.RunCredentials do
   #
   # `form_work/4` forms the run's work entry, `work-1`, from what the claim read, without
   # a lock: a collection that can change the run's target, the connection through which
-  # it came, its adapter's apply items (`Apiary.Nodes.Node`'s `source_apply`) and the
-  # run's access level.
+  # it came, and its adapter's apply items (`Apiary.Nodes.Node`'s `source_apply`).
   #
   #   * A prebuild's collection is the one it builds (`source_collection_id`).
   #   * A run with a work item takes a matching collection: one assigned to the run's
@@ -31,17 +30,25 @@ defmodule Apiary.Runs.RunCredentials do
   #   * The run ends `write_without_work_item`: its access level is `write` and it has no
   #     work item, or one with no public id, so it has no branch to limit its push
   #     credential to. A prebuild has no work item and access `:read`: it is not this case.
+  #     A `write-no-push` run forms a read `work-1` with no work item.
   #   * Else the entry: the apply items filled with the run's target path, exactly as the
   #     adapter wrote it, a filled path that repeats an earlier one of its item left out;
-  #     the collection's id and ref, with that path, as its resource; and the access level
-  #     of the run's harness walk (`Apiary.Harnesses.RunHarness`'s `access_level`), `:read`
-  #     for a prebuild and for a run with no walk, and for a `:write_no_push` run too: a run
-  #     without push credential has a read work credential. An entry of access `write`,
-  #     and no other, has `"push_ref"` on each apply item: `refs/heads/qory/` and the work
-  #     item's public id (`wi_`...), the one branch Forager's push proxy lets the run push.
+  #     the collection's id and ref, with that path, as its resource; and access `:read`,
+  #     whatever the run's access level: the run's sessions get a read credential. No item
+  #     has `"push_ref"`: one that the adapter's template has is dropped.
   #
-  # The claim writes the entry with its run (`insert!/2`), once. `work/1` reads it back for
-  # the run's documents and its secrets request.
+  # ## The push entry
+  #
+  # `push_from/3` forms the run's push entry, `push-1`, from its work entry: the same
+  # connection, adapter, resource and filled apply items, with purpose `:push` and access
+  # `:write`, and `"push_ref"` on each apply item: `refs/heads/qory/` and the work item's
+  # public id (`wi_`...), the one branch Forager's push proxy lets the run push. Only a run
+  # whose access level is `write` has one: a `read` run, a `write-no-push` run and a
+  # prebuild have the work entry alone. Only Forager's push proxy gets the push entry's
+  # value; the run's sessions get the work entry's.
+  #
+  # The claim writes the entries with their run (`insert!/2`), once. `work/1` and `push/1`
+  # read them back for the run's documents and its secrets request.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -59,6 +66,7 @@ defmodule Apiary.Runs.RunCredentials do
   alias Apiary.WorkItems.WorkItem
 
   @work_name "work-1"
+  @push_name "push-1"
   @push_ref "refs/heads/qory/"
   @prebuild DispatchRun.prebuild()
 
@@ -131,13 +139,12 @@ defmodule Apiary.Runs.RunCredentials do
       {collection, connection, adapter} ->
         with :ok <- branch(level, work_item),
              {:ok, apply} <- fill(adapter, path) do
-          {:ok,
-           entry(dispatch_run, work_item, collection, connection, adapter, path, apply, level)}
+          {:ok, entry(dispatch_run, collection, connection, adapter, path, apply)}
         end
     end
   end
 
-  # A write run needs the work item's public id, which is its branch (`push_limit/3`).
+  # A write run needs the work item's public id, which is its branch (`push_from/3`).
   defp branch(:write, %WorkItem{public_id: public_id}) when is_binary(public_id), do: :ok
   defp branch(:write, _work_item), do: {:end, :write_without_work_item}
   defp branch(_level, _work_item), do: :ok
@@ -243,7 +250,7 @@ defmodule Apiary.Runs.RunCredentials do
   defp order_by_age(query),
     do: from([c] in query, order_by: [asc: c.inserted_at, asc: c.id], limit: 1)
 
-  defp entry(dispatch_run, work_item, collection, connection, adapter, path, apply, level) do
+  defp entry(dispatch_run, collection, connection, adapter, path, apply) do
     %RunCredential{
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
@@ -251,7 +258,7 @@ defmodule Apiary.Runs.RunCredentials do
       adapter_id: adapter.id,
       name: @work_name,
       purpose: :work,
-      access: entry_access(level),
+      access: :read,
       resources: [
         %{
           "collection_id" => collection.id,
@@ -259,26 +266,33 @@ defmodule Apiary.Runs.RunCredentials do
           "path" => path
         }
       ],
-      apply: Enum.map(apply, &(&1.values |> Map.new() |> push_limit(level, work_item))),
+      apply: Enum.map(apply, &(&1.values |> Map.new() |> Map.delete("push_ref"))),
       placeholders: nil
     }
   end
 
-  # The branch a write run may push to: `refs/heads/qory/<the work item's public id>`, on
-  # each apply item of an entry whose access is `write`, and on no other. The adapter's
-  # call has no branch: Forager's push proxy refuses (403) a push to any other ref. A
-  # `push_ref` the adapter's template has is dropped first, so only this function sets it.
-  defp push_limit(item, level, work_item) do
-    item = Map.delete(item, "push_ref")
-
-    case {level, work_item} do
-      {:write, %WorkItem{public_id: public_id}} when is_binary(public_id) ->
-        Map.put(item, "push_ref", @push_ref <> public_id)
-
-      _no_branch ->
-        item
-    end
+  @doc false
+  # push_from/3 is the push entry of a run whose work entry is `work` (`form_work/4`), whose
+  # access level is `level` and whose work item is `work_item`: `work`'s entry with the
+  # name `push-1`, purpose `:push`, access `:write` and, on each apply item, `"push_ref"`:
+  # `refs/heads/qory/<the work item's public id>`. The adapter's call has no branch:
+  # Forager's push proxy refuses (403) a push to any other ref. Nil for every level but
+  # `:write`, for no work entry, and for a work item with no public id, which
+  # `form_work/4` ends `write_without_work_item` before.
+  @spec push_from(RunCredential.t() | nil, atom | nil, WorkItem.t() | nil) ::
+          RunCredential.t() | nil
+  def push_from(%RunCredential{} = work, :write, %WorkItem{public_id: public_id})
+      when is_binary(public_id) do
+    %RunCredential{
+      work
+      | name: @push_name,
+        purpose: :push,
+        access: :write,
+        apply: Enum.map(work.apply, &Map.put(&1, "push_ref", @push_ref <> public_id))
+    }
   end
+
+  def push_from(_work, _level, _work_item), do: nil
 
   @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
@@ -297,13 +311,6 @@ defmodule Apiary.Runs.RunCredentials do
     Apiary.Stages.run_access(walk, dispatch_run)
   end
 
-  # The work entry's access for the run's level: `:write` for `:write` alone. A
-  # `:write_no_push` run, a writable checkout that has no push credential, gets `:read`,
-  # so its credential from the adapter has read access only (the integration contract's
-  # run credential rule).
-  defp entry_access(:write), do: :write
-  defp entry_access(_read_or_write_no_push), do: :read
-
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run
   # configuration lists it: `%{name:, entry:, hosts:, row:}`, the entry a host credential
@@ -319,8 +326,23 @@ defmodule Apiary.Runs.RunCredentials do
             row: RunCredential.t()
           }
           | nil
-  def work(%{id: run_id}) when is_binary(run_id) do
-    query = from c in RunCredential, where: c.run_id == ^run_id and c.purpose == :work
+  def work(run), do: listed(run, :work)
+
+  @doc false
+  # push/1 is the push entry of `run`, as `work/1` is the work entry, with `purpose`
+  # `push` in its entry. Nil for a run with no push entry.
+  @spec push(map | nil) ::
+          %{
+            name: String.t(),
+            entry: Jason.OrderedObject.t(),
+            hosts: [String.t()],
+            row: RunCredential.t()
+          }
+          | nil
+  def push(run), do: listed(run, :push)
+
+  defp listed(%{id: run_id}, purpose) when is_binary(run_id) do
+    query = from c in RunCredential, where: c.run_id == ^run_id and c.purpose == ^purpose
 
     case Repo.one(query) do
       nil ->
@@ -329,14 +351,14 @@ defmodule Apiary.Runs.RunCredentials do
       %RunCredential{} = row ->
         %{
           name: row.name,
-          entry: work_entry(row),
+          entry: listed_entry(row),
           hosts: ApplyTemplates.hosts(row.apply),
           row: row
         }
     end
   end
 
-  def work(_run), do: nil
+  defp listed(_run, _purpose), do: nil
 
   @doc false
   # workspace_hosts/1 is the hosts a run of `workspace` can gain with its work entry: the
@@ -369,19 +391,19 @@ defmodule Apiary.Runs.RunCredentials do
     end
   end
 
-  defp work_entry(%{name: name, apply: apply, placeholders: placeholders}) do
+  defp listed_entry(%{name: name, purpose: purpose, apply: apply, placeholders: placeholders}) do
     Jason.OrderedObject.new(
       [
         {"name", name},
-        {"purpose", "work"},
+        {"purpose", Atom.to_string(purpose)},
         {"apply", Enum.map(apply, &ApplyTemplates.ordered/1)}
       ] ++ if(placeholders, do: [{"placeholders", placeholders}], else: [])
     )
   end
 
   @doc false
-  # insert!/2 stores `entry`, which `form_work/4` formed, for the registered `run`, inside
-  # the claim's transaction.
+  # insert!/2 stores `entry`, which `form_work/4` or `push_from/3` formed, for the registered
+  # `run`, inside the claim's transaction.
   @spec insert!(RunCredential.t(), Run.t()) :: RunCredential.t()
   def insert!(%RunCredential{} = entry, %Run{id: run_id, registered_at: at}),
     do: Repo.insert!(%{entry | run_id: run_id, inserted_at: at})

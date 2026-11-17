@@ -328,7 +328,7 @@ defmodule Apiary.GatewayServingTest do
       end
     end
 
-    test "issue/4 makes no call and writes no entry for a gateway that may not serve the run",
+    test "issue_all/5 makes no call and writes no entry for a gateway that may not serve the run",
          ctx do
       run = run_fixture(ctx.scope)
       %{access_key: key} = access_key_fixture(ctx.other, node: gateway_fixture(ctx.other))
@@ -338,7 +338,13 @@ defmodule Apiary.GatewayServingTest do
 
       {answer, log} =
         ExUnit.CaptureLog.with_log(fn ->
-          WorkCredential.issue(run, row, key, System.os_time(:second))
+          WorkCredential.issue_all(
+            run,
+            [row],
+            key,
+            System.os_time(:second),
+            System.monotonic_time(:millisecond) + 1_000
+          )
         end)
 
       assert answer == {:error, :not_found}

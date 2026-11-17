@@ -2014,6 +2014,7 @@ msgstr[1] ""
 msgid "%{number} B"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} GB"
@@ -4173,6 +4174,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A change applies at the next daily job, at %{time}. A shorter period deletes or clears what it no longer keeps then; setting it longer again does not bring it back."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A change applies to prebuilds that start after it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -9430,6 +9437,11 @@ msgstr ""
 msgid "Empty: %{default}."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Empty: no limit."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
@@ -10745,6 +10757,11 @@ msgstr ""
 msgid "Full screen"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "GB"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Gate"
@@ -11217,6 +11234,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_type_live.ex
 #, elixir-autogen, elixir-format
 msgid "How it works"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "How large an image a prebuild may keep. A prebuild whose image is larger fails."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -12371,6 +12393,17 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Larger text"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Largest prebuilt image saved."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -14074,6 +14107,7 @@ msgid "No key yet"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -16414,6 +16448,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Prebuild"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Prebuilds"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -27054,6 +27093,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the ref %{ref} is not a version: 1 to 255 letters, digits, dots, underscores, slashes and hyphens"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the request failed for another credential of the run, so this one was not sent"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

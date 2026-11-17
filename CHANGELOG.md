@@ -12,6 +12,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
+  between Retention and Deletion, with the setting Largest prebuilt image: how large an
+  image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
+  limit, the default. A change applies to prebuilds that start after it. A prebuild's run
+  documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
+  times 1,000,000,000. When the setting is empty, the member is absent. No other run has
+  the member. The run contract is vendored at integrations `dbc1ce5`.
 <!-- feature: workflow_model -->
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
@@ -1416,15 +1423,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: factory -->
-- In the run configuration, an apply item of the work credential `work-1` of a run with
-  `write` access has `push_ref`, `refs/heads/qory/` and the work item's public id, for
-  example `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create,
-  update or delete only that ref: Forager's gateway returns `403` for a push to any other
-  ref. Each item of the credential's value, sealed for the gateway, has the same
-  `push_ref`. A run with `read` or `write-no-push` access has none. The adapter's
-  run-credential call and answer have no `push_ref`, and an answer item that has one is
-  refused. The Forager contract is vendored at commit `3d4ec18`, which defines `push_ref`
-  and a path segment written `{}`.
+- The run configuration of a run with `write` access has two credentials for its target:
+  `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
+  write access. An apply item of `push-1` has `push_ref`, `refs/heads/qory/` and the work
+  item's public id, for example `refs/heads/qory/wi_0123456789abcdef`, so a push through
+  that item may create, update or delete only that ref. Each item of `push-1`'s value,
+  sealed for the gateway, has the same `push_ref`. `work-1` has none. A run with `read` or
+  `write-no-push` access has `work-1` alone, a read credential. The adapter's
+  run-credential call is the same for both entries, with `purpose` `work` and `access`
+  `read` for `work-1` or `write` for `push-1`. The call and the answer have no `push_ref`,
+  and an answer item that has one is refused. A run configuration takes up to 16
+  credentials, where it took 8, so a run with 6 model keys, the registry credential,
+  `work-1` and `push-1` is served. The adapter calls of one secrets request run together
+  under one deadline of 8 seconds from its start.
+<!-- /feature -->
+<!-- feature: factory -->
+- A secrets request for a `work` entry that has write access gets `409`
+  `credential_unavailable`, with no call to the adapter. Only `push-1` has write access.
+<!-- /feature -->
+<!-- feature: factory -->
+- When a credential of a secrets request is refused, because its adapter call or its
+  check fails, the Activity entry of each other credential of the request, issued or
+  cancelled, shows the text “the request failed for another credential of the run, so this
+  one was not sent”. A seal or record failure shows another text. The request is refused
+  as a whole, and nothing is sealed or kept.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
@@ -2312,6 +2334,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+- `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
+  largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
+  scans the table, which has one row, as it is added, under a lock that blocks reads and
+  writes. It changes no row.
+<!-- feature: factory -->
+- `run_credentials` (20261118090000): the check on its entries takes the purpose `push`,
+  with access `write` and the name `push-<n>`; the check on `issued_apply` takes a `push`
+  entry; a new check requires a `push_ref` on every apply item of a `push` entry; a unique
+  index allows one `push` entry per run.
+<!-- /feature -->
 <!-- feature: factory -->
 - `dispatch_runs` and `dispatches` (20261117130000): the checks on `end_cause` and on
   `dispatch_runs.result_outcome` take the cause `write_without_work_item`. Each new check

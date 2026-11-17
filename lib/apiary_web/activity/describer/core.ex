@@ -889,6 +889,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp refusal_cause("not_recorded"),
     do: gettext("the credential could not be recorded, so it was not sent")
 
+  defp refusal_cause("other_credential_failed"),
+    do: gettext("the request failed for another credential of the run, so this one was not sent")
+
   defp refusal_cause(_cause), do: gettext("the call to the adapter failed")
 
   defp said_secret("created"), do: gettext("Created a stored secret")
@@ -1226,11 +1229,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   end
 
   # The instance's settings, each by its row on Instance settings › Configuration, as it
-  # was and as it is: a number of days, or of invitations.
+  # was and as it is: a number of days, of invitations, or of GB.
   def change(:"instance.configure", before, after_, _details) do
     for {field, label} <- [
           {"audit_retention_days", gettext("Audit log entries")},
           {"audit_address_retention_days", gettext("IP addresses in the audit log")},
+          {"prebuilt_image_max_gb", gettext("Largest prebuilt image")},
           {"deletion_grace_days", gettext("Grace period")},
           {"invitations_per_day", gettext("Invitations a day")}
         ],
@@ -1345,6 +1349,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp configured("invitations_per_day", n) when is_integer(n), do: Format.number(n)
   defp configured("invitations_per_day", _other), do: gettext("n/a")
+  defp configured("prebuilt_image_max_gb", nil), do: gettext("No limit")
+
+  defp configured("prebuilt_image_max_gb", n) when is_integer(n),
+    do: gettext("%{number} GB", number: Format.number(n))
+
+  defp configured("prebuilt_image_max_gb", _other), do: gettext("n/a")
   defp configured(_days, n), do: days(n)
 
   defp support_address(nil), do: gettext("None")
