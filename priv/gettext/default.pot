@@ -20314,14 +20314,14 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
-#: lib/apiary_web/components/submission_components.ex
-#, elixir-autogen, elixir-format
-msgid "Submissions"
-msgstr ""
-
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Submission:"
+msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Submissions"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex

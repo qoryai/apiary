@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   @moduledoc """
   The Submissions frame on the tab of a stage that outputs the submission type
-  (`ApiaryWeb.SubmissionComponents.frame/1`): one frame in place of the type's own frame,
-  with a row for each run that stored a version, newest first, and the stage's own frame
-  where the work item's process version names no submit type.
+  (`ApiaryWeb.SubmissionComponents.frame/1`): one frame in place of the frame of the type,
+  with a row for each run that stored a version, newest first, and the usual
+  frame of the type where the work item's process version names no submit type.
 
   The fake changes the whole node (`ApiaryWeb.WorkflowFake.install/0`), so the module is
   not async.
@@ -178,7 +178,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     )
   end
 
-  # A run of the work item at Shape, live, with its own registered run. The fixture's attempts
+  # A run of the work item at Shape, live, with a registered run. The fixture's attempts
   # stop at 3, so the run takes the attempt the fixture allows and moves to a higher one.
   defp shape_run!(work_item) do
     taken =
@@ -429,7 +429,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     refute has_element?(view, "#{draft} a")
   end
 
-  test "a process version with no submit type keeps the type's own frame", ctx do
+  test "a process version with no submit type keeps the frame of the type", ctx do
     process!(ctx.scope, nil)
     work_item = at_shape!(ctx.scope)
     %{dispatch_run: run} = shape_run!(work_item)

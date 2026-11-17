@@ -262,7 +262,7 @@ defmodule ApiaryWeb.SubmissionComponents do
     """
   end
 
-  # The mark of a draft's system: the integration that draws it, else the system's own name,
+  # The mark of a draft's system: the integration that draws it, else the name of the system,
   # as text sent by an external system.
   defp mark(%{system: system}, names) do
     Apiary.ExternalText.sent(Map.get(names, system) || system) || "?"

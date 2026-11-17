@@ -279,7 +279,7 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
       assert html =~ ~s(href="#{@repo}/pulls/34")
     end
 
-    test "has the system's own name for a mark where no integration draws it" do
+    test "has the name of the system for a mark where no integration draws it" do
       html = frame([row()], %{})
 
       assert html =~ ~s(aria-label="git.example.com")
@@ -392,7 +392,7 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
           }
         )
 
-    test "each has its path above its own lines" do
+    test "each has its path above its lines" do
       html = two()
 
       assert texts(html, "#frame-av_one-r0-path") |> Enum.map(&String.trim/1) == [
@@ -404,7 +404,7 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
              ]
     end
 
-    test "each has its own draft number and mark" do
+    test "each has a draft number and a mark" do
       html = two()
 
       assert texts(html, "#frame-av_one-r0-draft") |> hd() |> squash() =~
@@ -415,7 +415,7 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
       assert count(html, ~s(#frame-av_one-r1-draft [aria-label="Forgejo"])) == 1
     end
 
-    test "each has its own base, commits and head mark" do
+    test "each has a base, commits and a head mark" do
       html = two()
 
       assert texts(html, "#frame-av_one-r0-base") |> hd() |> squash() ==
@@ -437,7 +437,7 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
       assert count(html, "#frame-av_one-r1-commits .badge") == 1
     end
 
-    test "each counts its own commits" do
+    test "each counts the commits of its repository" do
       html = two()
 
       assert texts(html, "#frame-av_one-r0-commits summary") |> hd() |> squash() == "3 commits"

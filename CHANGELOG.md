@@ -22,7 +22,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - The gate card of a stage starts with the draft of the work item's newest submission,
   one line per repository that has one: “Submission: the draft in example/shop”, a link
-  that opens the draft in a new tab. A submission with no draft shows no line.
+  that opens the draft in a new tab. A submission with no draft, a draft with no number or
+  a link that is not `https` shows no line.
 - The tab of a stage with a `verification` output, such as Verify, shows the run's
   verification as a table of the acceptance criteria with the columns Criterion, State
   and Evidence and the states Met, Not met and Needs a person; the list “Not verified”,

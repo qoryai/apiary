@@ -757,7 +757,7 @@ defmodule Apiary.SubmissionsTest do
       {first, second}
     end
 
-    test "each has its own base, commits, count, head and draft", ctx do
+    test "each has a base, commits, count, head and draft", ctx do
       {first, second} = two_repositories(ctx, other_repository())
 
       assert first.path == "northwind/storefront"
