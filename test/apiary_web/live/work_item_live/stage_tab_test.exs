@@ -3465,14 +3465,166 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       refute has_element?(view, "#work-item-stage-gate-none")
       refute has_element?(view, "#work-item-stage-gate-outputs")
-      assert has_element?(view, "#work-item-tab-output-test-features-fold")
+      assert has_element?(view, "#work-item-tab-output-test-features-fold[open]")
       assert has_element?(view, "#work-item-tab-output-test-features-text", "The report text")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features-source",
+               ~r/^Version 1 · from Build, Attempt 2 \(Run \d+\)$/
+             )
 
       [gate, report] =
         String.split(html, ~s(id="work-item-tab-output-test-features"), parts: 2)
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    # The default process saved again with Build's outputs and Verify's inputs the types
+    # `types`, in that order, and the harness template of the version that submits the type
+    # `submit` (none for nil). The workspace's `submission` type is a structured type.
+    defp reading!(scope, types, submit) do
+      version = Processes.current(scope.workspace)
+
+      stages =
+        Enum.map(version.document["stages"], fn
+          %{"id" => @build} = stage ->
+            %{stage | "outputs" => for(type <- types, do: %{"type" => type, "required" => false})}
+
+          %{"id" => @verify} = stage ->
+            %{stage | "inputs" => for(type <- types, do: %{"type" => type, "required" => false})}
+
+          stage ->
+            stage
+        end)
+
+      {:ok, saved} =
+        Processes.save(scope, scope.workspace, %{version.document | "stages" => stages})
+
+      template = %{"commit" => String.duplicate("a", 40)}
+      template = if submit, do: Map.put(template, "submit", %{"type" => submit}), else: template
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^saved.id),
+          set: [template: template]
+        )
+
+      :ok
+    end
+
+    # Fast track at Verify's gate, with the build report and the submission that Build's
+    # run wrote, the report's text linking to the draft at the destination. The process is
+    # the one `screens!/1` and `reading!/3` saved.
+    defp at_verify_gate_with_submission!(scope) do
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(
+          run,
+          work_item,
+          "test-features",
+          "The submission has the link to the draft at the destination: " <>
+            "[submission v1](https://git.example.com/northfield/court-booking/pull/48)."
+        )
+
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            reload(work_item),
+            "submission",
+            [
+              %{
+                filename: "submission.json",
+                content_type: "application/json",
+                binary:
+                  Jason.encode!(%{
+                    "ref" => "qory/wi_example",
+                    "verdict" => "passed",
+                    "repositories" => [
+                      %{
+                        "system" => "git.example.com",
+                        "path" => "northfield/court-booking",
+                        "commit" => String.duplicate("a", 40),
+                        "draft" => %{
+                          "number" => 48,
+                          "url" => "https://git.example.com/northfield/court-booking/pull/48",
+                          "title" => "Save changes",
+                          "state" => "draft",
+                          "action" => "opened"
+                        }
+                      }
+                    ]
+                  })
+              }
+            ],
+            stage_id: run.stage_id
+          )
+
+        passed!(run)
+      end)
+      |> reload()
+    end
+
+    defp frame_types(view),
+      do: for(%{type: type} <- :sys.get_state(view.pid).socket.assigns.frames, do: type)
+
+    for types <- [["submission", "test-features"], ["test-features", "submission"]] do
+      test "the gate's first input frame has its source and the build report is open and links the submission, listed #{Enum.join(types, " then ")}",
+           %{conn: conn, scope: scope} do
+        screens!(scope)
+        reading!(scope, unquote(types), "submission")
+        work_item = at_verify_gate_with_submission!(scope)
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+        assert frame_types(view) == ["test-features"]
+        assert has_element?(view, "#work-item-tab-output-test-features-fold[open]")
+        refute has_element?(view, "#work-item-tab-output-submission")
+
+        number =
+          Repo.one(
+            from r in Apiary.Runs.Run.registered(),
+              join: d in DispatchRun,
+              on: d.id == r.dispatch_run_id,
+              where: d.work_item_id == ^work_item.id and d.stage_id == ^@build,
+              select: r.number
+          )
+
+        assert view
+               |> element("#work-item-tab-output-test-features-source")
+               |> render()
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.text() == "Version 1 · from Build, Attempt 2 (Run #{number})"
+
+        assert has_element?(
+                 view,
+                 ~s(#work-item-tab-output-test-features-text a[href="https://git.example.com/northfield/court-booking/pull/48"]),
+                 "submission v1"
+               )
+      end
+    end
+
+    test "a type that the harness does not submit keeps its input frame, folded, with its source",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      reading!(scope, ["test-features", "submission"], nil)
+      work_item = at_verify_gate_with_submission!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert frame_types(view) == ["test-features", "submission"]
+      assert has_element?(view, "#work-item-tab-output-test-features-fold[open]")
+      refute has_element?(view, "#work-item-tab-output-submission-fold[open]")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-submission-source",
+               ~r/^Version 1 · from Build, Attempt 2 \(Run \d+\)$/
+             )
     end
 
     test "Approve at Verify's gate passes the stage with the track the work item is on", %{

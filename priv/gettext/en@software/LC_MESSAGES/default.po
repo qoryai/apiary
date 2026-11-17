@@ -23675,6 +23675,16 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Version %{version} · from %{stage}, Attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · from %{stage}, Attempt %{attempt} (Run %{run})"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Version %{version} · from an earlier round"
 msgstr ""
 

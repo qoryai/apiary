@@ -2100,7 +2100,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       assigns.row
       |> Stages.gate_frames(assigns.row.process_version, stage.id)
       |> StageTab.frames()
-      |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
+      |> StageTab.with_inputs(
+        StageTab.input_frames(assigns.flow, stage, assigns.artifacts, assigns.row.process_version)
+      )
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 

@@ -3042,8 +3042,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:name`, `:version`, `:open`, `:writer`, `:read` and `:approval`, the " <>
-        "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`)"
+      "`:type`, `:name`, `:version`, `:open`, `:writer`, `:read`, `:approval`, the " <>
+        "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`), and " <>
+        "for an input frame `:source`, the stage, attempt and run that made the version " <>
+        "(`ApiaryWeb.WorkItemLive.StageTab.input_frames/4`)"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
@@ -3056,7 +3058,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # approved and when, as Explore's approved Proposal frame has them. The heading has the
   # artifact's name after the type where it is not `main`, and a version a person made has
   # who made it after its number, as the record block's artifact rows have it
-  # (`ApiaryWeb.ArtifactComponents.made_by/1`).
+  # (`ApiaryWeb.ArtifactComponents.made_by/1`). An input frame's version that a run made has
+  # its source after its number: "Version 1 · from Build, Attempt 2 (Run 4)".
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3100,7 +3103,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-            <span phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · <ApiaryWeb.ArtifactComponents.made_by version={@output.writer} /><% end %></span>
+            <span :if={!@output[:source]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · <ApiaryWeb.ArtifactComponents.made_by version={@output.writer} /><% end %></span>
+            <span :if={@output[:source]} id={"#{@id}-source"}>{source_words(@output)}</span>
           </p>
         </summary>
         <div
@@ -3124,6 +3128,25 @@ defmodule ApiaryWeb.WorkItemComponents do
       </details>
     </section>
     """
+  end
+
+  # The caption of an input frame whose version a run made: "Version 1 · from Build,
+  # Attempt 2 (Run 4)", with no run number for a run that is not registered.
+  defp source_words(%{version: version, source: %{run: nil} = source}) do
+    gettext("Version %{version} · from %{stage}, Attempt %{attempt}",
+      version: Format.number(version),
+      stage: source.stage,
+      attempt: Format.number(source.attempt)
+    )
+  end
+
+  defp source_words(%{version: version, source: source}) do
+    gettext("Version %{version} · from %{stage}, Attempt %{attempt} (Run %{run})",
+      version: Format.number(version),
+      stage: source.stage,
+      attempt: Format.number(source.attempt),
+      run: source.run
+    )
   end
 
   # A frame's heading: the type's words, with a capital first letter.

@@ -458,7 +458,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
 
   @doc """
   with_inputs/2 is `outputs`, the output frames (`frames/1`), then `inputs`, the input
-  frames (`input_frames/2`), folded, but for an input of a type that an output frame
+  frames (`input_frames/4`), folded, but for an input of a type that an output frame
   already shows. With no output frame, it is `inputs` as they are.
   """
   @spec with_inputs([map], [map]) :: [map]
@@ -470,22 +470,65 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   @doc """
-  input_frames/2 is, for the current stage's tab where the stage started no run
+  input_frames/4 is, for the current stage's tab where the stage started no run
   (`StageComponents.started_no_run?/1`), the frames of the newest versions of the stage's
   inputs: the person at the gate reads what earlier stages made. `[]` for any other tab.
-  The first is `open`, as `frames/1` opens the first of the outputs.
+  Each is `%{type:, name:, version:, open:, writer:, source:}`, the first `open`, as
+  `frames/1` opens the first of the outputs.
+
+  The version that a run made has `source`, `%{stage:, attempt:, run:}`: the name of the
+  stage whose run made it, the run's attempt and its number in the workspace (nil for a run
+  that is not registered), for the frame's caption. The version of the submission type, the
+  `submit.type` of the process version's harness template (`submit_type/1`), has no frame:
+  the build report links to it. `artifacts` are the work item's artifacts, as
+  `Apiary.Artifacts.list/1` reads them, and `version` is the work item's process version.
   """
-  @spec input_frames(map, map) :: [map]
-  def input_frames(flow, stage) do
+  @spec input_frames(map, map, [map], Apiary.Processes.Version.t() | nil) :: [map]
+  def input_frames(flow, stage, artifacts, version) do
     if stage.id == flow.stage.id and StageComponents.started_no_run?(flow) do
+      submit = submit_type(version)
+      names = Map.new(flow.stages, &{&1.id, &1.name})
+
       flow.inputs
-      |> Enum.filter(&(is_integer(&1.version) and &1.type != "review-comments"))
+      |> Enum.filter(&(is_integer(&1.version) and &1.type not in ["review-comments", submit]))
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
-        %{type: input.type, name: "main", version: input.version, open: place == 0, writer: nil}
+        %{
+          type: input.type,
+          name: "main",
+          version: input.version,
+          open: place == 0,
+          writer: nil,
+          source: source(artifacts, input, names)
+        }
       end)
     else
       []
+    end
+  end
+
+  # The type in `submit.type` of the harness template of `version`, nil for none.
+  defp submit_type(version) do
+    case Apiary.Processes.harness_template(version) do
+      %{"submit" => %{"type" => type}} when is_binary(type) -> type
+      _none -> nil
+    end
+  end
+
+  # Where the version of `input` came from: the stage, attempt and run number of the run
+  # that made it, nil for a version with no run or a stage the process version no longer has.
+  defp source(artifacts, input, names) do
+    version =
+      artifacts
+      |> Enum.filter(&(&1.type == input.type and &1.name == "main"))
+      |> Enum.flat_map(& &1.versions)
+      |> Enum.find(&(&1.number == input.version))
+
+    with %{writer: :run, run: %{attempt: attempt} = run} <- version,
+         stage when is_binary(stage) <- names[run.stage_id || version.stage_id] do
+      %{stage: stage, attempt: attempt, run: run.run && run.run.number}
+    else
+      _none -> nil
     end
   end
 
