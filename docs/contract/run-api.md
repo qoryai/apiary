@@ -155,7 +155,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present only on these entries, and no approval lists such
-  a version.
+  a version, unless a person made it: that is a change.
 - `outputs` contains each output of the current stage with the version its gate shows
   and its check: `passed`, `missing` or `not_checked`. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's

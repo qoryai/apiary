@@ -4420,10 +4420,47 @@ defmodule Apiary.StagesTest do
       assert [@build, @build] = for(d <- moves(work_item), d.stage_id == @build, do: d.stage_id)
     end
 
-    test "no approval lists a marked version", %{scope: scope} do
+    test "a marked version a person uploaded is a change, which Shape's approval lists", %{
+      scope: scope
+    } do
       work_item = at_build!(scope)
       add!(scope, work_item, "explainer", "one.md")
       shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}]
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, shape, nil, expect_stage: @shape)
+
+      # Shape's first approval lists no version; its second, after the move, lists the
+      # person's upload, a change (vault 0261).
+      explainer = public_id(work_item, "explainer", 1)
+
+      assert [[], [^explainer]] =
+               for(d <- decisions(work_item), d.stage_id == @shape, do: d.versions)
+    end
+
+    test "no approval lists a marked version that a run made with no decision", %{
+      scope: scope
+    } do
+      # As `moved_process!/1`, but Build runs a workflow, whose run makes the explainer.
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]}),
+        stage(@build, "Build", [%{"workflow" => "make-a-small-change"}], %{
+          "outputs" => [%{"type" => "explainer", "required" => false}]
+        }),
+        stage(@verify, "Verify", [])
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      {:ok, at_build} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = at_build
+
+      at_build = end_run!(at_build, pushes_one("explainer", "# One", []))
+      assert [%{writer: :run, decision_id: nil}] = versions(at_build, "explainer")
+
+      shape = move_to!(scope, at_build, @shape)
       assert marked(shape) == [{"explainer", 1}]
 
       assert {:ok, %WorkItem{stage_id: @build}} =

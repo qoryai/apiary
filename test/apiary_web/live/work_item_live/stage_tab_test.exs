@@ -2653,6 +2653,34 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-stage-gate-outputs")
       refute has_element?(view, "#work-item-stage-gate-recorded")
     end
+
+    test "after a move back, Shape's gate frames a person's upload at Build, which its " <>
+           "approval records",
+         %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
+      work_item = at_gate!(scope)
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      {:ok, explainer} =
+        Stages.add_version(scope, at_build, "explainer", [
+          %{filename: "explainer.md", content_type: "text/markdown", binary: "## Explainer"}
+        ])
+
+      {:ok, moved} = Stages.move(scope, reload(at_build), @shape, nil, expect_stage: @build)
+      work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-explainer",
+               "Version 1 · #{ApiaryWeb.People.short(scope.user.email)}"
+             )
+
+      {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert explainer.public_id in recorded(work_item, @shape)
+    end
   end
 
   describe "a stage with a workflow and no outputs" do

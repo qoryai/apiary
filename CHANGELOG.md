@@ -51,10 +51,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
   leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
-  to a stage after it, and are scoped to the take in. No approval lists these versions, and
-  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
-  they were. A `move` decision keeps the stage it moved to and when the work item last
-  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
+  to a stage after it, and are scoped to the take in. No approval lists these versions,
+  unless a person made one: that is a change. The page's missing inputs, the stage's checks
+  and the other entries of `inputs` stay as they were. A `move` decision keeps the stage it
+  moved to and when the work item last entered the stage it left
+  (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
