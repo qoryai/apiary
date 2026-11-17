@@ -31,6 +31,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
+- Explore's gate lists the tracks it offers above Approve, each with its description, in the
+  gate's order, under "Track to run after you approve". The track that the stage's runs
+  proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
+  reason, the line "<stage>'s reason: <reason>"; with none proposed, the track the
+  work item is on is selected, else the gate's first. The member keeps it or picks another, and
+  Approve records the track that is selected on the page when the member confirms, never a
+  value an earlier click carried. A pick ends when the gate's stage or the take in changes,
+  and after Approve or Run another round. Typing a comment is no pick. The line in the gate's
+  card reads "Pick a track and approve the proposal, or add a comment and run another
+  round." A gate that offers no track is as before.
+- The stage track under the work item's title marks a stage that a track passed over whole
+  with "Not run", in place of its number.
+- The tab of a stage of a work item on a track, where the runner passed over an entry, starts
+  with the table "Workflows": each entry of the stage's sequence in order, with its state
+  (Passed, Not run, Paused, Did not pass, Questions, Queued, Running, Undone or Ended without a
+  verdict) and why. The line above it reads "Track: <track>, approved at <stage>'s gate",
+  where an approval chose the track. An entry that has a name shows it, with its
+  workflow under it; a loop reads "Loop of up to <n> rounds", with its workflows under it. Why
+  is the reason when an earlier entry's first attempt passed over the entry ("Did not run,
+  because <entry> passed on its first attempt."), else the entry's condition ("Runs on
+  <track>.", "Runs on <track> only."), else the reason the record of the skip gives. Under the
+  table, a gate that needs no member reads "Approved without a member: <stage>'s gate needs
+  no member." The runs fold of that tab no longer repeats the entries. A sequence that names
+  one workflow twice keeps the fold's rows and has no table.
+- The gate of a later stage for a work item on a track shows "Track" and the track's name, and
+  offers no choice. For a stage of a work item on a track that started no run, the card
+  reads "<stage> started no run. Read the inputs below, then approve." (in a software
+  workspace, "Read the build report and the draft, then approve.") and leaves out the list of
+  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
+  item on no track keeps both as before.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -55,7 +85,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
   <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
-  name in place of "You". The
+  name in place of "You". On Shape's tab, where Explore's approval lists a proposal version,
+  a second line reads "Shape did not run, so the work item has no shaping outputs. Proposal
+  v<n>, as approved, is what the next stages work to." (in a software workspace, "The work
+  item has no spec and no acceptance criteria. The exact change in proposal v<n> is the one
+  criterion."); with no version listed, there is no second line. The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not

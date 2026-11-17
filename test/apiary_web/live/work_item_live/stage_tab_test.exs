@@ -1736,7 +1736,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "You approved Fast track at Explore&#39;s gate on 14 Nov 2025. Fast track skips Shape."
     end
 
-    test "the record of a stage lists an entry the track passed over, with the reason", %{
+    test "the tab of a stage lists an entry the track passed over, with the reason", %{
       conn: conn,
       scope: scope
     } do
@@ -1749,11 +1749,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
 
-      assert has_element?(
-               view,
-               "#work-item-record-skip-1",
-               "shape-a-ticket did not run: it does not run on Fast track."
-             )
+      assert has_element?(view, "#work-item-tab-entries-row-1", "shape-a-ticket")
+      assert has_element?(view, "#work-item-tab-entries-row-1", "Not run")
+      assert has_element?(view, "#work-item-tab-entries-row-1", "Runs on Standard only.")
+      refute has_element?(view, "#work-item-record-skip-1")
     end
 
     test "the record of a stage lists the entries a passed first attempt passed over, with the reason",
@@ -2415,6 +2414,751 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert address(view) == {:stage, :explore}
       refute has_element?(view, "#work-item-review-page")
+    end
+  end
+
+  describe "the screens of a track" do
+    @verify "st_m1mqbeywdg"
+
+    # Explore's gate offers Standard and Fast track. Shape runs on Standard only. Build's
+    # first entry is the Fast track's, a first attempt; its other entries and its loop run on
+    # Standard only, and its gate needs no member. Verify's workflow runs on Standard only,
+    # and a person approves its gate.
+    defp screens!(scope, build \\ nil) do
+      document = Processes.default_document("software")
+
+      :ok =
+        Processes.record_declared(
+          scope.workspace,
+          Processes.qory_workflows(Apiary.Stacks.Sources.chosen(scope.workspace)) ++
+            ~w(shape-a-ticket build-it review-it)
+        )
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast-track"])}
+
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{
+              "sequence" => [%{"workflow" => "shape-a-ticket"}],
+              "when" => %{"track" => "standard"}
+            })
+
+          %{"id" => @build} = stage ->
+            Map.merge(stage, %{
+              "sequence" =>
+                build ||
+                  [
+                    %{
+                      "workflow" => "build-it",
+                      "name" => "Fast track implementation",
+                      "first_attempt" => true,
+                      "when" => %{"track" => "fast-track"}
+                    },
+                    %{"workflow" => "shape-a-ticket", "unless" => %{"track" => "fast-track"}},
+                    %{
+                      "loop" => %{"rounds" => 3, "body" => [%{"workflow" => "review-it"}]},
+                      "unless" => %{"track" => "fast-track"}
+                    }
+                  ],
+              "outputs" => [%{"type" => "test-features", "required" => false}],
+              "gate" => %{"kind" => "none"}
+            })
+
+          %{"id" => @verify} = stage ->
+            Map.merge(stage, %{
+              "inputs" => [%{"type" => "test-features", "required" => false}],
+              "sequence" => [
+                %{"workflow" => "shape-a-ticket", "unless" => %{"track" => "fast-track"}}
+              ],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            })
+
+          stage ->
+            stage
+        end)
+
+      document =
+        document
+        |> Map.put("stages", stages)
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard", "description" => "Shape writes a spec."},
+          %{"id" => "fast-track", "name" => "Fast track", "description" => "One session."}
+        ])
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    end
+
+    # The end of Explore's run: a proposal, and a verdict that proposes `track`.
+    defp proposing(track, reason \\ "A small change.") do
+      fn run, registered ->
+        push_result!(run, registered, understood_result())
+        proposal = %{"id" => track, "reason" => reason}
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "passed", "track" => proposal},
+            stage_id: run.stage_id
+          )
+      end
+    end
+
+    defp at_explore_gate!(scope, proposed \\ "fast-track") do
+      screens!(scope)
+      scope |> taken_in_fixture() |> end_run!(proposing(proposed))
+    end
+
+    # Explore's gate approved with the track `track`, and Build's first attempt run passed,
+    # with test-features written. Verify's gate waits, and Verify started no run.
+    defp at_verify_gate!(scope, track \\ "fast-track") do
+      work_item = at_explore_gate!(scope)
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(run, work_item, "test-features", "## The report text")
+        passed!(run)
+      end)
+      |> reload()
+    end
+
+    # The reader changes the gate's radios to `track`.
+    defp pick(view, track) do
+      view
+      |> form("#work-item-explore-gate")
+      |> render_change(%{"track" => track, "_target" => ["track"]})
+    end
+
+    defp track_draft(view), do: :sys.get_state(view.pid).socket.assigns.track
+
+    defp track_decisions(work_item) do
+      Repo.all(
+        from d in Stages.GateDecision,
+          where: d.work_item_id == ^work_item.id and d.kind == :approve,
+          order_by: d.inserted_at,
+          select: {d.stage_id, d.track}
+      )
+    end
+
+    test "Explore's gate lists the tracks with their descriptions above Approve, the proposed one selected",
+         %{conn: conn, scope: scope} do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-track legend",
+               "Track to run after you approve"
+             )
+
+      assert has_element?(view, "#work-item-explore-gate-track-standard", "Standard")
+      assert has_element?(view, "#work-item-explore-gate-track-standard", "Shape writes a spec.")
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track", "One session.")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-track-fast-track-proposed",
+               "Proposed by Explore"
+             )
+
+      refute has_element?(view, "#work-item-explore-gate-track-standard-proposed")
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-track-fast-track input[type=radio][checked]"
+             )
+
+      refute has_element?(view, "#work-item-explore-gate-track-standard input[checked]")
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               "Pick a track and approve the proposal, or add a comment and run another round."
+             )
+
+      [before_approve, _rest] = String.split(html, ~s(id="work-item-explore-gate-go"), parts: 2)
+      assert before_approve =~ ~s(id="work-item-explore-gate-track")
+    end
+
+    test "the proposed track has the reason the run gave, and no other track has one", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-track-fast-track-reason",
+               "Explore's reason: A small change."
+             )
+
+      refute has_element?(view, "#work-item-explore-gate-track-standard-reason")
+    end
+
+    test "a blank reason shows no line of reason", %{conn: conn, scope: scope} do
+      screens!(scope)
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track", "   "))
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track-proposed")
+      refute has_element?(view, "#work-item-explore-gate-track-fast-track-reason")
+      refute html =~ "reason:"
+    end
+
+    test "the gate's first track is selected when no run proposed one", %{
+      conn: conn,
+      scope: scope
+    } do
+      screens!(scope)
+      work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(view, "#work-item-explore-gate-track-standard input[checked]")
+      refute has_element?(view, "#work-item-explore-gate-track-fast-track-proposed")
+    end
+
+    test "the track that the member picks is the one the approval records", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      pick(view, "standard")
+
+      assert has_element?(view, "#work-item-explore-gate-track-standard input[checked]")
+      refute has_element?(view, "#work-item-explore-gate-go[phx-value-track]")
+
+      view |> element("#work-item-explore-gate-go") |> render_click()
+      view |> form("#spend-dialog-form") |> render_submit()
+
+      assert track_decisions(work_item) == [{@explore, "standard"}]
+      assert Stages.track(reload(work_item)) == "standard"
+      assert track_draft(view) == nil
+    end
+
+    test "an Approve click that carries an older value records the track the page shows", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      pick(view, "standard")
+
+      view |> element("#work-item-explore-gate-go") |> render_click(%{"track" => "fast-track"})
+      view |> form("#spend-dialog-form") |> render_submit()
+
+      assert track_decisions(work_item) == [{@explore, "standard"}]
+    end
+
+    test "a forged click with a track the gate does not offer records no such track", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      view |> element("#work-item-explore-gate-go") |> render_click(%{"track" => "bogus"})
+      view |> form("#spend-dialog-form") |> render_submit()
+
+      assert track_decisions(work_item) == [{@explore, "fast-track"}]
+      assert Process.alive?(view.pid)
+    end
+
+    test "a forged change with a track the gate does not offer picks nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      pick(view, "bogus")
+
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track input[checked]")
+      view |> element("#work-item-explore-gate-go") |> render_click()
+      view |> form("#spend-dialog-form") |> render_submit()
+
+      assert track_decisions(work_item) == [{@explore, "fast-track"}]
+    end
+
+    test "the pick is kept while the page reads the work item again", %{conn: conn, scope: scope} do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      pick(view, "standard")
+
+      send(view.pid, {:stage_changed, work_item.id})
+      render(view)
+
+      assert track_draft(view) == "standard"
+      assert has_element?(view, "#work-item-explore-gate-track-standard input[checked]")
+    end
+
+    test "typing a comment is no pick of the selected track", %{conn: conn, scope: scope} do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      view
+      |> form("#work-item-explore-gate")
+      |> render_change(%{
+        "comment" => "A note",
+        "track" => "fast-track",
+        "_target" => ["comment"]
+      })
+
+      assert track_draft(view) == nil
+
+      pick(view, "standard")
+
+      view
+      |> form("#work-item-explore-gate")
+      |> render_change(%{"comment" => "A longer note", "_target" => ["comment"]})
+
+      assert track_draft(view) == "standard"
+    end
+
+    test "a pick ends with the stage's gate", %{conn: conn, scope: scope} do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      pick(view, "standard")
+      assert track_draft(view) == "standard"
+
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      send(view.pid, {:stage_changed, work_item.id})
+      render(view)
+
+      assert track_draft(view) == nil
+    end
+
+    test "the proposed track is recorded when the member picks none", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      refute has_element?(view, "#work-item-explore-gate-go[phx-value-track]")
+      view |> element("#work-item-explore-gate-go") |> render_click()
+      view |> form("#spend-dialog-form") |> render_submit()
+
+      assert track_decisions(work_item) == [{@explore, "fast-track"}]
+    end
+
+    test "a process with no tracks has the gate as before", %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      refute has_element?(view, "#work-item-explore-gate-track")
+      refute has_element?(view, ~s|#work-item-explore-gate-go[phx-value-track]|)
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               "Approve the proposal, or add a comment and run another round."
+             )
+    end
+
+    test "only Explore's gate offers tracks: Verify's gate shows the track and no choice", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-track h3", "Track")
+      assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
+      refute has_element?(view, "#work-item-stage-gate input[type=radio]")
+      refute has_element?(view, "#work-item-stage-gate-track", "Standard")
+      assert has_element?(view, "#work-item-stage-gate-approve-go", "Approve")
+      refute has_element?(view, "#work-item-stage-gate-approve-go", "Approve Verify")
+    end
+
+    test "the stage track marks the stage that was passed over, not run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-head-stages-#{@shape}-not-run", "Not run")
+      refute has_element?(view, "#work-item-head-stages-#{@build}-not-run")
+    end
+
+    test "Shape's tab says it did not run, and why", %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(view, "#work-item-tab-passed-over-h", "Shape did not run")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-why",
+               "approved Fast track at Explore's gate"
+             )
+
+      assert has_element?(view, "#work-item-tab-passed-over-why", "Fast track skips Shape.")
+    end
+
+    test "Shape's tab says which proposal version the next stages work to", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-proposal",
+               "The work item has no spec and no acceptance criteria. The exact change in proposal v1 is the one criterion."
+             )
+
+      assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+               Gettext.dgettext(
+                 ApiaryWeb.Gettext,
+                 "default",
+                 "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+                 version: "1"
+               )
+             end) ==
+               "Shape did not run, so the work item has no shaping outputs. Proposal v1, as approved, is what the next stages work to."
+    end
+
+    test "Shape's tab has no such line where Explore's approval lists no proposal version", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {_n, _rows} =
+        Repo.update_all(from(d in Stages.GateDecision, where: d.work_item_id == ^work_item.id),
+          set: [versions: []]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(view, "#work-item-tab-passed-over-h", "Shape did not run")
+      refute has_element?(view, "#work-item-tab-passed-over-proposal")
+    end
+
+    test "the line of the proposal version is on Shape's tab only", %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      refute has_element?(view, "#work-item-tab-passed-over-proposal")
+    end
+
+    test "Build's tab lists every entry, with the entries that did not run", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-entries-track",
+               "Track: Fast track, approved at Explore's gate"
+             )
+
+      assert has_element?(view, "#work-item-tab-entries-row-0", "Fast track implementation")
+      assert has_element?(view, "#work-item-tab-entries-row-0", "build-it")
+      assert has_element?(view, "#work-item-tab-entries-row-0", "Passed")
+      assert has_element?(view, "#work-item-tab-entries-row-0", "Runs on Fast track.")
+      assert has_element?(view, "#work-item-tab-entries-row-0", "Attempt")
+
+      first_attempt =
+        "Did not run, because Fast track implementation passed on its first attempt."
+
+      assert has_element?(view, "#work-item-tab-entries-row-1", "shape-a-ticket")
+      assert has_element?(view, "#work-item-tab-entries-row-1", "Not run")
+      assert has_element?(view, "#work-item-tab-entries-row-1", first_attempt)
+      refute has_element?(view, "#work-item-tab-entries-row-1", "Runs on Standard only.")
+
+      assert has_element?(view, "#work-item-tab-entries-row-2", "Loop of up to 3 rounds")
+      assert has_element?(view, "#work-item-tab-entries-row-2", "Not run")
+      assert has_element?(view, "#work-item-tab-entries-row-2", first_attempt)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-entries-gate",
+               "Approved without a member: Build's gate needs no member."
+             )
+    end
+
+    test "an entry that a passed first attempt passed over reads the reason where it has no condition",
+         %{conn: conn, scope: scope} do
+      screens!(scope, [
+        %{"workflow" => "build-it", "first_attempt" => true, "name" => "Quick fix"},
+        %{"workflow" => "shape-a-ticket"}
+      ])
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(view, "#work-item-tab-entries-row-0", "Quick fix")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-entries-row-1",
+               "Did not run, because Quick fix passed on its first attempt."
+             )
+    end
+
+    test "the reason of a first attempt shows where the entry also has a condition", %{
+      conn: conn,
+      scope: scope
+    } do
+      screens!(scope, [
+        %{"workflow" => "build-it", "first_attempt" => true, "name" => "Quick fix"},
+        %{"workflow" => "shape-a-ticket", "when" => %{"track" => "fast-track"}}
+      ])
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(view, "#work-item-tab-entries-row-1", "Not run")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-entries-row-1",
+               "Did not run, because Quick fix passed on its first attempt."
+             )
+
+      refute has_element?(view, "#work-item-tab-entries-row-1", "Runs on Fast track")
+    end
+
+    test "a sequence that names one workflow twice keeps the fold's rows and has no table", %{
+      conn: conn,
+      scope: scope
+    } do
+      screens!(scope, [
+        %{"workflow" => "build-it", "first_attempt" => true},
+        %{"workflow" => "shape-a-ticket", "when" => %{"track" => "standard"}},
+        %{"workflow" => "shape-a-ticket", "when" => %{"track" => "standard"}}
+      ])
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      refute has_element?(view, "#work-item-tab-entries")
+      assert has_element?(view, "[id^=work-item-record-skip-]", "shape-a-ticket")
+    end
+
+    test "a work item on no track keeps the outputs of a gate where no run started", %{
+      conn: conn,
+      scope: scope
+    } do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @shape} = stage ->
+            %{stage | "outputs" => [%{"type" => "test-features", "required" => false}]}
+
+          %{"id" => @build} = stage ->
+            Map.merge(stage, %{
+              "sequence" => [
+                %{"workflow" => "shape-a-ticket", "when" => %{"input" => "test-features"}}
+              ],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            })
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      work_item = at_shape!(scope)
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @shape)
+
+      assert [%{workflow: "shape-a-ticket"}] = Stages.skips(reload(work_item))
+      assert Stages.track(reload(work_item)) == nil
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-stage-gate-track")
+      refute has_element?(view, "#work-item-stage-gate-no-run")
+      assert has_element?(view, "#work-item-stage-gate-none", "This stage has no outputs.")
+    end
+
+    test "the table words each state of a run in sentence case" do
+      states = [
+        passed: "Passed",
+        paused: "Paused",
+        failed: "Did not pass",
+        questions: "Questions",
+        queued: "Queued",
+        running: "Running",
+        no_verdict: "Ended without a verdict",
+        undone: "Undone"
+      ]
+
+      entries =
+        for {{shows, _word}, i} <- Enum.with_index(states) do
+          %{
+            item: %{"workflow" => "flow-#{i}"},
+            kind: :entry,
+            name: "flow-#{i}",
+            note: nil,
+            rounds: nil,
+            attempt: i + 1,
+            shows: shows,
+            skip: nil
+          }
+        end
+
+      html =
+        render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,
+          stage: %{name: "Build", id: @build, outputs: [], gate: %{"kind" => "none"}},
+          work_item: %{number: 1, status: :confirm, run: nil},
+          entries: entries,
+          current: true
+        )
+
+      for {{_shows, word}, i} <- Enum.with_index(states) do
+        row =
+          html |> LazyHTML.from_fragment() |> LazyHTML.query("#work-item-tab-entries-row-#{i}")
+
+        assert row |> LazyHTML.text() |> String.contains?(word)
+      end
+
+      table =
+        html |> LazyHTML.from_fragment() |> LazyHTML.query("#work-item-tab-entries-table th")
+
+      assert table |> LazyHTML.attribute("scope") == ["col", "col", "col"]
+    end
+
+    test "a work item on no track keeps the runs fold's rows and has no table", %{
+      conn: conn,
+      scope: scope
+    } do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @build} = stage ->
+            %{
+              stage
+              | "sequence" => [
+                  %{"workflow" => "build-it", "first_attempt" => true},
+                  %{"workflow" => "shape-a-ticket"}
+                ]
+            }
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+      work_item = at_shape!(scope)
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @shape)
+      work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      refute has_element?(view, "#work-item-tab-entries")
+      assert has_element?(view, "[id^=work-item-record-skip-]", "shape-a-ticket")
+    end
+
+    test "a stage with no entry that did not run has no table", %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-tab-entries")
+    end
+
+    test "the person's gate has what the person decides first, then the build report", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-no-run",
+               "Verify started no run. Read the build report and the draft, then approve."
+             )
+
+      assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+               Gettext.dgettext(
+                 ApiaryWeb.Gettext,
+                 "default",
+                 "Read the inputs below, then approve."
+               )
+             end) == "Read the inputs below, then approve."
+
+      refute has_element?(view, "#work-item-stage-gate-none")
+      refute has_element?(view, "#work-item-stage-gate-outputs")
+      assert has_element?(view, "#work-item-tab-output-test-features-fold")
+      assert has_element?(view, "#work-item-tab-output-test-features-text", "The report text")
+
+      [gate, report] =
+        String.split(html, ~s(id="work-item-tab-output-test-features"), parts: 2)
+
+      assert gate =~ ~s(id="work-item-stage-gate-approve-go")
+      assert report =~ "The report text"
+    end
+
+    test "Approve at Verify's gate passes the stage with the track the work item is on", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      view |> form("#work-item-stage-gate-approve") |> render_submit()
+
+      assert [{@explore, "fast-track"}, {_build, nil}, {_verify, nil}] =
+               track_decisions(work_item)
+    end
+
+    test "on Standard, Shape runs and its tab has no pass-over block", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      refute has_element?(view, "#work-item-tab-passed-over")
+      refute has_element?(view, "#work-item-head-stages-#{@shape}-not-run")
     end
   end
 
