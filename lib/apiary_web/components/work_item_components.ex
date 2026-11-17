@@ -2541,7 +2541,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :suite, :map,
     default: nil,
     doc:
-      "the full test suite result shown under the build report's frame: `Apiary.Stages.full_suite/2` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
+      "the full test suite result shown under the build report's frame: `Apiary.Stages.full_suite_read/1` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
 
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
@@ -2780,15 +2780,17 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   # The line under the build report's frame for a full test suite result
-  # (`Apiary.Stages.full_suite/2`). The two Standard track lines say "version" in their
-  # source text and "commit" in the software domain's catalogue. A suite that did not run shows its reason as the run
-  # sent it, without a final full stop, which the line adds. The track `fast-track` has no
-  # minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for 4.5.
-  defp suite_words(%{state: :not_run, reason: reason}),
-    do:
-      gettext("The full test suite did not run: %{reason}.",
-        reason: String.trim_trailing(reason, ".")
-      )
+  # (`Apiary.Stages.full_suite_read/1`). The two Standard track lines say "version" in their
+  # source text and "commit" in the software domain's catalogue. The track `fast-track` has
+  # no minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for
+  # 4.5. A suite that did not run shows its reason as the run sent it, trimmed and without
+  # one final full stop (the reader drops it). The line ends in a full stop, but not after a
+  # reason that ends in a question mark or an exclamation mark.
+  defp suite_words(%{state: :not_run, reason: reason}) do
+    if String.ends_with?(reason, ["?", "!"]),
+      do: gettext("The full test suite did not run: %{reason}", reason: reason),
+      else: gettext("The full test suite did not run: %{reason}.", reason: reason)
+  end
 
   defp suite_words(%{fast: true, state: :passed} = suite) do
     gettext("The full test suite passed: %{passed} passed, %{failed} failed, %{skipped} skipped.",

@@ -17,6 +17,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.{Explore, WorkItem}
   alias ApiaryWeb.WorkflowFake
+  alias ApiaryWeb.WorkItemLive.StageTab
 
   @moduletag needs: [:factory, :workflow_model]
 
@@ -3346,7 +3347,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "The full test suite failed: 412 passed, 3 failed, 5 skipped."
     end
 
-    test "minutes are shown as sent: a whole number as such, a fraction as it is" do
+    test "minutes show as a whole number when they are whole, and as sent otherwise" do
       assert suite_tab(%{counts(:passed) | minutes: 6.0}) |> suite_line() =~ "in 6 minutes."
       assert suite_tab(%{counts(:passed) | minutes: 4.5}) |> suite_line() =~ "in 4.5 minutes."
       assert suite_tab(%{counts(:passed) | minutes: 0}) |> suite_line() =~ "in 0 minutes."
@@ -3366,11 +3367,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "The full test suite did not run: a change to a document runs no tests."
     end
 
-    test "a reason ends in one full stop, as sent with or without one" do
-      for reason <- ["no test command", "no test command."] do
-        assert suite_tab(%{state: :not_run, reason: reason}) |> suite_line() ==
-                 "The full test suite did not run: no test command."
+    test "a reason ends in a full stop, except after a question mark or an exclamation mark" do
+      for {reason, line} <- [
+            {"no test command", "The full test suite did not run: no test command."},
+            {"Wait..", "The full test suite did not run: Wait..."},
+            {"Is it?", "The full test suite did not run: Is it?"},
+            {"Stop!", "The full test suite did not run: Stop!"}
+          ] do
+        assert suite_tab(%{state: :not_run, reason: reason}) |> suite_line() == line
       end
+    end
+
+    test "only the track fast-track has the Fast track words" do
+      assert StageTab.fast_track?(%{track: %{id: "fast-track", name: "Fast track"}})
+      refute StageTab.fast_track?(%{track: %{id: "standard", name: "Standard"}})
+      refute StageTab.fast_track?(%{track: %{id: "express", name: "Express"}})
+      refute StageTab.fast_track?(%{track: nil})
+      refute StageTab.fast_track?(%{})
     end
 
     test "a reason is text: markup in it is escaped" do

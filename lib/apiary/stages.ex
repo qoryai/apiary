@@ -2358,17 +2358,42 @@ defmodule Apiary.Stages do
   end
 
   @doc false
-  # full_suite/2 is the full test suite result of the newest verdict of `work_item`'s current
-  # take in: the `full_suite` member of the verdict's file, as
-  # `%{state:, passed:, failed:, skipped:, minutes:, reason:}`. `state` is `:passed`,
-  # `:failed` or `:not_run`; `reason` is the line of a `:not_run` result and nil otherwise;
-  # the counts and `minutes` are nil for `:not_run`. nil where the take in has no verdict, the
-  # newest verdict has no `full_suite`, or the artifact store cannot be read. Only the newest
-  # verdict is read: an older verdict's result is not the result of the work as it stands.
-  # `artifacts`, the work item's artifacts (`Apiary.Artifacts.list/1`) where the caller has
-  # read them, spare that read; the versions' runs come with them, so nothing else is read
-  # from the database.
-  @spec full_suite(WorkItem.t(), [Artifacts.Artifact.t()] | nil) ::
+  # full_suite_version/2 is the verdict version that belongs to the build report version
+  # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`): the
+  # newest version of the artifact `verdict`, name `main`, that the run which wrote the
+  # report wrote, and that no cancelled run wrote (`Artifacts.cancelled?/1`). nil where the
+  # report has no run (a person wrote it) or that run pushed no verdict. A verdict of
+  # another run or another stage is never the result of the work the report is about.
+  @spec full_suite_version([Artifacts.Artifact.t()], pos_integer) :: map | nil
+  def full_suite_version(artifacts, number) do
+    with %{run_id: run_id} when is_binary(run_id) <- report_version(artifacts, number) do
+      artifacts
+      |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
+      |> Stream.flat_map(& &1.versions)
+      |> Enum.find(&(&1.run_id == run_id and not Artifacts.cancelled?(&1)))
+    else
+      _none -> nil
+    end
+  end
+
+  defp report_version(artifacts, number) do
+    artifacts
+    |> Stream.filter(&(&1.type == "build-report" and &1.name == "main"))
+    |> Stream.flat_map(& &1.versions)
+    |> Enum.find(&(&1.number == number and not Artifacts.cancelled?(&1)))
+  end
+
+  @doc false
+  # full_suite_read/1 is the full test suite result in the file of the verdict version
+  # `version` (`full_suite_version/2`), as `%{state:, passed:, failed:, skipped:, minutes:,
+  # reason:}`; nil for no version, a file with no `full_suite`, a file the store cannot
+  # read, and a result that is not whole. `state` is `:passed`, `:failed` or `:not_run`.
+  # `:passed` and `:failed` have the three counts, whole numbers (12.0 is 12), and `minutes`,
+  # a number, with `reason` nil. `:not_run` has `reason` and nil for the others: the reason
+  # with white space trimmed and one final full stop dropped, which is a line of text, so a
+  # reason of no text is no result. The version's file does not change, so the result may
+  # be kept by the version's public id.
+  @spec full_suite_read(map | nil) ::
           %{
             state: :passed | :failed | :not_run,
             passed: non_neg_integer | nil,
@@ -2378,41 +2403,59 @@ defmodule Apiary.Stages do
             reason: String.t() | nil
           }
           | nil
-  def full_suite(work_item, artifacts \\ nil)
+  def full_suite_read(nil), do: nil
 
-  def full_suite(%WorkItem{take_in: take_in} = work_item, artifacts) when is_integer(take_in) do
-    newest =
-      (artifacts || Artifacts.list(work_item))
-      |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
-      |> Stream.flat_map(& &1.versions)
-      |> Enum.find(&match?(%{run: %{take_in: ^take_in}}, &1))
-
-    with %{} = version <- newest,
-         {:ok, %{"full_suite" => %{} = suite}} <- Artifacts.stored_json(version) do
-      suite_result(suite)
-    else
+  def full_suite_read(version) do
+    case Artifacts.stored_json(version) do
+      {:ok, %{"full_suite" => %{} = suite}} -> suite_result(suite)
       _none -> nil
     end
   end
 
-  def full_suite(%WorkItem{}, _artifacts), do: nil
+  @doc false
+  # full_suite/3 is `full_suite_read/1` of `full_suite_version/2` for the build report
+  # version `number` of `work_item`, from `artifacts` where the caller has read them.
+  @spec full_suite(WorkItem.t(), pos_integer, [Artifacts.Artifact.t()] | nil) :: map | nil
+  def full_suite(%WorkItem{} = work_item, number, artifacts \\ nil) do
+    (artifacts || Artifacts.list(work_item)) |> full_suite_version(number) |> full_suite_read()
+  end
 
-  defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed not_run) do
-    %{
-      state: String.to_existing_atom(state),
-      passed: suite_count(suite["passed"]),
-      failed: suite_count(suite["failed"]),
-      skipped: suite_count(suite["skipped"]),
-      minutes: if(is_number(suite["minutes"]), do: suite["minutes"]),
-      reason: if(is_binary(suite["reason"]), do: suite["reason"])
-    }
+  defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed) do
+    counts = Enum.map(~w(passed failed skipped), &suite_count(suite[&1]))
+    minutes = suite["minutes"]
+
+    if nil not in counts and is_number(minutes) and not Map.has_key?(suite, "reason") do
+      [passed, failed, skipped] = counts
+
+      %{
+        state: String.to_existing_atom(state),
+        passed: passed,
+        failed: failed,
+        skipped: skipped,
+        minutes: minutes,
+        reason: nil
+      }
+    end
+  end
+
+  defp suite_result(%{"state" => "not_run", "reason" => reason}) when is_binary(reason) do
+    case reason |> String.trim() |> String.replace_suffix(".", "") do
+      "" ->
+        nil
+
+      reason ->
+        %{state: :not_run, passed: nil, failed: nil, skipped: nil, minutes: nil, reason: reason}
+    end
   end
 
   defp suite_result(_suite), do: nil
 
   # A count the file has as 12.0 is the whole number 12.
-  defp suite_count(count) when is_integer(count), do: count
-  defp suite_count(count) when is_float(count) and count == trunc(count), do: trunc(count)
+  defp suite_count(count) when is_integer(count) and count >= 0, do: count
+
+  defp suite_count(count) when is_float(count) and count >= 0 and count == trunc(count),
+    do: trunc(count)
+
   defp suite_count(_count), do: nil
 
   # `{:ok, %{id:, reason:}}` or `{:ok, nil}` for the track proposed; `{:error,

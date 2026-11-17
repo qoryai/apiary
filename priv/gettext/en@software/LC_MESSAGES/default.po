@@ -21179,6 +21179,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "The full test suite did not run: %{reason}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "The full test suite did not run: %{reason}."
 msgstr ""
 

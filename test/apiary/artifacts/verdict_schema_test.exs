@@ -83,6 +83,9 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
       assert valid?(with_suite(%{@passed | "passed" => 1_000_000_000, "minutes" => 100_000}))
       assert valid?(with_suite(%{@passed | "minutes" => 0.25}))
       assert valid?(with_suite(%{@passed | "minutes" => 3}))
+      # A count written as 12.0 is the whole number 12.
+      assert valid?(with_suite(%{@passed | "passed" => 12.0}))
+      assert valid?(with_suite(@passed |> Map.put("passed", 12.0) |> Map.put("failed", 0.0)))
     end
 
     test "refuses a state that is not one of the three" do

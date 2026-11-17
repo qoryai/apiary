@@ -11,8 +11,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   `files` may be absent, null or empty, which reads as no files; files sent with it are
   #   read as without it, and the caller refuses them.
   # - `verdict/1`: `{"verdict", "points"?, "track"?, "full_suite"?}`, at most
-  #   `max_bytes(:verdict)` bytes. The points, the track and the full suite pass as they are: the schema of the type `verdict` checks
-  #   them (`priv/schemas/artifacts/verdict.schema.json`).
+  #   `max_bytes(:verdict)` bytes. The points, the track and the full suite pass as they are:
+  #   the schema of the type `verdict` checks them
+  #   (`priv/schemas/artifacts/verdict.schema.json`).
   # - `pushed_commits/1`: `{"repositories": [{"system", "path", "commit"}]}`, at most
   #   `max_bytes(:pushed_commits)` bytes, else `{:error, :too_large}`, and at most
   #   `max_repositories/0` repositories, else `{:error, :invalid_request, "repositories"}`.

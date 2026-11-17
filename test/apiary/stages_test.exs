@@ -3102,24 +3102,30 @@ defmodule Apiary.StagesTest do
       assert Stages.proposed_track_with_reason(work_item) == nil
     end
 
-    # The end of a run that pushes a proposal and then each of the verdict files `documents`,
-    # oldest first.
-    defp pushing_verdicts(documents) do
-      fn run, registered ->
-        proposal_only().(run, registered)
+    # A verdict version whose file has `document`, in the store, as a version of `run` that a
+    # run wrote.
+    defp stored_verdict(document, fields \\ []) do
+      {:ok, staged} = Artifacts.Store.impl().stage({:binary, Jason.encode!(document)}, 100_000)
+      {:ok, key} = Artifacts.Store.impl().commit(staged)
 
-        for document <- documents do
-          {:ok, _version} =
-            Stages.Artifacts.push_json(
-              {:run, run},
-              Repo.get!(WorkItem, run.work_item_id),
-              "verdict",
-              document,
-              stage_id: run.stage_id
-            )
-        end
-      end
+      Map.merge(
+        %{
+          public_id: "av_#{System.unique_integer([:positive])}",
+          number: 1,
+          writer: :run,
+          run_id: "run-a",
+          run: %{run: %{cancel_requested_at: nil}},
+          files: [%Artifacts.ArtifactFile{store_key: key, filename: "verdict.json"}]
+        },
+        Map.new(fields)
+      )
     end
+
+    defp suite_of(suite), do: Stages.full_suite_read(stored_verdict(%{"full_suite" => suite}))
+
+    defp artifact(type, versions), do: %{type: type, name: "main", versions: versions}
+
+    defp report(number, run_id), do: %{number: number, run_id: run_id, writer: :run, run: nil}
 
     @suite_passed %{
       "state" => "passed",
@@ -3129,29 +3135,8 @@ defmodule Apiary.StagesTest do
       "minutes" => 4.5
     }
 
-    test "the full suite is the member of the newest verdict, as the run sent it", %{
-      scope: scope
-    } do
-      tracked_process!(scope, ["standard", "fast-track"])
-
-      failed = %{
-        "state" => "failed",
-        "passed" => 9,
-        "failed" => 2,
-        "skipped" => 0,
-        "minutes" => 1
-      }
-
-      work_item =
-        take_in!(scope)
-        |> end_run!(
-          pushing_verdicts([
-            %{"verdict" => "changes-requested", "full_suite" => failed},
-            %{"verdict" => "passed", "full_suite" => @suite_passed}
-          ])
-        )
-
-      assert Stages.full_suite(work_item) == %{
+    test "the full suite is the member of the verdict file, as the run sent it" do
+      assert suite_of(@suite_passed) == %{
                state: :passed,
                passed: 120,
                failed: 0,
@@ -3160,73 +3145,121 @@ defmodule Apiary.StagesTest do
                reason: nil
              }
 
-      artifacts = Artifacts.list(work_item)
-      assert Stages.full_suite(work_item, artifacts) == Stages.full_suite(work_item)
+      assert %{state: :failed, passed: 9, failed: 2} =
+               suite_of(%{@suite_passed | "state" => "failed", "passed" => 9, "failed" => 2})
 
-      assert %{"full_suite" => @suite_passed} =
-               work_item
-               |> Artifacts.newest("verdict")
-               |> Stages.Artifacts.stored_json()
-               |> elem(1)
-    end
-
-    test "the full suite of a suite that did not run has a reason and no counts", %{
-      scope: scope
-    } do
-      tracked_process!(scope, ["standard", "fast-track"])
-      suite = %{"state" => "not_run", "reason" => "The checkout has no test command."}
-
-      work_item =
-        take_in!(scope)
-        |> end_run!(pushing_verdicts([%{"verdict" => "passed", "full_suite" => suite}]))
-
-      assert Stages.full_suite(work_item) == %{
+      assert suite_of(%{"state" => "not_run", "reason" => "No test command."}) == %{
                state: :not_run,
                passed: nil,
                failed: nil,
                skipped: nil,
                minutes: nil,
-               reason: "The checkout has no test command."
+               reason: "No test command"
              }
     end
 
-    test "the full suite is nil without a verdict, and where the newest verdict has none", %{
-      scope: scope
-    } do
-      tracked_process!(scope, ["standard", "fast-track"])
+    test "counts sent as 12.0 are the whole number 12" do
+      assert %{passed: 12, failed: 0, skipped: 3} =
+               suite_of(%{@suite_passed | "passed" => 12.0, "skipped" => 3.0})
 
-      assert take_in!(scope) |> end_run!(understood_result()) |> Stages.full_suite() == nil
-
-      work_item =
-        take_in!(scope)
-        |> end_run!(
-          pushing_verdicts([
-            %{"verdict" => "changes-requested", "full_suite" => @suite_passed},
-            %{"verdict" => "passed"}
-          ])
-        )
-
-      assert Stages.full_suite(work_item) == nil
+      assert suite_of(%{@suite_passed | "passed" => 12.5}) == nil
     end
 
-    test "the full suite of an earlier take in is not read", %{scope: scope} do
-      runner_process!(scope)
-      ticket = backlog_ticket_fixture(scope)
-      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+    test "a result that is not whole is no result" do
+      for bad <- [
+            %{"state" => "not_run"},
+            %{"state" => "not_run", "reason" => 5},
+            %{"state" => "not_run", "reason" => ""},
+            %{"state" => "not_run", "reason" => "  "},
+            %{"state" => "not_run", "reason" => "."},
+            %{"state" => "not_run", "reason" => " . "},
+            %{@suite_passed | "passed" => "12"},
+            %{@suite_passed | "failed" => nil},
+            %{@suite_passed | "skipped" => -1},
+            %{@suite_passed | "minutes" => "6"},
+            Map.delete(@suite_passed, "minutes"),
+            %{@suite_passed | "state" => "unknown"},
+            %{"passed" => 1}
+          ] do
+        assert suite_of(bad) == nil, inspect(bad)
+      end
+    end
 
-      work_item =
-        work_item
-        |> reload()
-        |> end_run!(pushing_verdicts([%{"verdict" => "passed", "full_suite" => @suite_passed}]))
+    test "a reason is trimmed and loses one final full stop only" do
+      for {sent, read} <- [
+            {"Wait...", "Wait.."},
+            {"Is it?", "Is it?"},
+            {"Stop!", "Stop!"},
+            {"  No test command.  ", "No test command"},
+            {"No test command", "No test command"},
+            {"..", "."}
+          ] do
+        assert %{reason: ^read} = suite_of(%{"state" => "not_run", "reason" => sent})
+      end
+    end
 
-      assert %{state: :passed} = Stages.full_suite(work_item)
+    test "no verdict, or a verdict file with no full_suite, is no result" do
+      assert Stages.full_suite_read(nil) == nil
+      assert Stages.full_suite_read(stored_verdict(%{"verdict" => "passed"})) == nil
+      assert Stages.full_suite_read(%{files: []}) == nil
+    end
 
-      {:ok, _closed} = WorkItems.close(scope, work_item)
-      {:ok, _again} = WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
-      again = reload(work_item)
+    test "the verdict of the run that wrote the shown report belongs to it" do
+      mine = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
 
-      assert again.take_in == 2
-      assert Stages.full_suite(again) == nil
+      # Newer verdicts: another run's with a result, and another stage's with none.
+      other_run = stored_verdict(%{"verdict" => "passed"}, run_id: "run-b", number: 4)
+      other_stage = stored_verdict(%{"verdict" => "passed"}, run_id: "run-c", number: 3)
+
+      artifacts = [
+        artifact("build-report", [report(2, "run-a"), report(1, "run-z")]),
+        artifact("verdict", [other_run, other_stage, mine])
+      ]
+
+      assert Stages.full_suite_version(artifacts, 2) == mine
+      assert Stages.full_suite_version(artifacts, 1) == nil
+    end
+
+    test "a newer verdict of the same run is the one that belongs to the report" do
+      older = stored_verdict(%{}, run_id: "run-a", number: 1)
+      newer = stored_verdict(%{}, run_id: "run-a", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [newer, older])
+      ]
+
+      assert Stages.full_suite_version(artifacts, 1) == newer
+    end
+
+    test "a verdict of a run a member cancelled is skipped" do
+      cancelled = %{run: %{cancel_requested_at: ~U[2026-11-17 10:00:00Z]}}
+      kept = stored_verdict(%{}, run_id: "run-a", number: 1)
+      dropped = stored_verdict(%{}, run_id: "run-a", number: 2, run: cancelled)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [dropped, kept])
+      ]
+
+      assert Stages.full_suite_version(artifacts, 1) == kept
+
+      # A report of a cancelled run is not shown as the work's result either.
+      artifacts = [
+        artifact("build-report", [%{report(1, "run-a") | run: cancelled}]),
+        artifact("verdict", [kept])
+      ]
+
+      assert Stages.full_suite_version(artifacts, 1) == nil
+    end
+
+    test "a report a person wrote, or with no verdict, has no verdict" do
+      person = %{number: 1, run_id: nil, writer: :person, run: nil}
+      artifacts = [artifact("build-report", [person]), artifact("verdict", [stored_verdict(%{})])]
+      assert Stages.full_suite_version(artifacts, 1) == nil
+
+      assert Stages.full_suite_version([artifact("build-report", [report(1, "run-a")])], 1) == nil
+      assert Stages.full_suite_version([], 1) == nil
     end
 
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
