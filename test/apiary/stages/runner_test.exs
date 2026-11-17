@@ -1152,41 +1152,31 @@ defmodule Apiary.Stages.RunnerTest do
       assert c.machine_type == "default"
     end
 
-    test "takes the lower time limit and access level of the entry and the declaration" do
+    test "takes the lower access level of the entry and the declaration, and no time limit" do
       seq = stage([wf("a", %{"time_limit" => "10m", "access" => "read"})])
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{
-          declarations: %{"a" => %{time_limit: "1h", access: :write}}
-        }).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :write}}}).actions
 
-      assert spec.time_limit == 600
       assert spec.access == :read
-
-      [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: "5m", access: nil}}}).actions
-
-      assert spec.time_limit == 300
+      refute Map.has_key?(spec, :time_limit)
 
       seq = stage([wf("a")])
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{
-          declarations: %{"a" => %{time_limit: nil, access: :write}}
-        }).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :write}}}).actions
 
-      assert spec.time_limit == nil
       assert spec.access == :write
 
       [{:queue, spec}] =
-        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{time_limit: nil, access: :read}}}).actions
+        Runner.step(seq, nil, :enter, %{declarations: %{"a" => %{access: :read}}}).actions
 
       assert spec.access == :read
     end
 
-    test "limits/3 is the lowered limits of the entry at a position" do
+    test "limits/3 is the lowered access level of the entry at a position" do
       seq = build()
-      declaration = %{time_limit: "20m", access: :write}
+      declaration = %{access: :write}
 
       seq =
         put_in(seq, ["sequence"], [
@@ -1194,13 +1184,10 @@ defmodule Apiary.Stages.RunnerTest do
           loop([wf("capture-demo", %{"access" => "read"}), wf("fix-demo-findings")])
         ])
 
-      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{
-               time_limit: 1200,
-               access: :write
-             }
-
-      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{time_limit: nil, access: :read}
-      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{time_limit: nil, access: nil}
+      # A time limit an older document has on its entry is not read.
+      assert Runner.limits(seq, pos(0, nil, 1), declaration) == %{access: :write}
+      assert Runner.limits(seq, pos(1, 0, 2), nil) == %{access: :read}
+      assert Runner.limits(seq, pos(1, 1, 2), nil) == %{access: nil}
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
     end
 
@@ -1241,48 +1228,29 @@ defmodule Apiary.Stages.RunnerTest do
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do
       seq =
         put_in(build(), ["sequence"], [
-          wf("implement", %{"time_limit" => "1h"}),
+          wf("implement"),
           loop([wf("capture-demo"), wf("fix-demo-findings")])
         ])
 
-      declaration = %{time_limit: nil, access: :write}
+      declaration = %{access: :write}
 
-      assert Runner.limits(seq, pos(0, nil, 1), declaration, "lint") == %{
-               time_limit: 3600,
-               access: :read
-             }
-
+      assert Runner.limits(seq, pos(0, nil, 1), declaration, "lint") == %{access: :read}
       assert Runner.limits(seq, pos(1, 1, 1), declaration, "lint").access == :read
 
       for {position, stage} <- [{pos(2, nil, 1), seq}, {pos(0, nil, 1), %{}}] do
-        assert Runner.limits(stage, position, declaration, "lint") == %{
-                 time_limit: nil,
-                 access: :read
-               }
+        assert Runner.limits(stage, position, declaration, "lint") == %{access: :read}
       end
     end
 
     test "limits/4 leaves a run alone at an entry of its workflow, or with no workflow" do
-      seq = put_in(build(), ["sequence"], [wf("implement", %{"time_limit" => "1h"})])
-      declaration = %{time_limit: nil, access: :write}
-      limits = %{time_limit: 3600, access: :write}
+      seq = put_in(build(), ["sequence"], [wf("implement")])
+      declaration = %{access: :write}
+      limits = %{access: :write}
 
       assert Runner.limits(seq, pos(0, nil, 1), declaration, "implement") == limits
       assert Runner.limits(seq, pos(0, nil, 1), declaration, nil) == limits
       assert Runner.limits(seq, pos(1, nil, 1), declaration, nil) == nil
       assert Runner.limits(%{}, pos(0, nil, 1), declaration, nil) == nil
-    end
-
-    test "reads durations" do
-      assert Runner.seconds("1h30m") == 5400
-      assert Runner.seconds("15m") == 900
-      assert Runner.seconds("90s") == 90
-      assert Runner.seconds("1h") == 3600
-      assert Runner.seconds("1m5s") == 65
-      assert Runner.seconds("") == nil
-      assert Runner.seconds("0m") == nil
-      assert Runner.seconds("soon") == nil
-      assert Runner.seconds(nil) == nil
     end
   end
 

@@ -181,11 +181,11 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "takes a workflow entry with a machine, a lower time limit and read access, and a reported check" do
+    test "takes a workflow entry with a machine and read access, and a reported check" do
       document =
         default()
         |> put_sequence(@shape, [
-          %{"workflow" => "write-specs", "machine" => "large", "time_limit" => "1h30m"},
+          %{"workflow" => "write-specs", "machine" => "large"},
           %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "review", "access" => "read"}]}}
         ])
         |> edit(fn
@@ -668,6 +668,19 @@ defmodule Apiary.ProcessesTest do
                %{"stages" => [Map.delete(stage, "description")]}
     end
 
+    test "has no time limit on a workflow entry: a workflow's limit is in the time limits" do
+      schema =
+        :apiary
+        |> Application.app_dir("priv/schemas/process/v1.schema.json")
+        |> File.read!()
+
+      keys = Map.keys(Jason.decode!(schema)["$defs"]["workflow_entry"]["properties"])
+
+      assert "workflow" in keys
+      refute Enum.any?(keys, &(&1 =~ ~r/limit|time/))
+      refute schema =~ "time_limit"
+    end
+
     test "keeps fields the schema does not list" do
       document =
         default()
@@ -1093,10 +1106,10 @@ defmodule Apiary.ProcessesTest do
       assert Processes.declared_workflows(scope.workspace) == ["explore-a-ticket", "implement"]
 
       assert Processes.workflow_declaration(scope.workspace, "implement") ==
-               %{name: "implement", access: :write, time_limit: nil, reads: nil}
+               %{name: "implement", access: :write, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "explore-a-ticket") ==
-               %{name: "explore-a-ticket", access: nil, time_limit: nil, reads: nil}
+               %{name: "explore-a-ticket", access: nil, reads: nil}
 
       assert Processes.workflow_declaration(scope.workspace, "capture-demo") == nil
     end
@@ -1115,7 +1128,7 @@ defmodule Apiary.ProcessesTest do
                ["explore-a-ticket", "implement", "review"]
 
       assert Processes.workflow_declaration(scope.workspace, "review") ==
-               %{name: "review", access: nil, time_limit: nil, reads: nil}
+               %{name: "review", access: nil, reads: nil}
 
       # `workspace_fixture/2` records no stack, so `other` composes `core`, which lists none.
       assert Processes.declared_snapshot(other) == nil
