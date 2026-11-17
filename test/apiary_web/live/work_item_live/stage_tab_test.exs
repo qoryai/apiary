@@ -2500,6 +2500,47 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate_link?(view, scope, work_item, "test-features", hd(other.versions).public_id)
     end
+
+    test "the gate card lists a version the approval records that no output line shows",
+         %{conn: conn, scope: scope} do
+      # Verify runs no workflow, has no outputs, and a member approves its gate.
+      verify = "st_m1mqbeywdg"
+      version = process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
+
+      assert %{"outputs" => [], "gate" => %{"kind" => "person"}} =
+               stage = Enum.find(version.document["stages"], &(&1["id"] == verify))
+
+      assert Map.get(stage, "sequence", []) == []
+
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      {:ok, at_verify} = Stages.approve(scope, at_build, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: ^verify, stage_state: :at_gate} = reload(at_verify)
+
+      spec_two = add_spec!(scope, at_verify, "## Spec two")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      line = "#work-item-stage-gate-recorded-spec"
+
+      path =
+        ApiaryWeb.ArtifactComponents.version_path(scope, work_item.number, spec_two.public_id)
+
+      assert has_element?(view, ~s(#{line} a[href="#{path}"]), "spec v2")
+      refute has_element?(view, "#work-item-stage-gate-recorded li:not(#{line})")
+
+      {:ok, _approved} = Stages.approve(scope, reload(work_item), nil, expect_stage: verify)
+      assert spec_two.public_id in recorded(work_item, verify)
+    end
+
+    test "a gate with no change lists no other version", %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      refute has_element?(view, "#work-item-stage-gate-recorded")
+    end
   end
 
   describe "a stage with a workflow and no outputs" do
