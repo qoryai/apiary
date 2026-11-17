@@ -3604,6 +3604,35 @@ defmodule ApiaryWeb.StagesLiveTest do
       end
     end
 
+    test "a member reads the return and the saved time limit on one line", %{
+      member: conn,
+      path: path,
+      scope: scope,
+      build: build,
+      returning: returning
+    } do
+      returning.(%{"stage" => build})
+      {:ok, _} = TimeLimits.put_limit(scope, :workspace, "verify-a-ticket", 90)
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "verify-a-ticket, machine type Workspace default (Standard), returns to Build at most 2 times, time limit 90 minutes"
+             )
+
+      {:ok, _} = TimeLimits.delete_limit(scope, :workspace, "verify-a-ticket")
+      {:ok, view, _html} = live(conn, path)
+      select(view, "Verify")
+
+      assert has_element?(
+               view,
+               "#stage-sequence li",
+               "verify-a-ticket, machine type Workspace default (Standard), returns to Build at most 2 times, time limit 180 minutes (default)"
+             )
+    end
+
     test "a saved return shows in a fresh mount: the select for the editor, the line for a member",
          %{conn: conn, member: member, path: path, build: build, returning: returning} do
       returning.(nil)
