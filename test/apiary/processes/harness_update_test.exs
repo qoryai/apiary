@@ -56,6 +56,24 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end)
   end
 
+  # `files` with the template's submit step set to `type`, sent after the gate.
+  defp submitting(files \\ QoryHarnessFixture.files(), type) do
+    Map.update!(files, @process, &(&1 <> "submit:\n  type: #{type}\n  send: after_gate\n"))
+  end
+
+  # The template's submit step, named `type`, as a version's record keeps it.
+  defp submit(type), do: %{"type" => type, "send" => "after_gate"}
+
+  # A template whose submit.type is no structured type of its artifact_types, with the
+  # refusal: a name no entry has, a standard type, and spec, a document type.
+  defp refused_submits do
+    [
+      {submitting("blueprint"), {:submit, "blueprint", :missing}},
+      {submitting("mockup"), {:submit, "mockup", :standard}},
+      {submitting(described(), "spec"), {:submit, "spec", {:base_view, "document"}}}
+    ]
+  end
+
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
   defp calls do
     receive do
@@ -259,6 +277,30 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
   end
 
+  describe "read/2 of a template's submit" do
+    test "refuses a submit that names no structured type of the template", ctx do
+      for {files, refusal} <- refused_submits() do
+        main_at!(files)
+        assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, {:types, [refusal]}}
+      end
+
+      assert ApiaryWeb.HarnessUpdateComponents.reason_words(
+               {:types, [{:submit, "spec", {:base_view, "document"}}]},
+               nil,
+               nil
+             ) ==
+               "Correct the process.yaml of the harness, then press Update from harness again: " <>
+                 "set submit.type to a type whose base_view is structured, not document."
+    end
+
+    test "a harness repository refuses it as a template that is not readable", ctx do
+      repository_harness!(ctx.workspace, "main", files: submitting("mockup"))
+
+      assert HarnessUpdate.read(ctx.scope, ctx.workspace) ==
+               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
+    end
+  end
+
   describe "save/4" do
     test "saves the template as the current version, with its types and its commit", ctx do
       commit = main_at!(described())
@@ -268,6 +310,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                HarnessUpdate.save(ctx.scope, ctx.workspace, update)
 
       assert version.template["commit"] == commit
+      refute Map.has_key?(version.template, "submit")
       assert version.author_id == ctx.scope.user.id
       assert Processes.stage(version, @shape)["description"] == "Plan it."
       assert Processes.harness_template(version)["commit"] == commit
@@ -278,6 +321,25 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                  from e in Entry,
                    where: e.workspace_id == ^ctx.workspace.id and e.action == "process.edit"
                )
+    end
+
+    test "keeps the template's submit in a trial and in the version it saves", ctx do
+      commit = main_at!(submitting("submission"))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.template["submit"] == submit("submission")
+
+      assert {:ok, %Version{status: :trial} = trial} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
+
+      assert trial.template["submit"] == submit("submission")
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert {:ok, %Version{status: :current} = version} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert %{"commit" => ^commit, "submit" => %{"type" => "submission"}} = version.template
+      assert Processes.harness_template(Repo.reload!(version))["submit"] == submit("submission")
     end
 
     test "shows a hidden standard type the template lists, with an audit entry", ctx do
@@ -297,8 +359,8 @@ defmodule Apiary.Processes.HarnessUpdateTest do
         )
 
       assert Enum.sort(entries) == [
-               {"create", "branch"},
                {"create", "spec"},
+               {"create", "submission"},
                {"hide", "mockup"},
                {"show", "mockup"}
              ]
@@ -492,6 +554,9 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
       assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
                {:ok, ["explore-a-ticket", "plan-a-ticket"]}
+
+      assert Stacks.Sources.chosen_declared(ctx.scope, ctx.workspace) ==
+               {:ok, %{"explore-a-ticket" => :read, "plan-a-ticket" => :read}}
     end
 
     test "a pinned harness has no commit in use: its runs compose the pin", ctx do
@@ -884,6 +949,35 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert {:error, {:types, [_refusal | _more]}} = HarnessUpdate.follow(ctx.workspace)
       assert :ok = HarnessUpdate.follow_all()
       assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "a submit that names no structured type of the template saves nothing", ctx do
+      for {files, refusal} <- refused_submits() do
+        main_at!(files)
+        assert HarnessUpdate.follow(ctx.workspace) == {:error, {:types, [refusal]}}
+        assert :ok = HarnessUpdate.follow_all()
+        assert length(versions(ctx.workspace)) == 1
+      end
+    end
+
+    test "a harness repository's submit that names no structured type saves nothing", ctx do
+      repository = repository_harness!(ctx.workspace, "main")
+      PublicGitServer.commit!(repository.dir, submitting("mockup"))
+
+      assert HarnessUpdate.follow(ctx.workspace) ==
+               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
+
+      assert length(versions(ctx.workspace)) == 1
+    end
+
+    test "the refresh keeps the template's submit in the version it saves", ctx do
+      commit = main_at!(submitting("submission"))
+
+      assert {:ok, %Version{number: 2, author_id: nil} = version} =
+               HarnessUpdate.follow(ctx.workspace)
+
+      assert %{"commit" => ^commit, "submit" => %{"send" => "after_gate"}} = version.template
+      assert version.template["submit"] == submit("submission")
     end
 
     test "a machine type key the instance does not have is saved as the file has it", ctx do

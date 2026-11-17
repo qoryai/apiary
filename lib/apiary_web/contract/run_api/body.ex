@@ -5,12 +5,14 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # over, each held to its size before it is decoded.
   #
   # - `push/1`: `{"type", "name"?, "note"?, "files": [{"filename", "content_type",
-  #   "content_base64"}]}`, at most `max_bytes(:push)` bytes. The file contents stay
-  #   base64 here; `decode_files/1` decodes them once the type's limits have been checked
-  #   against their decoded sizes (`decoded_size/1`).
-  # - `verdict/1`: `{"verdict", "points"?}`, at most `max_bytes(:verdict)` bytes. The
-  #   points pass as they are: the schema of the type `verdict` checks them
-  #   (`priv/schemas/artifacts/verdict.schema.json`).
+  #   "content_base64"}], "withdraw"?}`, at most `max_bytes(:push)` bytes. The file
+  #   contents stay base64 here; `decode_files/1` decodes them once the type's limits have
+  #   been checked against their decoded sizes (`decoded_size/1`). With `withdraw` true,
+  #   `files` may be absent, null or empty, which reads as no files; files sent with it are
+  #   read as without it, and the caller refuses them.
+  # - `verdict/1`: `{"verdict", "points"?, "track"?}`, at most `max_bytes(:verdict)` bytes.
+  #   The points and the track pass as they are: the schema of the type `verdict` checks
+  #   them (`priv/schemas/artifacts/verdict.schema.json`).
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -44,33 +46,45 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   def verdicts, do: @verdicts
 
   @spec push(binary) ::
-          {:ok, %{type: String.t(), name: String.t(), note: String.t() | nil, files: [map]}}
+          {:ok,
+           %{
+             type: String.t(),
+             name: String.t(),
+             note: String.t() | nil,
+             files: [map],
+             withdraw: boolean
+           }}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def push(raw_body) when byte_size(raw_body) > @push_max_bytes, do: {:error, :too_large}
 
   def push(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(type name note files)),
+         :ok <- members(body, ~w(type name note files withdraw)),
          {:ok, type} <- required(body, "type", &name?/1),
          {:ok, name} <- optional(body, "name", &name?/1, "main"),
          {:ok, note} <- optional(body, "note", &note?/1, nil),
-         {:ok, files} <- files(body["files"]) do
-      {:ok, %{type: type, name: name, note: note, files: files}}
+         {:ok, withdraw} <- optional(body, "withdraw", &is_boolean/1, false),
+         {:ok, files} <- push_files(body["files"], withdraw) do
+      {:ok, %{type: type, name: name, note: note, files: files, withdraw: withdraw}}
     end
   end
 
+  # A withdrawal's files: none, as `files` absent, null or empty.
+  defp push_files(files, true) when files in [nil, []], do: {:ok, []}
+  defp push_files(files, _withdraw), do: files(files)
+
   @spec verdict(binary) ::
-          {:ok, %{verdict: String.t(), points: term}}
+          {:ok, %{verdict: String.t(), points: term, track: term}}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def verdict(raw_body) when byte_size(raw_body) > @verdict_max_bytes, do: {:error, :too_large}
 
   def verdict(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(verdict points)),
+         :ok <- members(body, ~w(verdict points track)),
          {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)) do
-      {:ok, %{verdict: verdict, points: Map.get(body, "points")}}
+      {:ok, %{verdict: verdict, points: Map.get(body, "points"), track: Map.get(body, "track")}}
     end
   end
 

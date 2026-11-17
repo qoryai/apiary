@@ -212,14 +212,15 @@ defmodule Apiary.Artifacts.FormatTest do
 
   test "a standard type's text bounds count code points, not graphemes", context do
     # 501 letters, each with a combining accent: 1002 code points, 501 graphemes.
-    title = String.duplicate("e\u0301", 501)
-    change = %{"url" => "https://forge.example.com/acme/shop/pull/4", "title" => title}
+    point = %{"text" => String.duplicate("e\u0301", 501), "action" => "run_again"}
+    verdict = %{"verdict" => "changes-requested", "points" => [point]}
 
-    assert {:error, {:schema, %{path: "#/title"}}} =
-             check(context, "change", "a", Jason.encode!(change))
+    assert {:error, {:schema, %{path: "#/points/0/text"}}} =
+             check(context, "verdict", "a", Jason.encode!(verdict))
 
-    change = %{change | "title" => String.duplicate("e\u0301", 250)}
-    assert {:ok, _type} = check(context, "change", "a", Jason.encode!(change))
+    point = %{point | "text" => String.duplicate("e\u0301", 250)}
+    verdict = %{verdict | "points" => [point]}
+    assert {:ok, _type} = check(context, "verdict", "a", Jason.encode!(verdict))
   end
 
   describe "the questions format" do

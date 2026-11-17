@@ -1134,8 +1134,10 @@ defmodule Apiary.Adapters do
   # stores the domains its description lists, nil for none
   # (`Apiary.Nodes.Node.domains_changeset/2`); a start that narrows them leaves every
   # collection assigned as it was. Each start also stores its description's title, nil for
-  # one that fails its check (`Apiary.Nodes.Node.title_changeset/2`). They are no part of
-  # the trail's entry. A start that changes `items` writes the feed's `linked` or
+  # one that fails its check (`Apiary.Nodes.Node.title_changeset/2`), and the harness module
+  # with its forge's submit program, `submit_module`, nil for none, so a start without one
+  # clears it (`Apiary.Nodes.Node.submit_module_changeset/2`). They are no part of the
+  # trail's entry. A start that changes `items` writes the feed's `linked` or
   # `unlinked` entry for each live collection whose link that changes, in the same
   # transaction (`Apiary.Adapters.Collections.relink_adapter/2`), before the first
   # declaration's `sync` entry, so that the feed counter is taken after the collections,
@@ -1175,6 +1177,7 @@ defmodule Apiary.Adapters do
                sync_sends_changes: declaration.sends_changes
              })
              |> Node.source_role_changeset(declaration.description)
+             |> Node.submit_module_changeset(Map.get(declaration, :submit_module))
              |> Node.domains_changeset(declaration.description)
              |> Node.title_changeset(declaration.description)
              |> Repo.update(),

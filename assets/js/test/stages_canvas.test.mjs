@@ -159,6 +159,75 @@ test("a card draws its description under the name, as text with its line breaks,
   assert.equal(byKey(drawn({...data, description: ""}), "description"), undefined)
 })
 
+test("a card draws a stage's condition and the tracks its gate offers as text, and none when it has none", () => {
+  const plain = stages(view)[1].data
+  assert.equal(byKey(drawn(plain), "condition"), undefined)
+  assert.equal(drawn(plain).children.some(child => child?.props?.key === "o"), false)
+
+  const tracked = {...plain, condition: "Skipped on <b>Fast track</b>", offers: "Offers: Standard, Fast track"}
+  const card = drawn(tracked)
+  const condition = byKey(card, "condition")
+  assert.equal(card.children.indexOf(condition), card.children.indexOf(byKey(card, "name")) + 1)
+  assert.deepEqual(condition.children, ["Skipped on <b>Fast track</b>"])
+
+  const gate = byKey(card, "gate")
+  assert.deepEqual(
+    gate.children.map(child => child.children[0]),
+    [tracked.gate, "Offers: Standard, Fast track"],
+  )
+})
+
+test("a workflow and a loop draw their condition under them, and the layout keeps it as text", () => {
+  const conditioned = {
+    ...view,
+    stages: [
+      {
+        ...view.stages[1],
+        condition: "Runs on Fast track.",
+        offers: "Offers: A, B",
+        sequence: [
+          {workflow: "make", condition: "Runs on Fast track."},
+          {
+            loop: "at most 2 rounds",
+            workflows: ["a", "b"],
+            conditions: ["Runs on Fast track.", null],
+            condition: "Runs on Standard only.",
+          },
+          {workflow: "plain"},
+        ],
+      },
+    ],
+  }
+  const data = stages(conditioned)[0].data
+  assert.equal(data.condition, "Runs on Fast track.")
+  assert.equal(data.offers, "Offers: A, B")
+  assert.equal(data.sequence[0].condition, "Runs on Fast track.")
+  assert.equal(data.sequence[1].condition, "Runs on Standard only.")
+  assert.deepEqual(data.sequence[1].conditions, ["Runs on Fast track.", ""])
+  assert.equal("condition" in data.sequence[2], false)
+  assert.equal("conditions" in data.sequence[2], false)
+
+  const card = drawn(data)
+  const group = card.children.find(child => child?.props?.key === "s0")
+  assert.equal(group.children.length, 2)
+  const loop = card.children.find(child => child?.props?.key === "s1")
+  assert.deepEqual(loop.children.at(-1).children, ["Runs on Standard only."])
+  const inner = loop.children.find(child => child?.props?.key === "w0")
+  assert.equal(inner.type, "div")
+  assert.deepEqual(inner.children.at(-1).children, ["Runs on Fast track."])
+  assert.equal(loop.children.find(child => child?.props?.key === "w1").type, "p")
+
+  // The estimate of a card not measured yet: a line of condition adds 20 px and the 2 px gap
+  // of its group, except the stage's own, which is a row of the card (8 px gap, 20 px line).
+  const bare = {
+    ...data,
+    condition: "",
+    offers: "",
+    sequence: [{workflow: "make"}, {loop: "x", workflows: ["a", "b"]}, {workflow: "plain"}],
+  }
+  assert.equal(estimateHeight(data) - estimateHeight(bare), 28 + 22 + 22 + 22 + 22)
+})
+
 test("each workflow's mark reaches the card as text, and a card with none has no marks", () => {
   const marked = {
     ...view,

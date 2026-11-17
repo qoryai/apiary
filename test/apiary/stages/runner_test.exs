@@ -76,8 +76,8 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :at_gate, actions: []} = Runner.step(stage([]), nil, :enter)
     end
 
-    test "a stage with no workflow and no gate passes through" do
-      assert %{state: :done, actions: [:advance]} =
+    test "a stage with no workflow and no gate records its approval and passes through" do
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(stage([], gate: %{"kind" => "none"}), nil, :enter)
     end
   end
@@ -107,7 +107,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :at_gate, actions: []} =
                Runner.step(seq, pos(0, nil, 1), :version_added, %{failed_checks: ["mockup"]})
 
-      assert %{state: :done, position: pos(0, nil, 1), actions: [:advance]} ==
+      assert %{state: :done, position: pos(0, nil, 1), actions: [:approve, :advance]} ==
                Runner.step(seq, pos(0, nil, 1), :version_added, %{})
     end
 
@@ -157,12 +157,12 @@ defmodule Apiary.Stages.RunnerTest do
       # One point for each failed check.
       assert %{state: :escalated, actions: [{:escalate, :check_failed, points}]} =
                Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
-                 failed_checks: ["proposal", "change"]
+                 failed_checks: ["proposal", "submission"]
                })
 
       assert points == [
                again("No proposal was stored in this stage."),
-               again("No change was stored in this stage.")
+               again("No submission was stored in this stage.")
              ]
     end
   end
@@ -196,7 +196,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a run with no verdict escalates before the checks read a failed output" do
       outcome =
         Runner.step(stage([wf("a")]), pos(0, nil, 1), {:run, {:verdict, nil, nil}}, %{
-          failed_checks: ["change"]
+          failed_checks: ["submission"]
         })
 
       assert outcome.actions == [{:escalate, :run_stopped, [@no_verdict]}]
@@ -285,7 +285,7 @@ defmodule Apiary.Stages.RunnerTest do
 
       outcome =
         Runner.step(seq, pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
-          failed_checks: ["change"]
+          failed_checks: ["submission"]
         })
 
       assert %{state: :escalated, position: %{entry: 2}, actions: [{:escalate, :check_failed, _}]} =
@@ -315,6 +315,137 @@ defmodule Apiary.Stages.RunnerTest do
         assert %{state: :waiting_answers, actions: []} =
                  Runner.step(build(), pos(0, nil, 1), {:run, {:questions, "Which page?", none}})
       end
+    end
+  end
+
+  describe "a first attempt" do
+    defp attempt,
+      do: stage([wf("small-change", %{"first_attempt" => true}), wf("plan"), wf("check")])
+
+    defp first_attempt_skip(workflow, entry, loop_entry \\ nil, cause \\ "small-change"),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: nil,
+           track: nil,
+           negated: false,
+           reason: "first_attempt_passed",
+           cause_entry: cause,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: 1
+         }}
+
+    test "passed ends the sequence: the rest is passed over and the gate follows" do
+      assert %{
+               state: :at_gate,
+               position: %{entry: 3, loop_entry: nil},
+               actions: [skip_plan, skip_check]
+             } = Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skip_plan == first_attempt_skip("plan", 1)
+      assert skip_check == first_attempt_skip("check", 2)
+    end
+
+    test "passed writes a skip for each workflow of a later loop, and names the entry by its name" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true, "name" => "Quick fix"}),
+          loop([wf("review"), wf("fix")])
+        ])
+
+      assert %{state: :at_gate, actions: skips} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert skips == [
+               first_attempt_skip("review", 1, 0, "Quick fix"),
+               first_attempt_skip("fix", 1, 1, "Quick fix")
+             ]
+    end
+
+    test "no skip for an entry before the first attempt, or when it does not pass" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert %{actions: [{:skip, %{workflow: "c", entry: 2}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+
+      assert %{actions: [{:queue, %{workflow: "c"}}]} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :changes_requested, nil}})
+    end
+
+    test "passed goes to a gate none's approval and advance" do
+      stage = %{attempt() | "gate" => %{"kind" => "none"}}
+
+      assert %{state: :done, actions: [{:skip, _}, {:skip, _}, :approve, :advance]} =
+               Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "passed runs the Exists checks before the gate" do
+      assert %{
+               state: :escalated,
+               actions: [{:skip, _}, {:skip, _}, {:escalate, :check_failed, _}]
+             } =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+                 failed_checks: ["submission"]
+               })
+    end
+
+    test "a failed check after a passed first attempt escalates check_failed, with no loop restart" do
+      stage =
+        stage([
+          wf("small-change", %{"first_attempt" => true}),
+          loop([wf("review"), wf("fix")])
+        ])
+        |> Map.put("outputs", [%{"type" => "submission", "required" => true}])
+
+      outcome =
+        Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          failed_checks: ["submission"]
+        })
+
+      assert %{state: :escalated, position: %{entry: 2, loop_entry: nil}} = outcome
+
+      assert [
+               {:skip, %{workflow: "review"}},
+               {:skip, %{workflow: "fix"}},
+               {:escalate, :check_failed, [_point]}
+             ] = outcome.actions
+
+      refute Enum.any?(outcome.actions, &match?({:queue, _}, &1))
+      refute Enum.any?(outcome.actions, &match?({:checks_failed, _, _}, &1))
+    end
+
+    test "changes-requested goes on with the sequence" do
+      assert queued(
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :changes_requested, nil}})
+             ) ==
+               {"plan", 1, nil, 1}
+    end
+
+    test "escalate escalates and a run with no verdict escalates run_stopped" do
+      assert %{actions: [{:escalate, :escalate, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, :escalate, nil}})
+
+      assert %{actions: [{:escalate, :run_stopped, _points}]} =
+               Runner.step(attempt(), pos(0, nil, 1), {:run, {:verdict, nil, nil}})
+    end
+
+    test "an entry after a first attempt that passed is not a first attempt" do
+      stage = stage([wf("a"), wf("b", %{"first_attempt" => true}), wf("c")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
+
+      assert %{state: :at_gate} =
+               Runner.step(stage, pos(1, nil, 1), {:run, {:verdict, :passed, nil}})
+    end
+
+    test "first_attempt: false, or none, goes on" do
+      stage = stage([wf("a", %{"first_attempt" => false}), wf("b")])
+
+      assert queued(Runner.step(stage, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})) ==
+               {"b", 1, nil, 1}
     end
   end
 
@@ -433,7 +564,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a failure at the round limit escalates round_limit at the end" do
       outcome =
         Runner.step(build(), pos(1, 0, 3), {:run, {:verdict, :passed, nil}}, %{
-          failed_checks: ["demo-video", "change"]
+          failed_checks: ["demo-video", "submission"]
         })
 
       assert outcome.state == :escalated
@@ -445,7 +576,7 @@ defmodule Apiary.Stages.RunnerTest do
                 [
                   again("3 of 3 rounds ran."),
                   again("No demo-video was stored in this stage."),
-                  again("No change was stored in this stage.")
+                  again("No submission was stored in this stage.")
                 ]}
              ]
     end
@@ -460,13 +591,13 @@ defmodule Apiary.Stages.RunnerTest do
       assert queued(%{outcome | actions: queue}) == {"a", 0, 0, 2}
     end
 
-    test "passing checks go to a person gate, or pass on with gate none" do
+    test "passing checks go to a person gate, or record the approval and pass on with gate none" do
       assert %{state: :at_gate} =
                Runner.step(build(), pos(1, 0, 1), {:run, {:verdict, :passed, nil}})
 
       seq = stage([wf("a")], gate: %{"kind" => "none"})
 
-      assert %{state: :done, actions: [:advance]} =
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}})
     end
   end
@@ -521,17 +652,17 @@ defmodule Apiary.Stages.RunnerTest do
     test "accept of a stopped run at the last entry goes to the gate, with no checks" do
       assert %{state: :at_gate, position: %{entry: 1}} =
                Runner.step(stage([wf("a")]), pos(0, nil, 1), {:accept, :run_stopped}, %{
-                 failed_checks: ["change"]
+                 failed_checks: ["submission"]
                })
     end
 
-    test "accept of a stopped run at the last entry passes a gate none on, with no checks" do
-      assert %{state: :done, actions: [:advance]} =
+    test "accept of a stopped run at the last entry approves a gate none and passes on, with no checks" do
+      assert %{state: :done, actions: [:approve, :advance]} =
                Runner.step(
                  stage([wf("a")], gate: %{"kind" => "none"}),
                  pos(0, nil, 1),
                  {:accept, :run_stopped},
-                 %{failed_checks: ["change"]}
+                 %{failed_checks: ["submission"]}
                )
     end
 
@@ -570,6 +701,439 @@ defmodule Apiary.Stages.RunnerTest do
         })
 
       assert outcome.state == :waiting_workflow
+    end
+  end
+
+  describe "the when key (A-16)" do
+    @demos %{"when" => %{"input" => "demo-scenarios"}}
+
+    # Verify: capture-demos only with demo scenarios, then verify-a-ticket.
+    defp verify(gate \\ @person),
+      do: stage([wf("capture-demos", @demos), wf("verify-a-ticket")], gate: gate)
+
+    defp skip(workflow, entry, loop_entry, round),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: "demo-scenarios",
+           track: nil,
+           negated: false,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: round
+         }}
+
+    test "with no demo scenarios, capture-demos starts no run and verify-a-ticket starts" do
+      outcome = Runner.step(verify(), nil, :enter, %{counted: []})
+
+      capture = skip("capture-demos", 0, nil, 1)
+      assert %{state: :running} = outcome
+      assert outcome.position == pos(1, nil, 1)
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] = outcome.actions
+
+      # With no facts on the input, the condition is not met either.
+      assert [{:skip, _spec}, {:queue, _run}] = Runner.step(verify(), nil, :enter).actions
+    end
+
+    test "with demo scenarios, capture-demos runs first" do
+      outcome = Runner.step(verify(), nil, :enter, %{counted: ["demo-scenarios"]})
+      assert queued(outcome) == {"capture-demos", 0, nil, 1}
+    end
+
+    test "the gate waits after verify-a-ticket passes with no film; with demo scenarios the missing film fails its check" do
+      film = Map.merge(%{"type" => "demo-video", "required" => true}, @demos)
+
+      # The failed checks as `Apiary.Stages` reads them: each required output, missing.
+      failed = fn counted ->
+        for o <- [film], Runner.required?(o, %{counted: counted}), do: o["type"]
+      end
+
+      assert failed.([]) == []
+
+      outcome =
+        Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          counted: [],
+          failed_checks: failed.([])
+        })
+
+      assert outcome == %{state: :at_gate, position: pos(2, nil, 1), actions: []}
+
+      assert failed.(["demo-scenarios"]) == ["demo-video"]
+
+      outcome =
+        Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+          counted: ["demo-scenarios"],
+          failed_checks: failed.(["demo-scenarios"])
+        })
+
+      assert %{state: :escalated, actions: [{:escalate, :check_failed, _points}]} = outcome
+    end
+
+    test "a stage does not wait for an undeclared workflow whose condition is not met" do
+      facts = %{counted: [], undeclared: ["capture-demos"]}
+      outcome = Runner.step(verify(), nil, :enter, facts)
+
+      assert %{state: :running} = outcome
+
+      assert [{:skip, %{workflow: "capture-demos"}}, {:queue, %{workflow: "verify-a-ticket"}}] =
+               outcome.actions
+
+      assert %{state: :running} = Runner.step(verify(), pos(0, nil, 1), :resume, facts)
+
+      # With demo scenarios, capture-demos runs, so the stage waits for it.
+      assert %{state: :waiting_workflow, actions: []} =
+               Runner.step(verify(), nil, :enter, %{facts | counted: ["demo-scenarios"]})
+
+      assert Runner.workflows(verify(), []) == ["verify-a-ticket"]
+
+      assert Runner.workflows(verify(), ["demo-scenarios"]) == [
+               "capture-demos",
+               "verify-a-ticket"
+             ]
+    end
+
+    test "a skip at the sequence's end goes to the gate; a gate none passes on" do
+      seq = stage([wf("verify-a-ticket"), wf("capture-demos", @demos)])
+
+      capture = skip("capture-demos", 1, nil, 1)
+
+      assert %{state: :at_gate, actions: [^capture]} =
+               Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{})
+
+      none = Map.put(seq, "gate", %{"kind" => "none"})
+
+      assert %{state: :done, actions: [^capture, :approve, :advance]} =
+               Runner.step(none, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, %{})
+    end
+
+    test "Request changes and Run another round pass over the entry again" do
+      capture = skip("capture-demos", 0, nil, 1)
+
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
+               Runner.step(verify(), pos(2, nil, 1), :request_changes, %{}).actions
+
+      assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
+               Runner.step(verify(), pos(2, nil, 1), {:another_round, :check_failed}, %{}).actions
+    end
+
+    test "in a loop, the ring goes on past a workflow whose condition is not met" do
+      seq = stage([loop([wf("implement"), wf("capture-demos", @demos)])])
+
+      outcome =
+        Runner.step(seq, pos(0, 0, 1), {:run, {:verdict, :changes_requested, nil}}, %{})
+
+      assert outcome.position == pos(0, 0, 2)
+
+      capture = skip("capture-demos", 0, 1, 1)
+      assert [^capture, {:queue, %{workflow: "implement"}}] = outcome.actions
+    end
+
+    test "a loop whose every workflow is passed over is passed over whole" do
+      seq = stage([loop([wf("capture-demos", @demos), wf("fix", @demos)]), wf("verify-a-ticket")])
+      outcome = Runner.step(seq, nil, :enter, %{})
+      capture = skip("capture-demos", 0, 0, 1)
+
+      assert outcome.position == pos(1, nil, 1)
+
+      assert [
+               ^capture,
+               {:skip, %{workflow: "fix", loop_entry: 1}},
+               {:queue, %{workflow: "verify-a-ticket"}}
+             ] = outcome.actions
+    end
+
+    test "a loop passed over whole is passed over once: a failed check uses no round and escalates check_failed" do
+      seq = stage([wf("verify-a-ticket"), loop([wf("capture-demos", @demos)], 2)])
+      capture = skip("capture-demos", 1, 0, 1)
+      facts = %{counted: [], failed_checks: ["explainer"]}
+
+      outcome = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, facts)
+
+      assert %{state: :escalated, position: %{round: 1}} = outcome
+      assert [^capture, {:escalate, :check_failed, _points}] = outcome.actions
+      refute Enum.any?(outcome.actions, &match?({:checks_failed, _round, _gaps}, &1))
+
+      # Run another round at the end runs the sequence from its start, as with no loop.
+      outcome = Runner.step(seq, pos(2, nil, 1), {:another_round, :check_failed}, facts)
+      assert [{:queue, %{workflow: "verify-a-ticket", round: 1}}] = outcome.actions
+
+      # With demo scenarios, the loop runs, and a failed check at the end starts its next
+      # round.
+      facts = %{facts | counted: ["demo-scenarios"]}
+      outcome = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, facts)
+      assert [{:queue, %{workflow: "capture-demos", round: 1}}] = outcome.actions
+
+      outcome = Runner.step(seq, pos(1, 0, 1), {:run, {:verdict, :passed, nil}}, facts)
+
+      assert [{:checks_failed, 2, _gaps}, {:queue, %{workflow: "capture-demos", round: 2}}] =
+               outcome.actions
+    end
+
+    # Enters `seq` with `facts`, then ends each queued run `passed`, at most `limit` times:
+    # the last outcome and the queued runs as `{workflow, round}`, in order.
+    defp drive(seq, facts, limit) do
+      first = Runner.step(seq, nil, :enter, facts)
+
+      {last, outcomes} =
+        Enum.reduce_while(1..limit, {first, [first]}, fn _step, {outcome, seen} ->
+          if outcome.state == :running do
+            next = Runner.step(seq, outcome.position, {:run, {:verdict, :passed, nil}}, facts)
+            {:cont, {next, [next | seen]}}
+          else
+            {:halt, {outcome, seen}}
+          end
+        end)
+
+      queued =
+        for %{actions: actions} <- Enum.reverse(outcomes),
+            {:queue, %{workflow: workflow, round: round}} <- actions,
+            do: {workflow, round}
+
+      {last, queued}
+    end
+
+    defp round_limit?(%{state: :escalated, actions: actions}),
+      do: Enum.any?(actions, &match?({:escalate, :round_limit, _points}, &1))
+
+    defp round_limit?(_outcome), do: false
+
+    @failing %{counted: [], failed_checks: ["explainer"]}
+
+    test "a loop passed over after a loop keeps that loop's round: a failing check ends in round_limit after round 3" do
+      seq = stage([loop([wf("implement")], 3), loop([wf("capture-demos", @demos)])])
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+      assert last.position.round == 3
+    end
+
+    test "a loop passed over before a loop: a failing check ends in round_limit after round 3" do
+      seq = stage([loop([wf("capture-demos", @demos)]), loop([wf("implement")], 3)])
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+    end
+
+    test "a loop passed over between two loops: the last loop's rounds count, then round_limit" do
+      seq =
+        stage([
+          loop([wf("plan")], 3),
+          loop([wf("capture-demos", @demos)]),
+          loop([wf("implement")], 3)
+        ])
+
+      {last, queued} = drive(seq, @failing, 10)
+
+      assert queued == [{"plan", 1}, {"implement", 1}, {"implement", 2}, {"implement", 3}]
+      assert round_limit?(last)
+    end
+
+    test "Request changes passes over a loop passed over whole, with no round counted" do
+      seq = stage([loop([wf("capture-demos", @demos)], 2), wf("verify-a-ticket")])
+      outcome = Runner.step(seq, pos(2, nil, 1), :request_changes, %{counted: []})
+
+      assert outcome.position == pos(1, nil, 1)
+
+      assert [
+               {:skip, %{workflow: "capture-demos", round: 1}},
+               {:queue, %{workflow: "verify-a-ticket"}}
+             ] =
+               outcome.actions
+    end
+
+    test "an output with a condition is required only while its input counts" do
+      output = %{"type" => "demo-video", "required" => true} |> Map.merge(@demos)
+
+      refute Runner.required?(output, %{counted: []})
+      assert Runner.required?(output, %{counted: ["demo-scenarios"]})
+      assert Runner.required?(%{"type" => "verification", "required" => true}, %{counted: []})
+
+      refute Runner.required?(%{"type" => "explainer", "required" => false}, %{
+               counted: ["demo-scenarios"]
+             })
+    end
+
+    test "condition_inputs/1 lists the input types of the stage's conditions once" do
+      seq =
+        stage([wf("capture-demos", @demos), loop([wf("fix", @demos)]), wf("verify-a-ticket")])
+        |> Map.put("outputs", [Map.merge(%{"type" => "demo-video", "required" => true}, @demos)])
+
+      assert Runner.condition_inputs(seq) == ["demo-scenarios"]
+      assert Runner.condition_inputs(build()) == []
+    end
+  end
+
+  describe "tracks and unless (A-23)" do
+    @fast %{"track" => "fast-track"}
+
+    defp track_skip(workflow, track, negated, entry, loop_entry \\ nil),
+      do:
+        {:skip,
+         %{
+           workflow: workflow,
+           input: nil,
+           track: track,
+           negated: negated,
+           entry: entry,
+           loop_entry: loop_entry,
+           round: 1
+         }}
+
+    test "unmet/2 is the reason: a when held back while its condition is not met, an unless while it is met" do
+      standard = %{track: "standard", counted: []}
+      fast = %{track: "fast-track", counted: ["spec"]}
+      none = %{counted: []}
+
+      when_fast = %{"when" => @fast}
+      unless_fast = %{"unless" => @fast}
+
+      assert Runner.unmet(when_fast, standard) == %{
+               kind: :track,
+               value: "fast-track",
+               negated: false
+             }
+
+      assert Runner.unmet(when_fast, none) == %{kind: :track, value: "fast-track", negated: false}
+      assert Runner.unmet(when_fast, fast) == nil
+
+      assert Runner.unmet(unless_fast, fast) == %{
+               kind: :track,
+               value: "fast-track",
+               negated: true
+             }
+
+      assert Runner.unmet(unless_fast, standard) == nil
+      assert Runner.unmet(unless_fast, none) == nil
+
+      assert Runner.unmet(%{"unless" => %{"input" => "spec"}}, fast) ==
+               %{kind: :input, value: "spec", negated: true}
+
+      assert Runner.unmet(%{"when" => %{"input" => "spec"}}, standard) ==
+               %{kind: :input, value: "spec", negated: false}
+
+      assert Runner.unmet(%{"workflow" => "x"}, fast) == nil
+    end
+
+    test "a stage with a condition that holds it back is passed over when it is entered, before it waits" do
+      shape = stage([wf("write-specs")]) |> Map.put("when", %{"track" => "standard"})
+      facts = %{track: "fast-track", missing_inputs: ["proposal"], undeclared: ["write-specs"]}
+
+      outcome = Runner.step(shape, nil, :enter, facts)
+
+      assert %{state: :done, actions: [{:skip_stage, spec}, :advance]} = outcome
+      assert spec == %{input: nil, track: "standard", negated: false}
+
+      # With the condition met, it waits as before.
+      assert %{state: :waiting_inputs, actions: []} =
+               Runner.step(shape, nil, :enter, %{facts | track: "standard"})
+    end
+
+    test "an unless on a stage passes it over while its condition is met" do
+      shape = stage([wf("write-specs")]) |> Map.put("unless", @fast)
+
+      assert %{actions: [{:skip_stage, %{track: "fast-track", negated: true}}, :advance]} =
+               Runner.step(shape, nil, :enter, %{track: "fast-track"})
+
+      assert %{actions: [{:queue, %{workflow: "write-specs"}}]} =
+               Runner.step(shape, nil, :enter, %{track: "standard"})
+    end
+
+    test "a person's move runs the stage whatever its condition (forced)" do
+      shape = stage([wf("write-specs")]) |> Map.put("when", %{"track" => "standard"})
+
+      assert %{state: :running, actions: [{:queue, %{workflow: "write-specs"}}]} =
+               Runner.step(shape, nil, :enter, %{track: "fast-track", forced: true})
+    end
+
+    test "an entry with a track condition is passed over, and the next entry starts" do
+      seq = stage([wf("write-specs", %{"when" => @fast}), wf("review")])
+      outcome = Runner.step(seq, nil, :enter, %{track: "standard"})
+
+      assert outcome.position == pos(1, nil, 1)
+      assert [skip, {:queue, %{workflow: "review"}}] = outcome.actions
+      assert skip == track_skip("write-specs", "fast-track", false, 0)
+
+      assert [{:queue, %{workflow: "write-specs"}}] =
+               Runner.step(seq, nil, :enter, %{track: "fast-track"}).actions
+
+      outcome =
+        Runner.step(stage([wf("a", %{"unless" => @fast}), wf("b")]), nil, :enter, %{
+          track: "fast-track"
+        })
+
+      unless_skip = track_skip("a", "fast-track", true, 0)
+
+      assert [^unless_skip, {:queue, %{workflow: "b"}}] =
+               outcome.actions
+    end
+
+    test "a loop with a condition that holds it back is passed over whole, each entry with the reason" do
+      seq =
+        stage([
+          Map.put(loop([wf("fix"), wf("check")], 2), "unless", @fast),
+          wf("verify")
+        ])
+
+      outcome = Runner.step(seq, nil, :enter, %{track: "fast-track"})
+
+      assert [
+               {:skip, %{workflow: "fix", loop_entry: 0, track: "fast-track", negated: true}},
+               {:skip, %{workflow: "check", loop_entry: 1, track: "fast-track", negated: true}},
+               {:queue, %{workflow: "verify"}}
+             ] = outcome.actions
+
+      assert [{:queue, %{workflow: "fix", loop_entry: 0}}] =
+               Runner.step(seq, nil, :enter, %{track: "standard"}).actions
+    end
+
+    test "a loop passed over by its condition is not run again by Request changes" do
+      seq = stage([Map.put(loop([wf("fix")], 2), "when", @fast), wf("verify")])
+      outcome = Runner.step(seq, pos(1, nil, 1), :request_changes, %{track: "standard"})
+
+      assert outcome.position == pos(1, nil, 1)
+      assert [{:skip, %{workflow: "fix"}}, {:queue, %{workflow: "verify"}}] = outcome.actions
+    end
+
+    test "a stage does not wait for an undeclared workflow that a track holds back" do
+      seq = stage([wf("write-specs", %{"when" => @fast}), wf("review")])
+
+      assert %{state: :running} =
+               Runner.step(seq, nil, :enter, %{track: "standard", undeclared: ["write-specs"]})
+
+      assert %{state: :waiting_workflow} =
+               Runner.step(seq, nil, :enter, %{track: "fast-track", undeclared: ["write-specs"]})
+
+      assert Runner.workflows(seq, [], "standard") == ["review"]
+      assert Runner.workflows(seq, [], "fast-track") == ["write-specs", "review"]
+    end
+
+    test "an input is waited for only while its condition does not hold it back" do
+      required = %{"type" => "spec", "required" => true}
+      optional = %{"type" => "spec", "required" => false}
+      held = Map.put(required, "when", %{"track" => "standard"})
+      unless_fast = Map.put(required, "unless", @fast)
+
+      assert Runner.input_required?(required, %{})
+      refute Runner.input_required?(optional, %{})
+      assert Runner.input_required?(held, %{track: "standard"})
+      refute Runner.input_required?(held, %{track: "fast-track"})
+      refute Runner.input_required?(unless_fast, %{track: "fast-track"})
+      assert Runner.input_required?(unless_fast, %{track: "standard"})
+    end
+
+    test "condition_inputs/1 lists the input types of a stage, a loop and an input as well" do
+      seq =
+        stage([
+          Map.put(loop([wf("fix")]), "unless", %{"input" => "a"}),
+          wf("b", %{"when" => %{"input" => "b"}})
+        ])
+        |> Map.put("when", %{"input" => "c"})
+        |> Map.put("inputs", [%{"type" => "d", "required" => true, "unless" => %{"input" => "d"}}])
+
+      assert Enum.sort(Runner.condition_inputs(seq)) == ["a", "b", "c", "d"]
     end
   end
 
@@ -638,6 +1202,40 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.limits(seq, pos(1, 0, 2), nil) == %{time_limit: nil, access: :read}
       assert Runner.limits(seq, pos(1, 1, 2), nil) == %{time_limit: nil, access: nil}
       assert Runner.limits(seq, pos(2, nil, 2), nil) == nil
+    end
+
+    test "limits/3 lowers to write-no-push for an entry of that level, and to read below it" do
+      seq = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :write_no_push
+
+      assert Runner.limits(seq, pos(0, nil, 1), nil).access == :write_no_push
+      assert Runner.limits(seq, pos(0, nil, 1), %{time_limit: nil, access: :read}).access == :read
+
+      # An entry value the schema does not take counts as read.
+      other = put_in(build(), ["sequence"], [wf("verify", %{"access" => "push"})])
+
+      assert Runner.limits(other, pos(0, nil, 1), %{time_limit: nil, access: :write}).access ==
+               :read
+
+      [{:queue, spec}] =
+        Runner.step(seq, nil, :enter, %{
+          declarations: %{"verify" => %{time_limit: nil, access: :write}}
+        }).actions
+
+      assert spec.access == :write_no_push
+    end
+
+    test "limits/3 takes a declared write-no-push level: an entry with none keeps it, read lowers it" do
+      none = put_in(build(), ["sequence"], [wf("verify", %{})])
+      read = put_in(build(), ["sequence"], [wf("verify", %{"access" => "read"})])
+      same = put_in(build(), ["sequence"], [wf("verify", %{"access" => "write-no-push"})])
+      declared = %{time_limit: nil, access: :write_no_push}
+
+      assert Runner.limits(none, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(same, pos(0, nil, 1), declared).access == :write_no_push
+      assert Runner.limits(read, pos(0, nil, 1), declared).access == :read
     end
 
     test "limits/4 reads for a stage's run whose position has another workflow or no entry" do

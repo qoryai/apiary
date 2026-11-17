@@ -8,7 +8,7 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   alias Apiary.Kinds.Bounds
 
   @path Path.expand("../../../priv/schemas/artifacts/verdict.schema.json", __DIR__)
-  @sha256 "2ee9bafb96882961037349ff9d85f7aa842f1e76204614cf9d9356d6c263f19a"
+  @sha256 "24c3e07ee336cd88edd8783cc1b3ffb4cb58a70d9c8ec0b3c409a55ce58f36dc"
 
   test "is the bytes of the verdict schema the hash pins" do
     bytes = File.read!(@path)
@@ -18,5 +18,33 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   test "limits a verdict to 20 points of at most 4 members each" do
     assert @path |> File.read!() |> Jason.decode!() |> Bounds.from_schema() ==
              [list: 20, members: 4]
+  end
+
+  describe "track" do
+    defp valid?(document) do
+      root = Apiary.Kinds.Schema.file!(["schemas", "artifacts", "verdict.schema.json"])
+      match?({:ok, _}, JSV.validate(document, root, cast: false))
+    end
+
+    test "is an id and a reason of one line, and nothing else" do
+      track = %{"id" => "small-change", "reason" => "One file changes."}
+      assert valid?(%{"verdict" => "passed", "track" => track})
+      assert valid?(%{"verdict" => "changes-requested", "track" => track})
+
+      for bad <- [
+            %{"id" => "small-change"},
+            %{"reason" => "One file changes."},
+            %{"id" => "Small", "reason" => "x"},
+            %{"id" => String.duplicate("a", 41), "reason" => "x"},
+            %{"id" => "a", "reason" => ""},
+            %{"id" => "a", "reason" => String.duplicate("x", 301)},
+            %{"id" => "a", "reason" => "two\nlines"},
+            %{"id" => "a", "reason" => "x", "more" => 1},
+            "a",
+            nil
+          ] do
+        refute valid?(%{"verdict" => "passed", "track" => bad})
+      end
+    end
   end
 end

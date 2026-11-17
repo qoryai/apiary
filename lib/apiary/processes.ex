@@ -49,6 +49,18 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A first attempt
+
+  A workflow entry outside a loop takes `first_attempt: true` (default false). When its run
+  ends `passed`, the rest of the stage's sequence is passed over and the stage goes on to
+  its output checks and its gate (the stage runner, lib/apiary/stages/runner.ex). Another
+  verdict acts as for any entry. A loop's body refuses the key (`:schema`), because `passed`
+  already leaves a loop.
+
+  An output takes `when` and `unless` like an input, with `{track: ID}` or `{input: T}`. It
+  is required only while no condition holds it back, so a stage whose required output is
+  held back goes on to its gate without it.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -94,8 +106,16 @@ defmodule Apiary.Processes do
   the document, `#/stages/1/name` for the name of the second stage), and why. `:too_large` for a document over the limits; `:schema` for one the
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
-  (names compared trimmed and without case); `:unchanged` for a save of the document of
-  the version it starts from.
+  (names compared trimmed and without case); `:condition_input` for a condition
+  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
+  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
+  with `ID` as `detail`; both refuse any condition on the first stage;
+  `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
+  `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
+  for a track id in a gate's `tracks` that the document's `tracks` do not declare;
+  `:gate_none_tracks` for tracks on a gate of kind `none`;
+  `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
 
@@ -110,6 +130,8 @@ defmodule Apiary.Processes do
            | :inputs_changed
            | :outputs_changed
            | :gate_changed
+           | :condition_changed
+           | :tracks_changed
            | :machine_changed, String.t() | nil, map}
 
   @typedoc "A finding of `placement_check/3`, with the stage's id."
@@ -125,7 +147,7 @@ defmodule Apiary.Processes do
   """
   @type declaration :: %{
           name: String.t(),
-          access: :read | :write | nil,
+          access: :read | :write_no_push | :write | nil,
           time_limit: String.t() | nil,
           reads: [String.t()] | nil
         }
@@ -259,8 +281,30 @@ defmodule Apiary.Processes do
   def qory_workflows(%{choice: :qory}, %Workspace{}), do: []
 
   @doc """
+  qory_workflow_levels/2 is the access level each workflow of `qory_workflows/2` declares
+  (Apiary.Harnesses.Reader.workflow_access/2), by name, at the same commit.
+  """
+  @spec qory_workflow_levels(%{choice: :qory, stack: String.t() | nil}, %Workspace{}) ::
+          %{String.t() => :read | :write_no_push | :write}
+  def qory_workflow_levels(%{choice: :qory, stack: stack} = chosen, %Workspace{} = workspace)
+      when is_binary(stack) do
+    commit =
+      case HarnessUpdate.in_use_commit(workspace, chosen) do
+        {:qory, commit} -> commit
+        _other -> Qory.chosen_commit(chosen)
+      end
+
+    Qory.workflow_levels(commit, stack)
+  end
+
+  def qory_workflow_levels(%{choice: :qory}, %Workspace{}), do: %{}
+
+  @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, every track id
+  once, each track a gate offers declared, the input of each condition an output of an earlier
+  stage, the track of each condition one that an earlier gate offers, and one condition on an item,
+  `when` or `unless`. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
@@ -273,7 +317,8 @@ defmodule Apiary.Processes do
       true ->
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
-            case duplicates(document["stages"]) do
+            case duplicates(document["stages"]) ++
+                   track_errors(document) ++ condition_errors(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -308,6 +353,112 @@ defmodule Apiary.Processes do
     |> elem(0)
     |> Enum.reverse()
   end
+
+  # The refusals of tracks: a track id declared twice (`:duplicate_track_id`), a gate that
+  # offers a track the document does not declare (`:gate_track`), and tracks on a gate of kind
+  # none (`:gate_none_tracks`).
+  defp track_errors(document) do
+    declared = for %{"id" => id} <- document["tracks"] || [], do: id
+
+    duplicates =
+      declared
+      |> Enum.with_index()
+      |> Enum.reduce({[], MapSet.new()}, fn {id, index}, {errors, seen} ->
+        errors =
+          if id in seen,
+            do: [%{path: "#/tracks/#{index}/id", error: :duplicate_track_id, detail: id} | errors],
+            else: errors
+
+        {errors, MapSet.put(seen, id)}
+      end)
+      |> elem(0)
+      |> Enum.reverse()
+
+    offered =
+      for {stage, index} <- Enum.with_index(document["stages"]),
+          {id, j} <- Enum.with_index(stage["gate"]["tracks"] || []),
+          id not in declared,
+          do: %{path: "#/stages/#{index}/gate/tracks/#{j}", error: :gate_track, detail: id}
+
+    none =
+      for {%{"gate" => %{"kind" => "none", "tracks" => [_ | _]}}, index} <-
+            Enum.with_index(document["stages"]),
+          do: %{path: "#/stages/#{index}/gate/tracks", error: :gate_none_tracks, detail: nil}
+
+    duplicates ++ offered ++ none
+  end
+
+  # The conditions that no earlier stage can meet, in the document's order: an `input` type
+  # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
+  # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
+  # input, an output, a workflow entry or a loop, those in a loop's body included. The first
+  # stage has no earlier stage, so each of its conditions is refused.
+  defp condition_errors(stages) do
+    stages
+    |> Enum.with_index()
+    |> Enum.flat_map_reduce({MapSet.new(), MapSet.new()}, fn {stage, index},
+                                                             {types, tracks} = earlier ->
+      at = "#/stages/#{index}"
+
+      entries =
+        stage["sequence"]
+        |> Enum.with_index()
+        |> Enum.flat_map(fn
+          {%{"loop" => %{"body" => body}} = loop, i} ->
+            [{loop, "#{at}/sequence/#{i}"}] ++
+              for {entry, j} <- Enum.with_index(body),
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+
+          {entry, i} ->
+            [{entry, "#{at}/sequence/#{i}"}]
+        end)
+
+      inputs =
+        for {input, k} <- Enum.with_index(stage["inputs"] || []),
+            do: {input, "#{at}/inputs/#{k}"}
+
+      outputs =
+        for {output, k} <- Enum.with_index(stage["outputs"] || []),
+            do: {output, "#{at}/outputs/#{k}"}
+
+      errors =
+        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
+            error <- item_errors(item, path, earlier),
+            do: error
+
+      made = for o <- stage["outputs"] || [], do: o["type"]
+      {errors, {Enum.into(made, types), Enum.into(stage["gate"]["tracks"] || [], tracks)}}
+    end)
+    |> elem(0)
+  end
+
+  # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
+  # item's place).
+  defp item_errors(item, path, earlier) do
+    both =
+      if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
+        do: [%{path: path, error: :condition_both, detail: nil}],
+        else: []
+
+    both ++
+      for key <- ["when", "unless"],
+          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          do: error
+  end
+
+  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
+    if type in types,
+      do: [],
+      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  end
+
+  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+    if track in tracks,
+      do: [],
+      else: [%{path: path <> "/track", error: :condition_track, detail: track}]
+  end
+
+  defp condition_error(_condition, _path, _earlier), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors
@@ -487,9 +638,22 @@ defmodule Apiary.Processes do
         "stack" => Workspace.qory_stack(workspace),
         "type" => template.type,
         "version" => newest.number
-      },
+      }
+      |> with_submit(template),
       []
     )
+  end
+
+  @doc false
+  # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
+  # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
+  # where it has one (`Apiary.Processes.Version`).
+  @spec with_submit(map, map) :: map
+  def with_submit(record, template) do
+    case Map.get(template, :submit) do
+      %{} = submit -> Map.put(record, "submit", submit)
+      nil -> record
+    end
   end
 
   @doc """
@@ -1103,18 +1267,21 @@ defmodule Apiary.Processes do
 
   @doc """
   diff/2 is what changed from `older` to `newer`, two versions or documents; `older` nil
-  for none, as before version 1. First a change of the document's `machine`, then, for
-  each stage of `newer` in its order, whether it was added, or renamed, moved, or had its
-  description, sequence, inputs, outputs or gate changed, then each stage `older` had and
-  `newer` does not, in `older`'s order. A stage is moved when its place among the stages
-  both have changed, beyond what another stage's move explains.
+  for none, as before version 1. First a change of the document's `machine`, then of its
+  `tracks`, then, for each stage of `newer` in its order, whether it was added, or renamed,
+  moved, or had its description, sequence, inputs, outputs, gate or condition changed, then
+  each stage `older` had and `newer` does not, in `older`'s order. A stage is moved when its
+  place among the stages both have changed, beyond what another stage's move explains.
 
   Each change is `{kind, stage_id, detail}`: `%{name, position}` for an added stage
   (position from 0), `%{name}` for a removed one, `%{from, to}` for the rest, the value
   before and after (a position for a move, the document's machine for
   `:machine_changed`, whose stage id is nil, and nil for a stage with no description). A
   document with no `machine` and one with `default` run on the same type: between them
-  there is no `:machine_changed`.
+  there is no `:machine_changed`. `:tracks_changed` (stage id nil) is a difference in the
+  document's `tracks`, none being the same as an empty list, and `:condition_changed` a
+  difference in the stage's own `when` and `unless` (a condition on an input, a loop or an
+  entry changes `:inputs_changed` or `:sequence_changed`).
   """
   @spec diff(Version.t() | document | nil, Version.t() | document) :: [change]
   def diff(%Version{document: older}, newer), do: diff(older, newer)
@@ -1151,7 +1318,12 @@ defmodule Apiary.Processes do
           stage["id"] not in new_ids,
           do: {:stage_removed, stage["id"], %{name: stage["name"]}}
 
-    machine ++ changed ++ removed
+    tracks =
+      if older != %{"stages" => []} and (older["tracks"] || []) != (newer["tracks"] || []),
+        do: [{:tracks_changed, nil, %{from: older["tracks"], to: newer["tracks"]}}],
+        else: []
+
+    machine ++ tracks ++ changed ++ removed
   end
 
   defp stage_changes(old, new, move) do
@@ -1165,10 +1337,21 @@ defmodule Apiary.Processes do
       field_change(:sequence_changed, id, old, new, "sequence"),
       field_change(:inputs_changed, id, old, new, "inputs"),
       field_change(:outputs_changed, id, old, new, "outputs"),
-      field_change(:gate_changed, id, old, new, "gate")
+      field_change(:gate_changed, id, old, new, "gate"),
+      condition_change(id, old, new)
     ]
     |> Enum.filter(& &1)
   end
+
+  # `:condition_changed` when the stage's own `when` or `unless` differs. A change of the
+  # condition of an input, a loop or an entry is part of `:inputs_changed` or
+  # `:sequence_changed`.
+  defp condition_change(id, old, new) do
+    {from, to} = {own_condition(old), own_condition(new)}
+    if from != to, do: {:condition_changed, id, %{from: from, to: to}}
+  end
+
+  defp own_condition(stage), do: Map.take(stage, ["when", "unless"])
 
   defp field_change(kind, id, old, new, field) do
     if Map.get(old, field, []) != Map.get(new, field, []),
@@ -1231,21 +1414,25 @@ defmodule Apiary.Processes do
   ## Workflows and types
 
   @doc """
-  record_declared/2 keeps `names` as the workflows the workspace's harness lists now: it
-  replaces the names the workspace kept, with the time of this call
-  (`declared_snapshot/1`). Call it with the names that
-  Apiary.Stacks.Sources.chosen_workflows/2 returns for the workspace's harness: its
-  choice, else the harness the organisation shares, else the Qory harness, whose names
-  are `qory_workflows/2`, with no read. The Workflows page calls it on open, Workspace
-  settings › Harness on open and after a harness choice is saved, and Check again on a
-  work item; a saved workflow does not change it. Each name is kept once, sorted, at
-  most 1,000. `:ok`.
+  record_declared/2 keeps `declared` as the workflows the workspace's harness lists now:
+  it replaces the workflows the workspace kept, with the time of this call
+  (`declared_snapshot/1`). `declared` is the names, or a map of each name to the access
+  level it declares, as Apiary.Stacks.Sources.chosen_declared/2 returns it for the
+  workspace's harness: its choice, else the harness the organisation shares, else the Qory
+  harness, whose workflows are `qory_workflows/2`, with no read. A name given with no
+  level declares `:read`. The Workflows page calls it on open, Workspace settings ›
+  Harness on open and after a harness choice is saved, and Check again on a work item; a
+  saved workflow does not change it. Each name is kept once, sorted, at most 1,000. `:ok`.
   """
-  @spec record_declared(%Workspace{}, [String.t()]) :: :ok
-  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, names)
-      when is_list(names) do
-    names =
-      names |> Enum.filter(&is_binary/1) |> Enum.uniq() |> Enum.sort() |> Enum.take(@max_declared)
+  @spec record_declared(%Workspace{}, [String.t()] | %{String.t() => atom}) :: :ok
+  def record_declared(%Workspace{id: id, organisation_id: organisation_id}, declared)
+      when is_list(declared) or is_map(declared) do
+    levels =
+      declared
+      |> declared_levels()
+      |> Enum.filter(fn {name, _level} -> is_binary(name) end)
+      |> Enum.sort()
+      |> Enum.take(@max_declared)
 
     {_one_or_none, _} =
       Repo.update_all(
@@ -1253,29 +1440,63 @@ defmodule Apiary.Processes do
           where: w.id == type(^id, :binary_id),
           where: w.organisation_id == type(^organisation_id, :binary_id)
         ),
-        set: [declared_workflows: names, declared_workflows_read_at: DateTime.utc_now()]
+        set: [
+          declared_workflows: Enum.uniq(Enum.map(levels, &elem(&1, 0))),
+          declared_access: Map.new(levels, fn {name, level} -> {name, level_text(level)} end),
+          declared_workflows_read_at: DateTime.utc_now()
+        ]
       )
 
     :ok
   end
 
+  defp declared_levels(names) when is_list(names), do: Enum.map(names, &{&1, :read})
+  defp declared_levels(levels) when is_map(levels), do: Map.to_list(levels)
+
+  defp level_text(:write), do: "write"
+  defp level_text(:write_no_push), do: "write-no-push"
+  defp level_text(_read), do: "read"
+
+  defp level_atom("write"), do: :write
+  defp level_atom("write-no-push"), do: :write_no_push
+  defp level_atom(_read), do: :read
+
   @doc """
-  declared_snapshot/1 is the workflow names the workspace kept at the last
-  `record_declared/2`: `%{names: names, read_at: time}`, or nil before the first. It
-  covers only the workspace's harness as Apiary.Stacks.Sources.chosen_workflows/2
-  finds it (the choice, else the harness the organisation shares, else the Qory
-  harness): not a harness file of a repository, and not the stack chosen for a target.
+  declared_snapshot/1 is the workflows the workspace kept at the last `record_declared/2`:
+  `%{names: names, access: levels, read_at: time}`, `levels` the access level each name
+  declares, or nil before the first. It covers only the workspace's harness as
+  Apiary.Stacks.Sources.chosen_declared/2 finds it (the choice, else the harness the
+  organisation shares, else the Qory harness): not a harness file of a repository, and not
+  the stack chosen for a target. A snapshot kept before the levels were kept has no level
+  for its names, and `access` is empty.
   """
-  @spec declared_snapshot(%Workspace{}) :: %{names: [String.t()], read_at: DateTime.t()} | nil
+  @spec declared_snapshot(%Workspace{}) ::
+          %{names: [String.t()], access: %{String.t() => atom}, read_at: DateTime.t()} | nil
   def declared_snapshot(%Workspace{id: id}) do
     Repo.one(
       from w in "workspaces",
         where: w.id == type(^id, :binary_id) and not is_nil(w.declared_workflows_read_at),
         select: %{
           names: w.declared_workflows,
+          access: w.declared_access,
           read_at: type(w.declared_workflows_read_at, :utc_datetime_usec)
         }
     )
+    |> case do
+      nil ->
+        nil
+
+      %{names: names, access: access} = snapshot ->
+        access = access || %{}
+
+        %{
+          snapshot
+          | access:
+              for name <- names, Map.has_key?(access, name), into: %{} do
+                {name, level_atom(access[name])}
+              end
+        }
+    end
   end
 
   @doc """
@@ -1292,6 +1513,33 @@ defmodule Apiary.Processes do
     |> declared_names(saved_workflows(workspace))
     |> Enum.uniq()
     |> Enum.sort()
+  end
+
+  @doc """
+  declared_access/1 is the access level each workflow of `declared_workflows/1` declares in
+  the workspace's harness, by name: for a workspace on the Qory harness, the levels of
+  `qory_workflow_levels/2`; for another harness, the levels of the workspace's snapshot
+  (`declared_snapshot/1`). A workflow with no level known, such as the workflow saved on
+  the Harness page, or a name of a snapshot kept before the levels were, has no key.
+  """
+  @spec declared_access(%Workspace{}) :: %{String.t() => :read | :write_no_push | :write}
+  def declared_access(%Workspace{} = workspace) do
+    known =
+      case Sources.chosen(workspace) do
+        %{choice: :qory} = qory -> qory_workflow_levels(qory, workspace)
+        _repository -> %{}
+      end
+
+    snapshot =
+      case declared_snapshot(workspace) do
+        %{access: access} -> access
+        nil -> %{}
+      end
+
+    for name <- declared_workflows(workspace),
+        level = Map.get(known, name) || Map.get(snapshot, name),
+        into: %{},
+        do: {name, level}
   end
 
   # Transition: the saved workflow is added by hand for a workspace with no snapshot or a

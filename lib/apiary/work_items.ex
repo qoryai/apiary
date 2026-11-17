@@ -266,11 +266,14 @@ defmodule Apiary.WorkItems do
   end
 
   @doc false
-  # confirm/3 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
-  # in (`Apiary.WorkItems.Moves`).
-  @spec confirm(Scope.t(), WorkItem.t(), pos_integer) ::
-          {:ok, WorkItem.t()} | {:error, Moves.step_refusal()}
-  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
+  # confirm/4 confirms the proposal of the latest run, `attempt`, of `work_item`'s take
+  # in (`Apiary.WorkItems.Moves`). With the workflow model, `track:` in `opts` is the id of
+  # the track the approval of Explore's gate chooses (`Apiary.Stages.approve/4`); with none,
+  # the gate's default. A track the gate does not offer is refused,
+  # `{:error, {:track_not_offered, track}}`, and nothing is confirmed.
+  @spec confirm(Scope.t(), WorkItem.t(), pos_integer, [{:track, String.t() | nil}]) ::
+          {:ok, WorkItem.t()} | {:error, Moves.step_refusal() | {:track_not_offered, String.t()}}
+  def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, opts \\ []) do
     # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
     # same transaction (`Apiary.Stages.confirmed/3`).
     if Apiary.Stages.on?() do
@@ -278,7 +281,11 @@ defmodule Apiary.WorkItems do
         with {:ok, confirmed} <- Moves.confirm(scope, work_item, attempt),
              explore = Apiary.Stages.confirmed_stage_id(confirmed, attempt),
              {:ok, _placed} <-
-               Apiary.Stages.confirmed(scope, confirmed, expect_stage: explore),
+               Apiary.Stages.confirmed(
+                 scope,
+                 confirmed,
+                 [expect_stage: explore] ++ Keyword.take(opts, [:track])
+               ),
              do: {:ok, Repo.get!(WorkItem, confirmed.id)}
       end)
     else

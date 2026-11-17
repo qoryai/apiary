@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/apiary/process/v1.schema.json",
   "title": "Process",
-  "description": "A workspace's process: its stages in order, and each stage's inputs, sequence of workflows, outputs and gate. Each save is a version. Fields this schema does not list are kept as they are.",
+  "description": "A workspace's process: its tracks, and its stages in order with each stage's inputs, sequence of workflows, outputs and gate. Each save is a version. Fields this schema does not list are kept as they are, except on a loop and on an input, which list every field they take.",
   "type": "object",
   "required": ["schema", "stages"],
   "properties": {
@@ -10,6 +10,12 @@
     "machine": {
       "description": "The machine type of every workflow entry that sets none: the workspace's default.",
       "$ref": "#/$defs/machine"
+    },
+    "tracks": {
+      "description": "Optional. The tracks a gate can offer, for example Standard and Fast track. A condition on a stage, a loop, a workflow entry or an input can test the track that a person chose at an earlier gate.",
+      "type": "array",
+      "maxItems": 10,
+      "items": {"$ref": "#/$defs/track"}
     },
     "stages": {
       "type": "array",
@@ -49,7 +55,28 @@
           "maxItems": 20,
           "items": {"$ref": "#/$defs/output"}
         },
-        "gate": {"$ref": "#/$defs/gate"}
+        "gate": {"$ref": "#/$defs/gate"},
+        "when": {
+          "description": "The stage runs only when its condition is met; otherwise the work item passes over it. Not on the first stage: no earlier stage exists to test.",
+          "$ref": "#/$defs/condition"
+        },
+        "unless": {
+          "description": "The stage is passed over when its condition is met.",
+          "$ref": "#/$defs/condition"
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {"$ref": "#/$defs/track_id"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 60, "pattern": "\\S"},
+        "description": {
+          "description": "Optional. A description of the track in plain text, at most 500 characters.",
+          "type": "string",
+          "maxLength": 500
+        }
       }
     },
     "workflow_entry": {
@@ -58,23 +85,50 @@
       "not": {"required": ["loop"]},
       "properties": {
         "workflow": {"$ref": "#/$defs/workflow_name"},
+        "name": {
+          "description": "Optional. A name for this entry in plain text, 1 to 60 characters. Pages show it under the entry.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "pattern": "\\S"
+        },
         "machine": {"$ref": "#/$defs/machine"},
+        "first_attempt": {
+          "description": "Optional, default false; not allowed in a loop. When the run of this entry ends passed, the rest of the stage's sequence is passed over, and the stage goes on to its output checks and its gate.",
+          "type": "boolean"
+        },
         "time_limit": {
           "description": "At most the time limit the stack declares for the workflow, as hours, minutes and seconds: 1h30m.",
           "type": "string",
           "pattern": "^(?=.)([0-9]{1,3}h)?([0-9]{1,4}m)?([0-9]{1,5}s)?$"
         },
         "access": {
-          "description": "Lowers the access level the stack declares.",
-          "const": "read"
+          "description": "Lowers the access level the stack declares: read, or write-no-push, the level of a workflow that writes in its checkout and has no push credential. Left out, the run has the stack's level.",
+          "enum": ["read", "write-no-push"]
+        },
+        "when": {
+          "description": "The entry runs only when its condition is met; otherwise no run starts for it. A loop whose every entry is passed over is passed over too.",
+          "$ref": "#/$defs/condition"
+        },
+        "unless": {
+          "description": "The entry is passed over when its condition is met.",
+          "$ref": "#/$defs/condition"
         }
       }
     },
     "loop_entry": {
       "type": "object",
       "required": ["loop"],
-      "not": {"required": ["workflow"]},
+      "additionalProperties": false,
       "properties": {
+        "when": {
+          "description": "The loop runs only when its condition is met; otherwise it is passed over, with every entry in it.",
+          "$ref": "#/$defs/condition"
+        },
+        "unless": {
+          "description": "The loop is passed over when its condition is met.",
+          "$ref": "#/$defs/condition"
+        },
         "loop": {
           "type": "object",
           "required": ["rounds", "body"],
@@ -85,7 +139,7 @@
               "type": "array",
               "minItems": 1,
               "maxItems": 10,
-              "items": {"$ref": "#/$defs/workflow_entry"}
+              "items": {"$ref": "#/$defs/workflow_entry", "properties": {"first_attempt": false}}
             }
           }
         }
@@ -94,9 +148,18 @@
     "input": {
       "type": "object",
       "required": ["type", "required"],
+      "additionalProperties": false,
       "properties": {
         "type": {"$ref": "#/$defs/artifact_type"},
-        "required": {"type": "boolean"}
+        "required": {"type": "boolean"},
+        "when": {
+          "description": "The stage waits for the input only when its condition is met.",
+          "$ref": "#/$defs/condition"
+        },
+        "unless": {
+          "description": "The stage does not wait for the input when its condition is met.",
+          "$ref": "#/$defs/condition"
+        }
       }
     },
     "output": {
@@ -105,6 +168,14 @@
       "properties": {
         "type": {"$ref": "#/$defs/artifact_type"},
         "required": {"type": "boolean"},
+        "when": {
+          "description": "The output is required only when its condition is met; otherwise the stage does not check it.",
+          "$ref": "#/$defs/condition"
+        },
+        "unless": {
+          "description": "The output is not required when its condition is met.",
+          "$ref": "#/$defs/condition"
+        },
         "check": {
           "description": "How the output is checked: it exists, the default, or an adapter reported an outcome for it. A reported check is stored and not checked in this version.",
           "oneOf": [
@@ -129,6 +200,13 @@
       "required": ["kind"],
       "properties": {
         "kind": {"enum": ["person", "none"]},
+        "tracks": {
+          "description": "Optional. The ids of the tracks the gate offers; the person who approves picks one. A gate of kind none offers none: a save with tracks on it is refused.",
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/track_id"}
+        },
         "approvers": {
           "oneOf": [
             {"const": "members"},
@@ -149,6 +227,30 @@
           ]
         }
       }
+    },
+    "condition": {
+      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
+      "oneOf": [{"$ref": "#/$defs/input_condition"}, {"$ref": "#/$defs/track_condition"}]
+    },
+    "input_condition": {
+      "description": "Met when the version of the type `input` that the stage reads has a file of more than 0 bytes. `input` is an output of an earlier stage.",
+      "type": "object",
+      "required": ["input"],
+      "additionalProperties": false,
+      "properties": {"input": {"$ref": "#/$defs/artifact_type"}}
+    },
+    "track_condition": {
+      "description": "Met when the track `track` is the one chosen at an earlier gate.",
+      "type": "object",
+      "required": ["track"],
+      "additionalProperties": false,
+      "properties": {"track": {"$ref": "#/$defs/track_id"}}
+    },
+    "track_id": {
+      "description": "One lower-case word, or lower-case words joined by hyphens: fast-track.",
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
     },
     "workflow_name": {
       "type": "string",

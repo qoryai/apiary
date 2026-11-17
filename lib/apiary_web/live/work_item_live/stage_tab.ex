@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.WorkItemLive.StageTab do
   # The work item page's stage tabs and what each one lists, from what the page already read,
   # with no further read. A stage has a tab where it runs a workflow and has a run or is
-  # the current stage, whatever its name. A tab's key is the stage's id, a stage keeps its id
+  # the current stage, whatever its name, and where the runner passed the stage over whole
+  # (`flow.stage_skips`). A tab's key is the stage's id, a stage keeps its id
   # for good, except for the stage that runs Explore's workflow, whose key is `:explore`.
   #
   # `view/3` filters only what the page draws. The page's moves read `item.run`, the
@@ -19,10 +20,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   @spec tabs(map, [map]) :: [map]
   def tabs(flow, runs) do
     ran = MapSet.new(runs, &stage_of(&1, flow))
+    passed_over = MapSet.new(Map.get(flow, :stage_skips, []), & &1.stage_id)
 
     for stage <- flow.stages,
-        Runner.workflows(%{"sequence" => stage.sequence}) != [],
-        stage.id == flow.stage.id or MapSet.member?(ran, stage.id) do
+        MapSet.member?(passed_over, stage.id) or
+          (Runner.workflows(%{"sequence" => stage.sequence}) != [] and
+             (stage.id == flow.stage.id or MapSet.member?(ran, stage.id))) do
       %{id: stage.id, key: key(flow, stage.id), name: stage.name, types: stage.outputs}
     end
   end
@@ -97,8 +100,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #
   #   * `stage`: the tab's stage, on a stage tab, else nil;
   #   * `runs`: the stage's runs of the take in, oldest first;
-  #   * `take_ins`: the earlier take ins with the stage's runs, each with its `place` among
-  #     all of them, from 1;
+  #   * `skips`: the stage's workflow entries the runner passed over in the take in;
+  #   * `passed_over`: the record of the runner passing the stage over whole in the take in
+  #     (`Apiary.Stages.stage_skips/1`), nil for none;
+  #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
+  #     `place` among all of them, from 1;
   #   * `questions`: on the current stage's tab, every open question and the closed ones the
   #     stage's runs wrote; on another tab, the closed ones its runs wrote;
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
@@ -111,6 +117,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: nil,
       runs: [],
+      skips: [],
+      passed_over: nil,
       take_ins: read.earlier_take_ins,
       questions: read.questions,
       questions_version: read.questions_version,
@@ -134,11 +142,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     view(flow, read.item.run, stage, read)
   end
 
-  defp view(_flow, _run, nil, read) do
+  defp view(flow, _run, nil, read) do
     %{
       stage: nil,
       runs: read.earlier_runs,
-      take_ins: read.earlier_take_ins,
+      skips: Map.get(flow, :skips, []),
+      passed_over: nil,
+      take_ins: Enum.map(read.earlier_take_ins, &with_skips(&1, flow, nil)),
       questions: read.questions,
       questions_version: read.questions_version,
       review_comments: read.review_comments,
@@ -156,6 +166,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     %{
       stage: stage,
       runs: runs,
+      skips: Enum.filter(Map.get(flow, :skips, []), &(&1.stage_id == stage.id)),
+      passed_over: passed_over(flow, stage, runs),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),
@@ -164,6 +176,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       index: index(flow.index, artifacts),
       foot: if(explore? and not flow.at_explore, do: %{runs: runs, latest: nil, pieces: nil})
     }
+  end
+
+  # The record of the runner passing `stage` over whole, while the work item is not in the
+  # stage and the stage has no run: a person's move into it later runs it after all.
+  defp passed_over(flow, stage, runs) do
+    if stage.id != flow.stage.id and runs == [],
+      do: Enum.find(Map.get(flow, :stage_skips, []), &(&1.stage_id == stage.id))
   end
 
   # The stage of a run, a question or a version: one with none belongs to Explore.
@@ -175,8 +194,20 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     for {take_in, place} <- Enum.with_index(take_ins, 1),
         runs = runs(flow, stage, take_in.runs),
         runs != [] do
-      take_in |> Map.put(:runs, runs) |> Map.put(:place, place)
+      take_in |> Map.put(:runs, runs) |> Map.put(:place, place) |> with_skips(flow, stage.id)
     end
+  end
+
+  # The take in with the workflow entries the runner passed over in it, of the stage
+  # `stage_id`, or of every stage for nil (`Apiary.Stages.earlier_skips/1`).
+  defp with_skips(take_in, flow, stage_id) do
+    skips =
+      for skip <- Map.get(flow, :earlier_skips, []),
+          skip.take_in == take_in[:take_in],
+          stage_id in [nil, skip.stage_id],
+          do: skip
+
+    Map.put(take_in, :skips, skips)
   end
 
   defp questions(flow, stage, questions) do
@@ -253,5 +284,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     |> Enum.filter(&(Map.has_key?(newest, &1) and &1 != "review-comments"))
     |> Enum.with_index()
     |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
+  end
+
+  # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for
+  # none, from `index`, the approval marks (`flow.index`). Only the first frame, the open
+  # one, shows an approval: the newest approval of its version, where the gate of `stage`
+  # recorded it as a gate `none` (vault 0252), with no member (`automatic`) or with the
+  # member who accepted the escalation that ended the stage (`by`). The gate is read from
+  # the approval, not from the stage today: a later process version may change it. A
+  # person gate's approval shows none.
+  @spec approved([map], map, [map]) :: [map]
+  def approved(frames, stage, index) do
+    Enum.map(frames, &Map.put(&1, :approval, if(&1.open, do: approval(&1, stage, index))))
+  end
+
+  defp approval(%{type: type, version: version}, stage, index) do
+    with %{approved: ^version, approval: %{stage_id: id} = approval} when id == stage.id <-
+           Enum.find(index, &(&1.type == type and &1.name == "main")),
+         true <- approval.automatic or approval.gate_none do
+      approval
+    else
+      _none -> nil
+    end
   end
 end

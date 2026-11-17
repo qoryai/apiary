@@ -191,7 +191,7 @@ defmodule Apiary.ProcessesTest do
         |> edit(fn
           %{"id" => @shape} = stage ->
             Map.put(stage, "outputs", [
-              %{"type" => "change", "required" => true, "check" => %{"reported" => "opened"}}
+              %{"type" => "submission", "required" => true, "check" => %{"reported" => "opened"}}
             ])
 
           stage ->
@@ -203,6 +203,384 @@ defmodule Apiary.ProcessesTest do
 
       assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "write"}])) !=
                []
+    end
+
+    test "takes a workflow entry with write-no-push access, a writable checkout that has no push credential" do
+      document =
+        put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "write-no-push"}])
+
+      assert Processes.validate(document) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{"workflow" => "x", "access" => "push"}])) !=
+               []
+    end
+
+    test "takes a when condition on an output of an earlier stage, on an entry and an output" do
+      shaped =
+        default()
+        |> put_sequence(@shape, [
+          %{"workflow" => "write-specs", "when" => %{"input" => "proposal"}},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [%{"workflow" => "review", "when" => %{"input" => "proposal"}}]
+            }
+          }
+        ])
+        |> edit(fn
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "outputs", [
+              %{"type" => "mockup", "required" => true, "when" => %{"input" => "proposal"}}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      assert Processes.validate(shaped) == :ok
+    end
+
+    test "refuses a condition whose input is no output of an earlier stage (:condition_input)" do
+      on = &%{"workflow" => &1, "when" => %{"input" => &2}}
+
+      # The first stage has no earlier stage.
+      assert errors(put_sequence(default(), @explore, [on.("explore-a-ticket", "proposal")])) ==
+               [{"#/stages/0/sequence/0/when/input", :condition_input}]
+
+      assert {:error, [%{detail: "demo-scenarios"}]} =
+               Processes.validate(
+                 put_sequence(default(), @shape, [on.("write-specs", "demo-scenarios")])
+               )
+
+      in_loop = %{"loop" => %{"rounds" => 2, "body" => [on.("review", "demo-scenarios")]}}
+
+      assert errors(put_sequence(default(), @shape, [in_loop])) ==
+               [{"#/stages/1/sequence/0/loop/body/0/when/input", :condition_input}]
+
+      output = %{"type" => "mockup", "required" => true, "when" => %{"input" => "mockup"}}
+
+      assert errors(edit(&if(&1["id"] == @shape, do: Map.put(&1, "outputs", [output]), else: &1))) ==
+               [{"#/stages/1/outputs/0/when/input", :condition_input}]
+    end
+
+    test "refuses a when key other than one input condition" do
+      for condition <- [
+            %{},
+            %{"input" => "proposal", "value" => "short"},
+            [%{"input" => "proposal"}],
+            %{"input" => "Proposal"}
+          ] do
+        entry = %{"workflow" => "write-specs", "when" => condition}
+        assert errors(put_sequence(default(), @shape, [entry])) != []
+      end
+    end
+
+    test "takes a document with no tracks, as before" do
+      refute Map.has_key?(default(), "tracks")
+      assert Processes.validate(default()) == :ok
+    end
+
+    test "takes tracks, a gate that offers them, and track and input conditions after that gate" do
+      on_fast = %{"track" => "fast-track"}
+
+      document =
+        tracked()
+        |> put_sequence(@shape, [
+          %{"workflow" => "write-specs", "when" => on_fast},
+          %{"workflow" => "review", "unless" => on_fast},
+          %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix", "when" => on_fast}]}},
+          %{
+            "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]},
+            "unless" => %{"track" => "standard"}
+          }
+        ])
+        |> edit(fn
+          %{"id" => @shape} = stage ->
+            stage
+            |> Map.put("when", on_fast)
+            |> Map.put("inputs", [
+              %{"type" => "proposal", "required" => true, "when" => on_fast},
+              %{"type" => "proposal", "required" => false, "unless" => %{"input" => "proposal"}}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      assert Processes.validate(document) == :ok
+    end
+
+    test "refuses a track id that has another form, or a track without a name" do
+      for {track, path} <- [
+            {%{"id" => "Fast", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "fast_track", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "-fast", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => "fast-", "name" => "Fast track"}, "#/tracks/0/id"},
+            {%{"id" => String.duplicate("a", 41), "name" => "Fast track"}, "#/tracks/0/id"},
+            # An empty name breaks minLength and the pattern: two errors at its place.
+            {%{"id" => "fast", "name" => ""}, ["#/tracks/0/name", "#/tracks/0/name"]},
+            {%{"id" => "fast", "name" => "Fast", "description" => String.duplicate("a", 501)},
+             "#/tracks/0/description"},
+            {%{"name" => "Fast track"}, "#/tracks/0"}
+          ] do
+        assert errors(Map.put(default(), "tracks", [track])) == expected(path)
+      end
+
+      eleven = for n <- 1..11, do: %{"id" => "track-#{n}", "name" => "Track #{n}"}
+      assert errors(Map.put(default(), "tracks", eleven)) == chain("#/tracks")
+    end
+
+    test "refuses a track id twice (:duplicate_track_id)" do
+      tracks = [
+        %{"id" => "standard", "name" => "Standard"},
+        %{"id" => "fast-track", "name" => "Fast track"},
+        %{"id" => "standard", "name" => "Standard again"}
+      ]
+
+      assert errors(Map.put(default(), "tracks", tracks)) ==
+               [{"#/tracks/2/id", :duplicate_track_id}]
+    end
+
+    test "refuses a gate that offers a track the document does not declare (:gate_track)" do
+      document = with_gate_tracks(tracked(), @explore, ["standard", "express"])
+
+      assert errors(document) == [{"#/stages/0/gate/tracks/1", :gate_track}]
+      assert {:error, [%{detail: "express"}]} = Processes.validate(document)
+
+      assert errors(Map.delete(document, "tracks")) ==
+               [
+                 {"#/stages/0/gate/tracks/0", :gate_track},
+                 {"#/stages/0/gate/tracks/1", :gate_track}
+               ]
+    end
+
+    test "refuses a track twice in a gate, and tracks on a gate of kind none" do
+      assert errors(with_gate_tracks(tracked(), @explore, ["standard", "standard"])) ==
+               chain("#/stages/0/gate/tracks")
+
+      none =
+        edit(tracked(), fn
+          %{"id" => @explore} = stage ->
+            %{stage | "gate" => %{"kind" => "none", "tracks" => ["standard"]}}
+
+          stage ->
+            stage
+        end)
+
+      assert errors(none) == [{"#/stages/0/gate/tracks", :gate_none_tracks}]
+
+      empty =
+        edit(tracked(), fn
+          %{"id" => @explore} = stage -> %{stage | "gate" => %{"kind" => "none", "tracks" => []}}
+          stage -> stage
+        end)
+
+      assert Processes.validate(empty) == :ok
+    end
+
+    test "refuses a track condition that no earlier gate offers (:condition_track)" do
+      on = &%{"workflow" => &1, "when" => %{"track" => &2}}
+
+      # The gate of the stage itself comes after its sequence.
+      assert errors(put_sequence(tracked(), @explore, [on.("explore-a-ticket", "standard")])) ==
+               [{"#/stages/0/sequence/0/when/track", :condition_track}]
+
+      # A track the document declares but no gate offers.
+      declared = Map.update!(tracked(), "tracks", &(&1 ++ [%{"id" => "slow", "name" => "Slow"}]))
+
+      assert errors(put_sequence(declared, @shape, [on.("write-specs", "slow")])) ==
+               [{"#/stages/1/sequence/0/when/track", :condition_track}]
+
+      # A track the document does not declare.
+      assert {:error, [%{detail: "express", error: :condition_track}]} =
+               Processes.validate(
+                 put_sequence(tracked(), @shape, [on.("write-specs", "express")])
+               )
+
+      # An earlier stage that offers a track makes it possible; a later one does not.
+      later =
+        tracked()
+        |> with_gate_tracks(@explore, [])
+        |> with_gate_tracks(@shape, ["standard"])
+        |> put_sequence(@shape, [on.("write-specs", "standard")])
+
+      assert errors(later) == [{"#/stages/1/sequence/0/when/track", :condition_track}]
+    end
+
+    test "refuses a condition on the first stage, a loop, an input and a stage, by input or by track" do
+      first = fn condition ->
+        edit(&if(&1["id"] == @explore, do: Map.put(&1, "when", condition), else: &1))
+      end
+
+      assert errors(first.(%{"input" => "proposal"})) == [
+               {"#/stages/0/when/input", :condition_input}
+             ]
+
+      assert errors(first.(%{"track" => "standard"})) == [
+               {"#/stages/0/when/track", :condition_track}
+             ]
+
+      assert errors(
+               edit(
+                 &if(&1["id"] == @explore,
+                   do: Map.put(&1, "unless", %{"input" => "proposal"}),
+                   else: &1
+                 )
+               )
+             ) == [{"#/stages/0/unless/input", :condition_input}]
+
+      loop = %{
+        "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]},
+        "unless" => %{"input" => "demo-scenarios"}
+      }
+
+      assert errors(put_sequence(default(), @shape, [loop])) ==
+               [{"#/stages/1/sequence/0/unless/input", :condition_input}]
+
+      input = %{
+        "type" => "proposal",
+        "required" => true,
+        "when" => %{"input" => "demo-scenarios"}
+      }
+
+      assert errors(edit(&if(&1["id"] == @shape, do: Map.put(&1, "inputs", [input]), else: &1))) ==
+               [{"#/stages/1/inputs/0/when/input", :condition_input}]
+
+      unless_entry = %{"workflow" => "write-specs", "unless" => %{"input" => "demo-scenarios"}}
+
+      assert errors(put_sequence(default(), @shape, [unless_entry])) ==
+               [{"#/stages/1/sequence/0/unless/input", :condition_input}]
+    end
+
+    test "refuses a condition with both keys, another key, or a value of another kind" do
+      for condition <- [
+            %{"input" => "proposal", "track" => "standard"},
+            %{"track" => "standard", "value" => "x"},
+            %{"track" => "Standard"},
+            %{},
+            [%{"track" => "standard"}]
+          ] do
+        for key <- ["when", "unless"] do
+          entry = %{"workflow" => "write-specs", key => condition}
+
+          assert errors(put_sequence(tracked(), @shape, [entry])) ==
+                   chain("#/stages/1/sequence/0")
+        end
+      end
+    end
+
+    test "refuses an item with both when and unless (:condition_both), on each kind of item" do
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast-track"}}
+      on_shape = &edit(tracked(), fn s -> if(s["id"] == @shape, do: &1.(s), else: s) end)
+
+      assert errors(on_shape.(&Map.merge(&1, both))) == [{"#/stages/1", :condition_both}]
+
+      entry = Map.merge(%{"workflow" => "write-specs"}, both)
+
+      assert errors(put_sequence(tracked(), @shape, [entry])) == [
+               {"#/stages/1/sequence/0", :condition_both}
+             ]
+
+      loop = Map.merge(%{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}, both)
+
+      assert errors(put_sequence(tracked(), @shape, [loop])) == [
+               {"#/stages/1/sequence/0", :condition_both}
+             ]
+
+      body = %{"loop" => %{"rounds" => 2, "body" => [entry]}}
+
+      assert errors(put_sequence(tracked(), @shape, [body])) ==
+               [{"#/stages/1/sequence/0/loop/body/0", :condition_both}]
+
+      input = Map.merge(%{"type" => "proposal", "required" => true}, both)
+
+      assert errors(on_shape.(&Map.put(&1, "inputs", [input]))) ==
+               [{"#/stages/1/inputs/0", :condition_both}]
+
+      # One condition of each key is valid.
+      assert Processes.validate(
+               put_sequence(tracked(), @shape, [
+                 %{entry | "workflow" => "x"} |> Map.delete("when")
+               ])
+             ) == :ok
+    end
+
+    test "takes when and unless with a track or an input on an output, with the checks of any condition" do
+      output = &(%{"type" => "mockup", "required" => true} |> Map.merge(&1))
+
+      document =
+        tracked()
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast", "name" => "Fast track"}
+        ])
+        |> with_gate_tracks(@explore, ["standard", "fast"])
+
+      put =
+        &edit(document, fn s ->
+          if(s["id"] == @shape, do: Map.put(s, "outputs", [&1]), else: s)
+        end)
+
+      for condition <- [
+            %{"when" => %{"track" => "standard"}},
+            %{"unless" => %{"track" => "fast"}},
+            %{"when" => %{"input" => "proposal"}},
+            %{"unless" => %{"input" => "proposal"}}
+          ] do
+        assert Processes.validate(put.(output.(condition))) == :ok
+      end
+
+      assert errors(put.(output.(%{"unless" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/unless/track", :condition_track}]
+
+      assert errors(put.(output.(%{"when" => %{"track" => "slow"}}))) ==
+               [{"#/stages/1/outputs/0/when/track", :condition_track}]
+
+      assert errors(put.(output.(%{"unless" => %{"input" => "mockup"}}))) ==
+               [{"#/stages/1/outputs/0/unless/input", :condition_input}]
+
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast"}}
+      assert errors(put.(output.(both))) == [{"#/stages/1/outputs/0", :condition_both}]
+
+      assert errors(put.(output.(%{"unless" => %{"track" => "fast", "input" => "proposal"}}))) !=
+               []
+    end
+
+    test "takes first_attempt on a workflow entry outside a loop, and refuses it in a loop body" do
+      entry = %{"workflow" => "make-a-small-change", "first_attempt" => true}
+
+      assert Processes.validate(put_sequence(default(), @shape, [entry])) == :ok
+
+      assert errors(put_sequence(default(), @shape, [%{entry | "first_attempt" => "yes"}])) ==
+               chain("#/stages/1/sequence/0")
+
+      for value <- [true, false] do
+        body = %{"loop" => %{"rounds" => 2, "body" => [%{entry | "first_attempt" => value}]}}
+
+        assert errors(put_sequence(default(), @shape, [body])) == chain("#/stages/1/sequence/0")
+      end
+
+      plain = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}}
+      assert Processes.validate(put_sequence(default(), @shape, [plain])) == :ok
+    end
+
+    test "refuses a key of an input or a loop entry that the schema does not list" do
+      input = %{"type" => "proposal", "required" => true, "value" => "x"}
+
+      assert {"#/stages/1/inputs/0/value", :schema} in errors(
+               edit(&if(&1["id"] == @shape, do: Map.put(&1, "inputs", [input]), else: &1))
+             )
+
+      loop = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, "rounds" => 3}
+
+      assert {"#/stages/1/sequence/0", :schema} in errors(put_sequence(default(), @shape, [loop]))
+
+      both = %{
+        "workflow" => "fix",
+        "loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}
+      }
+
+      assert errors(put_sequence(default(), @shape, [both])) == chain("#/stages/1/sequence/0")
     end
 
     test "refuses a stage id or a stage name twice, names compared trimmed and without case" do
@@ -304,6 +682,43 @@ defmodule Apiary.ProcessesTest do
     end
   end
 
+  # The default with the tracks Standard and Fast track, and Explore's gate offering both.
+  defp tracked do
+    document =
+      Map.put(default(), "tracks", [
+        %{"id" => "standard", "name" => "Standard", "description" => "Every stage runs."},
+        %{"id" => "fast-track", "name" => "Fast track"}
+      ])
+
+    with_gate_tracks(document, @explore, ["standard", "fast-track"])
+  end
+
+  defp with_gate_tracks(document, id, tracks),
+    do:
+      edit(document, fn
+        %{"id" => ^id, "gate" => gate} = stage ->
+          %{stage | "gate" => Map.put(gate, "tracks", tracks)}
+
+        stage ->
+          stage
+      end)
+
+  # JSV reports a schema refusal at each place from the document down to the value:
+  # `chain("#/tracks/0/id")` is `#`, `#/tracks`, `#/tracks/0` and `#/tracks/0/id`.
+  defp chain(path) do
+    [first | rest] = String.split(path, "/")
+
+    rest
+    |> Enum.scan(first, &(&2 <> "/" <> &1))
+    |> then(&[first | &1])
+    |> Enum.map(&{&1, :schema})
+  end
+
+  # `chain/1` of a place, then each place in the list after it once more: JSV reports two
+  # errors at a value that breaks two keywords.
+  defp expected([path | more]), do: chain(path) ++ Enum.map(more, &{&1, :schema})
+  defp expected(path), do: chain(path)
+
   defp put_sequence(document, id, sequence),
     do: edit(document, &if(&1["id"] == id, do: %{&1 | "sequence" => sequence}, else: &1))
 
@@ -401,6 +816,136 @@ defmodule Apiary.ProcessesTest do
 
       assert Processes.diff(described, default()) ==
                [{:description_changed, @shape, %{from: "Plan it.", to: nil}}]
+    end
+  end
+
+  describe "a workflow entry's name" do
+    test "is saved at 1 to 60 characters, and refused at 61 or at none, in an entry or a loop" do
+      with_name = &put_sequence(default(), @shape, [%{"workflow" => "write-specs", "name" => &1}])
+
+      assert :ok = Processes.validate(with_name.(String.duplicate("n", 60)))
+
+      for name <- [String.duplicate("n", 61), "", "   "] do
+        assert {"#/stages/1/sequence/0", :schema} in errors(with_name.(name))
+      end
+
+      body = [%{"workflow" => "fix", "name" => String.duplicate("n", 61)}]
+      looped = put_sequence(default(), @shape, [%{"loop" => %{"rounds" => 2, "body" => body}}])
+      assert {"#/stages/1/sequence/0", :schema} in errors(looped)
+    end
+
+    test "has a refusal that says what to write, for a long name and for one of only spaces" do
+      line = "Give a workflow in Shape a name of 1 to 60 characters, or remove its name."
+
+      for name <- [String.duplicate("n", 61), "   "] do
+        document =
+          put_sequence(default(), @shape, [%{"workflow" => "write-specs", "name" => name}])
+
+        assert {:error, found} = Processes.validate(document)
+        assert line in Enum.map(found, &ApiaryWeb.StagesLive.Words.refusal(&1, document))
+      end
+    end
+  end
+
+  describe "diff/2 of tracks and conditions" do
+    @fast %{"track" => "fast"}
+    @tracks [%{"id" => "standard", "name" => "Standard"}, %{"id" => "fast", "name" => "Fast"}]
+
+    test "lists a change of the tracks once, and none for the first version or none against []" do
+      tracked = Map.put(default(), "tracks", @tracks)
+      renamed = Map.put(default(), "tracks", [%{"id" => "standard", "name" => "Normal"}])
+
+      assert Processes.diff(default(), tracked) ==
+               [{:tracks_changed, nil, %{from: nil, to: @tracks}}]
+
+      assert Processes.diff(tracked, renamed) ==
+               [
+                 {:tracks_changed, nil,
+                  %{from: @tracks, to: [%{"id" => "standard", "name" => "Normal"}]}}
+               ]
+
+      assert Processes.diff(tracked, tracked) == []
+      assert Processes.diff(default(), Map.put(default(), "tracks", [])) == []
+      assert [{:stage_added, _id, _detail} | _rest] = Processes.diff(nil, tracked)
+      refute Enum.any?(Processes.diff(nil, tracked), &match?({:tracks_changed, _, _}, &1))
+    end
+
+    test "lists a condition of the stage, and one of an input, a loop or an entry as that change" do
+      conditioned =
+        edit(fn
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "unless", @fast)
+
+          %{"id" => "st_6ns22c4pav"} = stage ->
+            stage
+            |> Map.put("inputs", [%{"type" => "proposal", "required" => true, "when" => @fast}])
+            |> Map.put("sequence", [
+              %{"workflow" => "write-specs", "unless" => @fast},
+              %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, "when" => @fast}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      # The conditions inside the stage's inputs and sequence are in those changes only.
+      assert [
+               {:condition_changed, @shape, %{from: %{}, to: %{"unless" => @fast}}},
+               {:sequence_changed, "st_6ns22c4pav", _},
+               {:inputs_changed, "st_6ns22c4pav", _}
+             ] = Processes.diff(default(), conditioned)
+
+      moved =
+        edit(conditioned, fn
+          %{"id" => "st_6ns22c4pav"} = stage ->
+            %{stage | "sequence" => [%{"workflow" => "write-specs", "when" => @fast}]}
+
+          stage ->
+            stage
+        end)
+
+      assert [{:sequence_changed, "st_6ns22c4pav", _}] = Processes.diff(conditioned, moved)
+
+      swapped =
+        edit(conditioned, fn
+          %{"id" => @shape} = stage ->
+            stage |> Map.delete("unless") |> Map.put("when", @fast)
+
+          stage ->
+            stage
+        end)
+
+      assert [{:condition_changed, @shape, %{from: %{"unless" => @fast}, to: %{"when" => @fast}}}] =
+               Processes.diff(conditioned, swapped)
+
+      assert {:condition_changed, @shape, %{from: %{"when" => @fast}, to: %{}}} =
+               hd(Processes.diff(swapped, default()))
+    end
+
+    test "lists a change of only the gate's tracks as a changed gate" do
+      offering = fn tracks ->
+        edit(fn
+          %{"id" => "st_r79kph11eg", "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", tracks)}
+
+          stage ->
+            stage
+        end)
+      end
+
+      assert [{:gate_changed, "st_r79kph11eg", %{to: %{"tracks" => ["fast"]}}}] =
+               Processes.diff(default(), offering.(["fast"]))
+
+      assert [{:gate_changed, "st_r79kph11eg", _}] =
+               Processes.diff(offering.(["fast"]), offering.(["standard", "fast"]))
+    end
+
+    test "lists no condition for a change that touches none" do
+      renamed = rename(@shape, "Plan")
+
+      assert Processes.diff(default(), renamed) == [
+               {:stage_renamed, @shape, %{from: "Shape", to: "Plan"}}
+             ]
     end
   end
 
@@ -584,6 +1129,53 @@ defmodule Apiary.ProcessesTest do
       assert DateTime.compare(read_at, first_read) in [:gt, :eq]
       assert Processes.declared_workflows(scope.workspace) == ["capture-demo", "explore-a-ticket"]
       assert Processes.workflow_declaration(scope.workspace, "review") == nil
+    end
+
+    test "keep the access level each workflow declares, which a list of names gives as read" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+
+      levels = %{"capture-demos" => :write_no_push, "implement" => :write, "review" => :read}
+      assert Processes.record_declared(scope.workspace, levels) == :ok
+
+      assert %{names: ["capture-demos", "implement", "review"], access: ^levels} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert Processes.declared_access(scope.workspace) == levels
+
+      :ok = Processes.record_declared(scope.workspace, ["review", "plan"])
+
+      assert %{names: ["plan", "review"], access: %{"plan" => :read, "review" => :read}} =
+               Processes.declared_snapshot(scope.workspace)
+    end
+
+    test "a snapshot kept before the levels were has no level for its names" do
+      %{scope: scope} = sign_up_fixture()
+      repository_harness!(scope, scope.workspace.id)
+      :ok = Processes.record_declared(scope.workspace, %{"implement" => :write})
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in "workspaces", where: w.id == type(^scope.workspace.id, :binary_id)),
+          set: [declared_access: nil]
+        )
+
+      assert %{names: ["implement"], access: access} =
+               Processes.declared_snapshot(scope.workspace)
+
+      assert access == %{}
+      assert Processes.declared_workflows(scope.workspace) == ["implement"]
+      assert Processes.declared_access(scope.workspace) == %{}
+    end
+
+    test "on the Qory harness have the levels of the stack's files, over the snapshot's" do
+      %{scope: scope} = sign_up_fixture()
+      :ok = Processes.record_declared(scope.workspace, %{"explore-a-ticket" => :write})
+
+      assert Processes.declared_access(scope.workspace) == %{"explore-a-ticket" => :read}
+
+      assert Sources.chosen_declared(scope, scope.workspace) ==
+               {:ok, %{"explore-a-ticket" => :read}}
     end
 
     test "on the Qory harness come from the stack the workspace recorded, not the definition's" do

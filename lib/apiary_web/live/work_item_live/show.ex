@@ -410,6 +410,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage={@view.stage}
             work_item={@item}
             runs={@view.runs}
+            skips={@view.skips}
+            passed_over={@view.passed_over}
+            stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}
@@ -975,11 +978,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp stage_spend("stage_approve", params, socket) do
-    stage = socket.assigns.flow.stage.name
-
     ask_if_run("stage_approve", params, socket, :approve,
-      title: gettext("Approve %{stage}?", stage: stage),
-      action: gettext("Approve %{stage}", stage: stage),
+      title: gettext("Approve this stage?"),
+      action: gettext("Approve"),
       return_to: "work-item-stage-gate-approve-go"
     )
   end
@@ -1182,10 +1183,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # Approve is disabled while a changed decision is a draft; a click that reaches the
   # page then does nothing.
-  defp act("confirm", _params, socket) do
+  defp act("confirm", params, socket) do
     if changed_decision?(socket),
       do: {:noreply, socket},
-      else: confirm(socket)
+      else: confirm(socket, text(params["track"]))
   end
 
   # A reply goes to the review comment of the open Reply page; a `"reply"` with the id of
@@ -1249,9 +1250,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp act(_event, _params, socket), do: {:noreply, socket}
 
-  defp confirm(socket) do
+  defp confirm(socket, track) do
     with_attempt(socket, fn attempt ->
-      done(socket, WorkItems.confirm(scope(socket), socket.assigns.row, attempt))
+      done(
+        socket,
+        WorkItems.confirm(scope(socket), socket.assigns.row, attempt, track: track)
+      )
     end)
   end
 
@@ -1271,7 +1275,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: {:noreply, assign(socket, stage_asking: :changes, stage_error: nil)}
 
   defp stage_act("stage_approve", params, socket),
-    do: fresh(socket, params, &decided(&1, &2, {:approve, note(params)}))
+    do: fresh(socket, params, &decided(&1, &2, {:approve, note(params), text(params["track"])}))
 
   defp stage_act("stage_request_changes", params, socket) do
     case note(params) do
@@ -1380,12 +1384,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @doc false
   def refused(:not_earlier, flow), do: not_earlier(flow)
 
-  def refused({:outputs_missing, types}, flow) do
-    gettext("Add %{outputs} before you approve %{stage}.",
-      outputs: StageComponents.outputs_words(types),
-      stage: flow.stage.name
+  def refused({:outputs_missing, types}, _flow) do
+    gettext("Add %{outputs} before you approve this stage.",
+      outputs: StageComponents.outputs_words(types)
     )
   end
+
+  def refused({:track_not_offered, track}, flow) do
+    gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
+      stage: flow.stage.name,
+      track: track
+    )
+  end
+
+  def refused(:store_unavailable, _flow), do: store_error()
 
   def refused(:not_approver, flow),
     do: gettext("Ask an approver of %{stage} to act on it.", stage: flow.stage.name)
@@ -1965,7 +1977,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         can: can(scope, row, explore.status, flow),
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
-        artifacts: if(flow, do: Artifacts.list(row), else: []),
+        artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
       )
@@ -2007,13 +2019,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         artifacts: assigns.artifacts
       })
 
+    view = %{view | passed_over: passed_over_by(socket, view.passed_over)}
     socket |> assign(:view, view) |> framed()
   end
+
+  # The person of the approval that put the work item on the track that passed the stage over
+  # (`Apiary.Stages.stage_skips/1`), as the components show a person, Former member for one
+  # whose account is gone.
+  defp passed_over_by(socket, %{approved: %{user_id: id} = approved} = skip) do
+    person = socket |> scope() |> View.people(List.wrap(id)) |> View.person(id)
+    %{skip | approved: Map.put(approved, :by, person)}
+  end
+
+  defp passed_over_by(_socket, skip), do: skip
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      StageTab.frames(stage, ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      stage
+      |> StageTab.frames(ExploreView.newest_outputs(assigns.row, stage.id, stage.outputs))
+      |> StageTab.approved(stage, assigns.flow.index)
+      |> Enum.map(&approver(socket, &1))
 
     wanted =
       for %{type: type, version: version, open: open} <- frames,
@@ -2034,6 +2060,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp framed(socket), do: assign(socket, :frames, [])
+
+  # The member of a frame's approval (`StageTab.approved/3`) as the components show a
+  # person (`View.person/2`), Former member for one whose account is gone: read for that
+  # frame alone, as they may be in no other part of the page.
+  defp approver(socket, %{approval: %{automatic: false, by: id} = approval} = frame) do
+    person = socket |> scope() |> View.people(List.wrap(id)) |> View.person(id)
+    %{frame | approval: %{approval | by: person}}
+  end
+
+  defp approver(_socket, frame), do: frame
 
   defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version))
@@ -2313,6 +2349,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp with_confirmers(%{kind: _other} = event, _confirmers), do: event
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
+
+  # The work item's artifacts that its page lists: every one but a name whose newest
+  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
+  defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
 
   # While the work item's latest run waits in the queue, before a pool claims it (no state
   # yet), whatever Explore's status (a run after a move back to Explore, or a later
