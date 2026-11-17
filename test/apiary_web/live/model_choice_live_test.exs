@@ -153,6 +153,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
            )
   end
 
+  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+  @tag :a11_item3
   test "saves a model of the list with an effort", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
     {:ok, lv, _html} = live(conn, path(scope))
@@ -178,6 +180,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert render(lv) =~ "Model saved."
   end
 
+  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+  @tag :a11_item3
   test "saves a model off the list through Another model", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
     {:ok, lv, _html} = live(conn, path(scope))
@@ -234,6 +238,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     refute has_element?(lv, "#model-form")
   end
 
+  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+  @tag :a11_item3
   test "a saved choice is what a run's settings then use", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
     place = handover_place_fixture(scope, allow_secrets: true)
@@ -367,6 +373,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
              )
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "Save keeps the rows in their order; Move up, Move down and Remove change them", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
@@ -421,13 +429,15 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       end
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "a save that chooses a row's provider drops that row and saves the others", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
       {:ok, deepseek} = add_provider(scope, "deepseek")
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: provider.public_id,
           fallbacks: [%{provider: subscription.public_id}, %{provider: deepseek.public_id}]
         })
@@ -449,13 +459,15 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert deepseek_id == deepseek.public_id
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "a refused row shows the refusal under its field, and nothing is saved", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
       {:ok, deepseek} = add_provider(scope, "deepseek")
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: deepseek.public_id,
           fallbacks: [%{provider: subscription.public_id}, %{provider: provider.public_id}]
         })
@@ -491,6 +503,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope).connection_id == deepseek.id
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "a provider in two rows shows the error under the second row, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
@@ -562,6 +576,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope) == nil
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "a sent row with another organisation's provider is refused, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
@@ -594,7 +610,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       {:ok, subscription} = add_provider(scope, "claude-subscription")
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: provider.public_id,
           fallbacks: [%{provider: subscription.public_id}]
         })
@@ -611,6 +627,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   end
 
   describe "the runtime" do
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "is hidden while the list has one runtime, and the choice names none", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, lv, _html} = live(conn, path(scope))
@@ -624,6 +642,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert %ModelChoice{runtime: nil, model_id: "claude-haiku-5-5"} = choice(scope)
     end
 
+    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
+    @tag :a11_item3
     test "with two, is a field; Model lists only the providers that serve the runtime", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       [release] = Runtimes.list()

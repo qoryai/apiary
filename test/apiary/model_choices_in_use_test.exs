@@ -43,13 +43,17 @@ defmodule Apiary.ModelChoicesInUseTest do
       %{scope: scope, provider: provider, target: target} = ctx
 
       {:ok, _} =
-        ModelChoices.put_choice(
+        Apiary.ModelChoicesFixtures.put_choice(
           scope,
           {target, "hello"},
           Map.put(attrs(provider), :tiers, %{"light" => "claude-haiku-5-5"})
         )
 
-      {:ok, _} = ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+      {:ok, _} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :organisation, %{
+          provider: provider.public_id
+        })
+
       :ok
     end
 
@@ -118,7 +122,7 @@ defmodule Apiary.ModelChoicesInUseTest do
         })
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: main.public_id,
           fallbacks: [%{provider: fallback.public_id}]
         })
@@ -131,7 +135,10 @@ defmodule Apiary.ModelChoicesInUseTest do
       assert Repo.get(Connection, fallback.id)
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{provider: main.public_id, fallbacks: []})
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: main.public_id,
+          fallbacks: []
+        })
 
       assert ModelChoices.places_using(fallback) == []
       assert {:ok, _} = Connections.delete_provider(scope, fallback)

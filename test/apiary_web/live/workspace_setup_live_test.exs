@@ -3917,7 +3917,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
 
       choose = fn place, attrs ->
         {:ok, choice} =
-          ModelChoices.put_choice(scope, place, Map.put(attrs, :provider, provider.public_id))
+          Apiary.ModelChoicesFixtures.put_choice(
+            scope,
+            place,
+            Map.put(attrs, :provider, provider.public_id)
+          )
 
         choice
       end
@@ -4345,6 +4349,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     for model <- ModelChoices.suggestions(provider, runtime), do: model.id
   end
 
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4424,6 +4430,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   end
 
   @tag :feature_sets
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "Add a key with the setting shown and on: the organisation's provider, for every workspace",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4483,6 +4491,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   end
 
   @tag :feature_sets
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "reuse with one provider: its default key, another default model; Add a key opens the fields",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4543,6 +4553,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-later") == @workspace_later
   end
 
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "reuse with two providers: each by its name; the one chosen is saved", %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, "anthropic", "main")
@@ -4570,6 +4582,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {deepseek.id, "ds", hd(models(deepseek))}
   end
 
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "a fallback's provider chosen on the step is saved, and that fallback is dropped",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4577,7 +4591,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     deepseek = provider!(scope, "deepseek", "ds")
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: anthropic.public_id,
         fallbacks: [%{provider: deepseek.public_id}]
       })
@@ -4605,6 +4619,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {own, shared}
   end
 
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "with the setting shown: the providers every workspace shares first, under Shared in, each marked; the first is chosen",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4798,6 +4814,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute has_element?(lv, "#set-up-model-form")
   end
 
+  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
+  @tag :a11_item5
   test "a second workspace opens at Name, with every later step to come", %{conn: conn} do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

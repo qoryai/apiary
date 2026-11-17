@@ -11,7 +11,7 @@ defmodule Apiary.Policy.ActivityTest do
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
 
-  alias Apiary.{Connections, ModelChoices, Policy}
+  alias Apiary.{Connections, ModelChoicesFixtures, Policy}
   alias Apiary.Policy.{Activity, Rule}
   alias Apiary.Runs.{RunApi, Target}
 
@@ -88,7 +88,9 @@ defmodule Apiary.Policy.ActivityTest do
           keys: [%{value_id: "main", value: "sk-example-model-key-0123456789"}]
         })
 
-      {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
       :ok
     end
 

@@ -12,7 +12,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Stacks, TimeLimits}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Stacks, TimeLimits}
   alias Apiary.Runs.{Run, Target}
 
   @moduletag needs: :factory
@@ -198,10 +198,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
         })
 
       {:ok, _choice} =
-        ModelChoices.put_choice(ctx.scope, :workspace, %{
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
           provider: provider.public_id,
           model: "claude-opus-5-5",
-          tiers: %{"fast" => "claude-haiku-5-5"}
+          tiers: ModelChoicesFixtures.every_tier("claude-haiku-5-5")
         })
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 45)
@@ -223,7 +223,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
       choose = fn place, model ->
         {:ok, _choice} =
-          ModelChoices.put_choice(ctx.scope, place, %{provider: provider.public_id, model: model})
+          ModelChoicesFixtures.put_choice(ctx.scope, place, %{
+            provider: provider.public_id,
+            model: model
+          })
       end
 
       choose.(:workspace, "claude-opus-5-5")

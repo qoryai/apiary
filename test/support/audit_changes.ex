@@ -1093,7 +1093,10 @@ defmodule Apiary.AuditChanges do
     before = entries()
 
     {:ok, choice} =
-      Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: Apiary.ModelChoicesFixtures.every_tier(provider)
+      })
 
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
