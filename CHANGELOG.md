@@ -26,8 +26,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On an escalation that offers a switch, the block "What the run needs from you" lists the
   versions that the escalated run pushed, under "The run's outputs", each as its artifact
   page shows it: a document as its text and a structured file as its table of values. The
-  versions of the verdict and of other runs are not listed. The block shows the note and
-  Run another round first, then the points, then those outputs. A line under each action
+  versions of the verdict and of other runs are not listed. The block shows those outputs
+  first, then the points, then the note and Run another round. A line under each action
   says what it does: under **Switch to `<track>`**, the stage it starts and the stages after
   it that run on the track; under **Run another round**, the entry it runs again; under
   **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused

@@ -4714,7 +4714,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, ~s|[id^="work-item-stage-escalation-switch"]|)
     end
 
-    test "Fast track: the actions come first, then the points, then the outputs of the escalated run",
+    test "Fast track: the outputs of the escalated run come first, then each point with its action line, then the note and Run another round",
          %{conn: conn, scope: scope} do
       work_item = on_track!(scope, "fast-track")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -4723,9 +4723,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       positions =
         for id <- [
-              "work-item-stage-escalation-another",
-              "work-item-needs-points",
-              "work-item-needs-outputs"
+              "work-item-needs-outputs",
+              "work-item-needs-point-1",
+              "work-item-stage-escalation-another"
             ] do
           {at, _length} = :binary.match(html, ~s(id="#{id}"))
           at
@@ -4733,6 +4733,21 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert positions == Enum.sort(positions)
       assert has_element?(view, "#work-item-needs-outputs-h", "The run's outputs")
+
+      # The point's action line is in its item, after the point's text.
+      assert line(view, "#work-item-needs-point-1") ==
+               "A server check reads the button text. Run another round."
+
+      # The note field comes after the points as well, and Run another round last.
+      [last_point, note, another] =
+        for id <- [
+              "work-item-needs-point-1",
+              "work-item-stage-escalation-note",
+              "work-item-stage-escalation-another"
+            ],
+            do: :binary.match(html, ~s(id="#{id}")) |> elem(0)
+
+      assert last_point < note and note < another
     end
 
     test "the outputs are the versions the escalated run pushed, and no other run's",

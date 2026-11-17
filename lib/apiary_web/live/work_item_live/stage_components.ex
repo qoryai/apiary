@@ -740,9 +740,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("What the run needs from you")}</h2>
       </div>
       <div class="q-xp-body q-xp-needs-body">
-        <%!-- Where a switch is offered, the choice comes first: the note and Run another
-        round, then the points, then the outputs of the run. --%>
-        <.needs_form :if={@form and @switch != []} {assigns} />
+        <%!-- Where a switch is offered, the outputs of the run come first, then the points,
+        then the note and Run another round. --%>
+        <.live_component
+          :if={(@switch != [] and @scope) && @number && @page.escalation && @page.escalation[:run_id]}
+          module={ApiaryWeb.RunOutputs}
+          id={"#{@id}-outputs"}
+          scope={@scope}
+          number={@number}
+          run_id={@page.escalation.run_id}
+          heading={gettext("The run's outputs")}
+          skip={["verdict"]}
+        />
         <ol :if={@points != []} id={"#{@id}-points"} class="q-xp-needs-points">
           <li :for={{point, i} <- Enum.with_index(@points, 1)} id={"#{@id}-point-#{i}"}>
             <.point
@@ -755,17 +764,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             />
           </li>
         </ol>
-        <.live_component
-          :if={(@switch != [] and @scope) && @number && @page.escalation && @page.escalation[:run_id]}
-          module={ApiaryWeb.RunOutputs}
-          id={"#{@id}-outputs"}
-          scope={@scope}
-          number={@number}
-          run_id={@page.escalation.run_id}
-          heading={gettext("The run's outputs")}
-          skip={["verdict"]}
-        />
-        <.needs_form :if={@form and @switch == []} {assigns} />
+        <.needs_form :if={@form} {assigns} />
       </div>
     </section>
     """
