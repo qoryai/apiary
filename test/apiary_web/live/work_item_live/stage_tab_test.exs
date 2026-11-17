@@ -3347,10 +3347,21 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "The full test suite failed: 412 passed, 3 failed, 5 skipped."
     end
 
-    test "minutes show as a whole number when they are whole, and as sent otherwise" do
-      assert suite_tab(%{counts(:passed) | minutes: 6.0}) |> suite_line() =~ "in 6 minutes."
-      assert suite_tab(%{counts(:passed) | minutes: 4.5}) |> suite_line() =~ "in 4.5 minutes."
-      assert suite_tab(%{counts(:passed) | minutes: 0}) |> suite_line() =~ "in 0 minutes."
+    test "minutes are one minute for exactly 1, and minutes for any other number" do
+      for {minutes, words} <- [
+            {1, "in 1 minute."},
+            {1.0, "in 1 minute."},
+            {0.25, "in 0.25 minutes."},
+            {0, "in 0 minutes."},
+            {12, "in 12 minutes."},
+            {6.0, "in 6 minutes."},
+            {4.5, "in 4.5 minutes."}
+          ] do
+        for state <- [:passed, :failed] do
+          line = suite_tab(%{counts(state) | minutes: minutes}) |> suite_line()
+          assert line =~ ~r/#{Regex.escape(words)}$/, "#{state} #{inspect(minutes)}: #{line}"
+        end
+      end
     end
 
     test "a suite that did not run shows its reason, on any track" do

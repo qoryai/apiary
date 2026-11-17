@@ -21189,8 +21189,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
-msgstr "The full test suite failed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
+msgid "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute."
+msgid_plural "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
+msgstr[0] "The full test suite failed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute."
+msgstr[1] "The full test suite failed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -21199,8 +21201,10 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
-msgstr "The full test suite passed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
+msgid "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute."
+msgid_plural "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
+msgstr[0] "The full test suite passed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute."
+msgstr[1] "The full test suite passed on that commit: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes."
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format

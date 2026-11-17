@@ -2809,8 +2809,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp suite_words(%{state: :passed} = suite) do
-    gettext(
+    ngettext(
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
       "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
       passed: Format.number(suite.passed),
       failed: Format.number(suite.failed),
       skipped: Format.number(suite.skipped),
@@ -2819,14 +2821,21 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   defp suite_words(%{state: :failed} = suite) do
-    gettext(
+    ngettext(
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
       "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
       passed: Format.number(suite.passed),
       failed: Format.number(suite.failed),
       skipped: Format.number(suite.skipped),
       minutes: suite_minutes(suite.minutes)
     )
   end
+
+  # The count that selects the singular: 1 for minutes of exactly 1 (1 or 1.0), and 2 for any
+  # other number, 0 and 0.25 among them.
+  defp suite_plural(minutes) when minutes == 1, do: 1
+  defp suite_plural(_minutes), do: 2
 
   defp suite_minutes(minutes) when is_float(minutes) and minutes == trunc(minutes),
     do: Format.number(trunc(minutes))
