@@ -878,10 +878,19 @@ defmodule Apiary.ModelChoicesTest do
         ModelChoices.put_choice(
           scope,
           :organisation,
-          attrs(provider, %{model: "claude-haiku-5-5", effort: nil})
+          attrs(provider, %{
+            model: "claude-haiku-5-5",
+            effort: nil,
+            tiers: every_tier("claude-haiku-5-5")
+          })
         )
 
-      {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      {:ok, _} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{tiers: every_tier(@model, "high")})
+        )
 
       assert {:ok, {:ok, %Resolution{level: 5, model_id: @model, effort: "high"}}} =
                ModelChoices.resolve(scope, target, "hello")
@@ -890,7 +899,11 @@ defmodule Apiary.ModelChoicesTest do
         ModelChoices.put_choice(
           scope,
           {target, "hello"},
-          attrs(provider, %{model: "claude-opus-5-5", effort: "max"})
+          attrs(provider, %{
+            model: "claude-opus-5-5",
+            effort: "max",
+            tiers: every_tier("claude-opus-5-5", "max")
+          })
         )
 
       assert {:ok, {:ok, %Resolution{level: 2, model_id: "claude-opus-5-5", effort: "max"}}} =
@@ -907,7 +920,7 @@ defmodule Apiary.ModelChoicesTest do
         ModelChoices.put_choice(
           scope,
           :organisation,
-          attrs(provider, %{model: "claude-haiku-5-5"})
+          attrs(provider, %{model: "claude-haiku-5-5", tiers: every_tier("claude-haiku-5-5")})
         )
 
       assert {:ok, {:ok, %Resolution{level: 6, model_id: "claude-haiku-5-5"}}} =
@@ -926,7 +939,11 @@ defmodule Apiary.ModelChoicesTest do
         ModelChoices.put_choice(
           scope,
           :workspace,
-          attrs(provider, %{model: "claude-haiku-5-5", locked: true})
+          attrs(provider, %{
+            model: "claude-haiku-5-5",
+            locked: true,
+            tiers: every_tier("claude-haiku-5-5")
+          })
         )
 
       {:ok, _} = ModelChoices.put_choice(scope, {target, "hello"}, attrs(provider))

@@ -29,23 +29,23 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     Map.put(handover_place_fixture(scope, allow_secrets: true), :scope, scope)
   end
 
-  # A LiteLLM provider, whose description lists no model, so a tier takes any model id,
-  # chosen for the workspace with a model and the three tiers, each id 200 characters,
-  # the most a model id has: the run settings list these four.
+  # A LiteLLM provider, chosen for the workspace with three tiers, each id 200 characters,
+  # the most a model id has. Its description lists no models, so it takes any tier model
+  # (`Apiary.ModelChoices.Resolution.tier_ok?/2`), and the run's model is the thinking
+  # tier's: the run settings list these three.
   defp provider_with_long_ids!(scope) do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "litellm",
         settings: %{"address" => "https://litellm.example.com"},
-        keys: [%{value_id: "main", value: "sk-litellm-budget-0123456789"}]
+        keys: [%{value_id: "main", value: "sk-team-budget-0123456789"}]
       })
 
-    [model | tier_models] = for n <- 1..4, do: String.pad_trailing("team-#{n}-", 200, "x")
+    tier_models = for n <- 1..3, do: String.pad_trailing("team-#{n}-", 200, "x")
 
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
-        model: model,
         tiers: Map.new(Enum.zip(Apiary.ModelChoices.Resolution.tiers(), tier_models))
       })
 
@@ -124,7 +124,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       handed = claimed!(ctx)
 
       settings = Jason.encode!(handed.run_settings)
-      assert length(Jason.decode!(settings)["provider_models"]) == 4
+      assert length(Jason.decode!(settings)["provider_models"]) == 3
       assert omitted(handed) > 0
 
       # The 201 carries the documents the claim stored, and fits 1 MiB with the margin

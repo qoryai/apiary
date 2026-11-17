@@ -130,10 +130,11 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
   # provider's row id, its keys' secret's row id, its model keys in their order, the
   # provider's chain and the API of the provider the run uses; later reads take those,
-  # never the choices. Where every key of the choice's provider and of each fallback that
-  # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
-  # `register/2` returns `{:wait, provider_ids}`, and the run waits again for those
-  # providers and each fallback whose settings check ran out of time or crashed
+  # never the choices. Where every key of the choice's provider, of the default step
+  # under a workflow's override, and of each fallback that forms is in cooldown, the
+  # claim registers nothing once the checks of step 1 pass: `register/2` returns
+  # `{:wait, provider_ids}`, and the run waits again for those providers and each later
+  # step whose settings check ran out of time or crashed
   # (`Apiary.Dispatches`). Where the check of the settings of the choice's provider ran
   # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
   # `model_provider_ids` as they were, and the run waits again too. Its input is
@@ -326,9 +327,10 @@ defmodule Apiary.Dispatches.Handover do
   # register/2 registers the run of the queue `claimed.run`, which the claim took, with a
   # run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
-  # ended, `{:wait, provider_ids}` when every key of its model choice's provider and of
-  # each fallback that forms is in cooldown (`Apiary.Dispatches.RunSettings`), with those
-  # providers and each fallback whose settings check ran out of time or crashed, and no
+  # ended, `{:wait, provider_ids}` when every key of its model choice's provider, of the
+  # default step under a workflow's override, and of each fallback that forms is in
+  # cooldown (`Apiary.Dispatches.RunSettings`), with those providers and each later step
+  # whose settings check ran out of time or crashed, and no
   # run registered, or with the run's `model_provider_ids` when the check of its
   # provider's settings ran out of time or crashed, or `{:error, :unavailable}` (the
   # moduledoc). `claimed` has the key, the dispatch, the run of the queue, the gateway and
