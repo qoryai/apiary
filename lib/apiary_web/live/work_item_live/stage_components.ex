@@ -612,7 +612,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               type="submit"
               name="switch"
               value={track.id}
-              variant="primary"
             >
               {gettext("Switch to %{track}", track: track.name)}
             </.button>
@@ -752,7 +751,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           heading={gettext("The run's outputs")}
           skip={["verdict"]}
         />
-        <ol :if={@points != []} id={"#{@id}-points"} class="q-xp-needs-points">
+        <ol
+          :if={@points != []}
+          id={"#{@id}-points"}
+          class={["q-xp-needs-points", @switch != [] && "mt-6"]}
+        >
           <li :for={{point, i} <- Enum.with_index(@points, 1)} id={"#{@id}-point-#{i}"}>
             <.point
               point={point}
