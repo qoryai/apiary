@@ -391,6 +391,7 @@ defmodule ApiaryWeb.WorkItemListComponentsTest do
             {:used_up, "Explore used its 3 runs", "wait", "wait_other"},
             {:no_result, "Explore ended without a result", "err", "err"},
             {:lost, "Explore's run was lost", "err", "err"},
+            {:time_limit, "Explore's run reached its time limit", "err", "err"},
             {:cancelled, "Explore's run was cancelled", "err", "err"}
           ] do
         w = work_item(%{status: status, run: run})

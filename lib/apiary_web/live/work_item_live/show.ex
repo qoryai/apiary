@@ -144,7 +144,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @actions ~w(undo ask_close close explore_again answer_draft answer confirm reply page_draft open_fold open_frame)
   # The statuses where no run runs, so the page shows Reply and its form page
   # (`can_review?/3`).
-  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+  # The statuses of a run that gave no result: Run Explore again follows.
+  @no_result [:no_result, :lost, :time_limit, :cancelled]
+  @no_run [:questions, :confirm, :no_result, :lost, :time_limit, :cancelled, :used_up]
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -154,6 +156,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     :used_up,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :confirm
   ]
@@ -2323,7 +2326,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       case status do
         :questions -> :"work_item.answer"
         :confirm -> :"work_item.confirm"
-        status when status in [:no_result, :lost, :cancelled] -> :"work_item.explore_again"
+        status when status in @no_result -> :"work_item.explore_again"
         :used_up -> :"work_item.close"
         _other -> nil
       end
@@ -2640,7 +2643,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp foot(_flow, _item, _earlier_runs), do: nil
 
   defp escalated?(%{state: :escalated, escalation: %{}}, status)
-       when status in [:no_result, :lost, :cancelled, :used_up, :confirm],
+       when status in [:no_result, :lost, :time_limit, :cancelled, :used_up, :confirm],
        do: true
 
   defp escalated?(_flow, _status), do: false
