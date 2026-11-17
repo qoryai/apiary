@@ -17,7 +17,7 @@ defmodule Apiary.Stages.GateDecision do
   # `stage_id` (`work_items.stage_entered_at`, which the move overwrites; nil for none).
   # `Apiary.Stages.inputs/1` reads the versions that `stage_id` made in between. The move
   # back that resolves an escalation writes one too, with no note and the `escalation_id` of
-  # the escalation it resolves: the escalation's own note is the one that `notes/1` lists.
+  # the escalation it resolves: the note of the escalation is the one that `notes/1` lists.
   @moduledoc false
   use Ecto.Schema
 
