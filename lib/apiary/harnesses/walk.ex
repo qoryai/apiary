@@ -131,8 +131,8 @@ defmodule Apiary.Harnesses.Walk do
   # returned, its pin.
   #
   # The links: one per grant, with the resources the walk resolved under it, read only.
-  # More than `max_links/0` (5: the 8 credentials of a run, less the model key, the
-  # registry credential and the work credential) fails `too_many`.
+  # More than `max_links/0` (5) fails `too_many`. A run's 6 model keys, its registry, work
+  # and push credentials and 5 links are 14 of the 16 credentials of a run configuration.
   #
   # ## The access level
   #

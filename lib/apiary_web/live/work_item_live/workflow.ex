@@ -77,18 +77,21 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # its state, round and gaps, the runs, the inputs, the outputs at the gate, the
   # escalation, the artifacts' approval marks, but those of a withdrawn name
   # (`Apiary.Artifacts.withdrawn?/1`), and what the reader may do; nil for a work item the
-  # stage runner has not placed.
-  @spec page(Scope.t(), struct) :: map | nil
-  def page(scope, row) do
+  # stage runner has not placed. With `proposal: true`, the work item waits at Explore's
+  # Confirm gate and the page reads the track the runs proposed (`proposed`); with none,
+  # `proposed` is nil and no verdict is read.
+  @spec page(Scope.t(), struct, keyword) :: map | nil
+  def page(scope, row, opts \\ []) do
     case Stages.status(row, scope) do
       nil -> nil
-      status -> page(scope, row, status)
+      status -> page(scope, row, status, opts)
     end
   end
 
-  defp page(scope, row, status) do
+  defp page(scope, row, status, opts) do
     version = Processes.version_for(row)
-    index = Stages.artifact_index(row)
+    artifacts = Artifacts.list(row)
+    index = Stages.artifact_index(row, artifacts)
     runs = runs(row, index)
     document = get(version, :document) || %{}
     all = Enum.map(get(document, :stages) || [], &stage_map/1)
@@ -107,10 +110,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     explore_id = Stages.explore_stage_id(row)
     runs = scope |> with_paths(runs, current_id, explore_id) |> with_pauses(scope)
     records = Stages.skip_records(row)
+    gate_kind = get(get(status, :gate) || %{}, :kind)
+    offers = if state == :at_gate, do: Stages.offered_tracks(row, version), else: []
+    at_explore = stage.id == explore_id
+
+    proposal =
+      if offers != [] and at_explore and opts[:proposal] == true,
+        do: Stages.proposed_track_with_reason(row, artifacts)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
-      stages: track(all, at, state),
+      stages: all |> track(at, state) |> not_run(records.stage_skips),
+      # The process version's document, for the words of an entry's condition.
+      document: document,
+      # The track the work item is on, `%{id:, name:}`, nil for none.
+      track: current_track(records.track, document),
+      # The tracks the stage's gate offers, each `%{id:, name:, description:}`, with the one
+      # its runs proposed (`proposed`, an id, nil for none).
+      offers: offers,
+      proposed: proposal && proposal.id,
+      # Why the runs proposed it (`track.reason` of the verdict), nil for none.
+      proposed_reason: proposal && proposal.reason,
       stage: stage,
       state: state,
       # The stage runs, and its newest run still waits for a machine.
@@ -130,25 +150,66 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
-      escalation: escalation(scope, get(status, :escalation), runs, outputs),
+      escalation: scope |> escalation(get(status, :escalation), runs, outputs) |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
-      gate_kind: get(get(status, :gate) || %{}, :kind),
+      gate_kind: gate_kind,
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       earlier: if(at, do: Enum.take(all, at), else: []),
+      # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
+      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
+      # Accept as it is and no Move back.
+      switch: switch_tracks(row, state),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       confirm_gate: false,
       explore: false,
-      at_explore: stage.id == explore_id,
+      at_explore: at_explore,
       explore_id: explore_id,
       tabs: [],
       ended: false,
       can_decide: Access.can?(scope, :"gate.approve", row),
       can_add: Access.can?(scope, :"artifact.write", row)
     }
+  end
+
+  defp switch_tracks(row, :escalated),
+    do: Stages.switch_tracks(row)
+
+  defp switch_tracks(_row, _state), do: []
+
+  # The track the work item is on, with the name the process version declares, else the id.
+  defp current_track(nil, _document), do: nil
+
+  defp current_track(id, document),
+    do: %{id: id, name: ApiaryWeb.StagesLive.Words.track_name(document, id)}
+
+  # The stages the runner passed over whole in the take in, each with `not_run` true.
+  defp not_run(stages, stage_skips) do
+    passed_over = MapSet.new(stage_skips, & &1.stage_id)
+
+    for stage <- stages,
+        do: Map.put(stage, :not_run, stage.at != :now and MapSet.member?(passed_over, stage.id))
+  end
+
+  @doc false
+  # picked/2 is the track the gate's picker has selected for `page`, a map of `page/2`, with
+  # `draft`, the id the reader chose, nil for none: the draft where the gate offers it, else
+  # the track its runs proposed, else the track the work item is on, else the gate's first
+  # track, as `Apiary.Stages.approve/4` records it; nil where the gate offers none.
+  @spec picked(map, String.t() | nil) :: String.t() | nil
+  def picked(%{offers: offers} = page, draft) do
+    ids = Enum.map(offers, & &1.id)
+    current = page.track && page.track.id
+
+    cond do
+      draft in ids -> draft
+      page.proposed in ids -> page.proposed
+      current in ids -> current
+      true -> List.first(ids)
+    end
   end
 
   # The round limit as the card counts it: Run another round at the limit runs one round
@@ -425,8 +486,31 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
+      # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
+      # it pushed name (`ApiaryWeb.RunOutputs`).
+      run_id: get(get(escalation, :run), :id),
       harness_path: harness_path(scope, get(escalation, :set_up_step))
     }
+  end
+
+  # The escalation with `entry`, the name of the entry of `stage`'s sequence that the
+  # escalated run ran, else its workflow; nil with no run.
+  defp entry(nil, _stage), do: nil
+
+  defp entry(escalation, stage) do
+    workflow = escalation.run && escalation.run.workflow
+
+    entries =
+      Enum.flat_map(Map.get(stage, :sequence, []), fn item ->
+        case get(get(item, :loop), :body) do
+          body when is_list(body) -> body
+          _none -> [item]
+        end
+      end)
+
+    named = Enum.find(entries, &(get(&1, :workflow) == workflow))
+
+    Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
   # An escalation's points as the block "What the run needs from you" shows them: each
@@ -693,7 +777,22 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
 
+  # Accept as it is and Move back, where the card offers a switch: it offers neither.
+  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
+
+  defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
+    do: {:error, :invalid}
+
+  # A switch to a track the card offers; `Apiary.Stages` refuses any other, with the reason.
+  defp checked({:resolve, {:switch, _track}, _note} = action, %{switch: [_ | _]}),
+    do: {:ok, action}
+
+  defp checked({:resolve, {:switch, _track}, _note}, _page), do: {:error, :invalid}
+
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
+
+  # A person's move resolves the escalation as a move back: refused where it offers a switch.
+  defp checked({:move, _id, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)
 
   defp checked({:request_changes, _note, nil} = action, _page), do: {:ok, action}

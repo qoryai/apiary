@@ -15,7 +15,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   #   * `"stage_ask_changes"`, `"stage_request_changes"` - Request changes opens its form,
   #     which sends `note` and `version`, the artifact version it is about or `""`;
   #   * `"stage_resolve"` - an escalation action: `how` (`accept`, `another_round`,
-  #     `move_back` or `close`), `note`, and `stage` for `move_back`;
+  #     `move_back` or `close`), `note`, and `stage` for `move_back`; or `switch`, the id
+  #     of the track to switch to, with no `how`;
   #   * `"stage_move"` - Move back while the stage waits for inputs: `stage` and `note`.
   #
   # The module reference leaves out this module of the `factory` feature.
@@ -50,18 +51,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           class={[
             "q-wi-stage",
             "q-wi-stage-#{track_class(stage.at)}",
+            stage[:not_run] && "q-wi-stage-skipped",
             stage.at == :now && @wait && "q-wi-stage-wait"
           ]}
           aria-current={stage.at == :now && "step"}
         >
           <span class="q-wi-stage-n" aria-hidden="true">
-            <%= if stage.at == :done do %>
-              <.icon name="hero-check-micro" class="size-3" />
-            <% else %>
-              {i}
+            <%= cond do %>
+              <% stage[:not_run] -> %>
+              <% stage.at == :done -> %>
+                <.icon name="hero-check-micro" class="size-3" />
+              <% true -> %>
+                {i}
             <% end %>
           </span>
           {stage.name}
+          <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
+            {gettext("Not run")}
+          </span>
         </li>
       </ol>
     </div>
@@ -396,16 +403,35 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         # version is not shown as missing.
         shown: shown_outputs(assigns.page),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
-        decides: assigns.page.gate_kind != "none"
+        decides: assigns.page.gate_kind != "none",
+        started_no_run: started_no_run?(assigns.page),
+        # The list of outputs says nothing while no output has a version.
+        no_outputs_yet:
+          started_no_run?(assigns.page) and Enum.all?(assigns.page.outputs, &is_nil(&1.version))
       )
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
-      <h3 :if={@shown != [] or @page.outputs == []} class="text-sm font-semibold">
+      <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
+        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
+        <p>
+          <.badge color="success">{@page.track.name}</.badge>
+        </p>
+        <p :if={@started_no_run} id={"#{@id}-no-run"}>
+          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
+            " " <> gettext("Read the inputs below, then approve.")}
+        </p>
+      </div>
+      <h3
+        :if={not @no_outputs_yet and (@shown != [] or @page.outputs == [])}
+        class="text-sm font-semibold"
+      >
         {gettext("Outputs")}
       </h3>
-      <p :if={@page.outputs == []} id={"#{@id}-none"}>{gettext("This stage has no outputs.")}</p>
-      <ul :if={@shown != []} id={"#{@id}-outputs"} class="flex flex-col gap-1">
+      <p :if={@page.outputs == [] and not @no_outputs_yet} id={"#{@id}-none"}>
+        {gettext("This stage has no outputs.")}
+      </p>
+      <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
         <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
           <span>{version_words(output.type, output.version)}</span>
           · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
@@ -482,6 +508,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  @doc false
+  # started_no_run?/1 is whether `page`'s stage, at a gate that offers no track, of a work
+  # item on a track, ran no workflow in the take in and has entries the runner passed over:
+  # there is no run of the stage to read. A work item on no track is never so.
+  @spec started_no_run?(map) :: boolean
+  def started_no_run?(%{
+        state: :at_gate,
+        track: %{},
+        offers: [],
+        stage: stage,
+        runs: runs,
+        skips: skips
+      }) do
+    not Enum.any?(runs, &(&1.stage_id == stage.id)) and
+      Enum.any?(skips, &(&1.stage_id == stage.id))
+  end
+
+  def started_no_run?(_page), do: false
+
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
     do: Enum.filter(outputs, & &1.version_id)
 
@@ -524,7 +569,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result), Move back and Close. Their form has the note field and Run
+  # it is (only with a result), Move back and Close; where the page offers a switch
+  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close. Their form has the note field and Run
   # another round in the block, which name it in their `form` attribute, so the note goes
   # with every action.
   defp escalation_card(assigns) do
@@ -535,6 +581,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{cause: :escalate, result: true, points: [], run: nil, harness_path: nil}
       )
+      |> assign(:switch, Map.get(assigns.page, :switch) || [])
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
@@ -558,7 +605,26 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       >
         <input type="hidden" name="number" value={@number} />
         <input type="hidden" name="seen" value={@page.stage.id} />
-        <div :if={@escalation.result} class="q-wi-acts flex-wrap">
+        <div :for={track <- @switch} class="flex flex-col gap-1">
+          <div class="q-wi-acts flex-wrap">
+            <.button
+              id={"#{@id}-switch-#{track.id}"}
+              type="submit"
+              name="switch"
+              value={track.id}
+            >
+              {gettext("Switch to %{track}", track: track.name)}
+            </.button>
+          </div>
+          <p
+            :if={track.first}
+            id={"#{@id}-switch-#{track.id}-line"}
+            class="text-xs opacity-70"
+          >
+            {switch_line(track)}
+          </p>
+        </div>
+        <div :if={@switch == [] and @escalation.result} class="q-wi-acts flex-wrap">
           <.button
             id={"#{@id}-accept"}
             type="submit"
@@ -569,7 +635,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("Accept as it is")}
           </.button>
         </div>
-        <div :if={@page.earlier != []} class="q-wi-acts flex-wrap">
+        <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
             <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
@@ -582,10 +648,33 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <.button id={"#{@id}-close"} type="submit" name="how" value="close">
             {gettext("Close")}
           </.button>
+          <p :if={@switch != []} id={"#{@id}-close-line"} class="basis-full text-xs opacity-70">
+            {gettext("Ends the work item. No draft is sent.")}
+          </p>
         </div>
       </form>
     </div>
     """
+  end
+
+  # What a switch runs: the stage it starts, with the run's outputs, then the stages after
+  # it that run on the track.
+  defp switch_line(%{later: []} = track) do
+    gettext(
+      "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt.",
+      stage: track.first
+    )
+  end
+
+  defp switch_line(track) do
+    ngettext(
+      "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}.",
+      "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} run on %{track}.",
+      length(track.later),
+      stage: track.first,
+      later: words_list(track.later),
+      track: track.name
+    )
   end
 
   ## What the run needs from you
@@ -614,6 +703,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     default: "work-item-explore-questions",
     doc: "the id of that tab's questions frame, before `-question-N`"
 
+  attr :scope, :any,
+    default: nil,
+    doc: "the reader's scope, with `number`, for the outputs of the run on an escalation"
+
+  attr :number, :integer, default: nil, doc: "the work item's number"
+
   attr :class, :string, default: nil
 
   def needs_block(assigns) do
@@ -631,6 +726,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         field: "work-item-stage-escalation"
       )
 
+    assigns =
+      assign(assigns,
+        switch: Map.get(assigns.page, :switch) || [],
+        entry: assigns.page.escalation && assigns.page.escalation[:entry]
+      )
+
     ~H"""
     <section id={@id} class={["q-xp-frame q-xp-needs", @class]} aria-labelledby={"#{@id}-h"}>
       <div class="q-xp-frame-h">
@@ -638,7 +739,24 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("What the run needs from you")}</h2>
       </div>
       <div class="q-xp-body q-xp-needs-body">
-        <ol :if={@points != []} id={"#{@id}-points"} class="q-xp-needs-points">
+        <%!-- Where a switch is offered, the outputs of the run come first, then the points,
+        then the note and Run another round. --%>
+        <.live_component
+          :if={(@switch != [] and @scope) && @number && @page.escalation && @page.escalation[:run_id]}
+          module={ApiaryWeb.RunOutputs}
+          id={"#{@id}-outputs"}
+          scope={@scope}
+          number={@number}
+          run_id={@page.escalation.run_id}
+          heading={gettext("The run's outputs")}
+          skip={["verdict"]}
+          class="q-xp-needs-outputs"
+        />
+        <ol
+          :if={@points != []}
+          id={"#{@id}-points"}
+          class={["q-xp-needs-points", @switch != [] && "mt-6"]}
+        >
           <li :for={{point, i} <- Enum.with_index(@points, 1)} id={"#{@id}-point-#{i}"}>
             <.point
               point={point}
@@ -650,32 +768,47 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             />
           </li>
         </ol>
-        <div :if={@form} class="q-xp-needs-form flex flex-col gap-2">
-          <label for={"#{@field}-note"}>{gettext("Note")}</label>
-          <textarea
-            id={"#{@field}-note"}
-            name="note"
-            rows="2"
-            maxlength={note_units()}
-            form={@form_id}
-          ></textarea>
-          <p class="text-xs opacity-70">
-            {gettext("A note you add goes to the next run as work item data.")}
-          </p>
-          <div class="q-wi-acts flex-wrap">
-            <.button
-              id={"#{@field}-another"}
-              type="submit"
-              name="how"
-              value="another_round"
-              form={@form_id}
-            >
-              {gettext("Run another round")}
-            </.button>
-          </div>
-        </div>
+        <.needs_form :if={@form} {assigns} />
       </div>
     </section>
+    """
+  end
+
+  # The note and Run another round of the block, which name the escalation card's form in
+  # their `form` attribute. Where a switch is offered, a line under the button says what
+  # it runs.
+  defp needs_form(assigns) do
+    ~H"""
+    <div class="q-xp-needs-form flex flex-col gap-2">
+      <label for={"#{@field}-note"}>{gettext("Note")}</label>
+      <textarea
+        id={"#{@field}-note"}
+        name="note"
+        rows="2"
+        maxlength={note_units()}
+        form={@form_id}
+      ></textarea>
+      <p class="text-xs opacity-70">
+        {gettext("A note you add goes to the next run as work item data.")}
+      </p>
+      <div class="q-wi-acts flex-wrap">
+        <.button
+          id={"#{@field}-another"}
+          type="submit"
+          name="how"
+          value="another_round"
+          form={@form_id}
+        >
+          {gettext("Run another round")}
+        </.button>
+      </div>
+      <p :if={@switch != [] and @entry} id={"#{@field}-another-line"} class="text-xs opacity-70">
+        {gettext(
+          "Runs %{entry} again with your note. Use it when the run changed more than the work item asks.",
+          entry: @entry
+        )}
+      </p>
+    </div>
     """
   end
 

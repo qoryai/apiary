@@ -215,7 +215,12 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
 
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
-      assert [%RunCredential{access: :write}] = entries()
+
+      # The sessions' credential reads, and a push entry beside it writes.
+      assert [
+               %RunCredential{name: "push-1", purpose: :push, access: :write},
+               %RunCredential{name: "work-1", purpose: :work, access: :read}
+             ] = entries()
     end
 
     @tag needs: [:factory, :workflow_model]
@@ -251,8 +256,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
 
       # The adapter is asked for the entry's access when the run asks for its value
-      # (`Apiary.Runs.WorkCredential`), so the row is what it reads.
-      assert [%RunCredential{access: :read}] = entries()
+      # (`Apiary.Runs.WorkCredential`), so the row is what it reads: no push entry.
+      assert [%RunCredential{name: "work-1", access: :read}] = entries()
     end
 
     # A version of the workspace's process, with `sequence` in its one stage.
@@ -290,13 +295,23 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     # The level of the claim of `queued`, whose walk resolved `walk`, `write` unless given:
-    # its documents' and its token's.
+    # its documents' and its token's. The run's work entry reads whatever its level; the
+    # token's level is `write` where the claim recorded a push entry, else `read`.
     defp claimed_levels(ctx, queued, walk \\ :write) do
       section = %{"extends" => %{"git" => "https://code.example.com/team/stacks"}}
       walk_resolved!(queued, origin: :setting, document: section, access_level: walk)
 
       assert {:ok, %{documents: %{harness: %{access: documents}}}} = claim(ctx)
-      assert [%RunCredential{access: token}] = entries()
+      entries = entries()
+      assert %RunCredential{access: :read} = Enum.find(entries, &(&1.purpose == :work))
+
+      token =
+        case Enum.find(entries, &(&1.purpose == :push)) do
+          nil -> :read
+          %RunCredential{access: :write} -> :write
+        end
+
+      assert length(entries) == if(token == :write, do: 2, else: 1)
       {documents, token}
     end
 
@@ -365,7 +380,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
     # Cancel run's confirm says a write run's changes are not pushed
     # (`Apiary.Runs.Cancel.write_run?/2`): a run whose entry lowers its write walk is none,
-    # by its work entry, then by the documents the claim sent it, then by its stage entry.
+    # by its credential entries, then by the documents the claim sent it, then by its stage
+    # entry.
     for {access, write?} <- [{"write-no-push", false}, {"read", false}, {nil, true}] do
       @tag needs: [:factory, :workflow_model]
       test "Cancel run reads a run of an entry with access #{inspect(access)} as write: #{write?}",
@@ -388,16 +404,17 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
     end
 
-    # Cancel run reads the first source the run has: its work entry before its documents,
-    # its documents before its stage entry. Each case gives the sources different levels.
+    # Cancel run reads the first source the run has: its credential entries before its
+    # documents, its documents before its stage entry. Each case gives the sources
+    # different levels.
     @tag needs: [:factory, :workflow_model]
-    test "Cancel run takes the work entry first, then the documents", ctx do
+    test "Cancel run takes the credential entries first, then the documents", ctx do
       process!(ctx, [%{"workflow" => "build", "access" => "read"}])
       {_work_item, queued} = queued!(ctx)
       claimed_levels(ctx, queued)
       run = Repo.get_by!(Run, dispatch_run_id: queued.id)
 
-      # A work entry of write, with documents that say read.
+      # An entry of write, with documents that say read.
       {1, _rows} =
         Repo.update_all(from(c in RunCredential, where: c.run_id == ^run.id),
           set: [access: :write]
@@ -406,7 +423,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert sent_documents(queued)["access"] == "read"
       assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
 
-      # No work entry, documents that say write, and a stage entry that lowers to read.
+      # No entry, documents that say write, and a stage entry that lowers to read.
       Repo.delete_all(from c in RunCredential, where: c.run_id == ^run.id)
       documents!(run, &Map.put(&1, "access", "write"))
       assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
@@ -434,9 +451,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
     end
 
-    # The claim reads the run's level once, for its documents and its work entry: the entry
-    # takes the level it is given, not one read again.
-    test "form_work/4 gives the work entry the access of the level it is given", ctx do
+    # The claim reads the run's level once, for its documents and its entries: they take the
+    # level it is given, not one read again. The work entry reads at every level, and only
+    # `write` has a push entry.
+    test "form_work/4 and push_from/3 form the entries of the level they are given", ctx do
       {work_item, queued} = queued!(ctx)
 
       case Repo.get_by(RunHarness, dispatch_run_id: queued.id) do
@@ -454,9 +472,15 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert RunCredentials.run_access(queued) == :write
 
-      for {level, access} <- [read: :read, write_no_push: :read, write: :write] do
-        assert {:ok, %RunCredential{access: ^access}} =
+      for level <- [:read, :write_no_push, :write] do
+        assert {:ok, %RunCredential{name: "work-1", purpose: :work, access: :read} = work} =
                  RunCredentials.form_work(queued, work_item, @target, level)
+
+        push = RunCredentials.push_from(work, level, work_item)
+
+        if level == :write,
+          do: assert(%RunCredential{name: "push-1", purpose: :push, access: :write} = push),
+          else: assert(push == nil)
       end
     end
 
@@ -820,44 +844,71 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
     defp branch(%WorkItem{public_id: public_id}), do: "refs/heads/qory/" <> public_id
 
-    # The run configuration with the work entry of the claimed run `run`, as it is sent.
+    # The run configuration with the entries of the claimed run `run`, as it is sent.
     defp document(run) do
-      %{entry: entry} = RunCredentials.work(run)
-      Jason.encode!(%{"version" => 1, "credentials" => [entry]})
+      entries =
+        for entry <- [RunCredentials.work(run), RunCredentials.push(run)], entry, do: entry.entry
+
+      Jason.encode!(%{"version" => 1, "credentials" => entries})
     end
 
-    test "a write entry has the work item's branch on each of its apply items", ctx do
+    defp entry!(purpose), do: Enum.find(entries(), &(&1.purpose == purpose))
+
+    test "a write run has a read work-1 with no push_ref, and a push-1 with the branch", ctx do
       {work_item, _queued} = queued_at!(ctx, :write)
       assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
 
-      assert [%RunCredential{access: :write, apply: [_code, _api] = apply}] = entries()
+      assert [%RunCredential{name: "push-1"}, %RunCredential{name: "work-1"}] = entries()
       assert work_item.public_id =~ ~r/\Awi_[0-9a-z]{16}\z/
-      assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
 
-      # The run configuration has it last in each item, as the schema orders the members.
-      %{entry: %{values: values}} = RunCredentials.work(run)
+      assert %RunCredential{access: :read, apply: [_code, _api] = work_apply} = entry!(:work)
+      refute Enum.any?(work_apply, &Map.has_key?(&1, "push_ref"))
+
+      assert %RunCredential{access: :write, apply: [_code, _api] = push_apply} = entry!(:push)
+      assert Enum.map(push_apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
+
+      # Both entries have the same connection, adapter, resource and items, but the branch.
+      work = entry!(:work)
+      push = entry!(:push)
+
+      assert {work.connection_id, work.adapter_id, work.resources} ==
+               {push.connection_id, push.adapter_id, push.resources}
+
+      assert Enum.map(push_apply, &Map.delete(&1, "push_ref")) == work_apply
+
+      # The run configuration has push_ref last in each push item, as the schema orders the
+      # members, and `purpose` push on the entry.
+      %{entry: %{values: values}} = RunCredentials.push(run)
+      assert {"purpose", "push"} = List.keyfind(values, "purpose", 0)
       {"apply", items} = List.keyfind(values, "apply", 0)
 
       for item <- items,
           do: assert({"push_ref", branch(work_item)} == List.last(item.values))
 
-      [credential] = Jason.decode!(document(run))["credentials"]
+      [work_entry, push_entry] = Jason.decode!(document(run))["credentials"]
+      assert %{"name" => "work-1", "purpose" => "work"} = work_entry
+      refute Map.has_key?(work_entry, "placeholders")
+      refute Enum.any?(work_entry["apply"], &Map.has_key?(&1, "push_ref"))
+      assert %{"name" => "push-1", "purpose" => "push"} = push_entry
+      refute Map.has_key?(push_entry, "placeholders")
 
-      assert Enum.map(credential["apply"], & &1["push_ref"]) == [
+      assert Enum.map(push_entry["apply"], & &1["push_ref"]) == [
                branch(work_item),
                branch(work_item)
              ]
     end
 
     for level <- [:read, :write_no_push] do
-      test "a #{level} entry has no push_ref", ctx do
+      test "a #{level} run has a read work-1 with no push_ref and no push entry", ctx do
         {_work_item, _queued} = queued_at!(ctx, unquote(level))
         assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
 
-        assert [%RunCredential{access: :read, apply: apply}] = entries()
+        assert [%RunCredential{name: "work-1", access: :read, apply: apply}] = entries()
         assert length(apply) == 2
         refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+        assert RunCredentials.push(run) == nil
         refute document(run) =~ "push_ref"
+        refute document(run) =~ "push"
       end
     end
 
@@ -868,9 +919,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       refs = fn work_item, queued ->
         for _again <- 1..2 do
-          assert {:ok, %RunCredential{apply: apply}} =
+          assert {:ok, %RunCredential{} = work} =
                    RunCredentials.form_work(queued, work_item, @target, :write)
 
+          assert %RunCredential{apply: apply} = RunCredentials.push_from(work, :write, work_item)
           apply |> Enum.map(& &1["push_ref"]) |> Enum.uniq()
         end
       end
@@ -879,25 +931,29 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert refs.(other, other_queued) == [[branch(other)], [branch(other)]]
     end
 
-    test "a push_ref in an adapter's template is dropped, and only a write entry gets one", ctx do
+    test "a push_ref in an adapter's template is dropped, and only the push entry gets one",
+         ctx do
       template = Enum.map(@apply, &Map.put(&1, "push_ref", "refs/heads/main"))
       work_item = work_item_fixture(ctx.scope)
       set!(Node, work_item.adapter_id, source_apply: template)
       target_candidate!(work_item)
       queued = queue!(work_item)
 
-      for level <- [:read, :write_no_push] do
-        assert {:ok, %RunCredential{apply: apply}} =
+      for level <- [:read, :write_no_push, :write] do
+        assert {:ok, %RunCredential{apply: apply} = work} =
                  RunCredentials.form_work(queued, work_item, @target, level)
 
         assert length(apply) == 2
         refute Enum.any?(apply, &Map.has_key?(&1, "push_ref")), inspect(level)
+
+        push = RunCredentials.push_from(work, level, work_item)
+
+        if level == :write do
+          assert Enum.map(push.apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
+        else
+          assert push == nil
+        end
       end
-
-      assert {:ok, %RunCredential{apply: apply}} =
-               RunCredentials.form_work(queued, work_item, @target, :write)
-
-      assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
 
       # A work item with no public id, which the database does not store, ends the run.
       nil_item = %{work_item | public_id: nil}
@@ -925,18 +981,23 @@ defmodule Apiary.Runs.RunCredentialsTest do
                @target,
                :write
              ) == {:end, :write_without_work_item}
+
+      # No work entry, so no push entry.
+      assert RunCredentials.push_from(nil, :write, work_item) == nil
     end
 
-    test "a read or write-no-push run with no work item has an entry with no push_ref", ctx do
+    test "a read or write-no-push run with no work item has a read entry and no push entry",
+         ctx do
       {work_item, queued} = queued!(ctx)
       collection = RunCredentials.work_collection(queued, work_item, @target)
 
       for level <- [:read, :write_no_push] do
-        assert {:ok, %RunCredential{access: :read, apply: apply}} =
+        assert {:ok, %RunCredential{access: :read, apply: apply} = work} =
                  RunCredentials.work_from(queued, nil, collection, @target, level)
 
         assert length(apply) == 2
         refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+        assert RunCredentials.push_from(work, level, nil) == nil
       end
     end
 
@@ -945,8 +1006,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
       collection = RunCredentials.work_collection(queued, work_item, @target)
       pinned = %{work_item | public_id: "wi_01HZX"}
 
-      assert {:ok, %RunCredential{apply: apply}} =
+      assert {:ok, %RunCredential{} = work} =
                RunCredentials.work_from(queued, pinned, collection, @target, :write)
+
+      assert %RunCredential{name: "push-1", purpose: :push, access: :write, apply: apply} =
+               RunCredentials.push_from(work, :write, pinned)
 
       assert Enum.map(apply, & &1["push_ref"]) == [
                "refs/heads/qory/wi_01HZX",
@@ -954,7 +1018,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
              ]
     end
 
-    test "a prebuild has no push_ref", ctx do
+    test "a prebuild has no push_ref and no push entry", ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/app")
       set!(Node, collection.adapter_id, source_apply: @apply)
       forge_collection!(ctx, %{system: "code.example.com", path: "acme/app"})
@@ -963,7 +1027,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
       assert {:ok, %{registered: %Run{}}} = claim(ctx)
-      assert [%RunCredential{apply: apply}] = entries()
+      assert [%RunCredential{name: "work-1", apply: apply}] = entries()
       refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
     end
 
@@ -979,14 +1043,19 @@ defmodule Apiary.Runs.RunCredentialsTest do
             {"a name that is no ref", &Map.put(&1, "push_ref", "qory/wi_01")}
           ] do
         decoded = Jason.decode!(document(run))
-        changed = update_in(decoded, ["credentials", Access.at(0), "apply", Access.at(0)], change)
+        changed = update_in(decoded, ["credentials", Access.at(1), "apply", Access.at(0)], change)
         assert {:error, _} = Apiary.Policy.Schema.validate(Jason.encode!(changed)), name
       end
+
+      # A purpose that is none of harness, work and push fails.
+      decoded = Jason.decode!(document(run))
+      changed = put_in(decoded, ["credentials", Access.at(1), "purpose"], "merge")
+      assert {:error, _} = Apiary.Policy.Schema.validate(Jason.encode!(changed))
     end
   end
 
   describe "the table" do
-    test "keeps a row in its run's organisation and workspace, and one work entry per run",
+    test "keeps a row in its run's organisation and workspace, one work and one push entry",
          ctx do
       {work_item, _queued} = queued!(ctx)
       assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
@@ -1036,6 +1105,13 @@ defmodule Apiary.Runs.RunCredentialsTest do
              "run_credentials_entry_check"},
             {%{name: "harness-1"}, "run_credentials_entry_check"},
             {%{name: "work-10"}, "run_credentials_entry_check"},
+            # A work entry is not named for the push, and a push entry reads nowhere.
+            {%{name: "push-1"}, "run_credentials_entry_check"},
+            {%{name: "push-2", purpose: "push", access: "read"}, "run_credentials_entry_check"},
+            # A push entry writes, and its name starts with its purpose.
+            {%{name: "push-1", purpose: "push"}, "run_credentials_entry_check"},
+            {%{name: "work-2", purpose: "push", access: "write"}, "run_credentials_entry_check"},
+            {%{name: "push-0", purpose: "push", access: "write"}, "run_credentials_entry_check"},
             {%{name: "harness-1", purpose: "harness", apply: []}, "run_credentials_values_check"},
             {%{name: "harness-1", purpose: "harness", resources: [1]},
              "run_credentials_values_check"},
@@ -1049,6 +1125,45 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
 
       assert {1, _rows} = insert.(%{name: "harness-1", purpose: "harness"})
+
+      # A push entry has a push_ref on every apply item.
+      pushing = %{
+        name: "push-1",
+        purpose: "push",
+        access: "write",
+        apply: [
+          %{
+            "hosts" => ["git.example.com"],
+            "scheme" => "bearer",
+            "push_ref" => "refs/heads/qory/x"
+          }
+        ]
+      }
+
+      error = assert_raise Postgrex.Error, fn -> insert.(Map.delete(pushing, :apply)) end
+      assert error.postgres.constraint == "run_credentials_push_ref_check"
+
+      assert {1, _rows} = insert.(pushing)
+
+      error =
+        assert_raise Postgrex.Error, fn -> insert.(%{pushing | name: "push-2"}) end
+
+      assert error.postgres.constraint == "run_credentials_push_index"
+
+      # The apply items of the first credential sealed are kept on a work or a push entry
+      # alone.
+      kept = fn name ->
+        Repo.query!(
+          "UPDATE run_credentials SET issued_apply = '[{\"hosts\": []}]'::jsonb " <>
+            "WHERE run_id = $1 AND name = $2",
+          [Ecto.UUID.dump!(run.id), name]
+        )
+      end
+
+      assert %{num_rows: 1} = kept.("push-1")
+
+      error = assert_raise Postgrex.Error, fn -> kept.("harness-1") end
+      assert error.postgres.constraint == "run_credentials_issued_apply_check"
 
       error =
         assert_raise Postgrex.Error, fn -> insert.(%{name: "harness-1", purpose: "harness"}) end

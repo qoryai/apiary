@@ -12,7 +12,49 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
+  between Retention and Deletion, with the setting Largest prebuilt image: how large an
+  image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
+  limit, the default. A change applies to prebuilds that start after it. A prebuild's run
+  documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
+  times 1,000,000,000. When the setting is empty, the member is absent. No other run has
+  the member. The run contract is vendored at integrations `dbc1ce5`.
 <!-- feature: workflow_model -->
+- An escalation of a work item on a track that is not the first track of the gate that
+  recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
+  records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
+  track, and enters the stage after that gate: the runner passes over each stage that does
+  not run on the new track and starts the first one that does. Its dialog names the run it
+  starts. The card then offers only the switches, Run another round and Close: Accept as it
+  is and Move back are refused (`Stages.resolve_escalation/5`, `:invalid`). A track that the
+  gate does not offer, or the track the work item is on, is refused and nothing is written.
+  A work item on the gate's first track, or on none, keeps the card as it was. The
+  resolution is `switch`, and the audit entry `escalation_switch` has the track.
+- On an escalation that offers a switch, the block "What the run needs from you" lists the
+  versions that the escalated run pushed, under "The run's outputs", each as its artifact
+  page shows it: a document as its text and a structured file as its table of values. The
+  versions of the verdict and of other runs are not listed. The block shows those outputs
+  first, then the points, then the note and Run another round. A line under each action
+  says what it does: under **Switch to `<track>`**, the stage it starts and the stages after
+  it that run on the track; under **Run another round**, the entry it runs again; under
+  **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
+  switch to a track that the gate does not offer names the gate that recorded the track.
+  One component takes a run and lists its versions, so another page can show them.
+- A `diff` code block in a run's Markdown shows as a diff box with the file and the count of
+  changed lines, on every page that renders a run's Markdown. In the block "What the run
+  needs from you", the headings of the run's report show as small bold lines.
+- After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
+  lists, for each output of the stage the work item left, the newest version made in that
+  stage from the time the work item last entered it to the time it left, with
+  `"from": "move"` and `"required": false`. A person's move back and an escalation's move
+  back count (the escalation's move back now also writes a `move` decision with no note and
+  the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
+  leaves that decision out). The entries stay until the left stage's gate
+  passes again (an approval of the stage, by a person or automatic) or a later move goes
+  to a stage after it, and are scoped to the take in. No approval lists these versions, and
+  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
+  they were. A `move` decision keeps the stage it moved to and when the work item last
+  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
@@ -31,6 +73,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
+- Explore's gate lists the tracks it offers above Approve, each with its description, in the
+  gate's order, under "Track to run after you approve". The track that the stage's runs
+  proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
+  reason, the line "<stage>'s reason: <reason>"; with none proposed, the track the
+  work item is on is selected, else the gate's first. The member keeps it or picks another, and
+  Approve records the track that is selected on the page when the member confirms, never a
+  value an earlier click carried. A pick ends when the gate's stage or the take in changes,
+  and after Approve or Run another round. Typing a comment is no pick. The line in the gate's
+  card reads "Pick a track and approve the proposal, or add a comment and run another
+  round." A gate that offers no track is as before.
+- The stage track under the work item's title marks a stage that a track passed over whole
+  with "Not run", in place of its number.
+- The tab of a stage of a work item on a track, where the runner passed over an entry, starts
+  with the table "Workflows": each entry of the stage's sequence in order, with its state
+  (Passed, Not run, Paused, Did not pass, Questions, Queued, Running, Undone or Ended without a
+  verdict) and why. The line above it reads "Track: <track>, approved at <stage>'s gate",
+  where an approval chose the track. An entry that has a name shows it, with its
+  workflow under it; a loop reads "Loop of up to <n> rounds", with its workflows under it. Why
+  is the reason when an earlier entry's first attempt passed over the entry ("Did not run,
+  because <entry> passed on its first attempt."), else the entry's condition ("Runs on
+  <track>.", "Runs on <track> only."), else the reason the record of the skip gives. Under the
+  table, a gate that needs no member reads "Approved without a member: <stage>'s gate needs
+  no member." The runs fold of that tab no longer repeats the entries. A sequence that names
+  one workflow twice keeps the fold's rows and has no table.
+- The gate of a later stage for a work item on a track shows "Track" and the track's name, and
+  offers no choice. For a stage of a work item on a track that started no run, the card
+  reads "<stage> started no run. Read the inputs below, then approve." (in a software
+  workspace, "Read the build report and the draft, then approve.") and leaves out the list of
+  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
+  item on no track keeps both as before.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -55,7 +127,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
   <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
-  name in place of "You". The
+  name in place of "You". On Shape's tab, where Explore's approval lists a proposal version,
+  a second line reads "Shape did not run, so the work item has no shaping outputs. Proposal
+  v<n>, as approved, is what the next stages work to." (in a software workspace, "The work
+  item has no spec and no acceptance criteria. The exact change in proposal v<n> is the one
+  criterion."); with no version listed, there is no second line. The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
   the verdict's schema checks it. A `track.id` that the gate of the run's stage does not
@@ -1350,15 +1426,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: factory -->
-- In the run configuration, an apply item of the work credential `work-1` of a run with
-  `write` access has `push_ref`, `refs/heads/qory/` and the work item's public id, for
-  example `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create,
-  update or delete only that ref: Forager's gateway returns `403` for a push to any other
-  ref. Each item of the credential's value, sealed for the gateway, has the same
-  `push_ref`. A run with `read` or `write-no-push` access has none. The adapter's
-  run-credential call and answer have no `push_ref`, and an answer item that has one is
-  refused. The Forager contract is vendored at commit `3d4ec18`, which defines `push_ref`
-  and a path segment written `{}`.
+- The run configuration of a run with `write` access has two credentials for its target:
+  `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
+  write access. An apply item of `push-1` has `push_ref`, `refs/heads/qory/` and the work
+  item's public id, for example `refs/heads/qory/wi_0123456789abcdef`, so a push through
+  that item may create, update or delete only that ref. Each item of `push-1`'s value,
+  sealed for the gateway, has the same `push_ref`. `work-1` has none. A run with `read` or
+  `write-no-push` access has `work-1` alone, a read credential. The adapter's
+  run-credential call is the same for both entries, with `purpose` `work` and `access`
+  `read` for `work-1` or `write` for `push-1`. The call and the answer have no `push_ref`,
+  and an answer item that has one is refused. A run configuration takes up to 16
+  credentials, where it took 8, so a run with 6 model keys, the registry credential,
+  `work-1` and `push-1` is served. The adapter calls of one secrets request run together
+  under one deadline of 8 seconds from its start.
+<!-- /feature -->
+<!-- feature: factory -->
+- A secrets request for a `work` entry that has write access gets `409`
+  `credential_unavailable`, with no call to the adapter. Only `push-1` has write access.
+<!-- /feature -->
+<!-- feature: factory -->
+- When a credential of a secrets request is refused, because its adapter call or its
+  check fails, the Activity entry of each other credential of the request, issued or
+  cancelled, shows the text “the request failed for another credential of the run, so this
+  one was not sent”. A seal or record failure shows another text. The request is refused
+  as a whole, and nothing is sealed or kept.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
@@ -2257,6 +2348,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+- `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
+  largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
+  scans the table, which has one row, as it is added, under a lock that blocks reads and
+  writes. It changes no row.
+<!-- feature: factory -->
+- `run_credentials` (20261118090000): the check on its entries takes the purpose `push`,
+  with access `write` and the name `push-<n>`; the check on `issued_apply` takes a `push`
+  entry; a new check requires a `push_ref` on every apply item of a `push` entry; a unique
+  index allows one `push` entry per run.
+<!-- /feature -->
 <!-- feature: factory -->
 - `dispatch_runs` and `dispatches` (20261117130000): the checks on `end_cause` and on
   `dispatch_runs.result_outcome` take the cause `write_without_work_item`. Each new check
@@ -2306,6 +2407,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
+- `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
+  item switched to another track. The first migration replaces the check
+  `escalations_resolution_check` and adds it without a scan, and the second validates it
+  with a scan that does not block writes. It changes no row. Rolling back deletes the
+  escalations resolved with `switch`; the work items stay where the switch put them, and
+  the gate decision of each switch stays with its track and loses its `escalation_id`.
+- `gate_decisions` (20261117090000, 20261117090100 and 20261117090200): nullable columns
+  `left_stage_entered_at` and `escalation_id` (a foreign key to `escalations`), kept on a
+  `move`: when the work item had last entered the stage it left, and the escalation it
+  resolves. The stage it moved to is `to_stage_id`, from 20261116170000. The columns have
+  no default, so adding them rewrites no row, and a move written before has none. The
+  first migration adds the key without a scan. The second indexes `escalation_id` for the
+  rows that have one, concurrently, outside a transaction. The third validates the key with
+  a scan that does not block writes. Rolling back drops the index, the key and the two
+  columns.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116170000 and 20261116170100): a nullable column
