@@ -634,6 +634,66 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              ]
     end
 
+    test "the runtime's version is the one its session started, in the header and the rail", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Forager's `runtime_version` on `session.started` is the version installed for the
+      # session; Apiary has no other runtime version.
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data(%{"runtime_version" => "2.1.320"})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      assert has_element?(lv, "#run-runtime > bdi", "claude 2.1.320")
+      runtime = rail_value(lv, "Runtime")
+      assert LazyHTML.text(runtime) =~ "claude"
+      assert runtime |> LazyHTML.query("span.font-mono") |> LazyHTML.text() == "2.1.320"
+      refute LazyHTML.text(runtime) =~ "2.1.0"
+    end
+
+    test "a run of two sessions shows the version of the session that started last", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.started", session_started_data(%{"runtime_version" => "2.1.316"})},
+          {3, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+          {4, "session.started",
+           session_started_data(%{"session" => 2, "runtime_version" => "2.1.320"})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      assert has_element?(lv, "#run-runtime > bdi", "claude 2.1.320")
+      refute has_element?(lv, "#run-runtime", "2.1.316")
+      runtime = rail_value(lv, "Runtime")
+      assert runtime |> LazyHTML.query("span.font-mono") |> LazyHTML.text() == "2.1.320"
+      refute LazyHTML.text(runtime) =~ "2.1.316"
+    end
+
+    test "a run with no session yet shows no runtime in the header and n/a in the rail", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data()}])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
+
+      refute has_element?(lv, "#run-runtime")
+      runtime = rail_value(lv, "Runtime")
+      assert runtime |> LazyHTML.text() |> String.trim() == "n/a"
+      assert runtime |> LazyHTML.query("span.font-mono") |> Enum.empty?()
+    end
+
     test "the run's crumb is the page on the Timeline and a link to it on the other tabs", %{
       conn: conn,
       scope: scope
@@ -5189,6 +5249,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query("#run-facts > dt")
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  # The value of the rail's Run section after the term `term`: the `dd` that follows its `dt`.
+  defp rail_value(lv, term) do
+    n = Enum.find_index(run_terms(lv), &(&1 == term)) + 1
+
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#run-facts > dt:nth-of-type(#{n}) + dd")
   end
 
   defp ended_run(scope, exit) do
