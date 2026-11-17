@@ -1474,7 +1474,9 @@ defmodule Apiary.Stages do
 
   # status/2 is where the work item stands in its stage, as the work item page draws it;
   # nil for a work item the runner has not placed. `scope` decides whether its person may
-  # approve the gate; with none, `approvable?` is false. `missing_outputs` is the
+  # approve the gate; with none, `approvable?` is false. Each of `outputs` has `names`,
+  # the newest version of each name of its type made in the stage, which an approval
+  # covers (`newest_outputs/3`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
   # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
@@ -1648,7 +1650,8 @@ defmodule Apiary.Stages do
   # wrote it (`Apiary.Artifacts.cancelled?/1`) and whether it is a withdrawal
   # (`Apiary.Artifacts.withdraw/4`), a withdrawn name included: for each artifact, the public id of
   # the newest approved version, and whether a version of an earlier stage's artifact was
-  # made after that approval ("changed after approval").
+  # made after that approval ("changed after approval"). A version a cancelled run wrote
+  # stays in `versions`, and the artifact's stage and its changed mark leave it out.
   @doc false
   @spec artifact_index(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: [map]
   def artifact_index(%WorkItem{} = work_item, artifacts \\ nil) do
@@ -1657,14 +1660,19 @@ defmodule Apiary.Stages do
 
     for artifact <- artifacts || Artifacts.list(work_item) do
       versions = Enum.map(artifact.versions, &version_map(&1, approvals))
-      newest = List.first(versions)
+      newest = Artifacts.newest_counted(%{versions: versions})
       approved_version = Enum.find(versions, &(&1.approvals != []))
-      newer? = approved_version != nil and newest.number > approved_version.number
+
+      newer? =
+        approved_version != nil and newest != nil and newest.number > approved_version.number
+
+      # A name that only cancelled runs wrote keeps the stage of its newest version.
+      staged = newest || List.first(versions)
 
       %{
         type: artifact.type,
         name: artifact.name,
-        stage_id: newest && newest.stage_id,
+        stage_id: staged && staged.stage_id,
         approved_version: approved_version && approved_version.id,
         changed_after_approval: newer? and newest.stage_id != work_item.stage_id,
         versions: versions
@@ -3118,6 +3126,21 @@ defmodule Apiary.Stages do
 
   ## Escalations
 
+  # accepted/2 is the newest escalation of the work item at the stage `stage_id` that a
+  # member accepted as it is: `%{by:, at:}`, the member's account id and when the member
+  # accepted it; nil for none.
+  @doc false
+  @spec accepted(WorkItem.t(), String.t()) :: %{by: Ecto.UUID.t() | nil, at: DateTime.t()} | nil
+  def accepted(%WorkItem{id: id}, stage_id) when is_binary(stage_id) do
+    Repo.one(
+      from e in Escalation,
+        where: e.work_item_id == ^id and e.stage_id == ^stage_id and e.resolution == :accept,
+        order_by: [desc: e.resolved_at],
+        limit: 1,
+        select: %{by: e.resolved_by_id, at: e.resolved_at}
+    )
+  end
+
   defp open_escalation(work_item) do
     Repo.one(
       from e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)
@@ -3314,14 +3337,25 @@ defmodule Apiary.Stages do
 
   ## Outputs, inputs and approvals
 
-  # The newest version of each output type made in the stage, by type.
+  # The newest version of each name of each output type made in the stage, in the
+  # stage's order of types and `Artifacts.name_order/1` within a type: what an approval
+  # covers, so each scenario's film keeps its version beside the others.
   defp newest_outputs(work_item, stage, artifacts \\ nil) do
     artifacts = artifacts || Artifacts.list(work_item)
 
     for output <- Map.get(stage, "outputs", []),
-        version = newest_made_in(artifacts, output["type"], stage["id"]),
-        version != nil,
+        {_name, version} <- newest_names(artifacts, output["type"], stage["id"]),
         do: version
+  end
+
+  # The newest version of each name of `type` made in `stage_id`, as `newest_made_in/3`
+  # takes one: `{name, version}`, in `Artifacts.name_order/1`.
+  defp newest_names(artifacts, type, stage_id) do
+    for artifact <- Enum.sort_by(artifacts, &Artifacts.name_order(&1.name)),
+        artifact.type == type,
+        version = newest_made_in([artifact], type, stage_id),
+        version != nil,
+        do: {artifact.name, version}
   end
 
   # A version a run a member cancelled wrote is never taken (`Artifacts.cancelled?/1`),
@@ -3360,6 +3394,11 @@ defmodule Apiary.Stages do
         type: type,
         required: Runner.required?(output, facts),
         version: version && %{id: version.public_id, number: version.number},
+        names:
+          for(
+            {name, named} <- newest_names(artifacts, type, stage["id"]),
+            do: %{name: name, id: named.public_id, number: named.number}
+          ),
         check: check
       }
     end

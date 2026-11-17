@@ -1,7 +1,7 @@
 defmodule Apiary.Stages.Artifacts do
   # Artifacts is the one place the stage runner (`Apiary.Stages`) reaches a work item's
-  # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1` and `withdrawn?/1`
-  # of `Apiary.Artifacts`, and
+  # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1`,
+  # `newest_counted/1` and `name_order/1` of `Apiary.Artifacts`, and
   # `push_json/5`, `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module
   # adds.
   @moduledoc false
@@ -55,6 +55,17 @@ defmodule Apiary.Stages.Artifacts do
   @doc false
   @spec withdrawn?(map) :: boolean
   def withdrawn?(artifact), do: Artifacts.withdrawn?(artifact)
+
+  # newest_counted/1 is the newest version of `artifact` that no cancelled run wrote
+  # (`Apiary.Artifacts.newest_counted/1`).
+  @doc false
+  @spec newest_counted(map) :: map | nil
+  def newest_counted(artifact), do: Artifacts.newest_counted(artifact)
+
+  # name_order/1 is the sort key of an artifact's name (`Apiary.Artifacts.name_order/1`).
+  @doc false
+  @spec name_order(String.t()) :: {boolean, [String.t() | integer]}
+  def name_order(name), do: Artifacts.name_order(name)
 
   # newest_of_run/3 is the newest version of the artifact of `type` and `name` that the
   # run of the queue `run` pushed, with its files in the order of their names; nil for

@@ -387,6 +387,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert %{{"spec", 1} => %{}} = :sys.get_state(view.pid).socket.assigns.frame_texts
+      assert has_element?(view, "#work-item-tab-output-spec-fold[open]")
+      refute has_element?(view, "#work-item-tab-output-test-features-fold[open]")
 
       refute Map.has_key?(
                :sys.get_state(view.pid).socket.assigns.frame_texts,
@@ -394,7 +396,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
     end
 
-    test "an output whose artifact is not named main has no frame", %{
+    test "an output whose artifact is not named main has a frame with its artifact row", %{
       conn: conn,
       scope: scope
     } do
@@ -412,7 +414,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert has_element?(view, "#work-item-tab-output-spec")
-      refute has_element?(view, "#work-item-tab-output-test-features")
+      view |> element("#work-item-tab-output-test-features-s") |> render_click()
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features-row",
+               "test-features other v1"
+             )
     end
 
     test "a version with no Markdown has its artifact row", %{conn: conn, scope: scope} do

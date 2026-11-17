@@ -1048,6 +1048,91 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
     end
 
+    test "a run that reached its time limit says so, and offers what a run with no result does",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+
+      explore_run_fixture(work_item,
+        run: %{exit_state: "cancelled", state: "cancelled", reason: "timeout"}
+      )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Time limit")
+      refute has_element?(view, "#work-item-step .q-wi-badge", "Cancelled")
+      assert html =~ "Explore&#39;s run reached its time limit"
+      assert html =~ "Time limit reached"
+      refute html =~ "Cancelled"
+      assert has_element?(view, "#work-item-step-line", "reached its time limit")
+      assert has_element?(view, "#work-item-step-again", "Run Explore again")
+
+      {:ok, tab, tab_html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert has_element?(tab, "#work-item-explore-none-h", "The run reached its time limit")
+      assert tab_html =~ "Time limit reached"
+      refute tab_html =~ "Cancelled"
+
+      {:ok, thread, _html} = live(conn, page(scope, work_item.number) <> "/thread")
+
+      assert has_element?(
+               thread,
+               "#work-item-thread",
+               "reached its time limit, so Explore has no result"
+             )
+
+      refute render(thread) =~ "was cancelled"
+
+      view |> element("#work-item-step-again") |> render_click()
+      confirm_spend(view)
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Queued")
+    end
+
+    test "at the run limit, a last run that reached its time limit is not read as cancelled",
+         %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+
+      for _attempt <- 1..3 do
+        explore_run_fixture(work_item,
+          run: %{exit_state: "cancelled", state: "cancelled", reason: "timeout"}
+        )
+      end
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "3 of 3 attempts used")
+      refute html =~ "was cancelled"
+      refute html =~ "ended without a result"
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               "reached its time limit, so Explore has no result. That was attempt 3 of 3, the last attempt of this take in."
+             )
+
+      assert has_element?(view, "#work-item-step-close", "Close work item…")
+    end
+
+    test "a run that a member cancelled still shows Cancelled", %{conn: conn, scope: scope} do
+      work_item = work_item_fixture(scope)
+
+      explore_run_fixture(work_item,
+        run: %{exit_state: "cancelled", state: "cancelled", reason: "cancelled_by_member"}
+      )
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-step .q-wi-badge", "Cancelled")
+      refute has_element?(view, "#work-item-step .q-wi-badge", "Time limit")
+      assert html =~ "Cancelled"
+      refute html =~ "Time limit reached"
+
+      {:ok, _tab, tab_html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert tab_html =~ "Cancelled"
+      refute tab_html =~ "Time limit reached"
+      assert html =~ "Explore&#39;s run was cancelled"
+      refute html =~ "time limit"
+      assert has_element?(view, "#work-item-step-again", "Run Explore again")
+    end
+
     test "the run-limit card shows Close work item… to a person who may close",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)

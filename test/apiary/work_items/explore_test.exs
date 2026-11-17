@@ -72,6 +72,27 @@ defmodule Apiary.WorkItems.ExploreTest do
                %{place: :lost, outcome: nil}
     end
 
+    test "a run that ended with the reason timeout reached its time limit, not cancelled" do
+      for outcome <- [:none, :error] do
+        for state <- ["cancelled", "failed"] do
+          assert place(
+                   dispatch_run(:ended, :run_ended, outcome),
+                   run(state: state, reason: "timeout")
+                 ) == %{place: :time_limit, outcome: nil}
+        end
+      end
+
+      # A member's cancel stays cancelled.
+      assert place(
+               dispatch_run(:ended, :run_ended, :none),
+               run(state: "cancelled", reason: "cancelled_by_member")
+             ) == %{place: :cancelled, outcome: nil}
+
+      # What the run kept still decides first.
+      assert place(dispatch_run(:ended, :run_ended, :proposal), run(reason: "timeout")) ==
+               %{place: :proposal, outcome: :proposal}
+    end
+
     test "a run ended lost is lost, unless it left questions open" do
       assert place(dispatch_run(:ended, :lost), run()) == %{place: :lost, outcome: nil}
 
@@ -102,12 +123,12 @@ defmodule Apiary.WorkItems.ExploreTest do
       assert Explore.status([step(:running, 1)], false) == :running
       assert Explore.status([step(:questions, 1), step(:proposal, 2)], false) == :confirm
 
-      for place <- [:questions, :no_result, :lost, :cancelled],
+      for place <- [:questions, :no_result, :lost, :time_limit, :cancelled],
           do: assert(Explore.status([step(place, 2)], false) == place)
     end
 
     test "at the run limit, a run without a result is used up; questions still wait" do
-      for place <- [:no_result, :lost, :cancelled],
+      for place <- [:no_result, :lost, :time_limit, :cancelled],
           do: assert(Explore.status([step(place, 3)], false) == :used_up)
 
       assert Explore.status([step(:questions, 3)], false) == :questions
@@ -124,7 +145,16 @@ defmodule Apiary.WorkItems.ExploreTest do
       assert Explore.stage(:shape) == :shape
       assert Explore.stage(:confirm) == :confirm
 
-      for status <- [:queued, :running, :questions, :no_result, :lost, :cancelled, :used_up],
+      for status <- [
+            :queued,
+            :running,
+            :questions,
+            :no_result,
+            :lost,
+            :time_limit,
+            :cancelled,
+            :used_up
+          ],
           do: assert(Explore.stage(status) == :explore)
     end
   end
