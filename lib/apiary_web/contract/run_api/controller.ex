@@ -40,9 +40,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, a type with `withdrawable` false, and the type in `submit.type` of
-  #      the run's process version, `422` `type_not_withdrawable`, then files with it
-  #      `422` `withdrawal_with_files`, then what `Apiary.Artifacts.withdraw/4` returns
-  #      under the work item's lock: a name whose newest version a person approved at a
+  #      the run's process version or of the work item's, `422` `type_not_withdrawable`,
+  #      then files with it `422` `withdrawal_with_files`, then what
+  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose newest version a person approved at a
   #      gate `422` `type_not_withdrawable`, a name with no version `409` `no_version`, a
   #      name whose newest version is a withdrawal `409` `already_withdrawn`, and one whose
   #      newest version a person wrote `409` `person_version`.
@@ -428,7 +428,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   ## Pushes
 
   defp withdrawable_type(type, run, push) do
-    case Boundary.withdrawable_type(type, run.dispatch_run) do
+    case Boundary.withdrawable_type(type, run.dispatch_run, run.work_item) do
       :ok -> :ok
       {:error, {:withdraw, reason}} -> {:error, {:withdraw, reason, push.type, push.name}}
     end
@@ -873,9 +873,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     error(conn, 422, "type_not_withdrawable",
       type: type,
       message:
-        "Push a new version of #{type} instead. The submit step of this run's process " <>
-          "stores #{type}, and Qory Apiary reads its versions, so a run cannot " <>
-          "withdraw its names."
+        "Push a new version of #{type} instead. Qory Apiary reads its newest version as " <>
+          "the run's submission, so a run cannot withdraw it."
     )
   end
 

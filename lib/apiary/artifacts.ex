@@ -192,7 +192,8 @@ defmodule Apiary.Artifacts do
   # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
   # `{:error, {:withdraw, :type}}`, a type with `withdrawable` false is
   # `{:error, {:withdraw, :type_off}}`, and the type in `submit.type` of the run's process
-  # version is `{:error, {:withdraw, :submit_type}}` (`withdrawable_type/2`). Then, in the
+  # version or of the work item's is `{:error, {:withdraw, :submit_type}}`
+  # (`withdrawable_type/3`). Then, in the
   # transaction, with the locks and the
   # reads of a push's transaction, the artifact's newest version, leaving out versions by a
   # run a member cancelled, is read, and the withdrawal is refused, as
@@ -721,7 +722,7 @@ defmodule Apiary.Artifacts do
          {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
-         :ok <- withdrawable_type(type, dispatch_run),
+         :ok <- withdrawable_type(type, dispatch_run, work_item),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields) do
       writer |> write_withdrawal(work_item, type, fields) |> broadcast()
@@ -745,15 +746,16 @@ defmodule Apiary.Artifacts do
   def withdrawable_type(%Type{}), do: :ok
 
   # withdrawable_type/2 is `withdrawable_type/1`, and `{:error, {:withdraw, :submit_type}}`
-  # for the type in `submit.type` of the run's process version: the Submissions list
-  # (`Apiary.Submissions`) reads that type's versions, so a withdrawal would leave it with
-  # none.
+  # for the type in `submit.type` of the run's process version and for the one in
+  # `submit.type` of the work item's process version, which the Submissions list reads
+  # (`Apiary.Submissions`): Qory Apiary reads the newest version of that type as the run's
+  # submission, so a withdrawal would leave it with none. Versions stored earlier stay.
   @doc false
-  @spec withdrawable_type(Type.t(), DispatchRun.t()) ::
+  @spec withdrawable_type(Type.t(), DispatchRun.t(), WorkItem.t()) ::
           :ok | {:error, {:withdraw, :type | :type_off | :submit_type}}
-  def withdrawable_type(%Type{name: name} = type, %DispatchRun{} = dispatch_run) do
+  def withdrawable_type(%Type{name: name} = type, %DispatchRun{} = dispatch_run, work_item) do
     with :ok <- withdrawable_type(type) do
-      if name == submit_type(dispatch_run),
+      if name in [submit_type(dispatch_run), submit_type(work_item)],
         do: {:error, {:withdraw, :submit_type}},
         else: :ok
     end
@@ -1310,15 +1312,19 @@ defmodule Apiary.Artifacts do
     :ok
   end
 
-  # submit_type/1 is the type in `submit.type` of the run's process version, nil for none.
+  # submit_type/1 is the type in `submit.type` of the run's process version, or of the
+  # process version the work item runs under (`Processes.version_for/1`), which is what the
+  # Submissions list reads; nil for none.
   @doc false
-  @spec submit_type(DispatchRun.t()) :: String.t() | nil
-  def submit_type(%DispatchRun{process_version_id: id}) do
-    case Processes.harness_template(id) do
-      %{"submit" => %{"type" => type}} when is_binary(type) -> type
-      _none -> nil
-    end
-  end
+  @spec submit_type(DispatchRun.t() | WorkItem.t()) :: String.t() | nil
+  def submit_type(%DispatchRun{process_version_id: id}),
+    do: submit_of(Processes.harness_template(id))
+
+  def submit_type(%WorkItem{} = work_item),
+    do: work_item |> Processes.version_for() |> Processes.harness_template() |> submit_of()
+
+  defp submit_of(%{"submit" => %{"type" => type}}) when is_binary(type), do: type
+  defp submit_of(_template), do: nil
 
   # The work item's target, as a run's claim reads it (`Apiary.Dispatches.Handover`), nil
   # for none.

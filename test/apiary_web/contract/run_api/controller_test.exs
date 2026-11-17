@@ -2029,9 +2029,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "error" => "type_not_withdrawable",
                  "type" => "demo-submission",
                  "message" =>
-                   "Push a new version of demo-submission instead. The submit step of this " <>
-                     "run's process stores demo-submission, and Qory Apiary reads its versions, " <>
-                     "so a run cannot withdraw its names."
+                   "Push a new version of demo-submission instead. Qory Apiary reads its " <>
+                     "newest version as the run's submission, so a run cannot withdraw it."
                }
       end
 
