@@ -169,8 +169,8 @@ defmodule Apiary.Runs.Cancel do
 
   # The run's level as its claim recorded it: `write` for a run with an entry whose access
   # is `write`, `read` for one with entries that read, else its documents' `access`; nil
-  # for a run with none. A run's work entry reads whatever its level, so its push entry
-  # says whether it writes.
+  # for a run with none. A run's work entry reads at every level: only a push entry has
+  # access `write`.
   defp recorded_access(run_id) do
     accesses =
       Repo.all(

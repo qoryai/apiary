@@ -94,7 +94,7 @@ defmodule Apiary.Runs.PushCredentialMigrationTest do
     Repo.insert!(ctx.push)
 
     error = assert_raise(Postgrex.Error, &down!/0)
-    assert error.postgres.message =~ "Delete the run_credentials rows with the purpose push"
+    assert error.postgres.message =~ "Delete the run_credentials rows with purpose push"
 
     Repo.delete_all(from c in RunCredential, where: c.purpose == :push)
     down!()

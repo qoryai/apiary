@@ -2,11 +2,11 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
   use Ecto.Migration
 
   # The credential entry of a write run's push (`Apiary.Runs.RunCredentials`): a row of
-  # `run_credentials` with `purpose` `push`, `access` `write` and the name `push-<n>`, n from
-  # 1 to 9, at most one per run, as `work` has. The run's `work` entry no longer needs
+  # `run_credentials` with `purpose` `push`, `access` `write` and the name `push-<n>`, n
+  # from 1 to 9, at most one per run, as `work` has. The run's `work` entry no longer needs
   # `write` access, but the check does not require `read`: a `work` row stored with `write`
-  # before this migration stays valid. `issued_apply`, the apply items of the first credential sealed for
-  # an entry, is allowed on a `push` entry as on a `work` one.
+  # before this migration stays valid. `issued_apply`, the apply items of the first
+  # credential sealed for an entry, is allowed on a `push` entry as on a `work` one.
   #
   # Each check is dropped and added again, and the new check scans the table as it is
   # added. Every stored row has the purpose `work` or `harness` and passes both. Rolled
@@ -35,7 +35,7 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
     DO $$
     BEGIN
       IF EXISTS (SELECT 1 FROM run_credentials WHERE purpose = 'push') THEN
-        RAISE EXCEPTION 'Delete the run_credentials rows with the purpose push, then roll back again: the checks before this migration refuse them'
+        RAISE EXCEPTION 'Delete the run_credentials rows with purpose push, then roll back again'
           USING ERRCODE = 'check_violation';
       END IF;
     END

@@ -11,9 +11,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # registry credential (`Apiary.Registry.Credential`), and the work entry and the push
   # entry its claim recorded (`Apiary.Runs.RunCredentials`, `work-1` and `push-1`), whose
   # value the entry's adapter issues anew for each request that names it
-  # (`Apiary.Runs.WorkCredential`). A request names either or both, as a renewal names the
-  # entries whose values expire; each entry is a separate call to the adapter, with its
-  # own access. A request reveals a
+  # (`Apiary.Runs.WorkCredential`). A request may ask for either or both, as a renewal asks
+  # for the entries whose values expire; each entry is a separate call to the adapter, with
+  # the access of that entry. A request reveals a
   # model key only when it names it, and only a key the run's claim stored for the run
   # (`runs.model_keys`), by its row id, under the value id the key has at the request: a
   # key renamed since the claim is revealed, one removed since is refused at step 8. It
@@ -66,13 +66,13 @@ defmodule Apiary.Runs.SecretsRequest do
   #     organisation than the run's (`provider_organisation/2`); the gateway may not
   #     receive the key (`Apiary.Runs.ProviderCredential.sealable_to?/3`): any gateway
   #     for a provider of any other chain; the instance's gateway may receive a key of
-  #     the organisation's chain; for a request that names the work entry or the push
-  #     entry, a gateway that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
+  #     the organisation's chain; for a request for the work entry or the push entry, a
+  #     gateway that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
   #     both checks are also false for a gateway of another organisation or of another
   #     workspace, whose request step 4 ends first; the access key's public key fails a
   #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
-  #  9. for a request that names the work entry or the push entry, after every check above
-  #     and the model key's read, the credential of an entry is not issued
+  #  9. for a request for the work entry or the push entry, after every check above and the
+  #     model key's read, the credential of an entry is not issued
   #     (`Apiary.Runs.WorkCredential.issue/4`), the work entry's first, then the push
   #     entry's; the first that fails refuses the request, and no value is sealed:
   #     `{:error, :not_found}` where `Apiary.Access` refuses the key `run_credential.issue`
@@ -83,15 +83,15 @@ defmodule Apiary.Runs.SecretsRequest do
   #     transaction is open during the call;
   # 10. `{:error, :credential_unavailable}`, a value that does not fit the plaintext's
   #     schema;
-  # 11. for a request that names the work entry or the push entry, an entry's apply items
+  # 11. for a request for the work entry or the push entry, an entry's apply items
   #     differ from those of that entry's first credential
   #     (`Apiary.Runs.WorkCredential.keep/1`): `{:error, :credential_unavailable}`.
   #
   # Each attempt at an entry's credential that `Apiary.Access` lets, from step 9 on,
   # writes one `run_credential.issue` Activity entry per entry: its refusal, or, last
   # before the answer and in one transaction with its apply items and the seal's audit
-  # entry, `issued`. A request that names both entries fails whole: the entry that failed
-  # has its cause, and an entry whose credential was issued before has `not_recorded`.
+  # entry, `issued`. A request for both entries fails whole: the entry that failed has its
+  # cause, and an entry whose credential was issued before has `not_recorded`.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
@@ -105,6 +105,8 @@ defmodule Apiary.Runs.SecretsRequest do
   # or audit entry has it, nor the plaintext, the sealed bytes or a key. A log line has
   # the run's id, the provider's, connection's and adapter's public ids and a refusal's
   # atom at most.
+
+  import Ecto.Query, only: [from: 2]
 
   require Logger
 
@@ -517,7 +519,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # kept or compared on its `run_credentials` row (`Apiary.Runs.WorkCredential.keep/1`);
   # then each credential's Activity entry, last. A run's deletion locks the run's row
   # and then its `run_credentials` rows, so both take the run first and cannot deadlock;
-  # a request for the entries alone has no copies and takes no lock on the run. A step
+  # a request for one entry and no model key has no copies and takes no lock on the run;
+  # a request for both entries takes the run's row `FOR KEY SHARE` before the first
+  # update (`lock_run/1`), since a deletion removes the two rows in no fixed order. A step
   # that fails rolls them all back, and the credential it failed on is refused for its
   # cause, the others as `not_recorded` (`Apiary.Runs.WorkCredential.refused/4`).
   defp recorded(access_key, run, seal, []), do: record(access_key, run, seal)
@@ -527,6 +531,7 @@ defmodule Apiary.Runs.SecretsRequest do
       try do
         Repo.transact(fn ->
           with :ok <- not_recorded(record(access_key, run, seal)),
+               :ok <- not_recorded(lock_run(run, issued)),
                :ok <- each_issued(issued, &WorkCredential.keep/1),
                :ok <- each_issued(issued, &WorkCredential.record_issued(access_key, run, &1)),
                do: {:ok, :written}
@@ -543,6 +548,18 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp not_recorded(:ok), do: :ok
   defp not_recorded({:error, _reason}), do: {:error, :not_recorded}
+
+  # The run's row `FOR KEY SHARE`, which the run's deletion waits for, so that two updates
+  # of the run's `run_credentials` rows and the deletion's removal of them cannot wait for
+  # each other. One update needs none. `{:error, :gone}` for a run that was deleted.
+  defp lock_run(%Run{id: id}, [_, _ | _]) do
+    case Repo.one(from r in Run, where: r.id == ^id, select: r.id, lock: "FOR KEY SHARE") do
+      ^id -> :ok
+      nil -> {:error, :gone}
+    end
+  end
+
+  defp lock_run(_run, _issued), do: :ok
 
   # `:ok` when `step` returns `:ok` for each credential in `issued`, else the first
   # refusal, with the credential it was for.

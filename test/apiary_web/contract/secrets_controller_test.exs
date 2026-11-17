@@ -836,7 +836,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
       assert plaintext["credentials"] == Enum.sort(all(ctx))
 
-      # Each name has its own token, never the other's, and only the push-1 items have a branch.
+      # Each name has a different token, never the other's, and only push-1's items have a
+      # branch.
       assert %{"value" => @token, "apply" => @entry_apply} = value(plaintext, "work-1")
       assert %{"value" => @push_token, "apply" => ^pushing} = value(plaintext, "push-1")
       refute inspect(value(plaintext, "work-1")) =~ "push_ref"
@@ -939,6 +940,11 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert push_row(ctx).issued_apply == nil
       refute inspect(Enum.map(issues(), & &1.details)) =~ "access_not_granted"
 
+      # The adapter's refusal is the run's, as for a refusal of the read credential: the run
+      # of the queue records it, and the run's page shows it as it shows any adapter's.
+      assert %DispatchRun{adapter_failure: :refused, adapter_failure_code: "access_not_granted"} =
+               Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
+
       assert [{"push-1", "refused"}, {"work-1", "not_recorded"}] ==
                for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
 
@@ -994,6 +1000,34 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       # locks its `run_credentials` row. A run's deletion locks the run, then that row.
       writes = statements() |> Enum.filter(&(&1 in [:copies, :work_entry])) |> Enum.dedup()
       assert writes == [:copies, :work_entry]
+    end
+
+    test "a request for both entries takes the run's row before either entry's update", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+      issue_both!(ctx)
+      assert post_secrets(ctx, request(ctx, credentials: all(ctx))).status == 200
+      running!(ctx)
+
+      handler = "secrets-both-lock-order-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{source: source, query: query}, _config ->
+          if self() == test, do: send(test, {:statement, source, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      _earlier = statements()
+
+      assert post_secrets(ctx, request(ctx, credentials: ["work-1", "push-1"])).status == 200
+      :telemetry.detach(handler)
+
+      writes = statements() |> Enum.filter(&(&1 in [:run_lock, :work_entry])) |> Enum.dedup()
+      assert writes == [:run_lock, :work_entry]
     end
 
     test "at a renewal of work-1 alone, is answered a new credential and no model key", ctx do
@@ -1279,6 +1313,10 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   defp statement("model_key_copies", "INSERT" <> _rest), do: :copies
   defp statement("run_credentials", "UPDATE" <> _rest), do: :work_entry
+
+  defp statement("runs", "SELECT" <> rest),
+    do: if(rest =~ "FOR KEY SHARE", do: :run_lock, else: :other)
+
   defp statement(_source, _query), do: :other
 
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)

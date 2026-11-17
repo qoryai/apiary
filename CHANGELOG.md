@@ -1337,10 +1337,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its forge:
-  `work-1`, with `purpose` `work`, whose credential from the adapter reads, and `push-1`,
-  with `purpose` `push`, whose credential writes. `push-1` is for Forager's push proxy, which
-  pushes the work item's branch and sends its pull request calls. An apply item of `push-1` has
-  `push_ref`, `refs/heads/qory/` and the work item's public id, for example
+  `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
+  write access. `push-1` is for Forager's push proxy, which pushes the work item's branch
+  and sends its pull request calls. An apply item of `push-1` has `push_ref`,
+  `refs/heads/qory/` and the work item's public id, for example
   `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create, update or
   delete only that ref: Forager's gateway returns `403` for a push to any other ref. Each
   item of `push-1`'s value, sealed for the gateway, has the same `push_ref`. `work-1` has
