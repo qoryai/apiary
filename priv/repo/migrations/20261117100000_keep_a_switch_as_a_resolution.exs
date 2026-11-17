@@ -22,10 +22,17 @@ defmodule Apiary.Repo.Migrations.KeepASwitchAsAResolution do
   end
 
   # Rolled back, the escalations resolved with `switch` are deleted, as the earlier check
-  # allows no such resolution. The work item stays where the switch put it, with the track
-  # that the switch recorded on its gate decision and the entry in the audit trail.
+  # allows no such resolution. The gate decision of each switch stays, with the track it
+  # recorded, and loses its `escalation_id`, which names the deleted escalation. The work
+  # item stays where the switch put it, and the audit trail keeps the entry.
   def down do
     drop constraint(:escalations, :escalations_resolution_check)
+
+    execute """
+    UPDATE gate_decisions SET escalation_id = NULL
+    WHERE escalation_id IN (SELECT id FROM escalations WHERE resolution = 'switch')
+    """
+
     execute "DELETE FROM escalations WHERE resolution = 'switch'"
 
     create constraint(:escalations, :escalations_resolution_check,

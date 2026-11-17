@@ -718,7 +718,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           scope={@scope}
           number={@number}
           run_id={@page.escalation.run_id}
-          heading={gettext("What the run made")}
+          heading={gettext("The run's outputs")}
           skip={["verdict"]}
         />
         <.needs_form :if={@form and @switch == []} {assigns} />

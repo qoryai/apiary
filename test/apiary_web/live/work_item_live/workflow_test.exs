@@ -4688,7 +4688,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         end
 
       assert positions == Enum.sort(positions)
-      assert has_element?(view, "#work-item-needs-outputs-h", "What the run made")
+      assert has_element?(view, "#work-item-needs-outputs-h", "The run's outputs")
     end
 
     test "the outputs are the versions the escalated run pushed, and no other run's",
@@ -4800,6 +4800,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %Escalation{resolution: :switch, note: "Write a spec first"} = escalation(work_item)
       assert Stages.track(work_item) == "standard"
       assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+
+      # The notes list the escalation, with the note, and not a second entry for the move.
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Escalation resolved · Build"
+             ]
+
+      assert has_element?(view, "#work-item-notes", "Write a spec first")
+      refute has_element?(view, "#work-item-notes", "Moved")
     end
 
     test "a stale form that sends Accept as it is or Move back is refused", %{
@@ -4842,6 +4850,38 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "#work-item-stage-notice",
                "Choose a track that the gate of Explore offers. It does not offer express."
              )
+    end
+  end
+
+  describe "the notes after a move" do
+    setup :ready_pool
+
+    test "a move back that resolves an escalation shows the escalation and no Moved entry",
+         %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :escalated, round: 3)
+      escalate!(work_item, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => "Plan again", "stage" => @shape})
+      |> render_submit(%{"how" => "move_back"})
+
+      assert texts(view, "#work-item-notes li > p:first-child") == [
+               "Escalation resolved · Build"
+             ]
+
+      assert has_element?(view, "#work-item-notes", "Plan again")
+      refute has_element?(view, "#work-item-notes", "Moved")
+    end
+
+    test "a person's move with no text still shows as Moved", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      {:ok, _moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-notes li > p:first-child") == ["Moved · Build"]
     end
   end
 

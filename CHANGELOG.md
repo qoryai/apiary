@@ -24,7 +24,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   A work item on the gate's first track, or on none, keeps the card as it was. The
   resolution is `switch`, and the audit entry `escalation_switch` has the track.
 - On an escalation that offers a switch, the block "What the run needs from you" lists the
-  versions that the escalated run pushed, under "What the run made", each as its artifact
+  versions that the escalated run pushed, under "The run's outputs", each as its artifact
   page shows it: a document as its text and a structured file as its table of values. The
   versions of the verdict and of other runs are not listed. The block shows the note and
   Run another round first, then the points, then those outputs. A line under each action
@@ -33,6 +33,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
   switch to a track that the gate does not offer names the gate that recorded the track.
   One component takes a run and lists its versions, so another page can show them.
+- After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
+  lists, for each output of the stage the work item left, the newest version made in that
+  stage from the time the work item last entered it to the time it left, with
+  `"from": "move"` and `"required": false`. A person's move back and an escalation's move
+  back count (the escalation's move back now also writes a `move` decision with no note and
+  the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
+  leaves that decision out). The entries stay until the left stage's gate
+  passes again (an approval of the stage, by a person or automatic) or a later move goes
+  to a stage after it, and are scoped to the take in. No approval lists these versions, and
+  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
+  they were. A `move` decision keeps the stage it moved to and when the work item last
+  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -2235,8 +2247,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   item switched to another track. The first migration replaces the check
   `escalations_resolution_check` and adds it without a scan, and the second validates it
   with a scan that does not block writes. It changes no row. Rolling back deletes the
-  escalations resolved with `switch`; the work items stay where the switch put them, with
-  the track on their gate decision and the entry in the audit trail.
+  escalations resolved with `switch`; the work items stay where the switch put them, and
+  the gate decision of each switch stays with its track and loses its `escalation_id`.
+- `gate_decisions` (20261117090000): nullable columns `to_stage_id`, `left_stage_entered_at`
+  and `escalation_id` (a foreign key to `escalations`, indexed), kept on a `move`: the stage
+  it moved to, when the work item had last entered the stage it left, and the escalation it
+  resolves. They have no default, so adding them rewrites no row, and a move written before
+  has none. Rolling back drops the three columns.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by

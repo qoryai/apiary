@@ -21856,6 +21856,11 @@ msgstr ""
 msgid "The run's last result was an error. There is nothing to show or approve."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's outputs"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The run's policy digest matches no version made here: the machine used a policy file on the machine, or the run started with --local."
@@ -23923,11 +23928,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "What the release serves doesn't match its source: its checksums.txt, its version, or a description of the same version fetched before."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "What the run made"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
