@@ -945,7 +945,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert %DispatchRun{adapter_failure: :refused, adapter_failure_code: "access_not_granted"} =
                Repo.get!(DispatchRun, ctx.run.dispatch_run_id)
 
-      assert [{"push-1", "refused"}, {"work-1", "not_recorded"}] ==
+      assert [{"push-1", "refused"}, {"work-1", "other_credential_failed"}] ==
                for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
 
       # The work entry's credential is still answered alone, as a request by the sessions'
@@ -970,6 +970,83 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
                for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
 
       assert seals() == []
+    end
+
+    test "a work entry stored with write access is never issued", ctx do
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.id == ^work_row(ctx).id),
+          set: [access: :write]
+        )
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx, credentials: names(ctx))) end)
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert issues() == []
+      assert work_row(ctx).issued_apply == nil
+      assert log =~ "the entry work-1 has write access"
+      refute log =~ @token
+    end
+
+    test "409 secrets_not_allowed for a key without allow_secrets that names push-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+
+      %{access_key: plain, secret: seed} =
+        Apiary.ContractFixtures.contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      list_key!(ctx.run, plain.public_key)
+      conn = post_secrets(ctx, request(ctx, credentials: ["push-1"]), key: {plain, seed})
+      assert conn.status == 409
+      assert code(conn) == "secrets_not_allowed"
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+    end
+
+    test "404 for a key the run key does not list that names push-1", ctx do
+      {ctx, _pushing} = push_entry!(ctx, @branch)
+
+      %{access_key: later, pair: pair} =
+        Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, ctx.gateway, %{
+          allow_secrets: true
+        })
+
+      conn = post_secrets(ctx, request(ctx, credentials: all(ctx)), key: {later, pair.secret})
+      assert conn.status == 404
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+      assert issues() == []
+    end
+
+    test "409 credentials_differ for push-1 on a run that has no push entry, before any call",
+         ctx do
+      for credentials <- [["push-1"], ["work-1", "push-1"], all(ctx)] do
+        conn = post_secrets(ctx, request(ctx, credentials: credentials))
+        assert conn.status == 409
+        assert code(conn) == "credentials_differ"
+      end
+
+      assert WorkCredentialStub.calls() == []
+      assert issues() == []
+      assert seals() == []
+    end
+
+    # The adapter limits the paths of a credential by its access (a read call is answered
+    # the read paths, a write call the push paths). Qory Apiary checks only that an item
+    # lies inside the entry, by prefix, and the entry has the paths of both entries.
+    test "a read call answered with the push paths is accepted: the adapter's duty", ctx do
+      pushing = [%{hd(@entry_apply) | "paths" => ["/acme/shop.git/git-receive-pack"]}]
+      WorkCredentialStub.issue(ctx.adapter_seed, WorkCredentialStub.credential(@token, pushing))
+
+      conn = post_secrets(ctx, request(ctx, credentials: names(ctx)))
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+      assert %{"value" => @token, "apply" => ^pushing} = value(plaintext, "work-1")
     end
 
     test "at the run's start, takes the run's row before the work entry's, as a deletion does",

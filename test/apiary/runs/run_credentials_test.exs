@@ -1105,6 +1105,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
              "run_credentials_entry_check"},
             {%{name: "harness-1"}, "run_credentials_entry_check"},
             {%{name: "work-10"}, "run_credentials_entry_check"},
+            # A work entry is not named for the push, and a push entry reads nowhere.
+            {%{name: "push-1"}, "run_credentials_entry_check"},
+            {%{name: "push-2", purpose: "push", access: "read"}, "run_credentials_entry_check"},
             # A push entry writes, and its name starts with its purpose.
             {%{name: "push-1", purpose: "push"}, "run_credentials_entry_check"},
             {%{name: "work-2", purpose: "push", access: "write"}, "run_credentials_entry_check"},
