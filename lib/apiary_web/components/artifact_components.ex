@@ -255,6 +255,15 @@ defmodule ApiaryWeb.ArtifactComponents do
     do: gettext("%{type} %{name} v%{number}", type: type, name: name, number: number)
 
   @doc """
+  plain_name/2 is an artifact's type and name in today's plain form, where a member reads
+  a type id: the type with a space for each "-", then the name unless it is `main` or nil,
+  such as "demo video scenario-2". `title/2` is unchanged.
+  """
+  @spec plain_name(String.t(), String.t() | nil) :: String.t()
+  def plain_name(type, name) when name in [nil, "main"], do: String.replace(type, "-", " ")
+  def plain_name(type, name), do: String.replace(type, "-", " ") <> " " <> name
+
+  @doc """
   writer/2 is who made a version, in words: a person's email address, "Former member"
   for an account that is gone; for a run, "Run" and the number of the run its claim
   registered (`Apiary.Runs.Run`), and the round where the run of the queue has one and

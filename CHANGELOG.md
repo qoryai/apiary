@@ -38,8 +38,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   films and pictures together, in scenario order.
 - An output frame on a stage's tab lists the artifact row of each name of its type,
   `main` first, and an output with only other names has a frame too.
-- A run's page shows a withdrawal as “Withdrew demo-script/scenario-2 (version 3)” in
-  place of “Pushed”, and a version page's History shows it in place of “Version 3”.
+- A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
+  place of “Pushed”, and a version page's History shows it in place of “Version 3”,
+  with the artifact in the plain form of the gate card (the type with spaces, then the
+  name). The page of a withdrawn version shows that line in place of an empty view and
+  an empty list of files.
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded

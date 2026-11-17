@@ -326,7 +326,7 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     assert has_element?(
              lv,
              "#push-#{withdrawal.public_id} .q-s",
-             "explainer/scenario-2 (version 2)"
+             "explainer scenario-2 (version 2)"
            )
 
     refute has_element?(lv, "#push-#{withdrawal.public_id}", "Pushed")

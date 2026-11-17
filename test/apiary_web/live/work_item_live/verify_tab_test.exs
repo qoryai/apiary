@@ -751,6 +751,30 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       refute has_element?(explore, "#work-item-artifact-list", "demo video scenario-1 v1")
     end
 
+    test "a scenario has no bottom padding, as the signed-off picture draws it",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :pictures)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      for id <- ["scenario-1", "scenario-2"] do
+        [class] =
+          view
+          |> render()
+          |> LazyHTML.from_document()
+          |> LazyHTML.query("#work-item-tab-scenarios-#{id}")
+          |> LazyHTML.attribute("class")
+
+        assert class =~ "border-b"
+        refute class =~ "pb-"
+      end
+    end
+
     test "the gate card lists the films and pictures together, in scenario order",
          %{conn: conn, scope: scope} do
       work_item =

@@ -503,7 +503,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     ~H"""
     <div
       id={@id}
-      class="grid gap-3 border-b border-base-300 pb-4 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)]"
+      class="grid gap-3 border-b border-base-300 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)]"
     >
       <div class="grid content-start gap-2">
         <figure :for={file <- @videos} class="grid content-start gap-2">
@@ -551,7 +551,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     assigns = assign(assigns, :pictures, pictures(assigns.scenario))
 
     ~H"""
-    <div id={@id} class="grid gap-3 border-b border-base-300 pb-4 last:border-b-0">
+    <div id={@id} class="grid gap-3 border-b border-base-300 last:border-b-0">
       <h3 id={"#{@id}-h"} class="q-xp-sec-t">{scenario_title(@scenario)}</h3>
       <p class="text-[12.5px]/5 text-muted">
         {gettext("Pictures, one for each step, 390 px wide.")}
