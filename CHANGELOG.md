@@ -1341,7 +1341,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
   `write_without_work_item`, because it has no branch to limit its push credential to. The
-  run's page reads: "Contact support: a run that writes needs a branch, which comes from
+  run's page reads: "Contact support: a run that writes needs a work item.", and in a
+  software workspace: "Contact support: a run that writes needs a branch, which comes from
   its work item."
 <!-- /feature -->
 <!-- feature: factory -->

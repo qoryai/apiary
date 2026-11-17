@@ -8027,7 +8027,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Contact support: a run that writes needs a branch, which comes from its work item."
+msgid "Contact support: a run that writes needs a work item."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/set_up.ex
