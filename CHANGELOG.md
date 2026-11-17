@@ -217,8 +217,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
   `access: read` or `access: write-no-push` to lower the level the stack declares; the run
   has the lower of the two. A run of a stage whose version has no entry for its workflow
-  has `read`. The run and the integration contracts are vendored at integrations
-  `55a22cb`.
+  has `read`. The run contract is vendored at integrations `55a22cb`, and the
+  integration contract at `c6b7701`.
 - Workspace settings › Workflows: under the Machine type line, the row of a workflow the
   harness lists has one line with the access level of its runs, with no **Change**:
   “Access: Read only (set by the harness)”, or Write, no push or Write and push for the

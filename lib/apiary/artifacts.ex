@@ -153,9 +153,8 @@ defmodule Apiary.Artifacts do
   # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
   # stored all the same. A withdrawal writes no entry. The workspace's lock comes first,
   # as in the core's lock order (`Apiary.WorkItems`). An always-on type takes no lock on
-  # the workspace:
-  # verdicts are the most frequent pushes, and the stage runner pushes them inside
-  # transactions that already hold the work item. The work item's lock makes the
+  # the workspace: verdicts are the most frequent pushes, and the stage runner pushes them
+  # inside transactions that already hold the work item. The work item's lock makes the
   # transactions of pushes to one work item run one after the other, so the numbers of an
   # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
   # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is

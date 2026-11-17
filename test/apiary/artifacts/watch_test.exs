@@ -249,6 +249,37 @@ defmodule Apiary.Artifacts.WatchTest do
     assert entries(ctx.source) == [watch(ctx.work_item)]
   end
 
+  test "a withdrawal of a submission version adds no entry", ctx do
+    submits!(ctx, @submit)
+    forge = forge!(ctx)
+
+    assert {:ok, %Version{number: 1}} =
+             Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+
+    assert [%{seq: 1}] = Feed.entries(forge)
+
+    assert {:ok, %Version{number: 2}} =
+             Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "submission")
+
+    assert Enum.map(Feed.entries(forge), & &1.seq) == [1]
+  end
+
+  test "a push refused because the run ended adds no entry", ctx do
+    submits!(ctx, @submit)
+    forge = forge!(ctx)
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.run.id),
+        set: [state: :ended, end_cause: :run_ended]
+      )
+
+    assert {:error, :run_ended} =
+             Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+
+    assert Feed.entries(forge) == []
+    assert Repo.aggregate(Version, :count) == 0
+  end
+
   test "the entry commits with its version: rolled back, neither is there", ctx do
     submits!(ctx, @submit)
     forge = forge!(ctx)
