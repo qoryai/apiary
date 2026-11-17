@@ -406,19 +406,21 @@ run variables come from the target, the work item's or the prebuild's collection
 what it is about from the step and the work item, never from the request; a prebuild's
 input is the `environment_ref` its run of the queue was queued for. The claim encodes
 the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
-`access` and `target` together or neither, `work_item`, `run_settings`, `stack`,
-`workflow` and `harness_hidden` together or none, and `inputs`) and keeps the bytes on
-the registered run (`runs.run_documents`); every redemption of the run code answers them as they are. The
-201 of that redemption takes at most 1 MiB, what the gateway's relay passes back: the
-claim measures the rest of the 201 with a run key of the run's grant and the server's
-keys, keeps 1,024 bytes free for a second server key, and gives the documents the rest;
-an explore run's input leaves out its oldest comments to fit, and a claim whose documents
-cannot fit is `503` `unavailable`. A prebuild's documents have its destinations in the
-instance's registry: `image_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/targets/<target>`,
-and `environment_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`,
-or, where an environment record of the organisation has an image under that name,
-`environment_image`, that image by its digest (`Apiary.Registry.RunAccess`). They are the
-names the run's registry tokens grant. Prebuilds run only on an instance with a registry
+`access` (`read`, `write-no-push` or `write`) and `target` together or neither,
+`work_item`, `run_settings`, `stack`, `workflow` and `harness_hidden` together or none,
+and `inputs`) and keeps the bytes on the registered run (`runs.run_documents`); every
+redemption of the run code answers them as they are. The 201 of that redemption takes at
+most 1 MiB, what the gateway's relay passes back: the claim measures the rest of the 201
+with a run key of the run's grant and the server's keys, keeps 1,024 bytes free for a
+second server key, and gives the documents the rest; an explore run's input leaves out
+its oldest comments to fit, and a claim whose documents cannot fit is `503`
+`unavailable`. A prebuild's documents have its destinations in the instance's registry:
+`image_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/targets/<target>`, and
+`environment_destination`,
+`<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`, or, where an environment
+record of the organisation has an image under that name, `environment_image`, that image
+by its digest (`Apiary.Registry.RunAccess`). They are the names the run's registry
+tokens grant. Prebuilds run only on an instance with a registry
 (`Apiary.Registry.configured?/0`): the `registry` feature on, and `QORY_REGISTRY` set to
 an address whose host has a dot or a port, or is `localhost`. On any other instance no
 prebuild is queued or claimed, no run waits for one, and an explore run starts in its
@@ -428,17 +430,17 @@ made yet; a claim where it cannot be made is `503` `unavailable`. A prebuild of 
 workspace that serves no run configuration is given, at its attach, the workspace's
 default policy, in `observe` with no rules, composed with the registry's members; where
 that document cannot be composed, its attach is `503` `unavailable`. The registered run
-has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters, then
-`.` and the fingerprint of the instance's key, which the machine redeems once at
+has no run key. The claim answers `run_code`: a run code, `qecr_` and 26 characters,
+then `.` and the fingerprint of the instance's key, which the machine redeems once at
 enrolment for the run key, within 15 minutes of the claim (Enrolment). The registered
-run keeps the gateway the pool's choice resolved to (`runs.gateway_id`): the code is bound
-to that gateway, and is redeemed only through its relay. The run key names
-the gateway and the pool. It is made at the first redemption, issued then, with its
-attach window of 600 seconds from then; until the redemption the run's attach window is
-the code's 15 minutes, so a run whose code is never redeemed is lost at the code's
-expiry. A claim is `409` `no_gateway` when the pool's choice of gateway resolves to none,
-and claims nothing. A claim Qory Apiary cannot make, a run key that cannot be made for
-the gateway's address among the causes, is `503` `unavailable`, after which nothing was
+run keeps the gateway the pool's choice resolved to (`runs.gateway_id`): the code is
+bound to that gateway, and is redeemed only through its relay. The run key names the
+gateway and the pool. It is made at the first redemption, issued then, with its attach
+window of 600 seconds from then; until the redemption the run's attach window is the
+code's 15 minutes, so a run whose code is never redeemed is lost at the code's expiry. A
+claim is `409` `no_gateway` when the pool's choice of gateway resolves to none, and
+claims nothing. A claim Qory Apiary cannot make, a run key that cannot be made for the
+gateway's address among the causes, is `503` `unavailable`, after which nothing was
 written. When what the run is made from can no longer be formed, Qory Apiary ends the
 run of the queue and its dispatch in the claim's transaction and claims the next run
 that waits: a prebuild's collection ended, moved to another workspace, unassigned or

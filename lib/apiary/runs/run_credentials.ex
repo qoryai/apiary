@@ -6,7 +6,7 @@ defmodule Apiary.Runs.RunCredentials do
   #
   # ## The work entry
   #
-  # `form_work/3` forms the run's work entry, `work-1`, from what the claim read, without
+  # `form_work/4` forms the run's work entry, `work-1`, from what the claim read, without
   # a lock: a collection that can change the run's target, the connection through which
   # it came, its adapter's apply items (`Apiary.Nodes.Node`'s `source_apply`) and the
   # run's access level.
@@ -32,7 +32,8 @@ defmodule Apiary.Runs.RunCredentials do
   #     adapter wrote it, a filled path that repeats an earlier one of its item left out;
   #     the collection's id and ref, with that path, as its resource; and the access level
   #     of the run's harness walk (`Apiary.Harnesses.RunHarness`'s `access_level`), `:read`
-  #     for a prebuild and for a run with no walk.
+  #     for a prebuild and for a run with no walk, and for a `:write_no_push` run too: a run
+  #     without push credential has a read work credential.
   #
   # The claim writes the entry with its run (`insert!/2`), once. `work/1` reads it back for
   # the run's documents and its secrets request.
@@ -56,21 +57,24 @@ defmodule Apiary.Runs.RunCredentials do
   @prebuild DispatchRun.prebuild()
 
   @doc false
-  # form_work/3 is the work entry of the run of the queue `dispatch_run`, whose work item
-  # is `work_item` (nil for a prebuild) and whose target is `target` (`%{system:, path:}`,
-  # nil for none): `{:ok, entry}`, not yet stored, `{:ok, nil}` for none, or
-  # `{:end, :target_access_gone}` (the moduledoc).
-  @spec form_work(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
+  # form_work/4 is the work entry of the run of the queue `dispatch_run`, whose work item
+  # is `work_item` (nil for a prebuild), whose target is `target` (`%{system:, path:}`,
+  # nil for none) and whose access level is `level`, as the claim computed it for the
+  # run's documents (`run_access/1`), else read now: `{:ok, entry}`, not yet stored,
+  # `{:ok, nil}` for none, or `{:end, :target_access_gone}` (the moduledoc).
+  @spec form_work(DispatchRun.t(), WorkItem.t() | nil, map | nil, atom | nil) ::
           {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
-  def form_work(%DispatchRun{}, _work_item, nil), do: {:ok, nil}
+  def form_work(dispatch_run, work_item, target, level \\ nil)
 
-  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: _path} = target),
-    do: work_from(dispatch_run, collection(dispatch_run, work_item, target), target)
+  def form_work(%DispatchRun{}, _work_item, nil, _level), do: {:ok, nil}
+
+  def form_work(%DispatchRun{} = dispatch_run, work_item, %{path: _path} = target, level),
+    do: work_from(dispatch_run, collection(dispatch_run, work_item, target), target, level)
 
   @doc false
   # work_collection/3 is the collection the work entry of the run of the queue
   # `dispatch_run` comes from, `{collection, connection, adapter}`, nil for none (the
-  # moduledoc), read once, without a lock, for both `work_from/3` and `submit_module/1`,
+  # moduledoc), read once, without a lock, for both `work_from/4` and `submit_module/1`,
   # so the run's work entry and its submit_module come from one collection. Nil, with no
   # query, for a run with no target, which has neither.
   @spec work_collection(DispatchRun.t(), WorkItem.t() | nil, map | nil) ::
@@ -81,12 +85,20 @@ defmodule Apiary.Runs.RunCredentials do
     do: collection(dispatch_run, work_item, target)
 
   @doc false
-  # work_from/3 is `form_work/3` for the collection `work_collection/3` read.
-  @spec work_from(DispatchRun.t(), {Collection.t(), Connection.t(), Node.t()} | nil, map | nil) ::
-          {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
-  def work_from(%DispatchRun{}, _collection, nil), do: {:ok, nil}
+  # work_from/4 is `form_work/4` for the collection `work_collection/3` read.
+  @spec work_from(
+          DispatchRun.t(),
+          {Collection.t(), Connection.t(), Node.t()} | nil,
+          map | nil,
+          atom | nil
+        ) :: {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
+  def work_from(dispatch_run, collection, target, level \\ nil)
 
-  def work_from(%DispatchRun{} = dispatch_run, collection, %{path: path}) do
+  def work_from(%DispatchRun{}, _collection, nil, _level), do: {:ok, nil}
+
+  def work_from(%DispatchRun{} = dispatch_run, collection, %{path: path}, level) do
+    level = level || run_access(dispatch_run)
+
     case collection do
       nil ->
         {:ok, nil}
@@ -103,7 +115,7 @@ defmodule Apiary.Runs.RunCredentials do
       {collection, connection, adapter} ->
         case ApplyTemplates.fill(adapter.source_apply, path) do
           {:ok, apply} ->
-            {:ok, entry(dispatch_run, collection, connection, adapter, path, apply)}
+            {:ok, entry(dispatch_run, collection, connection, adapter, path, apply, level)}
 
           {:error, :path_refused} ->
             {:end, :target_access_gone}
@@ -122,7 +134,7 @@ defmodule Apiary.Runs.RunCredentials do
 
   @doc false
   # reach/3 is how the run's work entry reaches its target, from the collection
-  # `form_work/3` takes: `{:gone, adapter}` for a collection that ended or a connection
+  # `form_work/4` takes: `{:gone, adapter}` for a collection that ended or a connection
   # not connected, `{:path_refused, adapter}` for a target path its adapter's apply items
   # do not take, else `{:reaches, adapter}`; nil for no collection. Read without a lock,
   # for the text of why a run ended `target_access_gone` (`Apiary.Stages.StopCause`).
@@ -205,7 +217,7 @@ defmodule Apiary.Runs.RunCredentials do
   defp order_by_age(query),
     do: from([c] in query, order_by: [asc: c.inserted_at, asc: c.id], limit: 1)
 
-  defp entry(dispatch_run, collection, connection, adapter, path, apply) do
+  defp entry(dispatch_run, collection, connection, adapter, path, apply, level) do
     %RunCredential{
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
@@ -213,7 +225,7 @@ defmodule Apiary.Runs.RunCredentials do
       adapter_id: adapter.id,
       name: @work_name,
       purpose: :work,
-      access: access(dispatch_run),
+      access: entry_access(level),
       resources: [
         %{
           "collection_id" => collection.id,
@@ -226,27 +238,29 @@ defmodule Apiary.Runs.RunCredentials do
     }
   end
 
-  # The run's access level: its harness walk's, `:read` for a prebuild and for a run with
-  # no walk. With the workflow model, the lower of the walk's and the stage entry's
-  # (`Apiary.Stages.limits/1`), as the run's documents have it (`Apiary.Dispatches.Handover`).
-  defp access(%DispatchRun{step: @prebuild}), do: :read
+  @doc false
+  # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
+  # walk's, `:read` for a prebuild and for a run with no walk. With the workflow model, the
+  # lower of the walk's and the stage entry's (`Apiary.Stages.run_access/2`). The claim
+  # computes it once, for the run's documents and its work entry
+  # (`Apiary.Dispatches.Handover`).
+  @spec run_access(DispatchRun.t()) :: :read | :write_no_push | :write
+  def run_access(%DispatchRun{step: @prebuild}), do: :read
 
-  defp access(%DispatchRun{id: id} = dispatch_run) do
+  def run_access(%DispatchRun{id: id} = dispatch_run) do
     walk =
       Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
         :read
 
-    lowered(walk, dispatch_run)
+    Apiary.Stages.run_access(walk, dispatch_run)
   end
 
-  defp lowered(:write, dispatch_run) do
-    case Apiary.Stages.limits(dispatch_run) do
-      %{access: :read} -> :read
-      _none -> :write
-    end
-  end
-
-  defp lowered(access, _dispatch_run), do: access
+  # The work entry's access for the run's level: `:write` for `:write` alone. A
+  # `:write_no_push` run, a writable checkout that has no push credential, gets `:read`,
+  # so its credential from the adapter has read access only (the integration contract's
+  # run credential rule).
+  defp entry_access(:write), do: :write
+  defp entry_access(_read_or_write_no_push), do: :read
 
   @doc false
   # work/1 is the work entry of `run` (a run, or a map with its `id`), as the run's run
@@ -287,7 +301,7 @@ defmodule Apiary.Runs.RunCredentials do
   # hosts of the apply items (`Apiary.Integrations.ApplyTemplates.hosts/1`) of each adapter
   # whose collection is assigned to the workspace, is live and is on a connected
   # connection, and whose latest start said its collections have targets and declared apply
-  # items (`form_work/3` takes such a collection). `[%{host:, adapter:}]`, the adapter as
+  # items (`form_work/4` takes such a collection). `[%{host:, adapter:}]`, the adapter as
   # `Apiary.Adapters.title/1` writes it, in the order of the collections' age. A run gains
   # only the hosts of the one collection it takes. `[]` without the `factory` feature.
   @spec workspace_hosts(Apiary.Organisations.Workspace.t()) :: [
@@ -324,7 +338,7 @@ defmodule Apiary.Runs.RunCredentials do
   end
 
   @doc false
-  # insert!/2 stores `entry`, which `form_work/3` formed, for the registered `run`, inside
+  # insert!/2 stores `entry`, which `form_work/4` formed, for the registered `run`, inside
   # the claim's transaction.
   @spec insert!(RunCredential.t(), Run.t()) :: RunCredential.t()
   def insert!(%RunCredential{} = entry, %Run{id: run_id, registered_at: at}),

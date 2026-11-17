@@ -99,8 +99,8 @@
           "pattern": "^(?=.)([0-9]{1,3}h)?([0-9]{1,4}m)?([0-9]{1,5}s)?$"
         },
         "access": {
-          "description": "Lowers the access level the stack declares.",
-          "const": "read"
+          "description": "Lowers the access level the stack declares: read, or write-no-push, the level of a workflow that writes in its checkout and has no push credential. Left out, the run has the stack's level.",
+          "enum": ["read", "write-no-push"]
         },
         "when": {
           "description": "The entry runs only when its condition is met; otherwise no run starts for it. A loop whose every entry is passed over is passed over too.",

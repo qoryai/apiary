@@ -210,6 +210,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry is passed over is passed over too, and a stage does not wait for an undeclared
   workflow whose entry is passed over. A save is refused where the type is no output of
   an earlier stage, with the entry or output, the stage and the type in the message.
+- A workflow has a third access level, `write-no-push`: a run with a writable checkout
+  and no push credential, for a workflow that starts the app and runs checks on a branch
+  it must not change. A stack's `workflows.<name>.access` may be `read`, `write-no-push`
+  or `write`, and the run's documents have it as `access`. The run's work credential has
+  read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
+  `access: read` or `access: write-no-push` to lower the level the stack declares; the run
+  has the lower of the two. A run of a stage whose version has no entry for its workflow
+  has `read`. The run and the integration contracts are vendored at integrations
+  `55a22cb`.
+- Workspace settings › Workflows: under the Machine type line, the row of a workflow the
+  harness lists has one line with the access level of its runs, with no **Change**:
+  “Access: Read only (set by the harness)”, or Write, no push or Write and push for the
+  level the harness declares. Where the stage's entry in `process.yaml` has a lower level,
+  the line is “Access: Read only (set for this stage; the harness allows Write and
+  push)”. The row of a workflow the harness does not list has no Access line.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -1276,8 +1291,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
   starts with `submit` alone where no adapter declares one. A start-up whose
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
-  400 `invalid_request`, and nothing is stored. The run and the integration contracts are
-  vendored at integrations `5d456eb`.
+  400 `invalid_request`, and nothing is stored.
 
 ### Changed
 
@@ -2178,6 +2192,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`
+  takes `write-no-push` besides `read` and `write`, and `workspaces` gets a nullable column
+  `declared_access`, the access level each workflow of the harness declares at its last
+  read. The new check scans `run_harnesses` under a lock that blocks reads and writes, and
+  changes no row. Adding the column rewrites no row; a workspace has a value after the
+  next read of its harness. Rolling back drops the column and makes each `write-no-push`
+  run `read`.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at

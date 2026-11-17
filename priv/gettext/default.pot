@@ -4771,6 +4771,16 @@ msgstr ""
 msgid "Access key revoked"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Access: %{level} (set by the harness)"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Access: %{level} (set for this stage; the harness allows %{harness})"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -16886,6 +16896,11 @@ msgstr ""
 msgid "Read more"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Read only"
+msgstr ""
+
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the cause in the log of %{pool} on its host."
@@ -24450,6 +24465,11 @@ msgstr ""
 msgid "Write a workflow name of lower-case letters, digits and hyphens that starts with a letter, at most 55 characters."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Write and push"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "Write at most %{count} words."
@@ -24479,6 +24499,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Write your reply."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Write, no push"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

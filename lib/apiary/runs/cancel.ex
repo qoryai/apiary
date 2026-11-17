@@ -147,17 +147,68 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   Whether `run` writes changes that its end pushes: a run of a software workspace
-  (`workspace`) whose harness has write access (`Apiary.Harnesses.RunHarness`).
+  (`workspace`) whose access level is `write`, as its claim recorded it. The level is the
+  `access` of the run's work credential entry (`Apiary.Runs.RunCredential`), which a run
+  has only where its adapter declares apply items; else the top-level `access` of the
+  documents the claim sent the run (`runs.run_documents`); else, for a run with neither,
+  the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
+  entry (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
-  def write_run?(%{domain: "software"}, %Run{dispatch_run_id: id}) when is_binary(id) do
-    Repo.exists?(
-      from h in Apiary.Harnesses.RunHarness,
-        where: h.dispatch_run_id == ^id and h.access_level == :write
-    )
+  def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})
+      when is_binary(id) do
+    case recorded_access(run_id) do
+      nil -> computed_access(id) == :write
+      access -> access == "write"
+    end
   end
 
   def write_run?(_workspace, _run), do: false
+
+  # The run's level as its claim recorded it: its work entry's `access`, else its
+  # documents' `access`; nil for a run with neither.
+  defp recorded_access(run_id) do
+    entry =
+      Repo.one(
+        from c in Apiary.Runs.RunCredential,
+          where: c.run_id == ^run_id and c.purpose == :work,
+          select: c.access,
+          limit: 1
+      )
+
+    if entry, do: Atom.to_string(entry), else: sent_access(run_id)
+  end
+
+  # Decoded here: Postgres raises an error on a JSON text with the escape of a NUL,
+  # `\u0000`, in both `json` and `jsonb`, and a text of the documents may have one.
+  defp sent_access(run_id) do
+    documents =
+      Repo.one(from r in Run, where: r.id == ^run_id, select: r.run_documents)
+
+    with documents when is_binary(documents) <- documents,
+         {:ok, %{"access" => access}} when is_binary(access) <- Jason.decode(documents) do
+      access
+    else
+      _none -> nil
+    end
+  end
+
+  defp computed_access(id) do
+    walk =
+      Repo.one(
+        from h in Apiary.Harnesses.RunHarness,
+          where: h.dispatch_run_id == ^id,
+          select: h.access_level
+      )
+
+    case {walk, Repo.get(DispatchRun, id)} do
+      {walk, %DispatchRun{} = dispatch_run} when not is_nil(walk) ->
+        Apiary.Stages.run_access(walk, dispatch_run)
+
+      _none ->
+        :read
+    end
+  end
 
   defp mark(scope, held) do
     now = DateTime.utc_now()
