@@ -121,6 +121,40 @@ defmodule Apiary.Artifacts.WatchTest do
     }
   end
 
+  defp json_file(filename, value),
+    do: %{filename: filename, content_type: "application/json", binary: Jason.encode!(value)}
+
+  # The text of the query that reads a process version's harness template
+  # (`Apiary.Processes.harness_template/1`).
+  @harness_read ~r/WITH RECURSIVE chain/
+
+  # Runs `fun`: `{result, harness_reads}`, the number of queries it made that read a
+  # process version's harness template.
+  defp harness_reads(fun) do
+    id = {__MODULE__, make_ref()}
+    :telemetry.attach(id, [:apiary, :repo, :query], &__MODULE__.sent/4, self())
+
+    try do
+      result = fun.()
+      {result, Enum.count(drain(), &Regex.match?(@harness_read, &1))}
+    after
+      :telemetry.detach(id)
+    end
+  end
+
+  defp drain do
+    receive do
+      {:query, query} -> [query | drain()]
+    after
+      0 -> []
+    end
+  end
+
+  @doc false
+  def sent(_event, _measurements, %{query: query}, pid) do
+    if self() == pid, do: send(pid, {:query, query})
+  end
+
   defp entries(adapter), do: Enum.map(Feed.entries(adapter), &Map.take(&1, [:kind, :data]))
 
   test "a run storing a submission version adds a watch entry to the target's adapter", ctx do
@@ -295,5 +329,26 @@ defmodule Apiary.Artifacts.WatchTest do
 
     assert Feed.entries(forge) == []
     assert Repo.aggregate(Version, :count) == 0
+  end
+
+  test "a verdict adds no entry and does not read the process version's harness", ctx do
+    submits!(ctx, @submit)
+    forge = forge!(ctx)
+    verdict = [json_file("verdict.json", %{"verdict" => "passed"})]
+
+    assert {{:ok, %Version{}}, 0} =
+             harness_reads(fn ->
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "verdict", verdict)
+             end)
+
+    assert Feed.entries(forge) == []
+
+    # A push of the submission type reads it, so the count above can see a read.
+    assert {{:ok, %Version{}}, 1} =
+             harness_reads(fn ->
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+             end)
+
+    assert [%{kind: "watch"}] = Feed.entries(forge)
   end
 end

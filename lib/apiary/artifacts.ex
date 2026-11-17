@@ -151,11 +151,12 @@ defmodule Apiary.Artifacts do
   # adapter of the work item's target collection (`Apiary.Adapters.Feed`), one per
   # version. A work item with no target, or a target that no collection matches
   # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
-  # stored all the same. A withdrawal writes no entry. The workspace's lock comes first,
-  # as in the core's lock order (`Apiary.WorkItems`). An always-on type takes no lock on
-  # the workspace: verdicts are the most frequent pushes, and the stage runner pushes them
-  # inside transactions that already hold the work item. The work item's lock makes the
-  # transactions of pushes to one work item run one after the other, so the numbers of an
+  # stored all the same. A push of a standard type reads nothing for the entry. A
+  # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
+  # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace: verdicts are
+  # the most frequent pushes, and the stage runner pushes them inside transactions that
+  # already hold the work item. The work item's lock makes the transactions of pushes to
+  # one work item run one after the other, so the numbers of an
   # artifact are 1, 2, … with no gap. With `opts[:expect_stage]`, a held work item in
   # another stage is `{:error, :stage_changed}`, and no row, audit entry or message is
   # written; without it, the stage is not compared. A refusal, or a failure of the
@@ -1127,8 +1128,8 @@ defmodule Apiary.Artifacts do
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
            {:ok, kept} <- integers(type, staged),
-           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
-        watch(writer, held, artifact)
+           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now),
+           :ok <- watch(writer, held, type, artifact) do
         written
       else
         nil -> {:error, :not_found}
@@ -1176,12 +1177,18 @@ defmodule Apiary.Artifacts do
   # work item's public id and its stable url. It is written in the push's transaction, so
   # the version and its entry commit together or not at all. Nothing is written for a
   # person's version, a version of another type, a run whose process version has no
-  # submit, a work item with no target, or a target that no collection matches. The
-  # lookup and `Processes.harness_template/1` only read the database: no message is sent
-  # and no other system is called inside the transaction. `Feed.append/2` takes only an
-  # adapter with no organisation, which the `nodes` check keeps true of every adapter; any
-  # other node gets no entry.
-  defp watch(%{actor: :run, run_id: run_id}, %WorkItem{} = held, %Artifact{type: type}) do
+  # submit, a work item with no target, or a target that no collection matches.
+  #
+  # A standard type is never a submission type: a template's `submit.type` is a custom
+  # type with `base_view: structured` (`Apiary.Artifacts.TemplateTypes`). A push of a
+  # standard type, the verdict of every stage among them, returns before it reads the
+  # run or its process version. A withdrawal has no hook (`write_withdrawal/4`).
+  #
+  # The lookup and `Processes.harness_template/1` only read the database: no message is
+  # sent and no other system is called inside the transaction. `Feed.append/2` takes only
+  # an adapter with no organisation, which the `nodes` check keeps true of every adapter;
+  # any other node gets no entry.
+  defp watch(%{actor: :run, run_id: run_id}, held, %Type{standard: false}, %Artifact{type: type}) do
     with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
          ^type <- submit_type(dispatch_run),
          %{} = target <- target(held),
@@ -1198,7 +1205,7 @@ defmodule Apiary.Artifacts do
     :ok
   end
 
-  defp watch(_writer, _held, _artifact), do: :ok
+  defp watch(_writer, _held, _type, _artifact), do: :ok
 
   # The type in `submit.type` of the run's process version, nil for none.
   defp submit_type(%DispatchRun{process_version_id: id}) do
