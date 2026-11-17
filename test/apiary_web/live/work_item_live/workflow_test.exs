@@ -4829,6 +4829,67 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                Repo.get!(WorkItem, work_item.id)
     end
 
+    test "a person's move event is refused on an escalation that is offered a switch", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      render_hook(view, "stage_move", %{
+        "number" => Integer.to_string(work_item.number),
+        "seen" => @build,
+        "stage" => @shape,
+        "note" => ""
+      })
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} =
+               Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "the same move event on a Standard escalation resolves it as a move back", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = on_track!(scope, "standard")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      render_hook(view, "stage_move", %{
+        "number" => Integer.to_string(work_item.number),
+        "seen" => @build,
+        "stage" => @shape,
+        "note" => ""
+      })
+
+      confirm_spend(view)
+
+      assert %Escalation{resolution: :move_back} = escalation(work_item)
+      assert Repo.get!(WorkItem, work_item.id).stage_id == @shape
+    end
+
+    test "a switch to the track the work item is on says so", %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"switch" => "fast-track"})
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "The work item is already on Fast track."
+             )
+
+      refute has_element?(view, "#work-item-stage-notice", "does not offer")
+    end
+
     test "a track that the gate does not offer is refused with nothing written", %{
       conn: conn,
       scope: scope

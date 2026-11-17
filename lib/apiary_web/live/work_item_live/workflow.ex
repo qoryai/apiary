@@ -730,15 +730,16 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
     do: {:error, :invalid}
 
-  defp checked({:resolve, {:switch, track}, _note} = action, %{switch: [offered | _] = tracks}) do
-    if Enum.any?(tracks, &(&1.id == track)),
-      do: {:ok, action},
-      else: {:error, {:track_not_offered, track, offered.gate}}
-  end
+  # A switch to a track the card offers; `Apiary.Stages` refuses any other, with the reason.
+  defp checked({:resolve, {:switch, _track}, _note} = action, %{switch: [_ | _]}),
+    do: {:ok, action}
 
   defp checked({:resolve, {:switch, _track}, _note}, _page), do: {:error, :invalid}
 
   defp checked({:resolve, {:move_back, id}, _note} = action, page), do: back(action, id, page)
+
+  # A person's move resolves the escalation as a move back: refused where it offers a switch.
+  defp checked({:move, _id, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
   defp checked({:move, id, _note} = action, page), do: back(action, id, page)
 
   defp checked({:request_changes, _note, nil} = action, _page), do: {:ok, action}

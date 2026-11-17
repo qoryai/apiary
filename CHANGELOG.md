@@ -14,7 +14,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: workflow_model -->
 - An escalation of a work item on a track that is not the first track of the gate that
-  recorded it offers the gate's other tracks by name, as **Switch to <track>**. A switch
+  recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
   track, and enters the stage after that gate: the runner passes over each stage that does
   not run on the new track and starts the first one that does. Its dialog names the run it
@@ -28,7 +28,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page shows it: a document as its text and a structured file as its table of values. The
   versions of the verdict and of other runs are not listed. The block shows the note and
   Run another round first, then the points, then those outputs. A line under each action
-  says what it does: under **Switch to <track>**, the stage it starts and the stages after
+  says what it does: under **Switch to `<track>`**, the stage it starts and the stages after
   it that run on the track; under **Run another round**, the entry it runs again; under
   **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
   switch to a track that the gate does not offer names the gate that recorded the track.
@@ -2249,11 +2249,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with a scan that does not block writes. It changes no row. Rolling back deletes the
   escalations resolved with `switch`; the work items stay where the switch put them, and
   the gate decision of each switch stays with its track and loses its `escalation_id`.
-- `gate_decisions` (20261117090000): nullable columns `to_stage_id`, `left_stage_entered_at`
-  and `escalation_id` (a foreign key to `escalations`, indexed), kept on a `move`: the stage
-  it moved to, when the work item had last entered the stage it left, and the escalation it
-  resolves. They have no default, so adding them rewrites no row, and a move written before
-  has none. Rolling back drops the three columns.
+- `gate_decisions` (20261117090000 and 20261117090100): nullable columns `to_stage_id`,
+  `left_stage_entered_at` and `escalation_id` (a foreign key to `escalations`), kept on a
+  `move`: the stage it moved to, when the work item had last entered the stage it left, and
+  the escalation it resolves. They have no default, so adding them rewrites no row, and a
+  move written before has none. The second migration indexes `escalation_id` for the rows
+  that have one, concurrently, outside a transaction. Rolling back drops the index and the
+  three columns.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by

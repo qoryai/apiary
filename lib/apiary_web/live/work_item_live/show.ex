@@ -1425,6 +1425,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  def refused({:already_on, track}, _flow),
+    do: gettext("The work item is already on %{track}.", track: track)
+
   def refused({:track_not_offered, track}, flow) do
     gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
       stage: flow.stage.name,

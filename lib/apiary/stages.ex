@@ -161,6 +161,7 @@ defmodule Apiary.Stages do
           | {:outputs_missing, [String.t()]}
           | {:track_not_offered, String.t()}
           | {:track_not_offered, String.t(), String.t()}
+          | {:already_on, String.t()}
           | :store_unavailable
           | {:invalid, :note}
           | term
@@ -1144,16 +1145,25 @@ defmodule Apiary.Stages do
 
   defp switch_only(_work_item, _version, _stage, _resolution), do: :ok
 
+  # A move of a person (`move/5`) resolves the open escalation as a move back, so it is
+  # refused where the escalation is offered a switch, as that resolution is.
+  defp no_move_on_switch(%WorkItem{stage_state: :escalated} = work_item, version, stage),
+    do: switch_only(work_item, version, stage, {:move_back, nil})
+
+  defp no_move_on_switch(_work_item, _version, _stage), do: :ok
+
   # The gate that recorded the work item's track, and the stage that a switch enters, the
   # stage after that gate, for `track`: `{:error, {:track_not_offered, track, gate_name}}` for
-  # a track the gate does not offer or the one the work item is on, `{:error, :invalid}`
-  # where no switch is offered.
+  # a track the gate does not offer, `{:error, {:already_on, track_name}}` for the one the
+  # work item is on, `{:error, :invalid}` where no switch is offered.
   defp switch_target(work_item, version, stage, track) do
     case switch_offers(work_item, version, stage) do
       {gate, others} ->
-        if Enum.any?(others, &(&1.id == track)),
-          do: {:ok, gate, next_stage(version, gate)},
-          else: {:error, {:track_not_offered, track, gate["name"]}}
+        cond do
+          Enum.any?(others, &(&1.id == track)) -> {:ok, gate, next_stage(version, gate)}
+          track(work_item) == track -> {:error, {:already_on, track_name(version, track)}}
+          true -> {:error, {:track_not_offered, track, gate["name"]}}
+        end
 
       nil ->
         {:error, :invalid}
@@ -1183,9 +1193,12 @@ defmodule Apiary.Stages do
   end
 
   # The newest of `decisions` made at a stage whose gate offers `current`, with that gate's
-  # tracks; nil for none.
+  # tracks; nil for none. A switch is left out: it is made out of the stage it resolves in,
+  # which may have a gate that offers the same tracks, and records no gate's offer.
   defp recording_gate(decisions, current, version) do
-    Enum.find_value(decisions, fn %{stage_id: stage_id} ->
+    decisions
+    |> Enum.filter(&is_nil(&1.escalation_id))
+    |> Enum.find_value(fn %{stage_id: stage_id} ->
       with %{} = gate <- Processes.stage(version, stage_id),
            [_ | _] = offered <- gate_tracks(version, gate),
            true <- Enum.any?(offered, &(&1.id == current)) do
@@ -1208,6 +1221,7 @@ defmodule Apiary.Stages do
     transact(fn ->
       with {:ok, note} <- note(note),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
+           :ok <- no_move_on_switch(work_item, version, stage),
            target when is_map(target) <-
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
            {:ok, track} <- moved_track(work_item, version, stage, target),
@@ -1545,11 +1559,19 @@ defmodule Apiary.Stages do
   # of the work item's stage.
   defp moved_inputs(work_item, version, stage, artifacts, read) do
     ids = Enum.map(version.document["stages"], & &1["id"])
+
+    case departures(work_item, ids) do
+      [] -> []
+      departures -> moved_inputs(work_item, version, stage, artifacts, read, ids, departures)
+    end
+  end
+
+  defp moved_inputs(work_item, version, stage, artifacts, read, ids, departures) do
     here = Enum.find_index(ids, &(&1 == stage["id"]))
     approvals = approvals_by_version(work_item)
     read_ids = for %{version: %{id: id}} <- read, do: id
 
-    for departure <- departures(work_item, ids),
+    for departure <- departures,
         left = Processes.stage(version, departure.stage_id),
         Enum.find_index(ids, &(&1 == departure.stage_id)) > here,
         output <- Map.get(left, "outputs", []),
@@ -1796,9 +1818,15 @@ defmodule Apiary.Stages do
           track_name: names[decision.track] || decision.track,
           stage_id: decision.stage_id,
           user_id: decision.user_id,
+          switch: decision.kind == :move and not is_nil(decision.escalation_id),
           at: decision.inserted_at
         }
     end
+  end
+
+  # The name of the track `id` that `version` declares; the id for a track it does not.
+  defp track_name(version, id) do
+    Enum.find_value(version.document["tracks"] || [], id, &(&1["id"] == id && &1["name"]))
   end
 
   # The names of the tracks the work item's process version declares, by id.
@@ -2119,7 +2147,8 @@ defmodule Apiary.Stages do
   end
 
   # The approvals and moves of the work item that have a track, made in its current take in,
-  # newest first: each `track` and the `stage_id` the decision was made at; `[]` for none.
+  # newest first: each `track`, the `stage_id` the decision was made at and, for a switch,
+  # the `escalation_id` it resolves; `[]` for none.
   defp track_decisions(%WorkItem{take_in: nil}), do: []
 
   defp track_decisions(%WorkItem{id: id, take_in: take_in}) do
@@ -2129,7 +2158,7 @@ defmodule Apiary.Stages do
           d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track) and
             d.take_in == ^take_in,
         order_by: [desc: d.inserted_at, desc: d.id],
-        select: %{track: d.track, stage_id: d.stage_id}
+        select: %{track: d.track, stage_id: d.stage_id, escalation_id: d.escalation_id}
     )
   end
 
@@ -2156,8 +2185,8 @@ defmodule Apiary.Stages do
   not on its first track, and the gate is before the work item's stage. `gate` is the name
   of that gate's stage, `first` the name of the stage a switch to the track starts and
   `later` the names of the stages after it that run on the track (`nil` and `[]` where none
-  runs). `[]` otherwise, and where the work item is in no stage. The work item is then offered no accept and no move back
-  (`resolve_escalation/5`).
+  runs). `[]` otherwise, and where the work item is in no stage. A work item offered a switch
+  is offered no accept and no move back (`resolve_escalation/5`, `move/5`).
   """
   @spec switch_tracks(WorkItem.t()) :: [
           %{

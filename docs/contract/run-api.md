@@ -125,8 +125,8 @@ Returns `200` with the work item snapshot:
 
 - `inputs` contains each input of the current stage with the version that the gate of
   the stage that made it approved, or a version a person added; `version` is null when
-  there is none. After a person moves the work item to an earlier stage (a move back or an
-  escalation's move back), `inputs` ends with one more entry for each output of each stage
+  there is none. After a person moves the work item to an earlier stage (a move back, an
+  escalation's move back or a switch of track), `inputs` ends with one more entry for each output of each stage
   that the work item left that way and that comes after its current stage:
   `{"type": "demo-video", "required": false, "version": {"id": "av_...", "number": 3},
   "from": "move"}`. `version` is the newest version of that type made in the left stage
@@ -153,8 +153,9 @@ Returns `200` with the work item snapshot:
 - `notes` contains what people wrote on the work item and the gaps of failed checks,
   oldest first. `kind` is `request_changes`, a request for changes at the gate of the
   stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
-  move of the work item out of the stage `stage_id`; `escalation`, an escalation that a
-  person resolved with a note; `answer`, an answer to a run's questions, a review comment
+  move of the work item out of the stage `stage_id`, not one that resolves an escalation
+  (a move back or a switch of track), which the escalation's entry stands for;
+  `escalation`, an escalation that a person resolved with a note; `answer`, an answer to a run's questions, a review comment
   on Explore's proposal or a reply to one, whose `stage_id` is null when the run it was
   given at has no stage; or `check`, the Exists
   checks of the stage `stage_id` that failed and started another round, with one line

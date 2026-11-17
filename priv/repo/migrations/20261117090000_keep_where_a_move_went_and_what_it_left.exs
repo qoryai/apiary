@@ -8,16 +8,15 @@ defmodule Apiary.Repo.Migrations.KeepWhereAMoveWentAndWhatItLeft do
   # moved to, until the left stage's gate passes or a later move goes past it. A move that
   # resolves an escalation keeps the escalation (`escalation_id`), so the notes of the work
   # item list the escalation and not a second entry for the move. A decision is deleted
-  # before the escalation it names (`Apiary.Deletion.Tables`). Nullable
-  # columns with no default rewrite no row; a move written before has neither.
+  # before the escalation it names (`Apiary.Deletion.Tables`). Nullable columns with no
+  # default rewrite no row; a move written before has neither. The index of `escalation_id`
+  # is in the migration after this one.
   def up do
     alter table(:gate_decisions) do
       add :to_stage_id, :text
       add :left_stage_entered_at, :utc_datetime_usec
       add :escalation_id, references(:escalations, type: :binary_id, on_delete: :nothing)
     end
-
-    create index(:gate_decisions, [:escalation_id])
   end
 
   def down do

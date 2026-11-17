@@ -5297,17 +5297,20 @@ defmodule Apiary.StagesTest do
       assert Enum.any?(Stages.notes(work_item), &(&1.note == "Write a spec"))
     end
 
-    test "a track the gate does not offer, and the track the work item is on, are refused with nothing written",
+    test "a track the gate does not list, and the track the work item is on, are refused with nothing written",
          %{scope: scope} do
       work_item = escalated_in_build!(scope, "fast-track")
       before = decisions(work_item)
 
-      for track <- ["express", "fast-track"] do
-        assert switch(scope, work_item, track) ==
-                 {:error, {:track_not_offered, track, "Explore"}}
+      # A track the gate does not list, and the track the work item is on, with their own
+      # reasons.
+      assert switch(scope, work_item, "express") ==
+               {:error, {:track_not_offered, "express", "Explore"}}
 
-        assert Stages.starts(work_item, {:switch, track}) == :none
-      end
+      assert switch(scope, work_item, "fast-track") == {:error, {:already_on, "Fast track"}}
+
+      for track <- ["express", "fast-track"],
+          do: assert(Stages.starts(work_item, {:switch, track}) == :none)
 
       assert %WorkItem{stage_id: @build, stage_state: :escalated} = reload(work_item)
       assert %Escalation{resolution: nil} = escalation(work_item)
@@ -5322,6 +5325,80 @@ defmodule Apiary.StagesTest do
       # Build's gate offers no track, and Explore's gate does.
       assert Stages.offered_tracks(work_item) == []
       assert {:ok, %WorkItem{stage_id: @shape}} = switch(scope, work_item, "standard")
+    end
+
+    test "a person's move is refused where the escalation is offered a switch, and not otherwise",
+         %{scope: scope} do
+      work_item = escalated_in_build!(scope, "fast-track")
+      before = decisions(work_item)
+
+      assert Stages.move(scope, work_item, @explore, nil, expect_stage: @build) ==
+               {:error, :invalid}
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = reload(work_item)
+      assert %Escalation{resolution: nil} = escalation(work_item)
+      assert decisions(work_item) == before
+    end
+
+    test "a person's move of a work item on the gate's first track still resolves the escalation",
+         %{scope: scope} do
+      work_item = escalated!(scope, "standard", @shape)
+
+      assert {:ok, %WorkItem{stage_id: @explore}} =
+               Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+
+      assert %Escalation{resolution: :move_back} =
+               Repo.get_by(Escalation, work_item_id: work_item.id)
+    end
+
+    test "a later gate that offers the same tracks does not take the switch's place as the recording gate",
+         %{scope: scope} do
+      tracks = [
+        %{"id" => "standard", "name" => "Standard"},
+        %{"id" => "fast-track", "name" => "Fast track"},
+        %{"id" => "express", "name" => "Express"}
+      ]
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track", "express"])),
+          stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"when" => @on_standard}),
+          stage(
+            @build,
+            "Build",
+            [%{"workflow" => "make-a-small-change"}],
+            offering(["standard", "fast-track", "express"])
+          )
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "express")
+      work_item = reload(work_item)
+
+      escalated =
+        end_run!(work_item, verdict("escalate", [again("A server check reads it.")]))
+
+      assert [%{id: "standard", gate: "Explore"}, %{id: "fast-track", gate: "Explore"}] =
+               Stages.switch_tracks(escalated)
+
+      # Switch to Fast track: Shape is passed over and Build runs again, on a track that is
+      # not the first. The decision of the switch is at Build, whose gate offers the same
+      # tracks, and Explore's gate is still the one that recorded the track.
+      assert {:ok, %WorkItem{stage_id: @build, stage_state: :running}} =
+               switch(scope, reload(escalated), "fast-track")
+
+      assert Stages.track(work_item) == "fast-track"
+
+      again_escalated =
+        end_run!(reload(work_item), verdict("escalate", [again("It is still wrong.")]))
+
+      assert [%{id: "standard", gate: "Explore"}, %{id: "express", gate: "Explore"}] =
+               Stages.switch_tracks(again_escalated)
     end
 
     test "after a switch to Standard the work item is offered no switch", %{scope: scope} do

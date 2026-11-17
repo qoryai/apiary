@@ -1285,6 +1285,11 @@ msgstr ""
 msgid "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -22178,6 +22183,11 @@ msgstr ""
 msgid "The whole workspace"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The work item is already on %{track}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The work item stays in Qory Apiary, closed."
@@ -25042,6 +25052,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "You started a test run"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "You switched the work item to %{track} on %{date}. %{track} skips %{stage}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
