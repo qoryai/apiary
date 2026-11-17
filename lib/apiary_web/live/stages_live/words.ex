@@ -553,6 +553,11 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # `changed: true` in a condition on an item that is no workflow entry.
+  def refusal(%{error: :condition_changed_entry_only}, _doc),
+    do:
+      gettext("Move `changed: true` to a workflow entry: only an entry has runs to compare with.")
+
   def refusal(%{error: :condition_track, path: path, detail: track}, doc) when is_binary(path) do
     {stage, _field} = place(path, doc)
 

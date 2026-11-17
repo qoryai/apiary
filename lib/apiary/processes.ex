@@ -116,10 +116,13 @@ defmodule Apiary.Processes do
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:return_not_earlier` for a workflow entry's
   `return` whose stage is not one before the entry's stage; `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
-  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `{input: T}`, or `{input: T, changed: true}`, in `when` or `unless` on a stage, an input,
+  an output, a loop or a workflow entry, where `T` is no output of an earlier stage, with
+  `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
+  `:condition_changed_entry_only` for `changed: true` in a condition on a stage, an input,
+  an output or a loop, at the place of the key `changed`;
   `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
   `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
   for a track id in a gate's `tracks` that the document's `tracks` do not declare;
@@ -427,25 +430,25 @@ defmodule Apiary.Processes do
         |> Enum.with_index()
         |> Enum.flat_map(fn
           {%{"loop" => %{"body" => body}} = loop, i} ->
-            [{loop, "#{at}/sequence/#{i}"}] ++
+            [{loop, "#{at}/sequence/#{i}", false}] ++
               for {entry, j} <- Enum.with_index(body),
-                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}", true}
 
           {entry, i} ->
-            [{entry, "#{at}/sequence/#{i}"}]
+            [{entry, "#{at}/sequence/#{i}", true}]
         end)
 
       inputs =
         for {input, k} <- Enum.with_index(stage["inputs"] || []),
-            do: {input, "#{at}/inputs/#{k}"}
+            do: {input, "#{at}/inputs/#{k}", false}
 
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
-            do: {output, "#{at}/outputs/#{k}"}
+            do: {output, "#{at}/outputs/#{k}", false}
 
       errors =
-        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
-            error <- item_errors(item, path, earlier),
+        for {item, path, entry?} <- [{stage, at, false}] ++ inputs ++ entries ++ outputs,
+            error <- item_errors(item, path, earlier, entry?),
             do: error
 
       made = for o <- stage["outputs"] || [], do: o["type"]
@@ -455,8 +458,9 @@ defmodule Apiary.Processes do
   end
 
   # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
-  # item's place).
-  defp item_errors(item, path, earlier) do
+  # item's place). `entry?` is whether the item is a workflow entry by its place: an element
+  # of a stage's sequence that is no loop, or of a loop's body; no key of the item decides it.
+  defp item_errors(item, path, earlier, entry?) do
     both =
       if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
         do: [%{path: path, error: :condition_both, detail: nil}],
@@ -464,23 +468,34 @@ defmodule Apiary.Processes do
 
     both ++
       for key <- ["when", "unless"],
-          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          error <- condition_error(item[key], path <> "/" <> key, earlier, entry?),
           do: error
   end
 
-  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
-    if type in types,
-      do: [],
-      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  # `{input: T, changed: true}` compares a version with the runs of one workflow entry, so
+  # only a workflow entry may have it (`:condition_changed_entry_only`, at `.../changed`),
+  # after the refusal of its type (`:condition_input`).
+  defp condition_error(%{"input" => type} = condition, path, {types, _tracks}, entry?) do
+    input =
+      if type in types,
+        do: [],
+        else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+
+    changed =
+      if condition["changed"] == true and not entry?,
+        do: [%{path: path <> "/changed", error: :condition_changed_entry_only, detail: nil}],
+        else: []
+
+    input ++ changed
   end
 
-  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+  defp condition_error(%{"track" => track}, path, {_types, tracks}, _entry?) do
     if track in tracks,
       do: [],
       else: [%{path: path <> "/track", error: :condition_track, detail: track}]
   end
 
-  defp condition_error(_condition, _path, _earlier), do: []
+  defp condition_error(_condition, _path, _earlier, _entry?), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors

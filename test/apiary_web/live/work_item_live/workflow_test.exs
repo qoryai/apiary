@@ -356,6 +356,24 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     |> Repo.insert!()
   end
 
+  # A run of the queue at Build for a work item with no run yet, such as `at_build/3`'s.
+  defp build_run!(work_item) do
+    %DispatchRun{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id
+    }
+    |> DispatchRun.queue_changeset(%{
+      work_item_id: work_item.id,
+      step: "build",
+      take_in: work_item.take_in || 1,
+      attempt: 1,
+      of: 1,
+      queued_at: DateTime.utc_now()
+    })
+    |> Ecto.Changeset.change(stage_id: @build, workflow: "capture-demo", round: 1)
+    |> Repo.insert!()
+  end
+
   # `dispatch_run` in `state`, with its row in `runs`.
   defp registered!(work_item, dispatch_run, state) do
     dispatch_run = dispatch_run |> Ecto.Changeset.change(state: state) |> Repo.update!()
@@ -2569,6 +2587,163 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "at Build's gate" do
+    test "one output row for each name, in name order, each in the change request's list",
+         %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      [main, ten, two] =
+        for name <- ["main", "scenario-10", "scenario-2"] do
+          {:ok, version} =
+            Artifacts.push({:person, scope}, work_item, "demo-video", [sample("demo-video")],
+              stage_id: @build,
+              name: name
+            )
+
+          version
+        end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-output-demo-video", "demo video v1")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-output-demo-video-scenario-2",
+               "demo video scenario-2 v1"
+             )
+
+      assert has_element?(view, "#work-item-stage-gate-check-demo-video-scenario-10", "Passed")
+
+      ids =
+        view
+        |> render()
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#work-item-stage-gate-outputs li")
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+        |> Enum.filter(&String.starts_with?(&1, "work-item-stage-gate-output-demo-video"))
+
+      assert ids == [
+               "work-item-stage-gate-output-demo-video",
+               "work-item-stage-gate-output-demo-video-scenario-2",
+               "work-item-stage-gate-output-demo-video-scenario-10"
+             ]
+
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      for {version, words} <- [
+            {main, "demo video v1"},
+            {two, "demo video scenario-2 v1"},
+            {ten, "demo video scenario-10 v1"}
+          ] do
+        assert has_element?(
+                 view,
+                 ~s|#work-item-stage-gate-changes-version option[value="#{version.public_id}"]|,
+                 words
+               )
+      end
+    end
+
+    test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+      push!({:person, scope}, work_item, "submission", @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-draft-0", "Submission:")
+
+      assert has_element?(
+               view,
+               ~s|#work-item-stage-gate-draft-0 a[href="https://forge.example.com/example/shop/pull/4"][target="_blank"]|,
+               "the draft in example/shop"
+             )
+    end
+
+    test "a submission with no draft shows no line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+
+      submission =
+        json("submission.json", %{
+          "ref" => "qory/wi_example",
+          "verdict" => "changes-requested",
+          "repositories" => [
+            %{
+              "system" => "forge.example.com",
+              "path" => "example/shop",
+              "commit" => String.duplicate("a", 40),
+              "draft" => %{"none" => "not-passed"}
+            }
+          ]
+        })
+
+      {:ok, _version} =
+        Artifacts.push({:person, scope}, work_item, "submission", [submission], stage_id: @build)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+      refute render(view) =~ "Submission:"
+    end
+
+    test "a withdrawn submission shows no line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+      run = build_run!(work_item)
+      push!({:run, run}, work_item, "submission", @build)
+
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, work_item, "submission", stage_id: @build)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+      refute render(view) =~ "Submission:"
+    end
+
+    test "a submission of a run a member cancelled shows no line", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+      dispatch_run = build_run!(work_item)
+      push!({:run, dispatch_run}, work_item, "submission", @build)
+      {run, _dispatch_run} = registered!(work_item, dispatch_run, :handed_over)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-gate-draft-0")
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id),
+          set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+      refute render(view) =~ "Submission:"
+    end
+
+    test "the submission is read once, not again on each refresh", %{conn: conn, scope: scope} do
+      work_item = at_build(scope, :at_gate)
+      submission = push!({:person, scope}, work_item, "submission", @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert %{"repositories" => [_repository]} =
+               :sys.get_state(view.pid).socket.assigns.stored_reads[
+                 {:json, submission.public_id}
+               ]
+
+      # The page draws the drafts from what it read, when it reads the work item again.
+      :sys.replace_state(view.pid, fn state ->
+        update_in(state.socket.assigns.stored_reads, fn reads ->
+          Map.put(reads, {:json, submission.public_id}, %{
+            "repositories" => [
+              %{"path" => "example/kept", "draft" => %{"url" => "https://forge.example.com/kept"}}
+            ]
+          })
+        end)
+      end)
+
+      send(view.pid, {:artifact_pushed, work_item.id, submission.public_id})
+
+      assert has_element?(view, "#work-item-stage-gate-draft-0", "the draft in example/kept")
+    end
+
     test "each output with its version and its check", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
       push!({:person, scope}, work_item, "demo-video", @build)

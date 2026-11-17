@@ -21,19 +21,20 @@ defmodule Apiary.WorkItems.Explore do
   #     walk failed (`harness_unresolved`): `:no_result` with the outcome `:error`, and
   #     no registered run;
   #   * ended by its exit (`run_ended`): what the run gave decides, `:questions` or
-  #     `:proposal`. Without either the run is `:cancelled` when the registered run reads as
-  #     cancelled, `:lost` when it reads as lost, and otherwise `:no_result`, with its
-  #     outcome. A run whose outcome is not stored yet reads as `:running`.
+  #     `:proposal`. Without either the run is `:time_limit` when the registered run ended
+  #     with the reason `timeout`, `:cancelled` when it reads as cancelled, `:lost` when it
+  #     reads as lost, and otherwise `:no_result`, with its outcome. A run whose outcome is
+  #     not stored yet reads as `:running`.
   #
   # ## A take in
   #
   # `status/2` is where Explore stands for a live work item, from the runs of its current
   # take in and whether that take in was confirmed: `:shape` once confirmed; else its
   # latest run's place, `:proposal` read as `:confirm`; and `:used_up` for a latest run at
-  # `:no_result`, `:lost` or `:cancelled` whose attempt is its `of`, the run limit, where
-  # no run is left. Questions wait for answers at any count of runs, as each answer adds
-  # a run. A take in with no run yet is `:queued`. `with_status/1` derives the same status
-  # in SQL, for a list of work items.
+  # `:no_result`, `:lost`, `:time_limit` or `:cancelled` whose attempt is its `of`, the run
+  # limit, where no run is left. Questions wait for answers at any count of runs, as each
+  # answer adds a run. A take in with no run yet is `:queued`. `with_status/1` derives the
+  # same status in SQL, for a list of work items.
   #
   # `stage/1` is the stage a status is at, as a close records it: `:shape`
   # once confirmed, `:confirm` while the proposal waits, `:explore` otherwise.
@@ -64,6 +65,7 @@ defmodule Apiary.WorkItems.Explore do
     :questions,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :used_up,
     :shape
@@ -79,7 +81,15 @@ defmodule Apiary.WorkItems.Explore do
   }
 
   @typedoc "Where one run of a take in stands."
-  @type place :: :queued | :running | :proposal | :questions | :no_result | :lost | :cancelled
+  @type place ::
+          :queued
+          | :running
+          | :proposal
+          | :questions
+          | :no_result
+          | :lost
+          | :time_limit
+          | :cancelled
 
   @typedoc "Where Explore stands for a live work item."
   @type status ::
@@ -89,6 +99,7 @@ defmodule Apiary.WorkItems.Explore do
           | :questions
           | :no_result
           | :lost
+          | :time_limit
           | :cancelled
           | :used_up
           | :shape
@@ -151,6 +162,7 @@ defmodule Apiary.WorkItems.Explore do
     cond do
       is_nil(outcome) -> {:running, nil}
       outcome in [:proposal, :questions] -> {outcome, outcome}
+      match?(%Run{reason: "timeout"}, run) -> {:time_limit, nil}
       match?(%Run{state: "cancelled"}, run) -> {:cancelled, nil}
       match?(%Run{state: "lost"}, run) -> {:lost, nil}
       true -> {:no_result, outcome}
@@ -175,7 +187,7 @@ defmodule Apiary.WorkItems.Explore do
       :proposal ->
         :confirm
 
-      place when place in [:no_result, :lost, :cancelled] ->
+      place when place in [:no_result, :lost, :time_limit, :cancelled] ->
         if latest.attempt >= latest.of, do: :used_up, else: place
 
       place ->
@@ -260,7 +272,7 @@ defmodule Apiary.WorkItems.Explore do
             ) THEN 'shape'
             WHEN l.place IS NULL THEN 'queued'
             WHEN l.place = 'proposal' THEN 'confirm'
-            WHEN l.place IN ('no_result', 'lost', 'cancelled') AND l.attempt >= l.of
+            WHEN l.place IN ('no_result', 'lost', 'time_limit', 'cancelled') AND l.attempt >= l.of
               THEN 'used_up'
             ELSE l.place
           END AS status
@@ -275,6 +287,7 @@ defmodule Apiary.WorkItems.Explore do
               WHEN d.end_cause <> 'run_ended' THEN 'no_result'
               WHEN d.result_outcome IS NULL THEN 'running'
               WHEN d.result_outcome IN ('proposal', 'questions') THEN d.result_outcome
+              WHEN r.reason = 'timeout' THEN 'time_limit'
               WHEN r.state = 'cancelled' THEN 'cancelled'
               WHEN r.state = 'lost' THEN 'lost'
               ELSE 'no_result'

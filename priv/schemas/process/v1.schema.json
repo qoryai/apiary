@@ -236,7 +236,7 @@
       }
     },
     "condition": {
-      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
+      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{input: T, changed: true}`, only on a workflow entry, is met when T has a version and the entry has no run on the work item that ended `passed`, or that version was stored after the newest such run was queued; a save refuses it on a stage, a loop, an input and an output. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
       "oneOf": [{"$ref": "#/$defs/input_condition"}, {"$ref": "#/$defs/track_condition"}]
     },
     "input_condition": {
@@ -244,7 +244,13 @@
       "type": "object",
       "required": ["input"],
       "additionalProperties": false,
-      "properties": {"input": {"$ref": "#/$defs/artifact_type"}}
+      "properties": {
+        "input": {"$ref": "#/$defs/artifact_type"},
+        "changed": {
+          "description": "Only `true`, and only on a workflow entry: the condition is met when the version of `input` is new since the entry last ran and passed, whatever the size of its files. The schema allows the key wherever an input condition is; a save refuses it on a stage, a loop, an input and an output (`condition_changed_entry_only`).",
+          "const": true
+        }
+      }
     },
     "track_condition": {
       "description": "Met when the track `track` is the one chosen at an earlier gate.",

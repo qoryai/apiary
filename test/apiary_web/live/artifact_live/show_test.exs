@@ -633,6 +633,80 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
     end
 
+    test "lists a withdrawal as Withdrew, with its artifact and version", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               "#artifact-history-#{withdrawal.public_id} a",
+               "Withdrew explainer scenario-2 (version 2)"
+             )
+
+      assert has_element?(view, "#artifact-history-#{version.public_id} a", "Version 1")
+    end
+
+    test "writes the type of a withdrawal in its plain form, as the gate card does", ctx do
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          "name" => "demo-note",
+          "base_view" => "file"
+        })
+
+      version =
+        pushed!(ctx, "demo-note", [{"note.bin", "x"}], name: "voucher-expired")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "demo-note", name: "voucher-expired")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               "#artifact-history-#{withdrawal.public_id} a",
+               "Withdrew demo note voucher-expired (version 2)"
+             )
+
+      # The title of the other versions keeps the type's id.
+      assert has_element?(view, "#artifact-header", "demo-note voucher-expired v1")
+    end
+
+    test "a withdrawal's own page reads as a withdrawal, with no view and no file list", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, withdrawal))
+
+      assert has_element?(
+               view,
+               "#artifact-withdrawn",
+               "Withdrew explainer scenario-2 (version 2)"
+             )
+
+      refute has_element?(view, "#artifact-view-part")
+      refute has_element?(view, "#artifact-files-part")
+
+      # The version before it keeps its view and its files.
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      assert has_element?(view, "#artifact-view-part")
+      assert has_element?(view, "#artifact-files-part")
+      refute has_element?(view, "#artifact-withdrawn")
+    end
+
+    test "plain_name/2 is the type with spaces, then the name unless it is main" do
+      alias ApiaryWeb.ArtifactComponents, as: Components
+
+      assert Components.plain_name("demo-video", "scenario-1") == "demo video scenario-1"
+      assert Components.plain_name("demo-video", "main") == "demo video"
+      assert Components.plain_name("explainer", nil) == "explainer"
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
