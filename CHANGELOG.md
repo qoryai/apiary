@@ -1339,6 +1339,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and a path segment written `{}`.
 <!-- /feature -->
 <!-- feature: factory -->
+- A run with `write` access and no work item ends before it starts, with the stop cause
+  `write_without_work_item`, because it has no branch to limit its push credential to. The
+  run's page reads: "Give the run a work item: a run that writes needs a branch, which
+  comes from its work item."
+<!-- /feature -->
+<!-- feature: factory -->
 - A target path with `{` or `}` ends the run `target_access_gone`, as one with `*`, `?`
   or `#` does. Forager's path grammar reads a segment written `{}` as a wildcard for one
   segment, so a brace in a target path could widen a run's access. An adapter's answer
@@ -2209,6 +2215,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` and `dispatches` (20261117130000 and 20261117130100): the checks on
+  `end_cause` and on `dispatch_runs.result_outcome` take the cause
+  `write_without_work_item`. The first migration adds the new checks without a scan, and
+  the second validates them with a scan that does not block writes. It changes no row.
+<!-- /feature -->
 <!-- feature: factory -->
 - `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
   takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the

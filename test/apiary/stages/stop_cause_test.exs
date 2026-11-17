@@ -200,6 +200,12 @@ defmodule Apiary.Stages.StopCauseTest do
                "Owners and admins of #{org} connect one in Organisation settings › Integrations."
   end
 
+  test "a write run with no work item needs one, for its branch", %{work_item: work_item} do
+    assert text(:write_without_work_item, work_item) ==
+             "The run did not start, because a run that writes needs a branch, which comes from its work item, and it has none.\n" <>
+               "Give the run a work item."
+  end
+
   test "a harness with no walk row, and an unknown cause, show the code with a description",
        %{work_item: work_item} do
     assert text(:harness_unresolved, work_item) =~

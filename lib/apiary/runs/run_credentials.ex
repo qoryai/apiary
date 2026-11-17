@@ -28,6 +28,9 @@ defmodule Apiary.Runs.RunCredentials do
   #   * The run ends `target_access_gone`: the collection ended, or its connection is not
   #     connected, or the target path is one the templates refuse
   #     (`Apiary.Integrations.ApplyTemplates.fill/2`).
+  #   * The run ends `write_without_work_item`: its access level is `write` and it has no
+  #     work item, or one with no public id, so it has no branch to limit its push
+  #     credential to. A prebuild has no work item and access `:read`: it is not this case.
   #   * Else the entry: the apply items filled with the run's target path, exactly as the
   #     adapter wrote it, a filled path that repeats an earlier one of its item left out;
   #     the collection's id and ref, with that path, as its resource; and the access level
@@ -66,7 +69,7 @@ defmodule Apiary.Runs.RunCredentials do
   # run's documents (`run_access/1`), else read now: `{:ok, entry}`, not yet stored,
   # `{:ok, nil}` for none, or `{:end, :target_access_gone}` (the moduledoc).
   @spec form_work(DispatchRun.t(), WorkItem.t() | nil, map | nil, atom | nil) ::
-          {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
+          {:ok, RunCredential.t() | nil} | {:end, :target_access_gone | :write_without_work_item}
   def form_work(dispatch_run, work_item, target, level \\ nil)
 
   def form_work(%DispatchRun{}, _work_item, nil, _level), do: {:ok, nil}
@@ -103,7 +106,8 @@ defmodule Apiary.Runs.RunCredentials do
           {Collection.t(), Connection.t(), Node.t()} | nil,
           map | nil,
           atom | nil
-        ) :: {:ok, RunCredential.t() | nil} | {:end, :target_access_gone}
+        ) ::
+          {:ok, RunCredential.t() | nil} | {:end, :target_access_gone | :write_without_work_item}
   def work_from(dispatch_run, work_item, collection, target, level \\ nil)
 
   def work_from(%DispatchRun{}, _work_item, _collection, nil, _level), do: {:ok, nil}
@@ -125,14 +129,23 @@ defmodule Apiary.Runs.RunCredentials do
         {:end, :target_access_gone}
 
       {collection, connection, adapter} ->
-        case ApplyTemplates.fill(adapter.source_apply, path) do
-          {:ok, apply} ->
-            {:ok,
-             entry(dispatch_run, work_item, collection, connection, adapter, path, apply, level)}
-
-          {:error, :path_refused} ->
-            {:end, :target_access_gone}
+        with :ok <- branch(level, work_item),
+             {:ok, apply} <- fill(adapter, path) do
+          {:ok,
+           entry(dispatch_run, work_item, collection, connection, adapter, path, apply, level)}
         end
+    end
+  end
+
+  # A write run needs the work item's public id, which is its branch (`push_limit/3`).
+  defp branch(:write, %WorkItem{public_id: public_id}) when is_binary(public_id), do: :ok
+  defp branch(:write, _work_item), do: {:end, :write_without_work_item}
+  defp branch(_level, _work_item), do: :ok
+
+  defp fill(adapter, path) do
+    case ApplyTemplates.fill(adapter.source_apply, path) do
+      {:ok, apply} -> {:ok, apply}
+      {:error, :path_refused} -> {:end, :target_access_gone}
     end
   end
 

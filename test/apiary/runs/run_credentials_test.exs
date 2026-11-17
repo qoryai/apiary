@@ -899,23 +899,59 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
 
+      # A work item with no public id, which the database does not store, ends the run.
       nil_item = %{work_item | public_id: nil}
 
-      assert {:ok, %RunCredential{apply: apply}} =
-               RunCredentials.form_work(queued, nil_item, @target, :write)
-
-      refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+      assert RunCredentials.form_work(queued, nil_item, @target, :write) ==
+               {:end, :write_without_work_item}
     end
 
-    test "a run formed with no work item has no branch to give and no push_ref", ctx do
+    test "a write run with no work item ends write_without_work_item and has no entry", ctx do
       {work_item, queued} = queued!(ctx)
       collection = RunCredentials.work_collection(queued, work_item, @target)
 
-      assert {:ok, %RunCredential{access: :write, apply: apply}} =
-               RunCredentials.work_from(queued, nil, collection, @target, :write)
+      assert RunCredentials.work_from(queued, nil, collection, @target, :write) ==
+               {:end, :write_without_work_item}
 
-      assert length(apply) == 2
-      refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+      assert RunCredentials.form_work(queued, nil, @target, :write) == {:ok, nil}
+      assert entries() == []
+
+      # A work item with no public id has no branch either: the database refuses to store
+      # one, so only a struct is such.
+      assert RunCredentials.work_from(
+               queued,
+               %{work_item | public_id: nil},
+               collection,
+               @target,
+               :write
+             ) == {:end, :write_without_work_item}
+    end
+
+    test "a read or write-no-push run with no work item has an entry with no push_ref", ctx do
+      {work_item, queued} = queued!(ctx)
+      collection = RunCredentials.work_collection(queued, work_item, @target)
+
+      for level <- [:read, :write_no_push] do
+        assert {:ok, %RunCredential{access: :read, apply: apply}} =
+                 RunCredentials.work_from(queued, nil, collection, @target, level)
+
+        assert length(apply) == 2
+        refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+      end
+    end
+
+    test "the branch of a work item is the fixed string refs/heads/qory/<public id>", ctx do
+      {work_item, queued} = queued!(ctx)
+      collection = RunCredentials.work_collection(queued, work_item, @target)
+      pinned = %{work_item | public_id: "wi_01HZX"}
+
+      assert {:ok, %RunCredential{apply: apply}} =
+               RunCredentials.work_from(queued, pinned, collection, @target, :write)
+
+      assert Enum.map(apply, & &1["push_ref"]) == [
+               "refs/heads/qory/wi_01HZX",
+               "refs/heads/qory/wi_01HZX"
+             ]
     end
 
     test "a prebuild has no push_ref", ctx do

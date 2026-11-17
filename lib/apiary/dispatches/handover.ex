@@ -84,7 +84,9 @@ defmodule Apiary.Dispatches.Handover do
   #      of an adapter that declares apply items, while the collection ended, its
   #      connection is not connected, or the target path is one the apply items refuse,
   #      ends `target_access_gone` (`Apiary.Runs.RunCredentials.form_work/4`, which picks
-  #      that collection: a prebuild's, or one that can change the run's target). A run
+  #      that collection: a prebuild's, or one that can change the run's target). The
+  #      same check ends a run with write access and no work item `write_without_work_item`,
+  #      as it has no branch to limit its push credential to. A run
   #      with a work credential entry also ends `secrets_not_allowed` when one of those
   #      keys was made without `allow_secrets`, whatever the features and its model
   #      choice;
@@ -247,7 +249,8 @@ defmodule Apiary.Dispatches.Handover do
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when the claim cannot form what it is made from.
   @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
-              RunSettings.causes() ++ [:secrets_not_allowed, :target_access_gone]
+              RunSettings.causes() ++
+              [:secrets_not_allowed, :target_access_gone, :write_without_work_item]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
