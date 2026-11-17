@@ -2223,6 +2223,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       version
     end
 
+    # Whether the spec frame's caption has version `number` and the short name of the
+    # scope's member, not the address.
+    defp caption?(view, scope, number) do
+      frame = "#work-item-tab-output-spec"
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      has_element?(view, frame, "Version #{number} · #{short}") and
+        not has_element?(view, frame, "Version #{number} · #{scope.user.email}")
+    end
+
     # The tab of `stage_id` drawn, then its gate approved: the versions the approval
     # records, and those the page drew.
     defp approved_and_drawn(conn, scope, work_item, stage_id) do
@@ -2246,14 +2256,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       work_item = scope |> at_shape!() |> end_run!(fn run, _registered -> passed!(run) end)
       add_spec!(scope, work_item, "## Spec by hand")
 
+      # Before the approval, the frame's caption has who uploaded it.
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+      assert caption?(view, scope, 1)
+
       {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, work_item, @shape)
 
       assert [_one] = recorded
       assert recorded -- drawn == []
       assert html =~ "Spec by hand"
-
-      # The page as drawn before the approval: the frame's caption has who uploaded it.
-      assert html =~ "Version 1 · #{ApiaryWeb.People.short(scope.user.email)}<"
     end
 
     test "a version that only an earlier take in made", %{conn: conn, scope: scope} do
@@ -2313,13 +2324,14 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
       assert %WorkItem{stage_id: @build, stage_state: :at_gate} = at_build
 
+      {:ok, view, _html} = live(conn, stage(scope, at_build.number, @build))
+      assert caption?(view, scope, 2)
+
       {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, at_build, @build)
 
       assert [_spec_two] = recorded
       assert recorded -- drawn == []
       assert html =~ "Spec two"
-
-      assert html =~ "Version 2 · #{ApiaryWeb.People.short(scope.user.email)}<"
     end
 
     # At Shape's gate after its run wrote spec v1: `first` and then `second` each add one
@@ -2393,7 +2405,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, html} = live(conn, stage(scope, work_item.number, @build))
 
       assert spec_two in drawn(view, work_item)
-      assert html =~ "Version 2 · #{ApiaryWeb.People.short(scope.user.email)}<"
+      assert caption?(view, scope, 2)
       assert html =~ "Spec two"
     end
 
@@ -2445,6 +2457,48 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert gate_link?(view, scope, work_item, "spec", hd(spec.versions).public_id)
+    end
+
+    test "after a move back to Shape, the gate card links the version a later approval " <>
+           "listed, not Shape's newest",
+         %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      spec_two = add_spec!(scope, work_item, "## Spec two")
+      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+
+      {:ok, moved} = Stages.move(scope, at_verify, @shape, nil, expect_stage: at_verify.stage_id)
+      work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      [spec] = for a <- Artifacts.list(work_item), a.type == "spec", do: a
+      assert Enum.find(spec.versions, &(&1.stage_id == @shape)).number == 1
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-output-spec a", "spec v2")
+      assert gate_link?(view, scope, work_item, "spec", spec_two.public_id)
+    end
+
+    test "the gate card links an output whose only artifact is not named main",
+         %{conn: conn, scope: scope} do
+      work_item = at_shape!(scope)
+
+      work_item =
+        work_item
+        |> end_run!(fn run, _registered ->
+          push!(run, work_item, "spec", "## The spec text")
+          push!(run, work_item, "test-features", "## Another", "other")
+          passed!(run)
+        end)
+        |> reload()
+
+      [other] = for a <- Artifacts.list(work_item), a.type == "test-features", do: a
+      assert other.name == "other"
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert gate_link?(view, scope, work_item, "test-features", hd(other.versions).public_id)
     end
   end
 
