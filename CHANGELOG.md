@@ -13,6 +13,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: workflow_model -->
+- A workflow entry outside a loop takes `first_attempt: true`, default false. When the
+  run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
+  on to its output checks and its gate. Another verdict acts as for any entry. A save is
+  refused when a loop's body has the key. Each workflow after the first attempt that passed
+  gets a record of being passed over, with the reason `first_attempt_passed` and the name of
+  the first attempt's entry, else its workflow (`stage_skips.reason` and `cause_entry`), and
+  the work item page lists it: "Did not run, because <entry> passed on its first attempt."
+  The records go when the stage is entered again, and when Request changes runs its sequence
+  again. Another round after a failed check runs only the last loop, so it deletes the
+  records of the entries in that loop and keeps the others.
+- An output takes `when` and `unless` with `{track: <id>}` or `{input: <type>}`, as an
+  input does, and the stage runner evaluates it the way it does any other condition. An
+  output whose condition holds it back is not required: its Exists check does not fail the
+  stage, so the stage goes on to its gate. The work item page shows such an output as
+  "Optional, none" while it has no version, and "Passed" once it has one; the Run API gives
+  it `required: false`. A save is refused for a track that no earlier gate offers, a type
+  that no earlier stage makes, and both keys on one output. A Verify stage whose entries
+  are all passed over on the fast track, with `verification` set to
+  `unless: {track: fast}`, starts no run and opens its gate without `verification`; on the
+  standard track `verification` is still required.
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
@@ -72,6 +92,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after a pass, a failure or an interrupt.
 - A changes-requested verdict may list run_again points for the next round, and a
   continuation's run configuration lists the paused runs it continues in `resume.runs`.
+- A run_again point of a run's verdict may have `fix`, one line on what a person does
+  about it: the work item page shows it in place of "Run another round."
 - After a gateway restarts, its runs continue: while a run shows Lost and has not ended,
   Qory Apiary accepts requests for it from the gateway that started it, on the same node
   and instance. A run of a workspace's queue still ends 600 seconds after its last
@@ -210,6 +232,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry is passed over is passed over too, and a stage does not wait for an undeclared
   workflow whose entry is passed over. A save is refused where the type is no output of
   an earlier stage, with the entry or output, the stage and the type in the message.
+- A workflow has a third access level, `write-no-push`: a run with a writable checkout
+  and no push credential, for a workflow that starts the app and runs checks on a branch
+  it must not change. A stack's `workflows.<name>.access` may be `read`, `write-no-push`
+  or `write`, and the run's documents have it as `access`. The run's work credential has
+  read access, as for `read`. A workflow entry of a stage in `process.yaml` may set
+  `access: read` or `access: write-no-push` to lower the level the stack declares; the run
+  has the lower of the two. A run of a stage whose version has no entry for its workflow
+  has `read`. The run contract is vendored at integrations `55a22cb`, and the
+  integration contract at `c6b7701`.
+- Workspace settings › Workflows: under the Machine type line, the row of a workflow the
+  harness lists has one line with the access level of its runs, with no **Change**:
+  “Access: Read only (set by the harness)”, or Write, no push or Write and push for the
+  level the harness declares. Where the stage's entry in `process.yaml` has a lower level,
+  the line is “Access: Read only (set for this stage; the harness allows Write and
+  push)”. The row of a workflow the harness does not list has no Access line.
 <!-- /feature -->
 - An address under an organisation that matches no workspace the person reaches, such as
   an old address after a rename, shows inside the app's layout, with status 404: “You
@@ -1276,8 +1313,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
   starts with `submit` alone where no adapter declares one. A start-up whose
   `submit_module` breaks the run contract, or whose `git` is not an https address, gets
-  400 `invalid_request`, and nothing is stored. The run and the integration contracts are
-  vendored at integrations `5d456eb`.
+  400 `invalid_request`, and nothing is stored.
+- A run that stores a version of its submission type, `submit.type` of its process
+  version, adds a `watch` entry to the change feed of the adapter of the work item's
+  target collection: the work item's public id and its page, `url`, as in a `work_item`
+  entry. Each stored version adds one entry, whatever source the work item came from.
+  A work item with no target, or a target that no collection matches, gets no entry, and
+  the version is stored all the same. Where `PUBLIC_URL` is plain http to a host other
+  than `localhost`, `127.0.0.1` or `[::1]`, or has a character outside RFC 3986, such as
+  a host in Unicode, the push of such a version is refused: the run API returns `503`
+  `unavailable`, no version and no file is stored, and the log line starts with "Set
+  PUBLIC_URL to an https:// address".
 
 ### Changed
 
@@ -2144,6 +2190,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
+  takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the
+  new check without a scan, and the second validates it with a scan that does not block
+  writes. It changes no row.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
   column `gate_decisions.track`, the track an approval chose, with a check that only an
@@ -2162,6 +2214,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   validates it with a scan that does not block writes. It changes no row. Rolling back
   deletes every row with no workflow, each record of a stage passed over whole, and
   restores the two columns as not null.
+- `stage_skips` (20261116150000 and 20261116150100): nullable columns `reason` and
+  `cause_entry`, so a row can record an entry that a passed first attempt passed over, with
+  a check that a row has exactly one of `input`, `track` and `reason`, that `reason` is
+  `first_attempt_passed`, and that `cause_entry` is set with it. The columns are nullable,
+  so adding them rewrites no row. The first migration replaces the check without a scan, and
+  the second validates it with a scan that does not block writes. No stored row breaks it.
+  Rolling back deletes the rows with a `reason` and drops the two columns.
 - `gate_decisions` (20261116130000): a nullable column `take_in`, the take in of the work
   item that a decision was made in. It has no default, so adding it rewrites no row, and a
   decision stored before has none. Rolling back drops the column, with the take in of every
@@ -2190,6 +2249,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the column rewrites no row. The first migration adds the check without a scan, and the
   second validates it with a scan that does not block writes. It changes no row. Rolling
   back drops the column; the approvals a gate `none` recorded stay, with no member.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `run_harnesses` and `workspaces` (20261116160000): the check on `run_harnesses.access_level`
+  takes `write-no-push` besides `read` and `write`, and `workspaces` gets a nullable column
+  `declared_access`, the access level each workflow of the harness declares at its last
+  read. The new check scans `run_harnesses` under a lock that blocks reads and writes, and
+  changes no row. Adding the column rewrites no row; a workspace has a value after the
+  next read of its harness. Rolling back drops the column and makes each `write-no-push`
+  run `read`.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000061",
+  "changes": [
+    {
+      "kind": "watch",
+      "work_item_id": "wi_8Kx2mQ4vT9",
+      "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    },
+    {
+      "kind": "watch",
+      "work_item_id": "wi_8Kx2mQ4vT9",
+      "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    }
+  ]
+}

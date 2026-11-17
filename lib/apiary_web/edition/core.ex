@@ -62,6 +62,9 @@ defmodule ApiaryWeb.Edition.Core do
   def who_may_sentence(_about, _scope), do: nil
 
   @impl true
+  def operator_sentence(_about, _scope), do: nil
+
+  @impl true
   def settings_tabs(_scope), do: []
 
   @impl true

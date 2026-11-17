@@ -133,7 +133,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 46
+    assert length(names) == 47
     assert "read-public-with-grant-ref.json" in names
 
     for name <- names do

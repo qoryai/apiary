@@ -68,7 +68,7 @@ defmodule Apiary.Adapters.FeedTest do
 
       assert paths ==
                ~w(changes/comment.json changes/empty.json changes/feed-loopback.json
-                  changes/feed.json changes/grants.json)
+                  changes/feed.json changes/grants.json changes/watch.json)
 
       for path <- paths do
         adapter = if path == "changes/feed.json", do: adapter, else: adapter_fixture()
@@ -87,8 +87,9 @@ defmodule Apiary.Adapters.FeedTest do
       adapter: adapter
     } do
       paths = refused_entries()
-      assert length(paths) == 15
+      assert length(paths) == 19
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
+      assert "invalid/changes-watch-work-item-id-wrong-prefix.json" in paths
 
       for path <- paths do
         assert [_ | _] = fixture(path)["changes"], path
@@ -158,12 +159,14 @@ defmodule Apiary.Adapters.FeedTest do
               ref: "r",
               author_name: "\u3000a\u200D",
               body: "a"
-            }
+            },
+            %{kind: "watch", work_item_id: "wi_" <> String.duplicate("a", 64), url: @url},
+            %{kind: "watch", work_item_id: "wi_A-_9", url: "http://127.0.0.1:4000/w"}
           ] do
         assert is_integer(append!(adapter, entry))
       end
 
-      assert length(Feed.entries(adapter)) == 13
+      assert length(Feed.entries(adapter)) == 15
     end
 
     test "refuses a member missing, extra or out of range", %{adapter: adapter} do
@@ -261,6 +264,29 @@ defmodule Apiary.Adapters.FeedTest do
             %{comment | body: "a" <> <<0>>},
             %{comment | body: <<0xFF>>},
             %{comment | body: nil}
+          ] do
+        raises(adapter, bad)
+      end
+
+      watch = %{kind: "watch", work_item_id: "wi_x", url: @url}
+
+      for bad <- [
+            Map.delete(watch, :url),
+            Map.delete(watch, :work_item_id),
+            Map.put(watch, :ref, "TRK-1"),
+            Map.put(watch, :status, "taken_in"),
+            %{watch | work_item_id: "wi_"},
+            %{watch | work_item_id: "wi_" <> String.duplicate("a", 65)},
+            %{watch | work_item_id: "ac_x"},
+            %{watch | work_item_id: "wi_a.b"},
+            %{watch | work_item_id: nil},
+            %{watch | url: "http://control.example.com/w"},
+            %{watch | url: "ftp://control.example.com/w"},
+            %{watch | url: "https://user@control.example.com/w"},
+            %{watch | url: "https://control.example.com/a b"},
+            %{watch | url: "https://"},
+            %{watch | url: "https://control.example.com/" <> String.duplicate("a", 2048)},
+            %{watch | url: nil}
           ] do
         raises(adapter, bad)
       end
