@@ -99,7 +99,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
   # chosen model and each tier's model that the description does not list, each once,
-  # with no effort, in the order `model`, `light`, `fast`, `thinking`. A description has
+  # with no effort, in the order `model`, `light`, `balanced`, `thinking`. A description has
   # at most 200 models (`Apiary.Kinds.Provider.load!/1`), so the list stays within the
   # schema's 256.
   #

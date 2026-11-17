@@ -390,7 +390,7 @@
           }
         },
         "tiers": {
-          "description": "The tier map the control plane resolved for the run: a model, and optionally an effort value, for each tier it maps. Present only with model. Its only keys are light, fast and thinking. A tier the control plane does not map is absent. For a run with a target, a tier the control plane maps applies instead of the entry for that tier in the tier map set at the run's target, and the tier map set at the run's target fills only the tiers left absent. A run with no target has no such tier map: only the tiers the control plane maps apply.",
+          "description": "The tier map the control plane resolved for the run: a model, and optionally an effort value, for each tier it maps. Present only with model. Its only keys are light, balanced and thinking. A tier the control plane does not map is absent. For a run with a target, a tier the control plane maps applies instead of the entry for that tier in the tier map set at the run's target, and the tier map set at the run's target fills only the tiers left absent. A run with no target has no such tier map: only the tiers the control plane maps apply.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -398,8 +398,8 @@
               "description": "The model of the tier light.",
               "$ref": "#/$defs/tier"
             },
-            "fast": {
-              "description": "The model of the tier fast.",
+            "balanced": {
+              "description": "The model of the tier balanced.",
               "$ref": "#/$defs/tier"
             },
             "thinking": {

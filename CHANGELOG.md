@@ -1390,6 +1390,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The model tier `fast` is renamed `balanced`: the tiers of a model choice are `light`,
+  `balanced` and `thinking`. A saved model choice with the tier `fast` is deleted, with
+  its fallbacks; set the choice again with the tier `balanced`. A save of a choice with
+  `fast` fails with "Use light, balanced or thinking: fast is not a tier." A run's
+  documents have `balanced` in place of `fast` under `run_settings.tiers`, as integrations
+  `b22085a` describes.
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
   `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
@@ -2302,6 +2308,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+- `model_choices` (20261118100000): the check `model_choice_tiers_valid` accepts the
+  tier `balanced` in place of `fast`. The migration deletes each model choice whose tier
+  map has `fast`, with its fallbacks, and moves no data. Rolling back restores the check
+  of `fast` and deletes each model choice whose tier map has `balanced`, with its
+  fallbacks.
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
   scans the table, which has one row, as it is added, under a lock that blocks reads and

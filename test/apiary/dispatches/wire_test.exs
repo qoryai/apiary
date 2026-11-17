@@ -130,8 +130,8 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     valid = Path.wildcard(Path.join(fixtures, "documents/*.json"))
     invalid = Path.wildcard(Path.join(fixtures, "invalid/*.json"))
-    assert length(valid) == 31 and length(invalid) == 124
-    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 31 + 124
+    assert length(valid) == 31 and length(invalid) == 125
+    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 31 + 125
 
     for path <- valid ++ invalid do
       relative = Path.relative_to(path, fixtures)
