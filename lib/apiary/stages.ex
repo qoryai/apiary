@@ -3121,9 +3121,9 @@ defmodule Apiary.Stages do
 
   # The version of each output type of `stage` that its gate shows, by type: the newest
   # version made in the stage, or a higher-numbered version of that artifact that a
-  # person's approval lists (`listed_higher/3`), which every later run reads
-  # (`read_version/6`). So a person approves the text the runs use, also after a move back
-  # (624 (a)). `approvals` is `approvals_by_version/1`.
+  # person's approval lists or that is its change (`listed_higher/3`), which every later
+  # run reads (`read_version/6`). So a person approves the text the runs use, also after a
+  # move back (624 (a)). `approvals` is `approvals_by_version/1`.
   defp gate_versions(stage, artifacts, approvals) do
     for output <- Map.get(stage, "outputs", []),
         version = gate_version(artifacts, output["type"], stage["id"], approvals),
@@ -3142,13 +3142,17 @@ defmodule Apiary.Stages do
   end
 
   # The highest-numbered version of `artifact` above `start` that a person's approval lists
-  # (`person_approval?/1`), else `start`. A withdrawal and a version by a run a member
+  # (`person_approval?/1`), or that is the artifact's change, which no approval lists yet
+  # (`artifact_change/2`); else `start`. A withdrawal and a version by a run a member
   # cancelled are never taken.
   defp listed_higher(artifact, start, approvals) do
+    change = artifact_change(artifact, listed(approvals))
+
     artifact.versions
     |> Enum.filter(fn v ->
       v.number > start.number and not v.withdrawn and not Artifacts.cancelled?(v) and
-        Enum.any?(Map.get(approvals, v.public_id, []), &person_approval?/1)
+        ((change != nil and v.public_id == change.public_id) or
+           Enum.any?(Map.get(approvals, v.public_id, []), &person_approval?/1))
     end)
     |> Enum.max_by(& &1.number, fn -> start end)
   end

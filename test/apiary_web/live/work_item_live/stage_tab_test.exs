@@ -2099,6 +2099,31 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute html =~ "Spec one"
     end
 
+    test "Shape's tab and gate show a spec that a person added at Build, which no approval " <>
+           "lists yet",
+         %{conn: conn, scope: scope} do
+      work_item = at_gate!(scope, "## Spec one")
+      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+      {:ok, _version} =
+        Stages.add_version(scope, reload(work_item), "spec", [
+          %{filename: "spec.md", content_type: "text/markdown", binary: "## Spec two"}
+        ])
+
+      # A person moves the work item back to Shape; its run pushes no spec.
+      {:ok, moved} = Stages.move(scope, reload(work_item), @shape, nil, expect_stage: @build)
+      work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+
+      assert [%{type: "spec", version: 2, open: true} | _rest] =
+               :sys.get_state(view.pid).socket.assigns.frames
+
+      assert html =~ "Spec two"
+      refute html =~ "Spec one"
+    end
+
     defp gate_approvals(work_item) do
       Repo.all(
         from d in Apiary.Stages.GateDecision,

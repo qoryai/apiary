@@ -5652,8 +5652,8 @@ defmodule Apiary.StagesTest do
                )
     end
 
-    test "a person's approval that lists a change beside the older version approves the " <>
-           "change: Build and Verify read it",
+    test "after a move to Shape, Shape's gate shows the change that no approval lists, and " <>
+           "its approval lists it: Build and Verify read it",
          %{scope: scope} do
       criteria_process!(scope)
 
@@ -5662,12 +5662,20 @@ defmodule Apiary.StagesTest do
 
       changed = pushes_one("acceptance-criteria", "# AC-2", decision: decision)
       work_item = end_run!(work_item, changed)
-      old_id = criteria(work_item, 1).public_id
       new_id = criteria(work_item, 2).public_id
 
-      # A person moves the work item to Shape, which pushes no criteria, and approves it.
+      # A person moves the work item to Shape, which pushes no criteria. Its gate shows
+      # version 2, the change, in place of version 1, Shape's upload.
       {:ok, work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
-      {:ok, work_item} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      work_item = reload(work_item)
+
+      assert %{
+               state: :at_gate,
+               outputs: [%{type: "acceptance-criteria", version: %{id: ^new_id}}]
+             } =
+               Stages.status(work_item, scope)
+
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
 
       shaped =
@@ -5676,7 +5684,7 @@ defmodule Apiary.StagesTest do
         |> Enum.filter(&(&1.kind == :approve and &1.stage_id == @shape))
         |> List.last()
 
-      assert shaped.versions == [old_id, new_id]
+      assert shaped.versions == [new_id]
 
       # No change is left; the read is the higher-numbered version Shape's gate approved.
       assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}] = Stages.inputs(work_item)
