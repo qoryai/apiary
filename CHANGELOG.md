@@ -1392,12 +1392,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: factory, secrets -->
-- The model tier `fast` is renamed `balanced`: the tiers of a model choice are `light`,
-  `balanced` and `thinking`. A saved model choice with the tier `fast` is deleted, with
-  its fallbacks; set the choice again with the tier `balanced`. A save of a choice with
-  `fast` fails with "Use light, balanced or thinking: fast is not a tier." A run's
-  documents have `balanced` in place of `fast` under `run_settings.tiers`, as integrations
-  `b22085a` describes.
+- The tier `fast` is now `balanced`.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
@@ -2297,14 +2292,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then upgrade Qory Apiary. A model key with a Use up to percentage has
   `use_up_to_percent` and `use_up_to_windows` in a run configuration, members that the run
   configuration schema of an earlier gateway does not define.
-- Upgrade qory on every machine first, to a qory built with the tier rename (`fast`
-  becomes `balanced`), then upgrade Qory Apiary. A run's documents can have the tier
-  `balanced` under `run_settings.tiers`, a key that the run documents schema of an
-  earlier qory does not define, and an earlier qory checks `run_settings` against that
-  schema. The upgrade deletes each model choice with the tier `fast` (Migrations, below);
-  set those choices again with the tier `balanced`. To go back to the previous release,
-  first take the schema back with `Apiary.Release.rollback(Apiary.Repo, 20261118120000)`
-  (Upgrading, Rolling back).
 <!-- /feature -->
 - On a stop, Qory Apiary finishes the open requests for up to 20 seconds in total, then
   the running jobs for up to 15 seconds. Give the container or the service a stop grace
