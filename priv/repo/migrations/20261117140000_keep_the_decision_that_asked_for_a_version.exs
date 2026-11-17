@@ -14,11 +14,13 @@ defmodule Apiary.Repo.Migrations.KeepTheDecisionThatAskedForAVersion do
   # when it writes a row; the default has the same shape. Each id is unique on the
   # instance, and a check keeps its shape.
   #
-  # A volatile default rewrites `gate_decisions` and `escalations` under their lock, so
-  # their checks are validated in the same statement. `artifact_versions.decision_id` is
-  # the id of the note, `gd_…` or `es_…`, nil for none: a nullable column rewrites no row,
-  # and its check is added NOT VALID, so it takes no scan under the lock;
-  # `20261117100100` validates it. Every stored version has none.
+  # A volatile default rewrites `gate_decisions` and `escalations` under a lock that
+  # blocks reads and writes. The unique index and the check are separate statements, and
+  # each scans the table again under that lock, which the migration holds until it
+  # commits. `artifact_versions.decision_id` is the id of the note, `gd_…` or `es_…`, nil
+  # for none: a nullable column rewrites no row, and its check is added NOT VALID, so it
+  # takes no scan under the lock; `20261117140100` validates it. Every stored version has
+  # none.
   @tables [gate_decisions: "gd", escalations: "es"]
   @id "[0-9a-hjkmnp-tv-z]{16}"
 

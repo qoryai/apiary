@@ -130,8 +130,9 @@ defmodule Apiary.Artifacts do
   # passed, is a track that the gate of the stage the version is made in offers, in the
   # work item's process version, else
   # `{:invalid, {:track_not_offered, %{stage: name | nil, ids: offered, id: track}}}`.
-  # Last, a `decision` that is not the id of a person's note on the held work item
-  # (`Apiary.Stages.Notes.find/2`) is `{:unknown_decision, decision}`.
+  # Then a `decision` that is not the id of a person's note on the held work item
+  # (`Apiary.Stages.Notes.find/2`) is `{:unknown_decision, decision}`, checked before the
+  # integers, so a refused decision leaves no staged copy.
   #
   # Then a version of the questions or the review comments, from any writer, is stored
   # with each number that is an integer in value written as an integer: a file with
@@ -1170,9 +1171,9 @@ defmodule Apiary.Artifacts do
            {:ok, artifact} <- artifact(held, type, fields, now),
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
+           :ok <- decision_kept(held, fields.decision),
            {:ok, watched} <- watch_entry(writer, held, type),
            {:ok, kept} <- integers(type, staged),
-           :ok <- decision_kept(held, fields.decision),
            {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
         :ok = append_watch(watched)
         written

@@ -4,7 +4,7 @@ defmodule Apiary.Stages.Notes do
   # escalation that a person resolved with a note (`Apiary.Stages.Escalation`, `es_…`).
   # A run's version may have one as its `decision`, the note that asked for it (vault
   # 0261, 624 (a)): `find/2` is the check of a push, and `times/2` the time of each note,
-  # as the notes have it. The two queries are the one place that says which rows are such
+  # as the notes have it. Only the two queries contain the rule for which rows are such
   # notes, so the notes, the check and the times agree.
   @moduledoc false
 

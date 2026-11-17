@@ -5080,6 +5080,56 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
     end
 
+    test "a change counts by the approvals that list it, not by its time", %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      changed = pushes_one("acceptance-criteria", "# AC-2", decision: decision)
+      work_item = end_run!(work_item, changed)
+      new = criteria(work_item, 2)
+
+      # A push takes its time before it waits for the work item's lock, so its version can
+      # have a time earlier than an approval that committed first and does not list it.
+      shaped = Enum.find(decisions(work_item), &(&1.stage_id == @shape))
+      earlier = DateTime.add(shaped.inserted_at, -3600, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Apiary.Artifacts.Version, where: v.id == ^new.id),
+          set: [inserted_at: earlier]
+        )
+
+      new_id = new.public_id
+      assert [%{version: %{id: ^new_id, decision: ^decision}}] = Stages.inputs(work_item)
+    end
+
+    test "a person's upload that a newer listed version follows is no change", %{scope: scope} do
+      criteria_process!(scope)
+      {work_item, _escalation} = asked_in_build!(scope, "Shorten the explainer.")
+
+      # A person adds explainer 2 while Build runs; Build's run then stores explainer 3,
+      # which Build's gate none lists.
+      {:ok, _version} =
+        Stages.add_version(scope, work_item, "explainer", [
+          %{filename: "explainer.md", content_type: "text/markdown", binary: "# By hand"}
+        ])
+
+      work_item =
+        work_item
+        |> end_run!(pushes_one("explainer", "# Explainer 3", []))
+        |> end_run!(verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify} = work_item
+      third = Enum.find(versions(work_item, "explainer"), &(&1.number == 3)).public_id
+
+      assert %GateDecision{automatic: true, versions: [^third]} =
+               Enum.find(decisions(work_item), &(&1.stage_id == @build))
+
+      assert [_criteria, %{type: "explainer", version: %{id: ^third}}] =
+               Stages.inputs(work_item)
+    end
+
     test "a push refuses a decision that is not a person's note on the work item", %{
       scope: scope
     } do

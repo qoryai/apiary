@@ -30,11 +30,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; and a version of `questions` or `review-comments` whose file
-  #      is over the size limit as stored, with each number that is an integer in value
-  #      written as an integer (`1e3` as `1000`), `422` `too_large`; then, last, a
-  #      `decision` that is not the id of a person's note on the work item
-  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`;
+  #      the rule it breaks; a `decision` that is not the id of a person's note on the
+  #      work item (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, `422` `type_not_withdrawable`, then files with it `422`

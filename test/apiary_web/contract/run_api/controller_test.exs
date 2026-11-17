@@ -1803,6 +1803,42 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ] = artifact["versions"]
     end
 
+    test "stores the decision of a withdrawal, which the index lists with its time", ctx do
+      place!(ctx)
+      note = decide!(ctx, :request_changes, note: "Drop scenario-2.")
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => note.public_id})
+      assert json_response(write(ctx, "/artifacts", body), 201)
+
+      [withdrawn] = RunApiStubs.pushed()
+      assert withdrawn.withdrawn
+      assert withdrawn.decision_id == note.public_id
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"withdrawn" => true, "decision" => decision, "decision_at" => decision_at}, _] =
+               artifact["versions"]
+
+      assert decision == note.public_id
+      assert decision_at == at(note.inserted_at)
+    end
+
+    test "refuses a decision that is not a person's note with 422 unknown_decision", ctx do
+      place!(ctx)
+      approval = decide!(ctx, :approve, versions: [])
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => approval.public_id})
+      conn = write(ctx, "/artifacts", body)
+
+      assert json_response(conn, 422)["error"] == "unknown_decision"
+      assert RunApiStubs.pushed() == []
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert [%{"number" => 1, "withdrawn" => false}] = artifact["versions"]
+    end
+
     test "takes files as an empty list, and withdraw only as true, false or null", ctx do
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
 

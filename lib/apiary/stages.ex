@@ -41,9 +41,9 @@ defmodule Apiary.Stages do
   # ## A person's change to an approved output
   #
   # A run of a later stage, or a person by upload, stores a new version of an approved
-  # output (vault 0261, 624 (a)). A run's push gives the person's note that asked for it,
-  # its `decision` (`Apiary.Stages.Notes`); a person's upload needs none. Every later run
-  # reads that version in place of the approved one (`read_version/5`), and the next
+  # output (vault 0261, 624 (a)). A run's version links to the person's note that asked
+  # for it, its `decision` (`Apiary.Stages.Notes`); a person's upload has none. Every later
+  # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
   # with a `decision`.
   #
@@ -1001,8 +1001,8 @@ defmodule Apiary.Stages do
   # approval is the one that lists such a version (vault 0261, 624 (a)).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     artifacts = Artifacts.list(work_item)
-    newest = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
-    changed = Enum.map(changed_versions(work_item, artifacts), & &1.public_id)
+    newest = Enum.map(newest_outputs(stage, artifacts), & &1.public_id)
+    changed = Enum.map(changed_versions(artifacts, listed_ids(work_item)), & &1.public_id)
     covered = Enum.uniq(newest ++ changed)
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
@@ -1326,10 +1326,10 @@ defmodule Apiary.Stages do
   # reads them as its inputs of those types. Of those types, each whose covered version has
   # a file of more than 0 bytes counts for a later stage's conditions, and the others do
   # not (`counted/4`). Then `own`. `later` holds the approvals of earlier stages: applied
-  # first, so the nearest approval wins, as a stage reads its inputs (`read_version/5`).
+  # first, so the nearest approval wins, as a stage reads its inputs (`read_version/6`).
   defp approved(work_item, stage, later, own \\ & &1) do
     artifacts = Artifacts.list(work_item)
-    ids = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+    ids = Enum.map(newest_outputs(stage, artifacts), & &1.public_id)
     covered = for a <- artifacts, v <- a.versions, v.public_id in ids, uniq: true, do: a.type
 
     counting =
@@ -1414,7 +1414,7 @@ defmodule Apiary.Stages do
   # inputs/1 is, for each input of the work item's stage, the version it reads: a
   # person's change to it that no approval lists yet, else a person's version added on
   # the work item in this stage, else the version the gate of the stage that made it
-  # approved; nil for none (`read_version/5`). A name whose newest version is a
+  # approved; nil for none (`read_version/6`). A name whose newest version is a
   # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
@@ -1669,8 +1669,8 @@ defmodule Apiary.Stages do
   # (`:check`, with no person). What members gave Explore (`Apiary.Explore.Given`) are
   # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
   # `comment` true, as the run API sends them. A request for changes, a move and an
-  # escalation have `id`, their public id (`gd_…`, `es_…`), which a run's push may give as
-  # its `decision` (`Apiary.Stages.Notes`); an answer and a check have none.
+  # escalation have `id`, their public id (`gd_…`, `es_…`); a run sends it as `decision`
+  # in a push (`Apiary.Stages.Notes`). An answer and a check have `id` nil.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
   def notes(%WorkItem{id: id} = work_item) do
@@ -1914,7 +1914,8 @@ defmodule Apiary.Stages do
   # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
   # the escalation that ended the stage. The accept approves the newest versions that
   # exist, as the stage's checks did not run. A version with a `decision` is left out: only
-  # a person's approval at a gate lists a person's change (vault 0261, 624 (a)).
+  # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5). A
+  # person's upload stays in: the stage's own output, which the gate approves.
   defp approve_none!(work_item, version, stage, by) do
     %GateDecision{
       public_id: PublicId.generate(GateDecision.prefix()),
@@ -1928,7 +1929,11 @@ defmodule Apiary.Stages do
       kind: :approve,
       take_in: work_item.take_in,
       versions:
-        for(v <- newest_outputs(work_item, stage), is_nil(v.decision_id), do: v.public_id),
+        for(
+          v <- newest_outputs(stage, Artifacts.list(work_item)),
+          is_nil(v.decision_id),
+          do: v.public_id
+        ),
       inserted_at: DateTime.utc_now()
     }
     |> PublicId.Insert.insert!()
@@ -2661,7 +2666,7 @@ defmodule Apiary.Stages do
   defp reopened?(work_item, stage, artifacts) do
     case last_approval(work_item, stage["id"]) do
       %GateDecision{versions: covered} ->
-        newest = Enum.map(newest_outputs(work_item, stage, artifacts), & &1.public_id)
+        newest = Enum.map(newest_outputs(stage, artifacts), & &1.public_id)
         newest -- covered != [] or withdrawn_since?(artifacts, covered)
 
       nil ->
@@ -2939,9 +2944,7 @@ defmodule Apiary.Stages do
   ## Outputs, inputs and approvals
 
   # The newest version of each output type made in the stage, by type.
-  defp newest_outputs(work_item, stage, artifacts \\ nil) do
-    artifacts = artifacts || Artifacts.list(work_item)
-
+  defp newest_outputs(stage, artifacts) do
     for output <- Map.get(stage, "outputs", []),
         version = newest_made_in(artifacts, output["type"], stage["id"]),
         version != nil,
@@ -3025,24 +3028,27 @@ defmodule Apiary.Stages do
   # stage does not wait for it. `facts` has the input types that count and the track, read
   # here for nil.
   defp inputs(work_item, version, stage, artifacts, facts \\ nil) do
+    approvals = approvals_by_version(work_item)
+    listed = MapSet.new(Map.keys(approvals))
+
     facts =
       facts ||
-        %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
+        %{
+          counted: counted(work_item, version, stage, artifacts, listed),
+          track: track(work_item)
+        }
 
-    for input <- Map.get(stage, "inputs", []) do
-      type = input["type"]
-      chosen = read_version(work_item, version, stage, artifacts, type)
+    chosen =
+      for input <- Map.get(stage, "inputs", []),
+          do: {input, read_version(work_item, version, stage, artifacts, input["type"], listed)}
 
+    times = decision_times(work_item, for({_input, v} <- chosen, v != nil, do: v))
+
+    for {input, version} <- chosen do
       %{
-        type: type,
+        type: input["type"],
         required: Runner.input_required?(input, facts),
-        version:
-          chosen &&
-            version_map(
-              chosen,
-              approvals_by_version(work_item),
-              decision_times(work_item, [chosen])
-            )
+        version: version && version_map(version, approvals, times)
       }
     end
   end
@@ -3052,9 +3058,10 @@ defmodule Apiary.Stages do
   # a person's version added on the work item in this stage, else the version the gate of
   # the nearest earlier stage that approved one approved; nil for none. A withdrawn name is
   # never read (`Artifacts.withdrawn?/1`): neither a person's version nor an approved one
-  # of it.
-  defp read_version(work_item, version, stage, artifacts, type) do
-    changed = changed_version(work_item, artifacts, type)
+  # of it. `listed` is the public ids of the versions that an approval lists
+  # (`listed_ids/1`).
+  defp read_version(work_item, version, stage, artifacts, type, listed) do
+    changed = changed_version(artifacts, type, listed)
     artifacts = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
     by_id = for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, v}}
 
@@ -3086,65 +3093,77 @@ defmodule Apiary.Stages do
   end
 
   # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,
-  # the person's note that asked for it, or that a person stored, in any stage. The
-  # version of `type` that every later run reads is the newest such version stored after
-  # the newest approval that lists a version of `type`, at any stage; with no such
-  # approval, the newest such version. Nil for none: today's rule then applies
-  # (`read_version/5`). A version of a withdrawn name, a withdrawal and a version by a run a
-  # member cancelled are never one. Nor is a version of the questions or the review
-  # comments, which a person writes as an answer or a review comment
+  # the person's note that asked for it, or that a person stored, in any stage, that no
+  # approval lists (`listed`), and whose number is higher than that of every version of
+  # its artifact that an approval lists. A push numbers its version under the work item's
+  # lock, as an approval reads the versions it lists, so the numbers order the two where a
+  # time taken before the lock would not. A version of a withdrawn name, a withdrawal and a
+  # version by a run a member cancelled are never one. Nor is a version of the questions or
+  # the review comments, which a person writes as an answer or a review comment
   # (`Artifacts.member_types/0`), not as a change.
-  defp changed_version(work_item, artifacts, type) do
+  #
+  # The version of `type` that every later run reads is the newest change of `type`, with
+  # no approval of `type` or after one; nil for none, and today's rule then applies
+  # (`read_version/6`).
+  defp changed_version(artifacts, type, listed) do
     if type in Artifacts.member_types() do
       nil
     else
-      of_type = Enum.filter(artifacts, &(&1.type == type))
-      since = listed_at(work_item, for(a <- of_type, v <- a.versions, do: v.public_id))
-
-      of_type
-      |> Enum.reject(&Artifacts.withdrawn?/1)
-      |> Enum.flat_map(& &1.versions)
-      |> Enum.filter(&changed?(&1, since))
+      artifacts
+      |> Enum.filter(&(&1.type == type))
+      |> Enum.flat_map(&changes(&1, listed))
       |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
+    end
+  end
+
+  # The versions of `artifact` that are a person's change (`changed_version/3`).
+  defp changes(artifact, listed) do
+    if Artifacts.withdrawn?(artifact) do
+      []
+    else
+      highest =
+        artifact.versions
+        |> Enum.filter(&MapSet.member?(listed, &1.public_id))
+        |> Enum.map(& &1.number)
+        |> Enum.max(fn -> 0 end)
+
+      Enum.filter(artifact.versions, fn version ->
+        (is_binary(version.decision_id) or version.writer == :person) and
+          version.number > highest and not version.withdrawn and
+          not Artifacts.cancelled?(version)
+      end)
     end
   end
 
   # The versions that `changed_version/3` reads, one for each type, in the order of the
   # types' names.
-  defp changed_versions(work_item, artifacts) do
+  defp changed_versions(artifacts, listed) do
     artifacts
     |> Enum.map(& &1.type)
     |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.map(&changed_version(work_item, artifacts, &1))
+    |> Enum.map(&changed_version(artifacts, &1, listed))
     |> Enum.reject(&is_nil/1)
   end
 
-  defp changed?(version, since) do
-    (is_binary(version.decision_id) or version.writer == :person) and not version.withdrawn and
-      not Artifacts.cancelled?(version) and
-      (is_nil(since) or DateTime.compare(version.inserted_at, since) == :gt)
-  end
-
-  # When the newest approval of the work item that lists one of the versions `ids` was
-  # made, at any stage; nil for none.
-  defp listed_at(_work_item, []), do: nil
-
-  defp listed_at(work_item, ids) do
+  # The public ids of the versions that an approval of the work item lists, at any stage.
+  defp listed_ids(work_item) do
     Repo.all(
       from d in GateDecision,
         where: d.work_item_id == ^work_item.id and d.kind == :approve,
-        order_by: [desc: d.inserted_at],
-        select: {d.inserted_at, d.versions}
+        select: d.versions
     )
-    |> Enum.find_value(fn {at, covered} -> if Enum.any?(covered, &(&1 in ids)), do: at end)
+    |> List.flatten()
+    |> MapSet.new()
   end
 
   # The input types of the conditions of `stage` that count: each whose version the stage
   # reads has a file of more than 0 bytes (`Runner.condition_inputs/1`).
-  defp counted(work_item, version, stage, artifacts) do
+  defp counted(work_item, version, stage, artifacts, listed \\ nil) do
+    listed = listed || listed_ids(work_item)
+
     for type <- Runner.condition_inputs(stage),
-        read = read_version(work_item, version, stage, artifacts, type),
+        read = read_version(work_item, version, stage, artifacts, type, listed),
         read != nil and counts?(read),
         do: type
   end

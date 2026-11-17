@@ -125,11 +125,12 @@ Returns `200` with the work item snapshot:
 
 - `inputs` contains each input of the current stage with the version that the gate of
   the stage that made it approved, or a version a person added; `version` is null when
-  there is none. A person's change to an approved output comes first: the newest version
-  of the type that has a `decision` (`POST artifacts`) or that a person uploaded, in any
-  stage, stored after the newest approval that lists a version of the type, or with no
-  such approval at all. Every later run reads that version in place of the approved one,
-  until an approval lists it. `questions` and `review-comments` are never such a change.
+  there is none. A person's change to an approved output comes first. A change is a
+  version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
+  stage, that no approval lists, and whose number is higher than that of every version
+  of its artifact that an approval lists. The input is the newest change of the type.
+  Every later run reads that version in place of the approved one, until an approval
+  lists it. `questions` and `review-comments` are never a change.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
@@ -154,7 +155,7 @@ Returns `200` with the work item snapshot:
   text; `at` is the time it was written, or for an escalation the time it was resolved.
   `id` is the note's id: `gd_` and 16 characters for a request for changes or a move, a
   decision at a gate; `es_` and 16 characters for an escalation; null for `answer` and
-  `check`. A run gives it as `decision` in `POST artifacts`, for a version that the note
+  `check`. A run sends it as `decision` in `POST artifacts`, for a version that the note
   asked for.
 - For a work item that is in no stage, `stage` has all five members: `id` is the stage
   id of the run, or null when the run has none, and `name`, `round`, `rounds` and
@@ -226,10 +227,10 @@ and versions by a run a member cancelled, when the stage passes it:
 such a stage, the approval has the member in `by` and `automatic` false. `decision` is
 the id of the person's note that asked for the version (`POST artifacts`), and
 `decision_at` the time of that note, as `at` of the note in `GET work-item`; both are
-null for a version with none. A gate `none` leaves out a version that has a `decision`.
-The next approval by a person at a gate lists, beside the stage's newest versions, each
-version that `inputs` reads as a person's change, of any type. The index contains no file contents; `GET artifacts/<version_id>/files/<filename>`
-returns them.
+null for a version with none. A gate `none` lists no version that has a `decision`.
+The next approval by a person at a gate lists, beside the stage's newest versions, the
+change of each type that `inputs` in `GET work-item` reads. The index
+contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
 
@@ -489,7 +490,8 @@ Checks, in order, after the checks of every request:
    read, is `503` `unavailable`, and no version is stored.
 8. A `decision` that is not the `id` of a person's note on the run's work item, such as
    an approval's id, another work item's note or an unknown id: `422`
-   `unknown_decision`.
+   `unknown_decision`. This check runs under the work item's lock after the rules of
+   check 7 and before the size of `questions` or `review-comments` as stored.
 
 ### A withdrawal
 
@@ -501,8 +503,10 @@ removed, with a push of `"withdraw": true` and no files:
 ```
 
 Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
-`withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
-the version, as a push does. Gates, stage inputs and the work item's pages leave out a
+`withdrawn` true, by the run, in the run's stage, with the note and the `decision`, if
+the push has one, and returns `201` with the version, as a push does. The index lists
+the withdrawal with its `decision` and `decision_at`; a withdrawal is never a change
+that `inputs` reads. Gates, stage inputs and the work item's pages leave out a
 withdrawn name. A stage done whose last approval covered a version of that name is at its
 gate again. A later push of files is a new version, and lists the name again. A run
 cannot withdraw `questions`, `review-comments`, `verdict` or `proposal`: Qory Apiary

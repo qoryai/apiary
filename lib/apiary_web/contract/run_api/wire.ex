@@ -228,7 +228,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
   # started a round. `id` is the public id of the first three (`gd_…`, `es_…`), which a
-  # push gives as its `decision`; null for the others.
+  # run sends as `decision` in a push; null for the others.
   @spec notes([map]) :: [Jason.OrderedObject.t()]
   def notes(notes) do
     context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}
