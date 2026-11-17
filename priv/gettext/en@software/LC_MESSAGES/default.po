@@ -137,6 +137,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{artifact} (version %{number})"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{artifact} version %{number}"
 msgstr ""
 
@@ -178,6 +183,16 @@ msgid "%{attempt} of %{of} attempt used"
 msgid_plural "%{attempt} of %{of} attempts used"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reached its time limit, so Explore has no result."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempt} reached its time limit, so Explore has no result. That was attempt %{number} of %{of}, the last attempt of this take in."
+msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
@@ -1295,6 +1310,11 @@ msgstr ""
 msgid "%{member} moved the work item past %{gate}'s gate on %{date}, so it runs %{track}. %{track} skips %{stage}."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{member} switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{minutes} m %{seconds} s"
@@ -2393,6 +2413,7 @@ msgid_plural "%{number} lines added, %{removed} removed"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/artifact_live/markdown.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} line changed"
@@ -3436,6 +3457,18 @@ msgstr ""
 msgid "%{stage} needs %{type} as an input, and no stage before %{stage} lists it as an output."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}."
+msgid_plural "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} run on %{track}."
+msgstr[0] "%{stage} runs for the first time, with your note and the build report. A new commit undoes this attempt, then %{later} runs on %{track}."
+msgstr[1] "%{stage} runs for the first time, with your note and the build report. A new commit undoes this attempt, then %{later} run on %{track}."
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt."
+msgstr "%{stage} runs for the first time, with your note and the build report. A new commit undoes this attempt."
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} runs on %{track} only."
@@ -3674,6 +3707,8 @@ msgid "%{tool} failed: %{summary}"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "%{type} %{name} v%{number}"
 msgstr ""
@@ -3686,6 +3721,7 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "%{type} v%{number}"
 msgstr ""
@@ -4791,6 +4827,11 @@ msgstr ""
 msgid "Accept invitation"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Acceptance criteria"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted an escalated stage of a work item as it is"
@@ -4799,6 +4840,12 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted an invitation"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted as it is by %{member}"
 msgstr ""
 
 #: lib/apiary_web/components/adapter_components.ex
@@ -6383,6 +6430,16 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Attempt %{attempt} of %{of}, after answers from %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} reached its time limit, so %{stage} has no result"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Attempt %{attempt} reached its time limit, so Explore has no result"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -8433,6 +8490,11 @@ msgstr ""
 msgid "Creating…"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Criterion"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Current"
@@ -9510,6 +9572,11 @@ msgstr ""
 msgid "Ended without a verdict"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ends the work item. No draft is sent."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce"
@@ -9843,6 +9910,11 @@ msgstr ""
 msgid "Everything is kept"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Evidence"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Exit"
@@ -9861,6 +9933,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Expand sidebar"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Expected: %{result}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -10043,6 +10120,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Explore's run failed"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Explore's run reached its time limit"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -11415,6 +11497,7 @@ msgid "Image: %{alt}"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Image: %{filename}"
 msgstr ""
@@ -13370,6 +13453,11 @@ msgstr ""
 msgid "Memory (GiB)"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Met"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Missing"
@@ -13655,6 +13743,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
 msgid "Needs %{features}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Needs a person"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14881,6 +14974,11 @@ msgstr ""
 msgid "Not locked: %{reason}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Not met"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Not posted to %{source}:"
@@ -14982,6 +15080,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not used"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Not verified"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -16295,6 +16398,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a track and approve the proposal, or add a comment and run another round."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Picture: %{step}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Pictures, one for each step, 390 px wide."
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex
@@ -18490,6 +18603,11 @@ msgstr ""
 msgid "Runs"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs %{entry} again with your note. Use it when the run changed more than the work item asks."
+msgstr "Runs %{entry} again with your note. Use it when the session changed more than the ticket asks."
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs a page"
@@ -18892,6 +19010,16 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Say hi to your agent"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Scenario %{number}: %{title}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Scenarios"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
@@ -20071,6 +20199,7 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/user_live/organisations.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "State"
 msgstr ""
@@ -20088,6 +20217,11 @@ msgstr ""
 #: lib/apiary/runs/preparation.ex
 #, elixir-autogen, elixir-format
 msgid "Step %{number}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Step %{number}: %{title}"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -20183,6 +20317,11 @@ msgstr ""
 #: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
 msgid "Submissions"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Submission:"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -20305,6 +20444,17 @@ msgstr ""
 msgid "Switch organisation, current: %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Switch to %{track}?"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace"
@@ -20313,6 +20463,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch workspace, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Switched a work item to another track to resolve an escalation"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -21969,6 +22124,11 @@ msgid_plural "All %{count} runs on the runs list"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run reached its time limit."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run reloaded at #%{seq}."
@@ -22037,6 +22197,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run's last result was an error. There is nothing to show or approve."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's outputs"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -22354,6 +22519,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The whole workspace"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The work item is already on %{track}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -22955,9 +23125,19 @@ msgstr ""
 msgid "Time"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Time limit changed"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Time limit reached"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -23764,6 +23944,13 @@ msgstr ""
 msgid "Version %{version} of this target's policy; until now it was served the workspace's."
 msgstr "Version %{version} of this repository's policy; until now it was served the workspace's."
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · %{count} scenario"
+msgid_plural "Version %{version} · %{count} scenarios"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · %{title}"
@@ -23782,6 +23969,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · Approved automatically · %{when}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · Model families: %{families}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -24384,6 +24576,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Withdrawn"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew"
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Withdrew %{artifact} (version %{number})"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -25263,6 +25465,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "You switched the work item to %{track} on %{date}. %{track} skips %{stage}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "You took this in %{when}."
 msgstr ""
 
@@ -25898,6 +26105,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "ended"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "ended %{when}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -27011,6 +27223,11 @@ msgstr ""
 #: lib/apiary/artifacts/template_types.ex
 #, elixir-autogen, elixir-format
 msgid "the custom type %{type} is not valid: %{error}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "the draft in %{repository}"
 msgstr ""
 
 #: lib/apiary/artifacts/template_types.ex

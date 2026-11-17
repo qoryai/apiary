@@ -72,7 +72,16 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
       <div class="q-art-cols grid gap-8">
         <div class="grid min-w-0 content-start gap-8">
-          <section id="artifact-view-part" aria-labelledby="artifact-view-title" class="grid gap-3">
+          <%!-- A withdrawal has no file, so it has no view and no file list. --%>
+          <p :if={@version.withdrawn} id="artifact-withdrawn" class="text-[13px]/5">
+            {withdrew(@version.artifact, @version)}
+          </p>
+          <section
+            :if={!@version.withdrawn}
+            id="artifact-view-part"
+            aria-labelledby="artifact-view-title"
+            class="grid gap-3"
+          >
             <h2 id="artifact-view-title" class="q-part-h">{Load.base_view(@view.base_view)}</h2>
             <ArtifactComponents.view
               id={"artifact-view-#{@version.public_id}"}
@@ -95,7 +104,12 @@ defmodule ApiaryWeb.ArtifactLive.Show do
             />
           </section>
 
-          <section id="artifact-files-part" aria-labelledby="artifact-files-title" class="grid gap-3">
+          <section
+            :if={!@version.withdrawn}
+            id="artifact-files-part"
+            aria-labelledby="artifact-files-title"
+            class="grid gap-3"
+          >
             <h2 id="artifact-files-title" class="q-part-h">
               {gettext("Files")}
               <span class="q-part-n">{Format.number(length(@version.files))}</span>
@@ -150,7 +164,11 @@ defmodule ApiaryWeb.ArtifactLive.Show do
                     version.id != @version.id && "text-accent"
                   ]}
                 >
-                  {gettext("Version %{number}", number: version.number)}
+                  <%= if version.withdrawn do %>
+                    {withdrew(@version.artifact, version)}
+                  <% else %>
+                    {gettext("Version %{number}", number: version.number)}
+                  <% end %>
                 </.link>
                 <span class="text-[12.5px] text-muted">
                   <ArtifactComponents.made_by version={version} scope={@current_scope} />
@@ -163,6 +181,15 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       </div>
     </Layouts.app>
     """
+  end
+
+  # A withdrawal in words: "Withdrew demo video scenario-2 (version 3)", the artifact in its
+  # plain form (`ArtifactComponents.plain_name/2`).
+  defp withdrew(artifact, version) do
+    gettext("Withdrew %{artifact} (version %{number})",
+      artifact: ArtifactComponents.plain_name(artifact.type, artifact.name),
+      number: version.number
+    )
   end
 
   # The token of the frame's address (`ApiaryWeb.ArtifactMockupController.token/3`), for

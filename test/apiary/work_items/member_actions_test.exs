@@ -816,10 +816,11 @@ defmodule Apiary.WorkItems.MemberActionsTest do
           {"gave no result", [end_cause: :run_ended]},
           {"was lost", [end_cause: :lost]},
           {"was cancelled", [end_cause: :released]},
+          {"reached its time limit", [run: %{state: "cancelled", reason: "timeout"}]},
           {"could not be handed over", [end_cause: :ticket_gone]}
         ] do
       test "after a run that #{name}: the take in's next run queued", ctx do
-        explore_run_fixture(ctx.work_item, unquote(opts))
+        explore_run_fixture(ctx.work_item, unquote(Macro.escape(opts)))
 
         assert {:ok, again} = WorkItems.explore_again(ctx.scope, ctx.work_item, 1)
         assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
