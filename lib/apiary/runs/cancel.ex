@@ -147,10 +147,12 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   Whether `run` writes changes that its end pushes: a run of a software workspace
-  (`workspace`) whose access level is `write`, as its claim recorded it. The level is the
-  `access` of the run's work credential entry (`Apiary.Runs.RunCredential`), which a run
-  has only where its adapter declares apply items; else the top-level `access` of the
-  documents the claim sent the run (`runs.run_documents`); else, for a run with neither,
+  (`workspace`) whose access level is `write`, as its claim recorded it. The level is
+  `write` where one of the run's credential entries (`Apiary.Runs.RunCredential`) has
+  access `write`, which its push entry has, `read` where it has entries and none writes,
+  which a run has only where its adapter declares apply items; else the top-level
+  `access` of the documents the claim sent the run (`runs.run_documents`); else, for a run
+  with neither,
   the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
   entry (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
@@ -165,18 +167,23 @@ defmodule Apiary.Runs.Cancel do
 
   def write_run?(_workspace, _run), do: false
 
-  # The run's level as its claim recorded it: its work entry's `access`, else its
-  # documents' `access`; nil for a run with neither.
+  # The run's level as its claim recorded it: `write` for a run with an entry whose access
+  # is `write`, `read` for one with entries that read, else its documents' `access`; nil
+  # for a run with none. A run's work entry reads whatever its level, so its push entry
+  # says whether it writes.
   defp recorded_access(run_id) do
-    entry =
-      Repo.one(
+    accesses =
+      Repo.all(
         from c in Apiary.Runs.RunCredential,
-          where: c.run_id == ^run_id and c.purpose == :work,
-          select: c.access,
-          limit: 1
+          where: c.run_id == ^run_id and c.purpose in [:work, :push],
+          select: c.access
       )
 
-    if entry, do: Atom.to_string(entry), else: sent_access(run_id)
+    cond do
+      :write in accesses -> "write"
+      accesses != [] -> "read"
+      true -> sent_access(run_id)
+    end
   end
 
   # Decoded here: Postgres raises an error on a JSON text with the escape of a NUL,

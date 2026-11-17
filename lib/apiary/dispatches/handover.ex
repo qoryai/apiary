@@ -425,6 +425,7 @@ defmodule Apiary.Dispatches.Handover do
             )
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
+          if formed.push, do: RunCredentials.insert!(formed.push, run)
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -784,10 +785,11 @@ defmodule Apiary.Dispatches.Handover do
 
   # The run's work credential entry, formed from what the run is formed from, with the
   # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
-  # none, or the cause its run of the queue ends for. An explore run's entry comes from the
-  # collection the claim read once (`work_collection/3`), from which `submitted/4` takes
-  # the submit_module, and which `with_collection/2` puts in the formed run; a prebuild's
-  # from the collection it builds, and reads.
+  # none, or the cause its run of the queue ends for. A run with access `write` has a push
+  # entry beside it (`Apiary.Runs.RunCredentials.push_from/3`). An explore run's entry
+  # comes from the collection the claim read once (`work_collection/3`), from which
+  # `submitted/4` takes the submit_module, and which `with_collection/2` puts in the
+  # formed run; a prebuild's from the collection it builds, and reads.
   defp with_work({:ok, %{answer: answer} = formed}) do
     level = Map.get(answer, :access, :read)
 
@@ -807,8 +809,12 @@ defmodule Apiary.Dispatches.Handover do
       end
 
     case work do
-      {:ok, work} -> {:ok, Map.put(formed, :work, work)}
-      {:end, _cause} = ended -> ended
+      {:ok, work} ->
+        push = RunCredentials.push_from(work, level, answer.work_item)
+        {:ok, formed |> Map.put(:work, work) |> Map.put(:push, push)}
+
+      {:end, _cause} = ended ->
+        ended
     end
   end
 
