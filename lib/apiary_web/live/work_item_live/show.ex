@@ -2101,8 +2101,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
     frames =
-      assigns.row
-      |> Stages.gate_frames(assigns.row.process_version, stage.id)
+      assigns
+      |> recorded(stage.id)
       |> StageTab.frames()
       |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
       |> StageTab.approved(stage, assigns.flow.index)
@@ -2428,6 +2428,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do: Stages.gate_frames(row, row.process_version, id)
 
   defp gate_recorded(_row, _flow), do: []
+
+  # The versions the tab of the stage `stage_id` frames (`Apiary.Stages.gate_frames/3`): at
+  # the current stage's gate, the set `load/1` read for the stage card (`gate_recorded/2`),
+  # so a load reads it once.
+  defp recorded(%{flow: %{state: :at_gate, stage: %{id: id}}} = assigns, id),
+    do: assigns.gate_recorded
+
+  defp recorded(assigns, stage_id),
+    do: Stages.gate_frames(assigns.row, assigns.row.process_version, stage_id)
 
   # While the work item's latest run waits in the queue, before a pool claims it (no state
   # yet), whatever Explore's status (a run after a move back to Explore, or a later
