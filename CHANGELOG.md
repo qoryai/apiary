@@ -14,8 +14,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
-  refuses a value that is not such an id. A run may change the criterion of an open
-  question, and keeps it unchanged, set or absent, while a question stays answered.
+  refuses a value that is not such an id. A run can change the criterion of an open
+  question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
 - The tab of a stage that a track passed over whole reads "<stage> did not run", with the
   reason: "You approved <track> at <stage>'s gate on <date>. <track> skips <stage>."; for a
