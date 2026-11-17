@@ -1,14 +1,16 @@
 defmodule ApiaryProWeb.OperatedArtifactTypesTest do
   # The line under the Artifact types table for a type that the harness sets, in a
-  # workspace that an operator operates: the organisation's owners and admins read to ask
-  # the operator, and the operator's people read the step in Harness settings.
+  # workspace that an operator operates, while `ApiaryPro.Flags.operator_infrastructure?/0`
+  # is on: the organisation's owners and admins read to ask the operator, and the operator's
+  # people read the step in Harness settings.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [join_fixture: 2, member_fixture: 2]
   import ApiaryPro.OperatorsFixtures
 
-  alias Apiary.{Artifacts, Features, Processes}
+  alias Apiary.{Artifacts, Features, Organisations, Processes}
   alias Apiary.Repo
   alias ApiaryPro.Flags
 
@@ -74,5 +76,39 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
 
     harness = ~p"/#{ctx.operated.organisation}/#{ctx.operated.workspace}/settings/harness"
     assert has_element?(view, ~s(#{@line} a[href="#{harness}"]), "Harness settings")
+  end
+
+  test "with the flag off, the organisation's owner reads the step in Harness settings", ctx do
+    Flags.put_operator_infrastructure(false)
+    {:ok, view, _html} = page(ctx.operated.owner.user, ctx.operated)
+
+    assert has_element?(view, @line, @harness_step)
+    refute has_element?(view, @line, "ask the operator")
+  end
+
+  # A person of the operator, at `operator_level`, made an admin of the organisation.
+  defp operator_person_who_is_org_admin(ctx, operator_level) do
+    Flags.put_operator_infrastructure(false)
+    %{user: user} = member_fixture(ctx.operator.scope, operator_level)
+    %{membership: joined} = join_fixture(ctx.operated.owner.scope, user)
+    {:ok, _} = Organisations.set_member_level(ctx.operated.owner.scope, joined.id, :admin)
+    Flags.put_operator_infrastructure(true)
+    user
+  end
+
+  test "a person who is an admin of both reads to ask the operator, as their levels tie", ctx do
+    user = operator_person_who_is_org_admin(ctx, :admin)
+    {:ok, view, _html} = page(user, ctx.operated)
+
+    assert has_element?(view, @line, @operator_step)
+    refute has_element?(view, "#{@line} a")
+  end
+
+  test "an owner of the operator who is an admin of the organisation reads the link", ctx do
+    user = operator_person_who_is_org_admin(ctx, :owner)
+    {:ok, view, _html} = page(user, ctx.operated)
+
+    assert has_element?(view, @line, @harness_step)
+    refute has_element?(view, @line, "ask the operator")
   end
 end

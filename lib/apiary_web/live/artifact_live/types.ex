@@ -13,11 +13,10 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   #
   # The type that the process's `submit` sets (`Apiary.Artifacts.submit_types/1`) shows the
   # mark Set by the harness and has no Edit and no Delete: the harness sets its schema. The
-  # page shows a line under the table with the reason and one of three endings. The step in
+  # page shows a line under the table with the reason and one of two endings. The step in
   # Harness settings, as a link, is the usual one. In a workspace that an operator operates,
-  # the organisation's owners and admins read to ask the operator. Without the feature
-  # `factory`, the line says that the Qory harness sets the schema, with no step. The edit
-  # and delete routes and events of such a type go back to the list.
+  # the organisation's owners and admins read to ask the operator. The edit and delete
+  # routes and events of such a type go back to the list.
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.
@@ -340,25 +339,20 @@ defmodule ApiaryWeb.ArtifactLive.Types do
     )
   end
 
-  # The last sentence of the line under the table for a type that the harness sets. Without
-  # `factory` there is no Harness settings, so it has no step; the edition's sentence, if
-  # any, stands in place of the link.
-  @doc false
-  def schema_step(scope) do
-    cond do
-      not Apiary.Features.visible?(scope, :factory) ->
-        gettext("The Qory harness sets this schema.")
-
-      line = Apiary.Edition.schema_change_line(scope) ->
-        line
-
-      true ->
+  # The last sentence of the line under the table for a type that the harness sets: the
+  # edition's sentence, if any, else the step in Harness settings, as a link.
+  defp schema_step(scope) do
+    case Apiary.Edition.schema_change_line(scope) do
+      nil ->
         rich_gettext(
           "To change the schema, change it in the harness, then choose Update from harness in %{harness}.",
           harness:
             {:link, ~p"/#{scope.organisation}/#{scope.workspace}/settings/harness",
              gettext("Harness settings")}
         )
+
+      line ->
+        line
     end
   end
 

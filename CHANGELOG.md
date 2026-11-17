@@ -27,8 +27,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and no **Edit** and no **Delete**. The page shows a line under the table with the reason
   and the step to change the schema, which is a link to **Harness settings**. For the
   organisation's owners and admins in a workspace that an operator operates, the step is
-  to ask the operator. Without the feature `factory`, the line says that the Qory harness
-  sets the schema, with no step. The change and the delete are refused on the server too.
+  to ask the operator. The change and the delete are refused on the server too.
   A type that an older process version in use sets stays set. **Add a version** does not
   offer the type, and a person's push of it is refused with `unknown_type`, as for
   `questions`.

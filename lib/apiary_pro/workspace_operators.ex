@@ -75,16 +75,19 @@ defmodule ApiaryPro.WorkspaceOperators do
   @doc """
   schema_change_line/1 is the step that the Artifact types page shows for a type that the
   harness sets (`c:Apiary.Edition.schema_change_line/1`): "To change the schema, ask the
-  operator of this workspace." where the scope's workspace has an operator and the person
-  does not act there through it (`ApiaryPro.Access.through_operator?/1`). Nil otherwise:
-  the operator's people see the core's step. Translated when it is asked.
+  operator of this workspace." while `ApiaryPro.Flags.operator_infrastructure?/0` is on,
+  the scope's workspace has an operator and the person does not act there through it
+  (`ApiaryPro.Access.through_operator?/1`). Nil otherwise: with the flag off, and for the
+  operator's people, the page shows the core's step. Translated when it is asked.
   """
   @spec schema_change_line(Scope.t()) :: String.t() | nil
   # The page gate `artifact_type.edit` limits the page to owners and admins, so a member never
-  # reaches it. This checks only the operator and `through_operator?/1`.
+  # reaches it. This checks the flag, the operator and `through_operator?/1`.
   def schema_change_line(%Scope{organisation: %Organisation{} = organisation} = scope) do
-    if operator_id(organisation, scope.workspace) && not ApiaryPro.Access.through_operator?(scope),
-      do: gettext("To change the schema, ask the operator of this workspace.")
+    if ApiaryPro.Flags.operator_infrastructure?() and
+         not is_nil(operator_id(organisation, scope.workspace)) and
+         not ApiaryPro.Access.through_operator?(scope),
+       do: gettext("To change the schema, ask the operator of this workspace.")
   end
 
   def schema_change_line(_scope), do: nil

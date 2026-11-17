@@ -438,18 +438,6 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
       assert has_element?(view, ~s(#{line} a[href="#{harness}"]), "Harness settings")
     end
 
-    # The page needs `workflow_model`, which needs `factory`, so no page shows the line
-    # without `factory`: the step is read from a scope that has it hidden.
-    test "ends the line with the fact, and no step, without the feature factory", ctx do
-      without_factory = %{ctx.scope | hidden: [:factory]}
-
-      assert ApiaryWeb.ArtifactLive.Types.schema_step(without_factory) ==
-               "The Qory harness sets this schema."
-
-      assert [_, link, _] = ApiaryWeb.ArtifactLive.Types.schema_step(ctx.scope)
-      assert {:link, _path, "Harness settings"} = link
-    end
-
     test "shows no badge and no line where no version sets the type", ctx do
       {1, _rows} =
         Repo.update_all(

@@ -20857,11 +20857,6 @@ msgstr ""
 msgid "The Qory harness is the harness at %{url}."
 msgstr "The Qory harness is the harness in the repository at %{url}."
 
-#: lib/apiary_web/live/artifact_live/types.ex
-#, elixir-autogen, elixir-format
-msgid "The Qory harness sets this schema."
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "The Qory harness's workflows: %{names}."
