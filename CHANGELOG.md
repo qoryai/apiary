@@ -12,6 +12,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: factory -->
+- A work item has a **Questions** tab, before **Thread**, once an agent has asked a question.
+  It shows the number of open questions. Open questions come first, in the frame **Open
+  questions**, each with the line “Asked in Verify, Run 9”, the run linked. A member who may
+  answer picks an option or writes an answer there, and **Run another round of Verify**
+  sends the answers; it is the one place where a member answers. Answered and withdrawn
+  questions follow in the frame **Answered questions**, in groups under the names of the
+  stages in the process order, and “Explore” for a work item with no stage. The form names
+  the stage that waits: “Comment on Verify's outputs”, and the same name in the caption
+  above the form, in the button and in its confirmation. A work item that needs answers
+  opens on this tab. The tab of a stage, and Explore's tab, no longer have the questions
+  or the output **Questions**; where agents asked questions, they show “The agents of this
+  stage asked 3 questions. See them on the Questions tab.” The runs fold no longer lists
+  “questions v5”. A question keeps its number when a run reopens it. Its group is the stage
+  of the run that reopened it.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
