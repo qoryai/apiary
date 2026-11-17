@@ -414,12 +414,50 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(
                view,
-               "#work-item-tab-output-test-features--other-h",
+               "#work-item-tab-output-test-features--other---h",
                "Test features · other"
              )
 
-      view |> element("#work-item-tab-output-test-features--other-s") |> render_click()
+      view |> element("#work-item-tab-output-test-features--other---s") |> render_click()
       assert render(view) =~ "Another"
+    end
+
+    test "frames whose names differ by an id's suffix have no DOM id twice", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Each upload at Shape's gate is a person's change, so each name has a frame:
+      # scenario-1 at version 2, scenario-1-v2, h and h-s.
+      work_item = at_gate!(scope)
+
+      for name <- ["scenario-1", "scenario-1", "scenario-1-v2", "h", "h-s"] do
+        {:ok, _version} =
+          Stages.add_version(
+            scope,
+            reload(work_item),
+            "spec",
+            [%{filename: "spec.md", content_type: "text/markdown", binary: "## #{name}"}],
+            name: name
+          )
+      end
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+
+      named =
+        for %{type: "spec", name: name, version: version} <-
+              :sys.get_state(view.pid).socket.assigns.frames,
+            name != "main",
+            do: {name, version}
+
+      assert Enum.sort(named) == [
+               {"h", 1},
+               {"h-s", 1},
+               {"scenario-1", 2},
+               {"scenario-1-v2", 1}
+             ]
+
+      ids = Regex.scan(~r/\sid="([^"]+)"/, html, capture: :all_but_first) |> List.flatten()
+      assert ids -- Enum.uniq(ids) == []
     end
 
     test "a version with no Markdown has its artifact row", %{conn: conn, scope: scope} do

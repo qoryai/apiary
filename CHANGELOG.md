@@ -43,13 +43,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a move back to a stage at or before that approval; the gate of that stage then shows and
   approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
   page. The stage's tab has a frame for every version that an approval at its gate
-  records, also one only a person uploaded, one of an earlier take in and a change, and an
-  artifact not named `main` has its name after the type in the frame's heading. A person's
-  version has the caption "Version <n> · <who made it>". Once the work item has left a
-  stage that a person approved, the stage's tab shows a frame for each version that
-  approval recorded. In a stage that started no run, the input frames follow the output
-  frames, folded. In `GET artifacts`, each version has `decision` and `decision_at`, the
-  time of that note.
+  records: one that only a person uploaded, one of an earlier take in, and a change. A
+  frame of an artifact not named `main` has the name after the type in its heading. A
+  person's version has the caption "Version <n> · <who made it>". Once the work item has
+  left a stage that a person approved, the stage's tab shows a frame for each version
+  that approval recorded. In a stage that started no run, the input frames follow the
+  output frames, folded. In `GET artifacts`, each version has `decision` and
+  `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a

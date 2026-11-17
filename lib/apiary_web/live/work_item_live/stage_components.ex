@@ -1045,12 +1045,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   @doc """
-  frame_key/1 is an output frame's part of its DOM ids: the artifact's type, then `--` and
-  its name where the name is not `main`, such as `spec` or `test-features--other`. A type
-  or a name has no `--` (`Apiary.Artifacts.Type.name?/1`), so two frames have two keys.
+  frame_key/1 is an output frame's part of its DOM ids: the artifact's type, then, where
+  the name is not `main`, `--`, the name and `--`, such as `spec` or
+  `test-features--other--`. A type or a name has no `--` (`Apiary.Artifacts.Type.name?/1`),
+  so no frame's key, with or without an id's suffix, equals another named frame's key.
   """
   @spec frame_key(map) :: String.t()
-  def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}"
+  def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}--"
   def frame_key(%{type: type}), do: type
 
   @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
