@@ -109,8 +109,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #     (`Apiary.Stages.stage_skips/1`), nil for none;
   #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
   #     `place` among all of them, from 1;
-  #   * `questions`: on the current stage's tab, every open question and the closed ones the
-  #     stage's runs wrote; on another tab, the closed ones its runs wrote;
+  #   * `questions`: the questions that the Questions tab groups under the stage, whether open
+  #     or closed (`question_groups/3`); `waiting`, whether the tab is the current stage's
+  #     and a question is open, of any stage;
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
@@ -182,6 +183,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       proposal_version: proposal_version(flow, stage, passed_over),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
+      waiting: waiting?(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),
       review_comments: comments(flow, stage, read.review_comments, artifacts),
       artifacts: artifacts,
@@ -340,17 +342,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Map.put(take_in, :skips, skips)
   end
 
+  # The questions of `stage`: those that the Questions tab groups under it, in every state
+  # (`ApiaryWeb.WorkItemComponents.question_groups/3`). A question of a stage that the
+  # process no longer has is Explore's, as a run with no stage is.
   defp questions(flow, stage, questions) do
-    current? = stage.id == flow.stage.id
+    known = MapSet.new(flow.stages, & &1.id)
 
     Enum.filter(questions, fn question ->
-      if question.state == :open,
-        do: current? or (is_nil(current(flow)) and asked_at?(question, flow, stage)),
-        else: asked_at?(question, flow, stage)
+      group = if MapSet.member?(known, question[:stage_id]), do: question.stage_id
+      (group || flow.explore_id) == stage.id
     end)
   end
 
-  defp asked_at?(question, flow, stage), do: stage_of(question, flow) == stage.id
+  # Whether the current stage's tab has the questions open: some question is open, of any
+  # stage. The Questions tab then holds the decisions of the current stage in its form, so
+  # that tab's Decisions frame is empty.
+  defp waiting?(flow, stage, questions),
+    do: stage.id == flow.stage.id and Enum.any?(questions, &(&1.state == :open))
 
   # Explore's tab lists the review comments on the proposal; a stage's tab those on a
   # version of its outputs made at the stage, among the stage's `artifacts`, each with its
@@ -407,8 +415,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # frames/2 is the output frames of `stage`, in its order, with the newest version a run of
   # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:}`,
   # the first one `open`. A type with no such version has no frame, nor do the review
-  # comments, the document a review comment is written to, and the questions, which have
-  # their own tab.
+  # comments, the document a review comment is written to, and the questions, which are
+  # on the Questions tab.
   @spec frames(map, %{String.t() => pos_integer}) :: [map]
   def frames(stage, newest) do
     stage.outputs

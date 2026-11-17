@@ -3003,7 +3003,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert explore_html =~ "You answered"
     end
 
-    test "numbers follow the questions document: the decision keeps its number, above the open questions",
+    test "numbers read top to bottom: Decisions first, then the open questions",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
 
@@ -3013,8 +3013,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
           decisions: [@decision]
         )
 
-      # In the document the basket is first and the decision second; two questions follow
-      # the decision in a chain.
+      # In the document the decision is second, and two questions follow it in a chain.
       add_questions!(dispatch_run, run, work_item, [
         {"Which shelf?", ["q2"]},
         {"Which aisle?", ["q3"]}
@@ -3024,20 +3023,19 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       q = "work-item-questions-open"
       n = "work-item-questions-question"
 
-      # The decision sits above the open questions, with its number from the document.
-      assert has_element?(view, "##{q}-decision-2 > summary b", "2. ")
-      assert has_element?(view, "##{q}-decision-2 > summary b", @decision["question"])
+      assert has_element?(view, "##{q}-decision-1 > summary b", "1. ")
+      assert has_element?(view, "##{q}-decision-1 > summary b", @decision["question"])
 
-      assert has_element?(view, ~s(li##{n}-1[style*="counter-set: q-xp-q 0"]))
-      assert has_element?(view, "##{n}-1", "Which basket?")
+      assert has_element?(view, ~s(li##{n}-2[style*="counter-set: q-xp-q 1"]))
+      assert has_element?(view, "##{n}-2", "Which basket?")
       assert has_element?(view, ~s(li##{n}-3[style*="counter-set: q-xp-q 2"]))
       assert has_element?(view, "##{n}-3", "Which shelf?")
       assert has_element?(view, ~s(li##{n}-4[style*="counter-set: q-xp-q 3"]))
       assert has_element?(view, "##{n}-4", "Which aisle?")
 
-      assert has_element?(view, "##{n}-3 a", "Follows question 2")
-      assert has_element?(view, ~s(##{n}-3 a[href="##{n}-2"]))
-      assert has_element?(view, "##{q}-decision-2 > summary ##{n}-2")
+      assert has_element?(view, "##{n}-3 a", "Follows question 1")
+      assert has_element?(view, ~s(##{n}-3 a[href="##{n}-1"]))
+      assert has_element?(view, "##{q}-decision-1 > summary ##{n}-1")
 
       assert has_element?(view, "##{n}-4 a", "Follows question 3")
       assert has_element?(view, ~s(##{n}-4 a[href="##{n}-3"]))

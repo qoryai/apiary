@@ -2469,6 +2469,25 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert html =~ "And the &lt;b&gt;credit notes&lt;/b&gt;?"
     end
 
+    test "Asked as question is text where the Questions tab draws no such question" do
+      rail = fn numbers ->
+        render_component(&C.review_comments/1,
+          id: "work-item-review",
+          comments: invoice_comments(),
+          explore_path: "/acme/main/work/41/questions",
+          question_numbers: numbers
+        )
+      end
+
+      drawn = rail.(MapSet.new([2]))
+      assert text(drawn, "#work-item-review-rc2-reply-1 .q-rc-m") == "Asked as question 2"
+      assert count(drawn, "#work-item-review-rc2-reply-1 .q-rc-m a") == 1
+
+      absent = rail.(MapSet.new([1, 3]))
+      assert text(absent, "#work-item-review-rc2-reply-1 .q-rc-m") == "Asked as question 2"
+      assert count(absent, "#work-item-review-rc2-reply-1 .q-rc-m a") == 0
+    end
+
     test "replies: a run's outcome, Asked linked to its question; a member's reply by name" do
       html = comments_tab(invoice_comments())
       r = "#work-item-explore-proposal-review-rc2"

@@ -397,7 +397,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     assigns =
       assign(assigns,
         marks: Map.new(assigns.page.index, &{&1.type, &1}),
-        versions: Enum.filter(assigns.page.outputs, & &1.version_id),
+        # The questions are on the Questions tab, so the About list leaves them out.
+        versions: Enum.filter(assigns.page.outputs, &(&1.version_id && &1.type != "questions")),
         # At a Confirm gate the proposal can exist with no artifact, so an output with no
         # version is not shown as missing.
         shown: shown_outputs(assigns.page),

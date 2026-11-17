@@ -767,7 +767,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(view, ~s(#{rail}[href="#{questions}##{target}"]))
     end
 
-    test "Asked as question shows the question's number in the document, with a decision after it",
+    test "Asked as question shows the question's number on the tab, after the decisions",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)
       explore_run_fixture(work_item, result: understood_result())
@@ -793,7 +793,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       explore = page(scope, work_item.number, "/explore")
       questions = page(scope, work_item.number, "/questions")
-      target = "work-item-questions-question-2"
+      target = "work-item-questions-question-3"
 
       {:ok, tab, _html} = live(conn, questions)
       assert has_element?(tab, "##{target}", "Which refund?")
@@ -802,11 +802,11 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       refute has_element?(view, "##{target}")
 
       inline = "#work-item-explore-proposal-review-c1-reply-1 a"
-      assert has_element?(view, inline, "Asked as question 2")
+      assert has_element?(view, inline, "Asked as question 3")
       assert has_element?(view, ~s(#{inline}[href="#{questions}##{target}"]))
 
       rail = "#work-item-review-c1-reply-1 a"
-      assert has_element?(view, rail, "Asked as question 2")
+      assert has_element?(view, rail, "Asked as question 3")
       assert has_element?(view, ~s(#{rail}[href="#{questions}##{target}"]))
     end
 

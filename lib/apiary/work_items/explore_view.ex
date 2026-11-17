@@ -42,8 +42,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     text:, context:, options:, state:, asked_run:, run:, run_workspace_id:, stage_id:,
   #     answer:, history:, follows:, decision:}`: `run` the number of the run that wrote
   #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
-  #     stage of that run, `number` its place in the questions document among the
-  #     questions of the current take in, from 1 (`shown_numbers/1`), `state` `:open`,
+  #     stage of that run, `number` its row's place on the Explore tab, from 1, top to bottom
+  #     (`shown_numbers/1`), `state` `:open`,
   #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
   #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
   #     `%{option:, recommended:, note:, by_id:, by:, at:}` (`by_id` by the move that
@@ -353,8 +353,8 @@ defmodule Apiary.WorkItems.ExploreView do
   defp shown_document(nil), do: nil
 
   # The questions of the newest questions that a run of the current take in wrote or
-  # reopened last, in their order, each numbered by its place in the questions document
-  # (`shown_numbers/1`).
+  # reopened last, in their order, each numbered by its row's place on the Explore tab
+  # (the moduledoc).
   defp questions_view(ctx) do
     numbers = shown_numbers(ctx)
     given = for %{kind: :answer} = entry <- ctx.given, do: entry
@@ -396,15 +396,29 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp decision(_none), do: nil
 
-  # The number of each question of the current take in (`current_take_in?/2`), by its id: its
-  # place from 1 among them in the order of the questions document, so a question keeps
-  # its number when a run reopens it, and every tab shows the same number.
+  # The number of each question the Explore tab shows (`current_take_in?/2`), by its id: its
+  # row's place from 1, top to bottom. With an open question, the questions frame has
+  # the closed questions, the decisions, then the open questions. With none, the Decisions
+  # frame comes first, then the frame of the closed questions
+  # (`ApiaryWeb.WorkItemComponents.explore_tab/1`).
   defp shown_numbers(ctx) do
-    ((ctx.questions || %{})["questions"] || [])
-    |> Enum.filter(&(match?(%{"id" => _id}, &1) and current_take_in?(&1, ctx)))
-    |> Enum.with_index(1)
-    |> Map.new(fn {%{"id" => id}, n} -> {id, n} end)
+    {decisions, questions} =
+      ((ctx.questions || %{})["questions"] || [])
+      |> Enum.filter(&(match?(%{"id" => _id}, &1) and current_take_in?(&1, ctx)))
+      |> Enum.split_with(&decision_row?/1)
+
+    {open, closed} = Enum.split_with(questions, &(question_state(&1["state"]) == :open))
+    rows = if open == [], do: decisions ++ closed, else: closed ++ decisions ++ open
+
+    rows |> Enum.with_index(1) |> Map.new(fn {%{"id" => id}, n} -> {id, n} end)
   end
+
+  # Whether the tab shows the question among the decisions
+  # (`ApiaryWeb.WorkItemComponents.decision?/1`).
+  defp decision_row?(%{"decision" => %{"option" => _, "reason" => _}, "state" => state}),
+    do: state in ["decided", "answered"]
+
+  defp decision_row?(_question), do: false
 
   # Whether a run of the current take in wrote the question (`asked.run`) or reopened it
   # last (the `reopened.run` of the last entry of its `history` that has one), the rule of

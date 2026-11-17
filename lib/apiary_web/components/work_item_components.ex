@@ -2250,6 +2250,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "the Questions tab, linked from the line that counts the questions, and from replies"
 
+  attr :question_numbers, :any,
+    default: nil,
+    doc: "the numbers of the questions that tab draws, for Asked as question; nil for all"
+
   attr :review_comments, :list, default: [], doc: "the review comments on its proposals"
   attr :can_act, :boolean, default: false, doc: "whether the reader may confirm"
 
@@ -2418,6 +2422,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             reply_path={!@running && @reply_path}
             reading={@running && @run}
             explore_path={@questions_path}
+            question_numbers={@question_numbers}
           />
         </:comments>
       </.proposal_frame>
@@ -2538,7 +2543,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :outputs, :list, default: []
   attr :questions, :list, default: []
+
+  attr :waiting, :boolean,
+    default: nil,
+    doc:
+      "whether the stage is the current one and a question is open, of any stage; nil reads it from `questions`"
+
   attr :questions_path, :string, default: nil, doc: "the Questions tab"
+
+  attr :question_numbers, :any,
+    default: nil,
+    doc: "the numbers of the questions that tab draws, for Asked as question; nil for all"
+
   attr :review_comments, :list, default: []
   attr :current, :boolean, default: false, doc: "whether it is the current stage's tab"
 
@@ -2591,7 +2607,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     run = List.last(assigns.runs)
     running = match?(%{place: place} when place in [:queued, :running], run)
     {open, closed} = Enum.split_with(assigns.review_comments, &(&1.state == :open))
-    open_questions? = Enum.any?(assigns.questions, &(&1.state == :open))
+
+    open_questions? =
+      if is_nil(assigns.waiting),
+        do: Enum.any?(assigns.questions, &(&1.state == :open)),
+        else: assigns.waiting
+
     types = assigns.stage.outputs
     {decisions, others} = Enum.split_with(assigns.questions, &decision?/1)
     round_gate = assigns.current and assigns.round_gate and not running and not open_questions?
@@ -2676,6 +2697,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           reply_path={!@running && @reply_path}
           reading={@running && @run}
           explore_path={@questions_path}
+          question_numbers={@question_numbers}
         />
       </div>
       <.output_frame
@@ -4145,7 +4167,6 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "the id of that stage, nil with no stage card; only its decisions are shown"
 
   attr :form, :boolean, default: false, doc: "whether the reader may answer the open questions"
-  attr :running, :boolean, default: false
   attr :answers, :map, default: %{}
   attr :errors, :map, default: %{}
   attr :form_error, :atom, default: nil
@@ -4167,20 +4188,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc: "what the next run updates: Explore's proposal, or a stage's outputs"
 
   def questions_tab(assigns) do
-    names = Map.new(assigns.stages, &{&1.id, &1.name})
-    known = MapSet.new(assigns.stages, & &1.id)
-
-    questions =
-      for question <- assigns.questions do
-        stage =
-          if MapSet.member?(known, question.stage_id),
-            do: question.stage_id,
-            else: assigns.fallback
-
-        Map.put(question, :stage_name, Map.get(names, stage))
-        |> Map.put(:group, stage)
-      end
-
+    questions = question_groups(assigns.questions, assigns.stages, assigns.fallback)
     {decisions, others} = Enum.split_with(questions, &decision?/1)
     {open, closed} = Enum.split_with(others, &(&1.state == :open))
 
@@ -4194,11 +4202,13 @@ defmodule ApiaryWeb.WorkItemComponents do
       assign(assigns,
         open: open,
         # The decisions of the waiting stage are among the open questions' form while a
-        # question is open; those of an earlier stage stay in its own tab's Decisions frame.
+        # question is open; those of another stage stay in the Decisions frame of that
+        # stage's tab.
         decisions:
           if(open == [], do: [], else: Enum.filter(decisions, &(&1.group == assigns.stage_id))),
         groups: groups,
-        all: questions
+        all: questions,
+        shown: tab_numbers(assigns.questions, assigns.stages, assigns.fallback, assigns.stage_id)
       )
 
     ~H"""
@@ -4212,7 +4222,6 @@ defmodule ApiaryWeb.WorkItemComponents do
         all={@all}
         stage={@stage}
         form={@form}
-        running={@running}
         answers={@answers}
         errors={@errors}
         form_error={@form_error}
@@ -4224,6 +4233,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         open_comments={@open_comments}
         change={@change}
         updates={@updates}
+        shown={@shown}
       />
       <section
         :if={@groups != []}
@@ -4255,6 +4265,37 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  @doc """
+  The stage that groups each of `questions` on the Questions tab (`:group`, the id of one of
+  `stages`, else `fallback`, the stage of a run with none) and its name (`:stage_name`).
+  """
+  def question_groups(questions, stages, fallback) do
+    names = Map.new(stages, &{&1.id, &1.name})
+    known = MapSet.new(stages, & &1.id)
+
+    for question <- questions do
+      stage = if MapSet.member?(known, question.stage_id), do: question.stage_id, else: fallback
+
+      question |> Map.put(:stage_name, Map.get(names, stage)) |> Map.put(:group, stage)
+    end
+  end
+
+  @doc """
+  The numbers of the questions that the Questions tab draws, so that a link to one has a
+  target: every question that is not a decision, and, while one is open, the decisions of
+  the stage that waits (`stage_id`, nil with no stage card).
+  """
+  def tab_numbers(questions, stages, fallback, stage_id) do
+    {decisions, others} =
+      questions |> question_groups(stages, fallback) |> Enum.split_with(&decision?/1)
+
+    waiting = if Enum.any?(others, &(&1.state == :open)), do: decisions, else: []
+
+    for question <- others ++ Enum.filter(waiting, &(&1.group == stage_id)),
+        into: MapSet.new(),
+        do: question.number
+  end
+
   attr :id, :string, required: true
   attr :anchor, :string, required: true, doc: "the DOM id before `-question-N` of each row"
   attr :number, :integer, required: true
@@ -4262,7 +4303,6 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :all, :list, required: true, doc: "every question of the tab, for `Follows question`"
   attr :stage, :string, required: true
   attr :form, :boolean, required: true
-  attr :running, :boolean, default: false
   attr :answers, :map, default: %{}
   attr :errors, :map, default: %{}
   attr :form_error, :atom, default: nil
@@ -4274,6 +4314,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :open_comments, :integer, default: 0
   attr :change, :boolean, default: false
   attr :updates, :atom, default: :outputs, values: [:proposal, :outputs]
+  attr :shown, :any, default: nil, doc: "the numbers of the questions the tab draws"
 
   # The open questions, with the form for a reader who may answer them (`form`), where a
   # reader who may change the decisions (`change`) changes them too; as text otherwise.
@@ -4306,6 +4347,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         change: change,
         form?: form?,
         numbers: Map.new(assigns.all, &{&1.number, &1}),
+        shown: assigns.shown || MapSet.new(assigns.all, & &1.number),
         first_error: first_error,
         ready: ready,
         form_words: send_words(assigns.move_error, assigns.form_error, assigns.stage)
@@ -4351,6 +4393,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                   anchor={@anchor}
                   question={question}
                   numbers={@numbers}
+                  shown={@shown}
                   value={@answers[question.id]}
                   error={@errors[question.id]}
                   now={@now}
@@ -4393,6 +4436,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                 anchor={@anchor}
                 question={question}
                 numbers={@numbers}
+                shown={@shown}
                 read={true}
                 now={@now}
               />
@@ -4966,6 +5010,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :anchor, :string, required: true, doc: "the DOM id before `-question-N` of its row"
   attr :question, :map, required: true
   attr :numbers, :map, required: true, doc: "the questions by their number"
+  attr :shown, :any, required: true, doc: "the numbers of the questions on the page"
   attr :read, :boolean, default: false, doc: "as text, while a run runs"
   attr :value, :any, default: nil, doc: "the draft: `%{\"option\" => choice, \"note\" => text}`"
   attr :error, :any, default: nil
@@ -5003,7 +5048,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         placeholder: placeholder,
         earlier: List.last(question.history),
         follows:
-          for(number <- question.follows, Map.has_key?(assigns.numbers, number), do: number),
+          for(
+            number <- question.follows,
+            Map.has_key?(assigns.numbers, number),
+            do: {number, MapSet.member?(assigns.shown, number)}
+          ),
         answer_units: @answer_units
       )
 
@@ -5011,11 +5060,14 @@ defmodule ApiaryWeb.WorkItemComponents do
     <li id={"#{@anchor}-question-#{@n}"} style={"counter-set: q-xp-q #{@n - 1}"}>
       <span class="q-xp-n" aria-hidden="true"></span>
       <div>
-        <p :for={number <- @follows} class="q-xp-cm-m">
+        <p :for={{number, linked} <- @follows} class="q-xp-cm-m">
           <span class="q-xp-it">
-            <.link href={"##{@anchor}-question-#{number}"} class="text-accent">
+            <.link :if={linked} href={"##{@anchor}-question-#{number}"} class="text-accent">
               {gettext("Follows question %{number}", number: Format.number(number))}
             </.link>
+            <span :if={!linked}>
+              {gettext("Follows question %{number}", number: Format.number(number))}
+            </span>
           </span>
         </p>
         <p id={@q_id} class="q-xp-qt"><b phx-no-format>{@question.text}</b></p>
@@ -5176,6 +5228,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: "work-item-questions",
     doc: "the DOM id before `-question-N` of a question on the tab at `explore_path`"
 
+  attr :question_numbers, :any,
+    default: nil,
+    doc:
+      "the numbers of the questions that tab draws: Asked as question is a link only for one of them; nil links every one"
+
   attr :level, :string,
     default: "h3",
     values: ~w(h2 h3),
@@ -5206,6 +5263,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         explore_path={@explore_path}
         tip={@tip}
         questions_id={@questions_id}
+        question_numbers={@question_numbers}
         expanded={place == 0 or (comment.state == :open and is_binary(comment[:target]))}
       />
     </section>
@@ -5218,6 +5276,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :reading, :any, default: nil
   attr :explore_path, :string, default: nil
   attr :questions_id, :string, default: "work-item-questions"
+  attr :question_numbers, :any, default: nil
   attr :tip, :string, default: nil
   attr :expanded, :boolean, default: false, doc: "opened; else folded to its first line"
 
@@ -5267,7 +5326,12 @@ defmodule ApiaryWeb.WorkItemComponents do
           <p class="q-rc-m">
             <.icon name="hero-play-circle" class="q-xp-frame-i size-4" />
             <span>
-              <.reply_outcome reply={reply} explore_path={@explore_path} questions_id={@questions_id} />
+              <.reply_outcome
+                reply={reply}
+                explore_path={@explore_path}
+                questions_id={@questions_id}
+                question_numbers={@question_numbers}
+              />
             </span>
           </p>
           <p class="q-rc-text" phx-no-format>{reply.text}</p>
@@ -5296,18 +5360,29 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :reply, :map, required: true
   attr :explore_path, :string, default: nil
   attr :questions_id, :string, default: "work-item-questions"
+  attr :question_numbers, :any, default: nil
 
   # A run's reply's outcome; Asked links to the question the run added, on the tab at
-  # `explore_path`, or on this page where it is nil.
+  # `explore_path`, or on this page where it is nil, when that tab draws the question
+  # (`question_numbers`, nil for any); otherwise it is text.
   defp reply_outcome(%{reply: %{outcome: :asked, question_number: n}} = assigns)
        when is_integer(n) do
+    assigns =
+      assign(
+        assigns,
+        :linked,
+        is_nil(assigns.question_numbers) or MapSet.member?(assigns.question_numbers, n)
+      )
+
     ~H"""
     <.link
+      :if={@linked}
       href={"#{@explore_path}##{@questions_id}-question-#{@reply.question_number}"}
       class="text-accent"
     >
       {gettext("Asked as question %{number}", number: Format.number(@reply.question_number))}
     </.link>
+    <span :if={!@linked}>{outcome_words(@reply)}</span>
     """
   end
 

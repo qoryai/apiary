@@ -2,8 +2,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # One work item, by its number in the workspace: its Ticket tab (`:ticket`), one tab for
   # each stage that runs a workflow and has a run or is the current stage (`:stage`,
   # `/work/:number/stages/:stage_id`, `ApiaryWeb.WorkItemLive.StageTab`), its Questions
-  # tab (`:questions`, once a question exists) and its Thread (`:thread`). The tabs are live actions of this one LiveView, so a tab is a patch and the
-  # header stays. The address with no tab (`:open`) shows the tab the work item opens on
+  # tab (`:questions`, once a question exists) and its Thread (`:thread`). The tabs are live
+  # actions of this one LiveView, so a tab is a patch and the header stays. The address with
+  # no tab (`:open`) shows the tab the work item opens on
   # (`home/4`), once, when the address loads: the Questions tab while the work item needs
   # answers. A stage's id in the address is stable, so a
   # stage renamed by an owner keeps its address.
@@ -302,6 +303,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             }
             reading={reading(@item, @tab, @flow)}
             explore_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             level="h2"
             tip="tooltip-right"
           />
@@ -368,6 +370,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             proposal={@proposal}
             questions={@view.questions}
             questions_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             review_comments={@view.review_comments}
             can_act={@can.act and acts?(@tab, @flow, @item)}
             can_send={@can.send and acts?(@tab, @flow, @item)}
@@ -424,7 +427,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}
+            waiting={@view.waiting}
             questions_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}
             can_act={@can.act and acts?(@tab, @flow, @item)}
@@ -646,7 +651,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
        errors: %{}
      )
      |> ask_page(asked_page(action, params))
-     |> load()
+     |> read_page()
      |> addressed(params)
      |> opened()
      |> ticketed()}
@@ -1993,9 +1998,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     if socket.redirected, do: socket, else: socket |> load() |> next.()
   end
 
+  # Everything the page draws, read again with its scope. A reader on the Questions tab
+  # whose read leaves no question to show lands on the work item's address, as an address
+  # with no question does (`addressed/2`).
+  defp load(socket) do
+    case read_page(socket) do
+      %{assigns: %{live_action: :questions}} = read -> addressed(read, %{})
+      read -> read
+    end
+  end
+
   # Everything the page draws, read again with its scope. A work item no longer readable
   # here: the page's tab loads again, and is then not found.
-  defp load(socket) do
+  defp read_page(socket) do
     scope = scope(socket)
     now = DateTime.utc_now()
     comments = if socket.assigns.all_comments, do: :all, else: :latest
@@ -2729,6 +2744,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # as a run with no stage belongs to Explore's.
   defp question_fallback(nil), do: nil
   defp question_fallback(flow), do: flow.explore_id
+
+  # The numbers of the questions that the Questions tab draws, as
+  # `ApiaryWeb.WorkItemComponents.tab_numbers/4` reads them.
+  defp tab_numbers(questions, flow),
+    do: tab_numbers(questions, question_stages(flow), question_fallback(flow), stage_id_now(flow))
 
   # What the next run updates, where the questions wait: Explore's proposal, or the outputs
   # of a later stage.

@@ -540,7 +540,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       decisions = "#{@form} #{@open}-decisions"
       assert has_element?(view, decisions, shape_decision)
       refute has_element?(view, @open, explore_decision)
-      assert has_element?(view, "#{@open}-decision-3", shape_decision)
+      assert has_element?(view, "#{@open}-decision-2", shape_decision)
       refute has_element?(view, "#{@open}-decision-1")
 
       # Explore's decision stays in the Decisions frame of Explore's tab, and only there.
@@ -735,7 +735,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
              )
     end
 
-    test "a stage's tab counts the questions of its own stage only", %{conn: conn, scope: scope} do
+    test "a stage's tab counts only the questions of that stage", %{conn: conn, scope: scope} do
       work_item = asked_at_two_stages!(scope)
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
@@ -743,6 +743,22 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
       assert sentence(view, "#work-item-explore-questions-line") =~ "asked 1 question. See it"
+    end
+
+    test "a move back to Explore leaves Shape's open questions on Shape's tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting!(scope)
+      {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+      work_item = reload(work_item)
+      assert work_item.stage_id == @explore
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
+      refute has_element?(view, "#work-item-explore-questions-line")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      assert sentence(view, "#work-item-tab-questions-line") =~ "asked 2 questions. See them"
     end
 
     test "a stage with no question has no line", %{conn: conn, scope: scope} do
@@ -863,6 +879,21 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       assert has_element?(view, "#work-item-stage-gate-output-spec", "spec v")
       refute has_element?(view, "#work-item-stage-gate-output-questions")
       refute has_element?(view, "#work-item-stage-gate", "questions v")
+    end
+
+    test "the About list of Request changes has no questions vN", %{conn: conn, scope: scope} do
+      process!(scope, [
+        %{"type" => "spec", "required" => true},
+        %{"type" => "questions", "required" => false}
+      ])
+
+      work_item = answered_at_gate!(scope)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      assert has_element?(view, "#work-item-stage-gate-changes-version option", "spec v")
+      refute has_element?(view, "#work-item-stage-gate-changes-version option", "questions")
     end
 
     test "the Artifacts list still lists questions vN", %{conn: conn, scope: scope} do
@@ -1187,7 +1218,8 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       confirm_spend(view)
 
       assert %DispatchRun{state: :waiting, attempt: 3} = newest_run(work_item)
-      assert has_element?(view, "#work-item-questions-question-2-answer", "Yes.")
+      # The answered question is numbered before the one still open.
+      assert has_element?(view, "#work-item-questions-question-1-answer", "Yes.")
     end
 
     test "Run another round at Explore after a move back runs Explore's next round", %{
@@ -1336,6 +1368,120 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
           stage_id: dispatch_run.stage_id
         )
       end)
+  end
+
+  describe "the decisions, the references and the refreshes of the tab" do
+    @explore_decision "Which store keeps the baskets?"
+
+    # Explore decided a question and its proposal is confirmed; Shape's run asked "Which
+    # basket?" and Shape waits for answers.
+    defp decided_then_asked!(scope) do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, understood_result())
+          push_decided!(run, registered, [decision(@explore_decision)])
+        end)
+
+      {:ok, _confirmed} = WorkItems.confirm(scope, reload(work_item), 1)
+      work_item = reload(work_item)
+
+      work_item
+      |> end_run!(fn run, registered ->
+        push!(run, work_item, "spec", "## The spec text")
+        push_result!(run, registered, questions_result(["Which basket?"]))
+      end)
+      |> reload()
+    end
+
+    test "a decision shows in one place when the current stage has no tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = decided_then_asked!(scope)
+
+      build =
+        Enum.find_value(
+          Processes.default_document("software")["stages"],
+          &(&1["name"] == "Build" && &1["id"])
+        )
+
+      # The work item moves on to Build, which runs no workflow and so has no tab; Shape's
+      # question stays open.
+      {:ok, _moved} = Stages.move(scope, work_item, build, nil, expect_stage: @shape)
+      work_item = reload(work_item)
+      assert work_item.stage_id == build
+
+      {:ok, explore, _html} = live(conn, stage(scope, work_item.number, @explore))
+      {:ok, tab, _html} = live(conn, questions(scope, work_item.number))
+
+      listed = fn view -> length(String.split(render(view), @explore_decision)) - 1 end
+
+      assert has_element?(explore, "#work-item-explore-decisions", @explore_decision)
+      assert listed.(explore) == 1
+      assert listed.(tab) == 0
+    end
+
+    test "Follows question is text where the tab draws no such question", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = decided_then_asked!(scope)
+
+      document = question_document(work_item)
+
+      added = %{
+        "id" => "q4",
+        "question" => "Which shelf?",
+        "options" => [],
+        "state" => "open",
+        "asked" => %{"run" => run_of(work_item, "q2"), "at" => "2026-11-04T10:00:00Z"},
+        "follows" => ["q1"]
+      }
+
+      {:ok, _version} =
+        while_live(newest_run(work_item), fn ->
+          Artifacts.push(
+            {:run, newest_run(work_item)},
+            reload(work_item),
+            "questions",
+            [Apiary.Explore.Questions.file(%{"questions" => document["questions"] ++ [added]})],
+            name: "main",
+            stage_id: newest_run(work_item).stage_id
+          )
+        end)
+
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+
+      follows = "#{@form} .q-xp-qs .q-xp-cm-m"
+      assert has_element?(view, follows, "Follows question 1")
+      refute has_element?(view, "#{follows} a", "Follows question")
+    end
+
+    test "a reader on the tab lands on the work item's address once no question is left", %{
+      conn: conn,
+      scope: scope
+    } do
+      ticket = backlog_ticket_fixture(scope)
+      {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
+      work_item = work_item |> reload() |> end_run!(questions_result(["Which basket?"]))
+
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+      assert has_element?(view, "#work-item-questions")
+
+      # A take in again starts a take in with no question.
+      {:ok, _closed} = WorkItems.close(scope, reload(work_item))
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, ticket.public_id, %{owner_id: scope.user.id})
+
+      send(view.pid, {:work_items_changed, [work_item.public_id]})
+
+      assert_patch(view, page(scope, work_item.number))
+      refute has_element?(view, "#work-item-questions")
+      refute has_element?(view, "#work-item-tabs-questions")
+    end
   end
 
   # Runs `push` with the run of the queue `dispatch_run` live, as a run pushes before it

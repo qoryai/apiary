@@ -1355,20 +1355,20 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         })
     end
 
-    test "with an open question: the numbers follow the questions document", ctx do
+    test "with an open question: the numbers read closed, decisions, then open", ctx do
       explore_run_fixture(ctx.work_item,
         result: questions_result(["Which basket?", "Which shelf?"]),
         decisions: [@decision]
       )
 
-      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q2" => 2, "q3" => 3}
+      assert numbers(ctx.scope, ctx.work_item) == %{"q3" => 1, "q1" => 2, "q2" => 3}
 
       send_note(ctx.scope, ctx.work_item, "q1")
 
-      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q2" => 2, "q3" => 3}
+      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q3" => 2, "q2" => 3}
     end
 
-    test "a changed decision keeps its number in the questions document", ctx do
+    test "a changed decision stays among the decisions, above a closed question", ctx do
       explore_run_fixture(ctx.work_item,
         result: questions_result(["Which basket?"]),
         decisions: [@decision]
@@ -1383,20 +1383,20 @@ defmodule Apiary.WorkItems.ExploreViewTest do
           comment: nil
         })
 
-      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q2" => 2}
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
     end
 
-    test "with no open question: the numbers follow the questions document", ctx do
+    test "with no open question: the numbers read decisions, then closed", ctx do
       explore_run_fixture(ctx.work_item,
         result: questions_result(["Which basket?"]),
         decisions: [@decision]
       )
 
-      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q2" => 2}
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
 
       send_note(ctx.scope, ctx.work_item, "q1")
 
-      assert numbers(ctx.scope, ctx.work_item) == %{"q1" => 1, "q2" => 2}
+      assert numbers(ctx.scope, ctx.work_item) == %{"q2" => 1, "q1" => 2}
     end
   end
 end
