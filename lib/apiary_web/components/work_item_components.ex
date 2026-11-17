@@ -2254,6 +2254,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: nil,
     doc: "the numbers of the questions that tab draws, for Asked as question; nil for all"
 
+  attr :waiting, :boolean,
+    default: nil,
+    doc:
+      "whether Explore is the current stage and a question is open, of any stage; nil reads it from `questions`"
+
   attr :review_comments, :list, default: [], doc: "the review comments on its proposals"
   attr :can_act, :boolean, default: false, doc: "whether the reader may confirm"
 
@@ -2338,7 +2343,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     {decisions, questions} = Enum.split_with(assigns.questions, &decision?/1)
     # The decisions sit in the open questions frame of the Questions tab where a question
     # is open; otherwise in the Decisions frame between the proposal and the gate.
-    inline = Enum.any?(questions, &(&1.state == :open))
+    inline =
+      if is_nil(assigns.waiting),
+        do: Enum.any?(questions, &(&1.state == :open)),
+        else: assigns.waiting
+
     gate = status == :confirm
 
     # Sent decisions are text: only a decision still `:decided` takes a change.
@@ -4143,9 +4152,10 @@ defmodule ApiaryWeb.WorkItemComponents do
       that a run reopened is in the group of the stage of that run.
 
   A question is `%{id:, number:, text:, context:, options:, state:, run:, run_path:,
-  stage_id:, answer:, history:, follows:, decision:}`, as the work item page reads it. A question's `number` is its place in the questions document, the same on
-  every tab; a run's decision that no member answered is not on this tab but in the
-  Decisions frame of the stage's tab, unless a question is open.
+  stage_id:, answer:, history:, follows:, decision:}`, as the work item page reads it. A
+  question's `number` is the one the work item page gives it, the same on every tab; a
+  run's decision that no member answered is not on this tab but in the Decisions frame of
+  the stage's tab, unless a question is open.
   """
   attr :id, :string, default: "work-item-questions"
   attr :number, :integer, required: true, doc: "the work item's number"

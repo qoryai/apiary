@@ -408,7 +408,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       assert line(view, "#{list} > .q-xp-sec:nth-child(2) > h3") == "Shape"
       refute has_element?(view, "#{list} > .q-xp-sec:nth-child(3)")
 
-      # Explore's group: q3, which keeps its number from the order of the questions.
+      # Explore's group holds q3, which the page numbers 3.
       assert has_element?(
                view,
                "#{list} > .q-xp-sec:nth-child(1) #work-item-questions-question-3"
@@ -888,6 +888,11 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       ])
 
       work_item = answered_at_gate!(scope)
+
+      # The questions have a version, so the list could name them.
+      assert %{version: %{number: _number}} =
+               Enum.find(Stages.status(work_item).outputs, &(&1.type == "questions"))
+
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
@@ -1395,32 +1400,64 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       |> reload()
     end
 
-    test "a decision shows in one place when the current stage has no tab", %{
+    # How often the decision's text shows on the tab of its stage and on the Questions tab.
+    defp decision_places(conn, scope, work_item, stage_id, text) do
+      {:ok, stage_view, _html} = live(conn, stage(scope, work_item.number, stage_id))
+      {:ok, tab, _html} = live(conn, questions(scope, work_item.number))
+
+      count = fn view -> length(String.split(render(view), text)) - 1 end
+      {count.(stage_view), count.(tab)}
+    end
+
+    defp build_id do
+      Enum.find_value(
+        Processes.default_document("software")["stages"],
+        &(&1["name"] == "Build" && &1["id"])
+      )
+    end
+
+    test "Explore's decision shows once while Explore's question is open and Build is current",
+         %{conn: conn, scope: scope} do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(fn run, registered ->
+          push_result!(run, registered, questions_result(["Which basket?"]))
+          push_decided!(run, registered, [decision(@explore_decision)])
+        end)
+        |> reload()
+
+      {:ok, _moved} =
+        Stages.move(scope, reload(work_item), build_id(), nil, expect_stage: @explore)
+
+      assert reload(work_item).stage_id == build_id()
+
+      {here, there} = decision_places(conn, scope, work_item, @explore, @explore_decision)
+      assert {here, there} == {1, 0}
+    end
+
+    test "Shape's decision shows once while Shape's question is open and Build is current", %{
       conn: conn,
       scope: scope
     } do
+      work_item = waiting_with_decision!(scope)
+      {:ok, _moved} = Stages.move(scope, work_item, build_id(), nil, expect_stage: @shape)
+      assert reload(work_item).stage_id == build_id()
+
+      {here, there} =
+        decision_places(conn, scope, work_item, @shape, "Which store keeps the baskets?")
+
+      assert {here, there} == {1, 0}
+    end
+
+    test "Explore's decision shows once after a move back to Explore, with Shape's question open",
+         %{conn: conn, scope: scope} do
       work_item = decided_then_asked!(scope)
+      {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+      assert reload(work_item).stage_id == @explore
 
-      build =
-        Enum.find_value(
-          Processes.default_document("software")["stages"],
-          &(&1["name"] == "Build" && &1["id"])
-        )
-
-      # The work item moves on to Build, which runs no workflow and so has no tab; Shape's
-      # question stays open.
-      {:ok, _moved} = Stages.move(scope, work_item, build, nil, expect_stage: @shape)
-      work_item = reload(work_item)
-      assert work_item.stage_id == build
-
-      {:ok, explore, _html} = live(conn, stage(scope, work_item.number, @explore))
-      {:ok, tab, _html} = live(conn, questions(scope, work_item.number))
-
-      listed = fn view -> length(String.split(render(view), @explore_decision)) - 1 end
-
-      assert has_element?(explore, "#work-item-explore-decisions", @explore_decision)
-      assert listed.(explore) == 1
-      assert listed.(tab) == 0
+      {here, there} = decision_places(conn, scope, work_item, @explore, @explore_decision)
+      assert {here, there} == {0, 1}
     end
 
     test "Follows question is text where the tab draws no such question", %{

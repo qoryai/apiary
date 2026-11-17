@@ -37,7 +37,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Request changes** no longer list “questions v5”; the list of **Artifacts** still lists
   the questions artifact. The stage card's “Answer the questions”, the step card's link,
   “Answer question 4.” in the wait block, “Follows question 1” and “Asked as question 2”
-  go to this tab. Each is a link only where the tab shows that question, else plain text.
+  go to this tab. “Follows question 1” and “Asked as question 2” are links only where the
+  tab shows that question, else plain text.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body

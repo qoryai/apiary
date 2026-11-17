@@ -369,6 +369,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             earlier_take_ins={@view.take_ins}
             proposal={@proposal}
             questions={@view.questions}
+            waiting={@view.waiting}
             questions_path={tab_path(@current_scope, @number, :questions)}
             question_numbers={tab_numbers(@questions, @flow)}
             review_comments={@view.review_comments}

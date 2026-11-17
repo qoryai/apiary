@@ -1948,7 +1948,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#{open}-cap") ==
                "Run another round of Explore starts Explore's next run. That run reads your answers and updates Explore's proposal."
 
-      # No heading inside the open frame: the frame's own says Open questions.
+      # No heading inside the open frame: the frame's heading says Open questions.
       assert texts(html, "#{open} h3") == []
 
       # Answered: the answered and the withdrawn question, each folded to one line, in
