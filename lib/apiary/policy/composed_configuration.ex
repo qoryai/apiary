@@ -83,7 +83,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # `write`, its push entry (`push/1`) after it: `push-1`, with `purpose` `push` and the
   # same items, each with `push_ref`. Where the document has a `security_policy`, the hosts
   # of the items, all exact, are in `egress.allow_first`, as the provider's exact hosts
-  # are, and in `egress.allow` only when `egress.mode` is `enforce`. More than 8 entries in
+  # are, and in `egress.allow` only when `egress.mode` is `enforce`. More than 16 entries in
   # `credentials`, the most the contract takes, compose
   # no document, as more than 64 in `allow_first` do.
   #
@@ -151,7 +151,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # The most entries the contract's `egress.allow_first` takes, its `credentials`, and its
   # `stack_hosts`.
   @allow_first_max 64
-  @credentials_max 8
+  @credentials_max 16
   @stack_hosts_max 32
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -178,7 +178,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   composed with: its run variables, nil for none.
   `{:error, {:allow_first_too_long, count}}` when the members would give
   `egress.allow_first` more than 64 entries, `{:error, {:credentials_too_many, count}}`
-  when they would give `credentials` more than 8, and `{:error, {:stack_hosts_too_many,
+  when they would give `credentials` more than 16, and `{:error, {:stack_hosts_too_many,
   count}}` when they would give `stack_hosts` more than 32.
   """
   @spec shape(binary | nil, image, prebuild, boolean, map | nil) ::
@@ -357,7 +357,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
       {:error, {:credentials_too_many, count}} = error ->
         Logger.error(
           "a run's run configuration was not composed: it would have #{count} " <>
-            "credentials, more than the 8 the contract takes: the run is given no " <>
+            "credentials, more than the 16 the contract takes: the run is given no " <>
             "run configuration"
         )
 
@@ -610,7 +610,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # `document`, or the document of no policy for nil, with the run's members after its
   # last member and the provider's hosts in its `egress`: `{:ok, bytes}`, canonical, or
   # `{:error, {:allow_first_too_long, count}}`, or `{:error, {:credentials_too_many,
-  # count}}` for more than the 8 entries `credentials` takes, or `{:error,
+  # count}}` for more than the 16 entries `credentials` takes, or `{:error,
   # {:stack_hosts_too_many, count}}` for more than the 32 hosts `stack_hosts` takes.
   defp with_members(document, %{variables: variables, credential: credential} = run_members) do
     registry = Map.get(run_members, :registry)

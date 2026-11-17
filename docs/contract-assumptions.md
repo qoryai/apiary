@@ -872,8 +872,9 @@ on each node, until the node restarts or the table, at 4,096 results, empties.
 
 **A run's model keys.** An explore run of a workspace's queue whose model choice resolves
 to a model provider gets the provider's keys at its claim
-(`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, because the 8
-`credentials` of a run configuration also include the registry's and the work credentials.
+(`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, so that the 16
+`credentials` of a run configuration hold them, the registry's credential, the work and
+push credentials, and the harness links.
 Each key is an API credential named `<provider's public id>-<n>`, from 1, with the
 provider's `format`, `endpoint` and `auth`, so the keys form one key group with the start
 key (the Forager contract, Several model keys). The claim orders the provider's keys at

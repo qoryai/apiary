@@ -226,7 +226,7 @@ defmodule Apiary.Runs.SecretsRequest do
   defp valid?("run_configuration", value), do: is_binary(value) and value =~ @digest
 
   defp valid?("credentials", [_ | _] = names) do
-    length(names) <= 8 and Enum.uniq(names) == names and
+    length(names) <= 16 and Enum.uniq(names) == names and
       Enum.all?(names, &(is_binary(&1) and &1 =~ @credential))
   end
 

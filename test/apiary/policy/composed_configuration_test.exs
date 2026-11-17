@@ -408,9 +408,9 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
     # change its target, with the work entry its claim would record
     # (`Apiary.Runs.RunCredentials.form_work/4`) and, for the level `:write`, its push entry
     # (`push_from/3`), and the document its reload gives.
-    defp work_run!(scope, mode, level \\ nil) do
+    defp work_run!(scope, mode, level \\ nil, fixture_opts \\ []) do
       {:ok, _mode} = Policy.set_mode(scope, mode)
-      ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
+      ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope, fixture_opts)
       dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, ctx.run.dispatch_run_id)
       work_item = Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
 
@@ -545,6 +545,18 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
+    test "a write run with 6 model keys has 9 credentials, and its documents are composed",
+         ctx do
+      keys = for n <- 1..6, do: %{value_id: "k#{n}", value: "sk-ant-fixture-key-#{n}-0123456789"}
+      %{document: document, run: run} = work_run!(ctx.scope, "enforce", :write, keys: keys)
+
+      names = for entry <- Jason.decode!(document)["credentials"], do: entry["name"]
+      assert length(names) == 9
+      assert Enum.take(names, -3) == ["registry", "work-1", "push-1"]
+      assert length(Enum.uniq(names)) == 9
+      assert %{name: "push-1"} = RunCredentials.push(run)
+    end
+
     for level <- [nil, :read, :write_no_push] do
       test "a run with the level #{inspect(level)} has no push entry", ctx do
         %{document: document, run: run} = work_run!(ctx.scope, "enforce", unquote(level))
@@ -638,6 +650,23 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
     test "are none for no source" do
       assert ComposedConfiguration.stack_hosts([]) == []
       assert ComposedConfiguration.stack_hosts(nil) == []
+    end
+  end
+
+  describe "a document composed with credentials" do
+    defp key_members(count) do
+      keys = for n <- 1..count, do: %{name: "con_1-#{n}", entry: %{"name" => "con_1-#{n}"}}
+      %{variables: nil, credential: %{name: "con_1-1", hosts: [], keys: keys}}
+    end
+
+    test "takes 16 and refuses 17, with credentials_too_many" do
+      assert {:composed, bytes, nil} =
+               ComposedConfiguration.shape(@document, nil, false, false, key_members(16))
+
+      assert length(Jason.decode!(bytes)["credentials"]) == 16
+
+      assert ComposedConfiguration.shape(@document, nil, false, false, key_members(17)) ==
+               {:error, {:credentials_too_many, 17}}
     end
   end
 
