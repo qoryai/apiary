@@ -886,6 +886,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp refusal_cause("not_recorded"),
     do: gettext("the credential could not be recorded, so it was not sent")
 
+  defp refusal_cause("other_credential_failed"),
+    do: gettext("the request failed for another credential of the run, so this one was not sent")
+
   defp refusal_cause(_cause), do: gettext("the call to the adapter failed")
 
   defp said_secret("created"), do: gettext("Created a stored secret")

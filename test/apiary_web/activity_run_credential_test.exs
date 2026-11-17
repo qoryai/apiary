@@ -62,7 +62,9 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
            "the credential from the adapter differs from the one at the run's start"},
           {"run_not_live", "the run ended before the credential could be sealed"},
           {"seal_failed", "the credential could not be sealed for the gateway"},
-          {"not_recorded", "the credential could not be recorded, so it was not sent"}
+          {"not_recorded", "the credential could not be recorded, so it was not sent"},
+          {"other_credential_failed",
+           "the request failed for another credential of the run, so this one was not sent"}
         ] do
       assert sentence(Map.merge(@details, %{"outcome" => outcome, "access" => "read"})) ==
                "Was refused read access to acme/shop for the run: #{cause}"
