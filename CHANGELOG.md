@@ -850,8 +850,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on the tab scrolls in a frame with a visible bar, as on the **Document** view, and its
   words stay whole.
 - An open work item whose current stage is Explore opens on the **Explore** tab from
-  every link that names no tab, and the **Ticket** tab has the address
-  `/work/<number>/ticket`.
+  every link that names no tab, or on the **Questions** tab while it needs answers, and
+  the **Ticket** tab has the address `/work/<number>/ticket`.
 - A work item has a tab for each stage of its process that runs a workflow, once the
   stage is the current one or has a run. The tab has the stage's name and the address
   `/work/<number>/stages/<stage id>`, which stays when the stage is renamed. An open
@@ -1015,8 +1015,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it was stored.
 - A work item's permanent address, `/work-items/<id>`, opens the work item.
 - Explore's tab has one field, **Comment on the whole proposal**, and one button, **Run
-  another round**. The button sends the answers, the comment and the open comments to
-  one run. A proposal's Background shows its first paragraph, **Read more** shows the
+  another round**. The button sends the comment and the open comments to one run; a
+  member answers the questions on the **Questions** tab. A proposal's Background shows its first paragraph, **Read more** shows the
   rest, and **Read less** closes it again. The field replaces the **Add review comment**
   page; its address, `…/explore?review=new`, opens the **Explore** tab.
 - Explore's tab shows the questions a run chose an option for without a member, as
@@ -1032,8 +1032,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   decision shows no **Changed**. While a question is open, the decisions of the stage that
   waits sit in the frame **Open questions** of the **Questions** tab, above the open
   questions; otherwise they are in a **Decisions** frame of the stage's tab or Explore's
-  tab, above the comment field. Explore's rows are numbered top to bottom, as they show;
-  **Follows question** and **Asked as question** use those numbers.
+  tab, above the comment field. A question's number is its place in the order closed
+  questions, decisions, then open questions, or decisions then closed questions where
+  none is open; **Follows question** and **Asked as question** use those numbers.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -1090,11 +1091,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   types that are on. A push of a type that is off returns `422 unknown_type`, and the
   message says to switch the type on. `proposal`, `questions`, `review-comments` and
   `verdict` are always on. A person adds no version of `questions` or `review-comments` by
-  hand: members write them on the **Explore** tab. A type stays on while an artifact of
+  hand: members answer questions on the **Questions** tab and write comments on the
+  **Explore** tab. A type stays on while an artifact of
   the workspace has it, or while the current process or a process version in use includes
   it. A workspace keeps every standard type until a person switches one off.
 - The version page of a questions or review-comments artifact has no **Add a version**
-  button. People answer questions and write comments in the work item's Explore tab.
+  button. People answer questions on the work item's **Questions** tab and write comments on its
+  **Explore** tab.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·

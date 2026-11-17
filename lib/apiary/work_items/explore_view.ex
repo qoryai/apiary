@@ -42,8 +42,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     text:, context:, options:, state:, asked_run:, run:, run_workspace_id:, stage_id:,
   #     answer:, history:, follows:, decision:}`: `run` the number of the run that wrote
   #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
-  #     stage of that run, `number` its row's place on the Explore tab, from 1, top to bottom
-  #     (`shown_numbers/1`), `state` `:open`,
+  #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
+  #     questions (`shown_numbers/1`), `state` `:open`,
   #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
   #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
   #     `%{option:, recommended:, note:, by_id:, by:, at:}` (`by_id` by the move that
@@ -396,11 +396,9 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp decision(_none), do: nil
 
-  # The number of each question the Explore tab shows (`current_take_in?/2`), by its id: its
-  # row's place from 1, top to bottom. With an open question, the questions frame has
-  # the closed questions, the decisions, then the open questions. With none, the Decisions
-  # frame comes first, then the frame of the closed questions
-  # (`ApiaryWeb.WorkItemComponents.explore_tab/1`).
+  # The number of each question of the current take in (`current_take_in?/2`), by its id:
+  # its place from 1 in the order closed questions, decisions, then open questions. With
+  # no open question, the order is the decisions, then the closed questions.
   defp shown_numbers(ctx) do
     {decisions, questions} =
       ((ctx.questions || %{})["questions"] || [])

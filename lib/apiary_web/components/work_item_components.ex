@@ -4154,8 +4154,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   A question is `%{id:, number:, text:, context:, options:, state:, run:, run_path:,
   stage_id:, answer:, history:, follows:, decision:}`, as the work item page reads it. A
   question's `number` is the one the work item page gives it, the same on every tab; a
-  run's decision that no member answered is not on this tab but in the Decisions frame of
-  the stage's tab, unless a question is open.
+  run's decision is not on this tab but in the Decisions frame of the stage's tab, unless a
+  question is open.
   """
   attr :id, :string, default: "work-item-questions"
   attr :number, :integer, required: true, doc: "the work item's number"
