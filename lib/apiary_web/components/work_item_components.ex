@@ -6080,7 +6080,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:write_without_work_item),
     do:
       gettext(
-        "Give the run a work item: a run that writes needs a branch, which comes from its work item."
+        "Report this run to your instance admin: a run that writes needs a branch, which comes from its work item."
       )
 
   defp unstarted_words(:build_failed),

@@ -10875,11 +10875,6 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Give the run a work item: a run that writes needs a branch, which comes from its work item."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
 msgid "Give your own option"
 msgstr ""
 
@@ -17718,6 +17713,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reply"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Report this run to your instance admin: a run that writes needs a branch, which comes from its work item."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

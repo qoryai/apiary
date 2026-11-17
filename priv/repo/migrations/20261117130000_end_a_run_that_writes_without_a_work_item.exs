@@ -7,10 +7,10 @@ defmodule Apiary.Repo.Migrations.EndARunThatWritesWithoutAWorkItem do
   # cannot form a run, it comes with the outcome `error` (`result_outcome`) on a run that
   # is not a prebuild.
   #
-  # The checks are added NOT VALID, so adding them takes no scan of the tables under their
-  # locks; the next migration validates them. No stored row has the cause, so every row
-  # passes. Rolled back, the checks are as before, and the rollback fails while a run of
-  # the queue or a dispatch has the cause.
+  # Each check is dropped and added again with the new cause, and the new check scans its
+  # table as it is added. No stored row has the cause, so every row passes. Rolled back, the
+  # checks are as before, and the rollback fails while a run of the queue or a dispatch has
+  # the cause.
   @before ~w(released closed undone run_ended lost collection_ended superseded
              variables_invalid ticket_gone inputs_invalid prebuilt
              provider_gone runtime_unserved key_gone model_gone secrets_not_allowed
@@ -49,8 +49,7 @@ defmodule Apiary.Repo.Migrations.EndARunThatWritesWithoutAWorkItem do
       drop constraint(table, :"#{table}_end_cause_check")
 
       create constraint(table, :"#{table}_end_cause_check",
-               check: "end_cause IS NULL OR end_cause IN (#{list})",
-               validate: false
+               check: "end_cause IS NULL OR end_cause IN (#{list})"
              )
     end
   end
@@ -69,15 +68,13 @@ defmodule Apiary.Repo.Migrations.EndARunThatWritesWithoutAWorkItem do
                "result_outcome IS NULL OR (" <>
                  "result_outcome IN ('proposal', 'questions', 'error', 'none', 'refused') " <>
                  "AND step <> 'prebuild' AND (COALESCE(end_cause IN ('run_ended', " <>
-                 "#{list}), false) OR (end_cause = 'lost' AND result_outcome = 'questions')))",
-             validate: false
+                 "#{list}), false) OR (end_cause = 'lost' AND result_outcome = 'questions')))"
            )
 
     create constraint(:dispatch_runs, :dispatch_runs_result_outcome_error_check,
              check:
                "step = 'prebuild' OR NOT COALESCE(end_cause IN (#{list}), false) " <>
-                 "OR COALESCE(result_outcome = 'error', false)",
-             validate: false
+                 "OR COALESCE(result_outcome = 'error', false)"
            )
   end
 end
