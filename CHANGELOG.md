@@ -2379,7 +2379,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   (`es_…`), unique, with a check of its shape, and a nullable column
   `artifact_versions.decision_id`, the id of the note that asked for a version, with a
   check of its shape. The default of `public_id` is a function that makes a new id, so
-  adding the column gives every stored decision and escalation an id and rewrites both
+  adding the column sets an id on every stored decision and escalation and rewrites both
   tables under a lock that blocks reads and writes. `decision_id` is nullable, so adding it
   rewrites no row; the first migration adds its check without a scan, and the second
   validates it with a scan that does not block writes. Rolling back drops the three

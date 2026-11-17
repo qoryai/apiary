@@ -9,14 +9,14 @@ defmodule Apiary.Repo.Migrations.KeepTheDecisionThatAskedForAVersion do
   # Crockford base32 characters after the prefix, 80 random bits, the shape
   # `Apiary.PublicId` makes. `gate_decision_public_id()` and `escalation_public_id()` make
   # one in SQL, as `run_public_id()` does (20261017100000), so that the column's default
-  # gives every existing row an id when the column is added. Their `search_path` is
+  # sets an id on every existing row when the column is added. Their `search_path` is
   # `pg_catalog`, where every function they call is. The stage runner sets the id itself
   # when it writes a row; the default has the same shape. Each id is unique on the
   # instance, and a check keeps its shape.
   #
   # A volatile default rewrites `gate_decisions` and `escalations` under a lock that
   # blocks reads and writes. The unique index and the check are separate statements, and
-  # each scans the table again under that lock, which the migration holds until it
+  # each scans the table again under that lock, which the migration keeps until it
   # commits. `artifact_versions.decision_id` is the id of the note, `gd_…` or `es_…`, nil
   # for none: a nullable column rewrites no row, and its check is added NOT VALID, so it
   # takes no scan under the lock; `20261117140100` validates it. Every stored version has

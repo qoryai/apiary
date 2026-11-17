@@ -986,7 +986,7 @@ defmodule Apiary.Artifacts do
   end
 
   # A version's `decision` is the public id of a person's note on the held work item
-  # (`Apiary.Stages.Notes`), or nil. A note is never deleted, so the check holds once
+  # (`Apiary.Stages.Notes`), or nil. A note is never deleted, so the check stays true once
   # the version is stored.
   defp decision_kept(_held, nil), do: :ok
 

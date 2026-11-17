@@ -133,9 +133,12 @@ Returns `200` with the work item snapshot:
   there is none. A person's change to an approved output comes first. A change is a
   version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
   stage, that no approval lists, and whose number is higher than that of every version
-  of its artifact that an approval lists. The input is the newest change of the type.
-  Every later run reads that version in place of the approved one, until an approval
-  lists it. `questions` and `review-comments` are never a change.
+  of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
+  a version by a run that a member cancelled are never a change. Each name's change is
+  its highest-numbered one, and the input is the newest of those by time. Every later run
+  reads that version in place of the approved one, until an approval lists it. Where an
+  approval lists two versions of one name, the input is the higher-numbered one.
+  `questions` and `review-comments` are never a change.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
