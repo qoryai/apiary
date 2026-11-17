@@ -4635,4 +4635,230 @@ defmodule Apiary.StagesTest do
                reload(work_item)
     end
   end
+
+  describe "a first attempt, and Verify with no run" do
+    @verify "st_m1mqbeywdg"
+    @on_fast %{"track" => "fast"}
+    @tracks_of_process [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast", "name" => "Fast track"}
+    ]
+
+    # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
+    # ends its sequence when it passes, then plan-the-build and, on Fast track,
+    # write-the-checks; Verify, whose run and whose output `verification` Fast track does
+    # without.
+    defp first_attempt_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast"])),
+          stage(@build, "Build", [
+            %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+            %{"workflow" => "plan-the-build"},
+            %{"workflow" => "write-the-checks", "when" => @on_fast}
+          ]),
+          stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket", "unless" => @on_fast}], %{
+            "outputs" => [
+              %{"type" => "verification", "required" => true, "unless" => @on_fast}
+            ]
+          })
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    end
+
+    defp in_build!(scope, track) do
+      first_attempt_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+      reload(work_item)
+    end
+
+    defp verified_with(type) do
+      fn run, registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            type,
+            [%{filename: "#{type}.md", content_type: "text/markdown", binary: "# Checked"}],
+            name: "main",
+            stage_id: run.stage_id
+          )
+
+        verdict("passed").(run, registered)
+      end
+    end
+
+    test "a passed first attempt ends Build's sequence, and Verify's gate opens with no run and no verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "make-a-small-change", stage_entry: 0} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+
+      assert Enum.map(runs(work_item), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = verifying
+
+      assert Enum.map(runs(verifying), & &1.workflow) == [
+               "explore-a-ticket",
+               "make-a-small-change"
+             ]
+
+      refute escalation(verifying)
+      assert Stages.missing_outputs(verifying) == []
+
+      assert %{state: :at_gate, outputs: [%{type: "verification", required: false}]} =
+               Stages.status(verifying, scope)
+
+      assert {:ok, %WorkItem{state: :closed}} =
+               Stages.approve(scope, verifying, nil, expect_stage: @verify)
+    end
+
+    test "a passed first attempt leaves one skip for each later workflow, until the stage runs again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+
+      assert [
+               %{stage_id: @build, workflow: "plan-the-build", reason: "first_attempt_passed"},
+               %{stage_id: @build, workflow: "write-the-checks", reason: "first_attempt_passed"}
+             ] = skips = Stages.skips(work_item)
+
+      assert Enum.all?(skips, &(&1.cause_entry == "make-a-small-change" and &1.input == nil))
+      assert Enum.all?(skips, &(&1.track == nil and &1.negated == false and &1.round == 1))
+
+      # Approving Build and moving back into it runs the stage again, from its first entry.
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+      assert Enum.count(Stages.skips(verifying), &(&1.stage_id == @build)) == 2
+
+      {:ok, again} = Stages.move(scope, verifying, @build, "Again.", expect_stage: @verify)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = again
+      assert Enum.filter(Stages.skips(again), & &1.reason) == []
+    end
+
+    test "Request changes clears the skips of a first attempt, and its next pass writes them again",
+         %{scope: scope} do
+      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+      assert length(Stages.skips(work_item)) == 2
+      [proposal] = versions(work_item, "proposal")
+
+      {:ok, again} =
+        Stages.request_changes(scope, work_item, "Redo it.", proposal.public_id,
+          expect_stage: @build
+        )
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = again
+      assert Stages.skips(again) == []
+
+      again = end_run!(again, verdict("passed"))
+      assert [_plan, _checks] = Stages.skips(again)
+    end
+
+    test "Another round after a failed check clears the skips of the last loop only",
+         %{scope: scope} do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @tracks_of_process,
+        "stages" => [
+          explore_stage(offering(["standard", "fast"])),
+          stage(
+            @build,
+            "Build",
+            [
+              %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
+              %{"workflow" => "plan-the-build"},
+              %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "check-it"}]}}
+            ],
+            %{"outputs" => [%{"type" => "submission", "required" => true}]}
+          )
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+
+      # The first attempt passes with no submission: the check fails and the stage escalates.
+      work_item = reload(work_item) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+
+      assert ["plan-the-build", "check-it"] ==
+               for(
+                 %{reason: "first_attempt_passed", workflow: w} <- Stages.skips(work_item),
+                 do: w
+               )
+
+      {:ok, again} =
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @build)
+
+      # The loop runs again, so its skip goes; plan-the-build still does not run.
+      assert %DispatchRun{workflow: "check-it"} = newest_run(again)
+
+      assert ["plan-the-build"] ==
+               for(%{reason: "first_attempt_passed", workflow: w} <- Stages.skips(again), do: w)
+    end
+
+    test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
+      work_item = in_build!(scope, "fast")
+      work_item = end_run!(work_item, verdict("changes-requested"))
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+    end
+
+    test "on Standard the first attempt does not run, and Verify still needs verification",
+         %{scope: scope} do
+      work_item = in_build!(scope, "standard")
+
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
+      assert %DispatchRun{workflow: "plan-the-build"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = verifying
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(verifying)
+
+      ended = end_run!(verifying, verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = ended
+      assert %Escalation{cause: :check_failed} = escalation(ended)
+      assert Stages.missing_outputs(ended) == ["verification"]
+
+      assert %{outputs: [%{type: "verification", required: true, check: :missing}]} =
+               Stages.status(ended, scope)
+    end
+
+    test "on Standard, Verify's gate opens once verification is stored", %{scope: scope} do
+      work_item = in_build!(scope, "standard") |> end_run!(verdict("passed"))
+      {:ok, verifying} = Stages.approve(scope, work_item, nil, expect_stage: @build)
+
+      ended = end_run!(verifying, verified_with("verification"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = ended
+      assert Stages.missing_outputs(ended) == []
+    end
+  end
 end
