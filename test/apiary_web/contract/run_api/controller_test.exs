@@ -508,6 +508,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert body["notes"] == [
                %{
+                 "id" => move.public_id,
                  "kind" => "move",
                  "stage_id" => shape,
                  "by" => %{"name" => name},
@@ -516,6 +517,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(move.inserted_at)
                },
                %{
+                 "id" => open.public_id,
                  "kind" => "request_changes",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
