@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.WorkItemLive.Show do
   # One work item, by its number in the workspace: its Ticket tab (`:ticket`), one tab for
   # each stage that runs a workflow and has a run or is the current stage (`:stage`,
-  # `/work/:number/stages/:stage_id`, `ApiaryWeb.WorkItemLive.StageTab`) and its Thread
-  # (`:thread`). The tabs are live actions of this one LiveView, so a tab is a patch and the
+  # `/work/:number/stages/:stage_id`, `ApiaryWeb.WorkItemLive.StageTab`), its Questions
+  # tab (`:questions`, once a question exists) and its Thread (`:thread`). The tabs are live actions of this one LiveView, so a tab is a patch and the
   # header stays. The address with no tab (`:open`) shows the tab the work item opens on
-  # (`home/3`), once, when the address loads. A stage's id in the address is stable, so a
+  # (`home/4`), once, when the address loads: the Questions tab while the work item needs
+  # answers. A stage's id in the address is stable, so a
   # stage renamed by an owner keeps its address.
   #
   # **`/explore`** (`:explore`) is Explore's tab with no stage card. With one, it patches to
@@ -52,8 +53,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # **What a reader does.** Undo, Close, Run Explore again, Run another round, Confirm,
   # and a reply to a review comment on its form page (`?reply=<id>`), each
   # sent with the work item the page last read and the attempt of its latest run, so an
-  # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). Run
-  # another round, from the questions form or the gate of the current stage's tab, sends
+  # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). A
+  # member answers the questions only on the Questions tab. Run another round, from the
+  # questions form of that tab or the gate of the current stage's tab, sends
   # the answers given, one comment on the whole round and the open review comments of
   # that stage in one move, which starts one run (`Apiary.WorkItems.another_round/4`);
   # the open review comments and the comment go only from a reader who may send review
@@ -245,9 +247,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
-            answers_path={
-              tab_path(@current_scope, @number, StageTab.current(@flow) || :explore, @flow)
-            }
+            answers_path={tab_path(@current_scope, @number, :questions)}
             asking={@stage_asking}
             error={@stage_error}
             check={@stage_check}
@@ -265,6 +265,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             can_close={@can.close}
             previous={@previous}
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore, @flow)}
+            questions_path={if @tab != :questions, do: tab_path(@current_scope, @number, :questions)}
             item_noun={@source.item_noun}
             now={@now}
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
@@ -300,8 +301,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 (&reply_path(@current_scope, @number, list_tab(@tab, @flow), @flow, &1))
             }
             reading={reading(@item, @tab, @flow)}
-            explore_path={tab_path(@current_scope, @number, list_tab(@tab, @flow), @flow)}
-            questions_id={questions_id(list_tab(@tab, @flow))}
+            explore_path={tab_path(@current_scope, @number, :questions)}
             level="h2"
             tip="tooltip-right"
           />
@@ -320,11 +320,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               :if={!@flow.explore and needs?(@flow)}
               page={@flow}
               questions={@questions}
-              question_path={
-                if @tab != questions_tab(@flow),
-                  do: tab_path(@current_scope, @number, questions_tab(@flow), @flow)
-              }
-              questions_id={questions_id(questions_tab(@flow))}
+              question_path={if @tab != :questions, do: tab_path(@current_scope, @number, :questions)}
               class="mb-3"
             />
             <StageComponents.stage_runs
@@ -346,6 +342,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             ticket_path={tab_path(@current_scope, @number, :ticket)}
             explore_path={tab_path(@current_scope, @number, :explore)}
             stages={stage_tabs(@current_scope, @number, @flow)}
+            questions_path={asked?(@questions) && tab_path(@current_scope, @number, :questions)}
+            open_questions={Enum.count(@questions, &(&1.state == :open))}
             thread_path={tab_path(@current_scope, @number, :thread)}
             comment_count={@comment_count}
             item_noun={@source.item_noun}
@@ -369,7 +367,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             earlier_take_ins={@view.take_ins}
             proposal={@proposal}
             questions={@view.questions}
-            questions_version={@view.questions_version}
+            questions_path={tab_path(@current_scope, @number, :questions)}
             review_comments={@view.review_comments}
             can_act={@can.act and acts?(@tab, @flow, @item)}
             can_send={@can.send and acts?(@tab, @flow, @item)}
@@ -394,7 +392,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             cancel={@cancel}
           >
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
-              <StageComponents.needs_block page={@flow} questions={@questions} />
+              <StageComponents.needs_block
+                page={@flow}
+                questions={@questions}
+                question_path={tab_path(@current_scope, @number, :questions)}
+              />
             </:needs>
             <:artifacts :if={@flow && (@flow.explore or !@flow.at_explore)}>
               <.artifacts_section
@@ -422,6 +424,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             take_ins={@view.take_ins}
             outputs={@frames}
             questions={@view.questions}
+            questions_path={tab_path(@current_scope, @number, :questions)}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}
             can_act={@can.act and acts?(@tab, @flow, @item)}
@@ -462,6 +465,29 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               />
             </:row>
           </.stage_tab>
+          <.questions_tab
+            :if={@tab == :questions}
+            number={@number}
+            questions={@view.questions}
+            stages={question_stages(@flow)}
+            fallback={question_fallback(@flow)}
+            stage={stage_now(@flow)}
+            stage_id={@flow && @flow.stage.id}
+            form={answering?(@can, @item)}
+            answers={@answers}
+            comment={@comment}
+            errors={@errors}
+            form_error={@form_error}
+            submits={@submits}
+            move_error={answering?(@can, @item) && @move_error}
+            commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
+            open_comments={
+              if @can.send, do: Enum.count(@view.review_comments, &(&1.state == :open)), else: 0
+            }
+            change={@can.change}
+            updates={question_updates(@flow)}
+            now={@now}
+          />
           <.thread :if={@tab == :thread}>
             <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
               <Comments.comment_line
@@ -636,7 +662,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # An address that is not the tab it shows. `/explore` under the workflow model patches to
   # the tab of the first stage with a `proposal` output, with its query, or to the work
   # item's address for none; on a first draw it shows that tab, so a link to it loads
-  # (`current_tab/1`). A stage with no tab here patches to the work item's address.
+  # (`current_tab/1`). A stage with no tab here, and `/questions` of a work item with no
+  # question, patch to the work item's address.
   defp addressed(%{redirected: redirected} = socket, _params) when not is_nil(redirected),
     do: socket
 
@@ -653,6 +680,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             ),
           else: socket
     end
+  end
+
+  defp addressed(%{assigns: %{live_action: :questions, questions: questions}} = socket, _params) do
+    if asked?(questions),
+      do: socket,
+      else: push_patch(socket, to: tab_path(scope(socket), socket.assigns.number, :open))
   end
 
   defp addressed(%{assigns: %{live_action: :stage, flow: flow, tab: tab}} = socket, _params) do
@@ -767,12 +800,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp ticketed(socket), do: socket
 
-  # The tab the work item opens on. With a stage card: the tab of its current stage while it
+  # The tab the work item opens on. The Questions tab, while the work item needs answers: its
+  # stage waits for them (`flow.state`) and a question is open, or, with no stage card,
+  # Explore waits for them. Else, with a stage card: the tab of its current stage while it
   # is live, whatever Explore's status, because a moved-back work item has a confirmation and
   # a stopped run stops at its stage; else the Ticket tab. A test work item has no ticket, so
   # it opens on that tab even after it ended, else on the Thread. With none, Explore's for a
   # test work item and for an open work item with no stage, which is at Explore too
   # (`at_explore?/2`), by its status; else the Ticket tab.
+  defp home(row, status, flow, questions) do
+    if open?(questions) and waits_for_answers?(status, flow),
+      do: :questions,
+      else: home(row, status, flow)
+  end
+
+  defp waits_for_answers?(status, nil), do: status == :questions
+  defp waits_for_answers?(_status, flow), do: flow.state == :waiting_answers and not flow.ended
+
   defp home(%{test: true}, _status, nil), do: :explore
   defp home(%{test: true}, _status, flow), do: StageTab.current(flow) || :thread
 
@@ -947,9 +991,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp spend("answer", params, socket) do
     if round_sends?(socket, drafted(params), comment_of(params)) do
+      # The questions form names the stage that waits, on its button and in its dialog.
+      {title, action} =
+        if socket.assigns.tab == :questions do
+          stage = stage_now(socket.assigns.flow)
+
+          {gettext("Run another round of %{stage}?", stage: stage),
+           gettext("Run another round of %{stage}", stage: stage)}
+        else
+          {gettext("Run another round?"), gettext("Run another round")}
+        end
+
       SpendDialog.ask("answer", params,
-        title: gettext("Run another round?"),
-        action: gettext("Run another round"),
+        title: title,
+        action: action,
         line: run_line(socket, :next_run),
         return_to: round_button(socket)
       )
@@ -974,14 +1029,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp spend(_event, _params, _socket), do: nil
 
-  # The Run another round button the dialog's focus goes back to: the gate's or the
-  # questions form's, on Explore's tab or a stage's.
+  # The Run another round button the dialog's focus goes back to: the gate's, on Explore's
+  # tab or a stage's, or the questions form's, on the Questions tab.
+  defp round_button(%{assigns: %{tab: :questions}}), do: "work-item-questions-open-go"
+
   defp round_button(socket) do
     tab = if is_binary(socket.assigns.tab), do: "work-item-tab", else: "work-item-explore"
-
-    if round_status(socket) == :confirm,
-      do: "#{tab}-gate-send",
-      else: "#{tab}-questions-go"
+    "#{tab}-gate-send"
   end
 
   defp stage_spend("stage_approve", params, socket) do
@@ -1997,7 +2051,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
       assign(socket,
         row: row,
-        home: home(row, explore.status, flow),
+        home: home(row, explore.status, flow, page.questions),
         now: now,
         page_title: gettext("Work item #%{number}", number: row.number),
         source: words(row, source),
@@ -2652,12 +2706,32 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp run_of_tab?(run, tab, flow),
     do: StageTab.key(flow, run[:stage_id] || flow.explore_id) == tab
 
-  # The tab with the current stage's questions, which the block "What the run needs from
-  # you" links to.
-  defp questions_tab(flow), do: StageTab.current(flow) || :explore
+  # Whether the work item has a question the Questions tab shows: a run's decision that no
+  # member answered is not one, it is in the Decisions frame of its stage's tab, unless a
+  # question is open.
+  defp asked?(questions), do: Enum.any?(questions, &(not decision?(&1)))
 
-  defp questions_id(:explore), do: "work-item-explore-questions"
-  defp questions_id(_tab), do: "work-item-tab-questions"
+  defp open?(questions), do: Enum.any?(questions, &(not decision?(&1) and &1.state == :open))
+
+  # Whether the reader may answer the open questions now: the work item waits for answers.
+  defp answering?(can, item), do: can.act and item.status == :questions
+
+  # The stages of the Questions tab's answered questions, in the process order: the stages
+  # of the process, or Explore alone with no stage card, whose questions have no stage.
+  defp question_stages(nil), do: [%{id: nil, name: gettext("Explore")}]
+  defp question_stages(flow), do: Enum.map(flow.stages, &%{id: &1.id, name: &1.name})
+
+  # The stage whose group holds a question of a stage that the process no longer has,
+  # as a run with no stage belongs to Explore's.
+  defp question_fallback(nil), do: nil
+  defp question_fallback(flow), do: flow.explore_id
+
+  # What the next run updates, where the questions wait: Explore's proposal, or the outputs
+  # of a later stage.
+  defp question_updates(nil), do: :proposal
+
+  defp question_updates(flow),
+    do: if(StageTab.current(flow) == :explore, do: :proposal, else: :outputs)
 
   # The stage tabs `work_item_tabs/1` draws; nil with no stage card, for Explore's alone.
   defp stage_tabs(_scope, _number, nil), do: nil
@@ -2698,6 +2772,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp tab_path(scope, number, :explore),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/explore"
+
+  defp tab_path(scope, number, :questions),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/questions"
 
   defp tab_path(scope, number, :thread),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/thread"

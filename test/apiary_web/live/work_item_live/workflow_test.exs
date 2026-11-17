@@ -1608,7 +1608,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       for {result, shows} <- [
             {understood_result(), "#work-item-explore-proposal"},
-            {questions_result(), "#work-item-explore-questions"},
+            {questions_result(), "#work-item-explore-questions-line"},
             {nil, "#work-item-explore-none"}
           ],
           {state, status} <- [handed_over: :running, queued: :queued] do
@@ -1883,7 +1883,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(
                view,
-               ~s|#work-item-step a[href$="/stages/#{@explore}"]|,
+               ~s|#work-item-step a[href$="/questions"]|,
                "Answer the questions"
              )
 
@@ -1901,10 +1901,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      # Build runs no workflow here, so it has no tab, and the link goes to Explore's.
+      # The link goes to the Questions tab.
       assert has_element?(
                view,
-               ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/stages/#{@explore}"]|
+               ~s|#work-item-stage-answers[href="#{page(scope, work_item.number)}/questions"]|
              )
     end
 
@@ -2111,7 +2111,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(
                view,
-               ~s|#work-item-needs-point-1 a[href="#work-item-explore-questions-question-2"]|,
+               ~s|#work-item-needs-point-1 a[href="#{page(scope, work_item.number)}/questions#work-item-questions-question-2"]|,
                "question 2"
              )
 
@@ -2122,17 +2122,20 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-needs textarea")
       refute has_element?(view, "#work-item-stage-escalation-another")
 
-      # The block, then the proposal of run 1, from an earlier round, then the questions.
-      [needs, proposal, questions] =
-        for id <- [
-              "work-item-needs",
-              "work-item-explore-proposal",
-              "work-item-explore-questions-question-1"
-            ],
+      # The block, then the proposal of run 1, from an earlier round. The questions are on
+      # the Questions tab, as one line here.
+      [needs, proposal] =
+        for id <- ["work-item-needs", "work-item-explore-proposal"],
             do: :binary.match(html, ~s|id="#{id}"|) |> elem(0)
 
-      assert needs < proposal and proposal < questions
+      assert needs < proposal
       assert html =~ "Version 1 · from an earlier round"
+      refute has_element?(view, "#work-item-explore-questions-question-1")
+      assert has_element?(view, "#work-item-explore-questions-line")
+
+      {:ok, questions_view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
+      assert has_element?(questions_view, "#work-item-questions-question-1")
+      assert has_element?(questions_view, "#work-item-questions-question-2")
 
       # The step card keeps its line, and leads to the block.
       assert has_element?(
@@ -2411,8 +2414,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
       assert has_element?(view, "#work-item-explore-gate-go", "Approve")
-      # q1 shows only in take in 1's fold, not in a Questions frame.
-      refute has_element?(view, "#work-item-explore-questions")
+      # q1 shows in take in 1's fold, and on the Questions tab; Explore's tab has no form.
+      refute has_element?(view, "#work-item-questions-open-form")
       assert has_element?(view, "#work-item-explore-take-ins-1", "Which basket?")
     end
 
@@ -2420,9 +2423,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
          %{conn: conn, scope: scope} do
       work_item = second_take_in!(scope)
       work_item = end_run!(work_item, questions_result(["Which sale?"]))
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
 
-      q = "#work-item-explore-questions"
+      q = "#work-item-questions-open"
       assert has_element?(view, "#{q}-form [name^='answers[q2]']")
       refute has_element?(view, "#{q}-form [name^='answers[q1]']")
 
@@ -2441,6 +2444,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
       assert has_element?(view, "#work-item-explore-gate-go", "Approve")
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
       refute has_element?(view, "#{q}-form")
     end
 
@@ -2480,10 +2485,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert %{status: :questions} = WorkItems.explore(scope, work_item)
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
-      q = "#work-item-explore-questions"
-      assert has_element?(view, "#{q}-question-1", "Which basket?")
-      assert has_element?(view, "#{q}-form [name^='answers[q1]']")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
+      assert has_element?(view, "#work-item-questions-question-1", "Which basket?")
+      assert has_element?(view, "#work-item-questions-open-form [name^='answers[q1]']")
     end
   end
 
@@ -2840,15 +2844,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       runs = count.()
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
 
       view
-      |> element("#work-item-explore-questions-form")
+      |> element("#work-item-questions-open-form")
       |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
 
       confirm_spend(view)
 
-      refute has_element?(view, "#work-item-explore-questions-error")
+      refute has_element?(view, "#work-item-questions-open-error")
       assert count.() == runs + 1
     end
 
@@ -2863,15 +2867,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       runs =
         Repo.aggregate(from(d in DispatchRun, where: d.work_item_id == ^work_item.id), :count)
 
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
 
       view
-      |> element("#work-item-explore-questions-form")
+      |> element("#work-item-questions-open-form")
       |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
 
       assert has_element?(
                view,
-               "#work-item-explore-questions-error[role=alert]",
+               "#work-item-questions-open-error[role=alert]",
                "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
              )
 
@@ -2899,17 +2903,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # no stage card.
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.HidesNamed)
       :ok = Apiary.EditionStubs.HidesNamed.put([:workflow_model])
-      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
       refute has_element?(view, "#work-item-stage")
       assert open_review_comments(work_item) == ["c1"]
 
       view
-      |> element("#work-item-explore-questions-form")
+      |> element("#work-item-questions-open-form")
       |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
 
       assert has_element?(
                view,
-               "#work-item-explore-questions-error[role=alert]",
+               "#work-item-questions-open-error[role=alert]",
                "Choose an option or write an answer. If nobody knows, say so: Explore reads that too."
              )
 
@@ -3381,10 +3385,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                  "#{selector} for #{inspect(action)}"
         end
 
-        {:ok, view, _html} = live(conn, page(scope, asked.number) <> "/explore")
+        {:ok, view, _html} = live(conn, page(scope, asked.number) <> "/questions")
         row = Repo.get!(WorkItem, asked.id)
         assert Access.can?(reader, :"work_item.answer", row)
-        assert has_element?(view, "#work-item-explore-questions-form")
+        assert has_element?(view, "#work-item-questions-open-form")
       end
     end
 
@@ -3447,9 +3451,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, _} = WorkItems.send_review_comments(listed, work_item, 1)
       work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which refund?"]))
       send(view.pid, {:work_items_changed, [work_item.public_id]})
+      render_patch(view, page(scope, work_item.number) <> "/questions")
 
-      assert has_element?(view, "#work-item-explore-questions-form")
-      refute has_element?(view, "#work-item-explore-questions-error")
+      assert has_element?(view, "#work-item-questions-open-form")
+      refute has_element?(view, "#work-item-questions-open-error")
 
       # With the review comment still open, the member sends every answer blank and sees
       # the blank-answer error. The approver sends the review comments again, and the run
@@ -3457,12 +3462,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert open_review_comments(work_item) == ["c1"]
 
       view
-      |> element("#work-item-explore-questions-form")
+      |> element("#work-item-questions-open-form")
       |> render_submit(%{"number" => "#{work_item.number}", "answers" => %{}})
 
       assert has_element?(
                view,
-               "#work-item-explore-questions-error",
+               "#work-item-questions-open-error",
                "Choose an option or write an answer."
              )
 
@@ -3470,8 +3475,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = end_run!(Repo.get!(WorkItem, work_item.id), questions_result(["Which card?"]))
       send(view.pid, {:work_items_changed, [work_item.public_id]})
 
-      assert has_element?(view, "#work-item-explore-questions-form", "Which card?")
-      refute has_element?(view, "#work-item-explore-questions-error")
+      assert has_element?(view, "#work-item-questions-open-form", "Which card?")
+      refute has_element?(view, "#work-item-questions-open-error")
       refute render(view) =~ "Choose an option or write an answer."
     end
 

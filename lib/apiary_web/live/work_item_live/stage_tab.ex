@@ -114,7 +114,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
-  # On the Ticket tab and the Thread, `review_comments` are the current stage's. A version
+  # On the Ticket tab, the Questions tab and the Thread, `review_comments` are the current
+  # stage's, and `questions` are all of them. A version
   # with no stage belongs to Explore, as a run with none does.
   @spec view(atom | String.t(), map | nil, map) :: map
   def view(_tab, nil, read) do
@@ -135,7 +136,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     }
   end
 
-  def view(tab, flow, read) when tab in [:ticket, :thread] do
+  def view(tab, flow, read) when tab in [:ticket, :questions, :thread] do
     artifacts = artifacts(flow, flow.stage, read.artifacts)
 
     flow
@@ -406,11 +407,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # frames/2 is the output frames of `stage`, in its order, with the newest version a run of
   # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:}`,
   # the first one `open`. A type with no such version has no frame, nor do the review
-  # comments, the document a review comment is written to.
+  # comments, the document a review comment is written to, and the questions, which have
+  # their own tab.
   @spec frames(map, %{String.t() => pos_integer}) :: [map]
   def frames(stage, newest) do
     stage.outputs
-    |> Enum.filter(&(Map.has_key?(newest, &1) and &1 != "review-comments"))
+    |> Enum.filter(&(Map.has_key?(newest, &1) and &1 not in ["review-comments", "questions"]))
     |> Enum.with_index()
     |> Enum.map(fn {type, place} -> %{type: type, version: newest[type], open: place == 0} end)
   end

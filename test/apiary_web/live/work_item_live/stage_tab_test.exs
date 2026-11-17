@@ -104,6 +104,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   defp stage(scope, number, id \\ @shape), do: page(scope, number, "/stages/#{id}")
 
+  defp questions(scope, number), do: page(scope, number, "/questions")
+
   # The live action and the stage of the page's address, once a patch at the join has landed.
   defp address(view) do
     %{live_action: action, tab: tab} = :sys.get_state(view.pid).socket.assigns
@@ -753,7 +755,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, html} = live(conn, stage(scope, work_item.number))
 
-      assert html =~ "A question of Shape?"
+      # The questions are on the Questions tab; Shape's tab counts them and links there.
+      refute html =~ "A question of Shape?"
+
+      assert has_element?(
+               view,
+               ~s|#work-item-tab-questions-line a[href="#{questions(scope, work_item.number)}"]|,
+               "Questions tab"
+             )
+
+      {:ok, questions_view, _html} = live(conn, questions(scope, work_item.number))
+      assert has_element?(questions_view, "#work-item-questions-open", "A question of Shape?")
       assert has_element?(view, "#work-item-record", "1 run")
       assert has_element?(view, "#work-item-record", "spec v1")
       refute has_element?(view, "#work-item-artifact-list", "proposal")
@@ -1254,11 +1266,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert escalations(work_item) == [{nil, nil}]
       assert gate_entries(work_item) == []
 
-      # On Shape's tab the send shows the line of a member who is not an approver.
+      # On the Questions tab the send shows the line of a member who is not an approver.
       {:ok, view, _html} =
-        live(log_in_user(build_conn(), member.user), stage(scope, work_item.number))
+        live(log_in_user(build_conn(), member.user), questions(scope, work_item.number))
 
-      q = "#work-item-tab-questions"
+      q = "#work-item-questions-open"
 
       view
       |> element("#{q}-form")
@@ -1291,7 +1303,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                gate_entries(work_item)
     end
 
-    test "Shape waiting for an answer: the needs block links the question on Shape's tab",
+    test "Shape waiting for an answer: the needs block links the question on the Questions tab",
          %{conn: conn, scope: scope} do
       work_item = at_shape!(scope)
 
@@ -1322,31 +1334,43 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         |> reload()
 
       assert work_item.stage_state == :waiting_answers
-      anchor = "#work-item-tab-questions-question-1"
+      anchor = "#work-item-questions-question-1"
       point = "#work-item-needs-point-1"
 
-      # From the Ticket tab, the link opens Shape's tab at the question.
-      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/ticket"))
-      href = stage(scope, work_item.number) <> anchor
-      assert has_element?(view, ~s|#{point} a[href="#{href}"]|, "question 1")
+      # From the Ticket tab and Shape's tab, the link opens the Questions tab at the question.
+      href = questions(scope, work_item.number) <> anchor
 
-      # On Shape's tab, the link is the anchor of the question, which the tab has.
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      for address <- [page(scope, work_item.number, "/ticket"), stage(scope, work_item.number)] do
+        {:ok, view, _html} = live(conn, address)
+        assert has_element?(view, ~s|#{point} a[href="#{href}"]|, "question 1")
+      end
+
+      # On the Questions tab, the link is the anchor of the question, which the tab has.
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
       assert has_element?(view, ~s|#{point} a[href="#{anchor}"]|, "question 1")
       assert has_element?(view, anchor)
     end
 
-    test "Shape's tab waiting for answers: the questions form, the comment and " <>
+    test "the Questions tab waiting for answers: the questions form, the comment and " <>
            "Run another round",
          %{conn: conn, scope: scope} do
       work_item = waiting!(scope, ["Which basket?"])
-      {:ok, view, html} = live(conn, stage(scope, work_item.number))
-      q = "#work-item-tab-questions"
+      {:ok, view, html} = live(conn, questions(scope, work_item.number))
+      q = "#work-item-questions-open"
 
       assert has_element?(view, "#{q}-form")
-      assert has_element?(view, "#{q}-go", "Run another round")
+      assert has_element?(view, "#{q}-go", "Run another round of Shape")
       assert has_element?(view, "#{q}-comment")
-      assert html =~ "That run reads your answers and your comment, and updates the outputs."
+
+      assert has_element?(
+               view,
+               "label[for=work-item-questions-open-comment]",
+               "Comment on Shape's outputs"
+             )
+
+      assert html =~
+               "That run reads your answers and your comment, and updates Shape&#39;s outputs."
+
       refute html =~ "updates the proposal"
 
       view
@@ -1356,8 +1380,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         "answers" => %{"q1" => %{"note" => "The cart."}}
       })
 
-      assert has_element?(view, "#spend-dialog-title", "Run another round?")
-      assert has_element?(view, ~s|#spend-dialog[data-return="work-item-tab-questions-go"]|)
+      assert has_element?(view, "#spend-dialog-title", "Run another round of Shape?")
+      assert has_element?(view, ~s|#spend-dialog[data-return="work-item-questions-open-go"]|)
       confirm_spend(view)
 
       assert %DispatchRun{state: :waiting, stage_id: @shape} = newest_run(work_item)
@@ -1389,13 +1413,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert %DispatchRun{state: :waiting, stage_id: @shape} = newest_run(work_item)
     end
 
-    test "Explore's tab after a move back: its form runs Explore's next round", %{
+    test "the Questions tab after a move back: its form runs Explore's next round", %{
       conn: conn,
       scope: scope
     } do
       {work_item, _spec_comment} = moved_back_waiting!(scope)
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
-      q = "#work-item-explore-questions"
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+      q = "#work-item-questions-open"
+
+      assert has_element?(view, "#{q}-go", "Run another round of Explore")
 
       view
       |> element("#{q}-form")
@@ -1598,9 +1624,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "the stage card's link to the questions" do
-    test "goes to the current stage's tab from any tab", %{conn: conn, scope: scope} do
+    test "goes to the Questions tab from any tab", %{conn: conn, scope: scope} do
       work_item = waiting!(scope, ["A question of Shape?"])
-      to = stage(scope, work_item.number)
+      to = questions(scope, work_item.number)
 
       for address <- [
             stage(scope, work_item.number, @explore),

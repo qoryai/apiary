@@ -526,10 +526,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   def started_no_run?(_page), do: false
 
+  # The questions are on the Questions tab, so the list of outputs leaves them out.
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
-    do: Enum.filter(outputs, & &1.version_id)
+    do: Enum.filter(outputs, &(&1.version_id && &1.type != "questions"))
 
-  defp shown_outputs(%{outputs: outputs}), do: outputs
+  defp shown_outputs(%{outputs: outputs}), do: Enum.reject(outputs, &(&1.type == "questions"))
 
   defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
   defp check_words(%{check: :passed}), do: gettext("Passed")
@@ -637,7 +638,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
-  with "question N" linked to the question on the current stage's tab, or "Run another
+  with "question N" linked to the question on the Questions tab, or "Run another
   round.", or the point's fix line in its place. While the stage is escalated, a reader who
   may decide finds the note field and Run another round under the points; they belong to
   the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
@@ -655,8 +656,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     doc: "the path of the tab where the questions are; empty on that tab"
 
   attr :questions_id, :string,
-    default: "work-item-explore-questions",
-    doc: "the id of that tab's questions frame, before `-question-N`"
+    default: "work-item-questions",
+    doc: "the id before `-question-N` of a question on that tab"
 
   attr :class, :string, default: nil
 
@@ -1038,9 +1039,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc false
   # output_versions/1 is the summary's pieces of the record block at a stage after Explore:
   # "spec v1" for each of the current stage's outputs that has a version, in the stage's
-  # order. An output with no version has no piece, as Explore's proposal and questions do.
+  # order. An output with no version has no piece, as Explore's proposal does. The
+  # questions have none: they are on the Questions tab.
   def output_versions(%{outputs: outputs}) do
-    for %{type: type, version: number} when is_integer(number) <- outputs,
+    for %{type: type, version: number} when is_integer(number) and type != "questions" <- outputs,
         do: version_words(type, number)
   end
 
