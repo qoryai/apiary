@@ -23,7 +23,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
      "key_a_model_choice_by_workflow"},
     {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
      "keep_the_fallbacks_of_a_model_choice"},
-    {20_261_118_100_000, Apiary.Repo.Migrations.NameTheModelTierBalanced,
+    {20_261_118_120_000, Apiary.Repo.Migrations.NameTheModelTierBalanced,
      "name_the_model_tier_balanced"}
   ]
 

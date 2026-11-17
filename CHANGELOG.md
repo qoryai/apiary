@@ -2308,7 +2308,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
-- `model_choices` (20261118100000): the check `model_choice_tiers_valid` accepts the
+- `model_choices` (20261118120000): the check `model_choice_tiers_valid` accepts the
   tier `balanced` in place of `fast`. The migration deletes each model choice whose tier
   map has `fast`, with its fallbacks, and moves no data. Rolling back restores the check
   of `fast` and deletes each model choice whose tier map has `balanced`, with its
