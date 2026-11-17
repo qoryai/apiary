@@ -14897,6 +14897,16 @@
   .q-xp-frame-fold[open] > summary .q-xp-chev {
     rotate: 90deg;
   }
+  /* The commits of a submission: a fold inside a row of the Submissions list. */
+  .q-sub-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-sub-fold > summary > .q-sub-chev {
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-sub-fold[open] > summary > .q-sub-chev {
+    rotate: 90deg;
+  }
   .q-xp-frame-fold:not([open]) > summary .q-xp-cap {
     border-bottom: 0;
   }

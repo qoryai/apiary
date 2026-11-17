@@ -54,6 +54,7 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Policy.RequiredHosts
   alias Apiary.Runs
   alias Apiary.Runs.{Cancel, Preparation, Record, Run, TargetWrite}
+  alias Apiary.Submissions
   alias Apiary.Targets
   alias Apiary.Runs.Record.{Overview, Timeline}
   alias ApiaryWeb.ConnectionLive.Rules
@@ -715,6 +716,7 @@ defmodule ApiaryWeb.RunLive.Show do
         run_state={Run.shown_state(@run)}
         cancelling={cancelling?(@run)}
         wall={is_binary(@run.wall)}
+        submissions={@submissions}
         session_open={@focused && row_session(@preparation, focused_row(@index, @focused))}
       >
         <:session
@@ -1738,6 +1740,7 @@ defmodule ApiaryWeb.RunLive.Show do
        opened_for: {nil, nil},
        preparation: nil,
        preparation_settled: false,
+       submissions: nil,
        outputs: [],
        overview: [],
        overview_cx: false,
@@ -3965,7 +3968,8 @@ defmodule ApiaryWeb.RunLive.Show do
       preparation_settled:
         PreparationComponents.settled?(preparation, alive?(run)) or
           socket.assigns.index.session_items > 0,
-      machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
+      machine_log: machine_log(scope, preparation, socket.assigns.machine_log),
+      submissions: Submissions.for_run(scope, run, preparation.outputs)
     )
     |> assign_clean_up()
     |> resend_window(was)

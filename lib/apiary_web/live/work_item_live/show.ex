@@ -124,7 +124,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
-  alias Apiary.{WorkItems, WorkspaceSetup}
+  alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.ExploreView
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
@@ -421,6 +421,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            submissions={@submissions}
             questions={@view.questions}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}
@@ -589,6 +590,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           submissions: nil,
            frame_texts: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
@@ -2113,10 +2115,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         Map.put(frame, :read, Map.get(texts, {type, version}, :unread))
       end)
 
-    assign(socket, frames: frames, frame_texts: texts)
+    assign(socket, frames: frames, frame_texts: texts, submissions: submissions(socket, frames))
   end
 
-  defp framed(socket), do: assign(socket, :frames, [])
+  defp framed(socket), do: assign(socket, frames: [], submissions: nil)
+
+  # The Submissions list, in place of the frame of the submission type, on the tab of a
+  # stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab and where the
+  # work item has no submission to list. The rows have the address of their run's page where
+  # the reader may read runs (`Apiary.Submissions.list/4`).
+  defp submissions(%{assigns: %{view: %{stage: stage}, row: row} = assigns} = socket, frames) do
+    type = if frames != [], do: Submissions.type(row)
+
+    with true <-
+           is_binary(type) and type in stage.outputs and Enum.any?(frames, &(&1.type == type)),
+         [_row | _more] = rows <- Submissions.list(row, type, assigns.artifacts) do
+      scope = scope(socket)
+      ctx = %{scope: scope, readable: View.readable(scope, Enum.map(rows, & &1.workspace_id))}
+
+      rows =
+        Enum.map(rows, fn row ->
+          Map.put(
+            row,
+            :path,
+            View.run_path(ctx, %{number: row.run, workspace_id: row.workspace_id})
+          )
+        end)
+
+      names = Submissions.system_names(assigns.row, Submissions.draft_systems(rows))
+      %{type: type, rows: rows, names: names}
+    else
+      _none -> nil
+    end
+  end
 
   # The member of a frame's approval (`StageTab.approved/3`) as the components show a
   # person (`View.person/2`), Former member for one whose account is gone: read for that

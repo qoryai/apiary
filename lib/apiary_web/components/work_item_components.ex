@@ -95,6 +95,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.RunCancelComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.SubmissionComponents
   alias ApiaryWeb.StagesLive.Words, as: StagesWords
   alias ApiaryWeb.WorkItemLive.StageComponents
 
@@ -2537,6 +2538,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
+
+  attr :submissions, :map,
+    default: nil,
+    doc:
+      "the Submissions list in place of the frame of the type it is for (`ApiaryWeb.SubmissionComponents.frame/1`): `%{type:, rows:, names:}`, nil for none"
+
   attr :questions, :list, default: []
   attr :review_comments, :list, default: []
   attr :current, :boolean, default: false, doc: "whether it is the current stage's tab"
@@ -2702,14 +2709,25 @@ defmodule ApiaryWeb.WorkItemComponents do
         open_comments={@sendable}
         updates={:outputs}
       />
-      <.output_frame
-        :for={output <- @outputs}
-        id={"#{@id}-output-#{output.type}"}
-        number={@work_item.number}
-        output={output}
-      >
-        {render_slot(@row, output.type)}
-      </.output_frame>
+      <%= for output <- @outputs do %>
+        <SubmissionComponents.frame
+          :if={@submissions && output.type == @submissions.type}
+          id={"#{@id}-output-#{output.type}"}
+          rows={@submissions.rows}
+          open={output.open}
+          names={@submissions.names}
+          stage_names={@stage_names}
+          now={@now}
+        />
+        <.output_frame
+          :if={!(@submissions && output.type == @submissions.type)}
+          id={"#{@id}-output-#{output.type}"}
+          number={@work_item.number}
+          output={output}
+        >
+          {render_slot(@row, output.type)}
+        </.output_frame>
+      <% end %>
       <.decisions_frame
         :if={@decisions_frame != []}
         id={"#{@id}-decisions"}

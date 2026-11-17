@@ -1,0 +1,656 @@
+defmodule Apiary.SubmissionsTest do
+  # The rows of a work item's submissions (`Apiary.Submissions`): one for each version of
+  # the type in `submit.type` of the process version, with the commits of the run, the
+  # `Base` line from the earlier submissions, the text of each change from the build
+  # plan, and every stored member read as untrusted. Not async: the store's root is the
+  # application's setting.
+  use Apiary.DataCase, async: false
+
+  import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures
+  import Apiary.WorkItemsFixtures
+
+  alias Apiary.{Artifacts, Submissions}
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Artifacts.Type
+  alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.Stages.GateDecision
+
+  @moduletag :tmp_dir
+  @moduletag needs: [:workflow_model, :factory]
+
+  @build "st_6ns22c4pav"
+  @submit %{"type" => "submission", "send" => "end_of_run"}
+  @head String.duplicate("a1", 20)
+  @base String.duplicate("9f", 20)
+  @change String.duplicate("4c", 20)
+  @fix_one String.duplicate("7e", 20)
+  @plan """
+  ## Summary
+
+  Dates at checkout.
+
+  ## Deliverables
+
+  | Id | Change | Criteria | Files | Check |
+  |---|---|---|---|---|
+  | d-1 | Compute the delivery date | AC-1, "Date" | `src/date.ts` | `tests/date.test.ts` |
+  | d-2 | Show the dates at checkout | AC-2, "Shown" | `src/page.tsx` | scenario-1 |
+
+  ## Commands
+
+  | Kind | Command | Result file | Source |
+  |---|---|---|---|
+  | full | `npm test` | none | found |
+  """
+
+  setup %{tmp_dir: tmp_dir} do
+    previous = Application.get_env(:apiary, :artifacts_dir)
+    Application.put_env(:apiary, :artifacts_dir, Path.join(tmp_dir, "store"))
+    on_exit(fn -> Application.put_env(:apiary, :artifacts_dir, previous) end)
+
+    scope = without_template_types(scope_fixture())
+    work_item = work_item_fixture(scope)
+    %{dispatch_run: first, run: first_run} = explore_run_fixture(work_item, state: :handed_over)
+    %{dispatch_run: second, run: second_run} = explore_run_fixture(work_item, state: :handed_over)
+
+    for {name, view} <- [{"submission", "structured"}, {"build-plan", "document"}] do
+      {:ok, _type} =
+        Artifacts.create_type(
+          scope,
+          scope.workspace,
+          Map.merge(%{"name" => name, "base_view" => view}, definition(view))
+        )
+    end
+
+    ctx = %{
+      scope: scope,
+      work_item: work_item,
+      first: first,
+      second: second,
+      first_number: first_run.number,
+      second_number: second_run.number
+    }
+
+    submits!(ctx, @submit)
+  end
+
+  defp definition("structured"), do: %{"json_schema" => %{"type" => "object"}}
+  defp definition("document"), do: %{"size_limit" => 1_048_576, "max_files" => 1}
+
+  defp without_template_types(%{workspace: %{id: id}} = scope) do
+    Repo.delete_all(from t in Type, where: t.workspace_id == ^id)
+    Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [shown_standard_types: nil])
+    %{scope | workspace: Repo.get!(Workspace, id)}
+  end
+
+  # The process version of the runs, saved once, with `submit` in its template (nil for
+  # none). Returns the runs read again.
+  defp submits!(%{scope: scope, first: first, second: second} = ctx, submit) do
+    version =
+      case Repo.get(DispatchRun, first.id).process_version_id do
+        nil ->
+          {:ok, version} =
+            Apiary.Processes.save(scope, scope.workspace, %{
+              "schema" => "qory.process/v1",
+              "machine" => "default",
+              "stages" => [
+                %{
+                  "id" => @build,
+                  "name" => "Build",
+                  "inputs" => [],
+                  "sequence" => [%{"workflow" => "build-it"}],
+                  "outputs" => [],
+                  "gate" => %{"kind" => "person", "approvers" => "members"}
+                }
+              ]
+            })
+
+          {2, _rows} =
+            Repo.update_all(from(d in DispatchRun, where: d.id in ^[first.id, second.id]),
+              set: [process_version_id: version.id]
+            )
+
+          version
+
+        id ->
+          Repo.get!(ProcessVersion, id)
+      end
+
+    template = %{"commit" => String.duplicate("a", 40)}
+    template = if submit, do: Map.put(template, "submit", submit), else: template
+
+    {1, _rows} =
+      Repo.update_all(from(v in ProcessVersion, where: v.id == ^version.id),
+        set: [template: template]
+      )
+
+    %{ctx | first: Repo.reload!(first), second: Repo.reload!(second)}
+  end
+
+  defp json(value),
+    do: [
+      %{
+        filename: "submission.json",
+        content_type: "application/json",
+        binary: Jason.encode!(value)
+      }
+    ]
+
+  defp plan!(ctx, run, markdown \\ @plan) do
+    {:ok, version} =
+      Artifacts.push(
+        {:run, run},
+        ctx.work_item,
+        "build-plan",
+        [%{filename: "build-plan.md", content_type: "text/markdown", binary: markdown}],
+        stage_id: @build
+      )
+
+    version
+  end
+
+  defp store!(ctx, run, value, opts \\ []) do
+    {:ok, version} =
+      Artifacts.push({:run, run}, ctx.work_item, "submission", json(value),
+        stage_id: @build,
+        name: Keyword.get(opts, :name, "main")
+      )
+
+    version
+  end
+
+  # The repository of a submission.
+  defp repository(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "system" => "git.example.com",
+        "path" => "northwind/storefront",
+        "commit" => @head,
+        "commit_url" => "https://git.example.com/northwind/storefront/commit/#{@head}",
+        "base" => %{
+          "commit" => @base,
+          "commit_url" => "https://git.example.com/northwind/storefront/commit/#{@base}"
+        },
+        "commits" => [
+          %{
+            "commit" => @change,
+            "step" => "deliverable:d-2",
+            "commit_url" => "https://git.example.com/northwind/storefront/commit/#{@change}"
+          },
+          %{
+            "commit" => @fix_one,
+            "step" => "fix:f1",
+            "commit_url" => "https://git.example.com/northwind/storefront/commit/#{@fix_one}"
+          },
+          %{
+            "commit" => @head,
+            "step" => "fix:f2",
+            "commit_url" => "https://git.example.com/northwind/storefront/commit/#{@head}"
+          }
+        ],
+        "draft" => %{
+          "number" => 34,
+          "url" => "https://git.example.com/northwind/storefront/pulls/34",
+          "title" => "Show delivery dates at checkout",
+          "state" => "draft",
+          "action" => "opened"
+        }
+      },
+      overrides
+    )
+  end
+
+  defp submission(repository \\ repository()),
+    do: %{
+      "ref" => "qory/wi_qk5p97dt9vdq39a2",
+      "verdict" => "passed",
+      "repositories" => [repository]
+    }
+
+  defp rows(ctx, only \\ nil) do
+    type = Submissions.type(ctx.work_item)
+    Submissions.list(ctx.work_item, type, Artifacts.list(ctx.work_item), only)
+  end
+
+  defp repository_of(row), do: hd(row.repositories)
+
+  describe "type/1" do
+    test "is the type in submit.type of the work item's process version", ctx do
+      assert Submissions.type(ctx.work_item) == "submission"
+    end
+
+    test "is nil for a process version with no submit", ctx do
+      ctx = submits!(ctx, nil)
+      assert Submissions.type(ctx.work_item) == nil
+    end
+  end
+
+  describe "a submission with one change and two fixes" do
+    test "lists the base, the change with its text, both fixes and the head", ctx do
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert [row] = rows(ctx)
+      repository = repository_of(row)
+
+      assert repository.base == %{
+               commit: @base,
+               short: "9f9f9f9",
+               url: "https://git.example.com/northwind/storefront/commit/#{@base}",
+               line: :start
+             }
+
+      assert repository.count == 3
+
+      assert [
+               %{
+                 short: "4c4c4c4",
+                 step: {:change, "d-2", "Show the dates at checkout"},
+                 head: false
+               },
+               %{short: "7e7e7e7", step: {:fix, "f1"}, head: false},
+               %{short: "a1a1a1a", step: {:fix, "f2"}, head: true}
+             ] = repository.commits
+
+      assert repository.short == "a1a1a1a"
+      assert repository.url == "https://git.example.com/northwind/storefront/commit/#{@head}"
+
+      assert repository.draft ==
+               {:draft,
+                %{
+                  number: 34,
+                  url: "https://git.example.com/northwind/storefront/pulls/34",
+                  title: "Show delivery dates at checkout"
+                }}
+
+      assert row.ref == "qory/wi_qk5p97dt9vdq39a2"
+      assert row.approved == false
+    end
+
+    test "the change has no text where the plan has no such deliverable", ctx do
+      plan!(ctx, ctx.first, "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-9 | Other |\n")
+      store!(ctx, ctx.first, submission())
+
+      assert [row] = rows(ctx)
+      assert [%{step: {:change, "d-2", nil}} | _fixes] = repository_of(row).commits
+    end
+
+    test "the change has no text where the work item has no plan", ctx do
+      store!(ctx, ctx.first, submission())
+
+      assert [row] = rows(ctx)
+      assert [%{step: {:change, "d-2", nil}} | _fixes] = repository_of(row).commits
+    end
+
+    test "the change reads the plan that was newest when the submission was stored", ctx do
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      plan!(
+        ctx,
+        ctx.second,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Show the dates in the basket |\n"
+      )
+
+      assert [row] = rows(ctx)
+
+      assert [%{step: {:change, "d-2", "Show the dates at checkout"}} | _fixes] =
+               repository_of(row).commits
+    end
+
+    test "a commit with a step the list does not word has no step", ctx do
+      commits = [%{"commit" => @head, "step" => "unreviewed"}]
+      store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
+
+      assert [row] = rows(ctx)
+      assert [%{step: nil, head: true, url: nil}] = repository_of(row).commits
+    end
+  end
+
+  describe "the Base line" do
+    test "is the head of the run whose submission ends at the base commit", ctx do
+      store!(
+        ctx,
+        ctx.first,
+        submission(repository(%{"commit" => @base, "base" => nil, "commits" => []}))
+      )
+
+      store!(ctx, ctx.second, submission())
+
+      assert [newest, oldest] = rows(ctx)
+      assert repository_of(newest).base.line == {:head, ctx.first_number}
+      assert repository_of(oldest).base == nil
+    end
+
+    test "is where the work starts for a base that no earlier submission ended at", ctx do
+      store!(ctx, ctx.first, submission())
+      store!(ctx, ctx.second, submission())
+
+      assert [newest, oldest] = rows(ctx)
+      assert repository_of(newest).base.line == :start
+      assert repository_of(oldest).base.line == :start
+    end
+  end
+
+  describe "a submission with no list of commits" do
+    test "has the branch and the draft and no base or commits", ctx do
+      store!(ctx, ctx.first, submission(repository(%{"base" => nil, "commits" => nil})))
+
+      assert [row] = rows(ctx)
+      repository = repository_of(row)
+      assert repository.base == nil
+      assert repository.commits == []
+      assert repository.count == 0
+      assert repository.short == "a1a1a1a"
+      assert {:draft, %{number: 34}} = repository.draft
+    end
+
+    test "with no member it has the row and no repository", ctx do
+      store!(ctx, ctx.first, %{"ref" => "qory/wi_qk5p97dt9vdq39a2"})
+
+      assert [%{repositories: [], ref: "qory/wi_qk5p97dt9vdq39a2"}] = rows(ctx)
+    end
+  end
+
+  describe "the draft" do
+    test "records why none was sent", ctx do
+      draft = %{"none" => "not-passed"}
+      store!(ctx, ctx.first, submission(repository(%{"draft" => draft})))
+
+      assert [row] = rows(ctx)
+      assert repository_of(row).draft == :none
+    end
+
+    test "a draft with an address that is not https has no link", ctx do
+      draft = %{
+        "number" => 34,
+        "url" => "javascript:alert(1)",
+        "title" => "T",
+        "state" => "draft",
+        "action" => "opened"
+      }
+
+      store!(ctx, ctx.first, submission(repository(%{"draft" => draft})))
+
+      assert [row] = rows(ctx)
+      assert {:draft, %{number: 34, url: nil}} = repository_of(row).draft
+    end
+
+    test "names each system of a draft by its collection's integration", ctx do
+      store!(ctx, ctx.first, submission())
+      assert [row] = rows(ctx)
+      assert Submissions.draft_systems([row]) == ["git.example.com"]
+      assert Submissions.system_names(ctx.work_item, ["git.example.com"]) == %{}
+      assert Submissions.system_names(ctx.work_item, []) == %{}
+
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: "git.example.com",
+          target_path: "northwind/storefront"
+        )
+
+      adapter = Repo.get!(Apiary.Nodes.Node, collection.adapter_id)
+
+      assert Submissions.system_names(ctx.work_item, ["git.example.com", "other"]) ==
+               %{"git.example.com" => Apiary.Adapters.title(adapter)}
+    end
+  end
+
+  describe "what is stored is read as untrusted" do
+    test "a link that is not https, or has a user name, is dropped", ctx do
+      commits = [
+        %{"commit" => @change, "commit_url" => "http://git.example.com/x"},
+        %{"commit" => @fix_one, "commit_url" => "https://user:secret@git.example.com/x"},
+        %{"commit" => @head, "commit_url" => "javascript:alert(1)"}
+      ]
+
+      store!(
+        ctx,
+        ctx.first,
+        submission(
+          repository(%{
+            "commits" => commits,
+            "commit_url" => "data:text/html,x",
+            "base" => %{"commit" => @base, "commit_url" => "//evil.example.com"}
+          })
+        )
+      )
+
+      assert [row] = rows(ctx)
+      repository = repository_of(row)
+      assert repository.url == nil
+      assert repository.base.url == nil
+      assert Enum.map(repository.commits, & &1.url) == [nil, nil, nil]
+    end
+
+    test "a commit that is not a full hex id is left out", ctx do
+      commits = [
+        %{"commit" => "abc"},
+        %{"commit" => String.duplicate("G", 40)},
+        %{"commit" => String.upcase(@change)},
+        %{"commit" => 7},
+        "no",
+        %{"commit" => @head}
+      ]
+
+      store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
+
+      assert [row] = rows(ctx)
+      assert [%{commit: @head}] = repository_of(row).commits
+    end
+
+    test "a repository with a head that is not a full hex id is left out", ctx do
+      repositories = [repository(%{"commit" => "<script>"}), repository()]
+      store!(ctx, ctx.first, %{"ref" => "qory/wi_1", "repositories" => repositories})
+
+      assert [row] = rows(ctx)
+      assert [%{commit: @head}] = row.repositories
+    end
+
+    test "a step with a character outside the id form has no step", ctx do
+      commits = [
+        %{"commit" => @change, "step" => "deliverable:<b>x</b>"},
+        %{"commit" => @fix_one, "step" => "fix:" <> String.duplicate("f", 65)},
+        %{"commit" => @head, "step" => 5}
+      ]
+
+      store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
+
+      assert [row] = rows(ctx)
+      assert Enum.map(repository_of(row).commits, & &1.step) == [nil, nil, nil]
+    end
+
+    test "a list that is not a list, and a repository that is not an object, are left out", ctx do
+      store!(ctx, ctx.first, %{"ref" => "r", "repositories" => "x"})
+      store!(ctx, ctx.second, %{"ref" => 5, "repositories" => [1, nil, "x"]})
+
+      assert [%{repositories: [], ref: nil}, %{repositories: [], ref: "r"}] = rows(ctx)
+    end
+
+    test "at most 20 repositories are read", ctx do
+      repositories = for n <- 1..25, do: repository(%{"path" => "northwind/repo-#{n}"})
+      store!(ctx, ctx.first, %{"ref" => "r", "repositories" => repositories})
+
+      assert [row] = rows(ctx)
+      assert length(row.repositories) == 20
+    end
+  end
+
+  describe "many commits" do
+    test "list the first 99 and the head, and count them all", ctx do
+      commits =
+        for n <- 1..150 do
+          %{"commit" => hex(n), "step" => "fix:f#{n}"}
+        end
+
+      head = hex(150)
+      store!(ctx, ctx.first, submission(repository(%{"commit" => head, "commits" => commits})))
+
+      assert [row] = rows(ctx)
+      repository = repository_of(row)
+      assert repository.count == 150
+      assert length(repository.commits) == 100
+
+      assert List.last(repository.commits) == %{
+               commit: head,
+               short: binary_part(head, 0, 7),
+               url: nil,
+               step: {:fix, "f150"},
+               head: true
+             }
+
+      assert Enum.at(repository.commits, 98).step == {:fix, "f99"}
+    end
+
+    test "list the first 100 when the head is among them", ctx do
+      commits = for n <- 1..150, do: %{"commit" => hex(n)}
+      store!(ctx, ctx.first, submission(repository(%{"commit" => hex(5), "commits" => commits})))
+
+      assert [row] = rows(ctx)
+      repository = repository_of(row)
+      assert length(repository.commits) == 100
+      assert Enum.count(repository.commits, & &1.head) == 1
+      assert Enum.at(repository.commits, 4).head
+    end
+
+    defp hex(n),
+      do: n |> Integer.to_string(16) |> String.pad_leading(40, "0") |> String.downcase()
+  end
+
+  describe "which versions are listed" do
+    test "a version of a run a member cancelled is left out", ctx do
+      store!(ctx, ctx.first, submission())
+      store!(ctx, ctx.second, submission())
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in Apiary.Runs.Run, where: r.dispatch_run_id == ^ctx.second.id),
+          set: [cancel_requested_at: DateTime.utc_now()]
+        )
+
+      assert [%{run: run}] = rows(ctx)
+      assert run == ctx.first_number
+    end
+
+    test "a version approved at a gate has the mark", ctx do
+      version = store!(ctx, ctx.first, submission())
+
+      Repo.insert!(%GateDecision{
+        organisation_id: ctx.work_item.organisation_id,
+        workspace_id: ctx.work_item.workspace_id,
+        work_item_id: ctx.work_item.id,
+        process_version_id: Apiary.Processes.version_for(ctx.work_item).id,
+        user_id: ctx.scope.user.id,
+        stage_id: @build,
+        kind: :approve,
+        versions: [version.public_id],
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert [%{approved: true}] = rows(ctx)
+    end
+
+    test "a row has the end of its run", ctx do
+      store!(ctx, ctx.first, submission())
+
+      exited =
+        Repo.one!(
+          from r in Apiary.Runs.Run,
+            where: r.dispatch_run_id == ^ctx.first.id,
+            select: r.exited_at
+        )
+
+      assert [%{at: at}] = rows(ctx)
+      assert at == (exited || at)
+    end
+
+    test "only the versions asked for are returned", ctx do
+      first = store!(ctx, ctx.first, submission())
+      store!(ctx, ctx.second, submission())
+
+      assert [%{id: id}] = rows(ctx, [first.public_id])
+      assert id == first.public_id
+    end
+
+    test "a type of another name lists none", ctx do
+      store!(ctx, ctx.first, submission())
+
+      assert Submissions.list(ctx.work_item, "other", Artifacts.list(ctx.work_item)) == []
+      assert Submissions.list(ctx.work_item, nil, Artifacts.list(ctx.work_item)) == []
+    end
+  end
+
+  describe "deliverables/1" do
+    test "reads the Id and Change cells of the table under Deliverables" do
+      assert Submissions.deliverables(@plan) == %{
+               "d-1" => "Compute the delivery date",
+               "d-2" => "Show the dates at checkout"
+             }
+    end
+
+    test "stops at the next section and ignores other tables" do
+      markdown =
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-1 | One |\n\n## Commands\n\n| d-2 | Two |\n"
+
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One"}
+    end
+
+    test "leaves out a row with an id outside the form or no change" do
+      markdown = """
+      ## Deliverables
+
+      | Id | Change |
+      |---|---|
+      | <b>x</b> | Bold |
+      | d-1 |  |
+      | d-2 | Two \\| pieces |
+      """
+
+      assert Submissions.deliverables(markdown) == %{"d-2" => "Two | pieces"}
+    end
+
+    test "is empty for a plan with no table" do
+      assert Submissions.deliverables("## Summary\n\nNothing.\n") == %{}
+      assert Submissions.deliverables("") == %{}
+    end
+  end
+
+  describe "a run's withdrawal of the submission type" do
+    test "is refused, and a withdrawal of another custom type passes", ctx do
+      store!(ctx, ctx.first, submission())
+
+      assert {:error, {:withdraw, :submit_type}} =
+               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "submission", name: "main")
+
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          "name" => "demo-script",
+          "base_view" => "file",
+          "size_limit" => 1000,
+          "max_files" => 1
+        })
+
+      {:ok, _version} =
+        Artifacts.push(
+          {:run, ctx.first},
+          ctx.work_item,
+          "demo-script",
+          [%{filename: "a.txt", content_type: "text/plain", binary: "a"}],
+          stage_id: @build
+        )
+
+      assert {:ok, %{withdrawn: true}} =
+               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "demo-script", name: "main")
+    end
+
+    test "passes where the run's process version has no submit", ctx do
+      ctx = submits!(ctx, nil)
+      store!(ctx, ctx.first, submission())
+
+      assert {:ok, %{withdrawn: true}} =
+               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "submission", name: "main")
+    end
+  end
+end
