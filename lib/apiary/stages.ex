@@ -131,7 +131,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
-  alias Apiary.Stages.{Departure, Skip}
+  alias Apiary.Stages.Skip
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -1076,7 +1076,9 @@ defmodule Apiary.Stages do
   end
 
   defp resolve(scope, work_item, version, stage, escalation, {:move_back, stage_id}, note) do
-    with {:ok, target} <- earlier(version, stage, stage_id) do
+    with {:ok, target} <- earlier(version, stage, stage_id),
+         {:ok, _decision} <-
+           decide(scope, work_item, version, stage, :move, [], nil, nil, nil, target["id"]) do
       :ok = resolve!(escalation, :move_back, scope, note)
       {work_item, _run} = enter_locked(work_item, version, target, true)
       {:ok, work_item}
@@ -1111,7 +1113,7 @@ defmodule Apiary.Stages do
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
            {:ok, track} <- moved_track(work_item, version, stage, target),
            {:ok, _decision} <-
-             decide(scope, work_item, version, stage, :move, [], nil, note, track),
+             decide(scope, work_item, version, stage, :move, [], nil, note, track, target["id"]),
            {:ok, _entry} <-
              audit(scope, work_item, "move", %{
                "from" => stage["id"],
@@ -1422,24 +1424,22 @@ defmodule Apiary.Stages do
     end
   end
 
-  # moved_inputs/5 is, for each stage that a person's entry into an earlier stage left in
-  # the work item's take in, whose gate has not passed since (no approval of the stage, by a
-  # person or automatic, after the departure), and that is after the work item's stage: the
-  # newest version of each of its outputs made in it from the time the work item last
-  # entered it to the time it left, marked `from: :move` and not required. A stage left
-  # twice counts once, by its newest departure. Newest departure first, outputs in the
-  # stage's order. An output whose version `read` has already is left out. No approval lists
-  # these versions: they are not outputs of the work item's stage.
+  # moved_inputs/5 is, for each stage that a person moved the work item out of to an earlier
+  # stage in the take in, that is after the work item's stage and whose gate has not passed
+  # since (`departures/2`): the newest version of each of its outputs made in it from the
+  # time the work item last entered it to the time it left, marked `from: :move` and not
+  # required. Newest departure first, outputs in the stage's order. An output whose version
+  # `read` has already is left out. No approval lists these versions: they are not outputs
+  # of the work item's stage.
   defp moved_inputs(work_item, version, stage, artifacts, read) do
     ids = Enum.map(version.document["stages"], & &1["id"])
     here = Enum.find_index(ids, &(&1 == stage["id"]))
     approvals = approvals_by_version(work_item)
     read_ids = for %{version: %{id: id}} <- read, do: id
 
-    for departure <- departures(work_item),
+    for departure <- departures(work_item, ids),
         left = Processes.stage(version, departure.stage_id),
         Enum.find_index(ids, &(&1 == departure.stage_id)) > here,
-        not gate_passed_since?(work_item, departure),
         output <- Map.get(left, "outputs", []),
         found =
           newest_made_in(artifacts, output["type"], left["id"], &made_during?(&1, departure)),
@@ -1453,33 +1453,50 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The newest departure of each stage in the work item's take in, newest first.
-  defp departures(%WorkItem{id: id, take_in: take_in}) when is_integer(take_in) do
-    Repo.all(
-      from d in Departure,
-        where: d.work_item_id == ^id and d.take_in == ^take_in,
-        order_by: [desc: d.inserted_at, desc: d.id]
-    )
+  # departures/2 is the decisions of the work item's take in that moved it out of a stage to
+  # an earlier one (`move/5`, the move back of an escalation, a switch), by the stage left,
+  # the newest of each, newest first, that nothing has ended: no approval of the stage, by
+  # a person or automatic, and no move to a stage after it (`stage_ids` is the stages of the
+  # process in order), made after it. A move with no `to_stage_id` counts as a move back and
+  # ends nothing.
+  defp departures(%WorkItem{id: id, take_in: take_in}, stage_ids) when is_integer(take_in) do
+    decisions =
+      Repo.all(
+        from d in GateDecision,
+          where: d.work_item_id == ^id and d.take_in == ^take_in and d.kind in [:approve, :move],
+          order_by: [desc: d.inserted_at, desc: d.id]
+      )
+
+    index = &Enum.find_index(stage_ids, fn id -> id == &1 end)
+
+    decisions
+    |> Enum.filter(&(&1.kind == :move and moved_back?(&1, index)))
     |> Enum.uniq_by(& &1.stage_id)
+    |> Enum.reject(fn departure ->
+      Enum.any?(decisions, fn later ->
+        DateTime.compare(later.inserted_at, departure.inserted_at) == :gt and
+          ((later.kind == :approve and later.stage_id == departure.stage_id) or
+             (later.kind == :move and moved_past?(later, departure.stage_id, index)))
+      end)
+    end)
   end
 
-  defp departures(%WorkItem{}), do: []
+  defp departures(%WorkItem{}, _stage_ids), do: []
 
-  defp gate_passed_since?(work_item, departure) do
-    Repo.exists?(
-      from d in GateDecision,
-        where:
-          d.work_item_id == ^work_item.id and d.stage_id == ^departure.stage_id and
-            d.kind == :approve and d.take_in == ^departure.take_in and
-            d.inserted_at > ^departure.inserted_at
-    )
-  end
+  defp moved_back?(%GateDecision{to_stage_id: nil}, _index), do: true
+
+  defp moved_back?(%GateDecision{stage_id: left, to_stage_id: to}, index),
+    do: is_integer(index.(to)) and is_integer(index.(left)) and index.(to) < index.(left)
+
+  # Whether the move `decision` went to a stage after `stage_id`.
+  defp moved_past?(%GateDecision{to_stage_id: to}, stage_id, index),
+    do: is_binary(to) and is_integer(index.(to)) and index.(to) > index.(stage_id)
 
   # A version made from the time the work item last entered the stage (any time, for a
-  # work item with none kept) to the time it left.
-  defp made_during?(version, %Departure{entered_at: entered_at, inserted_at: left_at}) do
-    DateTime.compare(version.inserted_at, left_at) != :gt and
-      (is_nil(entered_at) or DateTime.compare(version.inserted_at, entered_at) != :lt)
+  # decision that kept none) to the time it left.
+  defp made_during?(version, %GateDecision{left_stage_entered_at: entered, inserted_at: left}) do
+    DateTime.compare(version.inserted_at, left) != :gt and
+      (is_nil(entered) or DateTime.compare(version.inserted_at, entered) != :lt)
   end
 
   # artifact_index/1 is every artifact of the work item with its versions, newest first,
@@ -1872,7 +1889,6 @@ defmodule Apiary.Stages do
     )
 
     now = DateTime.utc_now()
-    if forced?, do: leave_for_earlier!(work_item, version, stage, now)
 
     {1, _rows} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -1883,32 +1899,6 @@ defmodule Apiary.Stages do
       forced: forced?
     })
   end
-
-  # A person's entry into a stage before the work item's stage records the stage it leaves
-  # and when it last entered it (`work_items.stage_entered_at`, which the entry overwrites),
-  # for `inputs/1`. A move forward, or to the same stage, records nothing.
-  defp leave_for_earlier!(%WorkItem{stage_id: left} = work_item, version, stage, now)
-       when is_binary(left) and is_integer(work_item.take_in) do
-    ids = Enum.map(version.document["stages"], & &1["id"])
-    here = Enum.find_index(ids, &(&1 == left))
-    there = Enum.find_index(ids, &(&1 == stage["id"]))
-
-    if is_integer(here) and is_integer(there) and there < here do
-      Repo.insert!(%Departure{
-        organisation_id: work_item.organisation_id,
-        workspace_id: work_item.workspace_id,
-        work_item_id: work_item.id,
-        stage_id: left,
-        take_in: work_item.take_in,
-        entered_at: work_item.stage_entered_at,
-        inserted_at: now
-      })
-    end
-
-    :ok
-  end
-
-  defp leave_for_earlier!(_work_item, _version, _stage, _now), do: :ok
 
   # `more` is facts of the run that ended, beside the stage's (`facts/3`). `by` is the
   # member who accepted an escalation, for the approval at a gate `none`; nil for none.
@@ -2756,7 +2746,8 @@ defmodule Apiary.Stages do
          covered,
          artifact_version_id,
          note,
-         track \\ nil
+         track \\ nil,
+         to_stage_id \\ nil
        ) do
     %GateDecision{
       organisation_id: work_item.organisation_id,
@@ -2771,6 +2762,8 @@ defmodule Apiary.Stages do
       artifact_version_id: artifact_version_id,
       note: note,
       track: track,
+      left_stage_entered_at: if(kind == :move, do: work_item.stage_entered_at),
+      to_stage_id: to_stage_id,
       inserted_at: DateTime.utc_now()
     }
     |> Repo.insert()

@@ -11,6 +11,13 @@ defmodule Apiary.Stages.GateDecision do
   # and `process_version_id` are the stage and the version of the process it was made
   # under, and `take_in` the take in of the work item it was made in. Nothing changes a
   # decision once it is written.
+  #
+  # A `:move` has `to_stage_id`, the stage it moved the work item to (nil for a move written
+  # before it was kept), and `left_stage_entered_at`, when the work item had last entered
+  # `stage_id` (`work_items.stage_entered_at`, which the move overwrites; nil for none).
+  # `Apiary.Stages.inputs/1` reads the versions that `stage_id` made in between. The move
+  # back that resolves an escalation writes one too, with no note: its note is the
+  # escalation's.
   @moduledoc false
   use Ecto.Schema
 
@@ -27,6 +34,8 @@ defmodule Apiary.Stages.GateDecision do
     field :note, :string
     field :track, :string
     field :take_in, :integer
+    field :left_stage_entered_at, :utc_datetime_usec
+    field :to_stage_id, :string
     field :automatic, :boolean, default: false
     field :inserted_at, :utc_datetime_usec
 

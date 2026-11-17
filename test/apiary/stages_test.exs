@@ -16,7 +16,7 @@ defmodule Apiary.StagesTest do
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
   alias Apiary.Organisations.Workspace
-  alias Apiary.Stages.{Departure, Escalation, GateDecision}
+  alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.{Confirmation, Explore, Moves, WorkItem}
 
   @moduletag needs: [:factory, :workflow_model]
@@ -4153,6 +4153,8 @@ defmodule Apiary.StagesTest do
           do: {type, number}
     end
 
+    defp moves(work_item), do: Enum.filter(decisions(work_item), &(&1.kind == :move))
+
     defp public_id(work_item, type, number) do
       Enum.find_value(versions(work_item, type), &(&1.number == number && &1.public_id))
     end
@@ -4251,7 +4253,7 @@ defmodule Apiary.StagesTest do
 
       # Build was left twice: its newest departure counts, from its last entry.
       assert marked(explore) == [{"acceptance-criteria", 1}]
-      assert Repo.aggregate(from(d in Departure, where: d.stage_id == ^@build), :count) == 2
+      assert [@build, @build] = for(d <- moves(work_item), d.stage_id == @build, do: d.stage_id)
     end
 
     test "no approval lists a marked version", %{scope: scope} do
@@ -4285,6 +4287,36 @@ defmodule Apiary.StagesTest do
                )
 
       assert marked(shape) == [{"explainer", 1}]
+
+      # The resolution is a move like a person's: a `move` decision with the escalation's note
+      # left to the escalation.
+      assert [%GateDecision{stage_id: @build, to_stage_id: @shape, note: nil, user_id: user_id}] =
+               moves(work_item)
+
+      assert user_id == scope.user.id
+    end
+
+    test "a move forward past the stage ends the rule", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+      assert marked(shape) == [{"explainer", 1}]
+
+      # Past Build without passing its gate, then back again: the first departure is over.
+      verifying = move_to!(scope, shape, @verify)
+      assert marked(verifying) == []
+      assert marked(move_to!(scope, verifying, @shape)) == []
+    end
+
+    test "a move forward that stops at the stage does not end the rule", %{scope: scope} do
+      work_item = at_build!(scope)
+      add!(scope, work_item, "explainer", "one.md")
+      shape = move_to!(scope, work_item, @shape)
+      explore = move_to!(scope, shape, @explore)
+
+      # Explore to Shape is forward but stays before Build.
+      assert marked(explore) == [{"explainer", 1}]
+      assert marked(move_to!(scope, explore, @shape)) == [{"explainer", 1}]
     end
 
     test "a move forward, or a stage entered by a gate, leaves nothing to list", %{scope: scope} do
@@ -4293,7 +4325,6 @@ defmodule Apiary.StagesTest do
       add!(scope, build, "explainer", "one.md")
       {:ok, verifying} = Stages.approve(scope, build, nil, expect_stage: @build)
 
-      assert Repo.aggregate(Departure, :count) == 0
       assert marked(verifying) == []
       assert Stages.inputs(verifying) == []
     end
@@ -4305,7 +4336,8 @@ defmodule Apiary.StagesTest do
       assert marked(shape) == [{"explainer", 1}]
 
       {1, _rows} =
-        Repo.update_all(from(d in Departure, where: d.work_item_id == ^work_item.id),
+        Repo.update_all(
+          from(d in GateDecision, where: d.work_item_id == ^work_item.id and d.kind == :move),
           set: [take_in: shape.take_in + 1]
         )
 

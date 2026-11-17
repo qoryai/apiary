@@ -20,7 +20,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   alias Apiary.Artifacts.ArtifactFile
   alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Check, Departure, GateDecision}
+  alias Apiary.Stages.{Check, GateDecision}
   alias Apiary.WorkItems.WorkItem
   alias Apiary.SigningKey
   alias ApiaryWeb.Contract.{RawBody, SignedAnswer}
@@ -426,15 +426,13 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [] =
                json_response(read(ctx, "/work-item"), 200)["inputs"] |> Enum.filter(& &1["from"])
 
-      Repo.insert!(%Departure{
-        organisation_id: work_item.organisation_id,
-        workspace_id: work_item.workspace_id,
-        work_item_id: work_item.id,
+      decide!(ctx, :move,
         stage_id: build,
+        to_stage_id: shape,
         take_in: work_item.take_in,
-        entered_at: DateTime.add(DateTime.utc_now(), -60, :second),
+        left_stage_entered_at: DateTime.add(DateTime.utc_now(), -60, :second),
         inserted_at: DateTime.add(DateTime.utc_now(), 60, :second)
-      })
+      )
 
       conn = read(ctx, "/work-item")
       body = json_response(conn, 200)
