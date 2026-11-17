@@ -1658,7 +1658,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # The track picker of Explore's gate: the tracks the gate offers, the one selected and the
-  # one Explore proposed, `%{tracks:, selected:, proposed:, stage:}`; nil where the gate
+  # one Explore proposed, `%{tracks:, selected:, proposed:, reason:, stage:}`; nil where the gate
   # offers none or the work item is not at Confirm.
   defp track_offer(%{confirm_gate: true, offers: [_ | _] = offers} = flow, draft) do
     %{
@@ -1667,6 +1667,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       # What the reader chose, which Approve sends; with no choice Approve records the default.
       picked: if(draft in Enum.map(offers, & &1.id), do: draft),
       proposed: flow.proposed,
+      reason: flow.proposed_reason,
       stage: flow.stage.name
     }
   end

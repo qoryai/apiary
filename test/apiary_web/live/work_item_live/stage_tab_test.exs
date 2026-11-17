@@ -2478,16 +2478,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
 
     # The end of Explore's run: a proposal, and a verdict that proposes `track`.
-    defp proposing(track) do
+    defp proposing(track, reason \\ "A small change.") do
       fn run, registered ->
         push_result!(run, registered, understood_result())
+        proposal = %{"id" => track, "reason" => reason}
 
         {:ok, _version} =
           Stages.Artifacts.push_json(
             {:run, run},
             Repo.get!(WorkItem, run.work_item_id),
             "verdict",
-            %{"verdict" => "passed", "track" => %{"id" => track, "reason" => "A small change."}},
+            %{"verdict" => "passed", "track" => proposal},
             stage_id: run.stage_id
           )
       end
@@ -2570,6 +2571,34 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       [before_approve, _rest] = String.split(html, ~s(id="work-item-explore-gate-go"), parts: 2)
       assert before_approve =~ ~s(id="work-item-explore-gate-track")
+    end
+
+    test "the proposed track has the reason the run gave, and no other track has one", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_explore_gate!(scope)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(
+               view,
+               "#work-item-explore-gate-track-fast-track-reason",
+               "Explore's reason: A small change."
+             )
+
+      refute has_element?(view, "#work-item-explore-gate-track-standard-reason")
+    end
+
+    test "a blank reason shows no line of reason", %{conn: conn, scope: scope} do
+      screens!(scope)
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track", "   "))
+
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
+
+      assert has_element?(view, "#work-item-explore-gate-track-fast-track-proposed")
+      refute has_element?(view, "#work-item-explore-gate-track-fast-track-reason")
+      refute html =~ "reason:"
     end
 
     test "the gate's first track is selected when no run proposed one", %{
@@ -3026,9 +3055,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                Gettext.dgettext(
                  ApiaryWeb.Gettext,
                  "default",
-                 "Read the run's outputs, then approve."
+                 "Read the inputs below, then approve."
                )
-             end) == "Read the run's outputs, then approve."
+             end) == "Read the inputs below, then approve."
 
       refute has_element?(view, "#work-item-stage-gate-none")
       refute has_element?(view, "#work-item-stage-gate-outputs")

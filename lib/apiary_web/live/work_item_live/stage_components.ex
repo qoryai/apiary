@@ -418,7 +418,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
           {gettext("%{stage} started no run.", stage: @page.stage.name) <>
-            " " <> gettext("Read the run's outputs, then approve.")}
+            " " <> gettext("Read the inputs below, then approve.")}
         </p>
       </div>
       <h3

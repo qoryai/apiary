@@ -114,6 +114,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     offers = if state == :at_gate, do: Stages.offered_tracks(row, version), else: []
     at_explore = stage.id == explore_id
 
+    proposal =
+      if offers != [] and at_explore and opts[:proposal] == true,
+        do: Stages.proposed_track_with_reason(row, artifacts)
+
     %{
       version: get(get(status, :version), :number) || get(version, :number),
       stages: all |> track(at, state) |> not_run(records.stage_skips),
@@ -124,10 +128,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # The tracks the stage's gate offers, each `%{id:, name:, description:}`, with the one
       # its runs proposed (`proposed`, an id, nil for none).
       offers: offers,
-      proposed:
-        if(offers != [] and at_explore and opts[:proposal] == true,
-          do: Stages.proposed_track(row, artifacts)
-        ),
+      proposed: proposal && proposal.id,
+      # Why the runs proposed it (`track.reason` of the verdict), nil for none.
+      proposed_reason: proposal && proposal.reason,
       stage: stage,
       state: state,
       # The stage runs, and its newest run still waits for a machine.

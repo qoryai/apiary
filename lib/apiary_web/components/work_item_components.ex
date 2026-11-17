@@ -2293,7 +2293,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :track_offer, :map,
     default: nil,
     doc:
-      "the tracks Explore's gate offers, `%{tracks:, selected:, picked:, proposed:, stage:}`: each track `%{id:, name:, description:}`, the id selected, the id the reader chose (nil for none), the id the runs proposed, and the stage's name; nil where the gate offers none"
+      "the tracks Explore's gate offers, `%{tracks:, selected:, picked:, proposed:, reason:, stage:}`: each track `%{id:, name:, description:}`, the id selected, the id the reader chose (nil for none), the id the runs proposed, why they proposed it (nil for none), and the stage's name; nil where the gate offers none"
 
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
@@ -3899,7 +3899,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :track_offer, :map,
     default: nil,
     doc:
-      "the tracks the gate offers, `%{tracks:, selected:, picked:, proposed:, stage:}` (`explore_tab/1`); nil for none"
+      "the tracks the gate offers, `%{tracks:, selected:, picked:, proposed:, reason:, stage:}` (`explore_tab/1`); nil for none"
 
   # The gate under the proposal: for a reader who may send review comments, the comment on
   # the whole proposal; for a reader who may send them or change the decisions above the
@@ -4017,7 +4017,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :offer, :map,
     required: true,
-    doc: "`%{tracks:, selected:, picked:, proposed:, stage:}` (`explore_tab/1`)"
+    doc: "`%{tracks:, selected:, picked:, proposed:, reason:, stage:}` (`explore_tab/1`)"
 
   # The tracks the gate offers, one radio each in the gate's order with the track's
   # description, the selected one marked; the track the runs proposed has the badge
@@ -4046,6 +4046,13 @@ defmodule ApiaryWeb.WorkItemComponents do
             </.badge>
           </span>
           <span :if={track.description} class="q-xp-track-text">{track.description}</span>
+          <span
+            :if={track.id == @offer.proposed and @offer.reason}
+            id={"#{@id}-#{track.id}-reason"}
+            class="q-xp-track-text"
+          >
+            {gettext("%{stage}'s reason: %{reason}", stage: @offer.stage, reason: @offer.reason)}
+          </span>
         </span>
       </label>
     </fieldset>

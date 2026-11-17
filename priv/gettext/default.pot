@@ -3482,6 +3482,11 @@ msgstr[1] ""
 msgid "%{stage} · round %{round}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}'s reason: %{reason}"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
@@ -16961,6 +16966,11 @@ msgstr ""
 msgid "Read the cause in the log of %{pool} on its host."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Read the inputs below, then approve."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
@@ -16974,11 +16984,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the proposal"
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "Read the run's outputs, then approve."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex

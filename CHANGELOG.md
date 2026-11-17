@@ -15,7 +15,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
-  proposed is selected and has the badge "Proposed by <stage>"; with none proposed, the track the
+  proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
+  reason, the line "<stage>'s reason: <reason>"; with none proposed, the track the
   work item is on is selected, else the gate's first. The member keeps it or picks another, and
   Approve records the track that is selected on the page when the member confirms, never a
   value an earlier click carried. A pick ends when the gate's stage or the take in changes,
@@ -38,7 +39,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   one workflow twice keeps the fold's rows and has no table.
 - The gate of a later stage for a work item on a track shows "Track" and the track's name, and
   offers no choice. For a stage of a work item on a track that started no run, the card
-  reads "<stage> started no run. Read the run's outputs, then approve." (in a software
+  reads "<stage> started no run. Read the inputs below, then approve." (in a software
   workspace, "Read the build report and the draft, then approve.") and leaves out the list of
   outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
   item on no track keeps both as before.

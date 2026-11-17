@@ -1989,14 +1989,29 @@ defmodule Apiary.Stages do
   """
   @spec proposed_track(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: String.t() | nil
   def proposed_track(%WorkItem{} = work_item, artifacts \\ nil) do
+    case proposed_track_with_reason(work_item, artifacts) do
+      %{id: id} -> id
+      nil -> nil
+    end
+  end
+
+  @doc false
+  # proposed_track_with_reason/2 is `proposed_track/2` with the reason that the same verdict
+  # gives for the track (`track.reason`): `%{id:, reason:}`, `reason` nil where the verdict
+  # has none or a blank one; nil where `proposed_track/2` is nil. `artifacts`, the work
+  # item's artifacts (`Apiary.Artifacts.list/1`) where the caller has read them, spare that
+  # read.
+  @spec proposed_track_with_reason(WorkItem.t(), [Artifacts.Artifact.t()] | nil) ::
+          %{id: String.t(), reason: String.t() | nil} | nil
+  def proposed_track_with_reason(%WorkItem{} = work_item, artifacts \\ nil) do
     case proposal(work_item, artifacts) do
-      {:ok, id} -> id
+      {:ok, found} -> found
       {:error, :store_unavailable} -> nil
     end
   end
 
-  # `{:ok, id}` or `{:ok, nil}` for the track proposed; `{:error, :store_unavailable}` where
-  # a verdict's file cannot be read from the store.
+  # `{:ok, %{id:, reason:}}` or `{:ok, nil}` for the track proposed; `{:error,
+  # :store_unavailable}` where a verdict's file cannot be read from the store.
   defp proposal(work_item, artifacts \\ nil)
 
   defp proposal(%WorkItem{stage_id: stage_id} = work_item, artifacts) when is_binary(stage_id) do
@@ -2029,14 +2044,28 @@ defmodule Apiary.Stages do
     |> Stream.filter(&(&1.run_id in run_ids))
     |> Enum.reduce_while({:ok, nil}, fn version, found ->
       case Artifacts.stored_json(version) do
-        {:ok, %{"track" => %{"id" => id}}} when is_binary(id) -> {:halt, {:ok, id}}
-        {:ok, _none} -> {:cont, found}
-        {:error, :store_unavailable} = unavailable -> {:halt, unavailable}
+        {:ok, %{"track" => %{"id" => id} = track}} when is_binary(id) ->
+          {:halt, {:ok, %{id: id, reason: track_reason(track["reason"])}}}
+
+        {:ok, _none} ->
+          {:cont, found}
+
+        {:error, :store_unavailable} = unavailable ->
+          {:halt, unavailable}
       end
     end)
   end
 
   defp proposal(%WorkItem{}, _artifacts), do: {:ok, nil}
+
+  defp track_reason(reason) when is_binary(reason) do
+    case String.trim(reason) do
+      "" -> nil
+      reason -> reason
+    end
+  end
+
+  defp track_reason(_reason), do: nil
 
   # The track an approval at `stage`'s gate records: the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`. With no `track`: the track the
@@ -2050,7 +2079,8 @@ defmodule Apiary.Stages do
 
     case Keyword.get(opts, :track) do
       nil ->
-        with {:ok, proposed} <- proposal(work_item) do
+        with {:ok, found} <- proposal(work_item) do
+          proposed = found && found.id
           current = track(work_item)
 
           {:ok,
