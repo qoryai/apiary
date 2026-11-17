@@ -2238,7 +2238,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: factory -->
-- `run_credentials` (20261117140000): the check on its entries takes the purpose `push`,
+- `run_credentials` (20261118090000): the check on its entries takes the purpose `push`,
   with access `write` and the name `push-<n>`, and the check on `issued_apply` takes a
   `push` entry. One `push` entry per run is allowed. Each new check scans its table as it
   is added, under a lock that blocks reads and writes. It changes no row.

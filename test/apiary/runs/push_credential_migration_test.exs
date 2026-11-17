@@ -16,7 +16,7 @@ defmodule Apiary.Runs.PushCredentialMigrationTest do
   alias Apiary.Runs.{RunCredential, RunCredentials}
   alias Apiary.WorkItems.WorkItem
 
-  @version 20_261_117_140_000
+  @version 20_261_118_090_000
   @migration Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry
 
   @apply [

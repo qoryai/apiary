@@ -5,7 +5,7 @@ defmodule Apiary.Runs.RunCredential do
   # `issued_apply` is written later, once. It has no value. The table and its rules are
   # `20261025160500_keep_each_run_s_credential_entries`'s and
   # `20261025160600_keep_the_apply_items_of_a_run_s_first_work_credential`'s, and
-  # `20261117140000_keep_a_write_run_s_push_credential_entry`'s.
+  # `20261118090000_keep_a_write_run_s_push_credential_entry`'s.
   #
   #   * `name`: `work-1` for the run's work entry and `push-1` for its push entry; the run
   #     configuration lists each entry under its name
