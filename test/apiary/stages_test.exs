@@ -4239,6 +4239,72 @@ defmodule Apiary.StagesTest do
       assert texts(work_item) == ["Read the cart", "Keep the coupon"]
     end
 
+    test "a note that a finished run already read stays open until its stage is approved",
+         %{scope: scope} do
+      four_stages!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Name the price rule", nil,
+          expect_stage: @explore
+        )
+
+      # The next run of Explore reads the note and ends; the note is still listed for the
+      # run after it.
+      work_item = end_run!(work_item, understood_result())
+      assert texts(work_item) == ["Name the price rule"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      assert Stages.notes(work_item) == []
+    end
+
+    test "a note that an approval closed stays closed when a newer output reopens the stage",
+         %{scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "spec",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(),
+        stage(@shape, "Shape", [], %{"outputs" => [%{"type" => "spec", "required" => false}]}),
+        stage(@build, "Build", [])
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
+      work_item = reload(work_item)
+
+      spec = fn text ->
+        [%{filename: "spec.md", content_type: "text/markdown", binary: text}]
+      end
+
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The spec"),
+          stage_id: @shape
+        )
+
+      {:ok, _} =
+        Stages.request_changes(scope, work_item, "Split the plan in two", nil,
+          expect_stage: @shape
+        )
+
+      assert texts(work_item) == ["Split the plan in two"]
+
+      {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert Stages.notes(work_item) == []
+
+      # A newer version of Shape's output reopens Shape's gate; the closed note stays out.
+      {:ok, _version} =
+        Stages.Artifacts.push({:person, scope}, work_item, "spec", spec.("## The new spec"),
+          stage_id: @shape
+        )
+
+      assert [_first, _second] = versions(work_item, "spec")
+      assert Stages.notes(work_item) == []
+    end
+
     test "a move closes when the stage it went to is approved, not the one it left",
          %{scope: scope} do
       four_stages!(scope)
