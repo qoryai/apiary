@@ -35,10 +35,13 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   #     Mermaid hook draws it in the browser (`assets/js/hooks/mermaid.js`).
   #   * A code block whose language is `diff` is the diff box of the harness update page
   #     (`q-diffbox`, in `diff_box/1`): a bar with the path of the block's `+++` header
-  #     (`---` for a file with none; `a/` and `b/` stripped) and the number of changed
-  #     lines (in each run of `+` and `-` lines, the larger of the two counts), then the lines, with the `---`, `+++` and
-  #     `@@` header lines left out. Every line is escaped, as the box is written after
-  #     sanitising, in place of a placeholder of the same random token as an image's.
+  #     (the `---` header for a file with none, `a/` and `b/` stripped) and the number of
+  #     changed lines, then the lines, without the header lines. In each run of `+` and
+  #     `-` lines, the larger of the two counts is the number of changed lines. A block
+  #     with the headers of more than one file is one box, with an empty path. What is a
+  #     header is set at `diff_rows/2`. The renderer writes a placeholder text in the
+  #     block's place, with the same random token per render as an image's, and the box
+  #     replaces it after sanitising. Every line is escaped.
   #
   # The HTML is sanitised last, on the server, by an allowlist of tags, attributes and
   # classes, with `http`, `https` and `mailto` the only URL schemes and no relative URL.
@@ -50,7 +53,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   # cells than `max_cells/0`, nested deeper than `max_depth/0`, or not valid UTF-8 is
   # converted as written (`Apiary.ExternalText.lines/1`) to `{:as_written, text}`, which
   # a page interpolates, so HEEx escapes it; any other text is parsed, walked and written
-  # as HTML. A render that passes the budget, in either step, is `:too_large`. Measured on
+  # as HTML. A render that passes the budget, in either step, is `:too_large`. The rows of a
+  # diff block can make the output up to about 16 times the input's size. Measured on
   # OTP 29: 384 KiB of prose with links, emphasis and code fits; 512 KiB of it needs more
   # heap, and so do 262,144 headings of one letter (about 600 MiB), 524,288 nested quote
   # marks, and the conversion as written of 1 MiB of control characters (over 500 MiB); at
@@ -60,6 +64,8 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
+
+  alias ApiaryWeb.Format
 
   # 256 KiB: MDEx allocates outside the heap that the budget checks, so one budgeted render
   # of 1 MiB still raised the VM's peak by 149 to 183 MiB.
@@ -266,30 +272,34 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
 
   # diff_box/1 is `text`, a unified diff, as the box of the harness update page, in the
   # markup of its panel: the path and the number of changed lines in the bar, then a row
-  # per line. A `--- ` line followed by a `+++ ` line is a file header, as is a line
-  # starting `@@`, `diff `, `index ` or the like; none is a row, nor is a `+++ ` line before
-  # the first row. A line of `+` or `-` is an added or a removed line, another line is
-  # context, with its one leading space left out.
+  # per line. A line of `+` or `-` is an added or a removed line, a hunk header (`@@`) and
+  # a header line (`diff_rows/2`) are no row, and another line is context, with its one
+  # leading space left out. A block is one box: the count is over all its files, and the
+  # path is empty when the block has the headers of more than one file.
   defp diff_box(text) do
-    {path, rows} = diff_rows(String.split(text, ~r/\r\n|\r|\n/), nil, nil, [])
+    state = diff_rows(String.split(text, ~r/\r\n|\r|\n/), diff_state())
+    path = if state.files > 1, do: nil, else: diff_path(state.new) || diff_path(state.old)
+    rows = state.rows |> Enum.reverse() |> drop_last_empty()
     changed = changed_lines(rows)
 
     count =
-      ngettext("%{count} line changed", "%{count} lines changed", changed)
+      ngettext("%{number} line changed", "%{number} lines changed", changed,
+        number: Format.number(changed)
+      )
 
-    lines = Enum.map_join(rows, &diff_row/1)
+    lines = rows |> Enum.reject(&match?({:hunk, _line}, &1)) |> Enum.map_join(&diff_row/1)
 
     ~s(<div class="q-diffbox q-diffbox-flat"><div class="q-dpanel">) <>
       ~s(<div><span>#{escape(path || "")}</span><span>#{escape(count)}</span></div>) <>
       ~s(<div class="q-dlines" tabindex="0">#{lines}</div></div></div>)
   end
 
-  # The changed lines: in each run of added and removed lines between context lines, the
-  # larger of the two counts, so a line that was replaced is one line changed.
+  # The changed lines: in each run of added and removed lines, which a context line or a
+  # hunk header ends, the larger of the two counts, so a replaced line is one line changed.
   defp changed_lines(rows) do
     rows
-    |> Enum.chunk_by(&(elem(&1, 0) == :ctx))
-    |> Enum.reject(&match?([{:ctx, _line} | _], &1))
+    |> Enum.chunk_by(&(elem(&1, 0) in [:ctx, :hunk]))
+    |> Enum.reject(&match?([{kind, _line} | _] when kind in [:ctx, :hunk], &1))
     |> Enum.sum_by(fn run ->
       added = Enum.count(run, &match?({:add, _line}, &1))
       max(added, length(run) - added)
@@ -300,46 +310,68 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
   defp diff_row({:del, line}), do: ~s(<div class="q-del"><i>-</i>#{escape(line)}</div>)
   defp diff_row({:ctx, line}), do: ~s(<div class="q-ctx"><i></i>#{escape(line)}</div>)
 
-  # The path and the rows of the lines; `old` and `new` are the paths of the first file
-  # header. The empty line a text ends with is no row.
-  defp diff_rows([], old, new, rows) do
-    rows = rows |> Enum.reverse() |> drop_last_empty()
-    {diff_path(new) || diff_path(old), rows}
+  # The state of the walk over the lines: the `---` and `+++` texts of the first file
+  # header, the number of files, the rows so far (last first, a `{:hunk, nil}` for each
+  # hunk header) and `head`, whether the line before was a `diff `, `index ` or like header.
+  defp diff_state, do: %{old: nil, new: nil, files: 0, rows: [], head: false}
+
+  # What is a header line, and so no row, in one rule:
+  #
+  #   * A `diff ` or `index ` line is a header anywhere.
+  #   * A `---` line directly followed by a `+++` line is a file header, and a lone `+++`
+  #     line is one, only before the first row. A pair is also a header right after a
+  #     header line (`diff `, `index ` or one of `@diff_context_header`). Anywhere else
+  #     `--- drop` and `+++ add` are a removed and an added line.
+  #   * A line of `@diff_context_header` (`new file mode`, `rename from`, ...) is a header
+  #     before the first row or right after a header line.
+  #   * A `@@` line is a hunk header anywhere. It ends a run of changed lines, so `-a`,
+  #     `@@`, `+b` is two changed lines, and a row after it is never a file header.
+  #   * Of the lines that start with `\`, only `\ No newline at end of file` is dropped.
+  #
+  # `files` is the number of `diff ` lines, and of file headers that are right after none
+  # of the header lines. The empty line that a text ends with is no row.
+  defp diff_rows([], state), do: state
+
+  defp diff_rows(["diff " <> _rest | lines], state),
+    do: diff_rows(lines, %{state | files: state.files + 1, head: true})
+
+  defp diff_rows(["index " <> _rest | lines], state), do: diff_rows(lines, %{state | head: true})
+
+  defp diff_rows(["--- " <> old, "+++ " <> new | lines], state)
+       when state.rows == [] or state.head,
+       do: diff_rows(lines, file_header(state, old, new))
+
+  defp diff_rows(["+++ " <> new | lines], %{rows: []} = state),
+    do: diff_rows(lines, file_header(state, nil, new))
+
+  defp diff_rows(["@@" <> _hunk | lines], state),
+    do: diff_rows(lines, %{state | rows: [{:hunk, nil} | state.rows], head: false})
+
+  defp diff_rows(["\\ No newline at end of file" | lines], state), do: diff_rows(lines, state)
+
+  defp diff_rows(["+" <> line | lines], state), do: diff_rows(lines, row(state, {:add, line}))
+  defp diff_rows(["-" <> line | lines], state), do: diff_rows(lines, row(state, {:del, line}))
+  defp diff_rows([" " <> line | lines], state), do: diff_rows(lines, row(state, {:ctx, line}))
+
+  defp diff_rows([line | lines], state) do
+    if diff_header?(line) and (state.rows == [] or state.head),
+      do: diff_rows(lines, %{state | head: true}),
+      else: diff_rows(lines, row(state, {:ctx, line}))
   end
 
-  defp diff_rows(["--- " <> old, "+++ " <> new | rest], old0, new0, rows),
-    do: diff_rows(rest, old0 || old, new0 || new, rows)
+  defp row(state, row), do: %{state | rows: [row | state.rows], head: false}
 
-  defp diff_rows(["+++ " <> new | rest], old, new0, []),
-    do: diff_rows(rest, old, new0 || new, [])
-
-  defp diff_rows(["@@" <> _hunk | rest], old, new, rows), do: diff_rows(rest, old, new, rows)
-  defp diff_rows(["\\" <> _note | rest], old, new, rows), do: diff_rows(rest, old, new, rows)
-
-  defp diff_rows(["+" <> line | rest], old, new, rows),
-    do: diff_rows(rest, old, new, [{:add, line} | rows])
-
-  defp diff_rows(["-" <> line | rest], old, new, rows),
-    do: diff_rows(rest, old, new, [{:del, line} | rows])
-
-  defp diff_rows([" " <> line | rest], old, new, rows),
-    do: diff_rows(rest, old, new, [{:ctx, line} | rows])
-
-  defp diff_rows([line | rest], old, new, rows) do
-    if diff_header?(line, rows),
-      do: diff_rows(rest, old, new, rows),
-      else: diff_rows(rest, old, new, [{:ctx, line} | rows])
+  defp file_header(state, old, new) do
+    files = if state.head, do: state.files, else: state.files + 1
+    %{state | old: state.old || old, new: state.new || new, files: files, head: false}
   end
 
-  # A `diff --git`, `index` or mode line before the first row is a header.
-  defp diff_header?(line, []) do
+  defp diff_header?(line) do
     case String.split(line, " ", parts: 2) do
       [word, _rest] -> word in @diff_context_header
       _one -> false
     end
   end
-
-  defp diff_header?(_line, _rows), do: false
 
   defp drop_last_empty([]), do: []
 
@@ -350,12 +382,13 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
     end
   end
 
-  # The path of a `---` or `+++` header: with no timestamp after a tab, no `a/` or `b/`,
-  # and nil for none or `/dev/null`.
+  # The path of a `---` or `+++` header: with no timestamp after a tab, no double quotes
+  # around it (git writes them for a name with a space), no `a/` or `b/`, and nil for
+  # none or `/dev/null`.
   defp diff_path(nil), do: nil
 
   defp diff_path(header) do
-    path = header |> String.split("\t", parts: 2) |> hd() |> String.trim()
+    path = header |> String.split("\t", parts: 2) |> hd() |> String.trim() |> unquote_path()
 
     case path do
       "" -> nil
@@ -365,6 +398,12 @@ defmodule ApiaryWeb.ArtifactLive.Markdown do
       other -> other
     end
   end
+
+  defp unquote_path(~s(") <> rest = path) do
+    if String.ends_with?(rest, ~s(")), do: String.slice(rest, 0..-2//1), else: path
+  end
+
+  defp unquote_path(path), do: path
 
   defp html(document) do
     document

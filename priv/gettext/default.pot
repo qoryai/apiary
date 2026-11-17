@@ -527,13 +527,6 @@ msgid_plural "%{count} files in %{organisation}'s harness"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/artifact_live/markdown.ex
-#, elixir-autogen, elixir-format
-msgid "%{count} line changed"
-msgid_plural "%{count} lines changed"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} of %{total} %{collections}"
@@ -2395,6 +2388,7 @@ msgid_plural "%{number} lines added, %{removed} removed"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/artifact_live/markdown.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} line changed"

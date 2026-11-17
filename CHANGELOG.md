@@ -40,6 +40,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Close**, "Ends the work item. No draft is sent." These texts are drafts. A refused
   switch to a track that the gate does not offer names the gate that recorded the track.
   One component takes a run and lists its versions, so another page can show them.
+- A `diff` code block in a run's Markdown shows as a diff box with the file and the count of
+  changed lines, on every page that renders a run's Markdown. In the block "What the run
+  needs from you", the headings of the run's report show as small bold lines.
 - After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
   lists, for each output of the stage the work item left, the newest version made in that
   stage from the time the work item last entered it to the time it left, with
