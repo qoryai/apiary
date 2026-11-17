@@ -89,7 +89,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # walk failed (`Apiary.Harnesses.WalkJob`), with the outcome `error` and the walk's
   # failure code kept as `end_detail`; `target_access_gone`, a claimed run that could not
   # be given access to its target, because the integration that brings in the target no
-  # longer reaches it, with the outcome `error`, which no code gives yet.
+  # longer reaches it, with the outcome `error`, which no code gives yet;
+  # `write_without_work_item`, a claimed run with write access and no work item, so with
+  # no branch to limit its push credential to (`Apiary.Runs.RunCredentials`), with the
+  # outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -110,7 +113,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :run_refused,
     :build_failed,
     :harness_unresolved,
-    :target_access_gone
+    :target_access_gone,
+    :write_without_work_item
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and

@@ -1335,6 +1335,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory -->
+- In the run configuration, an apply item of the work credential `work-1` of a run with
+  `write` access has `push_ref`, `refs/heads/qory/` and the work item's public id, for
+  example `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create,
+  update or delete only that ref: Forager's gateway returns `403` for a push to any other
+  ref. Each item of the credential's value, sealed for the gateway, has the same
+  `push_ref`. A run with `read` or `write-no-push` access has none. The adapter's
+  run-credential call and answer have no `push_ref`, and an answer item that has one is
+  refused. The Forager contract is vendored at commit `3d4ec18`, which defines `push_ref`
+  and a path segment written `{}`.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run with `write` access and no work item ends before it starts, with the stop cause
+  `write_without_work_item`, because it has no branch to limit its push credential to. The
+  run's page reads: "Contact support: a run that writes needs a work item.", and in a
+  software workspace: "Contact support: a run that writes needs a branch, which comes from
+  its work item."
+<!-- /feature -->
+<!-- feature: factory -->
+- A target path with `{` or `}` ends the run `target_access_gone`, as one with `*`, `?`
+  or `#` does. Forager's path grammar reads a segment written `{}` as a wildcard for one
+  segment, so a brace in a target path could widen a run's access. A template of an
+  adapter's apply item has no brace either, but `{target.path}`. A path in an adapter's
+  answer, and in a sealed item, may have a segment that is exactly `{}`, as Forager reads
+  it, such as `/repos/acme/shop/pulls/{}`. Any other brace in them is refused.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A gateway's report of its model keys may have `session`, an integer of 1 or more, the
+  number of the session open when the gateway made the report. The report is stored and
+  answered as one without it. A `session` of 0, or one that is not an integer, is
+  `400` `invalid_request` with `names` `["session"]`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
@@ -2200,6 +2232,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` and `dispatches` (20261117130000): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `write_without_work_item`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes no
+  row.
+<!-- /feature -->
 <!-- feature: factory -->
 - `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
   takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the

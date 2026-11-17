@@ -354,7 +354,32 @@ defmodule Apiary.Secrets.SealingTest do
             %{forge | "apply" => [%{item | "paths" => ["no-slash"]}]},
             %{forge | "apply" => [%{item | "paths" => ["/a*b"]}]},
             %{forge | "apply" => [%{item | "paths" => ["/a", "/a"]}]},
-            %{forge | "apply" => [%{item | "username" => "a:b"}]}
+            %{forge | "apply" => [%{item | "username" => "a:b"}]},
+            %{forge | "apply" => [Map.put(item, "push_ref", "qory/wi_01")]},
+            %{forge | "apply" => [Map.put(item, "push_ref", "refs/tags/v1")]},
+            %{forge | "apply" => [Map.put(item, "push_ref", "refs/heads/a b")]},
+            %{
+              forge
+              | "apply" => [
+                  Map.put(item, "push_ref", "refs/heads/" <> String.duplicate("a", 245))
+                ]
+            },
+            %{forge | "apply" => [Map.put(item, "push_ref", nil)]},
+            # 141 graphemes and 271 code points: the schema's maxLength counts code points.
+            %{
+              forge
+              | "apply" => [
+                  Map.put(item, "push_ref", "refs/heads/" <> String.duplicate("e\u0301", 130))
+                ]
+            },
+            %{forge | "apply" => [Map.put(item, "paths", ["/a{b"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{x}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/a{}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}b"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{{}"])]},
+            %{forge | "apply" => [Map.put(item, "paths", ["/a/{}}"])]}
           ] do
         values = [other, model]
 
@@ -373,6 +398,12 @@ defmodule Apiary.Secrets.SealingTest do
             forge,
             Map.put(forge, "expires_at", "2026-10-24T15:00:00.5+02:00"),
             Map.put(forge, "apply", [@item]),
+            Map.put(forge, "apply", [
+              Map.put(@item, "paths", ["/example-org/app/pulls/{}", "/a/{}/b", "/{}*"])
+            ]),
+            Map.put(forge, "apply", [
+              Map.put(@item, "push_ref", "refs/heads/" <> String.duplicate("a", 244))
+            ]),
             Map.merge(forge, %{
               "expires_at" => "2026-10-24T13:00:00Z",
               "apply" => [
@@ -453,6 +484,23 @@ defmodule Apiary.Secrets.SealingTest do
                  ~S("expires_at":"2026-10-24T13:00:00Z","apply":[{"hosts":["git.example"],) <>
                  ~S("scheme":"basic","username":"x-access-token",) <>
                  ~S("paths":["/example-org/app.git/*"]}]})
+    end
+
+    test "writes an item's push_ref after its paths" do
+      plaintext = fixture_plaintext()
+      [forge, model] = plaintext["values"]
+      item = Map.put(@item, "push_ref", "refs/heads/qory/wi_0123456789abcdef")
+      forge = Map.put(forge, "apply", [item])
+
+      assert {:ok, bytes} =
+               Sealing.plaintext(
+                 %{plaintext | "values" => [model, forge]},
+                 plaintext["run_configuration"]
+               )
+
+      assert bytes =~
+               ~S("paths":["/example-org/app.git/*"],) <>
+                 ~S("push_ref":"refs/heads/qory/wi_0123456789abcdef"}])
     end
 
     test "sorts the credentials, and the values by credential" do
