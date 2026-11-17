@@ -118,8 +118,8 @@ defmodule Apiary.Adapters.Feed do
   @work_item_id ~r/\Awi_[A-Za-z0-9_-]{1,64}\z/
   @cursor ~r/\Ac_([0-9]{8,18})\z/
   @max_ref 200
-  # A work item's url, as the contract's pattern has it: https and a host, or http to a
-  # loopback address, with a port or not; then nothing, or a path.
+  # A work item's url, as the contract's pattern has it: https and a host, or http to
+  # `localhost`, `127.0.0.1` or `[::1]`, with a port or not; then nothing, or a path.
   @work_item_url ~r{\A(https://[^/?#@\s]+|http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?)(/\S*)?\z}
   # RFC 3986's characters: unreserved, reserved, and `%` of a percent-encoding.
   @uri_characters ~r{\A[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+\z}
@@ -428,7 +428,7 @@ defmodule Apiary.Adapters.Feed do
   defp work_item_url!(url, what) do
     unless work_item_url?(url) do
       raise ArgumentError,
-            "#{what} is https, or http to a loopback address, at most 2048 characters"
+            "#{what} is https, or http to localhost, 127.0.0.1 or [::1], at most 2048 characters"
     end
   end
 
