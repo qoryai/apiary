@@ -96,7 +96,9 @@ defmodule Apiary.Adapters.Calls do
   @doc false
   # call/4 calls `adapter` at `path` with `members`, the call's members after `version`
   # and `time`, in order. `{:ok, body}`, the answer's decoded object, or
-  # `{:error, %CallFailure{}}`.
+  # `{:error, %CallFailure{}}`. The option `until` is a time on the monotonic clock, in
+  # milliseconds, at which the call ends at the latest, as `total` limits it from its
+  # start: a request that makes several calls gives each the one `until`.
   @spec call(Node.t(), String.t(), [{String.t(), term}], keyword) ::
           {:ok, map} | {:error, CallFailure.t()}
   def call(%Node{kind: :adapter} = adapter, path, members, opts \\ [])
@@ -104,10 +106,20 @@ defmodule Apiary.Adapters.Calls do
     settings = :apiary |> Application.get_env(__MODULE__, []) |> Keyword.merge(opts)
     started = now()
     deadline = started + Keyword.get(settings, :total, @total)
+    deadline = if until = Keyword.get(settings, :until), do: min(deadline, until), else: deadline
 
     result =
       with {:ok, target} <- address(adapter, deadline, settings) do
-        attempt(adapter, target, answer_keys(adapter), path, members, nil, deadline, settings)
+        attempt(
+          adapter,
+          target,
+          answer_keys(adapter, settings),
+          path,
+          members,
+          nil,
+          deadline,
+          settings
+        )
       end
 
     case result do
@@ -238,9 +250,18 @@ defmodule Apiary.Adapters.Calls do
   # call's time: the lookup has no time limit of its own, so it runs in a task, and one
   # still running when the call's time ends is `:timeout`.
   defp address(adapter, deadline, settings) do
+    # The task is linked to the caller, so that a caller that is stopped, as a request that
+    # gives up its calls is, takes the call with it; it ends in a value, never in a crash,
+    # which would take the caller too.
     task =
-      Task.Supervisor.async_nolink(__MODULE__.Supervisor, fn ->
-        CallAddress.check(adapter, Keyword.take(settings, [:resolver]))
+      Task.Supervisor.async(__MODULE__.Supervisor, fn ->
+        try do
+          CallAddress.check(adapter, Keyword.take(settings, [:resolver]))
+        rescue
+          _exception -> {:error, :unresolved}
+        catch
+          _kind, _reason -> {:error, :unresolved}
+        end
       end)
 
     case Task.yield(task, max(deadline - now(), 0)) || Task.shutdown(task, :brutal_kill) do
@@ -253,8 +274,21 @@ defmodule Apiary.Adapters.Calls do
     end
   end
 
-  # The public keys of the adapter's access keys in use, read once per call.
-  defp answer_keys(adapter) do
+  # The public keys of the adapter's access keys in use, read once per call, or the
+  # `answer_keys` the caller read (`answer_keys/1`), so that a call that runs in a process
+  # the caller may stop at any moment reads no row.
+  defp answer_keys(adapter, settings) do
+    case Keyword.fetch(settings, :answer_keys) do
+      {:ok, keys} -> keys
+      :error -> answer_keys(adapter)
+    end
+  end
+
+  @doc false
+  # answer_keys/1 is the public keys of `adapter`'s access keys in use, as the call
+  # checks an answer's signature against them: pass them as the option `answer_keys`.
+  @spec answer_keys(Node.t()) :: [binary]
+  def answer_keys(adapter) do
     for %AccessKey{public_key: <<_::binary-size(32)>> = key} <- AccessKeys.active_keys(adapter),
         do: key
   end
@@ -363,9 +397,16 @@ defmodule Apiary.Adapters.Calls do
     if budget <= 0 do
       :timeout
     else
+      # Linked to the caller and ending in a value, as in `address/3`.
       task =
-        Task.Supervisor.async_nolink(__MODULE__.Supervisor, fn ->
-          request(target, adapter_public_id, path, body, signature, budget, settings)
+        Task.Supervisor.async(__MODULE__.Supervisor, fn ->
+          try do
+            request(target, adapter_public_id, path, body, signature, budget, settings)
+          rescue
+            _exception -> :unreachable
+          catch
+            _kind, _reason -> :unreachable
+          end
         end)
 
       case Task.yield(task, budget) || Task.shutdown(task, :brutal_kill) do

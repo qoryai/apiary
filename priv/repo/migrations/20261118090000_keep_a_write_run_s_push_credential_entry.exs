@@ -3,20 +3,15 @@ defmodule Apiary.Repo.Migrations.KeepAWriteRunSPushCredentialEntry do
 
   # The credential entry of a write run's push (`Apiary.Runs.RunCredentials`): a row of
   # `run_credentials` with `purpose` `push`, `access` `write` and the name `push-<n>`, n
-  # from 1 to 9, at most one per run, as `work` has. The run's `work` entry no longer needs
-  # `write` access, but the check does not require `read`: a `work` row stored with `write`
-  # before this migration stays valid. `issued_apply`, the apply items of the first
-  # credential sealed for an entry, is allowed on a `push` entry as on a `work` one.
+  # from 1 to 9, at most one per run, as `work` has (`run_credentials_push_index`).
+  # `issued_apply`, the apply items of the first credential sealed for an entry, is
+  # allowed on a `push` entry as on a `work` one.
   #
   # A `push` entry has at least one apply item, and every item is an object whose
   # `push_ref` is a string that is not empty (`run_credentials_push_ref_check`, a strict
   # jsonpath, so an array-valued `push_ref` or an item that is not an object is refused);
-  # the other purposes have no such rule. Each check
-  # is dropped and added again, and each new check scans the table as it is added. Every
-  # stored row has the purpose `work` or `harness` and passes all of them. The unique
-  # index is built without `CONCURRENTLY`, so writes to `run_credentials` wait while it
-  # builds. Rolled back, the checks and the index are as before, and the rollback fails
-  # while a `push` row exists.
+  # the other purposes have no such rule. Rolled back, the checks and the index are as
+  # before, and the rollback fails while a `push` row exists.
   def up do
     entry_check("""
     purpose IN ('work', 'harness', 'push')

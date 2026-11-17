@@ -1,7 +1,8 @@
 defmodule Apiary.Runs.WorkCredential do
   # The value of a run's work entry or push entry (`Apiary.Runs.RunCredentials`, `work-1`
   # and `push-1`), for a secrets request that names it (`Apiary.Runs.SecretsRequest`):
-  # `issue/4` asks the adapter for a credential and checks the answer; the caller seals it,
+  # `issue_all/5` (`issue/4` for one entry) asks the adapter for the credentials, one call
+  # for each entry, all at the same time, and checks the answers; the caller seals them,
   # then keeps its apply items (`keep/1`) and writes its Activity entry (`record_issued/3`)
   # in one transaction. The adapter's call is the same for both entries, with the purpose
   # `work`: only the access differs, `read` for the work entry and `write` for the push
@@ -10,7 +11,7 @@ defmodule Apiary.Runs.WorkCredential do
   # The caller makes every check that needs no token first, the model key's read
   # included, so that a credential the adapter issued fails only at a step that needs it.
   #
-  # `issue/4` asks `Apiary.Access` first: `run_credential.issue` on the run, for the
+  # For each entry, `issue_all/5` asks `Apiary.Access` first: `run_credential.issue` on the run, for the
   # gateway's key. A refusal is `{:error, :not_found}`, with a log line, no call and no
   # Activity entry, since nothing was attempted. A work entry with access `write` is
   # refused next, `{:error, :credential_unavailable}`, with a log line that has the entry's
@@ -44,8 +45,8 @@ defmodule Apiary.Runs.WorkCredential do
   # organisation, about the run, by the gateway's key, unless the write fails: `issued`,
   # written last before the answer, or the cause of the refusal, with `:seal_failed` and
   # `:not_recorded` for a seal or a write that failed after the call, and
-  # `:other_credential_failed` for a credential issued before another entry's of the same
-  # request failed, so it was not sent (`refused/4`). Its
+  # `:other_credential_failed` for a credential issued, or a call cancelled, when another
+  # entry's of the same request failed, so it was not sent (`refused/4`). Its
   # details: the run's id, the connection's, the adapter's and the collection's public
   # ids, the target's path, the access, the purpose, the entry's name, the expiry when
   # issued and the outcome. Every detail comes from the entry, the connection, the
@@ -136,20 +137,64 @@ defmodule Apiary.Runs.WorkCredential do
   # `{:error, :unavailable | :gone | :credential_unavailable}`, after the refusal's log
   # line and its attempt at the Activity entry; `{:error, :unavailable}` also where that
   # entry cannot be written; `{:error, :not_found}` where `Apiary.Access` refuses the key
-  # the action, with no call and no entry.
+  # the action, with no call and no entry. It is `issue_all/5` for one entry, with a
+  # deadline of the call's own time (`Apiary.Adapters.Calls`).
   @spec issue(Run.t(), RunCredential.t(), AccessKey.t(), integer) ::
           {:ok, t} | {:error, :not_found | :unavailable | :gone | :credential_unavailable}
-  def issue(
-        %Run{} = run,
-        %RunCredential{purpose: purpose, access: access} = row,
-        %AccessKey{} = access_key,
-        now
-      )
-      when purpose in [:work, :push] and is_integer(now) do
+  def issue(%Run{} = run, %RunCredential{} = row, %AccessKey{} = access_key, now) do
+    with {:ok, [work]} <-
+           issue_all(run, [row], access_key, now, System.monotonic_time(:millisecond) + 10_000),
+         do: {:ok, work}
+  end
+
+  # How long past `until` the request waits for a call that has not ended: the call ends
+  # itself at `until` (`Apiary.Adapters.Calls`), so only a call that fails to will wait.
+  @grace 500
+
+  @doc false
+  # issue_all/5 is the credentials for `rows`, the entries of `run` in the order of the
+  # run configuration, as `issue/4` is for one: `{:ok, [work]}` in the order of `rows`, or
+  # `{:error, refusal}`. Each entry is first checked in that order, with no call
+  # (`:connection_gone`, `:adapter_key_missing`): the first that fails is the refusal, and
+  # no call is made. Then every call is made at the same time, each ending at the latest
+  # at `until`, a time of the monotonic clock in milliseconds that the caller sets for the
+  # whole request, and each answer is checked (`RunCredentialIssue.check/3`) in its own
+  # process, so one request takes the time of its slowest call, not the sum.
+  #
+  # The request stops at the first call or check that fails, or at `until`, and the calls
+  # still running are cancelled. An entry whose call or check failed is refused for its
+  # cause, in the order of `rows`; at `until`, or when a call times out, every entry still
+  # running is refused as timed out, since all share the deadline. Every other entry, its
+  # credential issued or its call cancelled, is refused as `:other_credential_failed`: it
+  # is not sent. The refusal returned is the first failed entry's in the order of `rows`.
+  # An adapter call that was sent cannot be recalled: a cancelled call ends at `until`.
+  @spec issue_all(Run.t(), [RunCredential.t()], AccessKey.t(), integer, integer) ::
+          {:ok, [t]} | {:error, :not_found | :unavailable | :gone | :credential_unavailable}
+  def issue_all(%Run{} = run, rows, %AccessKey{} = access_key, now, until)
+      when is_list(rows) and is_integer(now) and is_integer(until) do
+    with {:ok, entries} <- prepare(run, rows, access_key) do
+      entries
+      |> request_all(now, until)
+      |> settle(run, access_key)
+    end
+  end
+
+  # The entries in order, each with its place, or the refusal of the first that fails.
+  defp prepare(run, rows, access_key) do
+    Enum.reduce_while(rows, {:ok, []}, fn row, {:ok, entries} ->
+      case prepare_one(run, row, access_key) do
+        {:ok, entry} -> {:cont, {:ok, entries ++ [entry]}}
+        {:error, _refusal} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp prepare_one(run, %RunCredential{purpose: purpose, access: access} = row, access_key)
+       when purpose in [:work, :push] do
     case may_issue(access_key, run) do
       :ok when purpose == :work and access == :write ->
-        # A work entry stored with write access, before the push entry existed, is for the
-        # run's sessions: only the push entry gets a write credential.
+        # A work entry is for the run's sessions and reads: only the push entry gets a write
+        # credential.
         Logger.warning(
           "a work credential for the run #{run.node_run_id} was not issued: " <>
             "the entry #{row.name} has write access"
@@ -158,7 +203,12 @@ defmodule Apiary.Runs.WorkCredential do
         {:error, :credential_unavailable}
 
       :ok ->
-        attempt(run, row, access_key, now)
+        place = place(row)
+
+        case live(place, run) do
+          :ok -> {:ok, %{row: row, place: place, keys: Calls.answer_keys(place.adapter)}}
+          {:error, cause, failure} -> refusal(access_key, run, row, place, cause, failure)
+        end
 
       {:error, _reason} ->
         Logger.warning(
@@ -170,22 +220,154 @@ defmodule Apiary.Runs.WorkCredential do
     end
   end
 
-  defp attempt(run, row, access_key, now) do
-    place = place(row)
-
-    outcome =
-      with :ok <- live(place, run),
-           {:ok, answer} <- call(place, row),
-           {:ok, issued} <- checked(row, answer, now),
-           :ok <- still_live(run) do
-        {:ok, issued}
+  # The call and the check of each entry, one process each. `{entry, result}` in the order
+  # of `entries`, the result `{:ok, issued}`, `{:error, cause, failure}` or `:cancelled`.
+  defp request_all(entries, now, until) do
+    tasks =
+      for entry <- entries do
+        Task.Supervisor.async_nolink(Apiary.Runs.TaskSupervisor, fn ->
+          request(entry, now, until)
+        end)
       end
 
-    case outcome do
-      {:ok, issued} -> {:ok, %{issued: issued, row: row, place: place}}
-      {:error, cause, failure} -> refusal(access_key, run, row, place, cause, failure)
+    pending = tasks |> Enum.with_index() |> Map.new(fn {task, index} -> {task.ref, index} end)
+    stop = until + @grace
+
+    {done, deadline?} = collect(pending, %{}, stop)
+    late = cancel(tasks, done)
+    timed_out? = deadline? or Enum.any?(done, &match?({_, {:error, :timeout, _}}, &1))
+
+    entries
+    |> Enum.with_index()
+    |> Enum.map(fn {entry, index} ->
+      result =
+        case {Map.fetch(done, index), Map.fetch(late, index)} do
+          {{:ok, result}, _late} ->
+            result
+
+          {:error, {:ok, :cancelled}} when timed_out? ->
+            {:error, :timeout, timeout_failure(entry)}
+
+          {:error, {:ok, result}} ->
+            result
+        end
+
+      {entry, result}
+    end)
+  end
+
+  defp request(%{place: place, row: row, keys: keys}, now, until) do
+    with {:ok, answer} <- call(place, row, until, keys) do
+      checked(row, answer, now)
     end
   end
+
+  # The results as they arrive, until each call has one, one has failed, or `stop`, a time
+  # of the monotonic clock in milliseconds, has passed: `{results by index, whether `stop`
+  # was reached}`. The failures that arrived together with the first are kept, so the
+  # outcome does not depend on which of them was read first.
+  defp collect(pending, done, _stop) when map_size(pending) == 0, do: {done, false}
+
+  defp collect(pending, done, stop) do
+    receive do
+      {ref, result} when is_map_key(pending, ref) ->
+        Process.demonitor(ref, [:flush])
+        arrived(pending, done, ref, result, stop)
+
+      {:DOWN, ref, :process, _pid, _reason} when is_map_key(pending, ref) ->
+        arrived(pending, done, ref, {:error, :call_failed, nil}, stop)
+    after
+      max(stop - System.monotonic_time(:millisecond), 0) -> {done, true}
+    end
+  end
+
+  defp arrived(pending, done, ref, result, stop) do
+    {index, pending} = Map.pop!(pending, ref)
+    done = Map.put(done, index, result)
+
+    if match?({:ok, _issued}, result),
+      do: collect(pending, done, stop),
+      else: drain(pending, done)
+  end
+
+  # What has arrived already, without waiting: the stop is at hand.
+  defp drain(pending, done) do
+    receive do
+      {ref, result} when is_map_key(pending, ref) ->
+        Process.demonitor(ref, [:flush])
+        {index, pending} = Map.pop!(pending, ref)
+        drain(pending, Map.put(done, index, result))
+
+      {:DOWN, ref, :process, _pid, _reason} when is_map_key(pending, ref) ->
+        {index, pending} = Map.pop!(pending, ref)
+        drain(pending, Map.put(done, index, {:error, :call_failed, nil}))
+    after
+      0 -> {done, false}
+    end
+  end
+
+  # The processes that have no result are stopped. `%{index => result}`, the result
+  # `:cancelled`, or the one that arrived while the process was stopped.
+  defp cancel(tasks, done) do
+    for {task, index} <- Enum.with_index(tasks), not is_map_key(done, index), into: %{} do
+      case Task.shutdown(task, :brutal_kill) do
+        {:ok, result} -> {index, result}
+        _none -> {index, :cancelled}
+      end
+    end
+  end
+
+  defp timeout_failure(%{place: %{adapter: %Node{} = adapter}}) do
+    %CallFailure{
+      adapter_id: adapter.id,
+      adapter_public_id: adapter.public_id,
+      adapter_name: adapter.name,
+      path: "run-credential",
+      cause: :timeout
+    }
+  end
+
+  defp timeout_failure(_entry), do: nil
+
+  # The refusals, and the credentials where none failed. A credential whose run is no
+  # longer live after the calls is the failure of its entry (`:run_not_live`).
+  defp settle(results, run, access_key) do
+    results =
+      if Enum.any?(results, &match?({_, {:error, _cause, _failure}}, &1)),
+        do: results,
+        else: Enum.map(results, &live_after(&1, run))
+
+    failed = for {entry, {:error, cause, failure}} <- results, do: {entry, cause, failure}
+
+    if failed == [] do
+      {:ok,
+       for(
+         {%{row: row, place: place}, {:ok, issued}} <- results,
+         do: %{issued: issued, row: row, place: place}
+       )}
+    else
+      # The failed entries first, each for its cause; then the others, not sent.
+      refusals =
+        for {entry, cause, failure} <- failed do
+          refusal(access_key, run, entry.row, entry.place, cause, failure)
+        end
+
+      for {%{row: row, place: place}, result} <- results, not match?({:error, _, _}, result) do
+        refusal(access_key, run, row, place, :other_credential_failed, nil)
+      end
+
+      hd(refusals)
+    end
+  end
+
+  defp live_after({entry, {:ok, _issued} = result}, run) do
+    case still_live(run) do
+      :ok -> {entry, result}
+      {:error, cause, failure} -> {entry, {:error, cause, failure}}
+    end
+  end
+
+  defp live_after(other, _run), do: other
 
   defp may_issue(%AccessKey{} = access_key, %Run{} = run),
     do: Access.check(Scope.for_access_key(access_key), :"run_credential.issue", run)
@@ -288,7 +470,7 @@ defmodule Apiary.Runs.WorkCredential do
 
   ## The call
 
-  defp call(%{connection: connection, adapter: adapter}, %RunCredential{} = row) do
+  defp call(%{connection: connection, adapter: adapter}, %RunCredential{} = row, until, keys) do
     [%{"external_ref" => ref} | _] = row.resources
 
     request = %{
@@ -298,7 +480,7 @@ defmodule Apiary.Runs.WorkCredential do
       purpose: :work
     }
 
-    case Calls.run_credential(adapter, request) do
+    case Calls.run_credential(adapter, request, until: until, answer_keys: keys) do
       {:ok, %Answer{} = answer} -> {:ok, answer}
       {:error, %CallFailure{cause: cause} = failure} -> {:error, cause, failure}
     end

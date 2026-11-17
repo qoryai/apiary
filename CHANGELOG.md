@@ -1361,18 +1361,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `read` for `work-1` or `write` for `push-1`. The call and the answer have no `push_ref`,
   and an answer item that has one is refused. A run configuration takes up to 16
   credentials, where it took 8, so a run with 6 model keys, the registry credential,
-  `work-1` and `push-1` is served.
+  `work-1` and `push-1` is served. The adapter calls of one secrets request run together
+  under one deadline of 8 seconds from its start.
 <!-- /feature -->
 <!-- feature: factory -->
 - A secrets request for a `work` entry that has write access gets `409`
   `credential_unavailable`, with no call to the adapter. Only `push-1` has write access.
 <!-- /feature -->
 <!-- feature: factory -->
-- When a later credential of a secrets request is refused, because its adapter call or
-  its check fails, the Activity entry of each credential issued before it shows the text
-  “the request failed for another credential of the run, so this one was not sent”. A
-  seal or record failure shows its own text. The request is refused as a whole, and
-  nothing is sealed or kept.
+- When a credential of a secrets request is refused, because its adapter call or its
+  check fails, the Activity entry of each other credential of the request, issued or
+  cancelled, shows the text “the request failed for another credential of the run, so this
+  one was not sent”. A seal or record failure shows its own text. The request is refused
+  as a whole, and nothing is sealed or kept.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
@@ -2235,11 +2236,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`
   and `image_registry_unreachable`.
-<!-- feature: factory -->
-- Finish or cancel each run with `write` access that was claimed before the upgrade.
-  Its `work-1` has write access and the run has no `push-1`, so any request for its
-  `work-1`, the first one, a renewal or a restart, gets `409` `credential_unavailable`.
-<!-- /feature -->
 <!-- feature: factory, secrets -->
 - Upgrade every Qory Gateway first, to a gateway built with qoryai/forager#53 or later,
   then upgrade Qory Apiary. Each model key in a run configuration has `pause_for_s`, a
@@ -2267,12 +2263,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
 <!-- feature: factory -->
 - `run_credentials` (20261118090000): the check on its entries takes the purpose `push`,
-  with access `write` and the name `push-<n>`, and the check on `issued_apply` takes a
-  `push` entry. A new check on `push` entries requires a `push_ref` on every apply item.
-  One `push` entry per run is allowed. Each new check scans its table as it is added,
-  under a lock that blocks reads and writes. The unique index that allows one `push` entry
-  per run is built without `CONCURRENTLY`, so writes to `run_credentials` wait while it
-  builds. The migration changes no row.
+  with access `write` and the name `push-<n>`; the check on `issued_apply` takes a `push`
+  entry; a new check requires a `push_ref` on every apply item of a `push` entry; a unique
+  index allows one `push` entry per run.
 <!-- /feature -->
 <!-- feature: factory -->
 - `dispatch_runs` and `dispatches` (20261117130000): the checks on `end_cause` and on

@@ -73,8 +73,10 @@ defmodule Apiary.Runs.SecretsRequest do
   #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
   #  9. for a request for the work entry or the push entry, after every check above and the
   #     model key's read, the credential of an entry is not issued
-  #     (`Apiary.Runs.WorkCredential.issue/4`), the work entry's first, then the push
-  #     entry's; the first that fails refuses the request, and no value is sealed:
+  #     (`Apiary.Runs.WorkCredential.issue_all/5`): the entries are checked in the order of
+  #     the run configuration, then their calls are made at the same time, all under the
+  #     deadline of the request (`deadline_ms/0`); the first that fails, or the deadline,
+  #     refuses the request, and no value is sealed:
   #     `{:error, :not_found}` where `Apiary.Access` refuses the key `run_credential.issue`
   #     on the run, the `factory` feature off among the causes, with no call and no
   #     Activity entry; `{:error, :unavailable}` for a call to the adapter that timed out
@@ -90,8 +92,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # Each attempt at an entry's credential that `Apiary.Access` lets, from step 9 on,
   # writes one `run_credential.issue` Activity entry per entry: its refusal, or, last
   # before the answer and in one transaction with its apply items and the seal's audit
-  # entry, `issued`. A request for both entries fails whole: the entry that failed has its
-  # cause, and an entry whose credential was issued before has `other_credential_failed`.
+  # entry, `issued`. A request for both entries fails whole: an entry whose call or check
+  # failed has its cause, and an entry whose credential was issued, or whose call was
+  # cancelled, has `other_credential_failed`.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
@@ -159,16 +162,28 @@ defmodule Apiary.Runs.SecretsRequest do
   def answer(%AccessKey{} = access_key, raw_body, instance_id, now) when is_integer(now) do
     access_key = Repo.preload(access_key, [:workspace, :node])
 
+    deadline = System.monotonic_time(:millisecond) + deadline_ms()
+
     with {:ok, request} <- parse(raw_body),
          :ok <- fresh(request, now),
          :ok <- allowed(access_key, request) do
-      for_run(access_key, request, instance_id, now)
+      for_run(access_key, request, instance_id, now, deadline)
     end
   end
 
+  # The time Qory Apiary has for the whole request, from its start: Qory Gateway gives up
+  # on a secrets request after 10 seconds (`server.Timeout` in Forager). The calls to the
+  # adapters end by this deadline, which leaves 2 seconds for the seal, the writes, the
+  # answer and the network. Set `deadline` of `Apiary.Runs.SecretsRequest` in the
+  # application's configuration to change it, as the tests do.
+  @deadline_ms 8_000
+
+  defp deadline_ms,
+    do: :apiary |> Application.get_env(__MODULE__, []) |> Keyword.get(:deadline, @deadline_ms)
+
   # The credentials are read before the reload, which cannot compose a run configuration
   # without them, and their refusal follows the digest's.
-  defp for_run(access_key, request, instance_id, now) do
+  defp for_run(access_key, request, instance_id, now, deadline) do
     with {:ok, run} <- run(access_key, request.run_id, instance_id, now),
          credentials = credentials(run),
          {:ok, digest} <- in_force(access_key, run, instance_id, credentials),
@@ -181,7 +196,7 @@ defmodule Apiary.Runs.SecretsRequest do
          :ok <- work_sealable(run, works, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
          {:ok, values, secret, copies} <- values(run, credentials),
-         {:ok, issued} <- issued(run, works, access_key, now),
+         {:ok, issued} <- issued(run, works, access_key, now, deadline),
          {:ok, body} <-
            sealed(run, credentials, values, issued, access_key, public_key, digest, now),
          :ok <- recorded(access_key, run, {model, copies}, issued) do
@@ -437,27 +452,16 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The credentials of the entries the request names, from their adapter, one call each, in
-  # the order of the run configuration (`Apiary.Runs.WorkCredential.issue/4`): `{:ok, []}`
-  # where the request names no entry. The first refusal is the request's, and an
-  # entry issued before it is refused, never sent (`other_credential_failed`). Every step before it
-  # needs no token.
-  defp issued(run, works, access_key, now) do
-    Enum.reduce_while(works, {:ok, []}, fn %{row: row}, {:ok, issued} ->
-      case WorkCredential.issue(run, row, access_key, now) do
-        {:ok, credential} ->
-          {:cont, {:ok, issued ++ [credential]}}
+  # The credentials of the entries the request names, from their adapter, one call each, at
+  # the same time and under the one deadline of the request
+  # (`Apiary.Runs.WorkCredential.issue_all/5`, the entries in the order of the run
+  # configuration): `{:ok, []}` where the request names no entry. The first failed
+  # entry's refusal is the request's; an entry issued or cancelled is refused, never sent
+  # (`other_credential_failed`). Every step before it needs no token.
+  defp issued(_run, [], _access_key, _now, _deadline), do: {:ok, []}
 
-        {:error, _refusal} = error ->
-          Enum.each(
-            issued,
-            &WorkCredential.refused(access_key, run, &1, :other_credential_failed)
-          )
-
-          {:halt, error}
-      end
-    end)
-  end
+  defp issued(run, works, access_key, now, deadline),
+    do: WorkCredential.issue_all(run, Enum.map(works, & &1.row), access_key, now, deadline)
 
   defp recipient_key(run, %AccessKey{public_key: public_key}) do
     case Ed25519.check_public_key(public_key) do

@@ -39,11 +39,20 @@ defmodule Apiary.WorkCredentialStub do
   Answers each call with the credential `credentials` has for the access the call asks for
   (`"read"` or `"write"`), signed under `seed`: a run with a work entry and a push entry
   gets a different token for each. A value that is a status and a body, such as
-  `{403, ~s({"error":"access_not_granted"})}`, is the answer as it is.
+  `{403, ~s({"error":"access_not_granted"})}`, is the answer as it is. `delays` has, for an
+  access, the milliseconds the stub waits before it answers; the test then gets
+  `{:run_credential_waited, access}`.
   """
-  def issue_by_access(seed, credentials) when is_map(credentials) do
+  def issue_by_access(seed, credentials, delays \\ %{}) when is_map(credentials) do
     Req.Test.stub(Apiary.Adapters.Calls, fn conn ->
       {conn, call} = told_with(conn)
+
+      # An answer after the delay of its access, in milliseconds; the test is told when
+      # a call that was waiting has ended its wait.
+      if delay = delays[call["access"]] do
+        Process.sleep(delay)
+        send(test(), {:run_credential_waited, call["access"]})
+      end
 
       {status, body} =
         case Map.fetch!(credentials, call["access"]) do
@@ -105,10 +114,14 @@ defmodule Apiary.WorkCredentialStub do
     conn
   end
 
+  # The test process: the last of the callers, as the stub runs in a task of the call, which
+  # a task of the request started.
+  defp test, do: List.last(Process.get(:"$callers"))
+
   defp told_with(conn) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
     call = Jason.decode!(body)
-    send(hd(Process.get(:"$callers")), {:run_credential_call, conn.request_path, call})
+    send(test(), {:run_credential_call, conn.request_path, call})
     {conn, call}
   end
 end
