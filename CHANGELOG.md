@@ -142,12 +142,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   table, a gate that needs no member reads "Approved without a member: <stage>'s gate needs
   no member." The runs fold of that tab no longer repeats the entries. A sequence that names
   one workflow twice keeps the fold's rows and has no table.
-- The gate of a later stage for a work item on a track shows "Track" and the track's name, and
-  offers no choice. For a stage of a work item on a track that started no run, the card
-  reads "<stage> started no run. Read the inputs below, then approve." (in a software
-  workspace, "Read the build report and the draft, then approve.") and leaves out the list of
-  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
-  item on no track keeps both as before.
+- The gate of a later stage for a work item on a track shows "Track" and the track's name on
+  one row, and offers no choice. For a stage of a work item on a track that started no run,
+  the card reads "Read the inputs below, then approve." (in a software workspace, "Read the
+  build report below, then approve.") and leaves out the list of outputs, and the stage's tab
+  shows the newest version of each of the stage's inputs. A work item on no track keeps both
+  as before.
+- A gate card that every member may decide has no line about who approves; for a stage that
+  lists its approvers it reads "Only the members this stage lists can approve."
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -173,9 +175,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
   <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
   name in place of "You". On Shape's tab, where Explore's approval lists a proposal version,
-  a second line reads "Shape did not run, so the work item has no shaping outputs. Proposal
-  v<n>, as approved, is what the next stages work to." (in a software workspace, "The work
-  item has no spec and no acceptance criteria. The exact change in proposal v<n> is the one
+  a second line reads "Proposal v<n>, as approved, is what the next stages work to." (in a
+  software workspace, "The exact change in proposal v<n> is the work item's one
   criterion."); with no version listed, there is no second line. The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and

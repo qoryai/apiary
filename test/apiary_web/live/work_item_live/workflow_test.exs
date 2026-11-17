@@ -2515,11 +2515,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert has_element?(view, "#work-item-head-stages-#{@explore}.q-wi-stage-done")
         assert has_element?(view, "#work-item-stage-gate-none", "This stage has no outputs.")
 
-        assert has_element?(
-                 view,
-                 "#work-item-stage-gate-approvers",
-                 "One approval covers each version. Any member approves."
-               )
+        # A gate that every member decides has no line about who approves.
+        refute has_element?(view, "#work-item-stage-gate-approvers")
+        refute render(view) =~ "One approval covers each version"
 
         view |> element("#work-item-stage-gate-ask-changes") |> render_click()
         view |> form("#work-item-stage-gate-changes", %{"note" => ""}) |> render_submit()
@@ -3780,7 +3778,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-gate-approvers",
-               "The members this stage lists approve."
+               "Only the members this stage lists can approve."
              )
 
       render_hook(view, "stage_approve", %{

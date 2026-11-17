@@ -3482,11 +3482,6 @@ msgstr ""
 msgid "%{stage} started in attempt %{attempt}"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage} started no run."
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
@@ -15418,16 +15413,6 @@ msgstr ""
 msgid "One agent's events: the main session, or a subagent from its start to its finish."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "One approval covers each version. Any member approves."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "One approval covers each version. The members this stage lists approve."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "One computer that stays registered."
@@ -15729,6 +15714,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only the members this stage lists can approve."
 msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
@@ -16702,6 +16692,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Proposal v%{version}, as approved, is what the next stages work to."
+msgstr "The exact change in proposal v%{version} is the work item's one criterion."
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Proposed by %{stage}"
 msgstr ""
 
@@ -17161,7 +17156,7 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the inputs below, then approve."
-msgstr "Read the build report and the draft, then approve."
+msgstr "Read the build report below, then approve."
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -19592,11 +19587,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Shape"
 msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to."
-msgstr "The work item has no spec and no acceptance criteria. The exact change in proposal v%{version} is the one criterion."
 
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format

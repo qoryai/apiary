@@ -2673,7 +2673,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </p>
         <p :if={@proposal_version} id={"#{@id}-passed-over-proposal"} class="q-xp-cap">
           {gettext(
-            "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+            "Proposal v%{version}, as approved, is what the next stages work to.",
             version: Format.number(@proposal_version)
           )}
         </p>
