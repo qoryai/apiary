@@ -422,13 +422,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </.external_link>
       </p>
       <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
-        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
-        <p>
+        <p id={"#{@id}-path"} class="flex items-center gap-2">
+          <span class="text-sm font-semibold">{gettext("Track")}</span>
           <.badge color="success">{@page.track.name}</.badge>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
-          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
-            " " <> gettext("Read the inputs below, then approve.")}
+          {gettext("Read the inputs below, then approve.")}
         </p>
       </div>
       <h3
@@ -457,13 +456,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
         add_path={@add_path}
       />
-      <p :if={@decides and not @page.confirm_gate} id={"#{@id}-approvers"} class="text-xs opacity-70">
-        <%= case @page.approvers do %>
-          <% :members -> %>
-            {gettext("One approval covers each version. Any member approves.")}
-          <% {:listed, _ids} -> %>
-            {gettext("One approval covers each version. The members this stage lists approve.")}
-        <% end %>
+      <p
+        :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}
+        id={"#{@id}-approvers"}
+        class="text-xs opacity-70"
+      >
+        {gettext("Only the members this stage lists can approve.")}
       </p>
       <%= if @page.can_decide and not @page.confirm_gate do %>
         <%= if @asking == :changes and @decides do %>

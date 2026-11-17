@@ -3499,11 +3499,6 @@ msgstr ""
 msgid "%{stage} started in attempt %{attempt}"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{stage} started no run."
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} uses the type %{type}, which this workspace does not have."
@@ -3960,6 +3955,16 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: it runs on %{track} only."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: the %{type} changed since it last passed."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: the %{type} did not change since it last passed."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -13608,6 +13613,11 @@ msgstr ""
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -15453,16 +15463,6 @@ msgstr ""
 msgid "One agent's events: the main session, or a subagent from its start to its finish."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "One approval covers each version. Any member approves."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/stage_components.ex
-#, elixir-autogen, elixir-format
-msgid "One approval covers each version. The members this stage lists approve."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "One computer that stays registered."
@@ -15764,6 +15764,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only the members this stage lists can approve."
 msgstr ""
 
 #: lib/apiary_web/controllers/adapter_redirect_controller.ex
@@ -16733,6 +16738,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Proposal"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Proposal v%{version}, as approved, is what the next stages work to."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -19637,11 +19647,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Shape"
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex

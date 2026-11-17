@@ -10,6 +10,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
@@ -1820,6 +1821,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                  "Did not run, because Quick fix passed on its first attempt."
                )
       end
+
+      # The same two records, now passed over for a condition on a change.
+      for {negated, words} <- [
+            {false, "did not run: the demo scenarios did not change since it last passed."},
+            {true, "did not run: the demo scenarios changed since it last passed."}
+          ] do
+        {2, _rows} =
+          Repo.update_all(
+            from(k in Stages.Skip,
+              where: k.work_item_id == ^work_item.id and not is_nil(k.workflow)
+            ),
+            set: [
+              reason: nil,
+              cause_entry: nil,
+              input: "demo-scenarios",
+              changed: true,
+              negated: negated
+            ]
+          )
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        for {i, workflow} <- [{1, "shape-a-ticket"}, {2, "build-it"}] do
+          assert has_element?(view, "#work-item-record-skip-#{i}", "#{workflow} #{words}")
+        end
+      end
     end
 
     test "the tab of a stage the work item went through has no such block", %{
@@ -2903,7 +2930,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-track h3", "Track")
+      # The label and the badge are one row.
+      assert has_element?(view, "#work-item-stage-gate-path > span", "Track")
+      assert has_element?(view, "#work-item-stage-gate-path > .badge", "Fast track")
       assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
       refute has_element?(view, "#work-item-stage-gate input[type=radio]")
       refute has_element?(view, "#work-item-stage-gate-track", "Standard")
@@ -2950,18 +2979,18 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(
                view,
                "#work-item-tab-passed-over-proposal",
-               "The work item has no spec and no acceptance criteria. The exact change in proposal v1 is the one criterion."
+               "The exact change in proposal v1 is the work item's one criterion."
              )
 
       assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
                Gettext.dgettext(
                  ApiaryWeb.Gettext,
                  "default",
-                 "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+                 "Proposal v%{version}, as approved, is what the next stages work to.",
                  version: "1"
                )
              end) ==
-               "Shape did not run, so the work item has no shaping outputs. Proposal v1, as approved, is what the next stages work to."
+               "Proposal v1, as approved, is what the next stages work to."
     end
 
     test "Shape's tab has no such line where Explore's approval lists no proposal version", %{
@@ -3232,8 +3261,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(
                view,
                "#work-item-stage-gate-no-run",
-               "Verify started no run. Read the build report and the draft, then approve."
+               "Read the build report below, then approve."
              )
+
+      refute html =~ "started no run"
 
       assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
                Gettext.dgettext(
@@ -3253,6 +3284,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+      scope = with_domain(scope, "example")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-no-run",
+               "Read the inputs below, then approve."
+             )
+
+      refute has_element?(view, "#work-item-stage-gate-no-run", "build report")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-proposal",
+               "Proposal v1, as approved, is what the next stages work to."
+             )
+
+      refute has_element?(view, "#work-item-tab-passed-over-proposal", "exact change")
     end
 
     test "Approve at Verify's gate passes the stage with the track the work item is on", %{
