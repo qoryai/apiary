@@ -1,13 +1,14 @@
 defmodule Apiary.Stages.Points do
   # Points are what an escalation asks of a person (`Apiary.Stages.Escalation`), each
-  # `%{"text", "action", "question"?}` as `verdict.schema.json` has them: `text` is one
-  # sentence on what is wrong, and `action` is `answer`, with the id of an open question
-  # in `question`, or `run_again`. The page adds the action's sentence. A run writes them
-  # in its verdict. For the causes the stage runner sets itself (`round_limit`,
-  # `check_failed`, `run_stopped`), this module writes `run_again` points in the default
-  # locale's words (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's
-  # locale. A stopped run's point has `fix`, the stop cause's fix line, where the cause
-  # has one: the page shows it in place of the action's sentence. Only Core writes `fix`.
+  # `%{"text", "action", "question"?, "fix"?}` as `verdict.schema.json` has them: `text` is
+  # one sentence on what is wrong, and `action` is `answer`, with the id of an open
+  # question in `question`, or `run_again`. The page adds the action's sentence. A
+  # `run_again` point may have `fix`, a line that the page shows in place of the action's
+  # sentence. A run writes points in its verdict. For the causes the stage runner sets
+  # itself (`round_limit`, `check_failed`, `run_stopped`), this module writes `run_again`
+  # points in the default locale's words (`ApiaryWeb.Lingo.default_locale/0`) whatever the
+  # calling process's locale. A stopped run's point has `fix`, the stop cause's fix line,
+  # where the cause has one.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
