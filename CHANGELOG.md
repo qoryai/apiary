@@ -2164,8 +2164,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `adapter_feed` (20261117120000 and 20261117120100): the check `adapter_feed_kind_check`
   takes a sixth kind, `watch`, with data up to 4,096 bytes. The first migration adds the
   new check without a scan, and the second validates it with a scan that does not block
-  writes. It changes no row. To roll back past 20261117120000, delete the feed's `watch`
-  entries first: its `down` fails while one exists.
+  writes. It changes no row.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `gate_decisions` and `stage_skips` (20261116120050 and 20261116120100): a nullable
