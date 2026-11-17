@@ -47,14 +47,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Commits: where a stored submission lists the run's commits (`repositories[].base`,
   `{commit, commit_url}`, and `repositories[].commits`, `[{commit, step, commit_url}]`, in
   the order the run made them), the row has a fold, "<n> commits", with the base first
-  ("Base: the head of Run <n>" where an earlier submission of the work item ends at that
-  commit in the same repository; "Base: where the branch starts" where no earlier
+  ("Base: the head of Run <n>", "Base: the result of Run <n>" outside a software
+  workspace, where an earlier submission of the work item ends at that commit in the
+  same repository; "Base: where the branch starts" where no earlier
   submission can; the commit alone where a version that is not listed may), then each commit:
   its short id, a link where the submission has an `https` address for it, the step ("d-2
   · <text of the change>" for a deliverable of the build plan, read from the Change column
   of the plan's Deliverables table, or "d-2" alone where the plan has no such row; "Fix of
-  review finding f1" for a fix; nothing for any other step) and the badge Head on the
-  repository's head commit. The newest row's fold is open. A submission with no list shows
+  review finding f1" for a fix; nothing for any other step) and the badge Head (Latest outside a software workspace)
+  on the repository's head commit. The newest row's fold is open. A submission with no list shows
   no Commits line. A fold lists at most 100 commits, the first 100 or the first 99 and the head
   where the head is a later one, and its count has them all. A commit with another step shows its short id
   alone. The page reads the newest 50 versions; a stored text is cut to 200 characters, and

@@ -6531,8 +6531,8 @@ msgstr ""
 
 #: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
-msgid "Base: the head of Run %{run}"
-msgstr ""
+msgid "Base: the result of Run %{run}"
+msgstr "Base: the head of Run %{run}"
 
 #: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
@@ -11111,11 +11111,6 @@ msgstr ""
 msgid "Harness: shared harness, stack %{stack}"
 msgstr ""
 
-#: lib/apiary_web/components/submission_components.ex
-#, elixir-autogen, elixir-format
-msgid "Head"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Heartbeats are due every %{interval}. After %{silence} of silence the run is marked lost."
@@ -12518,6 +12513,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Last used"
 msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Latest"
+msgstr "Head"
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format

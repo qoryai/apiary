@@ -195,7 +195,7 @@ defmodule ApiaryWeb.SubmissionComponents do
             >
               <.commit url={entry.url} short={entry.short} />
               <span :if={step_words(entry.step)}>{step_words(entry.step)}</span>
-              <.badge :if={entry.head} color="info">{gettext("Head")}</.badge>
+              <.badge :if={entry.head} color="info">{gettext("Latest")}</.badge>
             </li>
           </ol>
         </details>
@@ -291,7 +291,7 @@ defmodule ApiaryWeb.SubmissionComponents do
     end
   end
 
-  defp base_words({:head, run}), do: gettext("Base: the head of Run %{run}", run: run)
+  defp base_words({:head, run}), do: gettext("Base: the result of Run %{run}", run: run)
   defp base_words(:start), do: gettext("Base: where the work starts")
   defp base_words(:unknown), do: nil
 

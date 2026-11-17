@@ -246,6 +246,28 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
     end
   end
 
+  describe "the words of another domain" do
+    test "a workspace that is not a software factory reads Latest and the result of the run" do
+      html =
+        Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+          frame([row()])
+        end)
+
+      assert text(html) =~ "Base: the result of Run 4"
+      assert texts(html, "#frame-av_one-r0-c2 .badge") |> Enum.map(&String.trim/1) == ["Latest"]
+      refute text(html) =~ "Head"
+      refute text(html) =~ "the head of Run"
+      refute text(html) =~ "Commits"
+    end
+
+    test "a software workspace reads Head and the head of the run" do
+      html = frame([row()])
+
+      assert text(html) =~ "Base: the head of Run 4"
+      assert texts(html, "#frame-av_one-r0-c2 .badge") |> Enum.map(&String.trim/1) == ["Head"]
+    end
+  end
+
   describe "the draft" do
     test "has its number beside its system's mark, with the title, as a link" do
       html = frame([row()])

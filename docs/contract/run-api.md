@@ -561,7 +561,7 @@ is not of the form below. A stored text is cut to its first 200 characters.
     and the head where the head is a later entry; the count has every entry.
   - `draft`: `{number, url, title}` for a draft sent to the destination, or `{none: <reason>}`.
 
-A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>"
+A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>" ("the result of Run <n>" outside a software workspace)
 where an earlier submission of the work item, among the newest 50 versions, ends at the base
 commit in the same repository. Where a version that is not listed (older than those, or
 written by a run a member cancelled) may end at it, the line shows the commit alone.
