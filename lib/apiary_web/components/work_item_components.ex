@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.WorkItemComponents do
   # The parts of a work item's page (`/:org/:workspace/work/:number`, which shows the tab
   # it opens on, `…/ticket`, its Ticket tab, `…/stages/:stage_id`, a stage's tab, `…/explore`,
-  # Explore's tab with no stage card, and `…/thread`, its Thread), and the status words and
-  # marks the Work items list shares (`ApiaryWeb.WorkItemListComponents`).
+  # Explore's tab with no stage card, `…/questions`, its Questions tab, and `…/thread`, its
+  # Thread), and the status words and marks the Work items list shares
+  # (`ApiaryWeb.WorkItemListComponents`).
   #
   # Every component takes plain assigns: strings, numbers, times and maps with the keys
   # each one's attributes name, never a context's struct, so the page fills them from
