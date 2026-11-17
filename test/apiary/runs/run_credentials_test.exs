@@ -879,6 +879,34 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert refs.(other, other_queued) == [[branch(other)], [branch(other)]]
     end
 
+    test "a push_ref in an adapter's template is dropped, and only a write entry gets one", ctx do
+      template = Enum.map(@apply, &Map.put(&1, "push_ref", "refs/heads/main"))
+      work_item = work_item_fixture(ctx.scope)
+      set!(Node, work_item.adapter_id, source_apply: template)
+      target_candidate!(work_item)
+      queued = queue!(work_item)
+
+      for level <- [:read, :write_no_push] do
+        assert {:ok, %RunCredential{apply: apply}} =
+                 RunCredentials.form_work(queued, work_item, @target, level)
+
+        assert length(apply) == 2
+        refute Enum.any?(apply, &Map.has_key?(&1, "push_ref")), inspect(level)
+      end
+
+      assert {:ok, %RunCredential{apply: apply}} =
+               RunCredentials.form_work(queued, work_item, @target, :write)
+
+      assert Enum.map(apply, & &1["push_ref"]) == [branch(work_item), branch(work_item)]
+
+      nil_item = %{work_item | public_id: nil}
+
+      assert {:ok, %RunCredential{apply: apply}} =
+               RunCredentials.form_work(queued, nil_item, @target, :write)
+
+      refute Enum.any?(apply, &Map.has_key?(&1, "push_ref"))
+    end
+
     test "a run formed with no work item has no branch to give and no push_ref", ctx do
       {work_item, queued} = queued!(ctx)
       collection = RunCredentials.work_collection(queued, work_item, @target)

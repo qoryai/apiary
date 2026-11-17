@@ -253,11 +253,19 @@ defmodule Apiary.Runs.RunCredentials do
 
   # The branch a write run may push to: `refs/heads/qory/<the work item's public id>`, on
   # each apply item of an entry whose access is `write`, and on no other. The adapter's
-  # call has no branch: Forager's push proxy refuses (403) a push to any other ref.
-  defp push_limit(item, :write, %WorkItem{public_id: public_id}) when is_binary(public_id),
-    do: Map.put(item, "push_ref", @push_ref <> public_id)
+  # call has no branch: Forager's push proxy refuses (403) a push to any other ref. A
+  # `push_ref` the adapter's template has is dropped first, so only this function sets it.
+  defp push_limit(item, level, work_item) do
+    item = Map.delete(item, "push_ref")
 
-  defp push_limit(item, _level, _work_item), do: item
+    case {level, work_item} do
+      {:write, %WorkItem{public_id: public_id}} when is_binary(public_id) ->
+        Map.put(item, "push_ref", @push_ref <> public_id)
+
+      _no_branch ->
+        item
+    end
+  end
 
   @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness

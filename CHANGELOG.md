@@ -1336,6 +1336,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refused. The Forager contract is vendored at commit `c403790`, which defines `push_ref`
   and a path segment written `{}`.
 <!-- /feature -->
+<!-- feature: factory -->
+- A target path with `{` or `}` ends the run `target_access_gone`, as one with `*`, `?`
+  or `#` does. Forager's path grammar reads a segment written `{}` as a wildcard for one
+  segment, so a brace in a target path could widen a run's access. An adapter's answer
+  with a brace in a path is refused too.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A gateway's report of its model keys may have `session`, an integer of 1 or more, the
+  number of the session open when the gateway made the report. The report is stored and
+  answered as one without it. A `session` of 0, or one that is not an integer, is
+  `400` `invalid_request` with `names` `["session"]`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
