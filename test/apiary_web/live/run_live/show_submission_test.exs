@@ -59,8 +59,7 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
         set: [process_version_id: version.id]
       )
 
-    # The workspace's `submission` type with a schema that takes the list of the run's
-    # commits, which the harness's schema takes once it adds the list.
+    # The workspace's `submission` type, with a schema that takes any object.
     Repo.delete_all(
       from t in Apiary.Artifacts.Type,
         where: t.workspace_id == ^work_item.workspace_id and t.name == "submission"

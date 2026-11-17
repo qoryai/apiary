@@ -58,7 +58,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   count has them all. A stored value that is not of the form the contract has is left out:
   a commit that is not 40 or 64 lowercase hex characters, a link that is not `https`.
 - A draft shows its number beside its system's mark, the integration of the workspace's
-  collection for that system, with its title as a link: `#34 "Show delivery dates"`. A
+  collection for that system, with its title as a link: `#34 “Show delivery dates”`. A
   submission that records why it sent no draft shows "The run sent no draft to the
   destination."
 <!-- /feature -->

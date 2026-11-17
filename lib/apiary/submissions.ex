@@ -62,8 +62,8 @@ defmodule Apiary.Submissions do
 
   @doc """
   The rows of the work item's submissions of `type`, newest first, from `artifacts`
-  (`Apiary.Artifacts.list/1`). A version a cancelled run wrote and a withdrawal are left
-  out. `[]` for none.
+  (`Apiary.Artifacts.list/1`). A version a cancelled run wrote, a withdrawal and a version a
+  member added by hand are left out. `[]` for none.
 
   A row is `%{id:, number:, run:, run_id:, workspace_id:, stage_id:, at:, approved:, ref:,
   repositories:}`: the version's public id and number, its run's number, public id and
@@ -81,7 +81,7 @@ defmodule Apiary.Submissions do
   def list(%WorkItem{} = work_item, type, artifacts, only) when is_binary(type) do
     versions =
       case Enum.find(artifacts, &(&1.type == type and &1.name == "main")) do
-        %{versions: versions} -> counted(versions)
+        %{versions: versions} -> versions |> counted() |> Enum.filter(&(&1.writer == :run))
         nil -> []
       end
 

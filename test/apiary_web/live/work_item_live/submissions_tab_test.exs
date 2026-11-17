@@ -68,8 +68,8 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       })
     end
 
-    # The workspace's types: `submission` with a schema that takes the list of the run's
-    # commits, which the harness's schema takes once it adds the list, and the build plan.
+    # The workspace's types: `submission` with a schema that takes any object, and the build
+    # plan.
     Repo.delete_all(
       from t in Apiary.Artifacts.Type,
         where: t.workspace_id == ^workspace.id and t.name in ["submission", "build-plan"]

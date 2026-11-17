@@ -574,6 +574,18 @@ defmodule Apiary.SubmissionsTest do
       assert id == first.public_id
     end
 
+    test "a version a member added by hand is left out", ctx do
+      store!(ctx, ctx.first, submission())
+
+      {:ok, _version} =
+        Artifacts.push({:person, ctx.scope}, ctx.work_item, "submission", json(submission()),
+          name: "main"
+        )
+
+      assert [%{run: run}] = rows(ctx)
+      assert run == ctx.first_number
+    end
+
     test "a type of another name lists none", ctx do
       store!(ctx, ctx.first, submission())
 
