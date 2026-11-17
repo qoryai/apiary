@@ -726,6 +726,105 @@ defmodule Apiary.SubmissionsTest do
     end
   end
 
+  describe "two repositories" do
+    defp other_repository(overrides \\ %{}) do
+      other = String.duplicate("b2", 20)
+
+      Map.merge(
+        %{
+          "system" => "forge.example.org",
+          "path" => "northwind/basket",
+          "commit" => other,
+          "base" => %{"commit" => String.duplicate("8a", 20)},
+          "commits" => [
+            %{"commit" => String.duplicate("5d", 20), "step" => "fix:f9"},
+            %{"commit" => other, "step" => "deliverable:d-7"}
+          ],
+          "draft" => %{
+            "number" => 35,
+            "url" => "https://forge.example.org/pulls/35",
+            "title" => "Cache it"
+          }
+        },
+        overrides
+      )
+    end
+
+    defp two_repositories(ctx, other) do
+      store!(ctx, ctx.first, %{"ref" => "qory/wi_1", "repositories" => [repository(), other]})
+      assert [row] = rows(ctx)
+      assert [first, second] = row.repositories
+      {first, second}
+    end
+
+    test "each has its own base, commits, count, head and draft", ctx do
+      {first, second} = two_repositories(ctx, other_repository())
+
+      assert first.path == "northwind/storefront"
+      assert second.path == "northwind/basket"
+      assert Enum.map(first.commits, & &1.short) == ["4c4c4c4", "7e7e7e7", "a1a1a1a"]
+      assert Enum.map(second.commits, & &1.short) == ["5d5d5d5", "b2b2b2b"]
+      assert List.last(first.commits).commit == first.commit
+      assert List.last(second.commits).commit == second.commit
+      assert Enum.map(first.commits, & &1.head) == [false, false, true]
+      assert Enum.map(second.commits, & &1.head) == [false, true]
+      assert {first.count, second.count} == {3, 2}
+      assert first.base.short == "9f9f9f9"
+      assert second.base.short == "8a8a8a8"
+      assert {:draft, %{number: 34}} = first.draft
+      assert {:draft, %{number: 35}} = second.draft
+    end
+
+    test "the base of one repository is not matched against the other's heads", ctx do
+      store!(ctx, ctx.first, %{
+        "ref" => "r",
+        "repositories" => [repository(%{"commit" => @base, "base" => nil, "commits" => []})]
+      })
+
+      # The second submission's second repository has the first one's head as its base, in
+      # another repository: it is not that run's head.
+      other = other_repository(%{"base" => %{"commit" => @base}})
+
+      store!(ctx, ctx.second, %{
+        "ref" => "r",
+        "repositories" => [repository(%{"base" => %{"commit" => @base}}), other]
+      })
+
+      assert [newest, _oldest] = rows(ctx)
+      assert [first, second] = newest.repositories
+      assert first.base.line == {:head, ctx.first_number}
+      assert second.base.line == :start
+    end
+
+    test "each repository's commits are cut to 100", ctx do
+      commits = for n <- 1..150, do: %{"commit" => hex(n), "step" => "fix:f#{n}"}
+      first = repository(%{"commits" => commits, "commit" => hex(150)})
+      second = other_repository(%{"commits" => commits, "commit" => hex(150)})
+
+      store!(ctx, ctx.first, %{"ref" => "r", "repositories" => [first, second]})
+
+      assert [%{repositories: [first, second]}] = rows(ctx)
+
+      for repository <- [first, second] do
+        assert {length(repository.commits), repository.count} == {100, 150}
+        assert List.last(repository.commits).head
+        assert Enum.count(repository.commits, & &1.head) == 1
+      end
+    end
+
+    test "a repository with no list does not hide the other's", ctx do
+      {first, second} =
+        two_repositories(ctx, other_repository(%{"base" => nil, "commits" => nil}))
+
+      assert second.base == nil
+      assert second.commits == []
+      assert second.count == 0
+      assert {:draft, %{number: 35}} = second.draft
+      assert length(first.commits) == 3
+      assert first.base.short == "9f9f9f9"
+    end
+  end
+
   describe "a step" do
     test "that is not a string has no step", ctx do
       commits = [

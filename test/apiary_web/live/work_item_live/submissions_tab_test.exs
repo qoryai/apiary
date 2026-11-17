@@ -13,6 +13,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
+  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
@@ -160,11 +161,11 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     version
   end
 
-  defp submission!(run, work_item, repository) do
+  defp submission!(run, work_item, repository, more \\ []) do
     value = %{
       "ref" => "qory/wi_qk5p97dt9vdq39a2",
       "verdict" => "passed",
-      "repositories" => [repository]
+      "repositories" => [repository | List.wrap(more)]
     }
 
     push!(
@@ -450,5 +451,106 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
 
     assert has_element?(view, "#work-item-record", "submission v2")
+  end
+
+  describe "the words of the workspace's domain" do
+    test "a software workspace reads Branch, Commits, Head and the head of the run", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{one: one, two: two, first_run: first_run} = two_runs!(work_item)
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      row = "#work-item-tab-output-submission-#{two.public_id}-r0"
+      assert has_element?(view, "#{row}-branch + dt", "Commits")
+      assert has_element?(view, "#{row}-branch", "qory/wi_qk5p97dt9vdq39a2")
+      assert has_element?(view, "#{row}-base", "Base: the head of Run #{first_run.number}")
+      assert has_element?(view, "#{row}-commits .badge", "Head")
+
+      words =
+        view
+        |> element("#work-item-tab-output-submission")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert words =~ "Branch"
+      assert words =~ "Commits"
+      refute words =~ "Latest"
+      refute words =~ "Reference"
+      refute words =~ "Revisions"
+      refute words =~ "the result of Run"
+      assert has_element?(view, "#work-item-tab-output-submission-#{one.public_id}")
+    end
+
+    test "a workspace that is not a software factory reads the engine's words", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{two: two, first_run: first_run} = two_runs!(work_item)
+      scope = with_domain(ctx.scope, "example")
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(scope, work_item))
+
+      row = "#work-item-tab-output-submission-#{two.public_id}-r0"
+      assert has_element?(view, "#{row}-base", "Base: the result of Run #{first_run.number}")
+      assert has_element?(view, "#{row}-commits .badge", "Latest")
+
+      words =
+        view
+        |> element("#work-item-tab-output-submission")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+
+      assert words =~ "Reference"
+      assert words =~ "Revisions"
+      assert words =~ "Base: where the work starts"
+      refute words =~ "Head"
+      refute words =~ "Branch"
+      refute words =~ "Commits"
+      refute words =~ "commit"
+      refute words =~ "the head of Run"
+    end
+  end
+
+  describe "two repositories" do
+    test "each has its path, draft, base, commits and head mark", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+
+      other = String.duplicate("b2", 20)
+
+      second = %{
+        "system" => "forge.example.org",
+        "path" => "northwind/basket",
+        "commit" => other,
+        "base" => %{"commit" => String.duplicate("8a", 20)},
+        "commits" => [
+          %{"commit" => String.duplicate("5d", 20), "step" => "fix:f9"},
+          %{"commit" => other, "step" => "fix:f10"}
+        ],
+        "draft" => %{
+          "number" => 35,
+          "url" => "https://forge.example.org/pulls/35",
+          "title" => "Cache it"
+        }
+      }
+
+      version = submission!(run, work_item, repository(), second)
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      row = "#work-item-tab-output-submission-#{version.public_id}"
+      assert has_element?(view, "#{row}-r0-path", "northwind/storefront")
+      assert has_element?(view, "#{row}-r1-path", "northwind/basket")
+      assert has_element?(view, "#{row}-r0-draft", "#34")
+      assert has_element?(view, "#{row}-r1-draft", "#35")
+      assert has_element?(view, "#{row}-r0-commits", "3 commits")
+      assert has_element?(view, "#{row}-r1-commits", "2 commits")
+      assert has_element?(view, "#{row}-r0-c2 .badge", "Head")
+      assert has_element?(view, "#{row}-r1-c1 .badge", "Head")
+      assert has_element?(view, "#{row}-r1-base", "8a8a8a8")
+    end
   end
 end

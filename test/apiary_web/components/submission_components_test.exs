@@ -361,6 +361,112 @@ defmodule ApiaryWeb.SubmissionComponentsTest do
     end
   end
 
+  describe "two repositories" do
+    defp second_repository do
+      other = hex("b")
+
+      repository(%{
+        system: "forge.example.org",
+        path: "northwind/basket",
+        commit: other,
+        short: "bbbbbbb",
+        url: "https://forge.example.org/commit/#{other}",
+        base: %{commit: hex("8"), short: "8888888", url: nil, line: :start},
+        commits: [
+          commit(hex("5"), {:fix, "f9"}),
+          commit(other, {:change, "d-7", "Cache the basket"}, %{head: true})
+        ],
+        count: 2,
+        draft:
+          {:draft, %{number: 35, url: "https://forge.example.org/pulls/35", title: "Cache it"}}
+      })
+    end
+
+    defp two(overrides \\ %{}),
+      do:
+        frame(
+          [row(%{repositories: [repository(), Map.merge(second_repository(), overrides)]})],
+          %{
+            "git.example.com" => "GitHub",
+            "forge.example.org" => "Forgejo"
+          }
+        )
+
+    test "each has its path above its own lines" do
+      html = two()
+
+      assert texts(html, "#frame-av_one-r0-path") |> Enum.map(&String.trim/1) == [
+               "northwind/storefront"
+             ]
+
+      assert texts(html, "#frame-av_one-r1-path") |> Enum.map(&String.trim/1) == [
+               "northwind/basket"
+             ]
+    end
+
+    test "each has its own draft number and mark" do
+      html = two()
+
+      assert texts(html, "#frame-av_one-r0-draft") |> hd() |> squash() =~
+               "#34 “Show delivery dates”"
+
+      assert texts(html, "#frame-av_one-r1-draft") |> hd() |> squash() =~ "#35 “Cache it”"
+      assert count(html, ~s(#frame-av_one-r0-draft [aria-label="GitHub"])) == 1
+      assert count(html, ~s(#frame-av_one-r1-draft [aria-label="Forgejo"])) == 1
+    end
+
+    test "each has its own base, commits and head mark" do
+      html = two()
+
+      assert texts(html, "#frame-av_one-r0-base") |> hd() |> squash() ==
+               "9999999 Base: the head of Run 4"
+
+      assert texts(html, "#frame-av_one-r1-base") |> hd() |> squash() ==
+               "8888888 Base: where the branch starts"
+
+      assert texts(html, "#frame-av_one-r1-c0") |> hd() |> squash() ==
+               "5555555 Fix of review finding f9"
+
+      assert texts(html, "#frame-av_one-r1-c1") |> hd() |> squash() ==
+               "bbbbbbb d-7 · Cache the basket Head"
+
+      assert texts(html, "#frame-av_one-r0-c2") |> hd() |> squash() ==
+               "aaaaaaa Fix of review finding f2 Head"
+
+      assert count(html, "#frame-av_one-r0-commits .badge") == 1
+      assert count(html, "#frame-av_one-r1-commits .badge") == 1
+    end
+
+    test "each counts its own commits" do
+      html = two()
+
+      assert texts(html, "#frame-av_one-r0-commits summary") |> hd() |> squash() == "3 commits"
+      assert texts(html, "#frame-av_one-r1-commits summary") |> hd() |> squash() == "2 commits"
+    end
+
+    test "each lists at most the commits that were kept, and counts them all" do
+      many = for n <- 1..100, do: commit(hex(Integer.to_string(rem(n, 10))), {:fix, "f#{n}"})
+      other = second_repository()
+      kept = %{other | commits: List.update_at(many, 99, &%{&1 | head: true}), count: 180}
+      html = frame([row(%{repositories: [repository(), kept]})])
+
+      assert count(html, "#frame-av_one-r1-fold li") == 101
+      assert texts(html, "#frame-av_one-r1-commits summary") |> hd() |> squash() == "180 commits"
+      assert count(html, "#frame-av_one-r0-fold li") == 4
+    end
+
+    test "a repository with no list does not hide the other's" do
+      html = two(%{base: nil, commits: [], count: 0})
+
+      assert count(html, "#frame-av_one-r1-commits") == 0
+      assert texts(html, "#frame-av_one-r1-branch") |> hd() |> squash() =~ "bbbbbbb"
+      assert count(html, "#frame-av_one-r0-commits") == 1
+
+      assert texts(html, "#frame-av_one-r0-c2") |> hd() |> squash() ==
+               "aaaaaaa Fix of review finding f2 Head"
+    end
+  end
+
   describe "many commits" do
     test "show the lines that were kept and count them all" do
       commits = for n <- 1..100, do: commit(hex(Integer.to_string(rem(n, 10))), {:fix, "f#{n}"})

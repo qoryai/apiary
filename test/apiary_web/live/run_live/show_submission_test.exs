@@ -9,6 +9,7 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.RunEventsFixtures
 
   alias Apiary.{Artifacts, Repo}
@@ -207,5 +208,63 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
            )
 
     refute html =~ "<script>alert(1)"
+  end
+
+  # A second version of the same run, whose base is the first version's head.
+  defp second_version(value) do
+    update_in(value, ["repositories", Access.at(0)], fn repository ->
+      %{repository | "base" => %{"commit" => @head}}
+    end)
+  end
+
+  defp block_words(lv, number) do
+    lv
+    |> element("#prepare-machine-session-outputs-submission-#{number}-row")
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.replace(~r/\s+/, " ")
+  end
+
+  test "a software workspace reads Branch, Commits, Head and the head of the run", ctx do
+    submit = %{"type" => "submission", "send" => "end_of_run"}
+    run_ctx = handed_over!(ctx, submit)
+    store!(run_ctx, submission())
+    store!(run_ctx, second_version(submission()))
+
+    {:ok, lv, _html} = live(ctx.conn, run_path(ctx.scope, run_ctx.run))
+
+    words = block_words(lv, 2)
+    assert words =~ "Branch"
+    assert words =~ "Commits"
+    assert words =~ "Base: the head of Run #{run_ctx.run.number}"
+    assert words =~ "Head"
+    refute words =~ "Latest"
+    refute words =~ "Reference"
+    refute words =~ "Revisions"
+    refute words =~ "the result of Run"
+  end
+
+  test "a workspace that is not a software factory reads the engine's words", ctx do
+    submit = %{"type" => "submission", "send" => "end_of_run"}
+    run_ctx = handed_over!(ctx, submit)
+    store!(run_ctx, submission())
+    store!(run_ctx, second_version(submission()))
+    scope = with_domain(ctx.scope, "example")
+
+    {:ok, lv, _html} = live(ctx.conn, run_path(scope, run_ctx.run))
+
+    words = block_words(lv, 2)
+    assert words =~ "Reference"
+    assert words =~ "Revisions"
+    assert words =~ "Base: the result of Run #{run_ctx.run.number}"
+    assert words =~ "Latest"
+    refute words =~ "Branch"
+    refute words =~ "Commits"
+    refute words =~ "Head"
+    refute words =~ "the head of Run"
+    refute words =~ "commit"
+
+    assert block_words(lv, 1) =~ "Base: where the work starts"
   end
 end
