@@ -406,8 +406,9 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
     # A sealed run (`Apiary.SealedRunsFixtures.sealed_run_fixture/1`) of a workspace in
     # `mode`, whose ticket's adapter declares `@apply` and whose ticket's collection can
     # change its target, with the work entry its claim would record
-    # (`Apiary.Runs.RunCredentials.form_work/3`), and the document its reload gives.
-    defp work_run!(scope, mode) do
+    # (`Apiary.Runs.RunCredentials.form_work/4`) and, for the level `:write`, its push entry
+    # (`push_from/3`), and the document its reload gives.
+    defp work_run!(scope, mode, level \\ nil) do
       {:ok, _mode} = Policy.set_mode(scope, mode)
       ctx = Apiary.SealedRunsFixtures.sealed_run_fixture(scope)
       dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, ctx.run.dispatch_run_id)
@@ -422,12 +423,17 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       Apiary.WorkItemsFixtures.target_candidate!(work_item)
 
       {:ok, entry} =
-        RunCredentials.form_work(dispatch_run, work_item, %{
-          system: work_item.target_system,
-          path: work_item.target_path
-        })
+        RunCredentials.form_work(
+          dispatch_run,
+          work_item,
+          %{system: work_item.target_system, path: work_item.target_path},
+          level
+        )
 
       RunCredentials.insert!(entry, ctx.run)
+
+      if push = RunCredentials.push_from(entry, level, work_item),
+        do: RunCredentials.insert!(push, ctx.run)
 
       {key, _seed} = ctx.secrets_key
 
@@ -494,6 +500,62 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert work.digest == Render.digest(document)
     end
 
+    test "a write run is given push-1 after work-1, with the branch and the same hosts", ctx do
+      %{document: document, work_item: work_item} = work_run!(ctx.scope, "enforce", :write)
+      decoded = Jason.decode!(document)
+      branch = "refs/heads/qory/" <> work_item.public_id
+
+      # The model key and the registry credential come first.
+      assert [model, %{"name" => "registry"}, work, push] = decoded["credentials"]
+      assert model["name"] =~ ~r/-1\z/
+      assert %{"name" => "work-1", "purpose" => "work"} = work
+      refute inspect(work) =~ "push_ref"
+
+      assert push == %{
+               "name" => "push-1",
+               "purpose" => "push",
+               "apply" => [
+                 %{
+                   "hosts" => ["git.example.com"],
+                   "scheme" => "basic",
+                   "username" => "token-user",
+                   "paths" => ["/acme/shop.git/*", "/acme/shop/*"],
+                   "push_ref" => branch
+                 },
+                 %{"hosts" => ["api.git.example.com"], "scheme" => "bearer", "push_ref" => branch}
+               ]
+             }
+
+      {"credentials", entries} =
+        document
+        |> Jason.decode!(objects: :ordered_objects)
+        |> Map.get(:values)
+        |> List.keyfind("credentials", 0)
+
+      assert Enum.map(List.last(entries).values, &elem(&1, 0)) == ~w(name purpose apply)
+
+      # The hosts are the same for both entries, each once.
+      egress = decoded["security_policy"]["egress"]
+      assert egress["allow"] == Enum.uniq(egress["allow"])
+      assert egress["allow_first"] == Enum.uniq(egress["allow_first"])
+      assert "git.example.com" in egress["allow"]
+      assert "api.git.example.com" in egress["allow_first"]
+
+      assert Schema.validate(document) == :ok
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
+    end
+
+    for level <- [nil, :read, :write_no_push] do
+      test "a run with the level #{inspect(level)} has no push entry", ctx do
+        %{document: document, run: run} = work_run!(ctx.scope, "enforce", unquote(level))
+        names = for entry <- Jason.decode!(document)["credentials"], do: entry["name"]
+        assert List.last(names) == "work-1"
+        refute "push-1" in names
+        refute document =~ "push_ref"
+        assert RunCredentials.push(run) == nil
+      end
+    end
+
     test "under observe has its hosts in allow_first alone", ctx do
       %{document: document} = work_run!(ctx.scope, "observe")
       egress = Jason.decode!(document)["security_policy"]["egress"]
@@ -513,6 +575,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert hosts == ["git.example.com", "api.git.example.com"]
       assert RunCredentials.work(%{id: Ecto.UUID.generate()}) == nil
       assert RunCredentials.work(nil) == nil
+      assert RunCredentials.push(%{id: Ecto.UUID.generate()}) == nil
+      assert RunCredentials.push(nil) == nil
     end
 
     test "a secrets request may leave work-1 out, and one that names it is refused", ctx do

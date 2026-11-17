@@ -1,8 +1,11 @@
 defmodule Apiary.Runs.WorkCredential do
-  # The value of a run's work entry (`Apiary.Runs.RunCredentials`, `work-1`), for a secrets
-  # request that names it (`Apiary.Runs.SecretsRequest`): `issue/4` asks the adapter for a
-  # credential and checks the answer; the caller seals it, then keeps its apply items
-  # (`keep/1`) and writes its Activity entry (`record_issued/3`) in one transaction.
+  # The value of a run's work entry or push entry (`Apiary.Runs.RunCredentials`, `work-1`
+  # and `push-1`), for a secrets request that names it (`Apiary.Runs.SecretsRequest`):
+  # `issue/4` asks the adapter for a credential and checks the answer; the caller seals it,
+  # then keeps its apply items (`keep/1`) and writes its Activity entry (`record_issued/3`)
+  # in one transaction. The adapter's call is the same for both entries, with the purpose
+  # `work`: only the access differs, `read` for the work entry and `write` for the push
+  # entry.
   #
   # The caller makes every check that needs no token first, the model key's read
   # included, so that a credential the adapter issued fails only at a step that needs it.
@@ -15,9 +18,10 @@ defmodule Apiary.Runs.WorkCredential do
   #   1. The entry's connection is connected, of the run's organisation and of the
   #      entry's adapter (`:connection_gone`), and the adapter is not deleted and has an
   #      access key in use (`:adapter_key_missing`). Otherwise no call is made.
-  #   2. The call (`Apiary.Adapters.Calls.run_credential/3`), with the purpose `work`: the
-  #      connection's public id, the one resource the entry has, the collection's ref as
-  #      the adapter listed it, and the entry's access, with no `grant_ref`. A failed call
+  #   2. The call (`Apiary.Adapters.Calls.run_credential/3`), with the purpose `work`, also
+  #      for a push entry: the connection's public id, the one resource the entry has, the
+  #      collection's ref as the adapter listed it, and the entry's access, with no
+  #      `grant_ref`. A failed call
   #      has the cause of `Apiary.Adapters.CallFailure`, and `:call_failed` for an
   #      exception on the call path, whose message is never read.
   #   3. The answer's check against the entry (`Apiary.Runs.RunCredentialIssue.check/3`),
@@ -129,8 +133,8 @@ defmodule Apiary.Runs.WorkCredential do
   # the action, with no call and no entry.
   @spec issue(Run.t(), RunCredential.t(), AccessKey.t(), integer) ::
           {:ok, t} | {:error, :not_found | :unavailable | :gone | :credential_unavailable}
-  def issue(%Run{} = run, %RunCredential{purpose: :work} = row, %AccessKey{} = access_key, now)
-      when is_integer(now) do
+  def issue(%Run{} = run, %RunCredential{purpose: purpose} = row, %AccessKey{} = access_key, now)
+      when purpose in [:work, :push] and is_integer(now) do
     case may_issue(access_key, run) do
       :ok ->
         attempt(run, row, access_key, now)
@@ -284,7 +288,7 @@ defmodule Apiary.Runs.WorkCredential do
 
   defp checked(%RunCredential{} = row, %Answer{document: document}, now) do
     entry =
-      %{"name" => row.name, "purpose" => "work", "apply" => row.apply}
+      %{"name" => row.name, "purpose" => Atom.to_string(row.purpose), "apply" => row.apply}
       |> then(&if(row.placeholders, do: Map.put(&1, "placeholders", row.placeholders), else: &1))
 
     case RunCredentialIssue.check(entry, document, DateTime.from_unix!(now)) do
@@ -311,7 +315,7 @@ defmodule Apiary.Runs.WorkCredential do
   # The refusal's log line, its write on a pending run, its Activity entry, and its code.
   # An Activity entry that cannot be written makes the code `:unavailable`.
   defp refusal(access_key, run, row, place, cause, failure) do
-    :ok = noted(cause, failure, run, place)
+    :ok = noted(cause, failure, run, row, place)
 
     case record(access_key, run, row, place, Atom.to_string(cause), nil) do
       :ok -> {:error, code(cause)}
@@ -323,11 +327,11 @@ defmodule Apiary.Runs.WorkCredential do
   defp code(:run_not_live), do: :gone
   defp code(_cause), do: :credential_unavailable
 
-  defp noted(cause, failure, %Run{} = run, place) do
+  defp noted(cause, failure, %Run{} = run, %RunCredential{} = row, place) do
     Logger.warning(
       "a work credential for the run #{run.node_run_id} was not issued " <>
         "connection=#{public_id(place.connection)} adapter=#{public_id(place.adapter)} " <>
-        "cause=#{cause}"
+        "credential=#{row.name} cause=#{cause}"
     )
 
     failure = failure || answer_failure(cause, place.adapter)

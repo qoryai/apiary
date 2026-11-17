@@ -79,10 +79,12 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #
   # For a run whose claim recorded a work credential entry (`Apiary.Runs.RunCredentials`,
   # `work/1`): the entry `work-1`, after the registry credential in `credentials`, with
-  # `purpose` `work` and the apply items filled at the claim; and, where the document has
-  # a `security_policy`, the hosts of its items, all exact, in `egress.allow_first`, as the
-  # provider's exact hosts are, and in `egress.allow` only when `egress.mode` is
-  # `enforce`. More than 8 entries in `credentials`, the most the contract takes, compose
+  # `purpose` `work` and the apply items filled at the claim; and, for a run with access
+  # `write`, its push entry (`push/1`) after it: `push-1`, with `purpose` `push` and the
+  # same items, each with `push_ref`. Where the document has a `security_policy`, the hosts
+  # of the items, all exact, are in `egress.allow_first`, as the provider's exact hosts
+  # are, and in `egress.allow` only when `egress.mode` is `enforce`. More than 8 entries in
+  # `credentials`, the most the contract takes, compose
   # no document, as more than 64 in `allow_first` do.
   #
   # For a run of a workspace's queue whose harness walk pinned a source with a network
@@ -492,6 +494,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         credential: credential,
         registry: RunAccess.member(run),
         work: RunCredentials.work(run),
+        push: RunCredentials.push(run),
         stack_hosts: stack_hosts((pins || []) ++ submit_source(run)),
         resume: Transcript.resume(run),
         harness_hidden: hidden?
@@ -505,6 +508,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     do:
       (is_map(variables) and map_size(variables) > 0) or not is_nil(credential) or
         not is_nil(Map.get(members, :registry)) or not is_nil(Map.get(members, :work)) or
+        not is_nil(Map.get(members, :push)) or
         Map.get(members, :stack_hosts, []) != [] or not is_nil(Map.get(members, :resume)) or
         Map.get(members, :harness_hidden) == true
 
@@ -611,6 +615,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   defp with_members(document, %{variables: variables, credential: credential} = run_members) do
     registry = Map.get(run_members, :registry)
     work = Map.get(run_members, :work)
+    push = Map.get(run_members, :push)
     stack_hosts = Map.get(run_members, :stack_hosts) || []
 
     hosts =
@@ -619,7 +624,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
     entries =
       if(credential, do: Enum.map(credential.keys, & &1.entry), else: []) ++
         if(registry, do: [registry.entry], else: []) ++
-        if work, do: [work.entry], else: []
+        if(work, do: [work.entry], else: []) ++ if(push, do: [push.entry], else: [])
 
     added =
       if(is_map(variables) and map_size(variables) > 0,
@@ -645,7 +650,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
     with :ok <- credentials_fit(entries),
          :ok <- stack_hosts_fit(stack_hosts),
-         {:ok, members} <- policy_with_hosts(members, hosts, if(work, do: work.hosts, else: [])),
+         {:ok, members} <- policy_with_hosts(members, hosts, entry_hosts([work, push])),
          do: {:ok, encode(policy_with_paths(members, registry, open?) ++ added)}
   end
 
@@ -754,6 +759,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
       _none -> members
     end
   end
+
+  # The hosts of the work and push entries, each once, in their order.
+  defp entry_hosts(entries),
+    do: entries |> Enum.flat_map(&if(&1, do: &1.hosts, else: [])) |> Enum.uniq()
 
   # The members with the provider's `hosts` in the `security_policy`'s `egress`, where
   # there is one: added to `egress.allow` after its entries, each once, and each exact one

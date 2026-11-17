@@ -8,9 +8,12 @@ defmodule Apiary.Runs.SecretsRequest do
   # key (`Apiary.Secrets.Sealing`). The gateway names every credential when the run starts,
   # and at a renewal only the ones whose values expire. The credentials Qory writes are a
   # run's model keys (`Apiary.Runs.ProviderCredential`), with the `registry` feature, its
-  # registry credential (`Apiary.Registry.Credential`), and the work entry its claim
-  # recorded (`Apiary.Runs.RunCredentials`), whose value the entry's adapter issues anew
-  # for each request that names it (`Apiary.Runs.WorkCredential`). A request reveals a
+  # registry credential (`Apiary.Registry.Credential`), and the work entry and the push
+  # entry its claim recorded (`Apiary.Runs.RunCredentials`, `work-1` and `push-1`), whose
+  # value the entry's adapter issues anew for each request that names it
+  # (`Apiary.Runs.WorkCredential`). A request names either or both, as a renewal names the
+  # entries whose values expire; each entry is a separate call to the adapter, with its
+  # own access. A request reveals a
   # model key only when it names it, and only a key the run's claim stored for the run
   # (`runs.model_keys`), by its row id, under the value id the key has at the request: a
   # key renamed since the claim is revealed, one removed since is refused at step 8. It
@@ -40,8 +43,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #     of the run returns now: the gateway reads the run configuration and its digest
   #     from a reload;
   #  6. `{:error, :credential_unavailable}`, a run with no model provider, no registry
-  #     credential and no work entry, or whose provider cannot be read: the run
-  #     configuration has no credential, or none can be composed. The provider's columns
+  #     credential and no work entry (a push entry comes with a work entry), or whose
+  #     provider cannot be read: the run configuration has no credential, or none can be composed. The provider's columns
   #     of a run are NULL when its claim set no provider, or when the provider was
   #     deleted; a provider's deletion is refused while a live run uses it, as step 4
   #     reads it, so only a run that ended, refused at step 4, has them NULL after a
@@ -63,29 +66,32 @@ defmodule Apiary.Runs.SecretsRequest do
   #     organisation than the run's (`provider_organisation/2`); the gateway may not
   #     receive the key (`Apiary.Runs.ProviderCredential.sealable_to?/3`): any gateway
   #     for a provider of any other chain; the instance's gateway may receive a key of
-  #     the organisation's chain; for a request that names the work entry, a gateway
-  #     that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
+  #     the organisation's chain; for a request that names the work entry or the push
+  #     entry, a gateway that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
   #     both checks are also false for a gateway of another organisation or of another
   #     workspace, whose request step 4 ends first; the access key's public key fails a
   #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
-  #  9. for a request that names the work entry, after every check above and the model
-  #     key's read, its credential is not issued (`Apiary.Runs.WorkCredential.issue/4`):
+  #  9. for a request that names the work entry or the push entry, after every check above
+  #     and the model key's read, the credential of an entry is not issued
+  #     (`Apiary.Runs.WorkCredential.issue/4`), the work entry's first, then the push
+  #     entry's; the first that fails refuses the request, and no value is sealed:
   #     `{:error, :not_found}` where `Apiary.Access` refuses the key `run_credential.issue`
   #     on the run, the `factory` feature off among the causes, with no call and no
-  #     Activity entry; `{:error, :unavailable}` for a call to the adapter that timed out or reached no
-  #     one, `{:error, :gone}` for a run that is no longer live after the call,
-  #     `{:error, :credential_unavailable}` for every other cause. No database
+  #     Activity entry; `{:error, :unavailable}` for a call to the adapter that timed out
+  #     or reached no one, `{:error, :gone}` for a run that is no longer live after the
+  #     call, `{:error, :credential_unavailable}` for every other cause. No database
   #     transaction is open during the call;
   # 10. `{:error, :credential_unavailable}`, a value that does not fit the plaintext's
   #     schema;
-  # 11. for a request that names the work entry, its apply items differ from those of
-  #     the run's first credential (`Apiary.Runs.WorkCredential.keep/1`):
-  #     `{:error, :credential_unavailable}`.
+  # 11. for a request that names the work entry or the push entry, an entry's apply items
+  #     differ from those of that entry's first credential
+  #     (`Apiary.Runs.WorkCredential.keep/1`): `{:error, :credential_unavailable}`.
   #
-  # Each attempt at the work entry's credential that `Apiary.Access` lets, from step 9 on,
-  # writes one
-  # `run_credential.issue` Activity entry: its refusal, or, last before the answer and in
-  # one transaction with its apply items and the seal's audit entry, `issued`.
+  # Each attempt at an entry's credential that `Apiary.Access` lets, from step 9 on,
+  # writes one `run_credential.issue` Activity entry per entry: its refusal, or, last
+  # before the answer and in one transaction with its apply items and the seal's audit
+  # entry, `issued`. A request that names both entries fails whole: the entry that failed
+  # has its cause, and an entry whose credential was issued before has `not_recorded`.
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
@@ -166,14 +172,14 @@ defmodule Apiary.Runs.SecretsRequest do
          {:ok, digest} <- in_force(access_key, run, instance_id, credentials),
          :ok <- same_digest(request, digest),
          {:ok, credentials} <- credentials,
-         {:ok, %{model: model, work: work} = credentials} <- named(request, credentials),
-         :ok <- stored_allowed(model || work, access_key),
+         {:ok, %{model: model, works: works} = credentials} <- named(request, credentials),
+         :ok <- stored_allowed(model, works, access_key),
          :ok <- may_seal(run, model, access_key),
          :ok <- sealable(run, model, access_key),
-         :ok <- work_sealable(run, work, access_key),
+         :ok <- work_sealable(run, works, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
          {:ok, values, secret, copies} <- values(run, credentials),
-         {:ok, issued} <- issued(run, work, access_key, now),
+         {:ok, issued} <- issued(run, works, access_key, now),
          {:ok, body} <-
            sealed(run, credentials, values, issued, access_key, public_key, digest, now),
          :ok <- recorded(access_key, run, {model, copies}, issued) do
@@ -245,9 +251,9 @@ defmodule Apiary.Runs.SecretsRequest do
       else: {:error, :secrets_not_allowed}
   end
 
-  defp stored_allowed(nil, _access_key), do: :ok
-  defp stored_allowed(_model, %AccessKey{allow_secrets: true}), do: :ok
-  defp stored_allowed(_model, %AccessKey{}), do: {:error, :secrets_not_allowed}
+  defp stored_allowed(nil, [], _access_key), do: :ok
+  defp stored_allowed(_model, _works, %AccessKey{allow_secrets: true}), do: :ok
+  defp stored_allowed(_model, _works, %AccessKey{}), do: {:error, :secrets_not_allowed}
 
   # Only a request that names the run's model key seals it: one for `registry` alone asks
   # nothing here, as the `factory` feature of `secret.seal` may be off under `registry`.
@@ -292,24 +298,24 @@ defmodule Apiary.Runs.SecretsRequest do
   end
 
   # The run's credentials, as its run configuration contains them: `{:ok, %{model:,
-  # registry:, work:, names:}}`, the model key (nil for none), whether the run has a
-  # registry credential (`Apiary.Registry.RunAccess`), its work entry
-  # (`Apiary.Runs.RunCredentials.work/1`, nil for none), and their names in the
-  # document's order. `:credential_unavailable` for a run with none, and for a run whose
-  # model provider cannot be read.
+  # registry:, works:, names:}}`, the model key (nil for none), whether the run has a
+  # registry credential (`Apiary.Registry.RunAccess`), its work entry and its push entry
+  # (`Apiary.Runs.RunCredentials.work/1` and `push/1`; `[]` for none, the work entry
+  # first), and their names in the document's order. `:credential_unavailable` for a run
+  # with none, and for a run whose model provider cannot be read.
   defp credentials(%Run{} = run) do
     with {:ok, model} <- model(run) do
       registry = RunAccess.applies?(run)
-      work = RunCredentials.work(run)
+      works = Enum.reject([RunCredentials.work(run), RunCredentials.push(run)], &is_nil/1)
 
       names =
         if(model, do: Enum.map(model.keys, & &1.name), else: []) ++
           if(registry, do: [Credential.name()], else: []) ++
-          if work, do: [work.name], else: []
+          Enum.map(works, & &1.name)
 
       if names == [],
         do: {:error, :credential_unavailable},
-        else: {:ok, %{model: model, registry: registry, work: work, names: names}}
+        else: {:ok, %{model: model, registry: registry, works: works, names: names}}
     end
   end
 
@@ -340,17 +346,15 @@ defmodule Apiary.Runs.SecretsRequest do
 
   # The credentials the request names: a subset of the run's, in the run configuration's
   # order. The model keys are those of the run's keys that the request names, nil for
-  # none; the work entry is nil, and the registry credential false, where the request does
-  # not name it.
+  # none; the work entries are the run's entries the request names, `[]` for none, and the
+  # registry credential is false, where the request does not name it.
   defp named(%{credentials: requested}, %{model: model, registry: registry} = credentials) do
-    work = credentials.work
-
     if Enum.filter(credentials.names, &(&1 in requested)) == requested do
       {:ok,
        %{
          model: model_named(model, requested),
          registry: registry and Credential.name() in requested,
-         work: if(work && work.name in requested, do: work),
+         works: Enum.filter(credentials.works, &(&1.name in requested)),
          names: requested
        }}
     else
@@ -414,11 +418,11 @@ defmodule Apiary.Runs.SecretsRequest do
   defp provider_organisation(%{chain: "organisation"}, %Run{organisation_id: id}), do: id
   defp provider_organisation(provider, _run), do: provider.organisation_id
 
-  # The work entry's credential may be sealed for a gateway of the run's organisation, or
-  # the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`).
-  defp work_sealable(_run, nil, _access_key), do: :ok
+  # The work entry's and the push entry's credentials may be sealed for a gateway of the
+  # run's organisation, or the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`).
+  defp work_sealable(_run, [], _access_key), do: :ok
 
-  defp work_sealable(%Run{} = run, %{}, %AccessKey{node: node}) do
+  defp work_sealable(%Run{} = run, [_ | _], %AccessKey{node: node}) do
     if WorkCredential.sealable_to?(node, run) do
       :ok
     else
@@ -431,12 +435,23 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  # The work entry's credential, from its adapter (`Apiary.Runs.WorkCredential.issue/4`),
-  # nil where the request does not name the entry. Every step before it needs no token.
-  defp issued(_run, nil, _access_key, _now), do: {:ok, nil}
+  # The credentials of the entries the request names, from their adapter, one call each, in
+  # the order of the run configuration (`Apiary.Runs.WorkCredential.issue/4`): `{:ok, []}`
+  # where the request names no entry. The first refusal is the request's, and an
+  # entry issued before it is refused, never sent (`not_recorded`). Every step before it
+  # needs no token.
+  defp issued(run, works, access_key, now) do
+    Enum.reduce_while(works, {:ok, []}, fn %{row: row}, {:ok, issued} ->
+      case WorkCredential.issue(run, row, access_key, now) do
+        {:ok, credential} ->
+          {:cont, {:ok, issued ++ [credential]}}
 
-  defp issued(run, %{row: row}, access_key, now),
-    do: WorkCredential.issue(run, row, access_key, now)
+        {:error, _refusal} = error ->
+          Enum.each(issued, &WorkCredential.refused(access_key, run, &1, :not_recorded))
+          {:halt, error}
+      end
+    end)
+  end
 
   defp recipient_key(run, %AccessKey{public_key: public_key}) do
     case Ed25519.check_public_key(public_key) do
@@ -464,12 +479,12 @@ defmodule Apiary.Runs.SecretsRequest do
 
   ## The seal
 
-  # The seal of `values` and the work entry's credential `issued`, in memory. A seal that
-  # fails after the work credential was issued is that credential's refusal too
+  # The seal of `values` and the credentials `issued` of the work and push entries, in
+  # memory. A seal that fails after a credential was issued is its refusal too
   # (`Apiary.Runs.WorkCredential.refused/4`).
   defp sealed(run, credentials, values, issued, access_key, public_key, digest, now) do
-    work_values = if issued, do: [WorkCredential.value(credentials.work.name, issued.issued)]
-    values = Enum.sort_by(values ++ (work_values || []), & &1["credential"])
+    work_values = Enum.map(issued, &WorkCredential.value(&1.row.name, &1.issued))
+    values = Enum.sort_by(values ++ work_values, & &1["credential"])
 
     plaintext = %{
       "version" => 1,
@@ -491,29 +506,29 @@ defmodule Apiary.Runs.SecretsRequest do
         {:ok, body}
 
       {:error, _code} = error ->
-        if issued, do: WorkCredential.refused(access_key, run, issued, :seal_failed)
+        Enum.each(issued, &WorkCredential.refused(access_key, run, &1, :seal_failed))
         error
     end
   end
 
-  # The writes after the seal. Without a work credential, the seal's records alone
-  # (`record/3`). With one, in one transaction: the seal's records, whose copies of the
-  # model keys take the run's row `FOR KEY SHARE` first; then the work entry's apply items
+  # The writes after the seal. Without a work or push credential, the seal's records alone
+  # (`record/3`). With them, in one transaction: the seal's records, whose copies of the
+  # model keys take the run's row `FOR KEY SHARE` first; then each entry's apply items
   # kept or compared on its `run_credentials` row (`Apiary.Runs.WorkCredential.keep/1`);
-  # then the work credential's Activity entry, last. A run's deletion locks the run's row
+  # then each credential's Activity entry, last. A run's deletion locks the run's row
   # and then its `run_credentials` rows, so both take the run first and cannot deadlock;
-  # a request for the work entry alone has no copies and takes no lock on the run. A step
-  # that fails rolls them all back, and the work credential is refused for its cause
-  # (`Apiary.Runs.WorkCredential.refused/4`).
-  defp recorded(access_key, run, seal, nil), do: record(access_key, run, seal)
+  # a request for the entries alone has no copies and takes no lock on the run. A step
+  # that fails rolls them all back, and the credential it failed on is refused for its
+  # cause, the others as `not_recorded` (`Apiary.Runs.WorkCredential.refused/4`).
+  defp recorded(access_key, run, seal, []), do: record(access_key, run, seal)
 
   defp recorded(access_key, run, seal, issued) do
     written =
       try do
         Repo.transact(fn ->
           with :ok <- not_recorded(record(access_key, run, seal)),
-               :ok <- WorkCredential.keep(issued),
-               :ok <- WorkCredential.record_issued(access_key, run, issued),
+               :ok <- each_issued(issued, &WorkCredential.keep/1),
+               :ok <- each_issued(issued, &WorkCredential.record_issued(access_key, run, &1)),
                do: {:ok, :written}
         end)
       rescue
@@ -522,12 +537,43 @@ defmodule Apiary.Runs.SecretsRequest do
 
     case written do
       {:ok, :written} -> :ok
-      {:error, cause} -> WorkCredential.refused(access_key, run, issued, cause)
+      {:error, failure} -> refused_all(access_key, run, issued, failure)
     end
   end
 
   defp not_recorded(:ok), do: :ok
   defp not_recorded({:error, _reason}), do: {:error, :not_recorded}
+
+  # `:ok` when `step` returns `:ok` for each credential in `issued`, else the first
+  # refusal, with the credential it was for.
+  defp each_issued(issued, step) do
+    Enum.find_value(issued, :ok, fn credential ->
+      case step.(credential) do
+        :ok -> nil
+        {:error, cause} -> {:error, {cause, credential}}
+      end
+    end)
+  end
+
+  # Every credential in `issued` is refused: the one a step failed on for `cause`, the
+  # others, and all where no step is to blame, as `not_recorded`. The refusal of the one
+  # that failed, else the first, is the request's.
+  defp refused_all(access_key, run, issued, failure) do
+    {cause, failed} =
+      case failure do
+        {cause, credential} -> {cause, credential}
+        cause -> {cause, nil}
+      end
+
+    results =
+      Enum.map(issued, fn credential ->
+        reason = if is_nil(failed) or credential == failed, do: cause, else: :not_recorded
+        {credential, WorkCredential.refused(access_key, run, credential, reason)}
+      end)
+
+    {_credential, refusal} = Enum.find(results, hd(results), &(elem(&1, 0) == failed))
+    refusal
+  end
 
   # The value of each credential but the work entry's, the registry credential's secret,
   # nil for none, and the copies of the model keys (`model_value/2`): the model keys',
