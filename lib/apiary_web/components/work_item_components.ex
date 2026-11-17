@@ -95,6 +95,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.RunCancelComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.StagesLive.Words, as: StagesWords
   alias ApiaryWeb.WorkItemLive.StageComponents
 
   @stages [:explore, :confirm, :shape]
@@ -110,6 +111,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     :ticket_gone,
     :inputs_invalid,
     :target_access_gone,
+    :write_without_work_item,
     :build_failed
   ]
   # The walk's failure codes that `ApiaryWeb.HarnessComponents.public_read_words/2` words.
@@ -728,6 +730,10 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: 0,
     doc: "the points of the stage's open escalation, while the questions wait for answers"
 
+  attr :picks_track, :boolean,
+    default: false,
+    doc: "whether the gate under the proposal offers tracks, which Approve takes with it"
+
   attr :needs_path, :string,
     default: "#work-item-needs",
     doc: "where the block \"What the run needs from you\" is"
@@ -790,6 +796,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         no_pool={@no_pool}
         commenting={@commenting}
         points={@points}
+        picks_track={@picks_track}
         needs_path={@needs_path}
       />
     </section>
@@ -881,6 +888,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :no_pool, :map, default: nil
   attr :commenting, :boolean, default: false
   attr :points, :integer, default: 0
+  attr :picks_track, :boolean, default: false
   attr :needs_path, :string, default: "#work-item-needs"
 
   # A later run of the take in: what it reads, with whose answers, and which run is
@@ -1143,6 +1151,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         refused: not assigns.can_act and others != [] and others != confirmers,
         line:
           cond do
+            assigns.can_act and assigns.picks_track ->
+              gettext(
+                "Pick a track and approve the proposal, or add a comment and run another round."
+              )
+
             assigns.can_act ->
               gettext("Approve the proposal, or add a comment and run another round.")
 
@@ -2132,7 +2145,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       take in queued no run (`:closed`): who closed it and when (`ended_tab_words/2`);
     * a run without a result (no result, lost or cancelled): what happened, and the run's
       page; for a run that ended at its claim, before it started (`:end_cause`
-      `:variables_invalid`, `:ticket_gone`, `:inputs_invalid` or `:target_access_gone`),
+      `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone` or
+      `:write_without_work_item`),
       while it waited for its environment image's build, which failed (`:build_failed`),
       or because its harness walk failed (`:harness_unresolved`, with
       `:harness_failure`), what a member fixes and why; for a run whose harness had no
@@ -2278,6 +2292,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "why no pool can take the queued run, `%{pools:, workspace:, path:}`; nil while a pool can take it"
 
+  attr :track_offer, :map,
+    default: nil,
+    doc:
+      "the tracks Explore's gate offers, `%{tracks:, selected:, picked:, proposed:, reason:, stage:}`: each track `%{id:, name:, description:}`, the id selected, the id the reader chose (nil for none), the id the runs proposed, why they proposed it (nil for none), and the stage's name; nil where the gate offers none"
+
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
   slot :needs,
@@ -2412,6 +2431,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         changed={@changed}
         decisions={@decisions != []}
         error={send_words(@move_error, @form_error)}
+        track_offer={@track_offer}
       />
       <.questions_frame
         :if={@shown_questions != []}
@@ -2496,6 +2516,25 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the record of the runner passing the stage over whole in the take in (`Apiary.Stages.stage_skips/1`), nil for none"
 
   attr :stage_names, :map, default: %{}, doc: "the process version's stage names, by stage id"
+
+  attr :proposal_version, :integer,
+    default: nil,
+    doc:
+      "on the tab of Shape, passed over whole, the number of the proposal version that Explore's approval lists (`ApiaryWeb.WorkItemLive.StageTab.view/3`); nil for none"
+
+  attr :entries, :list,
+    default: [],
+    doc:
+      "the rows of the table of the stage's workflow entries (`ApiaryWeb.WorkItemLive.StageTab.entries/3`); [] for no table"
+
+  attr :document, :map,
+    default: %{},
+    doc: "the process version's document, for the words of an entry's condition"
+
+  attr :track_line, :map,
+    default: nil,
+    doc:
+      "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
   attr :questions, :list, default: []
@@ -2610,7 +2649,22 @@ defmodule ApiaryWeb.WorkItemComponents do
         <p id={"#{@id}-passed-over-why"} class="q-xp-cap">
           {passed_over_words(@passed_over, @stage.name, @stage_names, @now)}
         </p>
+        <p :if={@proposal_version} id={"#{@id}-passed-over-proposal"} class="q-xp-cap">
+          {gettext(
+            "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+            version: Format.number(@proposal_version)
+          )}
+        </p>
       </section>
+      <.entries_frame
+        :if={@entries != []}
+        id={"#{@id}-entries"}
+        stage={@stage}
+        entries={@entries}
+        runs={@runs}
+        document={@document}
+        track_line={@track_line}
+      />
       <.run_line :if={@running} id={"#{@id}-run"} run={@run} now={@now} cancel={@cancel} />
       <.stage_wait
         :if={@running}
@@ -2694,7 +2748,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         id="work-item-record"
         number={@work_item.number}
         runs={@runs}
-        skips={@skips}
+        skips={if @entries == [], do: @skips, else: []}
         latest={@run}
         pieces={@pieces}
         verdicts={@verdicts}
@@ -2714,6 +2768,122 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  attr :id, :string, required: true
+  attr :stage, :map, required: true
+  attr :entries, :list, required: true, doc: "`ApiaryWeb.WorkItemLive.StageTab.entries/3`"
+  attr :runs, :list, required: true, doc: "the stage's runs of the take in, oldest first"
+  attr :document, :map, required: true
+  attr :track_line, :map, default: nil
+
+  # The stage's workflow entries in the order of its sequence, each with its state and why:
+  # a run's attempt and the condition of the entry, or the condition or the reason that the
+  # runner passed it over (`Apiary.Stages.skips/1`). Under the table, a gate that needs no
+  # member says so.
+  defp entries_frame(assigns) do
+    assigns =
+      assign(assigns, rows: Enum.map(assigns.entries, &entry_row(&1, assigns)))
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <div class="q-xp-frame-h">
+        <.icon name="hero-bars-3-bottom-left" class="q-xp-frame-i size-4" />
+        <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("Workflows")}</h2>
+      </div>
+      <p :if={@track_line && @track_line.gate} id={"#{@id}-track"} class="q-xp-cap">
+        <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+        <span>
+          {gettext("Track: %{track}, approved at %{gate}'s gate",
+            track: @track_line.name,
+            gate: @track_line.gate
+          )}
+        </span>
+      </p>
+      <div class="q-xp-body q-xp-entries">
+        <table id={"#{@id}-table"}>
+          <thead>
+            <tr>
+              <th scope="col">{gettext("Workflow")}</th>
+              <th scope="col">{gettext("State")}</th>
+              <th scope="col">{gettext("Why")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={{row, i} <- Enum.with_index(@rows)} id={"#{@id}-row-#{i}"}>
+              <td>
+                <span class="q-xp-entry-name">{row.name}</span>
+                <span :if={row.note} class="q-xp-entry-note">{row.note}</span>
+              </td>
+              <td>
+                <.badge :if={row.state} color={row.state.color}>{row.state.words}</.badge>
+              </td>
+              <td>
+                <span :if={row.why}>{row.why}</span>
+                <.rich :if={row.run} text={attempt_words(row.run)} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p :if={@stage.gate["kind"] == "none"} id={"#{@id}-gate"}>
+          {gettext("Approved without a member: %{stage}'s gate needs no member.",
+            stage: @stage.name
+          )}
+        </p>
+      </div>
+    </section>
+    """
+  end
+
+  # A row of the table: its name, the workflow under it, its state and why. The run is the
+  # entry's newest, as the fold of runs has it, for the link to its attempt.
+  defp entry_row(entry, %{stage: stage, document: document, runs: runs}) do
+    condition = StagesWords.condition(entry.item, document, stage.id)
+    run = entry.attempt && Enum.find(runs, &(&1[:attempt] == entry.attempt))
+
+    %{
+      name: entry_name(entry),
+      note: entry.note,
+      state: entry_state(entry),
+      why: if(entry.attempt, do: condition, else: why_skipped(entry.skip, condition)),
+      run: run
+    }
+  end
+
+  defp entry_name(%{kind: :loop, rounds: rounds}),
+    do:
+      ngettext("Loop of up to %{rounds} round", "Loop of up to %{rounds} rounds", rounds,
+        rounds: Format.number(rounds)
+      )
+
+  defp entry_name(%{name: name}), do: name
+
+  defp entry_state(%{attempt: attempt, shows: shows}) when is_integer(attempt),
+    do: %{
+      color: if(shows == :passed, do: "success", else: "neutral"),
+      words: entry_state_word(shows)
+    }
+
+  defp entry_state(%{skip: %{}}), do: %{color: "neutral", words: gettext("Not run")}
+  defp entry_state(_entry), do: nil
+
+  # The state words of the table, in sentence case, as the column reads one way. The fold
+  # of runs words the same states in lower case (`StageComponents`).
+  defp entry_state_word(:passed), do: gettext("Passed")
+  defp entry_state_word(:paused), do: gettext("Paused")
+  defp entry_state_word(:failed), do: gettext("Did not pass")
+  defp entry_state_word(:questions), do: gettext("Questions")
+  defp entry_state_word(:queued), do: gettext("Queued")
+  defp entry_state_word(:running), do: gettext("Running")
+  defp entry_state_word(:no_verdict), do: gettext("Ended without a verdict")
+  defp entry_state_word(:undone), do: gettext("Undone")
+
+  # Why an entry did not run: an earlier entry's first attempt that passed, a missing
+  # input, its condition on a track, else what the record of the skip says.
+  defp why_skipped(nil, condition), do: condition
+  defp why_skipped(%{reason: "first_attempt_passed"} = skip, _condition), do: skip_words(skip)
+  defp why_skipped(%{input: type} = skip, _condition) when is_binary(type), do: skip_words(skip)
+  defp why_skipped(%{track: track} = skip, nil) when is_binary(track), do: skip_words(skip)
+  defp why_skipped(_skip, condition), do: condition
 
   attr :id, :string, required: true
   attr :stage, :map, required: true
@@ -3739,6 +3909,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     values: [:proposal, :outputs],
     doc: "what the next run updates, as the caption names it"
 
+  attr :track_offer, :map,
+    default: nil,
+    doc:
+      "the tracks the gate offers, `%{tracks:, selected:, picked:, proposed:, reason:, stage:}` (`explore_tab/1`); nil for none"
+
   # The gate under the proposal: for a reader who may send review comments, the comment on
   # the whole proposal; for a reader who may send them or change the decisions above the
   # gate (`can_change`), Run another round (`"answer"`), which starts the next run with
@@ -3749,7 +3924,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # change. Where a button starts a run, its click opens the spend's dialog first
   # (`ApiaryWeb.SpendDialog`). The caption has only the changed decisions for a reader who
   # may change a decision and may not comment (`can_send`). Under them, why the last move
-  # was not made (`error`), as the questions form shows its error.
+  # was not made (`error`), as the questions form shows its error. Where the gate offers
+  # tracks (`track_offer`), the radios of the tracks sit between the comment and the buttons,
+  # for a reader who may confirm; Approve records the track the page holds as the draft.
   defp gate(assigns) do
     assigns =
       assign(assigns,
@@ -3800,6 +3977,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         decisions={@decisions}
         updates={@updates}
       />
+      <.track_picker :if={@track_offer && @can_confirm} id={"#{@id}-track"} offer={@track_offer} />
       <div class="q-xp-form-foot q-xp-gate-go">
         <span class="q-xp-gate-b">
           <.button
@@ -3845,6 +4023,52 @@ defmodule ApiaryWeb.WorkItemComponents do
         <.icon name="hero-exclamation-triangle-micro" class="size-3.5" /><.rich text={@error} />
       </p>
     </form>
+    """
+  end
+
+  attr :id, :string, required: true
+
+  attr :offer, :map,
+    required: true,
+    doc: "`%{tracks:, selected:, picked:, proposed:, reason:, stage:}` (`explore_tab/1`)"
+
+  # The tracks the gate offers, one radio each in the gate's order with the track's
+  # description, the selected one marked; the track the runs proposed has the badge
+  # "Proposed by <stage>". The radios are fields of the gate's form, so a change reaches
+  # the page as the comment does (`"answer_draft"`).
+  defp track_picker(assigns) do
+    ~H"""
+    <fieldset id={@id} class="q-xp-tracks">
+      <legend>{gettext("Track to run after you approve")}</legend>
+      <label
+        :for={track <- @offer.tracks}
+        id={"#{@id}-#{track.id}"}
+        class={["q-xp-track", track.id == @offer.selected && "q-xp-track-on"]}
+      >
+        <input
+          type="radio"
+          name="track"
+          value={track.id}
+          checked={track.id == @offer.selected}
+        />
+        <span class="q-xp-track-body">
+          <span class="q-xp-track-name">{track.name}</span>
+          <span :if={track.id == @offer.proposed} id={"#{@id}-#{track.id}-proposed"}>
+            <.badge color="info">
+              {gettext("Proposed by %{stage}", stage: @offer.stage)}
+            </.badge>
+          </span>
+          <span :if={track.description} class="q-xp-track-text">{track.description}</span>
+          <span
+            :if={track.id == @offer.proposed and @offer.reason}
+            id={"#{@id}-#{track.id}-reason"}
+            class="q-xp-track-text"
+          >
+            {gettext("%{stage}'s reason: %{reason}", stage: @offer.stage, reason: @offer.reason)}
+          </span>
+        </span>
+      </label>
+    </fieldset>
     """
   end
 
@@ -6086,6 +6310,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       gettext(
         "Check the integration that brings in this target on the organisation's Integrations page, then run Explore again. The run had no access to its target: the integration no longer reaches it, or the target's path has a character that access rules do not allow."
       )
+
+  defp unstarted_words(:write_without_work_item),
+    do: gettext("Contact support: a run that writes needs a work item.")
 
   defp unstarted_words(:build_failed),
     do:

@@ -8,8 +8,10 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # The sentences a software workspace says in its words, with no engine word in them: the
   # policy file's place, outside the checkout, and the harness choice's repository and its
   # branch, tag or commit, the version's name among them, why a read of the Qory
-  # harness failed, and what a switch to another track and Run another round do on an
-  # escalation (the build report, the commit and the ticket).
+  # harness failed, what a switch to another track and Run another round do on an
+  # escalation (the build report, the commit and the ticket), the branch of a run that
+  # writes, what a person reads at a gate whose stage started no run (the build report and
+  # the draft), and why Shape did not run (the spec and the criteria).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
@@ -26,13 +28,16 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
     "Choose a harness with a process for this type of workspace. The harness has no template of this workspace's type at this version.",
     "Compare version %{number} of the stages with the process at harness version %{commit}, then save it as a new version.",
+    "Contact support: a run that writes needs a work item.",
     "Correct the version: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "Correct the version: give a version name, refs/heads/<name>, refs/tags/<name> or a full version id. People without write access can change other refs, such as a change request's.",
     "Harness version",
     "Harness version in use: %{commit}, process version %{number}",
     "Harness: %{harness}, version %{commit}",
     "Keep a policy file outside the folder the runs work in.",
+    "Read the inputs below, then approve.",
     "Runs %{entry} again with your note. Use it when the run changed more than the work item asks.",
+    "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
     "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",

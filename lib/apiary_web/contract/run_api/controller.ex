@@ -17,11 +17,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
   #      unknown one get the same answer;
-  #   3. for a push and a verdict, a run that has ended is `409` `run_ended`, read here
-  #      and again under the work item's lock (`Apiary.Artifacts.push/5`), and so is a
-  #      run a member cancelled, from the cancel on, with the message for a cancel; then a body
-  #      over its size `413` `payload_too_large`, then a body outside the contract `400`
-  #      `invalid_request` with the member in `names`;
+  #   3. for a push, a verdict and a report of pushed commits, a run that has ended is
+  #      `409` `run_ended`, read here and again under the work item's lock
+  #      (`Apiary.Artifacts.push/5`), and so is a run a member cancelled, from the cancel
+  #      on, with the message for a cancel; then a body over its size `413`
+  #      `payload_too_large`, then a body outside the contract `400` `invalid_request` with
+  #      the member in `names`. A report of pushed commits is not refused while a cancel is
+  #      requested, only once the run's end is recorded
+  #      (`Apiary.Runs.PushedCommit.refusal/1`), and a run whose access is not `write` is
+  #      `409` `not_writable`, before the body;
   #   4. for a push: a type the workspace does not have, or a standard type it hides, is
   #      `422` `unknown_type`, with a message that starts with the step: define the type;
   #      for a standard type, switch it on; more files than the type takes `422`
@@ -35,12 +39,13 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      written as an integer (`1e3` as `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
-  #      reads itself, `422` `type_not_withdrawable`, then files with it `422`
-  #      `withdrawal_with_files`, then what
-  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name with no
-  #      version `409` `no_version`, a name whose newest version is a withdrawal `409`
-  #      `already_withdrawn`, and one whose newest version a person wrote `409`
-  #      `person_version`.
+  #      reads itself, and a type with `withdrawable` false, `422`
+  #      `type_not_withdrawable`, then files with it `422` `withdrawal_with_files`, then
+  #      what `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name
+  #      whose newest version a person approved at a gate `422` `type_not_withdrawable`,
+  #      a name with no version `409` `no_version`, a name whose newest version is a
+  #      withdrawal `409` `already_withdrawn`, and one whose newest version a person wrote
+  #      `409` `person_version`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -61,6 +66,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   alias Apiary.Artifacts.Format
   alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
+  alias Apiary.Runs.PushedCommit
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
 
@@ -137,8 +143,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # A withdrawal: the type, whether a run may withdraw it, then no files, then what
   # `Apiary.Artifacts.withdraw/4` returns.
   defp store(run, %{withdraw: true} = push) do
-    with {:ok, _type} <- known_type(run.work_item.workspace, push.type),
-         :ok <- withdrawable_type(push),
+    with {:ok, type} <- known_type(run.work_item.workspace, push.type),
+         :ok <- withdrawable_type(type, push),
          :ok <- no_files(push) do
       Boundary.withdraw({:run, run.dispatch_run}, run.work_item, push.type,
         name: push.name,
@@ -189,6 +195,72 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   rescue
     exception -> unavailable(conn, exception)
+  end
+
+  # A report of the commits the run pushed: `204`, signed, with no body. A run that has
+  # ended is `409` `run_ended`, a run whose access is not `write` `409` `not_writable`
+  # (`Apiary.Runs.Cancel.write_run?/2`), then the body (`400` `invalid_request`), then
+  # `Apiary.Runs.PushedCommit.record/3`, which reads the run of the queue again under the
+  # work item's lock. A cancel that a member requested does not refuse the report.
+  def pushed_commits(conn, %{"run_id" => run_id}) do
+    with {:ok, run} <- run(conn, run_id),
+         :ok <- reporting(run),
+         :ok <- writable(run),
+         {:ok, repositories} <- Body.pushed_commits(conn.assigns.raw_body),
+         :ok <- PushedCommit.record(run.work_item, run.run, repositories) do
+      send_resp(
+        put_resp_header(
+          conn,
+          "x-qory-configuration",
+          Configuration.digest(conn.assigns.access_key)
+        ),
+        204,
+        ""
+      )
+    else
+      {:error, :not_writable} ->
+        error(conn, 409, "not_writable",
+          message:
+            "Record pushed commits only from a run with write access. This run cannot push."
+        )
+
+      {:error, :run_ended} ->
+        error(conn, 409, "run_ended",
+          message:
+            "Start a new run to record pushed commits. This run ended, so it records no more commits."
+        )
+
+      {:error, :invalid_request, member} ->
+        conn
+        |> put_status(400)
+        |> json(%{
+          error: "invalid_request",
+          names: [member],
+          message:
+            "Send 1 to 64 repositories, each with system, path and a full commit id of 40 or 64 lowercase hex characters."
+        })
+
+      error ->
+        write_error(conn, error)
+    end
+  rescue
+    exception -> unavailable(conn, exception)
+  end
+
+  # A run reports while its run of the queue has not ended and the run is live. A cancel
+  # a member requested is no reason to refuse (`PushedCommit.refusal/1`).
+  defp reporting(run) do
+    cond do
+      PushedCommit.refusal(run.dispatch_run) -> {:error, :run_ended}
+      Run.live?(run) -> :ok
+      true -> {:error, :run_ended}
+    end
+  end
+
+  defp writable(run) do
+    if Apiary.Runs.Cancel.write_run?(run.work_item.workspace, run.run),
+      do: :ok,
+      else: {:error, :not_writable}
   end
 
   # The policy `ApiaryWeb.ContentSecurityPolicy` set for the answer, with the directive
@@ -355,10 +427,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   ## Pushes
 
-  defp withdrawable_type(push) do
-    if Boundary.withdrawable_type?(push.type),
-      do: :ok,
-      else: {:error, {:withdraw, :type, push.type, push.name}}
+  defp withdrawable_type(type, push) do
+    case Boundary.withdrawable_type(type) do
+      :ok -> :ok
+      {:error, {:withdraw, reason}} -> {:error, {:withdraw, reason, push.type, push.name}}
+    end
   end
 
   defp no_files(%{files: []}), do: :ok
@@ -576,8 +649,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "to this run's number."
 
       :answered_changed ->
-        "Leave question, context and options of each answered question in " <>
-          "#{filename} as the newest version of questions has them."
+        "Leave question, context, options and criterion of each answered question in " <>
+          "#{filename} as the newest version of questions has them, set or absent."
 
       :new_not_open ->
         "Add each question in #{filename} as open, with no decision, or as decided, " <>
@@ -600,8 +673,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
       :decided_changed ->
         "Leave question and options of each question with a decision in #{filename} " <>
-          "as the newest version of questions has them, and its context while it stays " <>
-          "decided or answered: to change them, withdraw the question and add a new one."
+          "as the newest version of questions has them, and its context and criterion " <>
+          "while it stays decided or answered: to change them, withdraw the question and " <>
+          "add a new one."
 
       :decision_changed ->
         "Leave the decision of each question in #{filename} as the newest version of " <>
@@ -792,6 +866,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       message:
         "Push a new version of #{type} instead. Qory Apiary reads questions, " <>
           "review-comments, verdict and proposal itself, so a run cannot withdraw them."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, :type_off, type, _name}}) do
+    error(conn, 422, "type_not_withdrawable",
+      type: type,
+      message:
+        "Push a new version of #{type} instead. The artifact type #{type} has " <>
+          "withdrawable set to false, so a run cannot withdraw its names."
+    )
+  end
+
+  defp write_error(conn, {:error, {:withdraw, {:approved, number}, type, name}}) do
+    error(conn, 422, "type_not_withdrawable",
+      type: type,
+      message:
+        "Push a new version of #{type}/#{name} instead. A member approved its newest " <>
+          "version, v#{number}, so a run cannot withdraw the name."
     )
   end
 

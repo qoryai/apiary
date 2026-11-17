@@ -3,7 +3,7 @@ defmodule ApiaryPro.Access do
   alias Apiary.Access.Action
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
-  alias ApiaryPro.{Flags, Reach, Tenants}
+  alias ApiaryPro.{Flags, Reach, Tenants, WorkspaceOperators}
   alias ApiaryPro.Transfers.Transfer
 
   @owners [:owner]
@@ -242,7 +242,7 @@ defmodule ApiaryPro.Access do
   # change there: no node or access key, no person of the organisation, no harness
   # document, secret, variable, connection or security policy. Of what the organisation has
   # as a whole they change nothing. The organisation's owners and admins keep every action
-  # in the workspace, these included.
+  # in the workspace, these included, but the time limits (`@operator_alone`).
   @operator_in_workspace [
     :"time_limit.edit",
     :"retention.edit",
@@ -250,6 +250,13 @@ defmodule ApiaryPro.Access do
     :"artifact_type.edit",
     :"model_choice.write"
   ]
+
+  # What the operator alone changes in a workspace it operates, while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on: the time limits of the workspace and
+  # its targets. A person who acts there through the operator (`through_operator?/1`)
+  # changes them; the organisation's owners and admins do not, nor a person in both whose
+  # level in the operator is not higher than theirs in the organisation.
+  @operator_alone [:"time_limit.edit"]
 
   # The reads of a workspace that its operator's people do not make: its secrets, with
   # their names, notes and value ids, and its variables with their values.
@@ -574,6 +581,12 @@ defmodule ApiaryPro.Access do
       via != nil and is_nil(Access.level(scope)) and action not in @operator_in_workspace ->
         {:error, :forbidden}
 
+      # While the flag is on, the operator alone changes these in a workspace it operates:
+      # anyone who does not act there through the operator is forbidden them.
+      on? and action in @operator_alone and operated?(scope, workspace_id) and
+          not through_operator?(scope, via) ->
+        {:error, :forbidden}
+
       # While the flag is on, a person in both whose level in the operator is higher acts
       # at it, as though they had no membership in the organisation, for what the
       # operator changes in the workspace.
@@ -601,6 +614,12 @@ defmodule ApiaryPro.Access do
       nil -> nil
     end
   end
+
+  # Whether the workspace `workspace_id` of the scope's organisation has an operator.
+  defp operated?(%Scope{organisation: %Organisation{} = organisation}, workspace_id),
+    do: not is_nil(WorkspaceOperators.operator_id(organisation, workspace_id))
+
+  defp operated?(_scope, _workspace_id), do: false
 
   # Whether the action is asked of the organisation (`Apiary.Access.Action`).
   defp asked_of_organisation?(action), do: Access.action(action).asked_of == :organisation

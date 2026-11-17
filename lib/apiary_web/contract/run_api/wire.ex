@@ -11,7 +11,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   (`Apiary.Dispatches.Inputs.explore/4`, within its 768 KiB with the oldest comments
   #   left out), then the stage, its inputs, its outputs with each check result, the
   #   newest verdict with its points, the stage's gaps (why it waits for a workflow, or
-  #   the failed checks that started its round) and the work item's notes.
+  #   the failed checks that started its round), the work item's notes and the commits its
+  #   earlier runs pushed (`pushed_commits`).
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer, approvals (by a person, or `automatic` at a gate `none`), whether a run a
   #   member cancelled wrote it and whether it is a withdrawal
@@ -79,9 +80,27 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
            {"gaps", get(status, :gaps)}
          ] ++
            Enum.filter(inputs.values, fn {key, _value} -> key in @from_explore end) ++
-           [{"notes", notes(Boundary.notes(work_item))}]
+           [
+             {"notes", notes(Boundary.notes(work_item))},
+             {"pushed_commits", pushed_commits(Boundary.pushed_commits(work_item, run))}
+           ]
        )}
     end
+  end
+
+  # The commits the work item's earlier runs reported pushing, in the order of the run's
+  # number and then the order the run reported them; `[]` for none.
+  defp pushed_commits(entries) do
+    Enum.map(entries, fn entry ->
+      object([
+        {"system", entry.system},
+        {"path", entry.path},
+        {"commit", entry.commit},
+        {"run_id", entry.run_id},
+        {"cancelled", entry.cancelled},
+        {"at", time(entry.at)}
+      ])
+    end)
   end
 
   # The stage as `Apiary.Stages.status/1` returns it: the stage of the process document,
@@ -112,7 +131,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   end
 
   # verdict/2 is the newest verdict as the work item's answer has it: its value, its
-  # points (`{text, action, question?}`, nil for none) and its version, or nil for none.
+  # points (`{text, action, question?, fix?}`, nil for none) and its version, or nil for
+  # none.
   @spec verdict(map | nil, map | nil) :: Jason.OrderedObject.t() | nil
   def verdict(nil, _content), do: nil
 
@@ -130,7 +150,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     for %{} = point <- points do
       object(
         [{"text", point["text"]}, {"action", point["action"]}] ++
-          if(Map.has_key?(point, "question"), do: [{"question", point["question"]}], else: [])
+          for(key <- ~w(question fix), Map.has_key?(point, key), do: {key, point[key]})
       )
     end
   end
@@ -226,7 +246,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
-  # notes/1 is the notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
+  # notes/1 is the open notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
   # started a round.

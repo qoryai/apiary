@@ -83,6 +83,7 @@ defmodule Apiary.Deletion.Tables do
     {"connections", :workspace},
     {"run_steps", :workspace},
     {"run_target_writes", :workspace},
+    {"run_pushed_commits", :workspace},
     {"deliveries", :workspace},
     {"composed_run_configurations", :workspace},
     {"run_configurations", :workspace},

@@ -5,12 +5,19 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # closed until a person opens them; a closed fold's fields still go with the form. The
   # Workflows page and Instance settings › Workspace types show it beside the canvas; each sends
   # its form's events to `ApiaryWeb.StagesLive.Editor`.
+  #
+  # On the Workflows page (`time_limit` given), each workflow's fold also has its time
+  # limit, the workspace's in `Apiary.TimeLimits`, which is not part of the process: the
+  # field belongs to a separate form after the stage's form (the `form` attribute), so
+  # Save time limit saves it at once and the draft stays as it is. The read-only panel's
+  # row line ends with the limit.
   @moduledoc false
 
   use ApiaryWeb, :html
 
   import ApiaryWeb.PolicyComponents, only: [sect: 1]
 
+  alias Apiary.TimeLimits
   alias ApiaryWeb.MachineTypeWords
   alias ApiaryWeb.StagesLive.Words
 
@@ -88,6 +95,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     default: nil,
     doc: "the line of a read of the harness that failed, shown above the workflows; nil for none"
 
+  attr :time_limit, :map,
+    default: nil,
+    doc:
+      "the workflows' time limits, nil for none: `saved`, the workspace's minutes by workflow; `rows`, each field's state by its row (`time_limit_key/2`); `editable`; and `note`, the sentence shown in place of a way to change them, or nil"
+
   def stage_panel(%{may: false} = assigns) do
     ~H"""
     <section
@@ -112,7 +124,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       </.sect>
       <.sect id="stage-sequence" title={gettext("Sequence")} heading="h3" class="q-sect-side">
         <ul class={read_lines()}>
-          <li :for={{line, workflow, notes} <- sequence_lines(@stage, @machine, @machine_types, @doc)}>
+          <li :for={
+            {line, workflow, notes} <-
+              sequence_lines(@stage, @machine, @machine_types, @doc, @time_limit)
+          }>
             {line}<.workflow_mark :if={workflow} workflow={workflow} marks={@marks} class="ml-2" />
             <span :for={note <- notes} class="block text-muted">{note}</span>
           </li>
@@ -267,6 +282,9 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                       from_update={@from_update}
                       remove={length(loop["body"]) > 1 && %{"at" => j, "loop" => i}}
                       rule={j > 0}
+                      time_limit={
+                        time_limit_field(@time_limit, @stage["id"], "stage-entry-#{i}-#{j}", inner)
+                      }
                     />
                   </div>
                   <div class="border-t border-line px-3 py-1.5">
@@ -293,6 +311,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   from_update={@from_update}
                   remove={%{"at" => i}}
                   rule={i > 0 and not Map.has_key?(Enum.at(@stage["sequence"], i - 1), "loop")}
+                  time_limit={time_limit_field(@time_limit, @stage["id"], "stage-entry-#{i}", entry)}
                 />
               <% end %>
             <% end %>
@@ -395,6 +414,19 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           </p>
         </.sect>
       </.form>
+      <%!-- The time limits' forms: each field in a workflow's fold belongs to one of these by
+      its `form` attribute, as a form may not be in the stage's form. --%>
+      <form
+        :for={{id, workflow} <- time_limit_rows(@time_limit, @stage)}
+        id={"#{id}-time-limit-form"}
+        novalidate
+        phx-change="time_limit_change"
+        phx-submit="time_limit_save"
+        class="hidden"
+      >
+        <input type="hidden" name="time_limit[row]" value={time_limit_key(@stage["id"], id)} />
+        <input type="hidden" name="time_limit[workflow]" value={workflow} />
+      </form>
     </section>
     """
   end
@@ -448,6 +480,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :from_update, :boolean, required: true
   attr :remove, :any, required: true
   attr :rule, :boolean, required: true, doc: "whether a line separates the row from the one above"
+  attr :time_limit, :map, default: nil, doc: "the row's time limit (`time_limit_field/4`), or nil"
 
   # A workflow's row: its name, its check or cross and Remove, and under them one line with
   # its settings, which opens them in place. The whole line is the `summary`, so a key or a
@@ -524,9 +557,14 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           <span class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10">
             <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
             <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">
-              {gettext("Machine type: %{machine}",
-                machine: MachineTypeWords.entry_words(@machine_types, @machine, @entry["machine"])
-              )}
+              <span class={@time_limit && "block"}>
+                {gettext("Machine type: %{machine}",
+                  machine: MachineTypeWords.entry_words(@machine_types, @machine, @entry["machine"])
+                )}
+              </span>
+              <span :if={@time_limit} id={"#{@id}-time-limit-line"} class="block">
+                {time_limit_summary(@time_limit.saved)}
+              </span>
             </span>
             <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
               {gettext("Change")}
@@ -577,6 +615,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             options={MachineTypeWords.entry_options(@machine_types, @machine, @entry["machine"])}
             class="w-64"
           />
+          <.time_limit :if={@time_limit} id={"#{@id}-time-limit"} field={@time_limit} />
         </div>
       </details>
       <p
@@ -628,6 +667,209 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   defp level_words(:read), do: gettext("Read only")
   defp level_words(:write_no_push), do: gettext("Write, no push")
   defp level_words(:write), do: gettext("Write and push")
+
+  attr :id, :string, required: true
+  attr :field, :map, required: true, doc: "the row's time limit (`time_limit_field/4`)"
+
+  # A workflow's time limit, in whole minutes, under its machine type: the field with Save
+  # time limit beside it, which stays disabled while there is nothing to save or the
+  # field has an error, and under them the error, else the hint, then Saved. after a
+  # save. Where the person may not change it, the field is disabled with no button, and
+  # the edition's sentence replaces the hint (`c:ApiaryWeb.Edition.operator_sentence/2`).
+  # A workflow the saved process does not have yet has its field disabled, with no button
+  # and a hint to save the stage first.
+  defp time_limit(assigns) do
+    field = assigns.field
+
+    assigns =
+      assign(assigns,
+        error: field.editable and field.shown_error,
+        hint: is_nil(field.note) and not (field.editable and field.shown_error),
+        save_off: not field.editable or field.invalid or not field.changed
+      )
+
+    ~H"""
+    <fieldset class="fieldset">
+      <label for={@id} class="text-[13px]/[18px] font-medium">
+        {gettext("Time limit, in minutes")}
+      </label>
+      <div class="flex flex-wrap items-center gap-2">
+        <%!-- A text field with the numeric keyboard, not a number field: a browser sends
+        a number field's text that is no number, such as 24x, as an empty value, which
+        would read as no limit. --%>
+        <input
+          type="text"
+          id={@id}
+          name="time_limit[minutes]"
+          form={@field.form}
+          inputmode="numeric"
+          autocomplete="off"
+          value={@field.value}
+          class={["input input-sm w-28", @error && "input-error"]}
+          aria-invalid={@error && "true"}
+          aria-describedby={
+            cond do
+              @error -> "#{@id}-error"
+              @field.note -> "#{@id}-note"
+              true -> "#{@id}-hint"
+            end
+          }
+          disabled={not @field.editable}
+          phx-debounce="300"
+          phx-blur="time_limit_blur"
+          phx-value-row={@field.key}
+          phx-value-workflow={@field.workflow}
+        />
+        <.button
+          :if={@field.editable}
+          id={"#{@id}-save"}
+          type="submit"
+          form={@field.form}
+          size="xs"
+          disabled={@save_off}
+        >
+          {gettext("Save time limit")}
+        </.button>
+      </div>
+      <p
+        :if={@error}
+        id={"#{@id}-error"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {gettext("Enter 15 to 1440 minutes, or leave the field empty.")}
+      </p>
+      <p :if={@hint and @field.draft_only} id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+        {gettext("Save the stage first to set this workflow's time limit.")}
+      </p>
+      <p
+        :if={@hint and not @field.draft_only}
+        id={"#{@id}-hint"}
+        class="text-[12.5px]/[18px] text-muted"
+      >
+        {gettext(
+          "15 to 1440 minutes. If you leave it empty, each session of this workflow stops after %{minutes} minutes.",
+          minutes: TimeLimits.default_minutes()
+        )}
+      </p>
+      <p :if={@field.note} id={"#{@id}-note"} class="text-[12.5px]/[18px] text-muted">
+        {@field.note}
+      </p>
+      <p
+        :if={@field.done}
+        id={"#{@id}-saved"}
+        role="status"
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-success"
+      >
+        <.icon name="hero-check-circle-micro" class="size-4 flex-none" />
+        {gettext("Saved.")}
+      </p>
+    </fieldset>
+    """
+  end
+
+  @doc false
+  # time_limit_key/2 is the key of a row's time-limit field: the stage's id and the row's
+  # id, so a field's state stays with its stage.
+  @spec time_limit_key(String.t(), String.t()) :: String.t()
+  def time_limit_key(stage_id, id), do: "#{stage_id}/#{id}"
+
+  @doc false
+  # minutes/1 is what a time-limit field's value comes to: `{:ok, minutes}` for a whole
+  # number from 15 to 1440, `:empty` for none, else `:error`.
+  @spec minutes(term) :: {:ok, pos_integer} | :empty | :error
+  def minutes(value) when is_binary(value) do
+    value = String.trim(value)
+
+    case Integer.parse(value) do
+      {minutes, ""} -> if minutes in TimeLimits.minutes_range(), do: {:ok, minutes}, else: :error
+      _not_whole when value == "" -> :empty
+      _not_whole -> :error
+    end
+  end
+
+  def minutes(_value), do: :error
+
+  @doc false
+  # time_limit_keys/1 is each row of `stage` that has a time-limit field, as its key
+  # (`time_limit_key/2`) with its workflow: the rows a time-limit event may be of.
+  @spec time_limit_keys(map) :: [{String.t(), String.t()}]
+  def time_limit_keys(stage),
+    do: for({id, workflow} <- stage_rows(stage), do: {time_limit_key(stage["id"], id), workflow})
+
+  # The rows of the stage with a workflow, each with its id and workflow, whose time
+  # limits have a form; none without time limits.
+  defp time_limit_rows(nil, _stage), do: []
+  defp time_limit_rows(_time_limit, stage), do: stage_rows(stage)
+
+  defp stage_rows(stage) do
+    (stage["sequence"] || [])
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {%{"loop" => %{"body" => body}}, i} ->
+        for {inner, j} <- Enum.with_index(body), do: {"stage-entry-#{i}-#{j}", inner}
+
+      {entry, i} ->
+        [{"stage-entry-#{i}", entry}]
+    end)
+    |> Enum.flat_map(fn {id, entry} ->
+      if named?(entry), do: [{id, entry["workflow"]}], else: []
+    end)
+  end
+
+  # The time limit of the row `id` of `entry`, nil without time limits or a workflow:
+  # what `time_limit/1` shows. The field's state is the row's while it is of the same
+  # workflow, else the saved minutes.
+  defp time_limit_field(nil, _stage_id, _id, _entry), do: nil
+
+  defp time_limit_field(time_limit, stage_id, id, entry) do
+    if named?(entry) do
+      workflow = entry["workflow"]
+      # A workflow of the draft alone, which the saved process does not have yet.
+      draft_only = not MapSet.member?(time_limit.workflows, workflow)
+      key = time_limit_key(stage_id, id)
+      saved = Map.get(time_limit.saved, workflow)
+      saved_value = if saved, do: Integer.to_string(saved), else: ""
+
+      state =
+        case Map.get(time_limit.rows, key) do
+          %{workflow: ^workflow} = state -> state
+          _other -> %{value: saved_value, touched: false, done: false}
+        end
+
+      minutes = minutes(state.value)
+
+      %{
+        key: key,
+        form: "#{id}-time-limit-form",
+        workflow: workflow,
+        saved: saved,
+        value: state.value,
+        invalid: minutes == :error,
+        shown_error: minutes == :error and state.touched,
+        changed: limit_changed?(minutes, saved),
+        done: state.done,
+        editable: time_limit.editable and not draft_only,
+        draft_only: draft_only,
+        note: time_limit.note
+      }
+    end
+  end
+
+  defp named?(entry), do: entry["workflow"] not in [nil, ""]
+
+  # Whether a save would change the limit: another number, or an empty field where a limit
+  # is saved.
+  defp limit_changed?({:ok, minutes}, saved), do: minutes != saved
+  defp limit_changed?(:empty, saved), do: not is_nil(saved)
+  defp limit_changed?(:error, _saved), do: false
+
+  # The fold's line of a workflow's time limit: the saved minutes, else the default.
+  defp time_limit_summary(nil),
+    do: gettext("Time limit: %{minutes} minutes (default)", minutes: TimeLimits.default_minutes())
+
+  defp time_limit_summary(minutes),
+    do: gettext("Time limit: %{minutes} minutes", minutes: minutes)
 
   attr :id, :string, required: true
   attr :key, :string, required: true
@@ -794,28 +1036,49 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # Each line of a member's Sequence, with the workflow a line runs, nil for a loop's
   # label, and the notes under it: an entry's name and condition, a loop's condition. A
   # machine type is the default's words of the picker or a type's name
-  # (`MachineTypeWords.entry_words/3`).
-  defp sequence_lines(stage, machine, types, doc) do
+  # (`MachineTypeWords.entry_words/3`). With time limits, a workflow's line ends with its
+  # limit, the saved minutes or the default.
+  defp sequence_lines(stage, machine, types, doc, time_limit) do
     Enum.flat_map(stage["sequence"], fn
       %{"loop" => %{"rounds" => rounds, "body" => body}} = loop ->
         [
           {ngettext("Loop: at most %{number} round", "Loop: at most %{number} rounds", rounds,
              number: rounds
            ), nil, List.wrap(Words.condition(loop, doc, stage["id"]))}
-          | Enum.map(body, &entry_line(&1, machine, types, doc, stage["id"]))
+          | Enum.map(body, &entry_line(&1, machine, types, doc, stage["id"], time_limit))
         ]
 
       entry ->
-        [entry_line(entry, machine, types, doc, stage["id"])]
+        [entry_line(entry, machine, types, doc, stage["id"], time_limit)]
     end)
   end
 
-  defp entry_line(entry, machine, types, doc, stage_id),
-    do:
-      {gettext("%{workflow}, machine type %{machine}",
-         workflow: entry["workflow"],
-         machine: MachineTypeWords.entry_words(types, machine, entry["machine"])
-       ), entry["workflow"], Words.entry_notes(entry, doc, stage_id)}
+  defp entry_line(entry, machine, types, doc, stage_id, time_limit) do
+    workflow = entry["workflow"]
+    machine = MachineTypeWords.entry_words(types, machine, entry["machine"])
+
+    line =
+      case time_limit && Map.get(time_limit.saved, workflow) do
+        nil when is_nil(time_limit) ->
+          gettext("%{workflow}, machine type %{machine}", workflow: workflow, machine: machine)
+
+        nil ->
+          gettext("%{workflow}, machine type %{machine}, time limit %{minutes} minutes (default)",
+            workflow: workflow,
+            machine: machine,
+            minutes: TimeLimits.default_minutes()
+          )
+
+        minutes ->
+          gettext("%{workflow}, machine type %{machine}, time limit %{minutes} minutes",
+            workflow: workflow,
+            machine: machine,
+            minutes: minutes
+          )
+      end
+
+    {line, workflow, Words.entry_notes(entry, doc, stage_id)}
+  end
 
   defp artifact_line(%{"type" => type, "required" => true}),
     do: gettext("%{type}, required", type: type)

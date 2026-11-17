@@ -47,6 +47,20 @@ defmodule Apiary.Runs.WorkCredentialTest do
            }
   end
 
+  test "the value of a write entry's credential has the entry's push_ref on each item" do
+    branch = "refs/heads/qory/wi_0123456789abcdef"
+    item = %{"hosts" => ["git.example"], "scheme" => "bearer"}
+    entry = %{"apply" => [Map.put(item, "push_ref", branch)]}
+    answer = %{"version" => 1, "token" => "fixture-token", "apply" => [item]}
+    assert {:ok, issued} = RunCredentialIssue.check(entry, answer, DateTime.utc_now())
+
+    assert WorkCredential.value("work-1", issued) == %{
+             "credential" => "work-1",
+             "value" => "fixture-token",
+             "apply" => [Map.put(item, "push_ref", branch)]
+           }
+  end
+
   describe "sealable_to?/2" do
     @run_organisation Ecto.UUID.generate()
     @run %{organisation_id: @run_organisation, workspace_id: Ecto.UUID.generate()}

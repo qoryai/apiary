@@ -88,10 +88,10 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   def push(actor, work_item, type, files, opts),
     do: artifacts().push(actor, work_item, type, files, opts)
 
-  # withdrawable_type?/1 is whether a run may withdraw a name of the type `name`
-  # (`Apiary.Artifacts.withdrawable_type?/1`).
-  @spec withdrawable_type?(term) :: boolean
-  def withdrawable_type?(name), do: Apiary.Artifacts.withdrawable_type?(name)
+  # withdrawable_type/1 is `:ok` where a run may withdraw a name of `type`, else the
+  # refusal (`Apiary.Artifacts.withdrawable_type/1`).
+  @spec withdrawable_type(map) :: :ok | {:error, {:withdraw, :type | :type_off}}
+  def withdrawable_type(type), do: Apiary.Artifacts.withdrawable_type(type)
 
   @spec withdraw(term, struct, String.t(), keyword) :: {:ok, map} | {:error, term}
   def withdraw(actor, work_item, type, opts),
@@ -119,4 +119,8 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
 
   @spec notes(WorkItem.t()) :: [map]
   def notes(work_item), do: Apiary.Stages.notes(work_item)
+
+  # The commits the work item's earlier runs reported pushing (`Apiary.Runs.PushedCommit`).
+  @spec pushed_commits(WorkItem.t(), Apiary.Runs.Run.t()) :: [map]
+  def pushed_commits(work_item, run), do: Apiary.Runs.PushedCommit.for_run(work_item, run)
 end

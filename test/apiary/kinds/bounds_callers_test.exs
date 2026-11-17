@@ -125,8 +125,8 @@ defmodule Apiary.Kinds.BoundsCallersTest do
       })
 
     # The format's lists are unbounded: the walk bounds them by the values in all, and an
-    # object by a question's 9 members (`Apiary.Artifacts.Format`).
-    bounds = [list: 65_536, members: 9, nodes: 65_536, string: 131_072, depth: 16]
+    # object by a question's 11 members (`Apiary.Artifacts.Format`).
+    bounds = [list: 65_536, members: 11, nodes: 65_536, string: 131_072, depth: 16]
 
     assert {:ok, "application/json"} =
              Apiary.Artifacts.Format.check(type, "questions.json", valid)

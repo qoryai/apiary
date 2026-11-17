@@ -47,7 +47,7 @@ defmodule Apiary.Adapters.CallWire do
   @host ~r/\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\z/
   @username ~r/\A[^:\s]+\z/u
   @header ~r/\A[A-Za-z0-9-]+\z/
-  @apply_path ~r/\A\/[^*?#\s]*\*?\z/u
+  @apply_path ~r/\A\/(?:\{\}|[^*?#\s\{\}\/]*)(?:\/(?:\{\}|[^*?#\s\{\}\/]*))*\*?\z/u
   @rfc3339 ~r/\A\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})\z/
   @connection_id ~r/\Aac_[0-9a-hjkmnp-tv-z]{16}\z/
   @address ~r/\A[!-~]{1,2048}\z/
