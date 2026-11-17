@@ -203,7 +203,7 @@ defmodule Apiary.WorkItems.Moves do
   #     it: Explore's tab writes a comment with `another_round/4`, and tests call it to
   #     set up a work item. It works wherever no run is running and the take in has a
   #     proposal: where its questions wait, where its proposal waits, and after a run
-  #     that gave no result, was lost or was cancelled. It asks
+  #     that gave no result, was lost, reached its time limit or was cancelled. It asks
   #     `work_item.review_comment` (`Apiary.Access`, else `:not_approver`), which only
   #     the approvers of the stage the work item is in have, where the stage lists them,
   #     and checks the text (`Apiary.WorkItems.Proposal.check_comment/1`, else
@@ -293,7 +293,8 @@ defmodule Apiary.WorkItems.Moves do
   #     keeps the proposal's version (`Apiary.WorkItems.Confirmation`); the work item is
   #     then ready for Shape. Its event, `:confirmed`, has the take in and the attempt.
   #   * A run of Explore again (`explore_again/3`) works after a run that gave no result,
-  #     was lost or was cancelled, while a run is left: it queues the take in's next run.
+  #     was lost, reached its time limit or was cancelled, while a run is left: it queues
+  #     the take in's next run.
   #     Its event, `:explore_again`, has the take in and the attempt of the new run.
   #
   # ## People's comments
@@ -959,7 +960,7 @@ defmodule Apiary.WorkItems.Moves do
   @type answer_by_id :: %{required(String.t()) => String.t() | nil}
 
   # The places where no run is running, so a member may write review comments.
-  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+  @no_run [:questions, :confirm, :no_result, :lost, :time_limit, :cancelled, :used_up]
   # The same on a reply: the gate of a stage after Explore's too
   # (`Apiary.WorkItems.Explore.member_view/2`).
   @no_run_at_stage [:gate | @no_run]
@@ -1510,7 +1511,7 @@ defmodule Apiary.WorkItems.Moves do
         now = DateTime.utc_now()
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.explore_again", work_item, now),
-             :ok <- waiting(current, [:no_result, :lost, :cancelled], attempt),
+             :ok <- waiting(current, [:no_result, :lost, :time_limit, :cancelled], attempt),
              {:ok, run} <- next_run(held, false),
              data = %{"take_in" => held.take_in, "attempt" => run.attempt},
              :ok <- event(held, :explore_again, scope, now, data),

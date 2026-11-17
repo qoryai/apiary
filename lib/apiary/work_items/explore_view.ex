@@ -39,10 +39,11 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, options:, state:, asked_run:, stage_id:, answer:, history:,
-  #     follows:, decision:}`: `stage_id` the stage of the run that wrote or reopened it
-  #     last, `number` its row's place on the Explore tab, from 1, top to bottom
-  #     (`shown_numbers/1`), `state` `:open`,
+  #     text:, context:, options:, state:, asked_run:, run:, run_workspace_id:, stage_id:,
+  #     answer:, history:, follows:, decision:}`: `run` the number of the run that wrote
+  #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
+  #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
+  #     questions (`shown_numbers/1`), `state` `:open`,
   #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
   #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
   #     `%{option:, recommended:, note:, by_id:, by:, at:}` (`by_id` by the move that
@@ -137,8 +138,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     `duration_ms`), `:proposed` (`run`, `duration_ms`, `owner_id`), `:no_result`
   #     (`run`, `outcome`, the end cause and its code, `end_cause` and `end_detail`, as a
   #     run map has them, and `wrote`, the version of the proposal a failed run pushed
-  #     before it failed, nil for none), `:lost` or `:cancelled` (`run`). A run that
-  #     waits on an earlier run's open questions and wrote or reopened none ends as
+  #     before it failed, nil for none), `:lost`, `:time_limit` or `:cancelled` (`run`). A
+  #     run that waits on an earlier run's open questions and wrote or reopened none ends as
   #     `:proposed` with no `owner_id` where it wrote a proposal, as `:replied` (`run`,
   #     `replies`, how many replies to review comments it wrote, `duration_ms`) where it
   #     wrote none but at least one such reply, else as `:no_result` with `outcome`
@@ -361,6 +362,7 @@ defmodule Apiary.WorkItems.ExploreView do
     for %{"id" => id} = question <- (ctx.questions || %{})["questions"] || [],
         current_take_in?(question, ctx) do
       %{options: options} = Proposal.question(question)
+      run = question_run(question, ctx)
       history = question["history"] || []
       moves = Enum.filter(given, &(&1.id == id))
 
@@ -372,7 +374,9 @@ defmodule Apiary.WorkItems.ExploreView do
         options: options,
         state: question_state(question["state"]),
         asked_run: get_in(question, ["asked", "run"]),
-        stage_id: question_stage(question, ctx),
+        run: run && run.number,
+        run_workspace_id: run && run.workspace_id,
+        stage_id: run && run.stage_id,
         answer: given_answer(question["answer"], Enum.at(moves, length(history)), options),
         history:
           for(
@@ -392,11 +396,9 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp decision(_none), do: nil
 
-  # The number of each question the Explore tab shows (`current_take_in?/2`), by its id:
-  # its row's place from 1, top to bottom. With an open question, the questions frame has
-  # the closed questions, the decisions, then the open questions. With none, the Decisions
-  # frame comes first, then the frame of the closed questions
-  # (`ApiaryWeb.WorkItemComponents.explore_tab/1`).
+  # The number of each question of the current take in (`current_take_in?/2`), by its id:
+  # its place from 1 in the order closed questions, decisions, then open questions. With
+  # no open question, the order is the decisions, then the closed questions.
   defp shown_numbers(ctx) do
     {decisions, questions} =
       ((ctx.questions || %{})["questions"] || [])
@@ -425,19 +427,24 @@ defmodule Apiary.WorkItems.ExploreView do
       MapSet.member?(ctx.current_runs, reopened_run(question))
   end
 
-  # The stage of the run of the current take in that reopened the question last, else of
-  # the run that wrote it; nil for a run with no stage.
-  defp question_stage(question, ctx) do
+  # The run of the current take in that reopened the question last, else the run that wrote
+  # it, as `%{number:, workspace_id:, stage_id:}`: the stage and the run the page shows
+  # for the question are this pair. nil for a run the page has no step for. A run with no
+  # stage has a nil `stage_id`.
+  defp question_run(question, ctx) do
     reopened = reopened_run(question)
 
-    run =
+    number =
       if MapSet.member?(ctx.current_runs, reopened),
         do: reopened,
         else: get_in(question, ["asked", "run"])
 
-    case Map.get(ctx.by_number, run) do
-      %{dispatch_run: %{stage_id: stage_id}} -> stage_id
-      _none -> nil
+    case Map.get(ctx.by_number, number) do
+      %{dispatch_run: %{stage_id: stage_id, workspace_id: workspace_id}} ->
+        %{number: number, workspace_id: workspace_id, stage_id: stage_id}
+
+      _none ->
+        nil
     end
   end
 
@@ -1440,7 +1447,7 @@ defmodule Apiary.WorkItems.ExploreView do
           }
         ]
 
-      place when place in [:lost, :cancelled] ->
+      place when place in [:lost, :time_limit, :cancelled] ->
         [%{kind: place, at: at, run: run}]
     end
   end

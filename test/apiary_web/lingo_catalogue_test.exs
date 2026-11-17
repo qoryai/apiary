@@ -8,9 +8,10 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # The sentences a software workspace says in its words, with no engine word in them: the
   # policy file's place, outside the checkout, and the harness choice's repository and its
   # branch, tag or commit, the version's name among them, why a read of the Qory
-  # harness failed, the branch of a run that writes, what a person reads at a gate whose
-  # stage started no run (the build report and the draft), and why Shape did not run (the
-  # spec and the criteria).
+  # harness failed, what a switch to another track and Run another round do on an
+  # escalation (the build report, the commit and the ticket), the branch of a run that
+  # writes, what a person reads at a gate whose stage started no run (the build report),
+  # and what Shape's tab says of a Shape that did not run (the criterion).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
@@ -18,6 +19,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "%{source} has no version named %{ref}. %{contact_support} to correct the version of this harness source.",
     "%{source} has no version named %{ref}. Correct the version.",
     "%{source} has no version yet. Add a version with a qory.yaml or harness.yaml at its root that lists the stack under exports.",
+    "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}.",
+    "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
     "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version.",
@@ -32,8 +35,9 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Harness version in use: %{commit}, process version %{number}",
     "Harness: %{harness}, version %{commit}",
     "Keep a policy file outside the folder the runs work in.",
+    "Proposal v%{version}, as approved, is what the next stages work to.",
     "Read the inputs below, then approve.",
-    "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+    "Runs %{entry} again with your note. Use it when the run changed more than the work item asks.",
     "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",
