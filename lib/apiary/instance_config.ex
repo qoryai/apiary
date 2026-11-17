@@ -3,8 +3,9 @@ defmodule Apiary.InstanceConfig do
   The instance's settings an instance admin changes in Instance settings › Configuration:
   how many days the audit trail keeps an entry (`:audit_retention_days`) and the address
   and the client it came from (`:audit_address_retention_days`), the grace period before a
-  deleted workspace or organisation is purged (`:deletion_grace_days`), and how many
-  invitations an organisation makes in 24 hours (`:invitations_per_day`).
+  deleted workspace or organisation is purged (`:deletion_grace_days`), how many
+  invitations an organisation makes in 24 hours (`:invitations_per_day`), and the largest
+  image a prebuild may keep, in GB (`:prebuilt_image_max_gb`).
 
   **The value** of each (`value/1`) is, in order:
 
@@ -16,6 +17,10 @@ defmodule Apiary.InstanceConfig do
      puts the key sets the variable;
   2. else the value an instance admin saved (`stored/0`);
   3. else the default, what the variable unset gives: 90 days, 90 days, 30 days and 20.
+
+  The largest prebuilt image has no variable: its value is the saved one, else nil, no
+  limit. A claim of a prebuild reads it for the member `largest_prebuilt_image_bytes` of
+  the run's documents.
 
   Two rules hold wherever a value comes from. The trail keeps an entry no longer than the
   edition's ceiling (`c:Apiary.Edition.audit_retention_max_days/0`, 90 days in the core),
@@ -33,7 +38,7 @@ defmodule Apiary.InstanceConfig do
   **Saving** (`save/3`) is an instance admin's (`instance.configure`, asked in the
   instance's organisation, `Apiary.Access.in_instance/1`), after a recent sign-in
   (`Apiary.Accounts.sudo_mode?/2`), one part of the page at a time (`fields/1`): `:retention`,
-  `:deletion` or `:invitations`. It saves only the settings of the part that the
+  `:prebuilds`, `:deletion` or `:invitations`. It saves only the settings of the part that the
   environment does not set. A change of a value is an `instance.configure` entry in the
   trail of the instance's organisation, by the admin, with the values before and after.
   """
@@ -58,6 +63,7 @@ defmodule Apiary.InstanceConfig do
   @keys [
     :audit_retention_days,
     :audit_address_retention_days,
+    :prebuilt_image_max_gb,
     :deletion_grace_days,
     :invitations_per_day,
     :machine_log_retention_days
@@ -65,6 +71,7 @@ defmodule Apiary.InstanceConfig do
 
   @parts %{
     retention: [:audit_retention_days, :audit_address_retention_days],
+    prebuilds: [:prebuilt_image_max_gb],
     deletion: [:deletion_grace_days],
     invitations: [:invitations_per_day],
     machine_logs: [:machine_log_retention_days]
@@ -72,6 +79,9 @@ defmodule Apiary.InstanceConfig do
 
   # The most invitations a day a save takes: the column is a 32-bit integer.
   @invitations_max 1_000_000
+
+  # The largest prebuilt image a save takes, in GB.
+  @prebuilt_image_max_gb 10_000
 
   # The messages name their bounds through bindings: a message built at compile time could
   # not be extracted for the catalogue.
@@ -91,17 +101,22 @@ defmodule Apiary.InstanceConfig do
                          "errors",
                          "must be a whole number from 1 to %{max}, or empty for the default"
                        )
+  @prebuilt_image_message dgettext_noop(
+                            "errors",
+                            "Enter a whole number from 1 to %{max}, or leave it empty for no limit."
+                          )
 
   @typedoc "A setting of Instance settings › Configuration."
   @type key ::
           :audit_retention_days
           | :audit_address_retention_days
+          | :prebuilt_image_max_gb
           | :deletion_grace_days
           | :invitations_per_day
           | :machine_log_retention_days
 
   @typedoc "A part of Instance settings › Configuration, which is saved at once."
-  @type part :: :retention | :deletion | :invitations | :machine_logs
+  @type part :: :retention | :prebuilds | :deletion | :invitations | :machine_logs
 
   @typedoc "Where a value comes from."
   @type source :: :env | :saved | :default
@@ -114,8 +129,9 @@ defmodule Apiary.InstanceConfig do
   def keys, do: @keys
 
   @doc """
-  fields/1 is the settings of `part`: `:retention`, the trail's two periods; `:deletion`,
-  the grace period; `:invitations`, the invitations a day.
+  fields/1 is the settings of `part`: `:retention`, the trail's two periods; `:prebuilds`,
+  the largest prebuilt image; `:deletion`, the grace period; `:invitations`, the
+  invitations a day.
   """
   @spec fields(part) :: [key]
   def fields(part), do: Map.fetch!(@parts, part)
@@ -132,9 +148,10 @@ defmodule Apiary.InstanceConfig do
   @doc """
   value/1 is the value of `key`: the environment's, else the saved one, else the
   default, by the rules of the module's documentation. Reads no saved setting where the
-  environment sets what the value depends on.
+  environment sets what the value depends on. nil only for `:prebuilt_image_max_gb`
+  with none saved: no limit.
   """
-  @spec value(key) :: pos_integer
+  @spec value(key) :: pos_integer | nil
   def value(key) when key in @keys do
     stored = if Enum.all?(depends_on(key), &env/1), do: %{}, else: stored()
     effective(key, stored)
@@ -144,7 +161,7 @@ defmodule Apiary.InstanceConfig do
   values/1 is the value of each key, given the saved settings `stored` (`load/0`), as
   `value/1` reads them.
   """
-  @spec values(stored) :: %{key => pos_integer}
+  @spec values(stored) :: %{key => pos_integer | nil}
   def values(stored) when is_map(stored), do: Map.new(@keys, &{&1, effective(&1, stored)})
 
   @doc """
@@ -163,9 +180,12 @@ defmodule Apiary.InstanceConfig do
   @doc """
   env/1 is the value of `key` the server's environment sets, as its owner's `boot!/0`
   checked it, or nil where the variable is not set, or is blank. Where no boot has kept it,
-  as under `bin/apiary eval`, it asks that `boot!/0` now.
+  as under `bin/apiary eval`, it asks that `boot!/0` now. Always nil for
+  `:prebuilt_image_max_gb`, which has no variable.
   """
   @spec env(key) :: pos_integer | nil
+  def env(:prebuilt_image_max_gb), do: nil
+
   def env(key) when key in @keys do
     value =
       case Application.fetch_env(:apiary, key) do
@@ -317,6 +337,7 @@ defmodule Apiary.InstanceConfig do
   defp default(:audit_retention_days), do: ok!(Audit.parse_retention_days(nil))
   defp default(:deletion_grace_days), do: ok!(Deletion.parse_grace_days(nil))
   defp default(:invitations_per_day), do: ok!(Instance.parse_invitations_per_day(nil))
+  defp default(:prebuilt_image_max_gb), do: nil
 
   defp default(:machine_log_retention_days),
     do: ok!(MachineLogs.parse_retention_days(nil))
@@ -340,7 +361,8 @@ defmodule Apiary.InstanceConfig do
     saved with it, or the environment's;
   - the grace period, from `Apiary.Deletion.grace_min_days/0` to
     `Apiary.Deletion.grace_max_days/0` days;
-  - the invitations a day, from 1 to #{@invitations_max}.
+  - the invitations a day, from 1 to #{@invitations_max};
+  - the largest prebuilt image, from 1 to #{@prebuilt_image_max_gb} GB, empty for no limit.
 
   The row is made where there is none yet, empty; past that, it is written only where a
   saved value changed, and never its `updated_by_id`, which is the product's name's. A
@@ -357,7 +379,7 @@ defmodule Apiary.InstanceConfig do
   instance admin.
   """
   @spec save(Scope.t() | nil, part, map) ::
-          {:ok, %{key => pos_integer}}
+          {:ok, %{key => pos_integer | nil}}
           | {:error, Ecto.Changeset.t() | :sudo | :not_found | :forbidden}
   def save(scope, part, attrs) when is_map_key(@parts, part) and is_map(attrs) do
     with :ok <- authorize_save(scope), do: write(scope, part, attrs)
@@ -477,6 +499,9 @@ defmodule Apiary.InstanceConfig do
     |> Ecto.Changeset.check_constraint(:machine_log_retention_days,
       name: :instance_settings_machine_log_retention_days_check
     )
+    |> Ecto.Changeset.check_constraint(:prebuilt_image_max_gb,
+      name: :instance_settings_prebuilt_image_max_gb_check
+    )
   end
 
   defp trim(attrs),
@@ -523,6 +548,18 @@ defmodule Apiary.InstanceConfig do
       1,
       @invitations_max,
       max: Format.number(@invitations_max)
+    )
+  end
+
+  defp validate(changeset, :prebuilds, fields, _current) do
+    validate_range(
+      changeset,
+      fields,
+      :prebuilt_image_max_gb,
+      @prebuilt_image_message,
+      1,
+      @prebuilt_image_max_gb,
+      max: Format.number(@prebuilt_image_max_gb)
     )
   end
 

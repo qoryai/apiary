@@ -116,6 +116,24 @@ defmodule Apiary.Secrets.SealingTest do
       assert byte_size(bytes) == vectors()["plaintext_length"]
     end
 
+    test "the plaintext takes 16 credentials and refuses 17" do
+      digest = recipient().run_configuration
+
+      plaintext = fn count ->
+        names = for n <- 1..count, do: "key-#{String.pad_leading("#{n}", 2, "0")}"
+
+        %{
+          "version" => 1,
+          "run_configuration" => digest,
+          "credentials" => names,
+          "values" => for(name <- names, do: %{"credential" => name, "value" => "v-#{name}"})
+        }
+      end
+
+      assert {:ok, _bytes} = Sealing.plaintext(plaintext.(16), digest)
+      assert {:error, :credentials} = Sealing.plaintext(plaintext.(17), digest)
+    end
+
     test "seal_with/3 writes secrets-answer.json, compacted, byte for byte" do
       vectors = vectors()
       assert {:ok, answer} = Sealing.seal_with(fixture_plaintext(), recipient(), opts())
@@ -290,14 +308,14 @@ defmodule Apiary.Secrets.SealingTest do
       end
     end
 
-    test "credentials that are not 1 to 8 names, each once" do
+    test "credentials that are not 1 to 16 names, each once" do
       plaintext = fixture_plaintext()
 
       for credentials <- [
             [],
             ["forge", "forge"],
             ["Forge", "model"],
-            Enum.map(1..9, &"c#{&1}")
+            Enum.map(1..17, &"c#{&1}")
           ] do
         assert Sealing.seal_with(%{plaintext | "credentials" => credentials}, recipient(), opts()) ==
                  {:error, :credentials},
