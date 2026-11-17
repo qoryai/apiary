@@ -1338,18 +1338,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its forge:
   `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
-  write access. `push-1` is for Forager's push proxy, which pushes the work item's branch
-  and sends its pull request calls. An apply item of `push-1` has `push_ref`,
-  `refs/heads/qory/` and the work item's public id, for example
-  `refs/heads/qory/wi_0123456789abcdef`. A push through that item may create, update or
-  delete only that ref: Forager's gateway returns `403` for a push to any other ref. Each
-  item of `push-1`'s value, sealed for the gateway, has the same `push_ref`. `work-1` has
-  none. A run with `read` or `write-no-push` access has `work-1` alone, a read credential.
-  The adapter's run-credential call is the same for both entries, with `purpose` `work`
-  and `access` `read` for `work-1` or `write` for `push-1`. The call and the answer have no
-  `push_ref`, and an answer item that has one is refused. The Forager contract is vendored
-  at commit `bd7d60c`, which defines `push_ref`, `purpose` `push` and a path segment
-  written `{}`.
+  write access. An apply item of `push-1` has `push_ref`, `refs/heads/qory/` and the work
+  item's public id, for example `refs/heads/qory/wi_0123456789abcdef`, so a push through
+  that item may create, update or delete only that ref. Each item of `push-1`'s value,
+  sealed for the gateway, has the same `push_ref`. `work-1` has none. A run with `read` or
+  `write-no-push` access has `work-1` alone, a read credential. The adapter's
+  run-credential call is the same for both entries, with `purpose` `work` and `access`
+  `read` for `work-1` or `write` for `push-1`. The call and the answer have no `push_ref`,
+  and an answer item that has one is refused. A run configuration takes up to 16
+  credentials, where it took 8, so a run with 6 model keys, the registry credential,
+  `work-1` and `push-1` is served.
 <!-- /feature -->
 <!-- feature: factory -->
 - A run with `write` access and no work item ends before it starts, with the stop cause
