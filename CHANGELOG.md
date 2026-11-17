@@ -1342,6 +1342,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   <outputs> before you approve this stage.", where it ended with the stage's name.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- The notes for the next run, on the work item and in `GET work-item`, list only open
+  notes. A note leaves the list once its stage is approved after it, by a member or
+  automatically, and a move once the stage it moved to is approved after it. A move
+  that resolves an open escalation is listed once, as the move.
 - A stage whose gate is **No gate** records an approval of the newest version of each
   of its outputs when its sequence ends, then the work item moves on. Up to this change
   it moved on with no approval, so a later stage's input from that stage had no version,
@@ -2241,6 +2245,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   restores the check for an approval alone.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- `gate_decisions` (20261116170000 and 20261116170100): a nullable column
+  `to_stage_id`, the stage a move went to, with a check that only a move has one. The
+  column has no default, so adding it rewrites no row. The first migration adds the
+  check without a scan, and the second validates it with a scan that does not block
+  writes. The migration changes no row. A move made before has no `to_stage_id` and
+  stays in the notes for the next run. A gate none that passed on before 20261116100000
+  recorded no approval, so the notes of its stage stay there until the stage passes its
+  gate again. Rolling back drops `to_stage_id`.
 - `gate_decisions` (20261116100000 and 20261116100100): a column `automatic`, false by
   default, true for an approval that a gate `none` recorded with no member, with a check
   that such a row is an approval with no `user_id`. The default is a constant, so adding
