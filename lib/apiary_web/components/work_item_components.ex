@@ -3100,7 +3100,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-            <span phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · <ApiaryWeb.ArtifactComponents.made_by version={@output.writer} /><% end %></span>
+            <span phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · {@output.writer}<% end %></span>
           </p>
         </summary>
         <div

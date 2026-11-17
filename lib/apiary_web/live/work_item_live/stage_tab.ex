@@ -13,6 +13,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   @moduledoc false
 
   alias Apiary.Stages.Runner
+  alias ApiaryWeb.People
   alias ApiaryWeb.WorkItemLive.StageComponents
 
   # tabs/2 is the tabs of `flow` in the process version's order, with every run the page
@@ -437,9 +438,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # frames/1 is the output frames of a stage's tab: one for each version an approval of the
   # stage records (`Apiary.Stages.gate_frames/3`), in that order, as
   # `%{type:, name:, version:, open:, writer:}`, the first one `open`. `version` is the
-  # version's number; `writer` is the version where a person made it, for the frame's
-  # caption, else nil. The review comments, the document a review comment is written to,
-  # have no frame.
+  # version's number; `writer`, for the frame's caption, is the short name of the member
+  # who made it where a person did (`ApiaryWeb.People.short/1`), "Former member" for an
+  # account that is gone, else nil. The review comments, the document a review comment is
+  # written to, have no frame.
   @spec frames([map]) :: [map]
   def frames(recorded) do
     recorded
@@ -451,10 +453,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
         name: name,
         version: version.number,
         open: place == 0,
-        writer: if(version.writer == :person, do: version)
+        writer: if(version.writer == :person, do: member(version.user))
       }
     end)
   end
+
+  defp member(user), do: People.short(People.email(user) || People.former_member())
 
   @doc """
   with_inputs/2 is `outputs`, the output frames (`frames/1`), then `inputs`, the input

@@ -679,6 +679,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "a person's version's caption" do
+    test "has the member's short name, or Former member for an account that is gone" do
+      recorded =
+        for user <- [%Apiary.Accounts.User{email: "sam@example.com"}, nil],
+            do: %{type: "spec", name: "main", version: %{number: 1, writer: :person, user: user}}
+
+      assert [%{writer: "sam"}, %{writer: "Former member"}] =
+               ApiaryWeb.WorkItemLive.StageTab.frames(recorded)
+    end
+  end
+
   describe "a run's questions at Shape" do
     test "the form sends the latest run's attempt, whatever the tab lists", %{scope: scope} do
       work_item = waiting!(scope)
@@ -2242,7 +2253,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ "Spec by hand"
 
       # The page as drawn before the approval: the frame's caption has who uploaded it.
-      assert html =~ "Version 1 · #{scope.user.email}"
+      assert html =~ "Version 1 · #{ApiaryWeb.People.short(scope.user.email)}<"
     end
 
     test "a version that only an earlier take in made", %{conn: conn, scope: scope} do
@@ -2308,7 +2319,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert recorded -- drawn == []
       assert html =~ "Spec two"
 
-      assert html =~ "Version 2 · #{scope.user.email}"
+      assert html =~ "Version 2 · #{ApiaryWeb.People.short(scope.user.email)}<"
     end
 
     # At Shape's gate after its run wrote spec v1: `first` and then `second` each add one
@@ -2382,7 +2393,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, html} = live(conn, stage(scope, work_item.number, @build))
 
       assert spec_two in drawn(view, work_item)
-      assert has_element?(view, "#work-item-tab-output-spec", "Version 2 · #{scope.user.email}")
+      assert html =~ "Version 2 · #{ApiaryWeb.People.short(scope.user.email)}<"
       assert html =~ "Spec two"
     end
 
