@@ -5508,6 +5508,20 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: gettext("%{stage} runs on %{track} only.", stage: stage, track: skip.track_name)
   end
 
+  defp passed_over_words(%{input: type, changed: true} = skip, stage, _stage_names, _now) do
+    if skip.negated,
+      do:
+        gettext("%{stage} does not run after a change to %{type} since the stage last passed.",
+          stage: stage,
+          type: StageComponents.type_words(type)
+        ),
+      else:
+        gettext("%{stage} runs only after a change to %{type} since the stage last passed.",
+          stage: stage,
+          type: StageComponents.type_words(type)
+        )
+  end
+
   defp passed_over_words(%{input: type} = skip, stage, _stage_names, _now) do
     if skip.negated,
       do:
@@ -5526,7 +5540,8 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :skip, :map,
     required: true,
-    doc: "`%{workflow:, input:, track:, negated:}`, or `%{workflow:, reason:, cause_entry:}`"
+    doc:
+      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -5558,6 +5573,20 @@ defmodule ApiaryWeb.WorkItemComponents do
           track: skip.track_name
         )
   end
+
+  defp skip_words(%{changed: true, negated: true} = skip),
+    do:
+      gettext("%{workflow} did not run: %{type} changed since %{workflow} last passed.",
+        workflow: skip.workflow,
+        type: StageComponents.type_words(skip.input)
+      )
+
+  defp skip_words(%{changed: true} = skip),
+    do:
+      gettext("%{workflow} did not run: %{type} did not change since %{workflow} last passed.",
+        workflow: skip.workflow,
+        type: StageComponents.type_words(skip.input)
+      )
 
   defp skip_words(%{negated: true} = skip),
     do:

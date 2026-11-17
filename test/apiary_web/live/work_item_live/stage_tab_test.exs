@@ -1971,6 +1971,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert reason.(negated: true) ==
                "Shape does not run while the work item has test features."
+
+      assert reason.(negated: false, changed: true) ==
+               "Shape runs only after a change to test features since the stage last passed."
+
+      assert reason.(negated: true, changed: true) ==
+               "Shape does not run after a change to test features since the stage last passed."
     end
   end
 

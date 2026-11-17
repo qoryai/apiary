@@ -69,6 +69,9 @@ defmodule Apiary.Stages.Runner do
   #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
   #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
   #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
+  #     `{input: T, changed: true}`, met while `T` has a version and the item's runs on the
+  #     work item have none that ended `passed`, or that version was stored after the newest
+  #     such run was queued (`facts.stored`, `facts.passed`, `changed?/3`), or
   #     `{track: ID}`, met while the work item is on the track `ID`
   #     (`facts.track`, `Apiary.Stages.track/1`). `when`
   #     holds the item back while its condition is not met, `unless` while it is met
@@ -148,12 +151,18 @@ defmodule Apiary.Stages.Runner do
   that count, each whose version the stage reads has a file of more than 0 bytes
   (`counted`); the id of the track the work item is on (`track`, nil for none); and, for
   an entry of a stage that a person moved the work item into, `forced`, true: the stage's
-  own condition then does not pass it over.
+  own condition then does not pass it over. For the conditions `{input: T, changed: true}`
+  (`changed?/3`): `stored`, the versions of each such `T` as `%{at:, by:}`, when each was
+  stored and the place `{entry, loop_entry}` of the run that stored it, nil for a version
+  that no run of the stage stored; and `passed`, the runs of the stage on the work item that
+  ended `passed`, as `%{entry:, loop_entry:, queued_at:}`.
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
           optional(:counted) => [String.t()],
           optional(:track) => String.t() | nil,
+          optional(:stored) => %{String.t() => [stored_version]},
+          optional(:passed) => [passed_run],
           optional(:forced) => boolean,
           optional(:undeclared) => [String.t()],
           optional(:failed_checks) => [String.t()],
@@ -164,17 +173,35 @@ defmodule Apiary.Stages.Runner do
           optional(:explore_verdict) => boolean
         }
 
+  @typedoc "A version of an input type, for `{input: T, changed: true}`."
+  @type stored_version :: %{at: DateTime.t(), by: {non_neg_integer, non_neg_integer | nil} | nil}
+
+  @typedoc "A run of the stage that ended `passed`, at the place it ran."
+  @type passed_run :: %{
+          entry: non_neg_integer,
+          loop_entry: non_neg_integer | nil,
+          queued_at: DateTime.t()
+        }
+
   @typedoc """
   Why an item is held back: the condition that holds it, `{input: T}` as `kind: :input` with
-  the type, or `{track: ID}` as `kind: :track` with the id, and `negated` true where the
-  condition is an `unless` that is met.
+  the type, `{input: T, changed: true}` as `kind: :input` with the type and `changed` true,
+  or `{track: ID}` as `kind: :track` with the id, and `negated` true where the condition is
+  an `unless` that is met.
   """
-  @type reason :: %{kind: :input | :track, value: String.t(), negated: boolean}
+  @type reason ::
+          %{
+            :kind => :input | :track,
+            :value => String.t(),
+            :negated => boolean,
+            optional(:changed) => true
+          }
 
   @typedoc """
   A workflow entry passed over, at the position it would run at: its workflow and the
   condition that held it back, as `input` (a type) or `track` (an id), exactly one of them,
-  with `negated` for an `unless`; or, with neither, `reason` `first_attempt_passed` and
+  with `negated` for an `unless`, and `changed` true for a condition `{input: T, changed:
+  true}` (no key for any other); or, with neither, `reason` `first_attempt_passed` and
   `cause_entry`, the name of the first attempt's entry, else its workflow.
   """
   @type skip_spec :: %{
@@ -182,6 +209,7 @@ defmodule Apiary.Stages.Runner do
           :input => String.t() | nil,
           :track => String.t() | nil,
           :negated => boolean,
+          optional(:changed) => true,
           optional(:reason) => String.t(),
           optional(:cause_entry) => String.t(),
           :entry => non_neg_integer,
@@ -201,9 +229,10 @@ defmodule Apiary.Stages.Runner do
 
   @typedoc "A stage passed over whole: the condition that held it back."
   @type stage_skip_spec :: %{
-          input: String.t() | nil,
-          track: String.t() | nil,
-          negated: boolean
+          :input => String.t() | nil,
+          :track => String.t() | nil,
+          :negated => boolean,
+          optional(:changed) => true
         }
 
   @typedoc "An action for `Apiary.Stages` to apply."
@@ -304,7 +333,7 @@ defmodule Apiary.Stages.Runner do
   # A stage whose condition holds it back is passed over whole: no run, no wait, no gate.
   # The work item goes on to the next stage, or the work item ends after the last.
   defp skip_stage(stage, reason, facts) do
-    spec = Map.take(reason_spec(reason), [:input, :track, :negated])
+    spec = Map.take(reason_spec(reason), [:input, :track, :negated, :changed])
 
     %{
       state: :done,
@@ -321,7 +350,7 @@ defmodule Apiary.Stages.Runner do
         %{state: :waiting_inputs, position: position, actions: []}
 
       Enum.any?(
-        workflows(stage, Map.get(facts, :counted, []), Map.get(facts, :track)),
+        workflows_met(stage, facts),
         &(&1 in undeclared(facts))
       ) ->
         %{state: :waiting_workflow, position: position, actions: []}
@@ -349,9 +378,11 @@ defmodule Apiary.Stages.Runner do
   # nil for none.
   defp held_back(stage, position, facts) do
     loop_reason =
-      if in_loop?(position), do: unmet(Enum.at(sequence(stage), position.entry), facts)
+      if in_loop?(position),
+        do: unmet(Enum.at(sequence(stage), position.entry), facts, {position.entry})
 
-    loop_reason || unmet(entry_at(stage, position), facts)
+    loop_reason ||
+      unmet(entry_at(stage, position), facts, {position.entry, position.loop_entry})
   end
 
   # Passes over the workflow at `position`, whose condition is not met: outside a loop the
@@ -387,7 +418,11 @@ defmodule Apiary.Stages.Runner do
      })}
   end
 
-  # A reason as the fields a record keeps: `input` or `track`, and `negated`.
+  # A reason as the fields a record keeps: `input` or `track`, `negated`, and `changed` for
+  # the condition `{input: T, changed: true}`.
+  defp reason_spec(%{kind: :input, value: type, negated: negated, changed: true}),
+    do: %{input: type, track: nil, negated: negated, changed: true}
+
   defp reason_spec(%{kind: :input, value: type, negated: negated}),
     do: %{input: type, track: nil, negated: negated}
 
@@ -399,25 +434,69 @@ defmodule Apiary.Stages.Runner do
   # unmet/2 is the reason `item` is held back with `facts`, `t:reason/0`; nil for an item that
   # nothing holds back. `item` is a stage, a loop entry, a workflow entry, an input or an
   # output. Its `when` holds it back while that condition is not met, its `unless` while that
-  # condition is met. A condition of another form holds nothing back.
+  # condition is met. A condition of another form holds nothing back. `scope` is the runs
+  # that `{input: T, changed: true}` reads: `{entry}` for a loop, `{entry, loop_entry}` for a
+  # workflow entry (`loop_entry` nil outside a loop), and `:stage` for the stage, and for an
+  # input or an output of it.
   @doc false
-  @spec unmet(map, map) :: reason | nil
-  def unmet(item, facts) do
-    held(item["when"], false, facts) || held(item["unless"], true, facts)
+  @spec unmet(map, map, scope) :: reason | nil
+  def unmet(item, facts, scope \\ :stage) do
+    held(item["when"], false, facts, scope) || held(item["unless"], true, facts, scope)
   end
+
+  @typedoc "The runs of a stage that a condition on `changed` reads."
+  @type scope :: :stage | {non_neg_integer} | {non_neg_integer, non_neg_integer | nil}
 
   # `negated` is false for `when`, which holds the item back when its condition is not met,
   # and true for `unless`, which holds it back when it is met.
-  defp held(%{"input" => type}, negated, facts) when is_binary(type),
-    do: held(type in Map.get(facts, :counted, []), :input, type, negated)
+  defp held(%{"input" => type, "changed" => true}, negated, facts, scope) when is_binary(type),
+    do: hold(changed?(type, scope, facts), :input, type, negated, %{changed: true})
 
-  defp held(%{"track" => id}, negated, facts) when is_binary(id),
-    do: held(Map.get(facts, :track) == id, :track, id, negated)
+  defp held(%{"input" => type}, negated, facts, _scope) when is_binary(type),
+    do: hold(type in Map.get(facts, :counted, []), :input, type, negated)
 
-  defp held(_condition, _negated, _facts), do: nil
+  defp held(%{"track" => id}, negated, facts, _scope) when is_binary(id),
+    do: hold(Map.get(facts, :track) == id, :track, id, negated)
 
-  defp held(met?, kind, value, negated),
-    do: if(met? == negated, do: %{kind: kind, value: value, negated: negated})
+  defp held(_condition, _negated, _facts, _scope), do: nil
+
+  defp hold(met?, kind, value, negated, extra \\ %{}),
+    do: if(met? == negated, do: Map.merge(%{kind: kind, value: value, negated: negated}, extra))
+
+  # changed?/3 is whether `{input: T, changed: true}` is met for the runs in `scope`: `T` has
+  # a version, and the runs of `scope` on the work item have none that ended `passed`
+  # (`facts.passed`), or that version was stored after the newest such run was queued. A
+  # version stored by a run in `scope` is the output of those runs and is left out. A
+  # version counts whatever the size of its files.
+  @doc false
+  @spec changed?(String.t(), scope, map) :: boolean
+  def changed?(type, scope, facts) do
+    stored =
+      for %{at: at, by: by} <- Map.get(Map.get(facts, :stored, %{}), type, []),
+          not stored_in?(by, scope),
+          do: at
+
+    newest =
+      for %{entry: entry, loop_entry: loop_entry, queued_at: queued_at} <-
+            Map.get(facts, :passed, []),
+          stored_in?({entry, loop_entry}, scope),
+          reduce: nil do
+        nil -> queued_at
+        newest -> if DateTime.compare(queued_at, newest) == :gt, do: queued_at, else: newest
+      end
+
+    case Enum.max(stored, DateTime, fn -> nil end) do
+      nil -> false
+      at -> is_nil(newest) or DateTime.compare(at, newest) == :gt
+    end
+  end
+
+  # Whether the place `by` of a run is in `scope`.
+  defp stored_in?(nil, _scope), do: false
+  defp stored_in?(_by, :stage), do: true
+  defp stored_in?({entry, _loop_entry}, {entry}), do: true
+  defp stored_in?({entry, loop_entry}, {entry, loop_entry}), do: true
+  defp stored_in?(_by, _scope), do: false
 
   # input_required?/2 is whether the stage waits for `input`, an input of a stage: its
   # `required`, while nothing holds the input back with `facts` (`unmet/2`).
@@ -426,12 +505,20 @@ defmodule Apiary.Stages.Runner do
   def input_required?(input, facts),
     do: input["required"] == true and is_nil(unmet(input, facts))
 
-  # condition_inputs/1 is the input types that the conditions of `stage` name, on the stage,
-  # its inputs, its loops, its workflow entries, those in a loop included, and its outputs,
-  # each once.
+  # condition_inputs/1 is the input types that the conditions `{input: T}` of `stage` name,
+  # on the stage, its inputs, its loops, its workflow entries, those in a loop included, and
+  # its outputs, each once.
   @doc false
   @spec condition_inputs(map) :: [String.t()]
-  def condition_inputs(stage) do
+  def condition_inputs(stage), do: condition_inputs(stage, false)
+
+  # changed_inputs/1 is the input types of the conditions `{input: T, changed: true}` of
+  # `stage`, found as `condition_inputs/1` finds them, each once.
+  @doc false
+  @spec changed_inputs(map) :: [String.t()]
+  def changed_inputs(stage), do: condition_inputs(stage, true)
+
+  defp condition_inputs(stage, changed?) do
     items =
       [stage] ++
         (Map.get(stage, "inputs") || []) ++
@@ -440,8 +527,9 @@ defmodule Apiary.Stages.Runner do
 
     for item <- items,
         key <- ["when", "unless"],
-        %{"input" => type} <- [item[key]],
+        %{"input" => type} = condition <- [item[key]],
         is_binary(type),
+        condition["changed"] == true == changed?,
         uniq: true,
         do: type
   end
@@ -732,7 +820,10 @@ defmodule Apiary.Stages.Runner do
     body = body(stage, index)
 
     body != [] and
-      (unmet(Enum.at(sequence(stage), index), facts) != nil or Enum.all?(body, &unmet(&1, facts)))
+      (unmet(Enum.at(sequence(stage), index), facts, {index}) != nil or
+         body
+         |> Enum.with_index()
+         |> Enum.all?(fn {entry, j} -> unmet(entry, facts, {index, j}) end))
   end
 
   # workflows/1 is the stage's workflow names, in order, each once; workflows/3 those of
@@ -744,15 +835,27 @@ defmodule Apiary.Stages.Runner do
 
   @doc false
   @spec workflows(map, [String.t()], String.t() | nil) :: [String.t()]
-  def workflows(stage, counted, track \\ nil) do
-    facts = %{counted: counted, track: track}
+  def workflows(stage, counted, track \\ nil),
+    do: workflows_met(stage, %{counted: counted, track: track})
 
+  # workflows_met/2 is the workflows of the entries of `stage` that nothing holds back
+  # with `facts`, each entry read for its own runs (`unmet/3`).
+  @doc false
+  @spec workflows_met(map, map) :: [String.t()]
+  def workflows_met(stage, facts) do
     sequence(stage)
+    |> Enum.with_index()
     |> Enum.flat_map(fn
-      %{"loop" => %{"body" => body}} = loop -> if unmet(loop, facts), do: [], else: body
-      entry -> [entry]
+      {%{"loop" => %{"body" => body}} = loop, index} ->
+        if unmet(loop, facts, {index}),
+          do: [],
+          else: body |> Enum.with_index() |> Enum.map(fn {entry, j} -> {entry, {index, j}} end)
+
+      {entry, index} ->
+        [{entry, {index, nil}}]
     end)
-    |> Enum.filter(&is_nil(unmet(&1, facts)))
+    |> Enum.filter(fn {entry, scope} -> is_nil(unmet(entry, facts, scope)) end)
+    |> Enum.map(&elem(&1, 0))
     |> names()
   end
 

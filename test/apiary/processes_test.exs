@@ -275,6 +275,84 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
+    test "takes changed: true beside an input, in when and unless, wherever an input condition sits (A-47)" do
+      changed = %{"input" => "proposal", "changed" => true}
+
+      document =
+        default()
+        |> put_sequence(@shape, [
+          %{"workflow" => "write-specs", "when" => changed},
+          %{"workflow" => "review", "unless" => changed},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [%{"workflow" => "fix", "when" => changed}]
+            },
+            "unless" => changed
+          }
+        ])
+        |> edit(fn
+          %{"id" => @shape} = stage ->
+            stage
+            |> Map.put("when", changed)
+            |> Map.put("inputs", [
+              %{"type" => "proposal", "required" => true, "unless" => changed}
+            ])
+            |> Map.put("outputs", [
+              %{"type" => "mockup", "required" => true, "when" => changed}
+            ])
+
+          stage ->
+            stage
+        end)
+
+      # The stage's own `when` is refused only for the first stage's lack of an earlier stage:
+      # Shape has Explore before it.
+      assert Processes.validate(document) == :ok
+    end
+
+    test "refuses a changed key that is not true, and one beside no input (A-47)" do
+      for value <- [false, "true", nil, 1] do
+        for key <- ["when", "unless"] do
+          entry = %{
+            "workflow" => "write-specs",
+            key => %{"input" => "proposal", "changed" => value}
+          }
+
+          assert {"#/stages/1/sequence/0", :schema} in errors(
+                   put_sequence(default(), @shape, [entry])
+                 )
+        end
+      end
+
+      for condition <- [
+            %{"changed" => true},
+            %{"track" => "standard", "changed" => true},
+            %{"input" => "proposal", "changed" => true, "value" => "short"}
+          ] do
+        entry = %{"workflow" => "write-specs", "when" => condition}
+        assert errors(put_sequence(default(), @shape, [entry])) != []
+      end
+    end
+
+    test "refuses changed: true on an input that no earlier stage outputs (:condition_input) (A-47)" do
+      changed = &%{"workflow" => &1, "when" => %{"input" => &2, "changed" => true}}
+
+      assert errors(put_sequence(default(), @explore, [changed.("explore-a-ticket", "proposal")])) ==
+               [{"#/stages/0/sequence/0/when/input", :condition_input}]
+
+      assert errors(put_sequence(default(), @shape, [changed.("write-specs", "demo-scenarios")])) ==
+               [{"#/stages/1/sequence/0/when/input", :condition_input}]
+
+      unless_changed = %{
+        "workflow" => "write-specs",
+        "unless" => %{"input" => "demo-scenarios", "changed" => true}
+      }
+
+      assert errors(put_sequence(default(), @shape, [unless_changed])) ==
+               [{"#/stages/1/sequence/0/unless/input", :condition_input}]
+    end
+
     test "takes a document with no tracks, as before" do
       refute Map.has_key?(default(), "tracks")
       assert Processes.validate(default()) == :ok

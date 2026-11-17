@@ -107,8 +107,9 @@ defmodule Apiary.Processes do
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
   (names compared trimmed and without case); `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
-  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
+  `{input: T}`, or `{input: T, changed: true}`, in `when` or `unless` on a stage, an input,
+  an output, a loop or a workflow entry, where `T` is no output of an earlier stage, with
+  `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
   `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both

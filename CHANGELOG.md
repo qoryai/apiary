@@ -12,6 +12,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: workflow_model -->
+- A condition in `when` or `unless` can be `{input: <type>, changed: true}`. It is met
+  when the type has a version and the item has no run on the work item that ended
+  `passed`, or that version was stored after the newest such run was queued. The item is
+  the workflow entry or the loop that has the condition (a loop counts the runs of every
+  entry of its body, and an entry counts the runs at its own place in the stage); a stage,
+  an input or an output counts the runs of its stage. The version is the one the stage
+  reads, whatever the size of its files, and a version that a run of the stage stored, for
+  example triage-review's, counts too, except one that a run of the item stored. A save
+  refuses `changed` with any value but `true`, and refuses the type like any input
+  condition (no earlier stage outputs it). `stage_skips.changed` is true for the record of
+  such a condition, and the tab of a stage and the entry's row say why it did not run: "<workflow>
+  did not run: <type> did not change since <workflow> last passed." for a `when`, "...<type>
+  changed since..." for an `unless`, and, for a stage passed over whole, "<stage> runs only
+  after a change to <type> since the stage last passed." and "<stage> does not run after a
+  change to <type> since the stage last passed.".
+<!-- /feature -->
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an
   image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
@@ -2302,6 +2319,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: workflow_model -->
+- `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
+  of a condition `{input: <type>, changed: true}`. It is not null with a constant default,
+  so adding it rewrites no row. Rolling back drops the column and the rows keep their
+  `input`.
+<!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
   scans the table, which has one row, as it is added, under a lock that blocks reads and
