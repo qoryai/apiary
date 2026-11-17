@@ -1045,11 +1045,15 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       assert has_element?(view, "#work-item-step .q-wi-badge", "Time limit")
       refute has_element?(view, "#work-item-step .q-wi-badge", "Cancelled")
       assert html =~ "Explore&#39;s run reached its time limit"
+      assert html =~ "Time limit reached"
+      refute html =~ "Cancelled"
       assert has_element?(view, "#work-item-step-line", "reached its time limit")
       assert has_element?(view, "#work-item-step-again", "Run Explore again")
 
-      {:ok, tab, _html} = live(conn, page(scope, work_item.number, "/explore"))
+      {:ok, tab, tab_html} = live(conn, page(scope, work_item.number, "/explore"))
       assert has_element?(tab, "#work-item-explore-none-h", "The run reached its time limit")
+      assert tab_html =~ "Time limit reached"
+      refute tab_html =~ "Cancelled"
 
       {:ok, thread, _html} = live(conn, page(scope, work_item.number) <> "/thread")
 
@@ -1080,6 +1084,14 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "3 of 3 attempts used")
       refute html =~ "was cancelled"
+      refute html =~ "ended without a result"
+
+      assert has_element?(
+               view,
+               "#work-item-step-line",
+               "reached its time limit, so Explore has no result. That was attempt 3 of 3, the last attempt of this take in."
+             )
+
       assert has_element?(view, "#work-item-step-close", "Close work item…")
     end
 
@@ -1094,6 +1106,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
       assert has_element?(view, "#work-item-step .q-wi-badge", "Cancelled")
       refute has_element?(view, "#work-item-step .q-wi-badge", "Time limit")
+      assert html =~ "Cancelled"
+      refute html =~ "Time limit reached"
+
+      {:ok, _tab, tab_html} = live(conn, page(scope, work_item.number, "/explore"))
+      assert tab_html =~ "Cancelled"
+      refute tab_html =~ "Time limit reached"
       assert html =~ "Explore&#39;s run was cancelled"
       refute html =~ "time limit"
       assert has_element?(view, "#work-item-step-again", "Run Explore again")

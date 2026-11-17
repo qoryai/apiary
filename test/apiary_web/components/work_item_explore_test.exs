@@ -944,6 +944,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "Attempt 3 (Run 15) ended without a result. That was attempt 3 of 3, the last attempt of this take in."
     end
 
+    test "the last run reached its time limit: the line says so, with its attempt" do
+      limit = used(%{state: :cancelled, outcome: nil, place: :time_limit})
+
+      assert text(limit, "#work-item-step-line") ==
+               "Attempt 3 (Run 15) reached its time limit, so Explore has no result. That was attempt 3 of 3, the last attempt of this take in."
+    end
+
     test "Close only with the right to close; a reader who may not act reads why, and nothing to do" do
       assert count(used(%{}, can_close: false), "#work-item-step-close") == 0
 
@@ -2657,6 +2664,29 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert count(html, "#{r}-42[class=q-xp-runrow]") == 1
     end
 
+    test "an earlier run that ended at its time limit reads so in the fold; a cancelled one reads Cancelled" do
+      for {place, word} <- [time_limit: "Time limit reached", cancelled: "Cancelled"] do
+        earlier =
+          acme_run(%{
+            id: "rn_0000000000000040",
+            number: 40,
+            path: "/acme/main/runs/40",
+            attempt: 1,
+            state: :cancelled,
+            place: place,
+            outcome: nil,
+            wrote: nil,
+            asked: 0,
+            ended_at: ago(3600)
+          })
+
+        last = acme_run(%{attempt: 2, wrote: 1, asked: 0, ended_at: ago(60)})
+        html = tab(invoice_item(%{run: last}), earlier_runs: [earlier], proposal: proposal_v(1))
+
+        assert text(html, "#work-item-record-40 > summary") =~ "Attempt 1 (Run 40) #{word}"
+      end
+    end
+
     test "the artifacts slot is at the foot of the fold" do
       html =
         render_component(
@@ -3260,6 +3290,32 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       # The frames of its runs are h3, under the h2 of Earlier take ins.
       assert count(html, "#work-item-explore-take-ins h3.q-xp-frame-t") == 3
       assert count(html, "#work-item-explore-take-ins :is(h2.q-xp-frame-t, h4.q-xp-frame-t)") == 0
+    end
+
+    test "a run that ended at its time limit reads so; a cancelled one reads Cancelled" do
+      limit = run(%{id: "rn_01aa47c9b05e3f18", number: 15, attempt: 1, state: :cancelled})
+      cancelled = run(%{id: "rn_01aa47c9b05e3f19", number: 16, attempt: 2, state: :cancelled})
+
+      take_in = %{
+        taken_in_by: @dana,
+        taken_in_at: ~U[2026-10-16 15:20:00Z],
+        ended: :closed,
+        ended_by: @dana,
+        ended_at: ago(4 * 60),
+        runs: [
+          Map.merge(limit, %{place: :time_limit, ended_at: ago(3600)}),
+          Map.merge(cancelled, %{place: :cancelled, ended_at: ago(3600)})
+        ]
+      }
+
+      w = work_item(%{number: 94, status: :queued, run: %{attempt: 1, of: 3}})
+      html = tab(w, earlier_take_ins: [take_in])
+
+      assert [limit_line, cancelled_line] =
+               texts(html, "#work-item-explore-take-ins-1 .q-xp-run")
+
+      assert limit_line == "Attempt 1 (Run 15) Time limit reached ended 1 hour ago"
+      assert cancelled_line == "Attempt 2 (Run 16) Cancelled cancelled 1 hour ago"
     end
 
     test "a paused run that a run continues: why it paused, with a link to that run" do

@@ -1329,6 +1329,15 @@ defmodule ApiaryWeb.WorkItemComponents do
         of: Format.number(run.of)
       )
 
+  defp used_up_line(%{place: :time_limit} = run),
+    do:
+      rich_gettext(
+        "%{attempt} reached its time limit, so Explore has no result. That was attempt %{number} of %{of}, the last attempt of this take in.",
+        attempt: attempt_words(run),
+        number: Format.number(run.attempt),
+        of: Format.number(run.of)
+      )
+
   defp used_up_line(run),
     do:
       rich_gettext(
@@ -3062,7 +3071,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             run[:cancelling] == true -> gettext("Cancelling")
             state in [nil, :pending] -> gettext("Queued")
             run[:paused] -> PauseWords.line(run.paused, run[:paused_path])
-            true -> RunComponents.state_label(state)
+            true -> run_state_word(run)
           end,
         state_class: state_class(run),
         time: run_time(run, assigns.now)
@@ -3092,6 +3101,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     />
     """
   end
+
+  # The state word of a run: a run that ended at its time limit reads so, not Cancelled
+  # (`Apiary.WorkItems.Explore`'s place `:time_limit`); any other run reads its state.
+  defp run_state_word(%{place: :time_limit}), do: gettext("Time limit reached")
+  defp run_state_word(run), do: RunComponents.state_label(run[:state])
 
   defp run_place(run), do: gettext("Attempt %{attempt}", attempt: shown_number(run[:attempt]))
 
@@ -3134,6 +3148,9 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp run_time(%{state: :lost, ended_at: %DateTime{} = at}, now),
     do: rich_gettext("lost %{when}", when: inline_ago(at, now))
+
+  defp run_time(%{place: :time_limit, ended_at: %DateTime{} = at}, now),
+    do: rich_gettext("ended %{when}", when: inline_ago(at, now))
 
   defp run_time(%{state: :cancelled, ended_at: %DateTime{} = at}, now),
     do: rich_gettext("cancelled %{when}", when: inline_ago(at, now))
@@ -5422,7 +5439,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
         stage_run.shows in [:running, :no_verdict] and
             run[:state] in [:failed, :lost, :cancelled, :paused] ->
-          List.replace_at(parts, -1, RunComponents.state_label(run.state))
+          List.replace_at(parts, -1, run_state_word(run))
 
         true ->
           parts
@@ -5474,7 +5491,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                 said ++ [PauseWords.line(run.paused, run[:paused_path])]
 
               said == [] or run.state in [:failed, :lost, :cancelled, :paused] ->
-                said ++ [RunComponents.state_label(run.state)]
+                said ++ [run_state_word(run)]
 
               true ->
                 said

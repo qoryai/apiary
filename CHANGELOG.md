@@ -2027,8 +2027,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   limit was reached, where it read that the run was cancelled. The header and the step
   read “Explore's run reached its time limit”, the step has the badge **Time limit**,
   the Explore tab reads “The run reached its time limit.”, and the Thread reads “Attempt
-  1 reached its time limit, so Explore has no result”. **Run Explore again** is offered
-  as after a run with no result, and “Cancelled” stays for a run that a member cancelled.
+  1 reached its time limit, so Explore has no result”. A run's line reads “Time limit
+  reached”, in place of “Cancelled”, and at the run limit the step reads “Attempt 3
+  reached its time limit, so Explore has no result. That was attempt 3 of 3, the last
+  attempt of this take in.” **Run Explore again** is offered as after a run with no
+  result, and “Cancelled” stays for a run that a member cancelled.
 <!-- /feature -->
 - A question that was reopened after a decision and then answered is no longer refused
   as too large.
