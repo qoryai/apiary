@@ -396,6 +396,19 @@ defmodule Apiary.ArtifactsTest do
                type_entries()
     end
 
+    test "stores withdrawable true for a form payload that sets false", %{scope: scope} do
+      for {name, payload} <- [
+            {"bids-a", %{"name" => "bids-a", "base_view" => "file", "withdrawable" => false}},
+            {"bids-b", %{"name" => "bids-b", "base_view" => "file", "withdrawable" => "false"}},
+            {"bids-c", %{name: "bids-c", base_view: "file", withdrawable: false}}
+          ] do
+        assert {:ok, %Type{name: ^name, withdrawable: true}} =
+                 Artifacts.create_type(scope, scope.workspace, payload)
+
+        assert %Type{withdrawable: true} = Artifacts.type(scope.workspace, name)
+      end
+    end
+
     test "takes a structured type's schema as a map or as JSON text", %{scope: scope} do
       schema = %{"type" => "object", "properties" => %{"bid" => %{"type" => "number"}}}
 

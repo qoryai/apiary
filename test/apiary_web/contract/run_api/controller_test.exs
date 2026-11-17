@@ -1853,7 +1853,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
     test "refuses a custom type with withdrawable false, before the files", ctx do
       {:ok, _type} =
-        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+        Apiary.Artifacts.insert_template_type(ctx.scope, ctx.work_item_workspace, %{
           "name" => "demo-script",
           "base_view" => "file",
           "withdrawable" => false

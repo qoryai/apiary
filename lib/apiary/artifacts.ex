@@ -353,7 +353,8 @@ defmodule Apiary.Artifacts do
   # create_type/3 makes a custom type in `workspace`: `{:ok, type}`,
   # `{:error, :not_found | :forbidden}`, or `{:error, changeset}`. `attrs` has `name`,
   # `base_view`, `size_limit`, `max_files` and, for a structured type, `json_schema`, a
-  # map or its JSON text.
+  # map or its JSON text. A `withdrawable` in `attrs` is left out: only a template's
+  # `artifact_types` entry sets it (`insert_template_type/3`).
   @doc false
   @spec create_type(Scope.t(), Workspace.t(), map) ::
           {:ok, Type.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
@@ -362,7 +363,11 @@ defmodule Apiary.Artifacts do
       with :ok <- authorize(scope, @edit_types, workspace),
            {:ok, changeset} <-
              %Type{organisation_id: workspace.organisation_id, workspace_id: workspace.id}
-             |> Type.create_changeset(json_attrs(attrs))
+             |> Type.create_changeset(
+               attrs
+               |> json_attrs()
+               |> Map.drop([:withdrawable, "withdrawable"])
+             )
              |> checked_schema(),
            {:ok, type} <- PublicId.Insert.insert(changeset),
            {:ok, _entry} <- audit_type(scope, workspace, :create, type) do
