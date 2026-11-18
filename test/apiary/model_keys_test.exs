@@ -909,4 +909,143 @@ defmodule Apiary.ModelKeysTest do
       end
     end
   end
+
+  describe "the key windows of a session" do
+    alias Apiary.Runs.{SessionKeyWindow, SessionRecord}
+
+    # A report of `utilization` percent in `window`, observed `minute` minutes after noon, of
+    # the session `session` (none: a report that names no session).
+    defp report!(run, value, session, utilization, minute, window \\ "five_hour") do
+      observed = DateTime.add(~U[2026-11-10 12:00:00.000000Z], minute * 60, :second)
+
+      ModelKeys.record(
+        [key(value)],
+        [item(window: window, utilization: utilization, observed_at: observed)],
+        DateTime.utc_now(),
+        session && {run, session}
+      )
+    end
+
+    defp windows(run) do
+      Repo.all(
+        from w in SessionKeyWindow,
+          join: r in SessionRecord,
+          on: r.id == w.session_record_id,
+          where: r.run_id == ^run.id,
+          order_by: [r.session_number, w.window],
+          select: {r.session_number, w.window, w.first_utilization, w.last_utilization, w.share}
+      )
+      |> Enum.map(fn {n, window, first, last, share} ->
+        {n, window, Decimal.to_integer(first), Decimal.to_integer(last),
+         Decimal.to_integer(share)}
+      end)
+    end
+
+    test "keep the first and the last utilization of each key and window, and their share",
+         ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+
+      # Session 1: the report at its start, one in the middle, and the one at its end.
+      report!(run, value, 1, 7, 0)
+      report!(run, value, 1, 9, 30)
+      report!(run, value, 1, 12, 60)
+      report!(run, value, 1, 40, 0, "seven_day")
+      report!(run, value, 2, 12, 61)
+      report!(run, value, 2, 5, 120)
+
+      assert windows(run) == [
+               {1, "five_hour", 7, 12, 5},
+               {1, "seven_day", 40, 40, 0},
+               # A window that reset in the session has a negative share.
+               {2, "five_hour", 12, 5, -7}
+             ]
+
+      assert [%{session_number: 1}, %{session_number: 2}] =
+               Repo.all(
+                 from r in SessionRecord, where: r.run_id == ^run.id, order_by: r.session_number
+               )
+
+      # The states are the newest report of each window, as before.
+      assert [%State{window: "five_hour", utilization: 5}, %State{window: "seven_day"}] =
+               states(value)
+    end
+
+    test "count a report that arrives late by when it was observed", ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+
+      report!(run, value, 1, 12, 60)
+      report!(run, value, 1, 3, 0)
+      # The same report again changes nothing.
+      report!(run, value, 1, 3, 0)
+      report!(run, value, 1, 12, 60)
+
+      assert windows(run) == [{1, "five_hour", 3, 12, 9}]
+    end
+
+    test "leave a report with no session, or with no utilization, out of every session", ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+
+      report!(run, value, nil, 50, 0)
+      report!(run, value, 1, nil, 10)
+      assert windows(run) == []
+      assert Repo.all(from r in SessionRecord, where: r.run_id == ^run.id) == []
+
+      report!(run, value, 1, 20, 20)
+      before = windows(run)
+      report!(run, value, nil, 99, 30)
+      assert windows(run) == before
+      assert [%State{utilization: 99}] = states(value)
+    end
+
+    test "leave a key whose value is not the run's out, as the states do", ctx do
+      value = ctx.values["spare"]
+      run = keys_run(ctx, value)
+      # No secrets request kept this key's value for the run, and the key's value was set
+      # after the run was written.
+      set_value!(ctx, "sk-ant-fixture-new-0123456789")
+
+      report!(run, value, 1, 20, 20)
+      assert windows(run) == []
+    end
+
+    test "a failure of the windows leaves the states written", ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+
+      # Session 0 is no session: `record_windows/3` refuses it, the report is taken.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok =
+                   ModelKeys.record(
+                     [key(value)],
+                     [item(utilization: 4)],
+                     DateTime.utc_now(),
+                     {run, 0}
+                   )
+        end)
+
+      assert log =~ "a session's key windows were not kept"
+      assert [%State{utilization: 4}] = states(value)
+    end
+
+    test "a run that is gone keeps no windows and the states are written", ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+      ghost = %{run | id: Ecto.UUID.generate()}
+
+      assert :ok =
+               ModelKeys.record(
+                 [key(value)],
+                 [item(utilization: 4)],
+                 DateTime.utc_now(),
+                 {ghost, 1}
+               )
+
+      assert windows(run) == []
+      assert [%State{utilization: 4}] = states(value)
+    end
+  end
 end

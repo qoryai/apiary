@@ -162,6 +162,34 @@ defmodule Apiary.RunEventsFixtures do
     })
   end
 
+  @doc """
+  The data of a `dev.qory.runtime.result` of session `session` that cost `cost_usd`, as
+  Claude Code's descriptor writes it: the schema's `session`, `line`, `usage` and the rest,
+  with synthetic counts. `extra` replaces members.
+  """
+  def result_data(session, cost_usd, extra \\ %{}) do
+    Map.merge(
+      %{
+        "session_id" => "0f3a9c2e-7b1d-4c6e-9a2f-5d8e1b4c7a90",
+        "session" => session,
+        "line" => 5,
+        "outcome" => "success",
+        "is_error" => false,
+        "turns" => 4,
+        "duration_ms" => 60_000,
+        "cost_usd" => cost_usd,
+        "result" => "Done.",
+        "usage" => %{
+          "input" => 10,
+          "output" => 2_000,
+          "cache_read" => 3_000,
+          "cache_write" => 400
+        }
+      },
+      Map.new(extra)
+    )
+  end
+
   @doc "Stores `{sequence, type, data}` or `{sequence, type, data, opts}` tuples."
   def events_fixture(%Run{} = run, events) do
     for event <- events do

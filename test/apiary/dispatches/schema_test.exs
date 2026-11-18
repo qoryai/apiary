@@ -87,6 +87,12 @@ defmodule Apiary.Dispatches.SchemaTest do
   @sessions_version 20_261_118_130_000
   @sessions Apiary.Repo.Migrations.KeepTheSessionsOfASharedRun
 
+  # The later migration that keeps a record of each session of a run, whose foreign key to
+  # a work item rests on the index of `work_items` on `id`, `organisation_id`, which
+  # `@again` drops: down first, up last.
+  @records_version 20_261_118_161_000
+  @records Apiary.Repo.Migrations.KeepARecordOfEachSessionOfARun
+
   # The later migrations that keep where a move went and the switch of an escalation, whose
   # key and check are on the gate decisions and the escalations: down first, newest first,
   # up last, in order. The switch's down clears the escalation a switch resolved, so it
@@ -121,7 +127,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@move_valid_version, @move_valid, "validate_the_escalation_of_a_move"},
           {@switch_version, @switch, "keep_a_switch_as_a_resolution"},
           {@switch_valid_version, @switch_valid, "validate_a_switch_as_a_resolution"},
-          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"}
+          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"},
+          {@records_version, @records, "keep_a_record_of_each_session_of_a_run"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -1102,6 +1109,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @records_version, @records, @options)
     assert :ok = Ecto.Migrator.down(Repo, @sessions_version, @sessions, @options)
 
     assert :ok =
@@ -1154,6 +1162,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @switch_valid_version, @switch_valid, @options)
 
     assert :ok = Ecto.Migrator.up(Repo, @sessions_version, @sessions, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @records_version, @records, @options)
 
     # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
     # left down, on every insert.
