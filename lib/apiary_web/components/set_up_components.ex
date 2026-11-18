@@ -1346,7 +1346,19 @@ defmodule ApiaryWeb.SetUpComponents do
         |> Phoenix.LiveView.push_navigate(to: ~p"/#{organisation}/workspaces/new")
 
       {:error, errors} when is_list(errors) ->
-        refused_flash(socket, place, start, gettext("its process is not valid"))
+        case Enum.find(errors, &(&1.error in [:model_choice_missing, :too_many_providers])) do
+          # The fault is in the organisation's default model choice, not in the
+          # template: its line alone.
+          %{} = error ->
+            Phoenix.LiveView.put_flash(
+              socket,
+              :error,
+              ApiaryWeb.StagesLive.Words.refusal(error, start.template.process)
+            )
+
+          nil ->
+            refused_flash(socket, place, start, gettext("its process is not valid"))
+        end
 
       {:error, {:invalid, type, error}} ->
         refused_flash(socket, place, start, TemplateTypes.message({:invalid, type, error}))

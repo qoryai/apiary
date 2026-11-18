@@ -97,7 +97,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   # outcome `error`; `shared_access_differs`, a claimed run of a stage whose workflows
   # share one run, whose workflows would run with different access levels, as an update
   # from the harness changed a level after the process was saved
-  # (`Apiary.Stages.shared_access/1`), with the outcome `error`.
+  # (`Apiary.Stages.shared_access/1`), with the outcome `error`; `model_choice_missing`
+  # and `too_many_providers`, a claimed run of such a stage whose workflows' model
+  # choices no longer fit one run, as a choice, a provider or the harness changed after
+  # the process was saved: a workflow with no model choice whose runtime cannot use the
+  # provider the run starts on, or more than 6 model providers
+  # (`Apiary.Stages.shared_models/1`), with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -120,7 +125,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     :harness_unresolved,
     :target_access_gone,
     :write_without_work_item,
-    :shared_access_differs
+    :shared_access_differs,
+    :model_choice_missing,
+    :too_many_providers
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and

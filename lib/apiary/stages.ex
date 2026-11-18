@@ -125,7 +125,7 @@ defmodule Apiary.Stages do
   # The most bytes a session's result takes, encoded (`session_answer_limit/0`).
   @session_answer_bytes 1_048_576
 
-  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, Repo}
+  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, ModelChoices, Processes, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
@@ -528,6 +528,50 @@ defmodule Apiary.Stages do
       _same -> :ok
     end
   end
+
+  # shared_models/1 checks, at the claim of `run`, a run of the queue, that the model
+  # choices of the workflows of its stage, where the stage has `shared_run: true`, fit the
+  # one run (`Apiary.Processes.shared_models/3`), with the choices resolved at the run's
+  # target as the claim resolves them (`Apiary.ModelChoices.shared_models/3`): a changed
+  # default provider, a cleared model choice or a change of the harness can break them
+  # after the save. The providers the run can start on are those of the stage's first
+  # workflow's choice, or, for a run that continues a paused run, the provider of the
+  # session that paused (`Apiary.Runs.Run.session_provider_ids/2`). `:ok` for any other
+  # run; `{:error, %{stage: name, detail: detail}}` for a run whose choices do not fit,
+  # which the claim ends `too_many_providers` or `model_choice_missing`
+  # (`Apiary.Dispatches.Handover`), and which the lines of such a run read again.
+  @doc false
+  @spec shared_models(DispatchRun.t()) ::
+          :ok
+          | {:error,
+             %{
+               stage: String.t(),
+               detail:
+                 {:too_many_providers, pos_integer, [String.t()]}
+                 | {:model_choice_missing, String.t(), String.t(), String.t()}
+             }}
+  def shared_models(%DispatchRun{} = run) do
+    with %{} = stage <- shared_stage(run),
+         workspace = Repo.get!(Workspace, run.workspace_id),
+         target = Apiary.Dispatches.RunSettings.target_of(run),
+         models = ModelChoices.shared_models(workspace, target, shared_workflows(run)),
+         {:error, detail} <- Processes.shared_models(stage, models, start_provider_ids(run)) do
+      {:error, %{stage: stage["name"], detail: detail}}
+    else
+      _fits -> :ok
+    end
+  end
+
+  # The providers a continuation starts on: those of the session that paused in the run
+  # it continues; nil for a run that continues none.
+  defp start_provider_ids(%DispatchRun{continues_id: id}) when is_binary(id) do
+    case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, limit: 1) do
+      %Run{} = paused -> Run.session_provider_ids(paused, paused.paused_session)
+      nil -> nil
+    end
+  end
+
+  defp start_provider_ids(_run), do: nil
 
   # The stage of `run`, a run of the queue, where the stage has `shared_run: true` and the
   # run is no run of Explore; nil for any other run.

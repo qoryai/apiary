@@ -154,7 +154,13 @@ defmodule Apiary.Dispatches.RunSettings do
   @lock_rounds 3
 
   @typedoc "The causes the claim ends a run for here."
-  @type cause :: :provider_gone | :runtime_unserved | :key_gone | :model_gone
+  @type cause ::
+          :provider_gone
+          | :runtime_unserved
+          | :key_gone
+          | :model_gone
+          | :model_choice_missing
+          | :too_many_providers
 
   @typedoc """
   What a claim writes: `wire`, the documents' `run_settings`; `stored`, the same as a
@@ -175,10 +181,20 @@ defmodule Apiary.Dispatches.RunSettings do
   @spec max_bytes() :: pos_integer
   def max_bytes, do: @max_bytes
 
-  # causes/0 is every cause `build/1` ends a run for.
+  # causes/0 is every cause `build/1` ends a run for, and the two of the claim's check of
+  # a shared stage's model choices (`Apiary.Stages.shared_models/1`), which the claim
+  # runs before it stores keys: `model_choice_missing` and `too_many_providers`.
   @doc false
   @spec causes() :: [cause]
-  def causes, do: [:provider_gone, :runtime_unserved, :key_gone, :model_gone]
+  def causes,
+    do: [
+      :provider_gone,
+      :runtime_unserved,
+      :key_gone,
+      :model_gone,
+      :model_choice_missing,
+      :too_many_providers
+    ]
 
   # hold/1 is what the claim of the run of the queue `dispatch_run` holds before it
   # locks anything: nil for a prebuild, which has no `run_settings`, else what `build/1`
@@ -252,6 +268,13 @@ defmodule Apiary.Dispatches.RunSettings do
       time_limit(workspace, target(workspace, id), workflow)
     end
   end
+
+  # target_of/1 is the target row of the work item of the run of the queue `dispatch_run`
+  # in its workspace, as the claim reads it; nil for none.
+  @doc false
+  @spec target_of(DispatchRun.t()) :: Target.t() | nil
+  def target_of(%DispatchRun{workspace_id: workspace_id, work_item_id: id}),
+    do: target(Repo.get!(Workspace, workspace_id), id)
 
   # The run's workflow: with the workflow model, the one its stage entry names
   # (`Apiary.Stages.run_workflow/1`); else the one the Harness page saved.

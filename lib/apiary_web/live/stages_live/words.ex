@@ -655,6 +655,30 @@ defmodule ApiaryWeb.StagesLive.Words do
   # differs from the stage's first entry (`Apiary.Processes.validate/2`); where the
   # harness's level for a workflow lowers its entry's, that workflow, its level, and the
   # level the other workflows run with.
+  # A stage with `shared_run: true` whose workflow has no model choice, while its runs can
+  # start on a provider that the workflow's runtime cannot use
+  # (`Apiary.Processes.shared_models/3`).
+  def refusal(
+        %{error: :model_choice_missing, detail: {_kind, workflow, runtime, provider}},
+        _doc
+      ),
+      do:
+        gettext(
+          "Choose a model for workflow %{workflow}. Without one it runs on %{runtime}, and this stage's runs can start on %{provider}, which %{runtime} cannot use.",
+          workflow: workflow,
+          runtime: runtime,
+          provider: provider
+        )
+
+  # A stage with `shared_run: true` whose workflows use more than 6 model providers.
+  def refusal(%{error: :too_many_providers, detail: {_kind, count, providers}}, _doc),
+    do:
+      gettext(
+        "Use at most 6 model providers in one stage. Its workflows use %{count}: %{providers}.",
+        count: count,
+        providers: Enum.join(providers, ", ")
+      )
+
   def refusal(%{error: :shared_run_differs, path: path, detail: kind}, doc) do
     {stage, _field} = place(path, doc)
 

@@ -79,6 +79,14 @@ defmodule Apiary.Processes do
   the lower of its `access` and the level its workflow declares in the workspace's
   harness (`shared_access/2`).
 
+  The run of such a stage takes keys of at most 6 model providers, one provider per
+  session, and starts on the provider of its first workflow's model choice. Given the
+  workspace's model choices (`validate/3`, `workspace_models/2`), a save also fails when
+  the stage's workflows, with their fallbacks, use more than 6 providers
+  (`:too_many_providers`), or when a workflow has no model choice and the runtime it then
+  runs on cannot use a provider that the stage's runs can start on
+  (`:model_choice_missing`), as `shared_models/3` checks.
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -145,6 +153,8 @@ defmodule Apiary.Processes do
   `{:access, workflow, level, other}` in place of `:access` where the harness's level for
   `workflow` lowers its entry's, `other` the level the other entry runs with
   (`shared_access/2`);
+  `:too_many_providers` and `:model_choice_missing` for a stage with `shared_run: true`
+  whose model choices do not fit one run, with the detail of `shared_models/3`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -334,15 +344,18 @@ defmodule Apiary.Processes do
   offers declared, the input of each condition an output of an earlier stage, the track of each
   condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one access level and machine type in a stage with
   `shared_run: true`, with the access levels the workflows declare in the harness,
-  `levels` (`declared_access/1`), none by default. `:ok`, or
+  `levels` (`declared_access/1`), none by default; and, with `models`, the model choices
+  of the workspace (`workspace_models/2`, `Apiary.ModelChoices.shared_models/3`), the
+  model providers of each such stage (`shared_models/3`); with no `models`, the default,
+  those are not checked. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
-  @spec validate(term, %{String.t() => :read | :write_no_push | :write}) ::
+  @spec validate(term, %{String.t() => :read | :write_no_push | :write}, map | nil) ::
           :ok | {:error, [error]}
-  def validate(document, levels \\ %{})
+  def validate(document, levels \\ %{}, models \\ nil)
 
-  def validate(document, levels) when is_map(document) do
+  def validate(document, levels, models) when is_map(document) do
     cond do
       not Bounds.within?(document, @limits) ->
         {:error, [%{path: "#", error: :too_large, detail: Map.new(@limits)}]}
@@ -354,7 +367,8 @@ defmodule Apiary.Processes do
                    returns_not_earlier(document["stages"]) ++
                    track_errors(document) ++
                    condition_errors(document["stages"]) ++
-                   shared_run_errors(document, levels) do
+                   shared_run_errors(document, levels) ++
+                   shared_model_errors(document, models) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -365,7 +379,7 @@ defmodule Apiary.Processes do
     end
   end
 
-  def validate(_document, _levels),
+  def validate(_document, _levels, _models),
     do: {:error, [%{path: "#", error: :schema, detail: :type}]}
 
   @doc false
@@ -454,6 +468,145 @@ defmodule Apiary.Processes do
           [Enum.find(rest, &(shared_value(elem(&1, 0), kind, document, levels) != value))],
         do: %{path: path, error: :shared_run_differs, detail: detail(kind, first, entry, levels)}
   end
+
+  # The stages with `shared_run: true` whose model choices in `models` do not fit one run
+  # (`shared_models/3`), each at its place; none without `models`.
+  defp shared_model_errors(_document, nil), do: []
+
+  defp shared_model_errors(document, models) do
+    for {stage, index} <- Enum.with_index(document["stages"]),
+        shared_run?(stage),
+        {:error, {kind, _detail} = detail} <- [shared_models(stage, models)],
+        do: %{path: "#/stages/#{index}", error: kind, detail: detail}
+  end
+
+  @doc """
+  shared_models/3 checks that the model choices of the workflows of `stage`, a stage with
+  `shared_run: true`, fit the one run its workflow entries run as. `models` is
+  `Apiary.ModelChoices.shared_models/3` or `Apiary.ModelChoices.default_models/1`:
+  `choices`, each workflow's resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`),
+  with `default` for a workflow not listed; and `providers`, the name and the catalogue
+  description of each provider those use, by row id. `start_ids` are the providers the
+  stage's runs can start on: nil for those of the stage's first workflow's choice, its
+  provider and then its fallbacks' providers; a continuation passes the provider of the
+  session that paused.
+
+  `{:error, {:too_many_providers, count, names}}` where the workflows' choices and their
+  fallbacks use more than 6 providers, `count` of them, `names` in the order the
+  workflows first use them: one run takes keys of at most 6, and at least one of each
+  provider. Else `{:error, {:model_choice_missing, workflow, runtime, provider}}` for the
+  first workflow with no model choice (`:none`) whose runtime, the catalogue's default
+  (`Apiary.ModelChoices.default_runtime/0`, its title as `runtime`), cannot use one of
+  `start_ids` (`Apiary.Kinds.Providers.api/2`), with that provider's name: such a session
+  joins the start key's group and cannot use the machine's key. Else `:ok`. The
+  providers are checked first: with more than 6, no claim can give each session a key,
+  whatever the choices. The save checks it (`validate/3`), and the claim checks it again
+  (`Apiary.Stages.shared_models/1`), as a choice, a provider or the harness can change
+  after the save.
+  """
+  @spec shared_models(map, map, [Ecto.UUID.t()] | nil) ::
+          :ok
+          | {:error,
+             {:too_many_providers, pos_integer, [String.t()]}
+             | {:model_choice_missing, String.t(), String.t(), String.t()}}
+  def shared_models(stage, %{} = models, start_ids \\ nil) when is_map(stage) do
+    workflows =
+      stage |> shared_entries("#") |> Enum.map(&elem(&1, 0)["workflow"]) |> Enum.uniq()
+
+    choices = Map.new(workflows, &{&1, model_choice(models, &1)})
+
+    # Every provider a choice or one of its fallbacks uses counts, by the fallback's
+    # provider. A fallback's runtime is not read here.
+    used =
+      workflows
+      |> Enum.flat_map(&choice_providers(Map.fetch!(choices, &1)))
+      |> Enum.uniq()
+
+    start_ids = start_ids || choice_providers(Map.get(choices, List.first(workflows)))
+
+    cond do
+      length(used) > 6 ->
+        {:error, {:too_many_providers, length(used), Enum.map(used, &provider_name(models, &1))}}
+
+      fault = missing_choice(workflows, choices, start_ids, models) ->
+        {:error, fault}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp model_choice(models, workflow),
+    do: Map.get(Map.get(models, :choices, %{}), workflow, Map.get(models, :default, :none))
+
+  # The providers of a resolved choice: its provider, then its fallbacks' providers.
+  defp choice_providers({:ok, %{connection_id: id, fallbacks: fallbacks}}),
+    do: Enum.uniq([id | Enum.map(fallbacks, & &1.connection_id)])
+
+  defp choice_providers(_none_or_gone), do: []
+
+  # The first workflow with no model choice whose default runtime cannot use a provider of
+  # `start_ids`, with that provider. A start provider that is gone, or whose description
+  # cannot be read, is no fault here: the claim ends such a run `provider_gone`.
+  #
+  # The check of a fallback's runtime against the start provider goes here once a
+  # fallback has a runtime of its own; until then a fallback runs on its choice's
+  # runtime, and only the providers count.
+  defp missing_choice(workflows, choices, start_ids, models) do
+    runtime = Apiary.ModelChoices.default_runtime()
+
+    Enum.find_value(workflows, fn workflow ->
+      if Map.fetch!(choices, workflow) == :none do
+        Enum.find_value(start_ids, fn id ->
+          with %{description: {:ok, description}, name: name} <-
+                 Map.get(Map.get(models, :providers, %{}), id),
+               {:error, _refusal} <- Apiary.Kinds.Providers.api(description, runtime) do
+            {:model_choice_missing, workflow, runtime.title, name}
+          else
+            _usable -> nil
+          end
+        end)
+      end
+    end)
+  end
+
+  defp provider_name(models, id) do
+    case Map.get(Map.get(models, :providers, %{}), id) do
+      %{name: name} -> name
+      nil -> id
+    end
+  end
+
+  @doc """
+  workspace_models/2 is the model choices that the save of `document` checks for
+  `workspace` (`validate/3`): those of the workflows of its stages with `shared_run:
+  true`, at the workspace's levels 4 to 6, with no target
+  (`Apiary.ModelChoices.shared_models/3`). Nil for a document with no such stage. Read
+  without a lock.
+  """
+  @spec workspace_models(Workspace.t(), term) :: map | nil
+  def workspace_models(%Workspace{} = workspace, %{"stages" => [_ | _] = stages}) do
+    workflows =
+      for stage <- stages,
+          is_map(stage) and shared_run?(stage),
+          entry <- shared_entries_of(stage),
+          is_binary(entry["workflow"]),
+          uniq: true,
+          do: entry["workflow"]
+
+    if workflows != [], do: Apiary.ModelChoices.shared_models(workspace, nil, workflows)
+  end
+
+  def workspace_models(_workspace, _document), do: nil
+
+  defp shared_entries_of(%{"sequence" => sequence}) when is_list(sequence),
+    do: Enum.flat_map(sequence, &entries_of/1)
+
+  defp shared_entries_of(_stage), do: []
+
+  defp entries_of(%{"loop" => %{"body" => body}}) when is_list(body), do: body
+  defp entries_of(%{} = entry), do: [entry]
+  defp entries_of(_entry), do: []
 
   @doc """
   shared_access/2 checks that every workflow entry of `stage`, a stage with
@@ -965,7 +1118,8 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- Access.check(scope, :"process.edit", workspace),
-           :ok <- validate(document, declared_access(workspace)),
+           :ok <-
+             validate(document, declared_access(workspace), workspace_models(workspace, document)),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
@@ -1004,7 +1158,9 @@ defmodule Apiary.Processes do
       the same document at the same commit is `:unchanged`;
     * the switch that keeps the process at the latest is not changed here;
     * `levels:`, the access level each workflow of the harness declares, by name, checks
-      the stages with `shared_run: true` as `save/4` does (`validate/2`); none by default;
+      the stages with `shared_run: true` as `save/4` does (`validate/3`); none by default;
+    * `models:`, the workspace's model choices (`workspace_models/2`), checks those
+      stages' model providers as `save/4` does; none by default;
     * for the instance's scope (`Apiary.Accounts.Scope.for_instance/2`), with no person,
       it checks no access: the switch's update, which no person starts. Its version has
       no author.
@@ -1022,7 +1178,8 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- harness_access(scope, workspace),
-           :ok <- validate(document, Keyword.get(opts, :levels, %{})),
+           :ok <-
+             validate(document, Keyword.get(opts, :levels, %{}), Keyword.get(opts, :models)),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),

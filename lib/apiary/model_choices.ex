@@ -220,20 +220,91 @@ defmodule Apiary.ModelChoices do
           uniq: true,
           do: id
 
-    providers =
-      if ids == [] do
-        %{}
-      else
-        Repo.all(
-          from c in Connection,
-            where:
-              c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-                not is_nil(c.provider_kind) and c.chain == "organisation"
-        )
-        |> Map.new(&{&1.id, resolution_provider(&1)})
-      end
+    rows = provider_rows(workspace.organisation_id, input.choices, ids)
 
-    Map.put(input, :providers, providers)
+    input
+    |> Map.put(:providers, Map.new(rows, &{&1.id, resolution_provider(&1)}))
+    |> Map.put(:rows, rows)
+  end
+
+  # The provider rows of the organisation's chain that `choices` and their fallbacks use,
+  # or those of `ids`.
+  defp provider_rows(organisation_id, choices, ids \\ nil) do
+    ids =
+      ids ||
+        for choice <- choices,
+            id <- [choice.connection_id | Enum.map(choice.fallbacks, & &1.connection_id)],
+            is_binary(id),
+            uniq: true,
+            do: id
+
+    if ids == [] do
+      []
+    else
+      Repo.all(
+        from c in Connection,
+          where:
+            c.id in ^ids and c.organisation_id == ^organisation_id and
+              not is_nil(c.provider_kind) and c.chain == "organisation"
+      )
+    end
+  end
+
+  @doc false
+  # shared_models/3 is the model choices of `workflows`, the workflows of a stage with
+  # `shared_run: true` of `workspace`, at `target` (nil for none: the workspace's levels
+  # 4 to 6), as `Apiary.Processes.shared_models/3` takes them: `choices`, each workflow's
+  # resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`), and `providers`,
+  # the `name` and the catalogue `description` (`Apiary.Connections.provider/1`) of each
+  # provider those choices and their fallbacks use, by row id. Read without a lock.
+  @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()]) :: map
+  def shared_models(%Workspace{} = workspace, target, workflows) when is_list(workflows) do
+    inputs = Map.new(workflows, &{&1, input(workspace, target, &1)})
+    choices = Map.new(inputs, fn {workflow, input} -> {workflow, Resolution.resolve(input)} end)
+    rows = inputs |> Map.values() |> Enum.flat_map(&Map.get(&1, :rows, []))
+    %{choices: choices, providers: described_providers(rows)}
+  end
+
+  @doc false
+  # default_models/1 is what `shared_models/3` returns for a workspace not yet made in the
+  # organisation `organisation` (a scope or the organisation): only its default (level 6)
+  # reaches it. The default choice, with its fallbacks and their providers, resolved once
+  # (`Apiary.ModelChoices.Resolution.resolve/1`, which places a level-6 choice whatever
+  # the workspace and the workflow), is `default`, the choice of every workflow. Read
+  # without a lock.
+  @spec default_models(Scope.t() | Organisation.t()) :: map
+  def default_models(%Scope{organisation: %Organisation{} = organisation}),
+    do: default_models(organisation)
+
+  def default_models(%Organisation{id: organisation_id}) do
+    choices =
+      Repo.all(
+        from c in ModelChoice,
+          where: c.organisation_id == ^organisation_id and c.chain == "organisation",
+          where: is_nil(c.workspace_id),
+          preload: :fallbacks
+      )
+
+    rows = provider_rows(organisation_id, choices)
+
+    input = %{
+      choices: choices,
+      workspace_id: nil,
+      target_id: nil,
+      workflow: nil,
+      providers: Map.new(rows, &{&1.id, resolution_provider(&1)}),
+      default_runtime: default_runtime().name,
+      effort_values: Map.new(Runtimes.list(), &{&1.name, &1.effort_values})
+    }
+
+    %{choices: %{}, default: Resolution.resolve(input), providers: described_providers(rows)}
+  end
+
+  # Each provider's name and catalogue description, by row id.
+  defp described_providers(rows) do
+    rows
+    |> Enum.uniq_by(& &1.id)
+    |> Map.new(&{&1.id, %{name: &1.name, description: Connections.provider(&1)}})
   end
 
   @doc false

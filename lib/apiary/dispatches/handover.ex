@@ -75,7 +75,10 @@ defmodule Apiary.Dispatches.Handover do
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
   #      `inputs_invalid`; a run of a stage whose workflows share one run, whose
   #      workflows would run with different access levels with the levels their harness
-  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; an
+  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; a run
+  #      of such a stage whose workflows' model choices no longer fit one run
+  #      (`Apiary.Stages.shared_models/1`), `too_many_providers` or
+  #      `model_choice_missing`; an
   #      explore run of the Qory harness or of the built-in one,
   #      whose read of the harness for the claim failed (`at_claim/4`),
   #      `harness_unresolved`; an explore run whose model choice cannot be formed
@@ -882,6 +885,7 @@ defmodule Apiary.Dispatches.Handover do
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          :ok <- shared_access(dispatch_run),
+         :ok <- shared_models(dispatch_run),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
@@ -922,6 +926,17 @@ defmodule Apiary.Dispatches.Handover do
     case Apiary.Stages.shared_access(dispatch_run) do
       :ok -> :ok
       {:error, _differs} -> {:end, :shared_access_differs}
+    end
+  end
+
+  # A run of a stage whose workflows share one run, whose model choices no longer fit the
+  # one run, ends before its keys are stored (`Apiary.Stages.shared_models/1`): with more
+  # than 6 model providers, `too_many_providers`; with a workflow with no model choice
+  # whose runtime cannot use the provider the run starts on, `model_choice_missing`.
+  defp shared_models(dispatch_run) do
+    case Apiary.Stages.shared_models(dispatch_run) do
+      :ok -> :ok
+      {:error, %{detail: {cause, _detail}}} -> {:end, cause}
     end
   end
 

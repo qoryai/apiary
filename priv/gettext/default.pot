@@ -7618,6 +7618,12 @@ msgstr ""
 msgid "Choose a machine type from the list."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a model for workflow %{workflow}. Without one it runs on %{runtime}, and this stage's runs can start on %{provider}, which %{runtime} cannot use."
+msgstr ""
+
 #: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source"
@@ -18858,9 +18864,21 @@ msgstr ""
 msgid "Run the agent"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -24171,6 +24189,12 @@ msgstr ""
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Use a password instead"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Use at most 6 model providers in one stage. Its workflows use %{count}: %{providers}."
 msgstr ""
 
 #: lib/apiary/artifacts/type_rules.ex
