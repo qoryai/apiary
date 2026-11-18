@@ -18,6 +18,10 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   member cancelled wrote it, whether it is a withdrawal, and the person's note that
   #   asked for it with the note's time (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
+  # - `next_session/1`: the result of a next-session request
+  #   (`Apiary.Stages.next_session/2`): `next`, then, for a next session, `session`,
+  #   `workflow`, `model_choice`, `model_credential`, `time_limit_minutes`, `full_suite`
+  #   and `inputs`, each member that is nil left out.
   #
   # A person is written by name, as Explore's input writes a person
   # (`Apiary.Dispatches.Inputs.person_name/1`); a run by its run id.
@@ -305,6 +309,19 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
         Repo.all(from d in DispatchRun, where: d.id in ^ids, select: {d.id, d.run_id})
         |> Map.new()
     end
+  end
+
+  @spec next_session({:session, map} | :end) :: Jason.OrderedObject.t()
+  def next_session(:end), do: Jason.OrderedObject.new([{"next", "end"}])
+
+  def next_session({:session, next}) do
+    members =
+      for key <- ~w(session workflow model_choice model_credential time_limit_minutes
+                    full_suite inputs)a,
+          (value = Map.fetch!(next, key)) != nil,
+          do: {Atom.to_string(key), value}
+
+    Jason.OrderedObject.new([{"next", "session"} | members])
   end
 
   @spec version(map, String.t(), String.t()) :: Jason.OrderedObject.t()

@@ -67,11 +67,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   require Logger
 
   alias Apiary.Artifacts.Format
+  alias Apiary.Dispatches.RunEnd
   alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
   alias Apiary.Runs.PushedCommit
   alias ApiaryWeb.Contract.Configuration
   alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
+
+  # The message of a next-session request outside the run contract.
+  @next_session_body "Send session, state and reason as the run contract's next-session request has them."
 
   # Types a browser could run as a page or a script: served as plain bytes.
   @unsafe_type ~r/html|xml|svg|javascript|ecmascript/i
@@ -251,6 +255,74 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   rescue
     exception -> unavailable(conn, exception)
   end
+
+  # The next-session request of a run of a stage whose workflows run as sessions of one
+  # run, sent after each session that did not pause (`Apiary.Stages.next_session/2`):
+  # `200` with the next session, `{"next": "session", ...}` without the members that are
+  # nil, or `{"next": "end"}`, at most 1 MiB. A run that has ended, or that a member
+  # cancelled, is `409` `run_ended`; then a body over 4 KiB `413` `payload_too_large`;
+  # then a body outside the run contract's request `400` `invalid_request`; then what the
+  # step returns: a run without such a stage `404` `not_found`, a session older than the
+  # newest the run reported `409` `session_mismatch`, a store that cannot read the
+  # verdict or the questions `503` `unavailable`. Inputs that cannot be formed end the
+  # run with the cause `ticket_gone` or `inputs_invalid`, as at a claim
+  # (`Apiary.Dispatches.RunEnd.unformed/2`), and are `409` `run_ended`. An error writes
+  # nothing but that end. A repeat for the same session returns the same body.
+  def next_session(conn, %{"run_id" => run_id}) do
+    with {:ok, run} <- run(conn, run_id),
+         :ok <- live(run),
+         {:ok, report} <- Body.next_session(conn.assigns.raw_body),
+         {:ok, next} <- stepped(run, Apiary.Stages.next_session(run.dispatch_run, report)) do
+      answer(conn, 200, Wire.next_session(next))
+    else
+      {:error, {:unformed, cause}} ->
+        error(conn, 409, "run_ended", message: unformed_message(cause))
+
+      {:error, :run_ended} ->
+        error(conn, 409, "run_ended",
+          message: "Close the run. It ended, so it starts no more sessions."
+        )
+
+      {:error, :run_cancelled} ->
+        error(conn, 409, "run_ended",
+          message: "Close the run. A member cancelled it, so it starts no more sessions."
+        )
+
+      {:error, :session_mismatch} ->
+        error(conn, 409, "session_mismatch",
+          message:
+            "Send the number of the session that ended last. A later session of this run ended already."
+        )
+
+      {:error, :invalid_request} ->
+        error(conn, 400, "invalid_request", names: ["body"], message: @next_session_body)
+
+      {:error, :invalid_request, member} ->
+        error(conn, 400, "invalid_request", names: [member], message: @next_session_body)
+
+      error ->
+        write_error(conn, error)
+    end
+  rescue
+    exception -> unavailable(conn, exception)
+  end
+
+  # The step's result; inputs that cannot be formed end the run first.
+  defp stepped(run, {:error, cause}) when cause in [:ticket_gone, :inputs_invalid] do
+    run.run |> RunEnd.unformed(cause) |> Apiary.Dispatches.broadcast()
+    {:error, {:unformed, cause}}
+  end
+
+  defp stepped(_run, {:error, _cause} = error), do: error
+  defp stepped(_run, next), do: {:ok, next}
+
+  defp unformed_message(:ticket_gone),
+    do:
+      "Close the run. The ticket of its work item is no longer in Qory Apiary, so the run ended."
+
+  defp unformed_message(:inputs_invalid),
+    do:
+      "Close the run. The input of its next session breaks a rule for the agent's input, such as its size limit, so the run ended."
 
   # A run reports while its run of the queue has not ended and the run is live. A cancel
   # a member requested is no reason to refuse (`PushedCommit.refusal/1`).
