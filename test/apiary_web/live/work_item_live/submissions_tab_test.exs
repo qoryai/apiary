@@ -92,7 +92,9 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   # The default process with Shape running a workflow and outputting the submission type.
   # `opts`: `outputs`, more output types of Shape; `gate`, Shape's gate kind, "person" by
   # default; `build_inputs`, the input types of Build, the stage after Shape; `required`,
-  # whether Shape requires the submission type, false by default.
+  # whether Shape requires the submission type, false by default; `person_saved`, true for a
+  # process version that a person saved after the one with the harness record, so its
+  # `template` is nil and `Processes.harness_template/1` reads the version it is based on.
   defp process!(scope, submit, opts \\ []) do
     more_outputs = Keyword.get(opts, :outputs, [])
     gate = Keyword.get(opts, :gate, "person")
@@ -135,7 +137,22 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
         set: [template: template]
       )
 
-    version
+    if Keyword.get(opts, :person_saved, false) do
+      renamed =
+        Enum.map(stages, fn
+          %{"id" => @build} = stage -> %{stage | "name" => "Build it"}
+          stage -> stage
+        end)
+
+      {:ok, saved} =
+        Processes.save(scope, scope.workspace, %{document | "stages" => renamed},
+          based_on: version
+        )
+
+      saved
+    else
+      version
+    end
   end
 
   defp at_shape!(scope) do
@@ -591,20 +608,25 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       version
     end
 
-    # A person's version of the submission type, as one stored before `Apiary.Artifacts.push/5`
-    # refused a person's push of the type that `submit` sets (`unknown_type`): the push runs
-    # while the process versions have no `submit`, and they get it back after. Its document
-    # has a draft in `northwind/by-hand`, which no gate line shows.
+    # A person's version of the submission type. `Apiary.Artifacts.push/5` refuses a
+    # person's push of a type that `submit` sets (`unknown_type`), but a person's version of
+    # it remains where a work item moves to a process version that sets `submit` after the
+    # person stored it: `Apiary.Processes.assign/3`, or a new take in
+    # (`Apiary.Stages.take_in/2`), which moves it to the current version. The helper makes
+    # one in a step: the push runs while the process versions have no `submit`, and each
+    # gets its `template` back after. Its document has a draft in `northwind/by-hand`, which
+    # no gate line shows.
     defp person_submission!(scope, work_item, name \\ "main") do
-      template =
-        Repo.one(
+      kept =
+        Repo.all(
           from v in ProcessVersion,
             where: v.workspace_id == ^scope.workspace.id,
-            select: v.template,
-            limit: 1
+            select: {v.id, v.template}
         )
 
-      templates!(scope, Map.delete(template, "submit"))
+      for {id, template} <- kept,
+          is_map(template),
+          do: template!(id, Map.delete(template, "submit"))
 
       version =
         person_version!(
@@ -617,7 +639,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
           name
         )
 
-      templates!(scope, template)
+      for {id, template} <- kept, do: template!(id, template)
       version
     end
 
@@ -635,11 +657,9 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       }
     end
 
-    defp templates!(scope, template) do
-      {_n, _rows} =
-        Repo.update_all(from(v in ProcessVersion, where: v.workspace_id == ^scope.workspace.id),
-          set: [template: template]
-        )
+    defp template!(id, template) do
+      {1, _rows} =
+        Repo.update_all(from(v in ProcessVersion, where: v.id == ^id), set: [template: template])
     end
 
     defp at_gate!(work_item) do
@@ -984,6 +1004,91 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       assert work_item.stage_id == @build
       inputs = Map.new(Apiary.Stages.inputs(work_item), &{&1.type, &1.version})
       assert inputs["submission"] == nil
+    end
+
+    test "with no submit type, the draft line shows a person's submission", ctx do
+      process!(ctx.scope, nil)
+      work_item = ctx.scope |> at_shape!() |> at_gate!()
+
+      _person =
+        person_version!(
+          ctx.scope,
+          work_item,
+          "submission",
+          "submission.json",
+          "application/json",
+          Jason.encode!(%{"ref" => "by-hand", "repositories" => [by_hand()]})
+        )
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+      assert has_element?(view, "#work-item-stage-gate-draft-0", "the draft in northwind/by-hand")
+    end
+
+    test "on a version a person saved, the harness record's submit type still leaves a person's out",
+         ctx do
+      submit = %{"type" => "submission", "send" => "end_of_run"}
+      version = process!(ctx.scope, submit, person_saved: true, required: true)
+      assert version.template == nil
+      assert %{"submit" => ^submit} = Processes.harness_template(version)
+
+      work_item = ctx.scope |> at_shape!() |> at_gate!()
+      assert work_item.process_version_id == version.id
+      _person = person_submission!(ctx.scope, work_item)
+
+      # The Exists check: a person's version alone does not pass.
+      assert Apiary.Stages.missing_outputs(work_item) == ["submission"]
+
+      %{dispatch_run: run} = shape_run!(work_item)
+      ran = submission!(run, work_item, repository())
+
+      {:ok, second} =
+        Artifacts.push(
+          {:run, run},
+          work_item,
+          "submission",
+          [
+            %{
+              filename: "submission.json",
+              content_type: "application/json",
+              binary: Jason.encode!(%{"ref" => "qory/second", "repositories" => [repository()]})
+            }
+          ],
+          stage_id: @shape,
+          name: "second"
+        )
+
+      later = person_submission!(ctx.scope, work_item)
+      person_second = person_submission!(ctx.scope, work_item, "second")
+      assert later.number > ran.number
+      assert Apiary.Stages.missing_outputs(work_item) == []
+
+      # The draft line has the run's draft, and the row of `second` links the run's version.
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-draft-0",
+               "the draft in northwind/storefront"
+             )
+
+      refute has_element?(view, "#work-item-stage-gate", "northwind/by-hand")
+      row = "#work-item-tab-output-submission--second---row"
+      # The frame of `second` is folded beside the Submissions list: its row shows once open.
+      view |> element("#work-item-tab-output-submission--second---s") |> render_click()
+      assert has_element?(view, ~s(#{row} a[href$="/#{second.public_id}"]))
+      refute has_element?(view, ~s(#{row} a[href$="/#{person_second.public_id}"]))
+
+      # The approval records the run's version, and the marks have no newer version for the
+      # person's later one.
+      {:ok, _approved} =
+        Apiary.Stages.approve(ctx.scope, Repo.get!(WorkItem, work_item.id), nil,
+          expect_stage: @shape
+        )
+
+      page = ApiaryWeb.WorkItemLive.Workflow.page(ctx.scope, Repo.get!(WorkItem, work_item.id))
+      mark = Enum.find(page.index, &(&1.type == "submission" and &1.name == "main"))
+      assert mark.approved == ran.number
+      assert mark.newer == nil
     end
 
     test "with no submit type, a person's version of the type is recorded as any other", ctx do

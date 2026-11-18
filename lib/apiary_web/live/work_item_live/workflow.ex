@@ -478,13 +478,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   # The work item's newest submission, the type the process version's submit step names
-  # (`submit.type`, else `submission`), as the artifact index has it (`id`, its public
-  # id; `files`); nil for none. A withdrawn name and a version a cancelled run wrote count
-  # for none, nor, for the type in `submit.type`, a version a person made: only a run's
-  # submit step writes a submission.
+  # (`submit.type` of its harness record, `Processes.harness_template/1`, which a version a
+  # person saved takes from the version it is based on; else `submission`), as the
+  # artifact index has it (`id`, its public id; `files`); nil for none. A withdrawn name and
+  # a version a cancelled run wrote count for none, nor, for the type in `submit.type`, a
+  # version a person made: only a run's submit step writes a submission.
   defp submission(version, index) do
     {type, runs_only?} =
-      case get(version, :template) do
+      case Processes.harness_template(version) do
         %{"submit" => %{"type" => type}} when is_binary(type) -> {type, true}
         _other -> {"submission", false}
       end
