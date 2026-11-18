@@ -839,6 +839,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 doc={@draft}
                 may={@may}
                 last={length(@draft["stages"]) == 1}
+                stages={@draft["stages"]}
                 declared={@declared}
                 declared_access={@declared_access}
                 types={@types}

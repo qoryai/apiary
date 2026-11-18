@@ -110,16 +110,21 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp stage_value(_stage, _key), do: nil
 
   # An input has `from` only for a version of a stage the work item left by a person's
-  # move to an earlier stage (`Apiary.Stages.inputs/1`): `"move"`.
+  # move to an earlier stage (`"move"`), or a verdict or verification of the stage whose run
+  # returned the work item (`"return"`) (`Apiary.Stages.inputs/1`).
   defp input(input) do
     object(
       [
         {"type", get(input, :type)},
         {"required", get(input, :required) == true},
         {"version", ref(get(input, :version))}
-      ] ++ if(get(input, :from) == :move, do: [{"from", "move"}], else: [])
+      ] ++ from_entry(get(input, :from))
     )
   end
+
+  defp from_entry(:move), do: [{"from", "move"}]
+  defp from_entry(:return), do: [{"from", "return"}]
+  defp from_entry(_none), do: []
 
   defp output(output) do
     object([
