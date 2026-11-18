@@ -41,6 +41,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   tab shows that question, else plain text.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- The tab of a stage shows the result of the full test suite in one line under the build
+  report's frame. The line comes from the `full_suite` member of the newest verdict that has
+  one among the verdicts of the run that wrote that report. On the Standard track it reads
+  "The full test suite passed on that commit: 412 passed, 0 failed, 3 skipped, in 6
+  minutes." (or "failed", and "in 1 minute" for exactly 1). On the Fast track it reads the
+  same without "on that commit" and the minutes. A result with no counts reads "The full
+  test suite passed on that commit, in 6 minutes." or "The full test suite failed on that
+  commit, in 6 minutes." on the Standard track, and "The full test suite passed." or "The
+  full test suite failed." on the Fast track. For a suite that did not run it reads "The full test
+  suite did not run: <reason>.", where the reason is the one the run sent with white space
+  trimmed and one final full stop dropped, and the line ends in a full stop unless the
+  reason ends in "?" or "!". A run with no verdict that has a `full_suite` has no line.
+<!-- /feature -->
+- A run's verdict may have the optional member `full_suite`, the result of the full test
+  suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the number
+  `minutes` and the counts `passed`, `failed` and `skipped`, all three or none; with
+  `not_run`, a `reason` of one line and no counts. A member, state, type or negative count
+  the schema does not allow is `422` `invalid_artifact`. A verdict with no `full_suite` is
+  valid as before.
+<!-- feature: workflow_model -->
 - A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
   `{input: <type>, changed: true}`. It is met when the type has a version and the entry has no
   run on the work item that ended `passed`, or that version was stored after the newest such
@@ -453,6 +473,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
   a stage.
+- A workflow entry outside a loop may have a `return` key: `stage`, an earlier stage, and
+  `limit`, 1 to 10, 2 by default. When the entry's run asks for changes, the work item
+  returns to that stage and starts at its first entry. After `limit` returns of the
+  stage's runs in one take in, the next run that asks for changes escalates to a member,
+  with the member's action, the count of returns and the run's points; the escalation's
+  **Move back** offers the return's stage first. **Request changes** at the gate of the
+  entry's stage also returns the work item to that stage's first entry, and is not
+  counted. The stage editor shows the return under every workflow outside a loop, in a
+  stage that has an earlier stage: **On changes requested, return to** offers **Do not
+  return** and each earlier stage by name. With **Do not return** the fold shows only the
+  select (`On changes requested: do not return`); picking a stage sets **Returns at most**
+  to 2. The editor shows an error for a number outside 1 to 10 and for a stage that is
+  not earlier. A workflow with a return reads `returns to <stage> at most <n> times` in a
+  member's Sequence box, and its card on the canvas has the line `Returns to <stage>, at
+  most <n> times` under its name.
+- After a run's return (the `return` key above), `inputs` in `GET work-item` also lists,
+  for each run of the stage it returned the work item to, the newest `verdict` and the
+  newest `verification` made in the stage that returned it, with `"from": "return"` and
+  `"required": false`; a type with no version has no entry. The entries stay until the
+  returned stage's gate passes again (an approval of that stage) or the work item leaves
+  that stage by a move, after the return; a Request changes at its gate and a decision in
+  another stage end nothing. A later return lists its newer versions. No approval lists
+  these versions, an entry is left out when an input above it already has that version,
+  and the findings are not a person's note: `notes` is the same as before.
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
@@ -2595,6 +2639,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
+- `dispatch_runs` and `escalations` (20261116180000 and 20261116180100): nullable
+  columns `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
+  check that it is a stage id, and `dispatch_runs.returned_at`, when it did; and the check
+  on `escalations.cause` takes `return_limit`. The columns have no default, so adding them
+  rewrites no row. The first migration adds both
+  checks without a scan, and the second validates them with scans that do not block
+  writes. It changes no row. Rolling back drops the two columns and sets the
+  cause of each `return_limit` escalation to `escalate`.
 - `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
   item switched to another track. The first migration replaces the check
   `escalations_resolution_check` and adds it without a scan, and the second validates it

@@ -344,12 +344,18 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   end
 
-  # The verdict's file, as the schema of the type `verdict` takes it: `points` and `track`
-  # only where the body has them, which the schema then checks.
+  # The verdict's file, as the schema of the type `verdict` takes it: `points`, `track` and
+  # `full_suite` only where the body has them, which the schema then checks.
   defp verdict_json(%{verdict: verdict} = body) do
     members =
       [{"verdict", verdict}] ++
-        for {key, value} <- [{"points", body.points}, {"track", body.track}], value != nil do
+        for {key, value} <-
+              [
+                {"points", body.points},
+                {"track", body.track},
+                {"full_suite", body.full_suite}
+              ],
+            value != nil do
           {key, value}
         end
 

@@ -452,6 +452,84 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
     end
 
+    test "lists, after a return, Verify's newest verdict and verification, marked from return",
+         ctx do
+      build = "st_6ns22c4pav"
+      verify = "st_m1mqbeywdg"
+      people = %{"inputs" => [], "sequence" => [], "outputs" => []}
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      {:ok, _type} =
+        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      stages = [
+        Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
+        Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate}),
+        Map.merge(people, %{"id" => verify, "name" => "Verify", "gate" => gate})
+      ]
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+
+      verification =
+        store!(ctx, "verification", [file("v.md", "text/markdown", "# Criterion 2 fails")],
+          stage_id: verify
+        )
+
+      {:ok, verdict} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, ctx.dispatch_run},
+          ctx.work_item,
+          "verdict",
+          %{"verdict" => "changes-requested"},
+          stage_id: verify
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: build,
+            stage_state: :running,
+            stage_round: 1,
+            stage_entry: 0,
+            stage_entered_at: DateTime.utc_now()
+          ]
+        )
+
+      # The run of Verify that ended and returned the work item to Build.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [stage_id: verify, returned_to: build, returned_at: DateTime.utc_now()]
+        )
+
+      conn = read(ctx, "/work-item")
+      body = json_response(conn, 200)
+
+      assert body["inputs"] == [
+               %{
+                 "type" => "verdict",
+                 "required" => false,
+                 "version" => %{"id" => verdict.public_id, "number" => 1},
+                 "from" => "return"
+               },
+               %{
+                 "type" => "verification",
+                 "required" => false,
+                 "version" => %{"id" => verification.public_id, "number" => 1},
+                 "from" => "return"
+               }
+             ]
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      [marked, _verification] = ordered["inputs"]
+      assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
+      assert body["notes"] == []
+    end
+
     test "leaves out the move that resolved an escalation, and lists the escalation", ctx do
       place!(ctx)
       work_item = Repo.get!(WorkItem, ctx.work_item.id)
@@ -2602,6 +2680,59 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
       assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
       assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a full_suite is stored in the verdict's file as the run sent it", ctx do
+      suite = %{
+        "state" => "failed",
+        "passed" => 9,
+        "failed" => 2,
+        "skipped" => 0,
+        "minutes" => 12.5
+      }
+
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => suite}).status ==
+               201
+
+      assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => suite}
+
+      # Minutes alone are a result: the counts come all three or not at all.
+      only_minutes = %{"state" => "passed", "minutes" => 3}
+
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => only_minutes}).status ==
+               201
+
+      assert [_first, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => only_minutes}
+
+      # A null is stored as no member.
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => nil}).status == 201
+      assert [_first, _second, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a full_suite the schema refuses is 422 invalid_artifact", ctx do
+      counts = %{"passed" => 1, "failed" => 0, "skipped" => 0, "minutes" => 1}
+
+      for suite <- [
+            %{"state" => "not_run"},
+            %{"state" => "not_run", "reason" => "No test command.", "passed" => 1},
+            Map.merge(counts, %{"state" => "passed", "passed" => -1}),
+            Map.merge(counts, %{"state" => "passed", "reason" => "x"}),
+            %{"state" => "passed", "minutes" => 1, "passed" => 1, "failed" => 0},
+            %{"state" => "unknown"},
+            "passed"
+          ] do
+        conn = write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => suite})
+
+        assert %{"error" => "invalid_artifact", "names" => ["files[0]"], "message" => message} =
+                 json_response(conn, 422)
+
+        assert message =~ "Fix verdict.json to match the format of verdict: at #/full_suite"
+      end
+
+      assert RunApiStubs.pushed() == []
     end
 
     test "a pushed verdict artifact whose value is not one of the three is 422, as Apiary.Artifacts refuses it",

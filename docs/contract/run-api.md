@@ -143,8 +143,18 @@ Returns `200` with the work item snapshot:
   approval of that stage, by a person or automatic) or a later move takes the work item to
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
-  that version. The key `from` is present only on these entries, and no approval lists such
+  that version. The key `from` is present on these entries, and no approval lists such
   a version.
+- After a run of a stage returns the work item to an earlier stage (the `return` key of a
+  workflow entry), `inputs` ends with the newest `verdict` and then the newest
+  `verification` made in the stage that returned it, each as
+  `{"type": "verdict", "required": false, "version": {"id": "av_...", "number": 2},
+  "from": "return"}`. A type with no such version has no entry, and an entry is left out
+  when an input above it already has that version. The entries last until the gate of the
+  stage that the work item returned to passes again (an approval of that stage) or the
+  work item leaves that stage by a move, after the return; a Request changes at its gate
+  and a decision in another stage end nothing. A later return lists the newer versions. No
+  approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with its newest version and its
   check: `passed`, `missing` or `not_checked`.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
@@ -622,11 +632,24 @@ The body, at most 64 KiB:
   one sentence on one line of 1 to 300 characters. Both are required when `track` is
   present. When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
+- `full_suite`: optional, for any verdict. The result of the run of the full test suite, as
+  the run reports it. `state` is required and is `passed`, `failed` or `not_run`.
+  - With `passed` or `failed`, `minutes` is required: how long the run took, a number from 0
+    to 100,000. `passed`, `failed` and `skipped` are the counts of tests, each a whole number
+    from 0 to 1,000,000,000, either all three or none of them: one or two of the three is
+    refused. `reason` is not allowed.
+  - With `not_run`, `reason` is required: why the suite did not run, one sentence on one
+    line of 1 to 300 characters, as `track.reason` is. The counts and `minutes` are not
+    allowed.
+  - Any other member, a state other than the three, and a value of another type are
+    refused. A verdict with no `full_suite` reports no result.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ...}`, without `points`
-or `track` when the body has none. A body with `"track": null` has none: it is stored
-without `track`, as `"points": null` is stored without `points`. A run of any workflow may
+file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ..., "full_suite": ...}`,
+without `points`, `track` or `full_suite` when the body has none. `full_suite` is stored as
+the run sent it. A body with `"track": null` has none: it is stored
+without `track`, as `"points": null` is stored without `points`, and `"full_suite": null`
+is stored without `full_suite`. A run of any workflow may
 push a verdict. A `changes-requested` verdict moves the stage in the same way with points
 as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
@@ -645,8 +668,9 @@ that left open questions: Explore's result is its proposal or its questions. A r
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
-`verdict`, `points` and `track`, or a `verdict` that is not one of the three, is `400`
-`invalid_request`; points or a track the schema refuses are `422` `invalid_artifact`. A
+`verdict`, `points`, `track` and `full_suite`, or a `verdict` that is not one of the
+three, is `400` `invalid_request`; points, a track or a `full_suite` the schema refuses are
+`422` `invalid_artifact`. A
 `track.id` that the gate of the run's stage does not offer is `422` `invalid_artifact`
 with `names` `["track"]` and the message in "The messages", for a push of the artifact
 `verdict` too. The question

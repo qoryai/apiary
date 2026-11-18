@@ -3549,6 +3549,336 @@ defmodule Apiary.StagesTest do
       assert Stages.proposed_track_with_reason(work_item) == nil
     end
 
+    # A verdict version whose file has `document`, in the store, as a version of `run` that a
+    # run wrote.
+    defp stored_verdict(document, fields \\ []) do
+      {:ok, staged} = Artifacts.Store.impl().stage({:binary, Jason.encode!(document)}, 100_000)
+      {:ok, key} = Artifacts.Store.impl().commit(staged)
+
+      Map.merge(
+        %{
+          public_id: "av_#{System.unique_integer([:positive])}",
+          number: 1,
+          writer: :run,
+          run_id: "run-a",
+          run: %{run: %{cancel_requested_at: nil}},
+          files: [%Artifacts.ArtifactFile{store_key: key, filename: "verdict.json"}]
+        },
+        Map.new(fields)
+      )
+    end
+
+    defp suite_of(suite) do
+      case Stages.full_suite_read(stored_verdict(%{"full_suite" => suite})) do
+        {:ok, result} -> result
+        :none -> nil
+      end
+    end
+
+    defp artifact(type, versions), do: %{type: type, name: "main", versions: versions}
+
+    defp report(number, run_id), do: %{number: number, run_id: run_id, writer: :run, run: nil}
+
+    @suite_passed %{
+      "state" => "passed",
+      "passed" => 120,
+      "failed" => 0,
+      "skipped" => 3,
+      "minutes" => 4.5
+    }
+
+    test "the full suite is the member of the verdict file, as the run sent it" do
+      assert suite_of(@suite_passed) == %{
+               state: :passed,
+               passed: 120,
+               failed: 0,
+               skipped: 3,
+               minutes: 4.5,
+               reason: nil
+             }
+
+      assert %{state: :failed, passed: 9, failed: 2} =
+               suite_of(%{@suite_passed | "state" => "failed", "passed" => 9, "failed" => 2})
+
+      assert suite_of(%{"state" => "not_run", "reason" => "No test command."}) == %{
+               state: :not_run,
+               passed: nil,
+               failed: nil,
+               skipped: nil,
+               minutes: nil,
+               reason: "No test command"
+             }
+    end
+
+    test "counts sent as 12.0 are the whole number 12" do
+      assert %{passed: 12, failed: 0, skipped: 3} =
+               suite_of(%{@suite_passed | "passed" => 12.0, "skipped" => 3.0})
+
+      assert suite_of(%{@suite_passed | "passed" => 12.5}) == nil
+    end
+
+    test "a result with no counts has the minutes and nil counts" do
+      for state <- ["passed", "failed"] do
+        assert suite_of(%{"state" => state, "minutes" => 6.5}) == %{
+                 state: String.to_existing_atom(state),
+                 passed: nil,
+                 failed: nil,
+                 skipped: nil,
+                 minutes: 6.5,
+                 reason: nil
+               }
+      end
+    end
+
+    test "counts of 0 are counts, not absent counts" do
+      assert %{passed: 0, failed: 0, skipped: 0, minutes: 2} =
+               suite_of(%{
+                 "state" => "passed",
+                 "passed" => 0,
+                 "failed" => 0,
+                 "skipped" => 0,
+                 "minutes" => 2
+               })
+
+      assert %{passed: 0, failed: 0, skipped: 0} =
+               suite_of(%{
+                 "state" => "failed",
+                 "passed" => 0.0,
+                 "failed" => 0.0,
+                 "skipped" => 0.0,
+                 "minutes" => 2
+               })
+    end
+
+    test "counts that are there come all three, and are whole numbers" do
+      base = %{"state" => "passed", "minutes" => 1}
+
+      for bad <- [
+            %{"passed" => 1},
+            %{"passed" => 1, "failed" => 0},
+            %{"failed" => 0, "skipped" => 0},
+            %{"passed" => 1, "failed" => 0, "skipped" => nil},
+            %{"passed" => nil, "failed" => nil, "skipped" => nil},
+            %{"passed" => "1", "failed" => 0, "skipped" => 0}
+          ] do
+        assert suite_of(Map.merge(base, bad)) == nil, inspect(bad)
+      end
+
+      # No minutes is no result, with or without counts.
+      assert suite_of(%{"state" => "passed"}) == nil
+    end
+
+    test "a result that is not whole is no result" do
+      for bad <- [
+            %{"state" => "not_run"},
+            %{"state" => "not_run", "reason" => 5},
+            %{"state" => "not_run", "reason" => ""},
+            %{"state" => "not_run", "reason" => "  "},
+            %{"state" => "not_run", "reason" => "."},
+            %{"state" => "not_run", "reason" => " . "},
+            %{@suite_passed | "passed" => "12"},
+            %{@suite_passed | "failed" => nil},
+            %{@suite_passed | "skipped" => -1},
+            %{@suite_passed | "minutes" => "6"},
+            Map.delete(@suite_passed, "minutes"),
+            %{@suite_passed | "state" => "unknown"},
+            %{"passed" => 1}
+          ] do
+        assert suite_of(bad) == nil, inspect(bad)
+      end
+    end
+
+    test "a reason is trimmed and loses one final full stop only" do
+      for {sent, read} <- [
+            {"Wait...", "Wait.."},
+            {"Is it?", "Is it?"},
+            {"Stop!", "Stop!"},
+            {"  No test command.  ", "No test command"},
+            {"No test command", "No test command"},
+            {"..", "."}
+          ] do
+        assert %{reason: ^read} = suite_of(%{"state" => "not_run", "reason" => sent})
+      end
+    end
+
+    test "no verdict, or a verdict file with no full_suite, is no result" do
+      assert Stages.full_suite_read(nil) == :none
+      assert Stages.full_suite_read(stored_verdict(%{"verdict" => "passed"})) == :none
+      assert Stages.full_suite_read(%{files: []}) == :none
+    end
+
+    test "a file the store cannot read is an error, not no result" do
+      version = stored_verdict(%{})
+      [file] = version.files
+      gone = %{version | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      assert Stages.full_suite_read(gone) == {:error, :store_unavailable}
+    end
+
+    test "a withdrawal is not the verdict of the report" do
+      withdrawal = stored_verdict(%{}, run_id: "run-a", number: 2, withdrawn: true)
+      kept = stored_verdict(%{}, run_id: "run-a", number: 1)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [withdrawal, kept])
+      ]
+
+      assert Stages.full_suite_versions(artifacts, 1) == [kept]
+    end
+
+    defp verdict_with(suite, fields), do: stored_verdict(%{"full_suite" => suite}, fields)
+
+    test "the verdicts of the run that wrote the shown report belong to it, newest first" do
+      mine = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
+      earlier = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 1)
+
+      # Newer verdicts: another run's, and another stage's.
+      other_run = stored_verdict(%{"verdict" => "passed"}, run_id: "run-b", number: 4)
+      other_stage = stored_verdict(%{"verdict" => "passed"}, run_id: "run-c", number: 3)
+
+      artifacts = [
+        artifact("build-report", [report(2, "run-a"), report(1, "run-z")]),
+        artifact("verdict", [other_run, other_stage, mine, earlier])
+      ]
+
+      assert Stages.full_suite_versions(artifacts, 2) == [mine, earlier]
+      assert Stages.full_suite_versions(artifacts, 1) == []
+    end
+
+    test "a later verdict of the run with no result does not hide an earlier one" do
+      earlier = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      later = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [later, earlier])
+      ]
+
+      assert {%{state: :passed, passed: 120}, reads} = Stages.full_suite(artifacts, 1)
+
+      assert reads == %{
+               earlier.public_id => Stages.full_suite_read(earlier),
+               later.public_id => :none
+             }
+    end
+
+    test "a later verdict of the run with another result is the one shown" do
+      earlier = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      failed = %{@suite_passed | "state" => "failed", "failed" => 2}
+      later = verdict_with(failed, run_id: "run-a", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [later, earlier])
+      ]
+
+      assert {%{state: :failed, failed: 2}, reads} = Stages.full_suite(artifacts, 1)
+      # The earlier verdict is not read once the later one has a result.
+      assert Map.keys(reads) == [later.public_id]
+    end
+
+    test "a newer verdict of another run is ignored, with its result" do
+      mine = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      newer = verdict_with(%{@suite_passed | "passed" => 1}, run_id: "run-b", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [newer, mine])
+      ]
+
+      assert {%{passed: 120}, _reads} = Stages.full_suite(artifacts, 1)
+
+      # With no verdict of run-a, the report has no result.
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [newer])]
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+    end
+
+    test "a version read before is not read again, and a file the store cannot read is" do
+      good = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      [file] = good.files
+      gone = %{good | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [good])]
+      {result, reads} = Stages.full_suite(artifacts, 1)
+
+      # The kept read is used: the file of the version is gone and the result stays.
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [%{gone | public_id: good.public_id}])
+      ]
+
+      assert {^result, ^reads} = Stages.full_suite(artifacts, 1, reads)
+
+      # A version that was never read, with a file the store cannot read, is read again.
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [gone])]
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+    end
+
+    test "a newest verdict the store cannot read gives no result, and no older one" do
+      newest = verdict_with(@suite_passed, run_id: "run-a", number: 2)
+      older = verdict_with(%{@suite_passed | "passed" => 7}, run_id: "run-a", number: 1)
+      [file] = newest.files
+      unreadable = %{newest | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [unreadable, older])
+      ]
+
+      # The older result is not shown in place of the newest, and the failed version is not
+      # kept, so the next call reads it again.
+      assert {nil, reads} = Stages.full_suite(artifacts, 1)
+      assert reads == %{}
+      refute Map.has_key?(reads, unreadable.public_id)
+    end
+
+    test "a version kept as having no result is not read again" do
+      none = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 1)
+      [file] = none.files
+      unreadable = %{none | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [unreadable])
+      ]
+
+      # Read, the file is an error; the kept :none stands in for the read.
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+      reads = %{unreadable.public_id => :none}
+      assert {nil, ^reads} = Stages.full_suite(artifacts, 1, reads)
+    end
+
+    test "a verdict of a run a member cancelled is skipped" do
+      cancelled = %{run: %{cancel_requested_at: ~U[2026-11-17 10:00:00Z]}}
+      kept = stored_verdict(%{}, run_id: "run-a", number: 1)
+      dropped = stored_verdict(%{}, run_id: "run-a", number: 2, run: cancelled)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [dropped, kept])
+      ]
+
+      assert Stages.full_suite_versions(artifacts, 1) == [kept]
+
+      # A report of a cancelled run is not shown as the work's result either.
+      artifacts = [
+        artifact("build-report", [%{report(1, "run-a") | run: cancelled}]),
+        artifact("verdict", [kept])
+      ]
+
+      assert Stages.full_suite_versions(artifacts, 1) == []
+    end
+
+    test "a report a person wrote, or with no verdict, has no verdict" do
+      person = %{number: 1, run_id: nil, writer: :person, run: nil}
+      artifacts = [artifact("build-report", [person]), artifact("verdict", [stored_verdict(%{})])]
+      assert Stages.full_suite_versions(artifacts, 1) == []
+
+      assert Stages.full_suite_versions([artifact("build-report", [report(1, "run-a")])], 1) == []
+      assert Stages.full_suite_versions([], 1) == []
+    end
+
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)
 
     test "an approval with no track records the gate's first track, and the work item is on it",
@@ -5819,6 +6149,702 @@ defmodule Apiary.StagesTest do
 
       fits = String.duplicate("e\u0301", 2000)
       assert {:ok, _} = Stages.approve(scope, work_item, fits, expect_stage: @explore)
+    end
+  end
+
+  describe "the return from Verify to Build (choice 10)" do
+    @verify "st_m1mqbeywdg"
+    @findings [
+      %{"text" => "Criterion 2 is not met: the export has no PDF.", "action" => "run_again"}
+    ]
+
+    # Build: `first` before a loop of implement-changes and review-changes, gate none.
+    # Verify: verify-a-ticket, which returns to Build on changes-requested, at most 2 times.
+    defp returning!(scope, first \\ []) do
+      loop = %{
+        "loop" => %{
+          "rounds" => 3,
+          "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+        }
+      }
+
+      save!(scope, [
+        stage(@build, "Build", first ++ [loop], %{"gate" => %{"kind" => "none"}}),
+        stage(@verify, "Verify", [
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
+        ])
+      ])
+    end
+
+    # Build's loop passes on its first run, and Verify's run starts.
+    defp through_build!(work_item) do
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+      work_item
+    end
+
+    defp returned(work_item),
+      do:
+        Repo.all(
+          from d in DispatchRun,
+            where: d.work_item_id == ^work_item.id and not is_nil(d.returned_to),
+            select: d.returned_to
+        )
+
+    test "a first and a second return start Build's loop; a third escalates", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      for count <- 1..2 do
+        work_item = end_run!(work_item, verdict("changes-requested", @findings))
+
+        assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0, loop_entry: 0} =
+                 work_item
+
+        assert %DispatchRun{workflow: "implement-changes", stage_id: @build, round: 1} =
+                 newest_run(work_item)
+
+        assert returned(work_item) == List.duplicate(@build, count)
+        refute escalation(work_item)
+        through_build!(work_item)
+      end
+
+      work_item = end_run!(reload(work_item), verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert returned(work_item) == [@build, @build]
+
+      assert %Escalation{cause: :return_limit, stage_id: @verify, points: points} =
+               escalation(work_item)
+
+      assert points == [
+               %{
+                 "text" =>
+                   "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+               }
+               | @findings
+             ]
+
+      assert %{escalation: %{cause: :return_limit, points: ^points}} =
+               Stages.status(reload(work_item), scope)
+    end
+
+    test "a person's Request changes starts Build's first entry and counts no return", %{
+      scope: scope
+    } do
+      returning!(scope, [%{"workflow" => "triage-review"}])
+      work_item = take_in!(scope) |> end_run!(verdict("passed")) |> through_build!()
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      assert Stages.starts(work_item, :request_changes) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0}} =
+               Stages.request_changes(scope, work_item, "Drop the CSV option.", nil,
+                 expect_stage: @verify
+               )
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @build} = newest_run(work_item)
+      assert returned(work_item) == []
+
+      assert [%GateDecision{kind: :request_changes, stage_id: @verify}] =
+               Enum.filter(decisions(work_item), &(&1.kind == :request_changes))
+
+      # Two returns of Verify's run still follow before the limit.
+      work_item = reload(work_item)
+
+      for count <- 1..2 do
+        work_item = work_item |> end_run!(verdict("passed")) |> through_build!()
+        work_item = end_run!(work_item, verdict("changes-requested", @findings))
+        assert %WorkItem{stage_id: @build, stage_entry: 0} = work_item
+        assert %DispatchRun{workflow: "triage-review"} = newest_run(work_item)
+        assert length(returned(work_item)) == count
+      end
+
+      work_item = reload(work_item) |> end_run!(verdict("passed")) |> through_build!()
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+    end
+
+    test "at the limit, Move back returns once more and the next changes escalate again", %{
+      scope: scope
+    } do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_entry: 0}} =
+               Stages.resolve_escalation(scope, work_item, {:move_back, @build}, nil,
+                 expect_stage: @verify
+               )
+
+      work_item = reload(work_item) |> through_build!()
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+      assert length(returned(work_item)) == 2
+    end
+
+    test "a take in again counts its returns from none", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+
+      {:ok, _closed} =
+        Stages.resolve_escalation(scope, work_item, :close, nil, expect_stage: @verify)
+
+      item = Repo.get!(Apiary.Sources.Item, work_item.item_id)
+
+      {:ok, _again} =
+        WorkItems.take_in_again(scope, item.public_id, %{owner_id: scope.user.id})
+
+      assert %WorkItem{take_in: 2, stage_id: @build} = work_item = reload(work_item)
+
+      # Take in 1's two returns do not count: the changes return the work item to Build.
+      work_item = work_item |> through_build!() |> end_run!(verdict("changes-requested"))
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert length(returned(work_item)) == 3
+    end
+
+    test "the returns count by stage, after a version that moves the entry", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        work_item
+        |> end_run!(verdict("changes-requested", @findings))
+        |> through_build!()
+        |> end_run!(verdict("changes-requested", @findings))
+
+      assert %WorkItem{stage_id: @build} = work_item
+      assert returned(work_item) == [@build, @build]
+
+      # Version 2 keeps Build and puts check-a-ticket before verify-a-ticket, whose entry
+      # is then 1, not 0.
+      %{document: %{"stages" => [build, verify]}} = Processes.current(scope.workspace)
+      [entry] = verify["sequence"]
+
+      version =
+        save!(scope, [
+          build,
+          %{verify | "sequence" => [%{"workflow" => "check-a-ticket"}, entry]}
+        ])
+
+      {:ok, work_item} = Processes.assign(scope, work_item, version)
+
+      work_item = end_run!(reload(work_item), verdict("passed"))
+      assert %WorkItem{stage_id: @verify, process_version_id: version_id} = work_item
+      assert version_id == version.id
+      assert %DispatchRun{workflow: "check-a-ticket"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %DispatchRun{workflow: "verify-a-ticket"} = newest_run(work_item)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated, stage_entry: 1} = work_item
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+    end
+
+    test "a cancelled run with changes requested returns nothing and counts no return", %{
+      scope: scope
+    } do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      cancelled = fn run, registered ->
+        verdict("changes-requested", @findings).(run, registered)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+            set: [cancel_requested_at: DateTime.utc_now(), cancel_requested_by_id: scope.user.id]
+          )
+      end
+
+      work_item = end_run!(work_item, cancelled)
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert returned(work_item) == []
+    end
+
+    test "accept at the limit opens Verify's gate", %{scope: scope} do
+      returning!(scope)
+      work_item = take_in!(scope) |> through_build!()
+
+      work_item =
+        Enum.reduce(1..2, work_item, fn _count, work_item ->
+          work_item
+          |> end_run!(verdict("changes-requested", @findings))
+          |> through_build!()
+        end)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+
+      assert {:ok, %WorkItem{stage_id: @verify, stage_state: :at_gate}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @verify)
+    end
+
+    test "a save with a return to a stage that is not earlier, in a loop, or over 10 fails" do
+      document = &%{"schema" => "qory.process/v1", "stages" => &1}
+      returning = &%{"workflow" => "check", "return" => Map.merge(%{"stage" => &1}, &2)}
+
+      assert Processes.validate(
+               document.([
+                 stage(@build, "Build", []),
+                 stage(@verify, "Verify", [returning.(@build, %{})])
+               ])
+             ) == :ok
+
+      assert {:error, [%{path: "#/stages/0/sequence/0/return/stage", error: :return_not_earlier}]} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", [returning.(@verify, %{})]),
+                   stage(@verify, "Verify", [])
+                 ])
+               )
+
+      assert {:error, [%{path: "#/stages/1/sequence/0/return/stage", error: :return_not_earlier}]} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", []),
+                   stage(@verify, "Verify", [returning.(@verify, %{})])
+                 ])
+               )
+
+      in_loop = %{"loop" => %{"rounds" => 2, "body" => [returning.(@build, %{})]}}
+
+      assert {:error, [_ | _] = errors} =
+               Processes.validate(
+                 document.([stage(@build, "Build", []), stage(@verify, "Verify", [in_loop])])
+               )
+
+      assert Enum.all?(errors, &(&1.error == :schema))
+
+      assert {:error, [_ | _] = errors} =
+               Processes.validate(
+                 document.([
+                   stage(@build, "Build", []),
+                   stage(@verify, "Verify", [returning.(@build, %{"limit" => 11})])
+                 ])
+               )
+
+      assert Enum.all?(errors, &(&1.error == :schema))
+    end
+  end
+
+  describe "the findings of a return reach Build as inputs" do
+    @verify "st_m1mqbeywdg"
+    @findings [%{"text" => "The export has no PDF.", "action" => "run_again"}]
+
+    # Build: a loop of implement-changes and review-changes, gate none. Verify: one run that
+    # returns to Build on changes-requested, at most 5 times.
+    defp loop_process!(scope) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      loop = %{
+        "loop" => %{
+          "rounds" => 3,
+          "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+        }
+      }
+
+      save!(scope, [
+        stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}}),
+        stage(@verify, "Verify", [
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 5}}
+        ])
+      ])
+    end
+
+    # What Verify's run pushes: a verification (unless `nil`), then its verdict.
+    defp verifying(verdict, verification) do
+      fn run, registered ->
+        if verification do
+          {:ok, _version} =
+            Artifacts.push(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verification",
+              [%{filename: "v.md", content_type: "text/markdown", binary: verification}],
+              name: "main",
+              stage_id: run.stage_id
+            )
+        end
+
+        verdict(verdict, @findings).(run, registered)
+      end
+    end
+
+    defp in_verify!(scope) do
+      loop_process!(scope)
+      work_item = take_in!(scope) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      work_item
+    end
+
+    # Build's gate passes again and Verify's run starts.
+    defp in_verify_again!(work_item) do
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      work_item
+    end
+
+    defp returned_by(work_item, verification) do
+      work_item = end_run!(work_item, verifying("changes-requested", verification))
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = work_item
+      work_item
+    end
+
+    defp from_return(work_item) do
+      for %{from: :return, type: type, required: false, version: %{id: id}} <-
+            Stages.inputs(work_item),
+          do: {type, id}
+    end
+
+    # A decision of a person at `stage_id`, recorded now.
+    defp decide!(work_item, kind, stage_id) do
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: stage_id,
+        kind: kind,
+        take_in: work_item.take_in,
+        inserted_at: DateTime.utc_now()
+      })
+    end
+
+    defp newest_id(work_item, type) do
+      work_item |> versions(type) |> Enum.max_by(& &1.number) |> Map.fetch!(:public_id)
+    end
+
+    test "each run of Build after a return lists the newest verdict and verification",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+
+      verdict = newest_id(work_item, "verdict")
+      verification = newest_id(work_item, "verification")
+
+      assert [
+               %{type: "verdict", required: false, from: :return, version: %{id: ^verdict}},
+               %{
+                 type: "verification",
+                 required: false,
+                 from: :return,
+                 version: %{id: ^verification}
+               }
+             ] = Stages.inputs(work_item)
+
+      # The loop's next run of the entry still lists them.
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      assert from_return(work_item) == [{"verdict", verdict}, {"verification", verification}]
+
+      # The findings are no person's note.
+      assert Stages.notes(work_item) == []
+    end
+
+    test "after Build's gate passes, a later run lists none", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+      assert from_return(work_item) == []
+
+      # A second return of Verify's run lists them again.
+      returned = end_run!(work_item, verifying("changes-requested", "# Again"))
+      assert %WorkItem{stage_id: @build} = returned
+      assert [_verdict, _verification] = from_return(returned)
+    end
+
+    test "a work item moved to Build by a person lists none through a return", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      work_item = end_run!(work_item, verdict("passed"))
+      assert from_return(work_item) == []
+
+      {:ok, moved} =
+        Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+
+      assert %WorkItem{stage_id: @build} = moved
+      assert from_return(moved) == []
+    end
+
+    test "with no verification, only the verdict is listed", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by(nil)
+      verdict = newest_id(work_item, "verdict")
+
+      assert [%{type: "verdict", from: :return, version: %{id: ^verdict}}] =
+               Enum.filter(Stages.inputs(work_item), &(&1[:from] == :return))
+    end
+
+    test "an approval lists no version through the return", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+
+      # Build's gate `none` approved twice, with the versions of Build's outputs: none.
+      assert [[], []] = for(d <- decisions(work_item), d.stage_id == @build, do: d.versions)
+
+      for type <- ["verdict", "verification"] do
+        assert [%{approved_version: nil, versions: versions}] =
+                 Enum.filter(Stages.artifact_index(work_item), &(&1.type == type))
+
+        assert Enum.all?(versions, &(&1.approvals == []))
+      end
+    end
+
+    test "a second return lists the newer versions", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# First")
+      first = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = returned_by(work_item, "# Second")
+      second = from_return(work_item)
+
+      assert [{"verdict", verdict}, {"verification", verification}] = second
+      assert verdict == newest_id(work_item, "verdict")
+      assert verification == newest_id(work_item, "verification")
+      assert second != first
+      assert length(versions(work_item, "verification")) == 2
+    end
+
+    test "a Request changes at Build's gate, and a decision in another stage, end nothing",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      listed = from_return(work_item)
+      assert [_verdict, _verification] = listed
+
+      decide!(work_item, :request_changes, @build)
+      assert from_return(work_item) == listed
+
+      decide!(work_item, :approve, @verify)
+      decide!(work_item, :move, @verify)
+      assert from_return(work_item) == listed
+    end
+
+    test "an approval of Build, and a move out of Build, end them", %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      decide!(work_item, :approve, @build)
+      assert from_return(work_item) == []
+
+      # A second return lists the newer versions again, and a move out of Build ends them.
+      work_item = in_verify_again!(work_item) |> returned_by("# Second")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      decide!(work_item, :move, @build)
+      assert from_return(work_item) == []
+    end
+
+    test "a later update of the returning run does not change the listed inputs",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      listed = from_return(work_item)
+      assert [_verdict, _verification] = listed
+
+      run =
+        Repo.one!(
+          from d in DispatchRun,
+            where: d.work_item_id == ^work_item.id and d.returned_to == ^@build
+        )
+
+      assert %DateTime{} = run.returned_at
+
+      # The run is written again, long before and long after its return.
+      for shift <- [-3600, 3600] do
+        {1, _rows} =
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [updated_at: DateTime.add(DateTime.utc_now(), shift, :second)]
+          )
+
+        assert from_return(work_item) == listed
+      end
+
+      # Build's approval still ends them, whatever the run's last write.
+      decide!(work_item, :approve, @build)
+      assert from_return(work_item) == []
+    end
+
+    # Build reads `inputs` and Verify makes a verdict and a verification, the two types that
+    # a return lists. `first` is a stage before Build (gate none), or nil for none.
+    defp ordered_process!(scope, first, inputs) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "brief",
+          "base_view" => "document"
+        })
+
+      loop = %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+
+      verify =
+        stage(
+          @verify,
+          "Verify",
+          [%{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 5}}],
+          %{
+            "outputs" => [
+              %{"type" => "verdict", "required" => false},
+              %{"type" => "verification", "required" => false}
+            ]
+          }
+        )
+
+      before_build =
+        if first, do: [stage(@explore, "Explore", [], %{"gate" => %{"kind" => "none"}})], else: []
+
+      save!(
+        scope,
+        before_build ++
+          [
+            stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}, "inputs" => inputs}),
+            verify
+          ]
+      )
+    end
+
+    # What Verify's run pushes when it passes: a verification, then a `passed` verdict.
+    defp passing(verification) do
+      fn run, registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verification",
+            [%{filename: "v.md", content_type: "text/markdown", binary: verification}],
+            name: "main",
+            stage_id: run.stage_id
+          )
+
+        verdict("passed").(run, registered)
+      end
+    end
+
+    defp typed(work_item),
+      do: for(input <- Stages.inputs(work_item), do: {input.type, Map.get(input, :from)})
+
+    test "the inputs list read, then moved, then returned, each version once", %{scope: scope} do
+      ordered_process!(scope, false, [%{"type" => "brief", "required" => false}])
+      work_item = take_in!(scope)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      {:ok, _version} = Stages.add_version(scope, work_item, "brief", file("brief.md"))
+
+      # Verify's first run ends passed, and a person moves the work item back to Build.
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = end_run!(work_item, passing("# First"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      first = %{verdict: newest_id(work_item, "verdict"), v: newest_id(work_item, "verification")}
+
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      work_item = reload(work_item) |> through_build!() |> returned_by("# Second")
+
+      second = %{
+        verdict: newest_id(work_item, "verdict"),
+        v: newest_id(work_item, "verification")
+      }
+
+      assert typed(work_item) == [
+               {"brief", nil},
+               {"verdict", :move},
+               {"verification", :move},
+               {"verdict", :return},
+               {"verification", :return}
+             ]
+
+      ids = for %{version: %{id: id}} <- Stages.inputs(work_item), do: id
+      assert length(Enum.uniq(ids)) == 5
+      assert tl(ids) == [first.verdict, first.v, second.verdict, second.v]
+    end
+
+    test "a version that Build already reads is listed once, from the read", %{scope: scope} do
+      ordered_process!(scope, true, [%{"type" => "verification", "required" => false}])
+      work_item = take_in!(scope)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      work_item = work_item |> in_verify_again!() |> returned_by("# Criterion 2 fails")
+      verification = newest_id(work_item, "verification")
+      verdict = newest_id(work_item, "verdict")
+
+      # Explore's gate approved the verification, so Build reads it.
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: @explore,
+        kind: :approve,
+        versions: [verification],
+        take_in: work_item.take_in,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert [
+               %{type: "verification", version: %{id: ^verification}} = read,
+               %{type: "verdict", from: :return, version: %{id: ^verdict}}
+             ] = Stages.inputs(work_item)
+
+      refute Map.has_key?(read, :from)
+    end
+
+    test "a verification that a move back already lists is not listed again by a return",
+         %{scope: scope} do
+      ordered_process!(scope, false, [])
+      work_item = take_in!(scope)
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = end_run!(work_item, passing("# First"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      first = newest_id(work_item, "verification")
+
+      # A person moves the work item back to Build; Verify's second run makes no
+      # verification, so its newest one is still the first.
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      work_item = reload(work_item) |> through_build!() |> returned_by(nil)
+      assert length(versions(work_item, "verification")) == 1
+      assert newest_id(work_item, "verification") == first
+
+      assert typed(work_item) == [
+               {"verdict", :move},
+               {"verification", :move},
+               {"verdict", :return}
+             ]
+
+      assert [^first] =
+               for(
+                 %{type: "verification", version: %{id: id}} <- Stages.inputs(work_item),
+                 do: id
+               )
     end
   end
 

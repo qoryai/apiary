@@ -10,9 +10,10 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   been checked against their decoded sizes (`decoded_size/1`). With `withdraw` true,
   #   `files` may be absent, null or empty, which reads as no files; files sent with it are
   #   read as without it, and the caller refuses them.
-  # - `verdict/1`: `{"verdict", "points"?, "track"?}`, at most `max_bytes(:verdict)` bytes.
-  #   The points and the track pass as they are: the schema of the type `verdict` checks
-  #   them (`priv/schemas/artifacts/verdict.schema.json`).
+  # - `verdict/1`: `{"verdict", "points"?, "track"?, "full_suite"?}`, at most
+  #   `max_bytes(:verdict)` bytes. The points, the track and the full suite pass as they are:
+  #   the schema of the type `verdict` checks them
+  #   (`priv/schemas/artifacts/verdict.schema.json`).
   # - `pushed_commits/1`: `{"repositories": [{"system", "path", "commit"}]}`, at most
   #   `max_bytes(:pushed_commits)` bytes, else `{:error, :too_large}`, and at most
   #   `max_repositories/0` repositories, else `{:error, :invalid_request, "repositories"}`.
@@ -97,16 +98,22 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp push_files(files, _withdraw), do: files(files)
 
   @spec verdict(binary) ::
-          {:ok, %{verdict: String.t(), points: term, track: term}}
+          {:ok, %{verdict: String.t(), points: term, track: term, full_suite: term}}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def verdict(raw_body) when byte_size(raw_body) > @verdict_max_bytes, do: {:error, :too_large}
 
   def verdict(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(verdict points track)),
+         :ok <- members(body, ~w(verdict points track full_suite)),
          {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)) do
-      {:ok, %{verdict: verdict, points: Map.get(body, "points"), track: Map.get(body, "track")}}
+      {:ok,
+       %{
+         verdict: verdict,
+         points: Map.get(body, "points"),
+         track: Map.get(body, "track"),
+         full_suite: Map.get(body, "full_suite")
+       }}
     end
   end
 

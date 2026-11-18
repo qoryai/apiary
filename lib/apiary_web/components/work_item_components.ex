@@ -2575,6 +2575,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :outputs, :list, default: []
 
+  attr :suite, :map,
+    default: nil,
+    doc:
+      "the full test suite result shown under the build report's frame: the `{result, reads}` of `Apiary.Stages.full_suite/3` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
+
   attr :submissions, :map,
     default: nil,
     doc:
@@ -2758,6 +2763,13 @@ defmodule ApiaryWeb.WorkItemComponents do
         >
           {render_slot(@row, output)}
         </.output_frame>
+        <p
+          :if={@suite && output.type == "build-report"}
+          id="work-item-suite-line"
+          class="mt-3 text-sm"
+        >
+          {suite_words(@suite)}
+        </p>
       <% end %>
       <.decisions_frame
         :if={@decisions_frame != []}
@@ -2815,6 +2827,94 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  # The line under the build report's frame for a full test suite result
+  # (`Apiary.Stages.full_suite/3`). The two Standard track lines say "version" in their
+  # source text and "commit" in the software domain's catalogue. The track `fast-track` has
+  # no minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for
+  # 4.5. A suite that did not run shows its reason as the run sent it, trimmed and without
+  # one final full stop (the reader drops it). The line ends in a full stop, but not after a
+  # reason that ends in a question mark or an exclamation mark.
+  defp suite_words(%{state: :not_run, reason: reason}) do
+    if String.ends_with?(reason, ["?", "!"]),
+      do: gettext("The full test suite did not run: %{reason}", reason: reason),
+      else: gettext("The full test suite did not run: %{reason}.", reason: reason)
+  end
+
+  # A result with no counts: the Standard track has the minutes, the Fast track nothing.
+  defp suite_words(%{fast: true, state: :passed, passed: nil}),
+    do: gettext("The full test suite passed.")
+
+  defp suite_words(%{fast: true, state: :failed, passed: nil}),
+    do: gettext("The full test suite failed.")
+
+  defp suite_words(%{state: :passed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite passed on that version, in %{minutes} minute.",
+      "The full test suite passed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite failed on that version, in %{minutes} minute.",
+      "The full test suite failed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{fast: true, state: :passed} = suite) do
+    gettext("The full test suite passed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{fast: true, state: :failed} = suite) do
+    gettext("The full test suite failed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{state: :passed} = suite) do
+    ngettext(
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed} = suite) do
+    ngettext(
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  # The count that selects the singular: 1 for minutes of exactly 1 (1 or 1.0), and 2 for any
+  # other number, 0 and 0.25 among them.
+  defp suite_plural(minutes) when minutes == 1, do: 1
+  defp suite_plural(_minutes), do: 2
+
+  defp suite_minutes(minutes) when is_float(minutes) and minutes == trunc(minutes),
+    do: Format.number(trunc(minutes))
+
+  defp suite_minutes(minutes), do: Format.number(minutes)
 
   attr :id, :string, required: true
   attr :stage, :map, required: true
