@@ -632,7 +632,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   destination assigns it to the workspace, with its Backlog off unless it is chosen as a
   work source. Unticking a destination removes it from the workspace and stops its
   tickets. Owners and admins choose; owners, admins and members read the settings pages.
-- **Model**, “Which model do runs in Main use?”, has three fields. **Key** lists each
+- **Model**, “Which models do runs in Main use?”, has three fields. **Key** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
   **Add a key** is the one option where there is no provider to reuse. It opens
   **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
@@ -640,11 +640,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a secret of the workspace, and the provider reaches that workspace alone. Under
   **Key**: “Qory Apiary stores the key encrypted, and nobody can view it again. You can
   replace it in Settings › Secrets and variables.” **Runtime** lists the runtimes the
-  provider serves, as text where there is one. **Default model** suggests the provider's
-  models for it. **Continue** saves the workspace's model choice, with the provider's
-  default key; **Workspace settings › Model** shows that choice. Where the edition shows
-  “Available to every workspace in Acme”, two workspaces can reuse one key and choose
-  different models. The step is done once the workspace has a model choice whose
+  provider serves, as text where there is one. **Model and effort per tier**, as on
+  **Workspace settings › Model**, has a **Model** and an **Effort** for each of Thinking,
+  Balanced and Light, from the provider's suggested models; a change of **Key** or
+  **Provider** empties them. **Continue**, enabled once every tier has a model, saves the
+  workspace's model choice: the provider, its default key or the key the workspace's
+  choice has, and the tiers, with the Thinking tier's model and effort as the choice's;
+  with nothing changed it saves nothing. **Workspace settings › Model** shows that
+  choice. Where the edition shows “Available to every workspace in Acme”, two
+  workspaces can reuse one key and choose different models. The step is done once the workspace has a model choice whose
   provider reaches the workspace and has a key. Owners and admins fill it in. For a
   Claude subscription, **About models** shows `claude setup-token` on a separate
   line, with **Copy command**.

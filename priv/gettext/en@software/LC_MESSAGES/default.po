@@ -8553,11 +8553,6 @@ msgstr ""
 msgid "Default machine type: %{machine}"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Default model"
-msgstr ""
-
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Default models"
@@ -24394,7 +24389,7 @@ msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
-msgid "Which model do runs in %{workspace} use?"
+msgid "Which models do runs in %{workspace} use?"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -25127,17 +25122,17 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+msgid "You can change the default models later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+msgid "You can change the default models later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
-msgid "You can change the default model later in Workspace settings › Model."
+msgid "You can change the default models later in Workspace settings › Model."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex

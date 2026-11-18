@@ -21,11 +21,6 @@ exclude =
       [:contract]
   end
 
-# A test tagged :a11_item5 (the set-up's Model step) saves a model choice of the workspace
-# with no tiers, and a save of the workspace needs every tier. ExUnit skips each such test
-# until its page saves the tiers.
-exclude = exclude ++ [:a11_item5]
-
 # The features, the tags left out beside these, ExUnit, the instance and the sandbox:
 # `Apiary.TestSetup.start!/1` says what each is.
 Apiary.TestSetup.start!(exclude: exclude)

@@ -4259,14 +4259,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Membership
+  alias ApiaryWeb.ModelTiers
 
   @moduletag needs: [:factory, :secrets]
 
   @key "sk-ant-set-up-test-0123456789abcdef"
 
-  @workspace_later "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
-  @organisation_later "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
-  @model_later "You can change the default model later in Workspace settings › Model."
+  @workspace_later "You can change the default models later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+  @organisation_later "You can change the default models later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+  @model_later "You can change the default models later in Workspace settings › Model."
 
   # The line for a key of the organisation: it adds the organisation's secrets only where
   # the instance has `organisation_variables`.
@@ -4344,23 +4345,38 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
      Enum.filter(choices, &is_nil(&1.workspace_id))}
   end
 
+  # The ids of the models suggested for `provider`, a provider of the organisation or the
+  # name of a catalogue provider, on the default runtime.
   defp models(provider) do
     {:ok, runtime} = ModelChoices.runtime(nil)
+
+    provider =
+      if is_binary(provider), do: elem(Apiary.Kinds.Providers.fetch(provider), 1), else: provider
+
     for model <- ModelChoices.suggestions(provider, runtime), do: model.id
   end
 
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
-  test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
+  # The tiers a form sends: every tier on `model`, with no effort.
+  defp tiers(model), do: Map.new(ModelTiers.shown(), &{&1, %{"model" => model}})
+
+  # The tiers of a saved choice, each its model and effort.
+  defp saved_tiers(choice),
+    do: Map.new(choice.tiers, fn {tier, entry} -> {tier, {entry["model"], entry["effort"]}} end)
+
+  # Whether Continue is enabled.
+  defp continue?(lv), do: not has_element?(lv, "#set-up-continue[disabled]")
+
+  test "with no provider, Add a key alone, open: adds the provider and the workspace's choice with its tiers; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     workspace = scope.workspace
+    [first | _rest] = models("anthropic")
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert has_element?(lv, "h1", "Which model do runs in #{workspace.name} use?")
+    assert has_element?(lv, "h1", "Which models do runs in #{workspace.name} use?")
     assert key_options(lv) == [{"Add a key", true}]
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
-    assert has_element?(lv, "#set-up-model-form", "Default model")
+    assert words(lv, "#set-up-model-tiers-h") == "Model and effort per tier"
     assert has_element?(lv, "#set-up-model-form", "Runtime")
     # The edition shows the setting of where the provider applies; left off, the provider
     # reaches this workspace alone.
@@ -4381,13 +4397,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              "A model provider's key lets runs in #{workspace.name} call a model."
 
     lv
-    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key, tiers: tiers(first)})
     |> render_change()
 
     refute kept(lv) =~ @key
 
     lv
-    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key, tiers: tiers(first)})
     |> render_submit()
 
     refute kept(lv) =~ @key
@@ -4406,12 +4422,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert listed == provider.id
 
-    # The workspace's choice (level 5), with the provider's default key; no default of
-    # the organisation (level 6).
+    # The workspace's choice (level 5), with the provider's default key and the tiers; no
+    # default of the organisation (level 6).
     assert {[choice], []} = choices(scope)
     assert choice.connection_id == provider.id and choice.target_id == nil
     assert choice.value_id == provider.default_value_id
-    assert choice.model_id == hd(models(provider))
+    assert choice.model_id == first
+    assert saved_tiers(choice) == Map.new(ModelTiers.shown(), &{&1, {first, nil}})
     assert WorkspaceSetup.model_key?(workspace)
     assert WorkspaceSetup.done?(:model, organisation, {Apiary.Lingo.Domain.Software, workspace})
 
@@ -4423,6 +4440,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "input[name='model[key]']")
     refute has_element?(lv, "#set-up-get-key")
+
+    for tier <- ModelTiers.shown(),
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{select[name="model[tiers][#{tier}][model]"] option[selected][value="#{first}"]}
+            )
+          )
+
     # The provider reused links the workspace's secret.
     assert words(lv, "#set-up-model-later") == @workspace_later
     assert {"Model", :current} in set_up_group(lv)
@@ -4430,8 +4457,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   end
 
   @tag :feature_sets
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
   test "Add a key with the setting shown and on: the organisation's provider, for every workspace",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4457,7 +4482,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     lv
     |> form("#set-up-model-form",
-      model: %{provider: "anthropic", key: @key, everywhere: "true"}
+      model: %{
+        provider: "anthropic",
+        key: @key,
+        everywhere: "true",
+        tiers: tiers(hd(models("anthropic")))
+      }
     )
     |> render_submit()
 
@@ -4480,7 +4510,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     lv
     |> form("#set-up-model-form",
-      model: %{provider: "anthropic", key: @key, everywhere: "false"}
+      model: %{
+        provider: "anthropic",
+        key: @key,
+        everywhere: "false",
+        tiers: tiers(hd(models("anthropic")))
+      }
     )
     |> render_submit()
 
@@ -4491,9 +4526,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   end
 
   @tag :feature_sets
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
-  test "reuse with one provider: its default key, another default model; Add a key opens the fields",
+  test "reuse with one provider: its default key and the tiers chosen; Add a key opens the fields",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     provider = provider!(scope, "anthropic", "main")
@@ -4520,7 +4553,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-later") == organisation_later()
 
     lv
-    |> form("#set-up-model-form", model: %{source: provider.public_id, model: second})
+    |> form("#set-up-model-form", model: %{source: provider.public_id, tiers: tiers(second)})
     |> render_submit()
 
     assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
@@ -4530,12 +4563,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert {choice.connection_id, choice.value_id, choice.model_id} ==
              {provider.id, "main", second}
 
+    assert saved_tiers(choice) == Map.new(ModelTiers.shown(), &{&1, {second, nil}})
     assert {:ok, [_provider]} = Connections.list_providers(scope)
 
-    # Back on the step: the saved model chosen; Continue with nothing changed writes nothing.
+    # Back on the step: the saved tiers chosen; Continue with nothing changed writes nothing.
     {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
-    assert has_element?(lv, ~s{select[name="model[model]"] option[selected][value="#{second}"]})
+
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][thinking][model]"] option[selected][value="#{second}"]}
+           )
+
     lv |> form("#set-up-model-form") |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
     assert {[^choice], []} = choices(scope)
   end
 
@@ -4553,9 +4593,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-later") == @workspace_later
   end
 
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
-  test "reuse with two providers: each by its name; the one chosen is saved", %{conn: conn} do
+  test "reuse with two providers: each by its name; the one chosen is saved with its tiers",
+       %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, "anthropic", "main")
     deepseek = provider!(scope, "deepseek", "ds")
@@ -4568,13 +4607,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
                {"Add a key", false}
              ])
 
-    # The default model follows the provider chosen.
+    # Each tier's models follow the provider chosen.
     lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
 
     for model <- models(deepseek),
-        do: assert(has_element?(lv, ~s{select[name="model[model]"] option[value="#{model}"]}))
+        tier <- ModelTiers.shown(),
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{select[name="model[tiers][#{tier}][model]"] option[value="#{model}"]}
+            )
+          )
 
-    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_submit()
+    refute has_element?(lv, ~s{select option[value="#{hd(models(anthropic))}"]})
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{source: deepseek.public_id, tiers: tiers(hd(models(deepseek)))}
+    )
+    |> render_submit()
 
     assert {[choice], []} = choices(scope)
 
@@ -4582,8 +4634,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              {deepseek.id, "ds", hd(models(deepseek))}
   end
 
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
   test "a fallback's provider chosen on the step is saved, and that fallback is dropped",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4597,12 +4647,166 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       })
 
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
-    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_submit()
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{source: deepseek.public_id, tiers: tiers(hd(models(deepseek)))}
+    )
+    |> render_submit()
 
     assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
     assert {[choice], []} = choices(scope)
     assert choice.connection_id == deepseek.id
     assert Repo.preload(choice, :fallbacks, force: true).fallbacks == []
+  end
+
+  test "Continue is disabled until every tier has a model, and a save sent before saves nothing",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    [model | _rest] = models(provider)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    refute continue?(lv)
+
+    for tier <- ModelTiers.shown(),
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{select[name="model[tiers][#{tier}][model]"] option[selected][value=""]}
+            )
+          )
+
+    two = Map.delete(tiers(model), "light")
+    lv |> form("#set-up-model-form", model: %{tiers: two}) |> render_change()
+    refute continue?(lv)
+
+    render_click(lv, "save_model", %{
+      "model" => %{"source" => provider.public_id, "tiers" => two}
+    })
+
+    assert {[], []} = choices(scope)
+    refute WorkspaceSetup.model_key?(scope.workspace)
+
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(model)}) |> render_change()
+    assert continue?(lv)
+  end
+
+  test "Continue saves the key and each tier's model and effort, the Thinking tier's as the choice's",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [
+          %{value_id: "main", value: "sk-main-0123456789"},
+          %{value_id: "second", value: "sk-second-0123456789"}
+        ]
+      })
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        key: "second"
+      })
+
+    {:ok, runtime} = ModelChoices.runtime(nil)
+    suggested = ModelChoices.suggestions(provider, runtime)
+
+    [a, b, c] =
+      for id <- ~w(claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5),
+          do: Enum.find(suggested, &(&1.id == id))
+
+    chosen = Enum.zip(ModelTiers.shown(), [a, b, c])
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    # The workspace's choice fills the tiers.
+    assert continue?(lv)
+
+    models = Map.new(chosen, fn {tier, model} -> {tier, %{"model" => model.id}} end)
+    lv |> form("#set-up-model-form", model: %{tiers: models}) |> render_change()
+
+    sent =
+      Map.new(chosen, fn {tier, model} ->
+        {tier, %{"model" => model.id, "effort" => List.last(model.effort)}}
+      end)
+
+    lv |> form("#set-up-model-form", model: %{tiers: sent}) |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+
+    assert {[choice], []} = choices(scope)
+    # The key of the workspace's choice, not the provider's default.
+    assert {choice.connection_id, choice.value_id} == {provider.id, "second"}
+
+    assert saved_tiers(choice) ==
+             Map.new(chosen, fn {tier, model} -> {tier, {model.id, List.last(model.effort)}} end)
+
+    assert {choice.model_id, choice.effort} == {a.id, List.last(a.effort)}
+  end
+
+  test "Add a key with a catalogue provider: the tiers list its models, a change of Provider empties them, and Continue adds it",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: anthropic.public_id})
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form", model: %{source: "add", provider: "deepseek"})
+    |> render_change()
+
+    for model <- models("deepseek"),
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{select[name="model[tiers][thinking][model]"] option[value="#{model}"]}
+            )
+          )
+
+    deepseek = hd(models("deepseek"))
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(deepseek)}) |> render_change()
+    assert continue?(lv)
+
+    lv
+    |> form("#set-up-model-form", model: %{provider: "anthropic", tiers: tiers(deepseek)})
+    |> render_change()
+
+    refute continue?(lv)
+    refute has_element?(lv, ~s{select option[selected][value="#{deepseek}"]})
+
+    [model | _rest] = models("anthropic")
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(model)}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{key: @key, tiers: %{"thinking" => %{"model" => model, "effort" => "high"}}}
+    )
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+    assert {:ok, providers} = Connections.list_providers(scope)
+    assert [added] = Enum.reject(providers, &(&1.id == anthropic.id))
+    assert added.provider_kind == "anthropic"
+
+    assert {[choice], []} = choices(scope)
+    assert {choice.connection_id, choice.value_id} == {added.id, added.default_value_id}
+
+    assert saved_tiers(choice) == %{
+             "thinking" => {model, "high"},
+             "balanced" => {model, nil},
+             "light" => {model, nil}
+           }
+
+    refute render(lv) =~ @key
   end
 
   # A provider of the workspace alone, and one that applies to every workspace. By name,
@@ -4619,8 +4823,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {own, shared}
   end
 
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
   test "with the setting shown: the providers every workspace shares first, under Shared in, each marked; the first is chosen",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4640,7 +4842,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute has_element?(lv, "#set-up-model-source-shared label", own.name)
 
     # The workspace's choice of its provider: that provider is chosen when the step opens.
-    lv |> form("#set-up-model-form", model: %{source: own.public_id}) |> render_submit()
+    lv |> form("#set-up-model-form", model: %{source: own.public_id}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form", model: %{source: own.public_id, tiers: tiers(hd(models(own)))})
+    |> render_submit()
+
     assert {[choice], []} = choices(scope)
     assert choice.connection_id == own.id
 
@@ -4751,7 +4958,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     html =
       lv
       |> form("#set-up-model-form",
-        model: %{provider: "litellm", key: @key, address: "http://litellm.example.com"}
+        model: %{
+          provider: "litellm",
+          key: @key,
+          address: "http://litellm.example.com",
+          tiers: tiers("claude-opus-5-5")
+        }
       )
       |> render_submit()
 
@@ -4788,7 +5000,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
     lv
-    |> form("#set-up-model-form", model: %{provider: "anthropic", key: ""})
+    |> form("#set-up-model-form",
+      model: %{provider: "anthropic", key: "", tiers: tiers(hd(models("anthropic")))}
+    )
     |> render_submit()
 
     assert {:ok, []} = Connections.list_providers(scope)
@@ -4816,8 +5030,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute has_element?(lv, "#set-up-model-form")
   end
 
-  # The Model step saves no tiers; a workspace save needs every tier. A-11 item 5 adds them.
-  @tag :a11_item5
   test "a second workspace opens at Name, with every later step to come", %{conn: conn} do
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ManyWorkspaces)
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4832,7 +5044,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {:ok, lv, _html} = live(conn, model_path(organisation))
 
     lv
-    |> form("#set-up-model-form", model: %{provider: "anthropic", key: @key})
+    |> form("#set-up-model-form",
+      model: %{provider: "anthropic", key: @key, tiers: tiers(hd(models("anthropic")))}
+    )
     |> render_submit()
 
     # Main's model is done, and the new workspace's steps are not.
@@ -6019,6 +6233,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     {keys, values(lv, "model[provider]")}
   end
 
+  # The workspace's choice (level 5), as stored.
+  defp workspace_choice(ctx) do
+    workspace_id = ctx.scope.workspace.id
+
+    Repo.one!(
+      from c in ModelChoice, where: c.workspace_id == ^workspace_id and is_nil(c.target_id)
+    )
+  end
+
   defp values(lv, name) do
     lv
     |> render()
@@ -6035,14 +6258,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   end
 
   @tag with_features: Apiary.Features.all() -- [:model_proxies]
-  test "off: the workspace's LiteLLM choice stays chosen in Key; Provider leaves it out",
+  test "off: a revisit shows the workspace's LiteLLM key and tiers, and Continue keeps them unchanged; Provider leaves it out",
        ctx do
+    tiers = %{
+      "thinking" => %{"model" => "proxy-large"},
+      "balanced" => %{"model" => "proxy-medium"},
+      "light" => %{"model" => "proxy-small"}
+    }
+
     {:ok, _choice} =
       Apiary.ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
         provider: ctx.litellm.public_id,
-        model: "claude-opus-5-5"
+        key: "main",
+        tiers: tiers,
+        model: "proxy-large"
       })
 
+    stored = workspace_choice(ctx)
     {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
 
     assert has_element?(
@@ -6050,33 +6282,43 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
              ~s{#set-up-model-form input[name="model[source]"][value="#{ctx.litellm.public_id}"][checked]}
            )
 
+    # The tiers are text fields with the stored models, and no Effort.
+    for {tier, %{"model" => model} = _entry} <- tiers,
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{#set-up-model-tiers input[type=text][name="model[tiers][#{tier}][model]"][value="#{model}"]}
+            )
+          )
+
+    refute has_element?(lv, "#set-up-model-tiers select")
+    refute has_element?(lv, "#set-up-continue[disabled]")
+
     lv |> form("#set-up-model-form") |> render_submit()
+    assert_patch(lv, ~p"/#{ctx.organisation}/main/set-up/harness")
 
-    workspace_id = ctx.scope.workspace.id
-
-    # The step saves no model for a provider with no suggestions, flag on or off, so
-    # only the provider is checked.
-    assert [connection_id] =
-             Repo.all(
-               from c in ModelChoice,
-                 where: c.workspace_id == ^workspace_id and is_nil(c.target_id),
-                 select: c.connection_id
-             )
-
-    assert connection_id == ctx.litellm.id
+    # Nothing is written: the row is as it was, its tiers and its time of change too.
+    assert workspace_choice(ctx) == stored
 
     assert {keys, providers} = offers(ctx)
     assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])
     refute "litellm" in providers
   end
 
-  # Add a key with LiteLLM, sent as a request past the step's list.
+  # Add a key with LiteLLM, sent as a request past the step's list, with a model id for
+  # each tier.
   @add_litellm %{
     "model" => %{
       "source" => "add",
       "provider" => "litellm",
       "key" => "sk-set-up-proxies-added-0123456789",
-      "address" => "https://litellm.example.com"
+      "address" => "https://litellm.example.com",
+      "tiers" => %{
+        "thinking" => %{"model" => "proxy-large"},
+        "balanced" => %{"model" => "proxy-medium"},
+        "light" => %{"model" => "proxy-small"}
+      }
     }
   }
 
@@ -6094,7 +6336,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   end
 
   @tag with_features: Apiary.Features.all()
-  test "on: Add a key with LiteLLM stores the provider", ctx do
+  test "on: Add a key with LiteLLM stores the provider and the tiers typed", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
     render_click(lv, "choose_model", @add_litellm)
     render_click(lv, "save_model", @add_litellm)
@@ -6102,6 +6344,45 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     assert {:ok, providers} = Connections.list_providers(ctx.scope)
     assert [added] = Enum.reject(providers, &(&1.id in [ctx.anthropic.id, ctx.litellm.id]))
     assert added.provider_kind == "litellm"
+
+    choice = workspace_choice(ctx)
+    assert choice.connection_id == added.id
+    assert choice.tiers == @add_litellm["model"]["tiers"]
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: LiteLLM's tiers are text fields for any model id, with no Effort", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+    assert has_element?(lv, "#set-up-model-tiers select")
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    lv |> form("#set-up-model-form", model: %{provider: "litellm"}) |> render_change()
+
+    assert has_element?(lv, "#set-up-model-tiers-h", "Model per tier")
+
+    for tier <- ApiaryWeb.ModelTiers.shown(),
+        do:
+          assert(
+            has_element?(
+              lv,
+              ~s{#set-up-model-tiers input[type=text][name="model[tiers][#{tier}][model]"][value=""]}
+            )
+          )
+
+    refute has_element?(lv, "#set-up-model-tiers select")
+    assert has_element?(lv, "#set-up-continue[disabled]")
+
+    # The provider to reuse has text fields too.
+    lv
+    |> form("#set-up-model-form", model: %{source: ctx.litellm.public_id})
+    |> render_change()
+
+    assert has_element?(lv, "#set-up-model-tiers-h", "Model per tier")
+
+    lv
+    |> form("#set-up-model-form", model: %{tiers: @add_litellm["model"]["tiers"]})
+    |> render_change()
+
+    refute has_element?(lv, "#set-up-continue[disabled]")
   end
 
   @tag with_features: Apiary.Features.all()
