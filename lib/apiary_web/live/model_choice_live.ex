@@ -397,7 +397,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   # The runtime, the key and the tiers as the form sent them. A key the page does not
-  # list, or one of a provider the runtime lost, gives the first key and empty tiers.
+  # list keeps the key the page had; where the page no longer lists that key either, as
+  # after a change of the runtime, the first key, with empty tiers.
   defp take_sent(socket, params) do
     socket =
       with name when name != socket.assigns.runtime.name <- params["runtime"],
@@ -485,6 +486,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
             runtime: if(runtimes?(socket.assigns.runtimes), do: socket.assigns.runtime.name),
             fallbacks: fallback_attrs(socket.assigns, rows)
           })
+          |> default_key(socket.assigns.choice, key)
 
         case ModelChoices.put_choice(scope, :workspace, attrs) do
           {:ok, _choice} ->
@@ -517,6 +519,17 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # A saved choice that names no key uses its provider's default key, whichever that is
+  # (`Apiary.ModelChoices.Resolution`). While Key is still that default, the save names
+  # no key either, so the choice keeps following the default.
+  defp default_key(attrs, %ModelChoice{connection_id: id, value_id: nil}, %{
+         provider: %Connection{id: id, default_value_id: value_id},
+         value_id: value_id
+       }),
+       do: %{attrs | key: nil}
+
+  defp default_key(attrs, _choice, _key), do: attrs
 
   defp blank_to_nil(value) when is_binary(value) do
     case String.trim(value) do

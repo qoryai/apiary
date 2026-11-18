@@ -500,15 +500,15 @@ replaces the navigation it is in.
   part Fallbacks (`#model-fallbacks`) under Runtime, Key and the tiers: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above
-  it. A row is a group named by its place, "Fallback 2", with Provider, Model, Another
-  model and Effort as the choice has them, then Move up, Move down and Remove, each
-  labelled with the place ("Move fallback 2 up"). Add fallback adds a row of the first
-  provider left: one that applies to the workspace, serves the chosen runtime, and is
-  neither the Key's provider nor in a row. A new row's model, and a row's model after
-  its provider changes, is the Thinking tier's model where the provider has a model of
-  that id, else the provider's first. With no provider left, the part shows "Add another model
-  provider that serves Claude Code in Organisation settings › Model providers, then add
-  it here as a fallback.", the place a link. Save writes the rows with the choice, and an
+  it. A row is a group named by its place, "Fallback 2", with Provider, Model and
+  Effort, then Move up, Move down and Remove, each labelled with the place ("Move
+  fallback 2 up"). Add fallback adds a row of the first provider left: one that applies
+  to the workspace, serves the chosen runtime, and is neither the Key's provider nor in
+  a row. A new row's model, and a row's model after its provider changes, is the
+  Thinking tier's model where the provider has a model of that id, else the provider's
+  first. With no provider left, the part shows "Add another model provider that serves
+  Claude Code in Organisation settings › Model providers, then add it here as a
+  fallback.", the place a link. Save writes the rows with the choice, and an
   error shows under its row's field, such as "Choose another provider: Northwind Claude
   is chosen already." A save that sends no rows, as the set-up's Model step saves, keeps
   the rows but one of the chosen provider, which it drops. A save that changes the chosen

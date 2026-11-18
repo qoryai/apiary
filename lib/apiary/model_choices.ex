@@ -49,14 +49,17 @@ defmodule Apiary.ModelChoices do
   #   * `tiers`: tiers among `Apiary.ModelChoices.Resolution.tiers/0`, each a model id, or
   #     a map of `model` and `effort`. A tier with a blank model is left out, and so is a
   #     blank effort, as a form posts them. At levels 4, 5 and 6 every tier is needed, and
-  #     the first missing one is refused. Each tier's model is one of the provider's
-  #     models as `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them: of its
-  #     description or of its suggestions (`priv/models/suggestions.json`), any id where
-  #     the description lists no model; a model of another provider is refused. Each
-  #     tier's effort is checked as `effort` is. Both checks go through the tiers in the
-  #     order the Model page design shows them (`tiers/0` reversed, `thinking` first),
-  #     and each refusal names the first refused tier, or its model. A tier is named as
-  #     the Model page design names it (`tier_name/1`);
+  #     the first missing one is refused. A model id or an effort of the wrong form is
+  #     refused once for each tier that has one. Each tier's model is one of the
+  #     provider's models as `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them: of
+  #     its description or of its suggestions (`priv/models/suggestions.json`), any id
+  #     where the description lists no model; a model of another provider is refused.
+  #     Each tier's effort is checked as `effort` is. These checks go through the tiers
+  #     in the order the Model page design shows them (`tiers/0` reversed, `thinking`
+  #     first), and only the first refused tier's model or effort is refused. Each
+  #     refusal of a tier has the bindings `tier`, its name as the Model page design
+  #     names it (`tier_name/1`), and `field`, `:model` or `:effort`, the field it is
+  #     about;
   #   * `fallbacks`: a list of the providers runs use, in order, while every key of the
   #     choice's provider is in cooldown, each a map of `provider`, `model` and `effort`.
   #     A workflow's choice (levels 2 and 4) has none: runs use the fallbacks of the
@@ -851,7 +854,7 @@ defmodule Apiary.ModelChoices do
           changeset,
           :tiers,
           dgettext_noop("errors", "Choose a model for each tier: %{tier} has none."),
-          tier: tier_name(hd(missing))
+          on_tier(hd(missing), :model)
         )
   end
 
@@ -983,9 +986,14 @@ defmodule Apiary.ModelChoices do
       else: changeset
   end
 
+  # Each tier's form, in the order of `page_tiers/0`, then any key that is no tier: one
+  # refusal for each refused tier, on `tiers`, with the tier's name (`tier`) and the field
+  # it is about (`field`, `:model` or `:effort`).
   defp validate_tiers(changeset) do
     validate_change(changeset, :tiers, fn :tiers, tiers ->
-      Enum.find_value(tiers, [], fn {tier, entry} -> tier_error(tier, entry) end)
+      tiers
+      |> Enum.sort_by(fn {tier, _entry} -> Enum.find_index(page_tiers(), &(&1 == tier)) || 3 end)
+      |> Enum.flat_map(fn {tier, entry} -> tier_error(tier, entry) end)
     end)
   end
 
@@ -999,19 +1007,23 @@ defmodule Apiary.ModelChoices do
         ]
 
       not match?(%{"model" => _}, tier_entry(entry)) ->
-        [tiers: model_rule()]
+        [tiers: {model_rule(), on_tier(tier, :model)}]
 
       not Regex.match?(@model_id, tier_entry(entry)["model"]) ->
-        [tiers: model_rule()]
+        [tiers: {model_rule(), on_tier(tier, :model)}]
 
       not (is_nil(tier_entry(entry)["effort"]) or
                Regex.match?(@effort, tier_entry(entry)["effort"])) ->
-        [tiers: effort_rule()]
+        [tiers: {effort_rule(), on_tier(tier, :effort)}]
 
       true ->
-        nil
+        []
     end
   end
+
+  # The bindings that place a refusal of the tiers: the tier's name, as `tier_name/1`
+  # gives it, and the field it is about.
+  defp on_tier(tier, field), do: [tier: tier_name(tier), field: field]
 
   # A tier's entry as a map of `model` and `effort`: a model id alone is its model; an
   # entry of any other shape, or with other keys, is nil.
@@ -1241,7 +1253,8 @@ defmodule Apiary.ModelChoices do
     do: changeset
 
   # Each tier, in the order of `page_tiers/0`: a model of the provider
-  # (`Resolution.tier_ok?/2`), then an effort that goes with it. The first refusal is kept.
+  # (`Resolution.tier_ok?/2`), then an effort that goes with it. The first refusal is kept,
+  # with the tier and the field it is about (`on_tier/2`).
   defp check_tiers(changeset, %Connection{} = provider, runtime) do
     tiers = get_field(changeset, :tiers) || %{}
     described = resolution_provider(provider)
@@ -1251,8 +1264,18 @@ defmodule Apiary.ModelChoices do
     |> Enum.reduce_while(changeset, fn tier, changeset ->
       %{"model" => model_id} = entry = tier_entry(tiers[tier])
 
-      case tier_model_error(described, provider, model_id) ||
-             effort_error(provider, model_id, entry["effort"], runtime) do
+      refusal =
+        case tier_model_error(described, provider, model_id) do
+          {message, bindings} ->
+            {message, bindings ++ on_tier(tier, :model)}
+
+          nil ->
+            with {message, bindings} <-
+                   effort_error(provider, model_id, entry["effort"], runtime),
+                 do: {message, bindings ++ on_tier(tier, :effort)}
+        end
+
+      case refusal do
         nil -> {:cont, changeset}
         {message, bindings} -> {:halt, add_error(changeset, :tiers, message, bindings)}
       end

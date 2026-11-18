@@ -1325,16 +1325,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
   value** keeps the key's value. The value of any other secret stays as you typed it,
   its last newline included.
-- **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
-  Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
-  from the next run.” Each fallback has Provider, Model, Another model and Effort, with
-  **Move up**, **Move down** and **Remove**. **Add fallback** adds a provider that
-  applies to the workspace, serves the chosen runtime, and is neither the chosen
-  provider nor a fallback already, with the chosen model where the provider has a model
-  of the same id. **Save** saves the fallbacks with the model choice. With no such
+- **Workspace settings › Model** has the part **Fallbacks** under Runtime, Key and the
+  tiers: “When every key of Northwind Claude is in cooldown, runs use these, in order,
+  from the next run.” Each fallback has Provider, Model and Effort, with **Move up**,
+  **Move down** and **Remove**. **Add fallback** adds a provider that applies to the
+  workspace, serves the chosen runtime, and is neither the Key's provider nor a
+  fallback already, with the Thinking tier's model where the provider has a model of the
+  same id. **Save** saves the fallbacks with the model choice. With no such
   provider left, the part shows “Add another model provider that serves Claude Code in
   Organisation settings › Model providers, then add it here as a fallback.” A save that
-  changes the chosen provider to a fallback's provider drops that fallback.
+  changes the Key's provider to a fallback's provider drops that fallback.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
