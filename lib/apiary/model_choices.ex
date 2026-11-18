@@ -28,6 +28,14 @@ defmodule Apiary.ModelChoices do
   # `target_id`, and `name`, the place's name. Its `before` and `after` are the choice's
   # fields, its fallbacks among them, each with its provider's public id.
   #
+  # A workflow's choice in a workspace (level 4) is deleted with no action asked when the
+  # workspace no longer keeps the workflow (`Apiary.Processes.kept_workflows/1`): by the
+  # change that leaves it unused, a save of the process or the close of a work item
+  # (`delete_unkept/3`), or by the deletion of its provider (`delete_leftovers_using/2`).
+  # Its entry is `choice_removed`, as the scope of that change, with `details.cause`
+  # `workflow_not_in_use`; such a delete takes the workspace's row `FOR NO KEY UPDATE`,
+  # or the provider's row `FOR UPDATE`, then the choice's row `FOR UPDATE`.
+  #
   # Everything here needs the features `factory` and `secrets`, shown to the scope: with
   # either off, every function answers `{:error, :not_found}`.
   #

@@ -18,7 +18,12 @@ defmodule Apiary.TimeLimits do
   # one entry of it in its transaction, about the limit: `details.change` is
   # `time_limit_set`, `time_limit_changed` or `time_limit_removed`, with the `workflow`,
   # the target's `target_id`, and `name`, the place's name; `before` and `after` have the
-  # `minutes`. Reading asks no action.
+  # `minutes`. Reading asks no action. A limit at the workspace is deleted with no action
+  # asked when the workspace no longer keeps its workflow
+  # (`Apiary.Processes.kept_workflows/1`), by the change that leaves it unused
+  # (`delete_unkept/3`): its entry is `time_limit_removed`, as the scope of that change,
+  # with `details.cause` `workflow_not_in_use`. Such a delete holds the workspace's row
+  # `FOR NO KEY UPDATE`, then the limit's row `FOR UPDATE`.
   #
   # Everything here needs the feature `factory`, shown to the scope: with it off, every
   # function answers `{:error, :not_found}`. A read checks the feature itself; a write
