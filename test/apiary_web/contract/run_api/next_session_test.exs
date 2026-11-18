@@ -7,11 +7,12 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
+  import Apiary.ModelKeysFixtures, only: [key_state!: 3, in_seconds: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{ModelChoices, Processes, Repo, Stages}
+  alias Apiary.{Connections, ModelChoices, Processes, Repo, Stages}
   alias Apiary.Dispatches.RunSettings
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Dispatches.DispatchRun
@@ -550,6 +551,30 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert %{"workflow" => "write-acceptance-checks"} = body
       refute Map.has_key?(body, "model_choice")
       refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is the fallback's where every key of the choice's provider is in cooldown at the claim",
+         ctx do
+      {:ok, fallback} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Fallback keys",
+          keys: [%{value_id: "main", value: "sk-ant-fallback-0123456789"}]
+        })
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          model: "claude-opus-5-5",
+          fallbacks: [%{provider: fallback.public_id, model: "claude-sonnet-5-5", effort: "high"}]
+        })
+
+      key_state!(ctx.provider, "main", until: in_seconds(3600))
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
+      assert body["model_credential"] == "#{fallback.public_id}-1"
     end
 
     test "is absent where the run has no provider's key", ctx do

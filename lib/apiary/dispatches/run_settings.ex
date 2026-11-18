@@ -312,9 +312,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # name: read, lock what is new, read again. `{:ok, input, sessions}`, `sessions` the
   # input of each workflow of `shared` by its name.
   defp lock(workspace, target, {workflow, shared} = workflows, locked, tries) do
-    input = ModelChoices.choices_for(workspace, target, workflow)
-    input = %{input | choices: Repo.preload(input.choices, :fallbacks)}
-    sessions = Map.new(shared, &{&1, ModelChoices.choices_for(workspace, target, &1)})
+    input = with_fallbacks(ModelChoices.choices_for(workspace, target, workflow))
+
+    sessions =
+      Map.new(shared, &{&1, with_fallbacks(ModelChoices.choices_for(workspace, target, &1))})
+
     ids = all_provider_ids(input, sessions)
 
     case ids -- locked do
@@ -329,6 +331,8 @@ defmodule Apiary.Dispatches.RunSettings do
         lock(workspace, target, workflows, locked ++ new, tries - 1)
     end
   end
+
+  defp with_fallbacks(input), do: %{input | choices: Repo.preload(input.choices, :fallbacks)}
 
   # The providers' rows `FOR SHARE`, by id, then their keys' secrets' rows. A row that is
   # gone is not locked: `build/1` reads it as gone.
@@ -424,21 +428,21 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The model of each later session of a shared run, by its workflow, as `sessions` beside
-  # `built`, which the claim keeps on the run (`Apiary.Stages.claim_sessions!/3`). Each
-  # workflow's entry is a map, so that it can later hold the session's runtime and the key
-  # of its provider beside its model. For a workflow whose choices resolve to the run's
-  # provider and runtime: `model_choice`, the `model`, `effort`, `provider_models` and
-  # `tiers` of that choice, and `model_credential`, the run's start key. Where the
+  # `built`, which the claim keeps on the run (`Apiary.Stages.claim_sessions!/3`): a map
+  # of `model_choice` and `model_credential` for each workflow that has one. For a
+  # workflow whose choices resolve to the run's provider and runtime: `model_choice`, the
+  # `model`, `effort`, `provider_models` and `tiers` of that choice, and
+  # `model_credential`, the run's start key. For a workflow whose choice names the run's
+  # provider as a fallback, as when the claim took that fallback, the same of that
+  # fallback (`Apiary.ModelChoices.Resolution.fallback/3`). Where the
   # choice's provider, key or model is no longer valid (`form/6`), `model_choice` is the
   # run's: the members of its `run_settings` but `runtime`. A workflow whose choices
   # resolve to no choice at any level has no entry, and neither has any workflow of a run
   # with no provider's key: the session uses the gateway's key and the runtime's default
-  # model. A settings check of the session's
-  # provider that ran out of time or crashed is `{:unchecked, provider}`, which leaves the
-  # run waiting as for the run's provider.
-  #
-  # A workflow whose choices resolve to another provider or runtime than the run's has no
-  # entry here yet: the run takes the keys of one provider.
+  # model. A workflow whose choices resolve to another provider or runtime than the run's
+  # has no entry either. A settings check of the session's provider that ran out of time
+  # or crashed is `{:unchecked, provider}`, which leaves the run waiting as for the run's
+  # provider.
   defp with_sessions(
          {:ok, %{columns: %{provider_connection_id: id, model_keys: keys}} = built},
          held,
@@ -476,10 +480,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # What the choices `input` of a later session's workflow come to against the run's
   # provider `id` and `runtime`: `{:ok, model_choice}`, `:run` for the run's model,
   # `:none` for no choice or for another provider or runtime (`with_sessions/4`), or
-  # `{:unchecked, provider}`.
+  # `{:unchecked, provider}`. The choice's provider where it is the run's, else the
+  # choice's fallback whose provider is the run's.
   defp session_choice(input, id, {resolved, providers, described}, runtime, workspace_id) do
-    with {:ok, %Resolution{connection_id: ^id} = resolution} <-
-           Resolution.resolve(Map.put(input, :providers, resolved)),
+    input = Map.put(input, :providers, resolved)
+
+    with {:ok, %Resolution{} = resolution} <- Resolution.resolve(input),
+         %Resolution{connection_id: ^id} = resolution <- on_provider(input, resolution, id),
          {:ok, %Runtime{name: name} = session_runtime} when name == runtime.name <-
            runtime(resolution) do
       provider = Map.fetch!(providers, id)
@@ -491,6 +498,17 @@ defmodule Apiary.Dispatches.RunSettings do
       end
     else
       _none_or_other -> :none
+    end
+  end
+
+  # `resolution` where its provider is `id`, else its fallback whose provider is `id`
+  # (`Resolution.fallback/3`), else `:none`.
+  defp on_provider(_input, %Resolution{connection_id: id} = resolution, id), do: resolution
+
+  defp on_provider(input, %Resolution{fallbacks: fallbacks} = resolution, id) do
+    case Enum.find(fallbacks, &(&1.connection_id == id)) do
+      nil -> :none
+      fallback -> Resolution.fallback(input, resolution, fallback)
     end
   end
 
@@ -609,19 +627,13 @@ defmodule Apiary.Dispatches.RunSettings do
     end)
   end
 
-  # The providers the choices name, and their fallbacks', each once.
-  # The providers the run's choices name, their fallbacks', and those the choices of the
-  # later sessions name, each once. A later session takes no fallback.
+  # The providers that the run's choices and the choices of its later sessions name, as a
+  # provider or a fallback, each once.
   defp all_provider_ids(input, sessions) do
-    session_ids =
-      for {_workflow, session} <- sessions,
-          choice <- session.choices,
-          is_binary(choice.connection_id),
-          do: choice.connection_id
-
-    Enum.uniq(provider_ids(input) ++ session_ids)
+    Enum.uniq(provider_ids(input) ++ Enum.flat_map(Map.values(sessions), &provider_ids/1))
   end
 
+  # The providers the choices name, and their fallbacks', each once.
   defp provider_ids(input) do
     for choice <- input.choices,
         id <- [choice.connection_id | Enum.map(choice.fallbacks, & &1.connection_id)],
