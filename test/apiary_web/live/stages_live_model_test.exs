@@ -469,6 +469,39 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert length(values) == 3
     end
 
+    test "off: a saved LiteLLM override shows its key and tiers, and a save keeps it", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      litellm: litellm
+    } do
+      {:ok, _choice} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, {:workspace, @workflow}, %{
+          provider: litellm.public_id,
+          key: "litellm-main",
+          tiers: @free_tiers
+        })
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert {key(litellm, "litellm-main"), "#{litellm.name} · litellm-main", true} in key_options(
+               view
+             )
+
+      assert has_element?(
+               view,
+               ~s{input#stage-entry-0-model-tiers_light_model[value="claude-haiku-5-5"]}
+             )
+
+      change_model(view, %{"tiers" => %{"light" => %{"model" => "claude-haiku-5-6"}}})
+      save_model(view, %{})
+
+      assert %ModelChoice{tiers: %{"light" => %{"model" => "claude-haiku-5-6"}}} =
+               choice = override(scope)
+
+      assert choice.connection_id == litellm.id
+    end
+
     @tag with_features: Apiary.Features.all()
     test "on: Key offers LiteLLM, with a text field per tier, and a save writes them", %{
       conn: conn,

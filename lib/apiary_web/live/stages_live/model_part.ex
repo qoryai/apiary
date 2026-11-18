@@ -98,7 +98,9 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     for provider <- providers,
         applies?(provider, workspace_id),
         {:ok, description} <- [Connections.provider(provider)],
-        offered = Providers.offered?(description) and Providers.serve(description, runtime) == :ok,
+        offered <- [
+          Providers.offered?(description) and Providers.serve(description, runtime) == :ok
+        ],
         offered or MapSet.member?(stored, provider.id),
         do: %{
           provider: provider,
@@ -118,15 +120,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   offered providers, and the key of the workflow's override.
   """
   @spec keys(map, String.t()) :: [map]
-  def keys(model, workflow) do
-    stored = model.overrides[workflow]
-    id = stored && stored.connection_id
-
-    providers =
-      for %{offered: offered, provider: p} = e <- model.providers, offered or p.id == id, do: e
-
-    ModelTiers.keys(providers, stored)
-  end
+  def keys(model, workflow), do: ModelTiers.keys(model.providers, model.overrides[workflow])
 
   @doc "The state of the row `row` of `workflow`: its state in `rows`, else the saved one."
   @spec state(map, map, String.t(), String.t()) :: map
