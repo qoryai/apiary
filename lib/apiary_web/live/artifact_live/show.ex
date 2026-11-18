@@ -28,9 +28,12 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   use ApiaryWeb.Features, :workflow_model
   on_mount {ApiaryWeb.Access, :"work_item.read"}
 
-  alias Apiary.{Access, Artifacts}
+  alias Apiary.{Access, Artifacts, Processes}
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.Load
+  alias ApiaryWeb.WorkItemLive.VerifyTab
+
+  @videos ~w(video/mp4 video/webm)
 
   @impl true
   def render(assigns) do
@@ -71,7 +74,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       </.page_header>
 
       <div class="q-art-cols grid gap-8">
-        <div class="grid min-w-0 content-start gap-8">
+        <div class="q-art-main grid min-w-0 content-start gap-8">
           <%!-- A withdrawal has no file, so it has no view and no file list. --%>
           <p :if={@version.withdrawn} id="artifact-withdrawn" class="text-[13px]/5">
             {withdrew(@version.artifact, @version)}
@@ -104,25 +107,68 @@ defmodule ApiaryWeb.ArtifactLive.Show do
             />
           </section>
 
-          <section
-            :if={!@version.withdrawn}
-            id="artifact-files-part"
-            aria-labelledby="artifact-files-title"
-            class="grid gap-3"
-          >
-            <h2 id="artifact-files-title" class="q-part-h">
-              {gettext("Files")}
-              <span class="q-part-n">{Format.number(length(@version.files))}</span>
-            </h2>
-            <ArtifactComponents.files
-              id="artifact-files"
-              files={@version.files}
-              path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
-            />
-          </section>
+          <div :if={!@version.withdrawn} class="q-art-rest grid gap-8">
+            <section
+              :if={@scenario}
+              id="artifact-scenario"
+              aria-labelledby="artifact-scenario-title"
+              class="grid gap-3"
+            >
+              <h2 id="artifact-scenario-title" class="q-part-h">
+                {VerifyTab.scenario_title(@scenario)}
+              </h2>
+              <ul :if={@scenario.steps != []} class="grid gap-2 text-[13px]/5">
+                <li :for={{step, i} <- Enum.with_index(@scenario.steps, 1)} class="grid gap-0.5">
+                  <span>{VerifyTab.step_title(i, step)}</span>
+                  <span :if={step.expected} class="text-[12.5px]/5 text-muted">
+                    {gettext("Expected: %{result}", result: step.expected)}
+                  </span>
+                </li>
+              </ul>
+            </section>
+
+            <section
+              id="artifact-files-part"
+              aria-labelledby="artifact-files-title"
+              class="grid gap-3"
+            >
+              <h2 id="artifact-files-title" class="q-part-h">
+                {gettext("Files")}
+                <span class="q-part-n">{Format.number(length(@version.files))}</span>
+              </h2>
+              <ArtifactComponents.files
+                id="artifact-files"
+                files={@version.files}
+                path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
+              />
+            </section>
+          </div>
         </div>
 
         <aside class="grid content-start gap-8">
+          <section
+            :if={@scenario}
+            id="artifact-queue"
+            aria-labelledby="artifact-queue-title"
+            class="grid gap-3"
+          >
+            <h2 id="artifact-queue-title" class="q-part-h">
+              {gettext("Scenarios")}
+              <span class="q-part-n">
+                {gettext("%{number} of %{total}", number: @place, total: length(@queue))}
+              </span>
+            </h2>
+            <ol class="grid gap-1">
+              <.queue_item
+                :for={entry <- @queue}
+                entry={entry}
+                current={entry.version.id == @version.id}
+                scope={@current_scope}
+                number={@number}
+              />
+            </ol>
+          </section>
+
           <section id="artifact-details" aria-labelledby="artifact-details-title" class="grid gap-3">
             <h2 id="artifact-details-title" class="q-part-h">{gettext("Details")}</h2>
             <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-[13px]/5">
@@ -180,6 +226,76 @@ defmodule ApiaryWeb.ArtifactLive.Show do
         </aside>
       </div>
     </Layouts.app>
+    """
+  end
+
+  attr :entry, :map, required: true, doc: "a scenario of `VerifyTab.queue/4`"
+  attr :current, :boolean, required: true
+  attr :scope, :any, required: true
+  attr :number, :integer, required: true
+
+  # A scenario of the queue: its first picture or the film's first frame, its title, and
+  # "Demo video · 0:10" or "3 pictures". The `QueueMedia` hook fills the film's length from
+  # the thumbnail's metadata, as no length is stored.
+  defp queue_item(assigns) do
+    %{entry: entry, scope: scope, number: number} = assigns
+    pictures = if entry.kind == :pictures, do: VerifyTab.pictures(entry), else: []
+    film = Enum.find(entry.version.files, &(&1.content_type in @videos))
+    src = &ArtifactComponents.file_path(scope, number, entry.version.public_id, &1)
+
+    assigns =
+      assign(assigns,
+        path: ArtifactComponents.version_path(scope, number, entry.version.public_id),
+        film: film && src.(film),
+        picture: with([{file, _step, _i} | _more] <- pictures, do: src.(file)),
+        pictures: length(pictures)
+      )
+
+    ~H"""
+    <li id={"artifact-queue-item-#{@entry.key}"} phx-hook="QueueMedia">
+      <.link
+        navigate={@path}
+        aria-current={@current && "page"}
+        class={["flex gap-3 rounded-field p-2", @current && "bg-base-200"]}
+      >
+        <video
+          :if={@film}
+          src={@film <> "#t=0.1"}
+          muted
+          playsinline
+          preload="metadata"
+          tabindex="-1"
+          aria-hidden="true"
+          class="h-14 w-24 shrink-0 rounded-field border border-base-300 bg-black object-contain"
+        ></video>
+        <img
+          :if={@picture}
+          src={@picture}
+          alt=""
+          loading="lazy"
+          class="h-14 w-24 shrink-0 rounded-field border border-base-300 bg-base-200 object-contain"
+        />
+        <span
+          :if={!@film and !@picture}
+          class="h-14 w-24 shrink-0 rounded-field border border-base-300 bg-base-200"
+        ></span>
+        <span class="grid min-w-0 content-start gap-0.5">
+          <span class={["text-[13px]/5", @current && "font-medium"]}>
+            {VerifyTab.scenario_title(@entry)}
+          </span>
+          <span
+            :if={@entry.kind == :film}
+            data-length={gettext("Demo video · %{length}", length: "%{length}")}
+            class="text-[12.5px]/5 text-muted"
+          >
+            {gettext("Video")}
+          </span>
+          <span :if={@entry.kind == :pictures} class="text-[12.5px]/5 text-muted">
+            {ngettext("%{count} picture", "%{count} pictures", @pictures)}
+          </span>
+        </span>
+      </.link>
+    </li>
     """
   end
 
@@ -243,10 +359,56 @@ defmodule ApiaryWeb.ArtifactLive.Show do
              person_type?(scope, version.artifact.type),
          page_title: ArtifactComponents.title(version.artifact, version)
        )
-       |> load_history()}
+       |> load_history()
+       |> load_queue()}
     else
       _not_found -> raise ApiaryWeb.NotFound
     end
+  end
+
+  # The scenarios of the verification stage that the version's film or pictures belong
+  # to (`VerifyTab.queue/4`), as the Verify tab lists them for the version's take in, and
+  # `scenario`, the one whose version this page shows, with its `place` in the queue. A
+  # version in no scenario (a person's, an older one, a withdrawal, one of a cancelled run,
+  # another type) has neither, so the page shows no queue.
+  defp load_queue(socket) do
+    {queue, scenario} = read_queue(socket.assigns.work_item, socket.assigns.version)
+
+    assign(socket,
+      queue: queue,
+      scenario: scenario,
+      place: scenario && Enum.find_index(queue, &(&1.version.id == scenario.version.id)) + 1
+    )
+  end
+
+  defp read_queue(work_item, version) do
+    with true <- version.artifact.type in VerifyTab.media(),
+         false <- version.withdrawn,
+         %{take_in: take_in} <- version.run do
+      artifacts = work_item |> Artifacts.list() |> Enum.reject(&Artifacts.withdrawn?/1)
+
+      Enum.find_value(verify_stages(work_item, version), {[], nil}, fn stage_id ->
+        queue = VerifyTab.queue(work_item, artifacts, stage_id, take_in)
+
+        with %{} = scenario <- Enum.find(queue, &(&1.version.id == version.id)),
+             do: {queue, scenario}
+      end)
+    else
+      _no_scenario -> {[], nil}
+    end
+  end
+
+  # The ids of the stages of the work item's process with a `verification` output, the
+  # version's own stage first.
+  defp verify_stages(work_item, version) do
+    stages =
+      for %{"id" => id, "outputs" => outputs} <-
+            Processes.version_for(work_item).document["stages"] || [],
+          Enum.any?(outputs, &(&1["type"] == "verification")),
+          do: id
+
+    {own, others} = Enum.split_with(stages, &(&1 == version.stage_id))
+    own ++ others
   end
 
   defp load_history(socket),
@@ -280,7 +442,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
         {:noreply, socket}
 
       Access.authorize(scope, :"work_item.read", work_item) == :ok ->
-        {:noreply, load_history(socket)}
+        {:noreply, socket |> load_history() |> load_queue()}
 
       # The reader can no longer read the work item: the page stops listening, and shows
       # the history it had.

@@ -681,14 +681,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     """
   end
 
-  # A pictures scenario's pictures, `{file, step, number}`: for each step, the image whose
-  # name ends in `-step-<number>.<extension>`, else the image at the step's place; with no
-  # steps, each image in name order, with no step.
-  defp pictures(%{steps: [], version: version}) do
+  @doc false
+  # pictures/1 is a pictures scenario's pictures, `{file, step, number}`: for each step, the
+  # image whose name ends in `-step-<number>.<extension>`, else the image at the step's
+  # place; with no steps, each image in name order, with no step.
+  @spec pictures(map) :: [{map, map | nil, pos_integer}]
+  def pictures(%{steps: [], version: version}) do
     for {file, i} <- Enum.with_index(images(version), 1), do: {file, nil, i}
   end
 
-  defp pictures(%{steps: steps, version: version}) do
+  def pictures(%{steps: steps, version: version}) do
     images = images(version)
 
     for {step, i} <- Enum.with_index(steps, 1),
@@ -700,14 +702,21 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   defp images(version), do: Enum.filter(version.files, &(&1.content_type in @images))
 
-  defp scenario_title(%{number: number, title: title})
-       when is_integer(number) and is_binary(title),
-       do: gettext("Scenario %{number}: %{title}", number: number, title: title)
+  @doc false
+  # scenario_title/1 is a scenario's heading: "Scenario 2: Voucher line on a phone", else
+  # its title as written, else its artifact's name.
+  @spec scenario_title(map) :: String.t()
+  def scenario_title(%{number: number, title: title})
+      when is_integer(number) and is_binary(title),
+      do: gettext("Scenario %{number}: %{title}", number: number, title: title)
 
-  defp scenario_title(%{title: title}) when is_binary(title), do: title
-  defp scenario_title(%{artifact: artifact}), do: artifact.name
+  def scenario_title(%{title: title}) when is_binary(title), do: title
+  def scenario_title(%{artifact: artifact}), do: artifact.name
 
-  defp step_title(i, %{title: title}),
+  @doc false
+  # step_title/2 is step `i` of a scenario in words: "Step 2: Reload the page".
+  @spec step_title(pos_integer, %{title: String.t()}) :: String.t()
+  def step_title(i, %{title: title}),
     do: gettext("Step %{number}: %{title}", number: i, title: title)
 
   defp file_src(%{scope: scope, number: number, scenario: %{version: version}}, file),
