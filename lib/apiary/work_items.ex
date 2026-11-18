@@ -1025,12 +1025,28 @@ defmodule Apiary.WorkItems do
       unless count == length(ids),
         do: raise(ArgumentError, "close_locked/3 closes work items the caller holds")
 
-      with :ok <- record_closes(work_items, actor_kind, actor_id, data, now) do
+      with :ok <- record_closes(work_items, actor_kind, actor_id, data, now),
+           :ok <- delete_leftovers_later(work_items) do
         Dispatches.cancel_for_close(ids, now)
       end
     else
       {:error, :not_live}
     end
+  end
+
+  @doc false
+  # delete_leftovers_later/1 enqueues, in the caller's transaction, the deletion of the
+  # overrides that the workspaces of `work_items` no longer keep once they are closed or
+  # undone (`Apiary.Processes.LeftoversJob`): it runs once the transaction commits.
+  @spec delete_leftovers_later([WorkItem.t()]) :: :ok
+  def delete_leftovers_later(work_items) do
+    for {organisation_id, workspace_id} <-
+          Enum.uniq(Enum.map(work_items, &{&1.organisation_id, &1.workspace_id})) do
+      {:ok, _job} =
+        Oban.insert(Apiary.Processes.LeftoversJob.for_workspace(organisation_id, workspace_id))
+    end
+
+    :ok
   end
 
   @doc false

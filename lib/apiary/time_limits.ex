@@ -175,6 +175,39 @@ defmodule Apiary.TimeLimits do
     end)
   end
 
+  @doc false
+  # delete_unkept/3 deletes the limits of `workspace`, at the workspace, whose workflow is
+  # not in `kept`, the workflows the workspace keeps
+  # (`Apiary.Processes.kept_workflows/1`), each with a `time_limit_removed` entry as
+  # `scope`, with `details.cause` `workflow_not_in_use`. It asks no action: the change that
+  # leaves the workflow unused is the cause. The caller holds the workspace's row
+  # `FOR NO KEY UPDATE`, in its transaction.
+  @spec delete_unkept(Scope.t(), Workspace.t(), MapSet.t(String.t())) :: :ok | {:error, term}
+  def delete_unkept(%Scope{} = scope, %Workspace{} = workspace, %MapSet{} = kept) do
+    at = %{workspace: workspace, target: nil}
+
+    from(l in TimeLimit,
+      where:
+        l.workspace_id == ^workspace.id and is_nil(l.target_id) and
+          l.workflow not in ^MapSet.to_list(kept),
+      order_by: l.id,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.all()
+    |> Enum.reduce_while(:ok, fn limit, :ok ->
+      with {:ok, deleted} <- Repo.delete(limit),
+           {:ok, _entry} <-
+             record(scope, at, deleted, "time_limit_removed", %{
+               before: %{minutes: limit.minutes},
+               cause: "workflow_not_in_use"
+             }) do
+        {:cont, :ok}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
   # A write at one place, in one transaction under the locks of the moduledoc: `fun` of
   # the scope, read again, and the place, `at`, once the scope may write there.
   defp write(scope, holder, fun) do
@@ -253,9 +286,12 @@ defmodule Apiary.TimeLimits do
   end
 
   defp record(scope, at, limit, change, data) do
+    {cause, data} = Map.pop(data, :cause)
+
     details =
       %{change: change, workflow: limit.workflow, name: place_name(at)}
       |> then(&if(at.target, do: Map.put(&1, :target_id, at.target.id), else: &1))
+      |> then(&if(cause, do: Map.put(&1, :cause, cause), else: &1))
 
     Audit.record(Repo, scope, :"time_limit.edit", limit, Map.put(data, :details, details))
   end

@@ -49,6 +49,21 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A workflow's overrides
+
+  A workflow's overrides are its model choice in the workspace (level 4 of
+  `Apiary.ModelChoices`) and its time limit in the workspace (`Apiary.TimeLimits`). They
+  are kept while the workspace's current version has the workflow, or the version of an
+  open work item does (`kept_workflows/1`): a work item on an older version can still run
+  it. When neither has it any more, they are deleted (`delete_leftovers/2`): in the
+  transaction of a save, a make current, a drop of a trial and an assign, under the
+  workspace's row these hold; and, for a work item that is closed or undone, by
+  `Apiary.Processes.LeftoversJob`, which the close or the undo enqueues in its
+  transaction and which runs once it commits, under the workspace's row, since the close
+  holds the work item's row, which comes after the workspace's in the lock order
+  (docs/access.md). Each delete leaves the entry of `Apiary.ModelChoices` or
+  `Apiary.TimeLimits` for a removal, with `details.cause` `workflow_not_in_use`.
+
   ## Tracks
 
   The document's `tracks` are the tracks a gate can offer, and a gate's `tracks` lists the
@@ -573,6 +588,79 @@ defmodule Apiary.Processes do
     |> Enum.uniq()
   end
 
+  @doc false
+  # kept_workflows/1 is the workflows whose overrides the workspace `workspace` (a
+  # workspace or its id) keeps (the moduledoc): those of its current version, and those
+  # of the version of each of its open work items (`:exploring`) that keeps one. The one
+  # answer to whether an override is kept; read without a lock.
+  @spec kept_workflows(%Workspace{} | Ecto.UUID.t()) :: MapSet.t(String.t())
+  def kept_workflows(%Workspace{} = workspace) do
+    open =
+      from w in WorkItem,
+        where:
+          w.workspace_id == ^workspace.id and w.state == :exploring and
+            not is_nil(w.process_version_id),
+        select: w.process_version_id
+
+    held =
+      Repo.all(
+        from v in Version,
+          where: v.workspace_id == ^workspace.id and v.id in subquery(open),
+          select: v.document
+      )
+
+    for document <- [current(workspace).document | held],
+        %{} = stage <- List.wrap(document["stages"]),
+        workflow <- workflows(stage),
+        is_binary(workflow),
+        into: MapSet.new(),
+        do: workflow
+  end
+
+  def kept_workflows(id) when is_binary(id), do: kept_workflows(Repo.get!(Workspace, id))
+
+  @doc false
+  # delete_leftovers/2 deletes the overrides of `workspace` that are no longer kept
+  # (`kept_workflows/1`): its model choices of level 4 and its time limits, each with its
+  # audit entry as `scope`. The caller holds the workspace's row `FOR NO KEY UPDATE`, in
+  # its transaction. `:ok`, or `{:error, reason}` of a delete.
+  @spec delete_leftovers(Scope.t(), %Workspace{}) :: :ok | {:error, term}
+  def delete_leftovers(%Scope{} = scope, %Workspace{} = workspace) do
+    kept = kept_workflows(workspace)
+
+    with :ok <- Apiary.ModelChoices.delete_unkept(scope, workspace, kept),
+         do: Apiary.TimeLimits.delete_unkept(scope, workspace, kept)
+  end
+
+  @doc false
+  # delete_leftovers_now/1 deletes the scope's workspace's overrides that are no longer
+  # kept, in a transaction of its own under the lock order: the organisation's rows, then
+  # the workspace's row `FOR NO KEY UPDATE`. `Apiary.Processes.LeftoversJob` runs it after
+  # a work item closes. `:ok`, `{:error, :not_found}` for a workspace gone, or a delete's
+  # error.
+  @spec delete_leftovers_now(Scope.t()) :: :ok | {:error, term}
+  def delete_leftovers_now(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    Repo.transact(fn ->
+      :ok = Access.lock_places(scope)
+
+      case Repo.one(
+             from w in Workspace,
+               where: w.id == ^workspace.id and w.organisation_id == ^scope.organisation.id,
+               lock: "FOR NO KEY UPDATE"
+           ) do
+        %Workspace{} = held ->
+          with :ok <- delete_leftovers(scope, held), do: {:ok, :ok}
+
+        nil ->
+          {:error, :not_found}
+      end
+    end)
+    |> case do
+      {:ok, :ok} -> :ok
+      error -> error
+    end
+  end
+
   ## Reading the versions
 
   @doc """
@@ -750,7 +838,8 @@ defmodule Apiary.Processes do
            {:ok, _entry} <-
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -806,7 +895,8 @@ defmodule Apiary.Processes do
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number,
                harness_commit: template["commit"]
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -988,7 +1078,8 @@ defmodule Apiary.Processes do
            {:ok, _entry} <-
              record(scope, workspace, version, "make_current", %{
                replaced: replaced && replaced.number
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -1033,7 +1124,8 @@ defmodule Apiary.Processes do
                set: [process_version_id: current.id, updated_at: DateTime.utc_now()]
              ),
            {:ok, version} <- trial |> Ecto.Changeset.change(status: :dropped) |> Repo.update(),
-           {:ok, _entry} <- record(scope, workspace, version, "drop_trial", %{moved: moved}) do
+           {:ok, _entry} <- record(scope, workspace, version, "drop_trial", %{moved: moved}),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -1113,6 +1205,7 @@ defmodule Apiary.Processes do
                        number: version.number
                      }
                    }),
+                 :ok <- delete_leftovers(scope, workspace),
                  do: {:ok, assigned}
         end
       else
