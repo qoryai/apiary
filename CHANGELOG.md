@@ -28,6 +28,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not refused.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- On **Workspace settings › Workflows**, each workflow's settings fold has a **Key** after
+  the time limit. "Use workspace default", the default, shows the line "Uses the
+  workspace default: <Provider> · <key>.", or the organisation's default, or "No default
+  is set. Set one in Workspace settings › Model." A key of a model provider shows
+  **Model and effort per tier**, as on Workspace settings › Model, and **Save model
+  choice**, enabled once every tier has a model and something changed. The save writes
+  the workflow's model choice at once, with no fallbacks, and makes no version of the
+  process; "Use workspace default" saved removes it. A refusal shows under its field. A
+  workflow the saved process does not have yet has **Key** disabled, with "Save the stage
+  first to set this workflow's model choice.". Whoever may not change model choices sees
+  the fields disabled and no button. This needs the features `factory` and `secrets`.
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
