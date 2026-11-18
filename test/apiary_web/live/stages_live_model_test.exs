@@ -426,6 +426,34 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert override(scope, "write-a-brief") == nil
   end
 
+  test "a draft row of a workflow whose override is left over shows Use workspace default",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    default!(scope, anthropic)
+
+    # A leftover as one made before overrides were deleted: the workflow is in no version.
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, {:workspace, "write-a-brief"}, %{
+        provider: openrouter.public_id,
+        key: "openrouter-main",
+        tiers: @override_tiers
+      })
+
+    {:ok, view, _html} = live(conn, path)
+
+    view
+    |> form("#stage-form")
+    |> render_change(%{"stage" => %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}}})
+
+    assert {"", "Use workspace default", true} in key_options(view)
+    refute has_element?(view, @tiers_id)
+
+    assert has_element?(
+             view,
+             @line,
+             "Save the stage first to set this workflow's model choice."
+           )
+  end
+
   test "an admin made a member while the page is open saves nothing, and sees the fields disabled",
        %{path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)

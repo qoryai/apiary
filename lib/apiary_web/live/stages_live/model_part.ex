@@ -17,7 +17,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  alias Apiary.{Connections, ModelChoices, Organisations}
+  alias Apiary.{Connections, ModelChoices, Organisations, Processes}
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Providers, Runtimes}
@@ -38,9 +38,14 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
          {:ok, providers} <- Connections.list_providers(scope) do
       at_workspace = for %ModelChoice{workspace_id: ^workspace_id} = c <- choices, do: c
 
+      # Only the overrides the workspace keeps (`Apiary.Processes.kept_workflows/1`): a
+      # workflow that comes back after its override was left over starts from the default.
+      kept = Processes.kept_workflows(scope.workspace)
+
       overrides =
         for %ModelChoice{target_id: nil, workflow: workflow} = choice <- at_workspace,
             is_binary(workflow),
+            MapSet.member?(kept, workflow),
             into: %{},
             do: {workflow, choice}
 
