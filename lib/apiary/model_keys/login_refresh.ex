@@ -23,13 +23,15 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   request, nor an error of the HTTP client reaches a log, a return value or an exception
   message: the task's crash is caught inside it.
 
-  The answer is classified as `codex` does (`login/src/auth/manager.rs`): the code comes
-  from `error` (a string), `error.code` or the top-level `code`, in lower case. A code
+  The answer is classified as `codex` does (`login/src/auth/manager.rs`): the code is the
+  first text that is not blank of `error` (a string), `error.code` and the top-level
+  `code`, in lower case. An answer of 200 whose `access_token` is not printable ASCII
+  (it goes into a header) is `bad_response`. A code
   that is one of the three named ones is permanent whatever the status, then a 400
   `invalid_grant`, then any 401 (`refresh_unauthorized`); every other status is transient.
   """
 
-  alias Apiary.Adapters.CallTrust
+  alias Apiary.Adapters.{CallTrust, Calls}
   alias Apiary.Kinds.Endpoint
 
   @supervisor __MODULE__.Supervisor
@@ -119,7 +121,7 @@ defmodule Apiary.ModelKeys.LoginRefresh do
         raw: true,
         receive_timeout: @receive_timeout,
         connect_options: [timeout: @connect_timeout] ++ transport_opts(),
-        into: collect(@max_answer)
+        into: Calls.collect(@max_answer)
       ]
       |> Keyword.merge(Application.get_env(:apiary, __MODULE__, [])[:req_options] || [])
 
@@ -144,27 +146,6 @@ defmodule Apiary.ModelKeys.LoginRefresh do
     end
   end
 
-  # The answer's body, kept only up to `max_bytes`: a declared length over it, or a body
-  # that grows past it, stops the read.
-  defp collect(max_bytes) do
-    fn {:data, data}, {request, response} ->
-      body = if is_binary(response.body), do: response.body, else: ""
-
-      declared =
-        with [value | _] <- Req.Response.get_header(response, "content-length"),
-             {length, ""} <- Integer.parse(value),
-             do: length,
-             else: (_ -> nil)
-
-      if (is_integer(declared) and declared > max_bytes) or
-           byte_size(body) + byte_size(data) > max_bytes do
-        {:halt, {request, Req.Response.put_private(response, :too_large, true)}}
-      else
-        {:cont, {request, %{response | body: body <> data}}}
-      end
-    end
-  end
-
   defp classify(200, body), do: tokens(body)
   defp classify(status, _body) when status in 201..299, do: {:transient, "bad_response"}
 
@@ -183,35 +164,51 @@ defmodule Apiary.ModelKeys.LoginRefresh do
     case decode(body) do
       %{"access_token" => access_token} = answer
       when is_binary(access_token) and access_token != "" ->
-        case answer do
-          %{"refresh_token" => refresh_token}
-          when is_binary(refresh_token) and refresh_token != "" ->
-            {:ok, %{access_token: access_token, refresh_token: refresh_token}}
-
-          _kept ->
-            {:ok, %{access_token: access_token, refresh_token: nil}}
-        end
+        if printable?(access_token),
+          do: with_refresh_token(answer, access_token),
+          else: {:transient, "bad_response"}
 
       _other ->
         {:transient, "bad_response"}
     end
   end
 
-  # The provider's error code, in lower case, from `error` as a string, `error.code` or
-  # the top-level `code`; nil for any other answer. It is compared and never stored.
+  # The access token goes into a request header: printable ASCII with no space, as the
+  # account id is checked (`Apiary.ModelKeys.Login.parse/1`).
+  defp printable?(access_token), do: String.match?(access_token, ~r/\A[!-~]+\z/)
+
+  defp with_refresh_token(answer, access_token) do
+    case answer do
+      %{"refresh_token" => refresh_token}
+      when is_binary(refresh_token) and refresh_token != "" ->
+        {:ok, %{access_token: access_token, refresh_token: refresh_token}}
+
+      _kept ->
+        {:ok, %{access_token: access_token, refresh_token: nil}}
+    end
+  end
+
+  # The provider's error code, in lower case, as `codex` reads it: the first non-blank text
+  # of `error` (a string), `error.code` and the top-level `code`; nil when none is. A blank
+  # `error` falls through to the next. It is compared and never stored.
   defp error_code(body) do
     answer = decode(body)
 
-    code =
+    candidates =
       case answer do
-        %{"error" => error} when is_binary(error) -> error
-        %{"error" => %{"code" => code}} when is_binary(code) -> code
-        %{"code" => code} when is_binary(code) -> code
-        _other -> nil
+        %{"error" => %{"code" => code}} -> [code, answer["code"]]
+        %{"error" => error} -> [error, answer["code"]]
+        %{} -> [answer["code"]]
+        _other -> []
       end
 
-    code && String.downcase(code)
+    Enum.find_value(candidates, &code_text/1)
   end
+
+  defp code_text(text) when is_binary(text),
+    do: if(String.trim(text) == "", do: nil, else: String.downcase(text))
+
+  defp code_text(_other), do: nil
 
   defp decode(body) when is_binary(body) do
     case Jason.decode(body) do

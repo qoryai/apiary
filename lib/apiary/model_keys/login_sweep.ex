@@ -12,6 +12,8 @@ defmodule Apiary.ModelKeys.LoginSweep do
   # good is `sign_in_needed`.
   use Apiary.Job, scope: :instance, queue: :default, max_attempts: 3
 
+  require Logger
+
   alias Apiary.ModelKeys.Login
 
   @batch 50
@@ -19,9 +21,22 @@ defmodule Apiary.ModelKeys.LoginSweep do
   @impl Apiary.Job
   def perform(_scope, %Oban.Job{}) do
     for {provider, secret_value_id} <- Login.sweep_due(@batch) do
-      _result = Login.access_token(provider, secret_value_id, trigger: :schedule)
+      refresh(provider, secret_value_id)
     end
 
     :ok
+  end
+
+  # One sign-in at a time: an exception of one does not end the pass for the others. It is
+  # logged by its kind alone, as a refresh's arguments hold tokens.
+  defp refresh(provider, secret_value_id) do
+    _result = Login.access_token(provider, secret_value_id, trigger: :schedule)
+    :ok
+  rescue
+    exception ->
+      Logger.error("model key sign-in sweep: a refresh failed: #{inspect(exception.__struct__)}")
+  catch
+    kind, _reason ->
+      Logger.error("model key sign-in sweep: a refresh failed: #{inspect(kind)}")
   end
 end

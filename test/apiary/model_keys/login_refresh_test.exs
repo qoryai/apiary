@@ -150,20 +150,38 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert %Login{lease_id: nil, failures: 0, refreshed_at: nil} = row(provider)
     end
 
-    test "is not due 5 minutes and one second before the expiry, and is at 5 minutes",
-         %{scope: scope} do
+    # The clock is fixed with `now:`, so the boundary does not move with the test's speed.
+    test "a run's request is due 330 seconds before the expiry, not 331", %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 3600)
-      stub!(%{})
+      expires_at = row(provider).access_expires_at
+      stub!(new_tokens("due"))
 
-      set_login!(provider, access_expires_at: 301)
-      assert {:ok, _access, _at} = token(provider)
+      assert {:ok, access, _at} = token(provider, now: DateTime.add(expires_at, -331))
+      assert access == tokens.access_token
       assert requests() == []
 
-      set_login!(provider, access_expires_at: 299)
-      stub!(new_tokens("due"))
-      assert {:ok, access, _at} = token(provider)
+      assert {:ok, access, _at} = token(provider, now: DateTime.add(expires_at, -329))
       assert access != tokens.access_token
       assert [{_conn, %{"refresh_reason" => "proactive_expiry"}}] = requests()
+    end
+
+    test "the schedule trigger is due 300 seconds before the expiry, not 301", %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 3600)
+      expires_at = row(provider).access_expires_at
+      stub!(new_tokens("scheduled"))
+
+      assert {:ok, access, _at} =
+               token(provider, trigger: :schedule, now: DateTime.add(expires_at, -301))
+
+      assert access == tokens.access_token
+      assert requests() == []
+
+      assert {:ok, access, _at} =
+               token(provider, trigger: :schedule, now: DateTime.add(expires_at, -299))
+
+      assert access != tokens.access_token
+      assert [{_conn, %{"refresh_reason" => "proactive_expiry"}}] = requests()
+      assert [%Entry{details: %{"trigger" => "schedule"}}] = trail(provider)
     end
 
     test "a login of 7 days with an expiry in the year 9999 is not refreshed", %{scope: scope} do
@@ -308,7 +326,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       next = new_tokens("b")
       stub!(next)
-      set_login!(provider, access_expires_at: 10)
+      set_login!(provider, access_expires_at: 10, refreshed_at: -120)
       assert {:ok, second, _at} = token(provider)
       assert stored(provider).refresh_token == next["refresh_token"]
       assert second == next["access_token"]
@@ -491,8 +509,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert %Login{generation: 2, lease_id: nil, failures: 0} = row(provider)
 
-      assert [%Entry{details: %{"outcome" => "failed", "cause" => "superseded"}}] =
-               trail(provider)
+      assert trail(provider) == []
 
       assert length(requests()) == 1
     end
@@ -520,8 +537,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert Repo.get(Value, spare_id) == nil
       assert Repo.get(Login, spare_id) == nil
 
-      assert [%Entry{details: %{"outcome" => "failed", "cause" => "superseded"}}] =
-               trail(provider)
+      assert trail(provider) == []
     end
 
     test "a key renamed during the call keeps the rotated token under the new name",
@@ -577,7 +593,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert {:ok, _access, _at} = token(provider)
       assert %Login{lease_id: ^other} = row(provider)
       assert stored(provider).refresh_token != new_tokens("late")["refresh_token"]
-      assert [%Entry{details: %{"cause" => "superseded"}}] = trail(provider)
+      assert trail(provider) == []
     end
   end
 
@@ -640,6 +656,236 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert %Login{state: "signed_in", sign_in_cause: nil, generation: 2} = row(provider)
       assert {:ok, access, _at} = token(provider)
       assert access == pasted.access_token
+    end
+  end
+
+  # Waits until `fun` is true, 5 seconds at most: for what a task that no caller owns writes.
+  defp eventually(fun, left \\ 250) do
+    cond do
+      fun.() -> :ok
+      left == 0 -> flunk("the condition did not become true in 5 seconds")
+      true -> Process.sleep(20) && eventually(fun, left - 1)
+    end
+  end
+
+  describe "a refresh that its caller does not wait for" do
+    test "a caller killed once the answer comes loses nothing: the token is stored, the next caller reads it",
+         %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 60)
+      fresh = new_tokens("kept")
+      test = self()
+
+      stub!(fn conn, _body ->
+        send(test, {:in_call, self()})
+
+        receive do
+          :go -> :ok
+        after
+          5_000 -> :ok
+        end
+
+        Req.Test.json(conn, fresh)
+      end)
+
+      log =
+        capture_log(fn ->
+          {:ok, caller} = Task.start(fn -> token(provider) end)
+          assert_receive {:in_call, call}, 5_000
+          monitor = Process.monitor(caller)
+          Process.exit(caller, :kill)
+          assert_receive {:DOWN, ^monitor, :process, ^caller, :killed}
+          send(call, :go)
+
+          eventually(fn -> stored(provider).refresh_token == fresh["refresh_token"] end)
+        end)
+
+      assert stored(provider) == %{
+               access_token: fresh["access_token"],
+               refresh_token: fresh["refresh_token"]
+             }
+
+      assert %Login{lease_id: nil, failures: 0, refreshed_at: %DateTime{}} = row(provider)
+      assert [%Entry{details: %{"outcome" => "refreshed"}}] = eventually_trail(provider)
+
+      # The next caller gets the new token and makes no second call.
+      assert {:ok, access, _at} = token(provider)
+      assert access == fresh["access_token"]
+      assert length(requests()) == 1
+
+      for secret <- [fresh["access_token"], fresh["refresh_token"]], do: refute(log =~ secret)
+    end
+
+    test "a caller out of time gets the old token while it is valid, and the call still stores its result",
+         %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 200)
+      fresh = new_tokens("late")
+
+      stub!(fn conn, _body ->
+        Process.sleep(300)
+        Req.Test.json(conn, fresh)
+      end)
+
+      assert {:ok, access, _at} = token(provider, wait: 50)
+      assert access == tokens.access_token
+
+      eventually(fn -> stored(provider).refresh_token == fresh["refresh_token"] end)
+      assert {:ok, access, _at} = token(provider)
+      assert access == fresh["access_token"]
+      assert length(requests()) == 1
+    end
+
+    test "a caller out of time with an expired token gets :unavailable", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: -60)
+      fresh = new_tokens("later")
+
+      stub!(fn conn, _body ->
+        Process.sleep(300)
+        Req.Test.json(conn, fresh)
+      end)
+
+      assert token(provider, wait: 50) == {:error, :unavailable}
+      eventually(fn -> stored(provider).refresh_token == fresh["refresh_token"] end)
+    end
+  end
+
+  # The newest entries once the unowned task has written them.
+  defp eventually_trail(provider) do
+    eventually(fn -> trail(provider) != [] end)
+    trail(provider)
+  end
+
+  describe "a refresh right after a refresh" do
+    test "that answered a token already past its exp waits 60 seconds", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: -60)
+      past = new_tokens("past", expires_in: -30)
+      stub!(past)
+
+      assert {:ok, access, _at} = token(provider)
+      assert access == past["access_token"]
+      assert length(requests()) == 1
+
+      refreshed_at = row(provider).refreshed_at
+
+      # 59 seconds on, the call is held: the token has expired, so there is none to give.
+      assert token(provider, now: DateTime.add(refreshed_at, 59)) == {:error, :unavailable}
+      assert requests() == []
+
+      assert {:ok, _access, _at} = token(provider, now: DateTime.add(refreshed_at, 61))
+      assert length(requests()) == 1
+    end
+
+    test "that answered a token within the lead gives that token inside the gap", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: -60)
+      short = new_tokens("short", expires_in: 200)
+      stub!(short)
+
+      assert {:ok, access, _at} = token(provider)
+      refreshed_at = row(provider).refreshed_at
+      assert requests() |> length() == 1
+
+      assert {:ok, ^access, _at} = token(provider, now: DateTime.add(refreshed_at, 59))
+      assert requests() == []
+      assert {:ok, _access, _at} = token(provider, now: DateTime.add(refreshed_at, 61))
+      assert length(requests()) == 1
+    end
+
+    test "a login that was never refreshed is not held", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: -60)
+      stub!(new_tokens("first"))
+      assert {:ok, _access, _at} = token(provider)
+      assert length(requests()) == 1
+    end
+  end
+
+  describe "a rotated refresh token that cannot be stored" do
+    # A document past a value's size: the key refuses it.
+    defp oversized(tag), do: %{new_tokens(tag) | "access_token" => String.duplicate("a", 17_000)}
+
+    test "makes the login need a sign-in at once, and no call uses the spent token",
+         %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 60)
+      big = oversized("big")
+      stub!(big)
+
+      log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
+      assert_received {:result, {:error, :sign_in_needed}}
+
+      assert %Login{state: "sign_in_needed", sign_in_cause: "refresh_token_reused", lease_id: nil} =
+               row(provider)
+
+      assert stored(provider) == %{
+               access_token: tokens.access_token,
+               refresh_token: tokens.refresh_token
+             }
+
+      assert length(requests()) == 1
+
+      assert [
+               %Entry{
+                 details: %{"outcome" => "sign_in_needed", "cause" => "refresh_token_reused"}
+               }
+             ] =
+               trail(provider)
+
+      assert token(provider) == {:error, :sign_in_needed}
+      assert token(provider, trigger: :schedule) == {:error, :sign_in_needed}
+      assert requests() == []
+
+      for secret <- [big["refresh_token"], tokens.refresh_token], do: refute(log =~ secret)
+    end
+
+    test "is only a failure that may pass when the provider kept the refresh token",
+         %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 200)
+      stub!(%{"access_token" => String.duplicate("a", 17_000)})
+
+      assert {:ok, access, _at} = token(provider)
+      assert access == tokens.access_token
+
+      assert %Login{state: "signed_in", failures: 1, lease_id: nil} = login = row(provider)
+      assert DateTime.diff(login.retry_at, DateTime.utc_now()) in 25..30
+      assert trail(provider) == []
+    end
+  end
+
+  describe "the answer of the provider" do
+    for {name, status, body, outcome} <- [
+          {"an empty error with a named code", 400,
+           %{"error" => "", "code" => "refresh_token_expired"},
+           {:permanent, "refresh_token_expired"}},
+          {"a blank error with an error.code", 400,
+           %{"error" => "  ", "code" => "x", "details" => %{}}, {:transient, "http_400"}},
+          {"an error object with a named code", 400,
+           %{"error" => %{"code" => "refresh_token_invalidated"}},
+           {:permanent, "refresh_token_invalidated"}},
+          {"a named code at a 500", 500, %{"code" => "refresh_token_reused"},
+           {:permanent, "refresh_token_reused"}},
+          {"a named code at a 200 is no refresh", 200, %{"code" => "refresh_token_reused"},
+           {:transient, "bad_response"}},
+          {"an access token with a space", 200, %{"access_token" => "has space"},
+           {:transient, "bad_response"}},
+          {"an access token that is not ASCII", 200, %{"access_token" => "tökén"},
+           {:transient, "bad_response"}},
+          {"an access token with a line feed", 200, %{"access_token" => "abc\n"},
+           {:transient, "bad_response"}}
+        ] do
+      test "#{name}", %{scope: scope} do
+        {provider, _tokens} = subscription!(scope, expires_in: 60)
+        stub!({unquote(status), unquote(Macro.escape(body))})
+        token(provider)
+
+        assert %Login{state: state, sign_in_cause: cause, last_failure: failed_at} = row(provider)
+
+        case unquote(Macro.escape(outcome)) do
+          {:permanent, code} ->
+            assert {state, cause} == {"sign_in_needed", code}
+
+          {:transient, code} ->
+            assert state == "signed_in"
+            assert failed_at != nil
+            assert [%Entry{details: %{"cause" => ^code}}] = trail(provider)
+        end
+      end
     end
   end
 
@@ -840,7 +1086,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       set_login!(provider, retry_at: -1)
       stub!(new_tokens("second"))
       assert {:ok, _access, _at} = token(provider)
-      set_login!(provider, access_expires_at: 10)
+      set_login!(provider, access_expires_at: 10, refreshed_at: -120)
       stub!({401, %{"error" => "refresh_token_reused"}})
       assert token(provider) == {:error, :sign_in_needed}
 
@@ -865,7 +1111,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert is_binary(time)
 
       stub!({401, %{"error" => "refresh_token_expired"}})
-      set_login!(provider, access_expires_at: 10)
+      set_login!(provider, access_expires_at: 10, refreshed_at: -120)
       assert token(provider) == {:error, :sign_in_needed}
 
       assert {:sign_in_needed, rejected, help} =
