@@ -1,9 +1,9 @@
 defmodule Apiary.ModelKeys.DeviceSignIn do
   @moduledoc """
-  One device sign-in of a model key, for a form (`ApiaryWeb.ModelKeyDevice`): Qory Apiary
-  asks the provider for a code, the person enters the code on the provider's page, and
-  Qory Apiary polls until the person approves, exchanges the grant for the tokens and
-  keeps them as a `Apiary.ModelKeys.Login.parsed/0`. The calls are
+  One device sign-in of a model key, for a form (the LiveView helper
+  ApiaryWeb.ModelKeyDevice): Qory Apiary requests a code from the
+  provider, the person enters the code on the provider's page, and Qory Apiary polls until
+  the person approves, exchanges the grant for the tokens and keeps them as a `t:Apiary.ModelKeys.Login.parsed/0`. The calls are
   `Apiary.ModelKeys.LoginDevice`; their addresses and the client id come from
   `oauth_device` and `oauth_refresh` of the provider's catalogue entry alone.
 

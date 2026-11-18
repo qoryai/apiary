@@ -1377,7 +1377,7 @@ defmodule Apiary.Connections do
       index, as `Apiary.Secrets.create_provider_keys/2` takes them, each `value` without
       the whitespace at its ends (`String.trim/1`); for a provider whose keys are logins
       (`Apiary.ModelKeys.Login`) the `value` is the sign-in of a device sign-in
-      (`Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid";
+      (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid";
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default; any other chain is refused with
       `:forbidden`.
@@ -1842,7 +1842,7 @@ defmodule Apiary.Connections do
   without the whitespace at its ends (`String.trim/1`), and `settings` the key's
   settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
   nil for none. For a provider whose keys are logins the `value` is the sign-in of a
-  device sign-in (`Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
+  device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
   "is invalid". The key and its settings are written in one transaction.
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
   changeset of the settings, which leaves no key added.
@@ -1866,9 +1866,9 @@ defmodule Apiary.Connections do
   set_provider_key/5 replaces the value of a model provider's key with the value id
   `value_id` (`provider.write`) by `value` without the whitespace at its ends
   (`String.trim/1`; for a provider whose keys are logins, the sign-in of a device sign-in,
-  `Apiary.ModelKeys.Login.parsed/0`, and any text is refused with "is invalid"), and, with `settings`, its settings, in one transaction, which also
-  deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
-  is out of cooldown. The details of its `provider_keys_changed` entry have
+  `t:Apiary.ModelKeys.Login.parsed/0`, and any text is refused with "is invalid"), and,
+  with `settings`, its settings, in one transaction, which also deletes the key's states
+  (`Apiary.ModelKeys.clear_states/2`): the new value is out of cooldown. The details of its `provider_keys_changed` entry have
   `value_set: true`. `{:ok, provider}`, or `{:error, refusal}` as
   `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
   value and the states as they were.
@@ -1965,7 +1965,7 @@ defmodule Apiary.Connections do
 
   # The value of a key of `provider` as it is stored. For a provider whose keys are logins
   # (`Apiary.ModelKeys.Login`), `attrs["value"]` is the sign-in a device sign-in made
-  # (`Apiary.ModelKeys.Login.parsed/0`), and the document of it replaces it:
+  # (`t:Apiary.ModelKeys.Login.parsed/0`), and the document of it replaces it:
   # `{:ok, attrs, parsed}`. A text is no sign-in: `{:error, changeset}` whose error is on
   # `value` and has none of the text. A blank value is left for the checks of the value.
   # The attrs of any other provider are returned with `nil`.

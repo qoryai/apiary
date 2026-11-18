@@ -82,7 +82,7 @@ defmodule ApiaryWeb.ModelKeyDevice do
 
   @doc """
   The sign-in a form saves: `{:ok, login}` once the person has signed in
-  (`Apiary.ModelKeys.Login.parsed/0`), else `:error`.
+  (`t:Apiary.ModelKeys.Login.parsed/0`), else `:error`.
   """
   @spec login(Phoenix.LiveView.Socket.t()) :: {:ok, Apiary.ModelKeys.Login.parsed()} | :error
   def login(socket) do

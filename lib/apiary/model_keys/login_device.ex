@@ -58,7 +58,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
   def supervisor, do: @supervisor
 
   @doc """
-  Asks the provider for a code to show: `{:ok, code}`, `:off` for a 404, taken as the
+  Requests a code to show from the provider: `{:ok, code}`, `:off` for a 404, taken as the
   answer for an account whose device code sign-in is off (no checkout of `codex` was
   available to confirm it; the probe of 2026-11-18 never saw one), or a failure.
   """
@@ -77,7 +77,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
   def request_code(_device, _client_id), do: {:error, "bad_endpoint"}
 
   @doc """
-  Asks whether the person approved the sign-in of the code: `:pending`, `{:ok, grant}`
+  Checks whether the person approved the sign-in of the code: `:pending`, `{:ok, grant}`
   with the `authorization_code` and the `code_verifier` of the exchange, or a failure.
   """
   @spec poll(device, %{device_auth_id: String.t(), user_code: String.t()}) ::
