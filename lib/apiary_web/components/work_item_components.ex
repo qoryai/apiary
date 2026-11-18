@@ -6421,14 +6421,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
-         "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."
+         "Remove variables in the workspace or its organisation, then start the run again. The run has more than %{limit} variables.",
+         limit: Apiary.Variables.Resolution.max_names()
        )}
 
   defp no_result_words(%{end_cause: :variables_invalid, end_detail: "bytes_" <> _}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
-         "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."
+         "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than %{limit}.",
+         limit: "#{div(Apiary.Variables.Resolution.max_bytes(), 1024)} KiB"
        )}
 
   # A run of a stage with `shared_run: true` that ended after a session, as the input of

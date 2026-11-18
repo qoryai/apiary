@@ -17972,12 +17972,12 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."
+msgid "Remove variables in the workspace or its organisation, then start the run again. The run has more than %{limit} variables."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."
+msgid "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than %{limit}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

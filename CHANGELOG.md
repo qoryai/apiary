@@ -1684,9 +1684,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   variables, and a run takes at most 126.” or “The run did not start: its variables take
   65 KiB, and a run takes at most 64 KiB.”, then “Owners and admins of <workspace> remove
   variables on the Variables page of the workspace or its organisation, then start the run
-  again.” Its work item reads “Remove variables in the workspace's settings, then start the
-  run again. The run has more than 126 variables.” or “... The run's variables take more
-  than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
+  again.” Its work item reads “Remove variables in the workspace or its organisation, then
+  start the run again. The run has more than 126 variables.” or “... The run's variables
+  take more than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
   repository with more than 126 variables, all levels together, and says “Remove variables
   at any level until each repository has at most 126. A run takes at most 126 variables,
   and this change would raise a repository's variables above 126.” Before, a save allowed

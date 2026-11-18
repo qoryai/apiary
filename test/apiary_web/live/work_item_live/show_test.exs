@@ -1224,9 +1224,9 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
          %{conn: conn, scope: scope} do
       for {detail, body} <- [
             {"names_129",
-             "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."},
+             "Remove variables in the workspace or its organisation, then start the run again. The run has more than 126 variables."},
             {"bytes_70000",
-             "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."},
+             "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than 64 KiB."},
             {nil,
              "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."}
           ] do
