@@ -526,11 +526,18 @@ defmodule ApiaryWeb.StagesLive.Index do
   ## Time limits
 
   # The workspace's time limits by workflow, the limits of its targets left out; nil
-  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`).
+  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`). Only the limits
+  # the workspace keeps (`Apiary.Processes.kept_workflows/1`): a leftover's workflow that
+  # a draft adds again starts with none, as the save deletes the leftover.
   defp saved_limits(scope) do
     case TimeLimits.list_limits(scope) do
       {:ok, limits} ->
-        for %{target_id: nil} = limit <- limits, into: %{}, do: {limit.workflow, limit.minutes}
+        kept = Processes.kept_workflows(scope.workspace)
+
+        for %{target_id: nil} = limit <- limits,
+            MapSet.member?(kept, limit.workflow),
+            into: %{},
+            do: {limit.workflow, limit.minutes}
 
       {:error, :not_found} ->
         nil
