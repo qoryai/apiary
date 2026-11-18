@@ -1686,6 +1686,26 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
            ) == ["812 B", "1 KiB", "64 KiB", "1.5 MiB", "1 MiB", "10 MiB", "1 GiB", "1 MiB"]
   end
 
+  test "file_size/1 shows a size with one decimal from 1 KiB up, and size/1 is unchanged" do
+    sizes = [0, 812, 1024, 9_216, 65_536, 1_572_864, 1_048_576, 1_073_741_824, 1_048_575]
+
+    assert Enum.map(sizes, &ArtifactComponents.file_size/1) ==
+             [
+               "0 B",
+               "812 B",
+               "1.0 KiB",
+               "9.0 KiB",
+               "64.0 KiB",
+               "1.5 MiB",
+               "1.0 MiB",
+               "1.0 GiB",
+               "1.0 MiB"
+             ]
+
+    assert Enum.map(sizes, &ArtifactComponents.size/1) ==
+             ["0 B", "812 B", "1 KiB", "9 KiB", "64 KiB", "1.5 MiB", "1 MiB", "1 GiB", "1 MiB"]
+  end
+
   describe "the plain list" do
     test "shows each artifact's newest version, files, writer and check, with links", ctx do
       pushed!(ctx, "explainer", [{"plan.md", "# First"}])

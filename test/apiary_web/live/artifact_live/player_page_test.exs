@@ -141,8 +141,15 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       {"#{name}.vtt", "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nOpen\n"}
     ]
 
+  # The three pictures are 9.0, 8.8 and 9.6 KiB, for the sizes of the Files rows.
   defp picture_files(name),
-    do: [{"#{name}-step-2.png", @png}, {"#{name}-step-1.png", @png}, {"#{name}-step-3.png", @png}]
+    do: [
+      {"#{name}-step-2.png", padded(@png, 9_011)},
+      {"#{name}-step-1.png", padded(@png, 9_216)},
+      {"#{name}-step-3.png", padded(@png, 9_830)}
+    ]
+
+  defp padded(binary, size), do: binary <> :binary.copy(<<0>>, size - byte_size(binary))
 
   # A scenario's film or pictures, and its demo evidence.
   defp scenario!(run, work_item, n, kind) do
@@ -370,6 +377,19 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       assert has_element?(view, ".q-art-main #artifact-files-part")
       assert has_element?(view, "aside #artifact-queue")
       refute has_element?(view, "aside #artifact-scenario")
+    end
+
+    test "shows the size of each file with one decimal in the Files rows",
+         %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [_first, second, _tenth] = queue(work_item)
+      view = page(conn, scope, work_item, second)
+
+      assert texts(view, "#artifact-files li") == [
+               "scenario-2-step-1.png 9.0 KiB",
+               "scenario-2-step-2.png 8.8 KiB",
+               "scenario-2-step-3.png 9.6 KiB"
+             ]
     end
   end
 

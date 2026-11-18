@@ -72,26 +72,35 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   @doc """
-  size/1 is a size in binary units, 1 KiB being 1,024 bytes, as every artifact page
-  shows one: "812 B", "64 KiB", "1.5 MiB", "2 GiB". A whole number has no decimal, and
-  a size that rounds up to 1,024 of its unit is shown in the next one.
+  size/1 is a size in binary units, 1 KiB being 1,024 bytes: "812 B", "64 KiB", "1.5 MiB",
+  "2 GiB". A whole number has no decimal, and a size that rounds up to 1,024 of its unit
+  is shown in the next one. Machine types show their memory and disk this way, too.
   """
   @spec size(non_neg_integer) :: String.t()
-  def size(bytes) when is_integer(bytes) and bytes < 1024,
+  def size(bytes), do: size(bytes, false)
+
+  @doc """
+  file_size/1 is the size of a file in the Files rows of an artifact page, in the units of
+  size/1 with one decimal from 1 KiB up: "812 B", "9.0 KiB", "1.5 MiB", "2.0 GiB".
+  """
+  @spec file_size(non_neg_integer) :: String.t()
+  def file_size(bytes), do: size(bytes, true)
+
+  defp size(bytes, _decimal?) when is_integer(bytes) and bytes < 1024,
     do: gettext("%{number} B", number: Format.number(bytes))
 
-  def size(bytes) when is_integer(bytes),
-    do: size(bytes, [{1024, :kib}, {1_048_576, :mib}, {1_073_741_824, :gib}])
+  defp size(bytes, decimal?) when is_integer(bytes),
+    do: size(bytes, decimal?, [{1024, :kib}, {1_048_576, :mib}, {1_073_741_824, :gib}])
 
-  defp size(bytes, [{unit, name} | larger]) do
+  defp size(bytes, decimal?, [{unit, name} | larger]) do
     # Tenths of the unit, a half rounded up.
     tenths = div(bytes * 10 + div(unit, 2), unit)
 
     if tenths >= 10_240 and larger != [] do
-      size(bytes, larger)
+      size(bytes, decimal?, larger)
     else
       number =
-        if rem(tenths, 10) == 0,
+        if rem(tenths, 10) == 0 and not decimal?,
           do: Format.number(div(tenths, 10)),
           else: Format.number(tenths / 10, digits: 1)
 
@@ -381,7 +390,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         <a href={@path.(file)} download={file.filename} class="font-medium text-accent break-all">
           {file.filename}
         </a>
-        <span class="text-[12.5px] text-muted tabular-nums">{size(file.size)}</span>
+        <span class="text-[12.5px] text-muted tabular-nums">{file_size(file.size)}</span>
       </li>
     </ul>
     """
@@ -627,7 +636,7 @@ defmodule ApiaryWeb.ArtifactComponents do
           <a href={@path.(file)} download={file.filename} class="text-accent break-all">
             {file.filename}
           </a>
-          <span class="text-muted tabular-nums">{size(file.size)}</span>
+          <span class="text-muted tabular-nums">{file_size(file.size)}</span>
         </figcaption>
       </figure>
     </div>
