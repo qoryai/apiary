@@ -74,4 +74,54 @@ defmodule Apiary.ModelKeysFixtures do
   @doc "`seconds` from now, in whole seconds."
   def in_seconds(seconds),
     do: DateTime.utc_now() |> DateTime.add(seconds) |> DateTime.truncate(:second)
+
+  @doc """
+  The tokens of a login as `codex login` writes them: a map with `access_token`, a JWT that
+  expires `expires_in` seconds from now (default 10 days) or at `exp`, `refresh_token`,
+  `id_token` and `account_id`. `tag` makes the values differ between logins.
+  """
+  def login_tokens(opts \\ []) do
+    tag = Keyword.get(opts, :tag, "a")
+
+    exp =
+      Keyword.get(opts, :exp, System.os_time(:second) + Keyword.get(opts, :expires_in, 864_000))
+
+    %{
+      access_token: jwt(%{"exp" => exp, "client_id" => "app-fixture", "jti" => "access-#{tag}"}),
+      refresh_token: "rt-fixture-refresh-token-#{tag}-0123456789",
+      id_token:
+        jwt(%{"exp" => exp - 860_000, "email" => "dana@example.com", "jti" => "id-#{tag}"}),
+      account_id: "acct-fixture-#{tag}"
+    }
+  end
+
+  @doc """
+  The contents of an `auth.json` as `codex login` writes it, printed over several lines,
+  with the tokens of `login_tokens/1` and the members the server drops.
+  """
+  def login_paste(opts \\ []) do
+    tokens = Keyword.get_lazy(opts, :tokens, fn -> login_tokens(opts) end)
+
+    Jason.encode!(
+      %{
+        "auth_mode" => "chatgpt",
+        "OPENAI_API_KEY" => nil,
+        "tokens" => %{
+          "id_token" => tokens.id_token,
+          "access_token" => tokens.access_token,
+          "refresh_token" => tokens.refresh_token,
+          "account_id" => tokens.account_id
+        },
+        "last_refresh" => "2026-11-18T09:00:00Z"
+      },
+      pretty: true
+    )
+  end
+
+  @doc "A JWT with `claims` and a signature that checks nothing."
+  def jwt(claims) do
+    encode = &Base.url_encode64(Jason.encode!(&1), padding: false)
+
+    "#{encode.(%{"alg" => "RS256", "typ" => "JWT"})}.#{encode.(claims)}.#{Base.url_encode64("signature-fixture", padding: false)}"
+  end
 end

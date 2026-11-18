@@ -131,6 +131,7 @@ defmodule Apiary.Connections do
   }
 
   alias Apiary.Accounts.Scope
+  alias Apiary.ModelKeys.Login
 
   alias Apiary.Connections.{
     Connection,
@@ -1404,12 +1405,15 @@ defmodule Apiary.Connections do
            {:ok, workspace_ids} <-
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
            :ok <- placed_reach(place, workspace_ids),
+           {:ok, keys, logins} <-
+             login_keys(provider, attrs["keys"] |> in_order() |> trim_keys()),
            {:ok, secret} <-
              Secrets.create_provider_keys(
                scope,
-               %{name: keys_name(new), values: attrs["keys"] |> in_order() |> trim_keys()},
+               %{name: keys_name(new), values: keys},
                place
              ),
+           :ok <- put_logins(secret.id, logins),
            {:ok, changeset} <-
              default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
            {:ok, inserted} <- insert_sealed(changeset),
@@ -1847,8 +1851,10 @@ defmodule Apiary.Connections do
         attrs = trim_value(stringify(attrs))
         value_id = Value.normalise_value_id(attrs["value_id"])
 
-        with {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
+        with {:ok, attrs, login} <- login_attrs(current, attrs),
+             {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
              {:ok, _setting} <- put_key_setting(current, value_id, settings),
+             :ok <- put_login(current, value_id, login),
              do: {:ok, %{after: %{value_id: value_id}, details: %{value_id: value_id}}}
       end)
 
@@ -1946,9 +1952,98 @@ defmodule Apiary.Connections do
   # sets it before a rename, under the value id the key has, and the rename encrypts the
   # new value again under its new value id.
   defp set_key(scope, secret, current, value_id, value) do
-    with {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
-         do: ModelKeys.clear_states(current.secret_id, value_id)
+    with {:ok, %{"value" => value}, login} <- login_attrs(current, %{"value" => value}),
+         {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
+         :ok <- ModelKeys.clear_states(current.secret_id, value_id),
+         do: put_login(current, value_id, login)
   end
+
+  # The value of a key of `provider` as it is stored. For a provider whose keys are logins
+  # (`Apiary.ModelKeys.Login`), the paste in `attrs["value"]` is read and the document it
+  # makes replaces it: `{:ok, attrs, parsed}`, or `{:error, changeset}` whose error is on
+  # `value` and has none of the paste. A blank value is left for the checks of the value.
+  # The attrs of any other provider are returned with `nil`.
+  defp login_attrs(%Connection{} = provider, attrs) do
+    with true <- Login.provider?(provider),
+         value when is_binary(value) <- attrs["value"],
+         true <- String.trim(value) != "" do
+      case Login.parse(value) do
+        {:ok, parsed} -> {:ok, Map.put(attrs, "value", parsed.document), parsed}
+        {:error, reason} -> {:error, login_refused(%Value{}, :value, reason)}
+      end
+    else
+      _not_a_login -> {:ok, attrs, nil}
+    end
+  end
+
+  # The changeset of a refused paste: an error on `field` and nothing of the paste.
+  defp login_refused(schema, field, reason) do
+    {message, opts} = Login.refusal(reason)
+
+    schema
+    |> change()
+    |> add_error(field, message, opts)
+    |> Map.put(:action, :validate)
+  end
+
+  # The keys a new provider is created with: for a provider whose keys are logins, each
+  # key's paste read and replaced by its document, with the parsed logins by value id;
+  # `{:error, changeset}` with the refusal on the keys' secret's `values` for a paste that
+  # is no login.
+  defp login_keys(%Provider{name: name}, keys) do
+    if Login.provider?(name), do: read_logins(keys, [], %{}), else: {:ok, keys, %{}}
+  end
+
+  defp read_logins([], stored, logins), do: {:ok, Enum.reverse(stored), logins}
+
+  defp read_logins([%{} = key | rest], stored, logins) do
+    with value when is_binary(value) <- key["value"],
+         true <- String.trim(value) != "" do
+      case Login.parse(value) do
+        {:ok, parsed} ->
+          read_logins(
+            rest,
+            [Map.put(key, "value", parsed.document) | stored],
+            Map.put(logins, Value.normalise_value_id(key["value_id"]), parsed)
+          )
+
+        {:error, reason} ->
+          {:error, login_refused(%Secret{}, :values, reason)}
+      end
+    else
+      _blank -> read_logins(rest, [key | stored], logins)
+    end
+  end
+
+  defp read_logins([other | rest], stored, logins),
+    do: read_logins(rest, [other | stored], logins)
+
+  # The login rows of the keys of the secret `secret_id` that `logins` has parsed logins
+  # for, by value id; none for nil.
+  defp put_logins(_secret_id, logins) when logins == %{}, do: :ok
+
+  defp put_logins(secret_id, logins) do
+    values =
+      Repo.all(
+        from v in Value,
+          where: v.secret_id == ^secret_id and v.value_id in ^Map.keys(logins),
+          select: struct(v, [:id, :organisation_id, :value_id])
+      )
+
+    Enum.reduce_while(values, :ok, fn value, :ok ->
+      case Login.put(value, Map.fetch!(logins, value.value_id)) do
+        {:ok, _row} -> {:cont, :ok}
+        {:error, changeset} -> {:halt, {:error, changeset}}
+      end
+    end)
+  end
+
+  # The login row of the key `value_id` after its value was written, nothing for a key
+  # that is not a login.
+  defp put_login(_current, _value_id, nil), do: :ok
+
+  defp put_login(%Connection{secret_id: secret_id}, value_id, parsed),
+    do: put_logins(secret_id, %{value_id => parsed})
 
   @doc """
   trim_key/1 is a model provider's key as the functions here store it: without the

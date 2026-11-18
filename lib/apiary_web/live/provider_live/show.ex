@@ -4,8 +4,10 @@ defmodule ApiaryWeb.ProviderLive.Show do
   # they were added, each with its name and its state (`Apiary.ModelKeys`, in words of
   # `ApiaryWeb.ModelKeyComponents.state/4`): Available, with the use and the reset of each
   # window, or In cooldown until a time, and where that time comes from, a window at the
-  # key's Use up to percentage included. Times are in the
-  # reader's time zone. A key is write-only: the page shows neither the key nor a part of
+  # key's Use up to percentage included. A key of a provider whose keys are logins
+  # (`Apiary.ModelKeys.Login`) has its sign-in too (`ModelKeyComponents.login/2`): Signed
+  # in, or Needs a new sign-in, which replaces its state. Times are in the reader's time
+  # zone. A key is write-only: the page shows neither the key nor a part of
   # it. Every member reads it (`connection.read`); a provider the organisation does not
   # have is not found.
   #
@@ -23,6 +25,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Access, Connections, ModelKeys}
+  alias Apiary.ModelKeys.Login
   alias ApiaryWeb.{ModelKeyComponents, SettingsComponents}
 
   @impl true
@@ -35,6 +38,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
         states = ModelKeys.provider_states(provider, now)
         percents = ModelKeys.use_up_to_percents(provider)
         windows = ModelKeys.limit_windows(provider)
+        logins = Login.by_key(provider)
 
         {:ok,
          assign(socket,
@@ -49,7 +53,11 @@ defmodule ApiaryWeb.ProviderLive.Show do
                    windows
                  )
 
-               %{value_id: key.value_id, state: state}
+               %{
+                 value_id: key.value_id,
+                 state: state,
+                 login: ModelKeyComponents.login(Map.get(logins, key.id), provider)
+               }
              end,
            writes: Access.can?(scope, :"provider.write", scope.organisation),
            sections: SettingsComponents.sections(scope, :organisation),
@@ -110,8 +118,14 @@ defmodule ApiaryWeb.ProviderLive.Show do
                 {key.value_id}
               </span>
               <ModelKeyComponents.state_line
+                :if={!ModelKeyComponents.sign_in_needed?(key.login)}
                 id={"provider-key-#{key.value_id}-state"}
                 state={key.state}
+              />
+              <ModelKeyComponents.login_line
+                :if={key.login}
+                id={"provider-key-#{key.value_id}-login"}
+                login={key.login}
               />
               <.link
                 :if={@writes}

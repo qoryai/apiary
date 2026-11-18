@@ -3775,6 +3775,11 @@ msgstr ""
 msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{vendor} rejected it on %{time}."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{vendor}'s terms"
@@ -13859,6 +13864,11 @@ msgstr ""
 msgid "Needs %{features}."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Needs a new sign-in"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Needs a person"
@@ -16395,6 +16405,12 @@ msgstr ""
 msgid "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Path"
@@ -18599,6 +18615,11 @@ msgstr ""
 msgid "Run cancelled: %{reason}."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run codex login --device-auth and replace the key."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run completed after %{duration}."
@@ -20069,6 +20090,12 @@ msgstr ""
 msgid "Sign in again, then copy again. Your session ended."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sign-in"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Sign-up is by invitation"
@@ -20077,6 +20104,16 @@ msgstr ""
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "Signed in as %{email}"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Signed in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Signed in. Last refresh %{time}."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

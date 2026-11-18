@@ -9,7 +9,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #     percentage, each optional, with their hints and their errors;
   #   * `params/3` the fields of a key's settings, `read_settings/2` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
-  #   * `state/4` the state of a key from its states, in words.
+  #   * `state/4` the state of a key from its states, in words;
+  #   * `login/2` and `login_line/1` the sign-in of a key of a provider whose keys are
+  #     logins (`Apiary.ModelKeys.Login`), in words.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -20,7 +22,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys
-  alias Apiary.ModelKeys.{Setting, State}
+  alias Apiary.ModelKeys.{Login, Setting, State}
   alias ApiaryWeb.UserLive.Settings, as: UserSettings
 
   @fields ~w(reset_day reset_time reset_zone pause_number pause_unit use_up_to)
@@ -532,6 +534,94 @@ defmodule ApiaryWeb.ModelKeyComponents do
     <span id={@id} class="text-[13px]/5">
       <span class="font-medium">{gettext("Available")}</span>
       <span :for={segment <- @segments} class="text-muted"> · {segment}</span>
+    </span>
+    """
+  end
+
+  ## A key's sign-in
+
+  @typedoc "The sign-in of a key, as `login/2` has it."
+  @type login ::
+          {:signed_in, String.t() | nil}
+          | {:sign_in_needed, String.t(), String.t() | nil}
+
+  @doc """
+  The sign-in of a key from its row `login` (`Apiary.ModelKeys.Login.by_key/1`), nil for a
+  key that has none, in the reader's time zone:
+
+    * `{:signed_in, refreshed}`: "Signed in. Last refresh 2026-11-12 10:04.", `refreshed`
+      nil until the first refresh;
+    * `{:sign_in_needed, rejected, help}`: the heading "Needs a new sign-in", "OpenAI
+      rejected it on 2026-11-12 10:04." and, for a provider that has one, what to do
+      (`help`, else nil).
+  """
+  @spec login(Login.t() | nil, Connection.t()) :: login | nil
+  def login(nil, _provider), do: nil
+
+  def login(%Login{state: "signed_in", refreshed_at: refreshed_at}, _provider),
+    do: {:signed_in, refreshed_at && Format.datetime(refreshed_at)}
+
+  def login(%Login{state: "sign_in_needed"} = login, %Connection{} = provider) do
+    rejected =
+      gettext("%{vendor} rejected it on %{time}.",
+        vendor: capitalise(vendor(provider)),
+        time: Format.datetime(login.last_failure || login.updated_at)
+      )
+
+    {:sign_in_needed, rejected, sign_in_help(provider)}
+  end
+
+  @doc "Whether `login`, a key's sign-in as `login/2` has it, is one that needs a new sign-in."
+  @spec sign_in_needed?(login | nil) :: boolean
+  def sign_in_needed?({:sign_in_needed, _rejected, _help}), do: true
+  def sign_in_needed?(_login), do: false
+
+  # The company that runs the provider's API (`Apiary.Kinds.Provider`), else the title of
+  # its catalogue entry.
+  defp vendor(%Connection{provider_kind: kind}) do
+    case Providers.fetch(kind) do
+      {:ok, %Provider{vendor: vendor}} when is_binary(vendor) -> vendor
+      {:ok, %Provider{title: title}} -> title
+      :error -> kind
+    end
+  end
+
+  defp capitalise(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
+  defp capitalise(text), do: text
+
+  defp sign_in_help(%Connection{provider_kind: "openai-subscription"}),
+    do: gettext("Run codex login --device-auth and replace the key.")
+
+  defp sign_in_help(%Connection{}), do: nil
+
+  @doc """
+  A key's sign-in as `login/2` has it: the state, or, for a sign-in that the provider
+  rejected, what it needs and what to do, on separate lines.
+  """
+  attr :id, :string, required: true
+  attr :login, :any, required: true
+
+  def login_line(%{login: {:signed_in, refreshed}} = assigns) do
+    assigns = assign(assigns, :refreshed, refreshed)
+
+    ~H"""
+    <span id={@id} class="text-[13px]/5">
+      <span :if={@refreshed} class="font-medium">
+        {gettext("Signed in. Last refresh %{time}.", time: @refreshed)}
+      </span>
+      <span :if={!@refreshed} class="font-medium">{gettext("Signed in.")}</span>
+    </span>
+    """
+  end
+
+  def login_line(%{login: {:sign_in_needed, rejected, help}} = assigns) do
+    assigns = assign(assigns, rejected: rejected, help: help)
+
+    ~H"""
+    <span id={@id} class="grid text-[13px]/5">
+      <span class="font-medium text-error">{gettext("Needs a new sign-in")}</span>
+      <span class="text-muted">{@rejected}</span>
+      <span :if={@help} class="text-muted">{@help}</span>
     </span>
     """
   end

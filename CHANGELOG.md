@@ -27,6 +27,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   version it started with, and no note that it sends none; the note “Only Claude Code and
   Codex send session events.” stays for a program that is no runtime of the catalogue.
 <!-- /feature -->
+<!-- feature: factory, secrets -->
+- A key of an **OpenAI subscription** is a sign-in. **Add key** and **Edit key** of the
+  provider, and **Add value** of a workspace's key on **Secrets and variables**, take the
+  contents of the `auth.json` that `codex login` writes, in a field named **Sign-in**,
+  with the hint “Paste the contents of auth.json. Qory Apiary stores it encrypted, and
+  nobody can view it again.” Qory Apiary stores the access, refresh and ID tokens of the
+  paste encrypted, like any key, and drops every other member. A paste that is no
+  `auth.json` with those tokens, an account id and an access token that has an expiry, is
+  refused with “Paste the whole auth.json that codex login wrote.”; a paste without a
+  refresh token adds “This text has no refresh token.” Saving makes no call to OpenAI.
+  The provider's page shows each key's sign-in: “Signed in.”, then “Last refresh” and the
+  time once the sign-in was refreshed, or **Needs a new sign-in** with “OpenAI rejected it
+  on” the time and “Run codex login --device-auth and replace the key.”, which replaces the
+  key's state. A new value for the key starts a new sign-in and clears the key's states, as
+  it does for any key. No token appears in a page, a log line or an audit entry. A run that
+  claims the key stops at the secrets request with `credential_unavailable`.
+<!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
   question that is not a decision. The tab label shows the number of open questions. The
@@ -2551,6 +2568,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory, secrets -->
+- `model_key_logins` (20261118110000): a new table with a row for each model key whose
+  provider's API has `oauth_refresh`, by the value's row id, with the account, the time the
+  access token expires, the sign-in's state and the columns a refresh needs. It holds no
+  token, and its rows go with the key's value. Nothing exists to fill. Rolling back drops
+  the table.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
   of a condition `{input: <type>, changed: true}`. It is not null with a constant default,

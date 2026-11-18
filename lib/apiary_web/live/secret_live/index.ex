@@ -37,7 +37,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     keys (`Apiary.Connections.add_provider_key/4` to
     `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
     Change value also take the key's settings, Resets and Pause for
-    (`Apiary.ModelKeys.Setting`), written with it. Delete secret is refused while the
+    (`Apiary.ModelKeys.Setting`), written with it. For a provider whose keys are logins
+    (`Apiary.ModelKeys.Login`), Add value takes the contents of the `auth.json` that
+    `codex login` writes in a field named Sign-in, and refuses a paste that is not one. Delete secret is refused while the
     provider links the secret, and Edit name and note is not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
@@ -58,7 +60,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   alias Apiary.{Access, Connections, ModelKeys, Secrets, Variables}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.Setting
+  alias Apiary.ModelKeys.{Login, Setting}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
   alias ApiaryWeb.{ModelKeyComponents, People, SettingsComponents, UserAuth}
@@ -1036,7 +1038,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={!@unnamed && JS.focus()}
       />
-      <.value_field form={@form} />
+      <.value_field form={@form} login={Login.provider?(@provider)} />
       <ModelKeyComponents.settings_fields
         :if={@key_form}
         form={@key_form}
@@ -1524,18 +1526,27 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :label, :string, default: nil
   attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
   attr :disabled, :boolean, default: false, doc: "off while its choice is not taken"
+  attr :login, :boolean, default: false, doc: "whether it takes a model key's login"
 
   # The value of a secret: written, sent once, and never rendered back. The field's
-  # value is always empty, whatever the form holds.
+  # value is always empty, whatever the form holds. For a model key that is a login, the
+  # field is the Sign-in, and its hint says what to paste.
   defp value_field(assigns) do
     ~H"""
     <.input
       field={@form[:value]}
       type="textarea"
       value=""
-      label={@label || gettext("Value")}
+      label={@label || if(@login, do: gettext("Sign-in"), else: gettext("Value"))}
       rows="4"
-      hint={gettext("Stored encrypted. Nobody sees it again once it is saved.")}
+      hint={
+        if @login,
+          do:
+            gettext(
+              "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
+            ),
+          else: gettext("Stored encrypted. Nobody sees it again once it is saved.")
+      }
       autocomplete="off"
       spellcheck="false"
       class="font-mono"

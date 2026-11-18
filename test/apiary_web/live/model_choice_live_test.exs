@@ -37,6 +37,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     )
   end
 
+  # A subscription's key is the sign-in that `codex login` writes (`Apiary.ModelKeys.Login`).
+  defp openai_key("openai-subscription" = kind),
+    do: %{
+      provider: kind,
+      keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+    }
+
   defp openai_key(kind),
     do: %{provider: kind, keys: [%{value_id: "main", value: "sk-#{kind}-model-page-0123456789"}]}
 

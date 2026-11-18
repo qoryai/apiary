@@ -14,6 +14,10 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # there, and the context asks again. A key of a provider the organisation does not have,
   # or a value id its keys do not have, is not found.
   #
+  # For a provider whose keys are logins (`Apiary.ModelKeys.Login`), Add key takes the
+  # contents of the `auth.json` that `codex login` writes in a field named Sign-in, and
+  # refuses a paste that is not one with the reason on the field.
+  #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
   # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
   # save renders a new, empty field.
@@ -29,7 +33,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   alias Apiary.{Access, Connections, ModelKeys, Secrets}
   alias Apiary.Kinds.Providers
-  alias Apiary.ModelKeys.Setting
+  alias Apiary.ModelKeys.{Login, Setting}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.IntegrationLive.Common
   alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
@@ -55,6 +59,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
          provider: provider,
          key: key,
          subscription: subscription,
+         login: Login.provider?(provider),
          limit_windows: ModelKeys.limit_windows(provider),
          chosen: chosen(provider, subscription),
          sections: SettingsComponents.sections(scope, :organisation),
@@ -116,13 +121,20 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp crumb(:new), do: gettext("Add key")
   defp crumb(:edit), do: gettext("Edit key")
 
-  defp key_label(:new), do: gettext("Key")
-  defp key_label(:edit), do: gettext("New value")
+  defp key_label(:new, true), do: gettext("Sign-in")
+  defp key_label(:new, false), do: gettext("Key")
+  defp key_label(:edit, _login), do: gettext("New value")
 
-  defp key_hint(:new),
+  defp key_hint(:new, true),
+    do:
+      gettext(
+        "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
+      )
+
+  defp key_hint(:new, false),
     do: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
 
-  defp key_hint(:edit), do: gettext("Leave it empty to keep the value.")
+  defp key_hint(:edit, _login), do: gettext("Leave it empty to keep the value.")
 
   defp provider_path(scope, provider),
     do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"
@@ -150,28 +162,43 @@ defmodule ApiaryWeb.ProviderLive.Key do
         write(socket, action, params, settings)
 
       {:error, settings_errors} ->
-        {:noreply, assign_form(socket, params, input_errors(action, params), settings_errors)}
+        {:noreply,
+         assign_form(
+           socket,
+           params,
+           input_errors(action, params, socket.assigns.login),
+           settings_errors
+         )}
     end
   end
 
   # The Name and the Key as `Apiary.Connections` checks them: the Key without the
   # whitespace at its ends.
-  defp input_errors(:new, params) do
+  defp input_errors(:new, params, login) do
     key = Connections.trim_key(params["key"])
 
-    %Value{}
-    |> Value.changeset(%{"value_id" => params["value_id"], "value" => key}, value_id: :required)
-    |> key_errors(nil)
+    errors =
+      %Value{}
+      |> Value.changeset(%{"value_id" => params["value_id"], "value" => key}, value_id: :required)
+      |> key_errors(nil)
+
+    # A paste that is no login is refused on the Key, with the Name's errors.
+    with true <- login and not Keyword.has_key?(errors, :key),
+         {message, opts} <- Login.problem(key) do
+      errors ++ [key: {message, opts}]
+    else
+      _fine -> errors
+    end
   end
 
-  defp input_errors(:edit, params) do
+  defp input_errors(:edit, params, login) do
     if blank?(params["key"]) do
       %Value{}
       |> Ecto.Changeset.cast(%{"value_id" => params["value_id"]}, [:value_id])
       |> Value.value_id_changeset(:required)
       |> key_errors(nil)
     else
-      input_errors(:new, params)
+      input_errors(:new, params, login)
     end
   end
 
@@ -179,7 +206,25 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # the field has none.
   defp blank?(value), do: String.trim(value || "") == ""
 
+  # For a login, the Name and the Sign-in are checked before the write, as Edit key's are,
+  # so that the errors of both show at once.
   defp write(socket, :new, params, settings) do
+    case socket.assigns.login && input_errors(:new, params, true) do
+      [_ | _] = errors -> {:noreply, assign_form(socket, params, errors, %{})}
+      _none -> add_key(socket, params, settings)
+    end
+  end
+
+  # The Name and the New value are checked before the write, so the errors of both show
+  # at once: the write sets the value before it renames the key.
+  defp write(socket, :edit, params, settings) do
+    case input_errors(:edit, params, socket.assigns.login) do
+      [] -> update_key(socket, params, settings)
+      errors -> {:noreply, assign_form(socket, params, errors, %{})}
+    end
+  end
+
+  defp add_key(socket, params, settings) do
     %{current_scope: scope, provider: provider} = socket.assigns
     attrs = %{"value_id" => params["value_id"], "value" => params["key"]}
 
@@ -192,15 +237,6 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
       {:error, reason} ->
         refused(socket, params, reason)
-    end
-  end
-
-  # The Name and the New value are checked before the write, so the errors of both show
-  # at once: the write sets the value before it renames the key.
-  defp write(socket, :edit, params, settings) do
-    case input_errors(:edit, params) do
-      [] -> update_key(socket, params, settings)
-      errors -> {:noreply, assign_form(socket, params, errors, %{})}
     end
   end
 
@@ -331,8 +367,8 @@ defmodule ApiaryWeb.ProviderLive.Key do
             id={"key-value-#{@attempt}"}
             type="password"
             value={nil}
-            label={key_label(@live_action)}
-            hint={key_hint(@live_action)}
+            label={key_label(@live_action, @login)}
+            hint={key_hint(@live_action, @login)}
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"

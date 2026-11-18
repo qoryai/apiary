@@ -120,6 +120,7 @@ defmodule Apiary.Deletion.Tables do
     {"integration_releases", :organisation},
     {"variables", :workspace},
     {"model_key_states", :organisation},
+    {"model_key_logins", :organisation},
     {"model_key_settings", :organisation},
     {"secret_values", :workspace},
     {"secrets", :workspace},
