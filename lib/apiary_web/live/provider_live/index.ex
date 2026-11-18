@@ -438,7 +438,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
             terms: {:part, :terms}
           )
         }>
-          <:part name={:terms}><.terms href={terms_url(@chosen)} /></:part>
+          <:part name={:terms}>
+            <.terms href={terms_url(@chosen)} vendor={vendor(@chosen)} />
+          </:part>
         </.rich>
       </p>
     </div>
@@ -456,6 +458,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp get_key_text(%Provider{name: "anthropic"}),
     do: gettext("Get the key from the provider first: create an API key in the Claude Console.")
 
+  defp get_key_text(%Provider{name: "openai"}),
+    do: gettext("Get the key from the provider first: create an API key in the OpenAI Platform.")
+
   defp get_key_text(%Provider{name: "deepseek"}),
     do: gettext("Get the key from the provider first: create a DeepSeek API key.")
 
@@ -472,17 +477,25 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   defp get_key_text(_chosen), do: nil
 
-  # Anthropic's terms, a link out to `href`, or plain words where the description has no
-  # address.
+  # The vendor's terms, such as Anthropic's, a link out to `href`, or plain words where
+  # the description has no address.
   @doc false
   attr :href, :string, required: true
+  attr :vendor, :string, required: true
 
   def terms(assigns) do
     ~H"""
-    <.external_link :if={@href} href={@href}>{gettext("Anthropic's terms")}</.external_link>
-    <span :if={!@href}>{gettext("Anthropic's terms")}</span>
+    <.external_link :if={@href} href={@href}>{terms_words(@vendor)}</.external_link>
+    <span :if={!@href}>{terms_words(@vendor)}</span>
     """
   end
+
+  defp terms_words(vendor), do: gettext("%{vendor}'s terms", vendor: vendor)
+
+  # The vendor of the provider's description, which names the company behind the model
+  # API, or the provider's title for a description with none.
+  defp vendor(%Provider{vendor: vendor}) when is_binary(vendor), do: vendor
+  defp vendor(%Provider{title: title}), do: title
 
   @doc false
   # provider_options/0 is each provider of the catalogue, its description's text under its
