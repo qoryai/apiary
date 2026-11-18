@@ -334,12 +334,11 @@ defmodule Apiary.Runs.Transcript do
   `continuation`'s run settings, is the paused run's `runtime` (`Apiary.Runs.Run`); nil
   for any other run, and when the session that paused has no chunk, so the continuation
   starts a new session. A paused run with no `runtime`, or one other than `runtime`,
-  resumes nothing: the continuation, such as one that takes a fallback on another
-  runtime, starts a new session, which a runtime cannot do from another runtime's
-  transcript, and continues from the commits the paused run pushed
-  (`Apiary.Runs.PushedCommit.for_run/2`). A paused run with no `paused_session`, whose
-  sessions sent no paused `dev.qory.session.exited`, resumes its last chunk of any
-  session.
+  resumes nothing, because a runtime cannot resume another runtime's transcript: the
+  continuation, such as one that takes a fallback on another runtime, starts a new
+  session and continues from the commits the paused run pushed (`POST pushed-commits`,
+  docs/contract/run-api.md). A paused run with no `paused_session`, whose sessions sent
+  no paused `dev.qory.session.exited`, resumes its last chunk of any session.
   """
   @spec resume_at_claim(map, String.t() | nil) :: map | nil
   def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation, runtime)
