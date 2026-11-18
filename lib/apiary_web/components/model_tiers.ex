@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.ModelTiers do
   # One key and the three tiers of a model choice (`Apiary.ModelChoices`), as a form sets
   # them: the state of the form, and `tiers/1`, the one component that draws the tiers.
-  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`) uses both, and every other
-  # form that sets tiers is to use them too, so a change of the tiers' look is made here.
+  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`) and each workflow's fold on
+  # the Workflows page (`ApiaryWeb.StagesLive.ModelPart`) use both, and every other form
+  # that sets tiers is to use them too, so a change of the tiers' look is made here.
   #
   # The state:
   #
@@ -331,6 +332,18 @@ defmodule ApiaryWeb.ModelTiers do
   attr :errors, :list, default: [], doc: "the refusals, as `field_errors/2` places them"
   attr :disabled, :boolean, default: false
 
+  attr :form, :string,
+    default: nil,
+    doc: "the id of the form the fields belong to, where it is not the form they are in"
+
+  attr :field_id, :string,
+    default: nil,
+    doc: "what each field's id starts with; by default `name` with its brackets as `_`"
+
+  attr :stacked, :boolean,
+    default: false,
+    doc: "whether each tier's name and line stay above its fields at every width"
+
   @doc """
   The tiers of `key`: one section, "Model and effort per tier", with a group per tier,
   its name and line as the group's legend, then its Model and Effort. Model lists the
@@ -341,7 +354,11 @@ defmodule ApiaryWeb.ModelTiers do
   """
   def tiers(assigns) do
     key = assigns.key
-    base = assigns.name |> String.replace(~r/[\[\]]+/, "_") |> String.trim("_")
+
+    base =
+      assigns.field_id ||
+        assigns.name |> String.replace(~r/[\[\]]+/, "_") |> String.trim("_")
+
     errors = assigns.errors
 
     rows =
@@ -386,7 +403,10 @@ defmodule ApiaryWeb.ModelTiers do
         <li :for={row <- @rows} class="px-4 py-3">
           <fieldset
             id={row.id}
-            class="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+            class={[
+              "grid min-w-0 gap-3",
+              !@stacked && "lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+            ]}
             aria-describedby={"#{row.id}-line"}
           >
             <legend class="contents">
@@ -405,6 +425,7 @@ defmodule ApiaryWeb.ModelTiers do
                 type="text"
                 id={"#{row.field_id}_model"}
                 name={"#{row.name}[model]"}
+                form={@form}
                 value={row.model}
                 class={["input input-sm w-full font-mono", row.model_errors != [] && "input-error"]}
                 autocomplete="off"
@@ -429,6 +450,7 @@ defmodule ApiaryWeb.ModelTiers do
                 <select
                   id={"#{row.field_id}_model"}
                   name={"#{row.name}[model]"}
+                  form={@form}
                   class={["select select-sm w-full", row.model_errors != [] && "select-error"]}
                   aria-invalid={row.model_errors != [] && "true"}
                   aria-describedby={error_ids("#{row.field_id}_model", row.model_errors)}
@@ -451,6 +473,7 @@ defmodule ApiaryWeb.ModelTiers do
                 <select
                   id={"#{row.field_id}_effort"}
                   name={"#{row.name}[effort]"}
+                  form={@form}
                   class={["select select-sm w-full", row.effort_errors != [] && "select-error"]}
                   aria-invalid={row.effort_errors != [] && "true"}
                   aria-describedby={error_ids("#{row.field_id}_effort", row.effort_errors)}
