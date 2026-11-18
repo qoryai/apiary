@@ -11,6 +11,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # field belongs to a separate form after the stage's form (the `form` attribute), so
   # Save time limit saves it at once and the draft stays as it is. The read-only panel's
   # row line ends with the limit.
+  #
+  # With `model` given, each workflow's fold has its model choice after the time limit
+  # (`ApiaryWeb.StagesLive.ModelPart`), its fields in a separate form per row too: Key,
+  # "Use workspace default" or a key, the line of what the workflow uses, and with a key
+  # the tiers (`ApiaryWeb.ModelTiers`) and Save model choice.
   @moduledoc false
 
   use ApiaryWeb, :html
@@ -18,8 +23,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   import ApiaryWeb.PolicyComponents, only: [sect: 1]
 
   alias Apiary.TimeLimits
-  alias ApiaryWeb.MachineTypeWords
-  alias ApiaryWeb.StagesLive.Words
+  alias ApiaryWeb.{MachineTypeWords, ModelTiers}
+  alias ApiaryWeb.StagesLive.{ModelPart, Words}
 
   # A stage's alert lines: each workflow it runs that the harness does not list, in the
   # words for `harness` (`ApiaryWeb.StagesLive.Words.undeclared/3`).
@@ -99,6 +104,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     default: nil,
     doc:
       "the workflows' time limits, nil for none: `saved`, the workspace's minutes by workflow; `rows`, each field's state by its row (`time_limit_key/2`); `editable`; and `note`, the sentence shown in place of a way to change them, or nil"
+
+  attr :model, :map,
+    default: nil,
+    doc:
+      "the workflows' model choices, nil for none: what `ApiaryWeb.StagesLive.ModelPart.load/1` reads, with `rows`, each row's state by its row (`time_limit_key/2`); `editable`; and `workflows`, those of the saved process"
 
   def stage_panel(%{may: false} = assigns) do
     ~H"""
@@ -285,6 +295,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                       time_limit={
                         time_limit_field(@time_limit, @stage["id"], "stage-entry-#{i}-#{j}", inner)
                       }
+                      model={model_field(@model, @stage["id"], "stage-entry-#{i}-#{j}", inner)}
                     />
                   </div>
                   <div class="border-t border-line px-3 py-1.5">
@@ -312,6 +323,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   remove={%{"at" => i}}
                   rule={i > 0 and not Map.has_key?(Enum.at(@stage["sequence"], i - 1), "loop")}
                   time_limit={time_limit_field(@time_limit, @stage["id"], "stage-entry-#{i}", entry)}
+                  model={model_field(@model, @stage["id"], "stage-entry-#{i}", entry)}
                 />
               <% end %>
             <% end %>
@@ -427,6 +439,17 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         <input type="hidden" name="time_limit[row]" value={time_limit_key(@stage["id"], id)} />
         <input type="hidden" name="time_limit[workflow]" value={workflow} />
       </form>
+      <form
+        :for={{id, workflow} <- model_rows(@model, @stage)}
+        id={"#{id}-model-form"}
+        novalidate
+        phx-change="model_change"
+        phx-submit="model_save"
+        class="hidden"
+      >
+        <input type="hidden" name="model[row]" value={time_limit_key(@stage["id"], id)} />
+        <input type="hidden" name="model[workflow]" value={workflow} />
+      </form>
     </section>
     """
   end
@@ -481,6 +504,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :remove, :any, required: true
   attr :rule, :boolean, required: true, doc: "whether a line separates the row from the one above"
   attr :time_limit, :map, default: nil, doc: "the row's time limit (`time_limit_field/4`), or nil"
+  attr :model, :map, default: nil, doc: "the row's model choice (`model_field/4`), or nil"
 
   # A workflow's row: its name, its check or cross and Remove, and under them one line with
   # its settings, which opens them in place. The whole line is the `summary`, so a key or a
@@ -616,6 +640,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             class="w-64"
           />
           <.time_limit :if={@time_limit} id={"#{@id}-time-limit"} field={@time_limit} />
+          <.model_part :if={@model} id={"#{@id}-model"} field={@model} />
         </div>
       </details>
       <p
@@ -766,6 +791,158 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       </p>
     </fieldset>
     """
+  end
+
+  attr :id, :string, required: true
+  attr :field, :map, required: true, doc: "the row's model choice (`model_field/4`)"
+
+  # A workflow's model choice, under its time limit: Key, "Use workspace default" or a key
+  # of a model provider, with a line under it of what the workflow uses. With a key, the
+  # key's tiers follow (`ApiaryWeb.ModelTiers`), then Save model choice, which stays
+  # disabled while there is nothing to save or a tier has no model. With the default and
+  # no override saved, there is no button. A refusal shows under its field, and Saved.
+  # under the button after a save. Where the person may not change it, the fields are
+  # disabled with no button. A workflow the saved process does not have yet has Key
+  # disabled, with no button and a line to save the stage first.
+  defp model_part(assigns) do
+    field = assigns.field
+
+    assigns =
+      assign(assigns,
+        error: field.key_errors != [],
+        error_ids:
+          for({_message, i} <- Enum.with_index(field.key_errors), do: error_id(assigns.id, i))
+      )
+
+    ~H"""
+    <fieldset class="fieldset">
+      <label for={"#{@id}-key"} class="text-[13px]/[18px] font-medium">{gettext("Key")}</label>
+      <select
+        id={"#{@id}-key"}
+        name="model[key]"
+        form={@field.form}
+        class={["select select-sm w-full", @error && "select-error"]}
+        aria-invalid={@error && "true"}
+        aria-describedby={Enum.join(@error_ids ++ ["#{@id}-line"], " ")}
+        disabled={not @field.editable}
+      >
+        {Phoenix.HTML.Form.options_for_select(@field.options, @field.value)}
+      </select>
+      <p
+        :for={{message, i} <- Enum.with_index(@field.key_errors)}
+        id={error_id(@id, i)}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {message}
+      </p>
+      <p id={"#{@id}-line"} class="text-[12.5px]/[18px] text-muted">{model_line(@field)}</p>
+    </fieldset>
+    <ModelTiers.tiers
+      :if={@field.key}
+      id={"#{@id}-tiers"}
+      name="model[tiers]"
+      field_id={"#{@id}-tiers"}
+      form={@field.form}
+      key={@field.key}
+      tiers={@field.tiers}
+      stored={@field.stored}
+      errors={@field.tier_errors}
+      disabled={not @field.editable}
+      stacked
+    />
+    <div :if={@field.button or @field.done} class="grid justify-items-start gap-1.5">
+      <.button
+        :if={@field.button}
+        id={"#{@id}-save"}
+        type="submit"
+        form={@field.form}
+        size="xs"
+        disabled={@field.save_off}
+      >
+        {gettext("Save model choice")}
+      </.button>
+      <p
+        :if={@field.done}
+        id={"#{@id}-saved"}
+        role="status"
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-success"
+      >
+        <.icon name="hero-check-circle-micro" class="size-4 flex-none" />
+        {gettext("Saved.")}
+      </p>
+    </div>
+    """
+  end
+
+  # The line under Key: what the workflow uses.
+  defp model_line(%{draft_only: true}),
+    do: gettext("Save the stage first to set this workflow's model choice.")
+
+  defp model_line(%{key: %{}}),
+    do: gettext("This workflow uses this key and these models in place of the workspace's.")
+
+  defp model_line(%{default: {:workspace, key}}),
+    do: gettext("Uses the workspace default: %{key}.", key: key)
+
+  defp model_line(%{default: {:organisation, organisation, key}}),
+    do:
+      gettext("Uses the default of %{organisation}: %{key}.",
+        organisation: organisation,
+        key: key
+      )
+
+  defp model_line(%{default: :none}),
+    do: gettext("No default is set. Set one in Workspace settings › Model.")
+
+  # The ids of a field's refusals, as `ApiaryWeb.CoreComponents.input/1` gives them.
+  defp error_id(id, 0), do: "#{id}-key-error"
+  defp error_id(id, i), do: "#{id}-key-error-#{i + 1}"
+
+  # The rows of the stage with a workflow whose model choices have a form; none without
+  # model choices.
+  defp model_rows(nil, _stage), do: []
+  defp model_rows(_model, stage), do: stage_rows(stage)
+
+  # The model choice of the row `id` of `entry`, nil without model choices or a workflow:
+  # what `model_part/1` shows. The row's state is its own while it is of the same
+  # workflow, else the saved choice (`ApiaryWeb.StagesLive.ModelPart.state/4`).
+  defp model_field(nil, _stage_id, _id, _entry), do: nil
+
+  defp model_field(model, stage_id, id, entry) do
+    if named?(entry) do
+      workflow = entry["workflow"]
+      draft_only = not MapSet.member?(model.workflows, workflow)
+      state = ModelPart.state(model, model.rows, time_limit_key(stage_id, id), workflow)
+      keys = ModelPart.keys(model, workflow)
+      key = ModelTiers.find(keys, state.value)
+      stored = model.overrides[workflow]
+      editable = model.editable and not draft_only
+
+      {key_errors, tier_errors} =
+        Enum.split_with(state.errors, fn {field, _error} -> field in [:key, :runtime] end)
+
+      %{
+        form: "#{id}-model-form",
+        options: [
+          {gettext("Use workspace default"), ""} | for(k <- keys, do: {k.label, k.value})
+        ],
+        value: state.value,
+        key: key,
+        tiers: state.tiers,
+        stored: ModelTiers.stored(stored),
+        key_errors: for({_field, error} <- key_errors, do: translate_error(error)),
+        tier_errors: tier_errors,
+        done: state.done,
+        editable: editable,
+        draft_only: draft_only,
+        default: model.default,
+        button: editable and (key != nil or stored != nil or state.done),
+        save_off:
+          not (ModelPart.changed?(model, state) or state.refused) or
+            (key != nil and not ModelTiers.complete?(key, state.tiers))
+      }
+    end
   end
 
   @doc false

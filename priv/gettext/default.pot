@@ -3144,6 +3144,7 @@ msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add
 msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
+#: lib/apiary_web/live/stages_live/model_part.ex
 #, elixir-autogen, elixir-format
 msgid "%{provider} · %{key}"
 msgstr ""
@@ -12324,6 +12325,7 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Key"
@@ -14054,6 +14056,11 @@ msgstr ""
 msgid "No custom types yet. Add one when a workflow stores something no standard type fits."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "No default is set. Set one in Workspace settings › Model."
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No destination matches them in this range."
@@ -15596,6 +15603,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/live/stages_live/index.ex
 #: lib/apiary_web/live/target_live/further_repositories.ex
 #: lib/apiary_web/live/target_live/show.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -18785,6 +18793,11 @@ msgstr ""
 msgid "Save custom API"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Save model choice"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Save password"
@@ -18798,6 +18811,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Save the outputs"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Save the stage first to set this workflow's model choice."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -22939,6 +22957,11 @@ msgstr ""
 msgid "This work item stays in Qory Apiary. Qory no longer changes anything on the %{item}, and the %{item} is no longer in the Backlog."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "This workflow uses this key and these models in place of the workspace's."
+msgstr ""
+
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace"
@@ -23651,6 +23674,11 @@ msgstr ""
 msgid "Use up to"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Use workspace default"
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Used again."
@@ -23665,6 +23693,16 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "Username"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Uses the default of %{organisation}: %{key}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Uses the workspace default: %{key}."
 msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex
