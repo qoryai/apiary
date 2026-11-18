@@ -600,7 +600,11 @@ defmodule ApiaryWeb.ModelTiers do
   attr :name, :string, required: true, doc: "the name of the field"
   attr :runtimes, :list, required: true, doc: "the runtimes the key's provider serves"
   attr :runtime, Runtime, required: true, doc: "the runtime chosen, one of `runtimes`"
-  attr :provider, :string, required: true, doc: "the name of the key's provider"
+
+  attr :provider, :string,
+    required: true,
+    doc: "the title of the key's provider in its catalogue entry, such as \"OpenRouter\""
+
   attr :errors, :list, default: [], doc: "the refusals of Runtime, each a message"
   attr :disabled, :boolean, default: false
 

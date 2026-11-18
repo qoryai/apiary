@@ -2391,7 +2391,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           name="model[runtime]"
           runtimes={@runtimes}
           runtime={@runtime}
-          provider={if @source == :add, do: @chosen.title, else: @source.name}
+          provider={@chosen.title}
           errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
         />
         <p

@@ -995,7 +995,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-runtime-line",
-               "#{release.title} is the only runtime that works with #{provider.name}."
+               "#{release.title} is the only runtime that works with Anthropic API key."
              )
 
       lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
@@ -1027,7 +1027,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-runtime-line",
-               "#{release.title} is the only runtime that works with #{provider.name}."
+               "#{release.title} is the only runtime that works with Anthropic API key."
              )
 
       lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
@@ -1036,10 +1036,17 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert name == release.name
     end
 
-    test "several fit: a select, set to the stored runtime", ctx do
+    test "several fit: a select, set to the stored runtime, and a line with the provider's title",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       {release, bearer} = two_runtimes()
-      openrouter = openrouter(scope)
+
+      {:ok, openrouter} =
+        Connections.create_provider(scope, %{
+          name: "Router of the team",
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-model-page-0123456789"}]
+        })
 
       {:ok, _choice} =
         Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
@@ -1057,8 +1064,10 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-runtime-line",
-               "These runtimes work with #{openrouter.name}."
+               "These runtimes work with OpenRouter."
              )
+
+      refute has_element?(lv, "#model-runtime-line", openrouter.name)
     end
 
     test "Key lists every key, whichever runtime is chosen", ctx do

@@ -116,6 +116,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
           do: [
             %{
               provider: provider,
+              title: description.title,
               runtimes: runtimes,
               models_by: Map.new(runtimes, &{&1.name, ModelChoices.suggestions(provider, &1)}),
               free: Connections.provider_models(description) == [],
@@ -125,7 +126,16 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
           else: []
 
       {:error, _reason} when stored? ->
-        [%{provider: provider, runtimes: [], models_by: %{}, free: false, offered: false}]
+        [
+          %{
+            provider: provider,
+            title: provider.name,
+            runtimes: [],
+            models_by: %{},
+            free: false,
+            offered: false
+          }
+        ]
 
       {:error, _reason} ->
         []
@@ -163,13 +173,27 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
   def runtimes(model, key, name) do
     runtimes =
-      case Enum.find(model.providers, &(&1.provider.id == key.provider.id)) do
+      case entry_of(model, key) do
         %{runtimes: runtimes} -> runtimes
         nil -> []
       end
 
     {runtimes, ModelTiers.runtime(runtimes, name)}
   end
+
+  @doc """
+  The title of the provider of `key` as its catalogue entry has it, such as "OpenRouter",
+  which the Runtime line uses; the provider's name where its description cannot be read.
+  """
+  @spec provider_title(map, map) :: String.t()
+  def provider_title(model, key) do
+    case entry_of(model, key) do
+      %{title: title} -> title
+      nil -> key.provider.name
+    end
+  end
+
+  defp entry_of(model, key), do: Enum.find(model.providers, &(&1.provider.id == key.provider.id))
 
   @doc "The state of the row `row` of `workflow`: its state in `rows`, else the saved one."
   @spec state(map, map, String.t(), String.t()) :: map
@@ -335,7 +359,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
       |> ModelTiers.attrs(state.tiers)
       |> Map.merge(%{
         fallbacks: [],
-        runtime: if(length(Runtimes.list()) > 1, do: state.runtime)
+        runtime: if(Runtimes.several?(), do: state.runtime)
       })
 
     case ModelChoices.put_choice(scope, {:workspace, state.workflow}, attrs) do

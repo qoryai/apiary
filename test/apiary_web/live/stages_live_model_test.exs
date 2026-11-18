@@ -640,7 +640,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert has_element?(
                view,
                "#{@runtime_part}-line",
-               "#{release.title} is the only runtime that works with #{anthropic.name}."
+               "#{release.title} is the only runtime that works with Anthropic API key."
              )
 
       # The hidden field belongs to the row's form.
@@ -668,7 +668,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert has_element?(
                view,
                "#{@runtime_part}-line",
-               "These runtimes work with #{openrouter.name}."
+               "These runtimes work with OpenRouter."
              )
 
       change_model(view, %{"tiers" => @override_tiers})

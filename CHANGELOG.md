@@ -826,7 +826,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_proxies` on, a key of a provider whose description lists no models, such as
   LiteLLM, shows **Model per tier**, with a text field per tier for any model id and no
   **Effort**. **Save** is enabled once every tier has a model. **Runtime** lists the
-  runtimes that work with the key's provider. Where one does, it shows its name and
+  runtimes that work with the key's provider. Its line has the provider's title in the
+  catalogue, not the key's name. Where one does, it shows its name and
   “Claude Code is the only runtime that works with Anthropic API key.”; where several do,
   a select, set to the saved runtime, else the first, and “These runtimes work with
   OpenRouter.”. **Key** lists every key, whichever runtime is chosen. A change of **Key**

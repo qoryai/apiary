@@ -4823,7 +4823,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   test "Runtime follows the tiers: one runtime fits, its name as text and the line",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-    provider = provider!(scope, "anthropic", "main")
+    # A name other than the catalogue's title: the line has the title.
+    provider!(scope, "anthropic", "main", %{name: "Team model key"})
     {release, _bearer} = two_runtimes()
     {:ok, lv, html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
@@ -4836,7 +4837,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-runtime-name") == release.title
 
     assert words(lv, "#set-up-model-runtime-line") ==
-             "#{release.title} is the only runtime that works with #{provider.name}."
+             "#{release.title} is the only runtime that works with Anthropic API key."
   end
 
   test "Runtime with several that fit: a select; a change of Key keeps or moves it",
@@ -4859,7 +4860,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, ~s{#model_runtime option[value="#{bearer.name}"][selected]})
 
     assert words(lv, "#set-up-model-runtime-line") ==
-             "These runtimes work with #{openrouter.name}."
+             "These runtimes work with OpenRouter."
 
     # Anthropic does not serve it: Runtime moves to the one it serves.
     lv

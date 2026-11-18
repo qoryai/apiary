@@ -125,6 +125,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
             provider: provider,
             runtimes: runtimes,
             runtime: runtime,
+            title: description.title,
             models: ModelChoices.suggestions(provider, runtime),
             free: Connections.provider_models(description) == [],
             offered: offered,
@@ -179,7 +180,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   # Whether a save names the runtime: while the catalogue has more than one. With one,
   # the choice names none, and its runs use that one.
-  defp runtimes?, do: length(Runtimes.list()) > 1
 
   defp applies?(%Connection{applies_to: "all"}, _workspace_id), do: true
 
@@ -530,7 +530,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
           key
           |> ModelTiers.attrs(socket.assigns.tiers)
           |> Map.merge(%{
-            runtime: if(runtimes?(), do: socket.assigns.runtime.name),
+            runtime: if(Runtimes.several?(), do: socket.assigns.runtime.name),
             fallbacks: fallback_attrs(socket.assigns, rows)
           })
           |> default_key(socket.assigns.choice, key)
@@ -929,7 +929,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
             name="model_choice[runtime]"
             runtimes={provider_entry(@providers, @key.provider).runtimes}
             runtime={@runtime}
-            provider={@key.provider.name}
+            provider={provider_entry(@providers, @key.provider).title}
             errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
             disabled={!@writes}
           />

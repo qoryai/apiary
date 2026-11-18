@@ -861,7 +861,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       form={@field.form}
       runtimes={@field.runtimes}
       runtime={@field.runtime}
-      provider={@field.key.provider.name}
+      provider={@field.provider_title}
       errors={@field.runtime_errors}
       disabled={not @field.editable}
     />
@@ -960,6 +960,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
           ),
         key_errors: for({_field, error} <- key_errors, do: translate_error(error)),
         runtime_errors: for({_field, error} <- runtime_errors, do: translate_error(error)),
+        provider_title: key && ModelPart.provider_title(model, key),
         tier_errors: tier_errors,
         done: state.done,
         editable: editable,
