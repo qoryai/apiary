@@ -335,8 +335,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # provider's, by the instance. The key is named by its value id and the provider by the
   # name it had then, as the entry's details have them. A call that did not end in a new
   # sign-in says its cause in words and, in brackets, the fixed word the details have
-  # (`model_key_cause/1`); it is never a part of the provider's answer. A refusal that stays
-  # asks the person to sign in again; a failure that may pass says when the next call is.
+  # (`model_key_cause/1`); it is never a part of the provider's answer. The line of a refusal
+  # that stays starts "Sign in again"; the line of a failure that may pass has the time of
+  # the next call.
   # The filter does not offer the action.
   def sentence(
         :"model_key.refresh",

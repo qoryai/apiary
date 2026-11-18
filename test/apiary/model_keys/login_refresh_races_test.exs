@@ -35,8 +35,8 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
   setup_all :drop_test_database_objects
   setup :setup_races
 
-  # Two tests add what the database refuses with, outside the sandbox: a constraint on
-  # the trail, and a trigger on the values. A run that crashed before its `on_exit` left them
+  # Three tests add what makes the database return an error, outside the sandbox: a constraint on
+  # the trail, and a trigger on the values or on the logins. A run that crashed before its `on_exit` left them
   # in place, and every later test in the database would meet them: dropped here first.
   defp drop_test_database_objects(_context) do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
@@ -49,6 +49,8 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     Repo.query!("ALTER TABLE audit_entries DROP CONSTRAINT IF EXISTS model_key_refresh_refused")
     Repo.query!("DROP TRIGGER IF EXISTS refresh_write_refused ON secret_values")
     Repo.query!("DROP FUNCTION IF EXISTS refresh_write_refused()")
+    Repo.query!("DROP TRIGGER IF EXISTS refresh_login_refused ON model_key_logins")
+    Repo.query!("DROP FUNCTION IF EXISTS refresh_login_refused()")
     Repo.query!("DROP SEQUENCE IF EXISTS refresh_write_attempts")
   end
 
@@ -285,7 +287,8 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     fresh = answer("no-entry")
     stub_answer!(fresh)
 
-    # The trail refuses the entry of a refresh, as a full disk or a failed statement would.
+    # A constraint on the trail makes the insert of the entry fail, as a full disk or a failed
+    # statement would.
     Repo.query!("""
     ALTER TABLE audit_entries
       ADD CONSTRAINT model_key_refresh_refused CHECK (action <> 'model_key.refresh') NOT VALID
@@ -312,7 +315,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     refute log =~ fresh["access_token"]
   end
 
-  # The database refuses the first `times` writes of a key's value, as a failing disk would.
+  # The first `times` writes of a key's value fail in the database, as on a failing disk.
   defp refuse_writes!(times) do
     Repo.query!("CREATE SEQUENCE refresh_write_attempts")
 
@@ -330,6 +333,35 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     Repo.query!("""
     CREATE TRIGGER refresh_write_refused BEFORE UPDATE ON secret_values
       FOR EACH ROW EXECUTE FUNCTION refresh_write_refused()
+    """)
+
+    on_exit(fn ->
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+      drop_test_database_objects()
+      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    end)
+  end
+
+  # The first `times` writes that end a lease (the outcome of a refresh) fail in the database,
+  # on the logins' rows: the three writes of a rotated token, and the mark.
+  defp refuse_login_writes!(times) do
+    Repo.query!("CREATE SEQUENCE refresh_write_attempts")
+
+    Repo.query!("""
+    CREATE FUNCTION refresh_login_refused() RETURNS trigger AS $$
+    BEGIN
+      IF nextval('refresh_write_attempts') <= #{times} THEN
+        RAISE EXCEPTION 'the write is refused';
+      END IF;
+      RETURN NEW;
+    END
+    $$ LANGUAGE plpgsql
+    """)
+
+    Repo.query!("""
+    CREATE TRIGGER refresh_login_refused BEFORE UPDATE ON model_key_logins
+      FOR EACH ROW WHEN (OLD.lease_id IS NOT NULL AND NEW.lease_id IS NULL)
+      EXECUTE FUNCTION refresh_login_refused()
     """)
 
     on_exit(fn ->
@@ -428,7 +460,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
   end
 
-  test "a shutdown that stops the HTTP call counts no failure, writes no entry, frees the lease",
+  test "a call that the supervisor kills counts no failure, writes no entry, frees the lease",
        ctx do
     id = key_id(ctx.provider, "main")
     old = tokens!(ctx.provider, id)
@@ -437,10 +469,10 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     caller = start(fn -> refresh(ctx.provider, id) end)
     assert_receive {:request, http}, 5_000
 
-    # The supervisor stops the task that holds the call, as it does when the application
-    # stops; the task that owns the refresh traps exits and goes on.
+    # The task traps exits, so the supervisor kills it when its grace time (20 seconds) is
+    # over: here at once, as the supervisor does then. The task that runs the refresh goes on.
     assert http in Task.Supervisor.children(LoginRefresh.supervisor())
-    assert :ok = Task.Supervisor.terminate_child(LoginRefresh.supervisor(), http)
+    Process.exit(http, :kill)
 
     assert Task.await(caller.task, 10_000) == {:error, :unavailable}
 
@@ -456,6 +488,80 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     stub_answer!(fresh)
     assert {:ok, access, _at} = refresh(ctx.provider, id)
     assert access == fresh["access_token"]
+    assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
+  end
+
+  test "the mark that needs a new sign-in is written like the first two writes", ctx do
+    id = key_id(ctx.provider, "main")
+    old = tokens!(ctx.provider, id)
+    fresh = answer("unmarked")
+    stub_answer!(fresh)
+    refuse_login_writes!(3)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(self(), {:result, refresh(ctx.provider, id)})
+      end)
+
+    # Neither the two tries of the new tokens nor the mark could be written: the caller gets
+    # the stored access token while it is valid, and the failure is logged, not raised.
+    assert_received {:result, {:ok, access, _at}}
+    assert access == old.access_token
+    assert log |> String.split("the write failed") |> length() == 4
+    assert tokens!(ctx.provider, id) == old
+    assert entries(ctx.provider) == []
+
+    for secret <- [fresh["refresh_token"], fresh["access_token"], old.refresh_token],
+        do: refute(log =~ secret)
+
+    # The lease stays until it lapses; the next refresh then calls with the spent refresh
+    # token, and the provider says it was used: the login needs a new sign-in.
+    assert %Login{state: "signed_in", lease_id: lease_id} = Repo.get!(Login, id)
+    assert is_binary(lease_id)
+
+    Repo.update_all(from(l in Login, where: l.secret_value_id == ^id),
+      set: [lease_until: DateTime.add(DateTime.utc_now(), -1)]
+    )
+
+    Req.Test.stub(LoginRefresh, fn conn ->
+      conn |> Plug.Conn.put_status(400) |> Req.Test.json(%{"error" => "refresh_token_reused"})
+    end)
+
+    assert refresh(ctx.provider, id) == {:error, :sign_in_needed}
+
+    assert %Login{state: "sign_in_needed", sign_in_cause: "refresh_token_reused"} =
+             Repo.get!(Login, id)
+  end
+
+  test "a stop of the task supervisor within its grace time lets the call and its write end",
+       ctx do
+    id = key_id(ctx.provider, "main")
+    fresh = answer("grace")
+    stub_held!(fresh)
+
+    sup = Process.whereis(LoginRefresh.supervisor())
+
+    {child_id, ^sup, _type, _modules} =
+      Enum.find(Supervisor.which_children(Apiary.Supervisor), &(elem(&1, 1) == sup))
+
+    on_exit(fn -> Supervisor.restart_child(Apiary.Supervisor, child_id) end)
+
+    caller = start(fn -> refresh(ctx.provider, id) end)
+    assert_receive {:request, http}, 5_000
+
+    # The application stops the task supervisor: it exits each task with `:shutdown`, and
+    # waits for the task to end. The two tasks trap exits, so the call is not cut.
+    stopper = Task.async(fn -> Supervisor.terminate_child(Apiary.Supervisor, child_id) end)
+    Process.sleep(200)
+    assert Process.alive?(http)
+    send(http, :go)
+
+    assert {:ok, access, _at} = Task.await(caller.task, 10_000)
+    assert access == fresh["access_token"]
+    assert :ok = Task.await(stopper, 10_000)
+
+    assert tokens!(ctx.provider, id).refresh_token == fresh["refresh_token"]
+    assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
     assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
   end
 

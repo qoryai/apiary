@@ -1403,7 +1403,7 @@ defmodule Apiary.AuditChanges do
   end
 
   # A refresh of a sign-in that is due, in an organisation marked for deletion, which
-  # `Apiary.Access` refuses (`model_key.refresh`), makes no call and records nothing.
+  # `Apiary.Access` does not allow (`model_key.refresh`), makes no call and records nothing.
   def refuse(:"model_key.refresh", %{scope: scope}) do
     {provider, value, _tokens} = login_provider(scope, -60)
 

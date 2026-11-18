@@ -140,7 +140,7 @@ defmodule Apiary.Kinds.Provider do
   end
 
   # Every URL endpoint, every `oauth_refresh` URL and every default of an address setting
-  # that the endpoint rule refuses, each with its refusal.
+  # that the endpoint rule does not accept, each with the reason.
   defp addresses_refused(%__MODULE__{} = provider) do
     endpoint = for %{"endpoint" => address} <- provider.apis, is_binary(address), do: address
 

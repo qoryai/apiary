@@ -81,35 +81,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   within 330 seconds of `exp`, and one that the schedule starts within 300 seconds, as
   `codex` does. The run's lead is 30 seconds longer because the gateway renews a run's token
   5 minutes before it expires, and a request a few seconds earlier would get the same token
-  and make the gateway ask again 30 seconds later. A separate job, every 6 hours, refreshes
-  each sign-in that has not been refreshed for 7 days. A sign-in is not refreshed again
-  within 60 seconds of a refresh. The refresh is one HTTPS call to the token address of the
+  and make the gateway call again 30 seconds later. A separate job, every 6 hours, refreshes
+  each sign-in that has not been refreshed for 7 days; a pass reads at most 20 pages of 50
+  sign-ins and goes on after them in the next pass. A sign-in is not refreshed again within
+  60 seconds of a refresh. The refresh is one HTTPS call to the token address of the
   provider's catalogue entry, `https://auth.openai.com/oauth/token`, with the refresh token,
   the client id of the entry and the reason (`proactive_expiry` or `scheduled`); the server
   needs outbound HTTPS to `auth.openai.com`. A refresh keeps the key's states and the copies
-  that runs hold. The call and the write of its result run in a task that no caller owns, so
-  the new refresh token is stored even when the caller stops waiting; a caller that stops
-  waiting gets the old access token while it is valid. A key renamed while a call is in
-  flight keeps the result under its new name. A sign-in pasted, or a key deleted, while a
-  call is in flight keeps what the key has, and the result is dropped. A new refresh token
-  that the key cannot store, such as one past the size of a value, is written once more at
-  once; if that fails too, the key shows **Needs a new sign-in** with the cause
-  `token_not_stored` and the line “Qory Apiary could not save the new sign-in on <time>.
-  Sign in again.”, because the stored token is spent. A deploy that stops the server
-  gives the write up to 5 seconds. A deploy that stops a call before OpenAI answers counts
-  as no failure, writes no Activity line and leaves the key as it was. When OpenAI rejects the refresh token for good (an
-  expired, used or revoked token, `invalid_grant`, or a 401), the key shows **Needs a new
-  sign-in**, with the time of the rejection, and no further call is made until a new sign-in
-  is pasted. When a call fails for a reason that may pass (a 5xx or 429 answer, a timeout, a
-  network error or an answer that is no refresh), the next call waits 30 seconds, then twice
-  as long for each failure in a row, up to 10 minutes, and the key keeps its access token
-  while that token is valid. The organisation's Activity has one line when a key's refresh
-  starts to fail and one when it works again: “Qory Apiary refreshed the sign-in of the key
-  … of …”. The failure line says the cause in words and the code in brackets: “Sign in again
-  on the key … of …” for a refusal that stays, and, for a failure that may pass, the time of
-  the next call. The failed calls between the two leave no line. An organisation without the
-  `secrets` feature, or marked for deletion, makes no call. No Activity line holds a token
-  or a part of OpenAI's answer. Nothing sends the access token to a run yet.
+  that runs hold. The call and the write of its result run in a task that is linked to no
+  caller, so the new refresh token is stored even when the caller stops waiting; a caller
+  that stops waiting gets the old access token while it is valid. A key renamed while a call
+  is in flight keeps the result under its new name. A sign-in pasted, or a key deleted,
+  while a call is in flight keeps what the key has, and the result is dropped. A new refresh
+  token that the key cannot store, such as one past the size of a value, is written once
+  more at once; if that fails too, the key shows **Needs a new sign-in** with the cause
+  `token_not_stored` and the line “Qory Apiary could not save the new sign-in on <time>.”,
+  because the stored token is spent. A deploy that stops the server gives the write up to 60
+  seconds. A deploy that stops a call before OpenAI returns a response counts as no failure,
+  writes no Activity line and leaves the key as it was. When OpenAI rejects the refresh
+  token for good (an expired, used or revoked token, `invalid_grant`, or a 401), the key
+  shows **Needs a new sign-in**, with the time of the rejection, and no further call is made
+  until a new sign-in is pasted. When a call fails for a reason that may pass (a 5xx or 429
+  answer, a timeout, a network error or an answer that is no refresh), the next call waits
+  30 seconds, then twice as long for each failure in a row, up to 10 minutes, and the key
+  keeps its access token while that token is valid. The organisation's Activity has one line
+  when a key's refresh starts to fail and one when it works again: “Qory Apiary refreshed
+  the sign-in of the key … of …”. The failure line says the cause in words and the code in
+  brackets: “Sign in again on the key … of …” for a refusal that stays, and, for a failure
+  that may pass, the time of the next call. The failed calls between the two leave no line.
+  An organisation without the `secrets` feature, or marked for deletion, makes no call. No
+  Activity line holds a token or a part of OpenAI's answer. Nothing sends the access token
+  to a run yet.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a

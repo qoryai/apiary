@@ -657,8 +657,9 @@ for the node pool and the gateway its settings declare (`node.install`,
 `Apiary.Nodes.Installed.install/2`), in the instance's organisation, and refreshing the
 sign-in of a model key whose provider has an `oauth_refresh`, such as an OpenAI
 subscription's, in any organisation with the `secrets` feature on
-(`model_key.refresh`, asked of the organisation by `Apiary.ModelKeys.Login` before it
-takes a login's lease: a refusal makes no call and writes no entry). A release command
+(`model_key.refresh`, checked on the organisation by `Apiary.ModelKeys.Login` before it
+takes a login's lease: when the check fails, the refresh makes no call and writes no
+entry). A release command
 that makes a password link acts in that role too (`account.password_link`). Any other scope
 without a person may nothing, whatever it carries.
 

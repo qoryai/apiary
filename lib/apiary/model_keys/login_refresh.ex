@@ -10,9 +10,9 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   adapter. The URL and the client id come from the catalogue entry alone, never from a
   person's input or a stored value, and `Apiary.Kinds.Endpoint.check/1` checks the URL
   at every call. The call verifies TLS against the operating system's certificate
-  authorities (and the file `SSL_CERT_FILE` names, as an adapter call does), follows no redirect, is not retried, and
-  stops after 15 seconds (5 to connect, 10 for each read) in a separate task. It keeps
-  at most 64 KiB of the answer. The user agent is `qory-apiary`.
+  authorities (and the file `SSL_CERT_FILE` names, as an adapter call does), follows no
+  redirect, is not retried, and stops after 15 seconds (5 to connect, 10 for each read) in
+  a separate task. It keeps at most 64 KiB of the answer. The user agent is `qory-apiary`.
 
   `call/3` returns `{:ok, tokens}` with the new access token and, when the provider sent
   one, the new refresh token, or a failure that is `{:permanent, cause}` for a refusal
@@ -40,6 +40,10 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   @connect_timeout 5_000
   @receive_timeout 10_000
   @total_timeout 15_000
+  # The time the task supervisor gives the task that makes the request to end when the
+  # supervisor stops (a deploy): the call's limit, 15 seconds, and 5 more. Then the task is
+  # killed and the call counts as `:shutdown`.
+  @shutdown_ms 20_000
   @max_answer 65_536
   @user_agent "qory-apiary"
   @named_codes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated)
@@ -92,18 +96,25 @@ defmodule Apiary.ModelKeys.LoginRefresh do
 
   # The request in a task that is linked to nobody and stopped at the call's limit. The
   # task catches every failure, so its crash report, which would carry the request's
-  # closure, is never written.
+  # closure, is never written. It traps exits, so a stop by the supervisor (a deploy) lets
+  # the request end and return its result, within `@shutdown_ms`.
   defp run(url, body) do
     task =
-      Task.Supervisor.async_nolink(@supervisor, fn ->
-        try do
-          request(url, body)
-        rescue
-          _exception -> {:transient, "network"}
-        catch
-          _kind, _reason -> {:transient, "network"}
-        end
-      end)
+      Task.Supervisor.async_nolink(
+        @supervisor,
+        fn ->
+          Process.flag(:trap_exit, true)
+
+          try do
+            request(url, body)
+          rescue
+            _exception -> {:transient, "network"}
+          catch
+            _kind, _reason -> {:transient, "network"}
+          end
+        end,
+        shutdown: @shutdown_ms
+      )
 
     total = Application.get_env(:apiary, __MODULE__, [])[:total_timeout] || @total_timeout
 
@@ -115,7 +126,8 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   end
 
   # The supervisor stops the task with `:shutdown`, or kills it when it does not stop in
-  # time. The task catches its own failures, so these exits come from outside.
+  # time. The task catches each failure that its code raises, so these exits come from
+  # outside.
   defp shutdown?(reason),
     do: reason in [:shutdown, :killed] or match?({:shutdown, _detail}, reason)
 

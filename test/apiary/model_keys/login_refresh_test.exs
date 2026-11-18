@@ -69,7 +69,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   # The key's stored access token is opaque, with no `exp` to read, and its row has no expiry
-  # (what a refresh that answers such a token leaves).
+  # (what a refresh that returns such a token leaves).
   defp opaque!(provider, tokens) do
     id = value(provider).id
     {:ok, _plaintext, snapshot} = Secrets.reveal_login_snapshot(plain(provider), id)
@@ -103,8 +103,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     )
   end
 
-  # The refresh answers `answer`, a function of the decoded request or a map, and tells the
-  # test about each request.
+  # The refresh returns `answer`, a function of the decoded request or a map, and sends the
+  # test a message for each request.
   defp stub!(answer) do
     test = self()
 
@@ -358,7 +358,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert [%Entry{details: %{"outcome" => "refreshed"}}] = trail(provider)
     end
 
-    test "a due refresh in an organisation marked for deletion is refused by access: no call, no entry",
+    test "a due refresh in an organisation marked for deletion is not allowed by Access: no call, no entry",
          %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 60)
       stub!(new_tokens("refused"))
@@ -659,7 +659,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
   end
 
-  # Waits until `fun` is true, 5 seconds at most: for what a task that no caller owns writes.
+  # Waits until `fun` is true, 5 seconds at most: for what a task that is linked to no caller writes.
   defp eventually(fun, left \\ 250) do
     cond do
       fun.() -> :ok
@@ -751,7 +751,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
   end
 
-  # The newest entries once the unowned task has written them.
+  # The newest entries once the task that is linked to no caller has written them.
   defp eventually_trail(provider) do
     eventually(fn -> trail(provider) != [] end)
     trail(provider)
@@ -801,7 +801,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "a rotated refresh token that cannot be stored" do
-    # A document past a value's size: the key refuses it.
+    # A document past a value's size: the key returns `:too_large` for it.
     defp oversized(tag), do: %{new_tokens(tag) | "access_token" => String.duplicate("a", 17_000)}
 
     test "makes the login need a sign-in at once, and no call uses the spent token",
@@ -834,7 +834,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert token(provider, trigger: :schedule) == {:error, :sign_in_needed}
       assert requests() == []
 
-      # Each of the two writes logs why it was refused: the reason's atom, no token.
+      # Each of the two writes logs why it failed: the reason's atom, no token.
       assert log |> String.split("the new sign-in was not stored: :too_large") |> length() == 3
 
       for secret <- [
@@ -1538,7 +1538,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
 
     defmodule RefusesOrganisation do
-      # An edition that refuses `model_key.refresh` in the organisations named "Refused ...".
+      # An edition that does not allow `model_key.refresh` in the organisations named
+      # "Refused ...".
       @moduledoc false
       def check(_scope, :"model_key.refresh", %Apiary.Organisations.Organisation{
             name: "Refused" <> _
@@ -1548,7 +1549,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
     end
 
-    test "skips the logins of an organisation that access refuses, whatever their number",
+    test "skips the logins of an organisation that Access does not allow, 52 of them ahead",
          %{scope: scope} do
       :ok = Apiary.Edition.put_test_stub(RefusesOrganisation)
       %{scope: refused} = sign_up_fixture(%{organisation_name: "Refused Org"})
@@ -1609,8 +1610,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {refused_provider, provider} = paged_logins!(scope)
 
       # Offset paging would read the second page from offset 2 of what is left, and skip `main`.
-      swept =
-        Login.sweep_due(2,
+      {swept, _cursor} =
+        Login.sweep_pass(2, nil,
           after_page: fn
             1 -> set_login!(refused_provider, [refreshed_at: 0], "r1")
             _page -> :ok
@@ -1626,8 +1627,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     test "a login that is listed and then moves later is listed once", %{scope: scope} do
       {_refused_provider, provider} = paged_logins!(scope)
 
-      swept =
-        Login.sweep_due(4,
+      {swept, nil} =
+        Login.sweep_pass(4, nil,
           after_page: fn
             1 -> set_login!(provider, [refreshed_at: -8 * @day], "main")
             _page -> :ok
@@ -1638,23 +1639,34 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
                Enum.map(~w(main b c), &value(provider, &1).id)
     end
 
-    test "a pass reads at most the pages it is given, and 20 by default", %{scope: scope} do
+    test "a pass reads at most the pages it is given and goes on from there", %{scope: scope} do
       {_refused_provider, provider} = paged_logins!(scope)
       test = self()
       count = fn page -> send(test, {:page, page}) end
 
-      assert Login.sweep_due(1, max_pages: 2, after_page: count) == []
+      log =
+        capture_log(fn ->
+          send(self(), {:pass, Login.sweep_pass(1, nil, max_pages: 2, after_page: count)})
+        end)
+
+      assert_received {:pass, {[], cursor}}
       assert_received {:page, 1}
       assert_received {:page, 2}
       refute_received {:page, 3}
+      assert log =~ "stopped after 2 logins read in 2 pages"
 
-      assert [{_p, id}] = Login.sweep_due(1, max_pages: 3, after_page: count)
+      assert {[{_p, id}], cursor} = Login.sweep_pass(1, cursor, max_pages: 3)
       assert id == value(provider, "main").id
+      assert {[{_p, id}], _cursor} = Login.sweep_pass(1, cursor)
+      assert id == value(provider, "b").id
+    end
 
-      # 22 logins of a refused organisation that the allowed one's login follows.
+    test "an allowed login behind more than 20 pages of refused ones is reached in 2 passes",
+         %{scope: scope} do
       :ok = Apiary.Edition.put_test_stub(RefusesOrganisation)
       %{scope: refused} = sign_up_fixture(%{organisation_name: "Refused Org 2"})
 
+      # 22 logins of a refused organisation, the oldest, then the allowed one's.
       for name <- ["One", "Two"] do
         keys = for n <- 1..11, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
 
@@ -1670,25 +1682,40 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         set: [signed_in_at: DateTime.add(DateTime.utc_now(), -30 * @day)]
       )
 
-      flush_pages()
-      assert Login.sweep_due(1, after_page: count) == []
-      assert pages() == Enum.to_list(1..20)
+      {provider, _tokens} = subscription!(scope, expires_in: 3600)
+      aged!(provider, 8)
+      test = self()
+
+      # One login a page, so that 20 pages read 20 logins, all refused.
+      log =
+        capture_log(fn ->
+          send(
+            self(),
+            {:pass, Login.sweep_pass(1, nil, after_page: &send(test, {:page, &1}))}
+          )
+        end)
+
+      assert_received {:pass, {[], cursor}}
+      for page <- 1..20, do: assert_received({:page, ^page})
+      refute_received {:page, 21}
+      assert log =~ "stopped after 20 logins read in 20 pages"
+
+      assert {[{swept, id}], _cursor} = Login.sweep_pass(1, cursor)
+      assert swept.id == provider.id
+      assert id == value(provider).id
     end
 
-    defp flush_pages do
-      receive do
-        {:page, _page} -> flush_pages()
-      after
-        0 -> :ok
-      end
-    end
+    test "a pass that reads every login logs no warning and leaves no position", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 3600)
+      aged!(provider, 8)
 
-    defp pages do
-      receive do
-        {:page, page} -> [page | pages()]
-      after
-        0 -> []
-      end
+      log =
+        capture_log(fn ->
+          send(self(), {:pass, Login.sweep_pass(5, nil)})
+        end)
+
+      assert_received {:pass, {[{_p, _id}], nil}}
+      refute log =~ "stopped after"
     end
 
     test "is in the crontab, every 6 hours" do
