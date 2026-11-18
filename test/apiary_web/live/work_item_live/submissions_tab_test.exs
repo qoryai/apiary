@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   end
 
   # The default process with Shape running a workflow and outputting the submission type.
-  defp process!(scope, submit, more_outputs \\ []) do
+  defp process!(scope, submit, more_outputs \\ [], gate \\ "person") do
     document = Processes.default_document("software")
 
     stages =
@@ -100,7 +100,11 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
             "outputs" =>
               [%{"type" => "submission", "required" => false}] ++
                 for(type <- more_outputs, do: %{"type" => type, "required" => false}),
-            "gate" => %{"kind" => "person", "approvers" => "members"}
+            "gate" =>
+              if(gate == "none",
+                do: %{"kind" => "none"},
+                else: %{"kind" => "person", "approvers" => "members"}
+              )
           })
 
         stage ->
@@ -686,6 +690,51 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       # Shape's tab after the gate frames the versions that approval recorded.
       ids = for %{version: version} <- gate_frames(work_item), do: version.public_id
       assert Enum.sort(ids) == Enum.sort(recorded)
+    end
+
+    test "a gate none approval records the run's version, not a person's later one", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, [], "none")
+      work_item = at_shape!(ctx.scope)
+
+      parent = self()
+
+      _work_item =
+        end_run!(work_item, fn run, _registered ->
+          held = Repo.get!(WorkItem, run.work_item_id)
+          ran = submission!(run, held, repository())
+
+          person =
+            person_version!(
+              ctx.scope,
+              held,
+              "submission",
+              "submission.json",
+              "application/json",
+              Jason.encode!(%{"ref" => "by-hand"})
+            )
+
+          verdict = %{"verdict" => "passed"}
+          opts = [stage_id: run.stage_id]
+
+          {:ok, _verdict} =
+            Apiary.Stages.Artifacts.push_json({:run, run}, held, "verdict", verdict, opts)
+
+          send(parent, {:versions, ran, person})
+        end)
+
+      assert_received {:versions, ran, person}
+      assert person.number > ran.number
+
+      recorded =
+        Repo.one(
+          from d in Apiary.Stages.GateDecision,
+            where:
+              d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^@shape,
+            select: d.versions
+        )
+
+      assert ran.public_id in recorded
+      refute person.public_id in recorded
     end
 
     test "with no submit type, a person's version of the type is recorded as any other", ctx do

@@ -2260,7 +2260,8 @@ defmodule Apiary.Stages do
   # the escalation that ended the stage. The accept approves the newest versions that
   # exist, as the stage's checks did not run. A version with a `decision` is left out: only
   # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5). A
-  # person's upload stays in: an output made in this stage, which the gate approves.
+  # person's upload stays in: an output made in this stage, which the gate approves. A
+  # person's version of the submission type is the exception (`recordable/2`).
   defp approve_none!(work_item, version, stage, by) do
     %GateDecision{
       public_id: PublicId.generate(GateDecision.prefix()),
@@ -2275,7 +2276,7 @@ defmodule Apiary.Stages do
       take_in: work_item.take_in,
       versions:
         for(
-          v <- newest_outputs(stage, Artifacts.list(work_item)),
+          v <- newest_outputs(stage, work_item |> Artifacts.list() |> recordable(work_item)),
           is_nil(v.decision_id),
           do: v.public_id
         ),
@@ -3282,19 +3283,22 @@ defmodule Apiary.Stages do
   # person's approval, the gate compares the versions it shows (`gate_versions/3`), which
   # that approval covered. After a gate `none` approval, it compares the newest outputs,
   # where one with a `decision` does not reopen the gate: `approve_none!/4` leaves such a
-  # version out, and only a person's approval lists it. `approvals` is
-  # `approvals_by_version/1`, read here for nil.
+  # version out, and only a person's approval lists it. Neither lists a person's version
+  # of the submission type (`recordable/2`), so it does not reopen the gate either.
+  # `approvals` is `approvals_by_version/1`, read here for nil.
   defp reopened?(work_item, stage, artifacts, approvals) do
     case last_approval(work_item, stage["id"]) do
       %GateDecision{versions: covered} = approval ->
+        recordable = recordable(artifacts, work_item)
+
         newest =
           if gate_none_approval?(approval) do
-            for v <- newest_outputs(stage, artifacts),
+            for v <- newest_outputs(stage, recordable),
                 not is_binary(v.decision_id),
                 do: v.public_id
           else
             Enum.map(
-              gate_versions(stage, artifacts, approvals || approvals_by_version(work_item)),
+              gate_versions(stage, recordable, approvals || approvals_by_version(work_item)),
               & &1.public_id
             )
           end
@@ -3730,8 +3734,9 @@ defmodule Apiary.Stages do
   # recordable/2 is `artifacts` with no version a person made of the submission type, the
   # type in `submit.type` that the Submissions list reads (`Artifacts.submit_type/1`): only
   # a run's submit step writes a submission (696 (c)), so an approval records no person's
-  # version of it and the work item page frames none (`recorded_versions/4`,
-  # `gate_frames/3`). A person's version of every other type stays.
+  # version of it, at a person's gate or a gate `none` (`approve_none!/4`), and the work
+  # item page frames none (`recorded_versions/4`, `gate_frames/3`); nor does it reopen a
+  # gate (`reopened?/4`). A person's version of every other type stays.
   defp recordable(artifacts, work_item) do
     case Artifacts.submit_type(work_item) do
       nil ->
