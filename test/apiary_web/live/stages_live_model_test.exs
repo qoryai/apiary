@@ -19,7 +19,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Processes, Repo, Stacks}
   alias Apiary.Dispatches.RunSettings
-  alias Apiary.Kinds.Coded
+  alias Apiary.Kinds.{Coded, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
   alias ApiaryWeb.StagesLive.Inspector
 
@@ -460,6 +460,61 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, view, _html} = live(conn, path)
     assert {"", "Use workspace default", true} in key_options(view)
     refute has_element?(view, "#{@key}[disabled]")
+  end
+
+  test "a save sends the override's runtime while its provider stays, else the default's",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    [release] = Runtimes.list()
+    second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+    :ok = Runtimes.put_test_list([release, second])
+    default!(scope, anthropic)
+
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
+        provider: openrouter.public_id,
+        key: "openrouter-main",
+        tiers: @override_tiers,
+        runtime: second.name
+      })
+
+    {:ok, view, _html} = live(conn, path)
+
+    # The same provider: the override's runtime stays.
+    change_model(view, %{"tiers" => %{"balanced" => %{"effort" => ""}}})
+    save_model(view, %{})
+    assert %ModelChoice{connection_id: id, runtime: name} = override(scope)
+    assert {id, name} == {openrouter.id, second.name}
+
+    # Another provider: the default's runtime, for which the row read its keys and models.
+    change_model(view, %{"key" => key(anthropic, "anthropic-main")})
+
+    change_model(view, %{
+      "tiers" => Map.new(@default_tiers, fn {tier, set} -> {tier, %{"model" => set["model"]}} end)
+    })
+
+    save_model(view, %{})
+    assert %ModelChoice{connection_id: id, runtime: name} = override(scope)
+    assert {id, name} == {anthropic.id, release.name}
+  end
+
+  test "Use workspace default saved with no override in a workspace marked for deletion shows no Saved.",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic} do
+    default!(scope, anthropic)
+    {:ok, view, _html} = live(conn, path)
+
+    {1, _rows} =
+      Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+        set: [
+          deletion_marked_at: DateTime.utc_now(),
+          purge_after: DateTime.add(DateTime.utc_now(), 30, :day),
+          purge_trigger: "grace_period"
+        ]
+      )
+
+    save_model(view, %{"key" => ""})
+    refute has_element?(view, @saved)
+    assert override(scope) == nil
   end
 
   test "an admin made a member while the page is open saves nothing, and sees the fields disabled",

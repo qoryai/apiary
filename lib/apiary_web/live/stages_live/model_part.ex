@@ -249,7 +249,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
       |> ModelTiers.attrs(state.tiers)
       |> Map.merge(%{
         fallbacks: [],
-        runtime: if(length(Runtimes.list()) > 1, do: runtime_name(model, state.workflow))
+        runtime: if(length(Runtimes.list()) > 1, do: runtime_name(model, state.workflow, key))
       })
 
     case ModelChoices.put_choice(scope, {:workspace, state.workflow}, attrs) do
@@ -259,11 +259,15 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     end
   end
 
-  # The runtime a save sends: the override's, else the default's.
-  defp runtime_name(model, workflow) do
+  # The runtime a save sends: the override's while the save keeps its provider, else the
+  # default's, which the row's keys and models were read for (`entries/4`).
+  defp runtime_name(model, workflow, %{provider: %Connection{id: provider_id}}) do
     case model.overrides[workflow] do
-      %ModelChoice{runtime: runtime} when is_binary(runtime) -> runtime
-      _none -> model.runtime.name
+      %ModelChoice{runtime: runtime, connection_id: ^provider_id} when is_binary(runtime) ->
+        runtime
+
+      _other ->
+        model.runtime.name
     end
   end
 
