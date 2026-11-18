@@ -14,9 +14,9 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # there, and the context asks again. A key of a provider the organisation does not have,
   # or a value id its keys do not have, is not found.
   #
-  # For a provider whose keys are logins (`Apiary.ModelKeys.Login`), Add key takes the
-  # contents of the `auth.json` that `codex login` writes in a field named Sign-in, and
-  # refuses a paste that is not one with the reason on the field.
+  # For a provider whose keys are logins (`Apiary.ModelKeys.Login`), Add key and Edit key
+  # take the contents of the `auth.json` that `codex login` writes in a field named
+  # Sign-in, and refuse a paste that is not one with the reason on the field.
   #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
   # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
@@ -121,20 +121,16 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp crumb(:new), do: gettext("Add key")
   defp crumb(:edit), do: gettext("Edit key")
 
-  defp key_label(:new, true), do: gettext("Sign-in")
+  defp key_label(_action, true), do: ModelKeyComponents.sign_in_label()
   defp key_label(:new, false), do: gettext("Key")
-  defp key_label(:edit, _login), do: gettext("New value")
+  defp key_label(:edit, false), do: gettext("New value")
 
-  defp key_hint(:new, true),
-    do:
-      gettext(
-        "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
-      )
+  defp key_hint(_action, true), do: ModelKeyComponents.sign_in_hint()
 
   defp key_hint(:new, false),
     do: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
 
-  defp key_hint(:edit, _login), do: gettext("Leave it empty to keep the value.")
+  defp key_hint(:edit, false), do: gettext("Leave it empty to keep the value.")
 
   defp provider_path(scope, provider),
     do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"

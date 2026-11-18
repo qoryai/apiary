@@ -37,7 +37,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   alias Apiary.{Access, Connections, ModelKeys}
   alias Apiary.Kinds.{Provider, Providers}
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.{SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, SettingsComponents, UserAuth}
 
   # The value id of the key that New model provider adds.
   @key_id "key-1"
@@ -96,6 +96,13 @@ defmodule ApiaryWeb.ProviderLive.Index do
       chosen: chosen(params["provider"])
     )
   end
+
+  @doc false
+  # login?/1 is whether the keys of `chosen`, a catalogue provider or nil, are logins
+  # (`Apiary.ModelKeys.Login`): the form's field is the Sign-in. The set-up's Model step
+  # calls it too.
+  def login?(%Provider{name: name}), do: Apiary.ModelKeys.Login.provider?(name)
+  def login?(_chosen), do: false
 
   defp chosen(name) do
     case Providers.fetch(name) do
@@ -284,8 +291,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
             id={"new-provider-key-#{@attempt}"}
             type="password"
             value={nil}
-            label={gettext("Key")}
-            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
+            label={if login?(@chosen), do: ModelKeyComponents.sign_in_label(), else: gettext("Key")}
+            hint={
+              if login?(@chosen),
+                do: ModelKeyComponents.sign_in_hint(),
+                else: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
+            }
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"

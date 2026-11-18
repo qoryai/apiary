@@ -384,4 +384,109 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       assert id == secret.id
     end
   end
+
+  describe "the key of a subscription, a login" do
+    @hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+
+    setup %{scope: scope} do
+      {:ok, subscription} =
+        Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+        })
+
+      %{subscription: subscription, login_secret: Repo.get!(Secret, subscription.secret_id)}
+    end
+
+    defp words(lv, selector) do
+      lv
+      |> element(selector)
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
+    defp refute_tokens(html, tokens) do
+      for secret <- [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"],
+          do: refute(html =~ secret)
+    end
+
+    test "names the field Sign-in on Add value and Change value, with the hint", ctx do
+      %{conn: conn, scope: scope, login_secret: secret} = ctx
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Sign-in"
+      assert words(lv, "#secret_value_value-hint") == @hint
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Sign-in"
+      assert words(lv, "#secret_value_value-hint") == @hint
+    end
+
+    test "keeps Value and New value, and their hint, for an API key", ctx do
+      %{conn: conn, scope: scope, secret: secret} = ctx
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Value"
+
+      assert words(lv, "#secret_value_value-hint") ==
+               "Stored encrypted. Nobody sees it again once it is saved."
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "New value"
+    end
+
+    test "adds a valid login and refuses another paste, showing no token", ctx do
+      %{conn: conn, scope: scope, login_secret: secret, subscription: subscription} = ctx
+      tokens = Apiary.ModelKeysFixtures.login_tokens(tag: "pro")
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+      for paste <- [
+            "sk-proj-an-api-key",
+            Apiary.ModelKeysFixtures.login_paste(tokens: tokens) <> "}"
+          ] do
+        html =
+          lv
+          |> form("#secret-form", secret_value: %{value_id: "spare", value: paste})
+          |> render_submit()
+
+        refute html =~ "sk-proj-an-api-key"
+        refute_tokens(html, tokens)
+        refute_tokens(render(lv), tokens)
+
+        assert has_element?(
+                 lv,
+                 "#secret_value_value-error",
+                 "Paste the whole auth.json that codex login wrote."
+               )
+      end
+
+      assert [%{value_id: "main"}] =
+               Repo.all(from v in Secrets.Value, where: v.secret_id == ^subscription.secret_id)
+
+      html =
+        lv
+        |> form("#secret-form",
+          secret_value: %{
+            value_id: "spare",
+            value: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)
+          }
+        )
+        |> render_submit()
+
+      refute_tokens(html, tokens)
+      refute_tokens(render(lv), tokens)
+
+      value = Apiary.ModelKeysFixtures.key_value!(subscription, "spare")
+
+      assert %Apiary.ModelKeys.Login{account_id: "acct-fixture-pro"} =
+               Repo.get!(Apiary.ModelKeys.Login, value.id)
+    end
+  end
 end

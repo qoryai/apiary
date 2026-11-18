@@ -38,9 +38,10 @@ defmodule ApiaryWeb.SecretLive.Index do
     `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
     Change value also take the key's settings, Resets and Pause for
     (`Apiary.ModelKeys.Setting`), written with it. For a provider whose keys are logins
-    (`Apiary.ModelKeys.Login`), Add value takes the contents of the `auth.json` that
-    `codex login` writes in a field named Sign-in, and refuses a paste that is not one. Delete secret is refused while the
-    provider links the secret, and Edit name and note is not offered.
+    (`Apiary.ModelKeys.Login`), Add value and Change value take the contents of the
+    `auth.json` that `codex login` writes in a field named Sign-in, and refuse a paste that
+    is not one. Delete secret is refused while the provider links the secret, and Edit name
+    and note is not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
@@ -1062,7 +1063,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
-      <.value_field form={@form} label={gettext("New value")} focus />
+      <.value_field
+        form={@form}
+        label={gettext("New value")}
+        login={Login.provider?(@provider)}
+        focus
+      />
       <ModelKeyComponents.settings_fields
         :if={@key_form}
         form={@key_form}
@@ -1530,21 +1536,24 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The value of a secret: written, sent once, and never rendered back. The field's
   # value is always empty, whatever the form holds. For a model key that is a login, the
-  # field is the Sign-in, and its hint says what to paste.
+  # field is the Sign-in, whatever its label, and its hint says what to paste.
   defp value_field(assigns) do
     ~H"""
     <.input
       field={@form[:value]}
       type="textarea"
       value=""
-      label={@label || if(@login, do: gettext("Sign-in"), else: gettext("Value"))}
+      label={
+        cond do
+          @login -> ModelKeyComponents.sign_in_label()
+          @label -> @label
+          true -> gettext("Value")
+        end
+      }
       rows="4"
       hint={
         if @login,
-          do:
-            gettext(
-              "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
-            ),
+          do: ModelKeyComponents.sign_in_hint(),
           else: gettext("Stored encrypted. Nobody sees it again once it is saved.")
       }
       autocomplete="off"

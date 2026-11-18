@@ -235,6 +235,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
+    ModelKeyComponents,
     NodeComponents,
     OverviewComponents,
     SetUpComponents,
@@ -2179,11 +2180,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             id={"set-up-model-key-#{@attempt}"}
             type="password"
             value={nil}
-            label={gettext("Key")}
+            label={
+              if ProviderPage.login?(@chosen),
+                do: ModelKeyComponents.sign_in_label(),
+                else: gettext("Key")
+            }
             hint={
-              gettext(
-                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
-              )
+              if ProviderPage.login?(@chosen),
+                do: ModelKeyComponents.sign_in_hint(),
+                else:
+                  gettext(
+                    "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+                  )
             }
             autocomplete="new-password"
             spellcheck="false"

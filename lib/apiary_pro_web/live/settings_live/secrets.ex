@@ -673,7 +673,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
         class="font-mono"
         phx-mounted={!@unnamed && JS.focus()}
       />
-      <.value_field form={@form} />
+      <.value_field form={@form} login={Apiary.ModelKeys.Login.provider?(@provider)} />
       <.page_form_foot id="secret-save" cancel={list_path(@current_scope, @query)} cancel_by="patch">
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Add value")}
@@ -686,7 +686,12 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
-      <.value_field form={@form} label={gettext("New value")} focus />
+      <.value_field
+        form={@form}
+        label={gettext("New value")}
+        login={Apiary.ModelKeys.Login.provider?(@provider)}
+        focus
+      />
       <.page_form_foot id="secret-save" cancel={list_path(@current_scope, @query)} cancel_by="patch">
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Change value")}
@@ -862,18 +867,30 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   attr :label, :string, default: nil
   attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
   attr :disabled, :boolean, default: false, doc: "off while its choice is not taken"
+  attr :login, :boolean, default: false, doc: "whether it takes a model key's login"
 
   # The value of a secret: written, sent once, and never rendered back. The field's value
-  # is always empty, whatever the form holds.
+  # is always empty, whatever the form holds. For a model key that is a login, the field is
+  # the Sign-in, whatever its label, and its hint says what to paste.
   defp value_field(assigns) do
     ~H"""
     <.input
       field={@form[:value]}
       type="textarea"
       value=""
-      label={@label || gettext("Value")}
+      label={
+        cond do
+          @login -> ApiaryWeb.ModelKeyComponents.sign_in_label()
+          @label -> @label
+          true -> gettext("Value")
+        end
+      }
       rows="4"
-      hint={gettext("Stored encrypted. Nobody sees it again once it is saved.")}
+      hint={
+        if @login,
+          do: ApiaryWeb.ModelKeyComponents.sign_in_hint(),
+          else: gettext("Stored encrypted. Nobody sees it again once it is saved.")
+      }
       autocomplete="off"
       spellcheck="false"
       class="font-mono"

@@ -571,6 +571,22 @@ defmodule ApiaryWeb.ModelKeyComponents do
     {:sign_in_needed, rejected, sign_in_help(provider)}
   end
 
+  @doc """
+  The label of the field that takes a login key, on every form that has one (Add key, Edit
+  key, New model provider, the set-up's Model step, Add value and Change value of a
+  secret): Sign-in.
+  """
+  @spec sign_in_label() :: String.t()
+  def sign_in_label, do: gettext("Sign-in")
+
+  @doc "The hint of the field that takes a login key, as `sign_in_label/0` is its label."
+  @spec sign_in_hint() :: String.t()
+  def sign_in_hint do
+    gettext(
+      "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+    )
+  end
+
   @doc "Whether `login`, a key's sign-in as `login/2` has it, is one that needs a new sign-in."
   @spec sign_in_needed?(login | nil) :: boolean
   def sign_in_needed?({:sign_in_needed, _rejected, _help}), do: true

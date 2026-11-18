@@ -16,6 +16,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
   @moduletag needs: [:factory, :secrets]
 
+  @hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+  @key_hint "Qory Apiary stores the key encrypted, and nobody can view it again."
+
   setup :register_and_log_in_user
 
   defp base(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
@@ -69,12 +72,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Sign-in")
 
-      assert has_element?(
-               lv,
-               "#key-value-0-hint",
-               "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
-             )
-
+      assert text(lv, "#key-value-0-hint") == @hint
       assert has_element?(lv, ~s{#key-form input#key-value-0[type=password]:not([value])})
     end
 
@@ -91,11 +89,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Key")
 
-      assert has_element?(
-               lv,
-               "#key-value-0-hint",
-               "Qory Apiary stores the key encrypted, and nobody can view it again."
-             )
+      assert text(lv, "#key-value-0-hint") == @key_hint
     end
 
     test "stores a pasted login, on several lines or on one, and shows no token", ctx do
@@ -178,22 +172,29 @@ defmodule ApiaryWeb.ProviderLoginTest do
       tokens = login_tokens(tag: "assigns")
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      lv
-      |> form("#key-form", key: %{value_id: "spare", key: login_paste(tokens: tokens) <> "}"})
-      |> render_submit()
+      html =
+        lv
+        |> form("#key-form", key: %{value_id: "spare", key: login_paste(tokens: tokens) <> "}"})
+        |> render_submit()
 
+      # Refused: the paste is a login followed by a stray brace. The page the refusal
+      # draws, and the page drawn again, show none of it.
+      assert has_element?(lv, "#key-value-1-error")
+      refute_tokens(html, tokens)
+      refute_tokens(render(lv), tokens)
       refute_in_assigns(lv, tokens)
     end
   end
 
   describe "Edit key" do
-    test "keeps New value and its hint, takes a new login and refuses another paste", ctx do
+    test "names the field Sign-in, takes a new login and refuses another paste", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
 
-      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
-      assert has_element?(lv, "#key-value-0-hint", "Leave it empty to keep the value.")
+      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Sign-in")
+      refute has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
+      assert text(lv, "#key-value-0-hint") == @hint
 
       lv
       |> form("#key-form", key: %{value_id: "main", key: "sk-proj-an-api-key"})
@@ -214,7 +215,22 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert %Login{generation: 2, account_id: "acct-fixture-edit"} = login_of(provider, "main")
     end
 
-    test "keeps the sign-in when New value is left empty", ctx do
+    test "keeps New value and its hint for a key that is no login", ctx do
+      %{conn: conn, scope: scope} = ctx
+
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "openai",
+          keys: [%{value_id: "main", value: "sk-proj-an-api-key"}]
+        })
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+
+      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
+      assert has_element?(lv, "#key-value-0-hint", "Leave it empty to keep the value.")
+    end
+
+    test "keeps the sign-in when the Sign-in is left empty", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
@@ -222,6 +238,89 @@ defmodule ApiaryWeb.ProviderLoginTest do
       lv |> form("#key-form", key: %{value_id: "main", key: ""}) |> render_submit()
       assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
       assert %Login{generation: 1} = login_of(provider, "main")
+    end
+  end
+
+  describe "New model provider" do
+    defp new_path(scope), do: "#{base(scope)}/new"
+
+    test "names the field Sign-in for a subscription and Key for an API key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "openai-subscription"})
+      |> render_change()
+
+      assert text(lv, ~s{#new-provider-form label[for^="new-provider-key-"]}) == "Sign-in"
+      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) == @hint
+
+      lv |> form("#new-provider-form", provider: %{provider: "openai"}) |> render_change()
+
+      assert text(lv, ~s{#new-provider-form label[for^="new-provider-key-"]}) == "Key"
+
+      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) ==
+               @key_hint
+    end
+
+    test "adds a subscription with a valid login and shows no token", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = login_tokens(tag: "new")
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      log =
+        capture_log(fn ->
+          lv
+          |> form("#new-provider-form",
+            provider: %{provider: "openai-subscription", key: login_paste(tokens: tokens)}
+          )
+          |> render_submit()
+
+          assert_redirect(lv)
+        end)
+
+      refute_tokens(log, tokens)
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert provider.provider_kind == "openai-subscription"
+      assert %Login{account_id: "acct-fixture-new"} = login_of(provider, "key-1")
+
+      {:ok, _show, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+      refute_tokens(html, tokens)
+    end
+
+    test "refuses what is no login, adds nothing and shows no token", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = login_tokens(tag: "bad")
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      for key <- ["sk-proj-an-api-key", login_paste(tokens: tokens) <> "}"] do
+        log =
+          capture_log(fn ->
+            html =
+              lv
+              |> form("#new-provider-form",
+                provider: %{provider: "openai-subscription", key: key}
+              )
+              |> render_submit()
+
+            refute_tokens(html, tokens)
+            refute html =~ "sk-proj-an-api-key"
+            refute_tokens(render(lv), tokens)
+          end)
+
+        refute_tokens(log, tokens)
+
+        assert has_element?(
+                 lv,
+                 "#new-provider-form",
+                 "Paste the whole auth.json that codex login wrote."
+               )
+
+        refute_in_assigns(lv, tokens)
+      end
+
+      assert {:ok, []} = Connections.list_providers(scope)
+      assert Repo.aggregate(Login, :count) == 0
     end
   end
 
@@ -304,11 +403,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Sign-in")
 
-      assert has_element?(
-               lv,
-               "#secret_value_value-hint",
-               "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
-             )
+      assert text(lv, "#secret_value_value-hint") == @hint
 
       lv
       |> form("#secret-form", secret_value: %{value_id: "spare", value: "sk-proj-an-api-key"})
@@ -332,6 +427,19 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_tokens(html, tokens)
       assert %Login{account_id: "acct-fixture-workspace"} = login_of(provider, "spare")
       refute_in_assigns(lv, tokens)
+    end
+
+    test "names the field Sign-in on Change value of a login key too", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription!(scope, login_tokens(), :workspace)
+      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+      assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Sign-in")
+      refute has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "New value")
+      assert text(lv, "#secret_value_value-hint") == @hint
     end
 
     test "keeps Value for the secrets that are no login", ctx do

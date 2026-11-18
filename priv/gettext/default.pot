@@ -16481,10 +16481,9 @@ msgstr ""
 msgid "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again."
+msgid "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -20193,8 +20192,7 @@ msgstr ""
 msgid "Sign in again, then copy again. Your session ended."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/secret_live/index.ex
+#: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Sign-in"
 msgstr ""

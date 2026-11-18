@@ -4345,6 +4345,97 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     for model <- ModelChoices.suggestions(provider, runtime), do: model.id
   end
 
+  describe "the Model step's Add a key, for a subscription's login" do
+    @login_hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+
+    defp login_tokens_in(text, tokens),
+      do:
+        Enum.filter(
+          [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"],
+          &(text =~ &1)
+        )
+
+    test "names the field Sign-in with the hint, and Key for an API key", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+      lv
+      |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+      |> render_change()
+
+      assert words(lv, ~s{#set-up-model-form label[for^="set-up-model-key-"]}) == "Sign-in"
+
+      assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
+               @login_hint
+
+      lv |> form("#set-up-model-form", model: %{provider: "openai"}) |> render_change()
+
+      assert words(lv, ~s{#set-up-model-form label[for^="set-up-model-key-"]}) == "Key"
+
+      assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
+               "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+    end
+
+    test "adds the provider for a valid login and refuses another paste, showing no token",
+         %{conn: conn} do
+      %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+      tokens = Apiary.ModelKeysFixtures.login_tokens(tag: "setup")
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+      # The form's Runtime follows the provider chosen, as a person's choice changes it.
+      lv
+      |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+      |> render_change()
+
+      for key <- [
+            "sk-proj-an-api-key",
+            Apiary.ModelKeysFixtures.login_paste(tokens: tokens) <> "}"
+          ] do
+        html =
+          lv
+          |> form("#set-up-model-form", model: %{provider: "openai-subscription", key: key})
+          |> render_submit()
+
+        assert login_tokens_in(html, tokens) == []
+        assert login_tokens_in(render(lv), tokens) == []
+        refute html =~ "sk-proj-an-api-key"
+
+        assert has_element?(
+                 lv,
+                 "#set-up-model-form",
+                 "Paste the whole auth.json that codex login wrote."
+               )
+
+        assert login_tokens_in(
+                 inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity),
+                 tokens
+               ) == []
+      end
+
+      assert {:ok, []} = Connections.list_providers(scope)
+
+      html =
+        lv
+        |> form("#set-up-model-form",
+          model: %{
+            provider: "openai-subscription",
+            key: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)
+          }
+        )
+        |> render_submit()
+
+      assert login_tokens_in(html, tokens) == []
+      assert login_tokens_in(render(lv), tokens) == []
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert provider.provider_kind == "openai-subscription"
+
+      value = Apiary.ModelKeysFixtures.key_value!(provider, "key-1")
+
+      assert %Apiary.ModelKeys.Login{account_id: "acct-fixture-setup"} =
+               Repo.get!(Apiary.ModelKeys.Login, value.id)
+    end
+  end
+
   test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
