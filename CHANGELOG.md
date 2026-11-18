@@ -663,6 +663,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with a text field per tier and no **Effort**; a workspace's choice of such a provider
   shows the same with the feature off. **Runtime** follows the tiers, as on **Workspace
   settings › Model**. A change of **Key** or **Provider** empties the tiers. A tier whose model id or effort a save refuses shows the refusal under its field.
+  A stored fallback whose provider does not work with the runtime the step shows, after
+  a change of **Key** or **Runtime**, has a line under **Runtime**, or under **Key**
+  where one runtime shows as text: “Remove the fallback OpenRouter team on the Model
+  page, or pick a key whose provider serves Codex.”, “Model page” a link to **Workspace
+  settings › Model** for whoever can open it. **Continue** then saves nothing.
   **Continue**, enabled once every tier has a model and no tier is refused, saves the
   workspace's model choice: the provider, the key the workspace's choice has while the
   provider still has it, else its default key, the runtime the step shows, and the tiers,

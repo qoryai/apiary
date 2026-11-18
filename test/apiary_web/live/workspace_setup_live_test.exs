@@ -4878,6 +4878,115 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(lv, ~s{#model_runtime option[value="#{release.name}"][selected]})
   end
 
+  # The release's runtime as it reads a key from a header other than bearer, which
+  # Anthropic serves alone, and a bearer runtime, which OpenRouter serves alone.
+  defp split_runtimes do
+    [release] = Apiary.Kinds.Runtimes.list()
+    bearer_auth = %{"scheme" => "bearer"}
+
+    header = %{
+      release
+      | model_keys: Enum.reject(release.model_keys, &(&1["auth"] == bearer_auth))
+    }
+
+    bearer = %{
+      release
+      | name: release.name <> "-bearer",
+        title: release.title <> " bearer",
+        model_keys: Enum.filter(release.model_keys, &(&1["auth"] == bearer_auth))
+    }
+
+    :ok = Apiary.Kinds.Runtimes.put_test_list([header, bearer])
+    {header, bearer}
+  end
+
+  test "a change of Key that leaves a stored fallback unfit: a line under Key, and Continue saves nothing",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    openrouter = provider!(scope, "openrouter", "router")
+    team = provider!(scope, "openrouter", "team", %{name: "OpenRouter team"})
+    {header, bearer} = split_runtimes()
+
+    {:ok, stored} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: openrouter.public_id,
+        runtime: bearer.name,
+        fallbacks: [%{provider: team.public_id}]
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    refute has_element?(lv, "#set-up-model-unfit")
+
+    # Anthropic serves the header runtime alone: Runtime moves to it, which OpenRouter
+    # team, the fallback, does not serve. One runtime shows as text: the line is under Key.
+    [model | _rest] = models(anthropic)
+
+    html =
+      lv
+      |> form("#set-up-model-form", model: %{source: anthropic.public_id})
+      |> render_change()
+
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(model)}) |> render_change()
+    assert words(lv, "#set-up-model-runtime-name") == header.title
+
+    assert words(lv, "#set-up-model-unfit-#{team.public_id}") ==
+             "Remove the fallback OpenRouter team on the Model page, or pick a key whose provider serves #{header.title}."
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-unfit a[href="/#{organisation.slug}/main/settings/model"]},
+             "Model page"
+           )
+
+    {unfit_at, _} = :binary.match(html, ~s{id="set-up-model-unfit"})
+    {tiers_at, _} = :binary.match(html, ~s{id="set-up-model-tiers"})
+    assert unfit_at < tiers_at
+
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert has_element?(lv, "#set-up-model-unfit-#{team.public_id}")
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == openrouter.id
+    assert choice.updated_at == stored.updated_at
+
+    # Back to OpenRouter, whose runtime the fallback serves: the line goes.
+    lv
+    |> form("#set-up-model-form", model: %{source: openrouter.public_id})
+    |> render_change()
+
+    refute has_element?(lv, "#set-up-model-unfit")
+  end
+
+  test "a change of Runtime that leaves a stored fallback unfit: a line under Runtime, gone with a runtime that fits",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    openrouter = provider!(scope, "openrouter", "router")
+    {release, bearer} = two_runtimes()
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: openrouter.public_id,
+        runtime: release.name,
+        fallbacks: [%{provider: anthropic.public_id}]
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    refute has_element?(lv, "#set-up-model-unfit")
+
+    html = lv |> form("#set-up-model-form", model: %{runtime: bearer.name}) |> render_change()
+
+    assert words(lv, "#set-up-model-unfit-#{anthropic.public_id}") ==
+             "Remove the fallback #{anthropic.name} on the Model page, or pick a key whose provider serves #{bearer.title}."
+
+    {runtime_at, _} = :binary.match(html, ~s{id="set-up-model-runtime"})
+    {unfit_at, _} = :binary.match(html, ~s{id="set-up-model-unfit"})
+    assert runtime_at < unfit_at
+
+    lv |> form("#set-up-model-form", model: %{runtime: release.name}) |> render_change()
+    refute has_element?(lv, "#set-up-model-unfit")
+  end
+
   test "a change of Runtime keeps the models and takes back an effort the runtime refuses",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

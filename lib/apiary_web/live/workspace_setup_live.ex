@@ -244,7 +244,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Adapters.Connections, as: AdapterConnections
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.RunSettings
-  alias Apiary.Kinds.{Provider, Providers, Runtimes}
+  alias Apiary.Kinds.{Provider, Providers, Runtime, Runtimes}
   alias Apiary.Lingo.Domain
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Nodes.Node
@@ -525,6 +525,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       shared_keys: length(shared),
       choice: choice,
       stored: ModelTiers.stored(choice),
+      # Workspace settings › Model, for the line of a stored fallback the runtime leaves
+      # unfit; nil for a person who cannot open it.
+      model_page:
+        if(Access.can?(scope, :"connection.read", scope.organisation),
+          do: ~p"/#{flow.organisation}/#{flow.workspace}/settings/model"
+        ),
       # Whether the edition shows the organisation's secrets: the core shows none.
       organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
       done: step_done?(flow, :model)
@@ -1057,6 +1063,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       chosen: chosen,
       runtimes: runtimes,
       runtime: runtime,
+      unfit: unfit_fallbacks(socket.assigns.choice, source, runtime),
       key: key,
       tiers: tiers,
       tier_errors:
@@ -1066,6 +1073,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         )
     )
   end
+
+  # The providers of the stored fallbacks of the workspace's choice that do not serve
+  # `runtime`. A save keeps the fallbacks and refuses such a one
+  # (`Apiary.ModelChoices.put_choice/4`); a fallback of the provider chosen is dropped by
+  # the save, so it is left out. The step does not show the fallbacks: a line says where
+  # to remove each, and Continue saves nothing while there is one.
+  defp unfit_fallbacks(%ModelChoice{fallbacks: [_ | _] = fallbacks}, source, %Runtime{} = runtime) do
+    chosen = if source == :add, do: nil, else: source.id
+
+    for %{connection: %Connection{} = provider} <- fallbacks,
+        provider.id != chosen,
+        {:ok, description} <- [Connections.provider(provider)],
+        not Providers.serves?(description, runtime),
+        do: provider
+  end
+
+  defp unfit_fallbacks(_choice, _source, _runtime), do: []
 
   # The refusals a save gives the tiers' model ids and efforts
   # (`Apiary.ModelChoices.tier_errors/1`), each on its tier's field
@@ -1160,6 +1184,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp source_options(providers, may_add) do
     reused = for provider <- providers, do: {provider.name, provider.public_id}
     if may_add, do: reused ++ [{gettext("Add a key"), "add"}], else: reused
+  end
+
+  attr :fallbacks, :list, required: true, doc: "the providers of the unfit fallbacks"
+  attr :runtime, Runtime, required: true
+  attr :model_page, :string, default: nil, doc: "Workspace settings › Model, nil for none"
+
+  # A line for each stored fallback whose provider does not serve the runtime: under
+  # Runtime where it is a select, else under Key, the field that changes it. "Model page"
+  # is a link to Workspace settings › Model for a person who can open it.
+  defp unfit_lines(assigns) do
+    ~H"""
+    <div :if={@fallbacks != []} id="set-up-model-unfit" class="grid gap-1">
+      <p
+        :for={provider <- @fallbacks}
+        id={"set-up-model-unfit-#{provider.public_id}"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        <span>
+          <.rich text={
+            rich_gettext(
+              "Remove the fallback %{fallback} on the %{page}, or pick a key whose provider serves %{runtime}.",
+              fallback: provider.name,
+              page:
+                if(@model_page,
+                  do: {:link, @model_page, gettext("Model page")},
+                  else: gettext("Model page")
+                ),
+              runtime: @runtime.title
+            )
+          } />
+        </span>
+      </p>
+    </div>
+    """
   end
 
   attr :field, Phoenix.HTML.FormField, required: true
@@ -1368,6 +1427,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       unchanged?(formed.assigns) ->
         {:noreply, go_on(socket)}
+
+      # A stored fallback whose provider does not serve the runtime: its line says how to
+      # fix it, and nothing is saved.
+      formed.assigns.unfit != [] ->
+        {:noreply, formed}
 
       true ->
         save_model(formed, scope, source, params)
@@ -2325,6 +2389,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           shared={@shared_keys}
           organisation={@current_scope.organisation.name}
         />
+        <.unfit_lines
+          :if={match?([_], @runtimes)}
+          fallbacks={@unfit}
+          runtime={@runtime}
+          model_page={@model_page}
+        />
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input
             field={@form[:provider]}
@@ -2393,6 +2463,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           runtime={@runtime}
           provider={@chosen.title}
           errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
+        />
+        <.unfit_lines
+          :if={match?([_, _ | _], @runtimes)}
+          fallbacks={@unfit}
+          runtime={@runtime}
+          model_page={@model_page}
         />
         <p
           :if={!@key and @source != :add}

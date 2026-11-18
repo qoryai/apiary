@@ -13434,6 +13434,11 @@ msgstr ""
 msgid "Model choice changed"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Model page"
+msgstr ""
+
 #: lib/apiary_web/components/model_tiers.ex
 #, elixir-autogen, elixir-format
 msgid "Model per tier"
@@ -17569,6 +17574,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}?"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the fallback %{fallback} on the %{page}, or pick a key whose provider serves %{runtime}."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
