@@ -102,13 +102,18 @@
 # push and the calls of its submit step; and 1 to 16 credentials in a run configuration, a
 # secrets request and a sealed plaintext, at most 6 of them API credentials; and
 # `denied-variables.json`, the built-in deny list of variables, with the `forge_tokens` and
-# `model_keys` that a run's variables never carry; and `usage` of `dev.qory.runtime.result`, the
-# launch's tokens so far, with its `session` and `line`.
+# `model_keys` that a run's variables never carry; and the
+# `codex` runtime of runtimes.json, with a `resume` prefix and path on a runtime; and
+# `account_header` and `account_claim` of an auth, for an OAuth login whose token carries
+# the account id; and `paths` of an API credential; and `unauthorized`, optional, in a
+# secrets request and in a model keys report: the keys that got a 401 from the provider; and
+# `usage` of `dev.qory.runtime.result`, the launch's tokens so far, with its `session` and
+# `line`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-ab37683e1673150eeea633036826106de60beb29
+92ccf76845ce18015ac328f9d7528c486060b0a6
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.result.schema.json

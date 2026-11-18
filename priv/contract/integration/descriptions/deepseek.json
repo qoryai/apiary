@@ -3,6 +3,7 @@
   "name": "deepseek",
   "title": "DeepSeek",
   "description": "Runs use DeepSeek's API through its Anthropic-format endpoint, with a DeepSeek API key.",
+  "vendor": "DeepSeek",
   "settings": {"type": "object", "properties": {}, "additionalProperties": false},
   "egress_hosts": ["api.deepseek.com"],
   "roles": {

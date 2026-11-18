@@ -3199,6 +3199,20 @@ msgid_plural "%{ran} of %{count} rounds ran."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{ran} of %{limit} round ran, and 1 review finding is still open."
+msgid_plural "%{ran} of %{limit} round ran, and %{count} review findings are still open."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{ran} of %{limit} rounds ran, and 1 review finding is still open."
+msgid_plural "%{ran} of %{limit} rounds ran, and %{count} review findings are still open."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
@@ -3787,6 +3801,11 @@ msgstr ""
 msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{vendor}'s terms"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{version} has been in force since %{time}."
@@ -3973,12 +3992,22 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: a member wrote new feedback."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: it does not run on %{track}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: it runs on %{track} only."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: no member wrote new feedback."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5162,6 +5191,11 @@ msgstr ""
 msgid "Add a model provider that serves %{runtime} in %{place}. None of the model providers of %{organisation} serves %{runtime}."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add a note that says what to change."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a program from a release on github.com, gitlab.com or codeberg.org, or at an https address."
@@ -6119,11 +6153,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Anthropic's coding agent."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Anthropic's terms"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -11158,6 +11187,11 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Get the key from the provider first: create an API key in the OpenAI Platform."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
 msgstr ""
 
@@ -13788,6 +13822,11 @@ msgstr ""
 msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move `feedback: new` to a workflow entry: only an entry starts a run."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -15728,13 +15767,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its connections are under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
@@ -16128,6 +16171,11 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open work item #%{number} in %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI's coding agent."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -17435,6 +17483,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Read the machine log under %{step} for the cause."
 msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Read the open finding, then pick Accept as it is or Run another round."
+msgid_plural "Read the %{count} open findings, then pick Accept as it is or Run another round."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format

@@ -47,6 +47,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   person's push of it is refused with `unknown_type`, as for `questions`.
 <!-- /feature -->
 <!-- feature: factory -->
+- **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
+  runtime. Under **Organisation settings › Model providers › New model provider**, the
+  provider choice lists both, and the API key's help reads “Get the key from the provider
+  first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
+  **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
+  shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
+  field of that page is shown, with **Claude Code** first. Signing in with an OpenAI
+  subscription, refreshing that sign-in and limiting its paths are not built yet.
+- The link to a vendor's terms in a provider's help names that provider's vendor, such as
+  “Anthropic's terms”.
+<!-- /feature -->
+<!-- feature: secrets -->
+- **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
+  **Claude Code**. A custom service's declaration may no longer use `OPENAI_API_KEY` as a
+  placeholder name, as Codex reads its key from that variable (`placeholder_conflict`).
+- A workspace variable named `OPENAI_API_KEY` or `CODEX_API_KEY` is left out of every run,
+  as Forager's deny list names both as model keys. The save works, and the variable form
+  and list say “OPENAI_API_KEY is on Forager's deny list.”
+<!-- /feature -->
+<!-- feature: observability -->
+- On a run's page, a Codex session shows its session events and the version it started
+  with, and no note that it sends none. The note “Only Claude Code and Codex send session
+  events.” stays for a program that is no runtime of the catalogue, and names the runtimes
+  of the catalogue.
+<!-- /feature -->
+<!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
   question that is not a decision. The tab label shows the number of open questions. The
   frame **Open questions** comes first. Each question shows “Asked in Verify, Run 9”, with
@@ -108,6 +134,56 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   for the record of such an entry. The tab of a stage says why an entry did not run:
   "<workflow> did not run: the <type> did not change since it last passed." for a `when`, and
   "<workflow> did not run: the <type> changed since it last passed." for an `unless`.
+- A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
+  `{feedback: new}`. It is met while a member's feedback on the work item is open, or a
+  run returned the work item to the stage, and no run handled it. Feedback is the note
+  of Request changes, the note of a move, an answer, a review comment or a reply, the
+  comment of Run another round, the note of an escalation that a member resolved by any
+  choice but Accept as it is, and the return of a later stage's run to the stage,
+  whether or not a member wrote a note; a move with no note is no feedback. A run of the
+  stage handles the feedback that is older than its start when it runs an entry with
+  `{feedback: new}` and ends with a verdict `passed` or `changes-requested`; in a stage
+  with `shared_run: true`, the session of that entry handles it. An answer given while
+  no escalation is open is handled by any run of the stage, or session, that starts
+  after it and ends with such a verdict. A run that stops, escalates or ends with no
+  verdict handles nothing. Saving a process fails with any value but `new`, and with
+  `{feedback: new}` on a stage, a loop, an input or an output, where the error is "Move
+  `feedback: new` to a workflow entry: only an entry starts a run." The tab of a stage
+  shows why such an entry did not run: "<workflow> did not run: no member wrote new
+  feedback." for a `when`, and "<workflow> did not run: a member wrote new feedback."
+  for an `unless`.
+- In a stage with an entry that has `{feedback: new}`, feedback starts the stage again
+  at its first entry, round 1: Run another round while feedback other than an answer
+  given while no escalation is open is unhandled, a comment with Run another round, a
+  member's answer to the question of an open escalation, Request changes, and a move
+  into the stage with a note. An answer given while no escalation is open starts nothing
+  again: it stays unhandled until a run of the stage handles it. The stage starts as
+  Request changes starts it, with no check that its workflows are listed first: if the
+  harness does not list the first workflow, the member's feedback is kept and the stage
+  waits for the workflow. Run another round with no such feedback runs as before: the
+  workflow of a run that stopped, in a loop as the loop's next round; after another
+  escalation in a loop, the loop's next round from its first workflow; at the end of the
+  sequence, its last loop again, or with no loop its start. Each reads the condition of
+  the entry it starts again, as before. Request changes at the gate of a stage whose
+  entry has a `return` key returns the work item to that key's stage, and its note stays
+  open feedback for the stage the work item returns to. A stage with no such entry runs
+  as before. These rules hold in a stage with `shared_run: true` too, where
+  `changes-requested` in a loop starts the loop's next round as the run's next session.
+  The confirmation of Request changes, a move, a switch, Run another round and answers
+  shows the workflow that starts: with a note or a comment, the first workflow of the
+  stage that the act starts; the line changes as the member types the note in the
+  confirmation. Entering a stage again keeps the records of entries passed over for a
+  condition, for `{feedback: new}` too.
+- Request changes needs a note in every stage: with no note, or a note of only spaces,
+  it fails with "Add a note that says what to change." and changes nothing. The page
+  asked for the note before too.
+- When a verdict `changes-requested` with points ends a loop's last round, the
+  round-limit point's text is "3 of 3 rounds ran, and 2 review findings are still open."
+  followed by the text of each of the verdict's points, and its fix is "Read the 2 open
+  findings, then pick Accept as it is or Run another round." With 1 point: "3 of 3 rounds
+  ran, and 1 review finding is still open." and "Read the open finding, then pick Accept
+  as it is or Run another round." With no points the point is "3 of 3 rounds ran." as
+  before.
 <!-- /feature -->
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an
@@ -1605,6 +1681,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deletes a run's transcript with the run's log output, by **Keep a run's log output
   for**, or by **Keep a run's events for** when the log setting is empty; a paused
   run's transcript stays until the run that continues it ends.
+- The run that continues a paused run resumes the transcript of the session that
+  paused, also when transcript chunks of an earlier session were sent later. If the
+  session that paused sent no transcript, the run that continues it starts that
+  session's workflow in a new agent session.
 - **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's key,
   and on **Add value** and **Change value** of such a key on **Workspace settings ›
   Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage from
@@ -2659,6 +2739,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory, secrets -->
+- `runs` (20261118151000): a nullable column `paused_session`, the number of the session
+  where a run paused at its keys' limit. It changes no row.
+<!-- /feature -->
 - `session_records` and `session_key_windows` (20261118161000): two new tables, with their
   foreign keys to `organisations`, `workspaces`, `runs`, `dispatch_runs`, `work_items`,
   `targets` and each other, their indexes and their checks. The migration changes no
@@ -2704,6 +2788,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of a condition `{input: <type>, changed: true}`. It is not null with a constant default,
   so adding it rewrites no row. Rolling back drops the column and the rows keep their
   `input`.
+- `stage_skips` (20261118130300, 20261118130400): the check `stage_skips_condition_check`
+  takes the reason `feedback`, for the record of a condition `{feedback: new}`, which has
+  no input, track or cause entry. The first migration adds the check NOT VALID, and the
+  second validates it in a scan that does not block writes. It changes no row. Rolling
+  back deletes the rows with the reason `feedback`.
 <!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check

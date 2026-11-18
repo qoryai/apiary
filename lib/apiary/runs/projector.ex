@@ -81,6 +81,7 @@ defmodule Apiary.Runs.Projector do
     signal reason duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
     clock_offset_ms
     policy_digest run_configuration_digest lost_at cost_usd peak_memory_bytes cpu_time_ms
+    paused_session
   )a
 
   # What `rebuild/1` puts back before projecting again: everything the fold writes,

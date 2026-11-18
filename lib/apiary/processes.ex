@@ -133,6 +133,8 @@ defmodule Apiary.Processes do
   with `ID` as `detail`; both refuse any condition on the first stage;
   `:condition_changed_entry_only` for `changed: true` in a condition on a stage, an input,
   an output or a loop, at the place of the key `changed`;
+  `:condition_feedback_entry_only` for a condition `{feedback: new}` on a stage, an input,
+  an output or a loop, at the place of the key `feedback`;
   `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
   `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
   for a track id in a gate's `tracks` that the document's `tracks` do not declare;
@@ -618,6 +620,11 @@ defmodule Apiary.Processes do
       do: [],
       else: [%{path: path <> "/track", error: :condition_track, detail: track}]
   end
+
+  # `{feedback: new}` starts or passes over a run of a workflow entry, so only a workflow
+  # entry may have it (`:condition_feedback_entry_only`, at `.../feedback`).
+  defp condition_error(%{"feedback" => _new}, path, _earlier, false),
+    do: [%{path: path <> "/feedback", error: :condition_feedback_entry_only, detail: nil}]
 
   defp condition_error(_condition, _path, _earlier, _entry?), do: []
 

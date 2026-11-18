@@ -31,6 +31,14 @@ defmodule Mix.Tasks.Apiary.Models.UpdateTest do
       {"id": "deepseek-v4-pro", "title": "DeepSeek V4 Pro"}
     ],
     "litellm": [],
+    "openai": [
+      {"id": "gpt-6-astra", "title": "GPT-6 Astra"},
+      {"id": "gpt-6.2-sol", "title": "GPT-6.2 Sol"}
+    ],
+    "openai-subscription": [
+      {"id": "gpt-6-astra", "title": "GPT-6 Astra"},
+      {"id": "gpt-6.2-sol", "title": "GPT-6.2 Sol"}
+    ],
     "openrouter": [
       {"id": "anthropic/claude-opus-5.5", "title": "Claude Opus 5.5"},
       {"id": "anthropic/claude-sonnet-5.5", "title": "Claude Sonnet 5.5"},
@@ -55,7 +63,7 @@ defmodule Mix.Tasks.Apiary.Models.UpdateTest do
     assert_received {:mix_shell, :info, [line]}
 
     assert line ==
-             "Wrote #{output}: anthropic 5, claude-subscription 5, deepseek 2, litellm 0, openrouter 3."
+             "Wrote #{output}: anthropic 5, claude-subscription 5, deepseek 2, litellm 0, openai 2, openai-subscription 2, openrouter 3."
 
     Update.run(["--file", @fixture, "--output", output])
     assert File.read!(output) == @expected
@@ -73,6 +81,8 @@ defmodule Mix.Tasks.Apiary.Models.UpdateTest do
     assert left_out == [
              ~s|Left out deepseek "deepseek-v4-flash": models.dev marks it deprecated.|,
              ~s|Left out deepseek "deepseek-v4-pro": another model has the same id.|,
+             ~s|Left out openai "gpt-5-mini": models.dev marks it deprecated.|,
+             ~s|Left out openai-subscription "gpt-5-mini": models.dev marks it deprecated.|,
              ~s|Left out openrouter "example bad id": the id is not 1 to 128 letters, digits and ._:/@+-, from a letter or digit.|,
              ~s|Left out openrouter "example/markup": the title is not 1 to 128 letters, digits, spaces and .,:()/+&'_-, from a letter or digit.|,
              ~s|Left out openrouter "example/no-title": it has no title string.|,
@@ -90,6 +100,14 @@ defmodule Mix.Tasks.Apiary.Models.UpdateTest do
     assert %{id: "deepseek-v4-pro", title: "DeepSeek V4 Pro"} in models
     assert Enum.count(models, &(&1.id == "deepseek-v4-pro")) == 1
     assert {"deepseek", "deepseek-v4-pro", "another model has the same id"} in left_out
+  end
+
+  test "maps openai-subscription to OpenAI's ids, as openai has them" do
+    api = Jason.decode!(File.read!(@fixture))
+    {suggestions, _left_out} = Update.build(api, ["openai-subscription", "openai"])
+
+    assert [{"openai", same}, {"openai-subscription", same}] = suggestions
+    assert Enum.map(same, & &1.id) == ["gpt-6-astra", "gpt-6.2-sol"]
   end
 
   test "maps claude-subscription to Anthropic's ids and gives litellm none" do

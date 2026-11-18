@@ -296,6 +296,78 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(document) == :ok
     end
 
+    test "takes feedback: new on a workflow entry, in when and unless, in a loop's body too, the first stage's too (A-27)" do
+      feedback = %{"feedback" => "new"}
+
+      document =
+        put_sequence(default(), @shape, [
+          %{"workflow" => "triage-review", "when" => feedback},
+          %{"workflow" => "review", "unless" => feedback},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [%{"workflow" => "fix", "when" => feedback}, %{"workflow" => "check"}]
+            }
+          }
+        ])
+
+      assert Processes.validate(document) == :ok
+
+      [first | _rest] = default()["stages"]
+
+      on_first =
+        put_sequence(default(), first["id"], [
+          %{"workflow" => "explore-a-ticket", "when" => feedback}
+        ])
+
+      assert Processes.validate(on_first) == :ok
+    end
+
+    test "refuses feedback: new on a stage, a loop, an input and an output, and any other value (A-27)" do
+      feedback = %{"feedback" => "new"}
+
+      for key <- ["when", "unless"] do
+        on_stage = edit(&if(&1["id"] == @shape, do: Map.put(&1, key, feedback), else: &1))
+
+        assert errors(on_stage) ==
+                 [{"#/stages/1/#{key}/feedback", :condition_feedback_entry_only}]
+
+        loop = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, key => feedback}
+
+        assert errors(put_sequence(default(), @shape, [loop])) ==
+                 [{"#/stages/1/sequence/0/#{key}/feedback", :condition_feedback_entry_only}]
+
+        input = %{"type" => "proposal", "required" => true, key => feedback}
+
+        assert errors(edit(&if(&1["id"] == @shape, do: Map.put(&1, "inputs", [input]), else: &1))) ==
+                 [{"#/stages/1/inputs/0/#{key}/feedback", :condition_feedback_entry_only}]
+
+        output = %{"type" => "mockup", "required" => true, key => feedback}
+
+        assert errors(
+                 edit(&if(&1["id"] == @shape, do: Map.put(&1, "outputs", [output]), else: &1))
+               ) ==
+                 [{"#/stages/1/outputs/0/#{key}/feedback", :condition_feedback_entry_only}]
+
+        for value <- ["old", true, nil] do
+          entry = %{"workflow" => "triage-review", key => %{"feedback" => value}}
+
+          assert {"#/stages/1/sequence/0", :schema} in errors(
+                   put_sequence(default(), @shape, [entry])
+                 )
+        end
+
+        both = %{
+          "workflow" => "triage-review",
+          key => %{"feedback" => "new", "input" => "proposal"}
+        }
+
+        assert {"#/stages/1/sequence/0", :schema} in errors(
+                 put_sequence(default(), @shape, [both])
+               )
+      end
+    end
+
     test "refuses changed: true on a stage, a loop, an input and an output (:condition_changed_entry_only) (A-47)" do
       changed = %{"input" => "proposal", "changed" => true}
 

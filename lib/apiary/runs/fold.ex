@@ -37,7 +37,12 @@ defmodule Apiary.Runs.Fold do
   leaves both null, and the last resize that counts. A resize counts unless its `session`
   is a bare session other than the one chosen, so a helper's resize leaves the agent's
   size; a resize with no `session` counts, and one that is not a size changes nothing.
-  How a session ended is not folded: how the run ended is its `run.exited`. What a
+  How a session ended is not folded, as how the run ended is its `run.exited`, but for
+  a pause: `paused_session` is the number of the session whose `session.exited` paused
+  at the model keys' limit, its state and reason read by the rule of the run's exit
+  (`exit_state/2`). Forager pauses only the last session of a run, so of two such exits
+  the higher number stays, in any order of arrival. An exit with another state, or with
+  no session number, changes nothing. What a
   session used, measured over everything behind its wall, is: `peak_memory_bytes`, the
   highest peak memory that a `session.exited` reported, and `cpu_time_ms`, the sum of
   the CPU time the `session.exited` events reported, each an integer from 0 to the
@@ -407,12 +412,14 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  # How one session ended is folded into nothing, and so is a refused join, which has no
-  # `session.started`. What the session used is folded into the run's (the moduledoc): an
-  # event that reported neither value changes nothing.
+  # How one session ended is folded into nothing, but for a pause. A refused join, which
+  # has no `session.started`, is folded into nothing too. The number of a session that
+  # paused, and what the session used, are folded into the run's (the moduledoc): an
+  # event that reported none of them changes nothing.
   defp event(acc, %{type: @session_exited, data: data}) do
     run =
       acc.run
+      |> used(:paused_session, paused_session(data), &max/2)
       |> used(:peak_memory_bytes, integer(data, "peak_memory_bytes", 0..@int8), &max/2)
       |> used(:cpu_time_ms, integer(data, "cpu_time_ms", 0..@int8), &min(&1 + &2, @int8))
 
@@ -878,6 +885,13 @@ defmodule Apiary.Runs.Fold do
   defp bare?(data), do: match?(%{"bare" => true}, data)
 
   defp session_number(data), do: integer(data, "session", 1..@int4)
+
+  # The number of the session a `session.exited` ended at the model keys' limit, by the
+  # rule of the run's exit (`exit_state/2`); nil for any other end.
+  defp paused_session(data) do
+    if exit_state(string(data, "state"), code(data, "reason")) == "paused",
+      do: session_number(data)
+  end
 
   # The later of the sizes. With none, such as a resize that is not a size, the run keeps
   # the size it had.

@@ -1874,6 +1874,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
           assert has_element?(view, "#work-item-record-skip-#{i}", "#{workflow} #{words}")
         end
       end
+
+      # The same two records, now passed over for the condition {feedback: new} (A-27).
+      for {negated, words} <- [
+            {false, "did not run: no member wrote new feedback."},
+            {true, "did not run: a member wrote new feedback."}
+          ] do
+        {2, _rows} =
+          Repo.update_all(
+            from(k in Stages.Skip,
+              where: k.work_item_id == ^work_item.id and not is_nil(k.workflow)
+            ),
+            set: [
+              reason: "feedback",
+              cause_entry: nil,
+              input: nil,
+              changed: false,
+              negated: negated
+            ]
+          )
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        for {i, workflow} <- [{1, "shape-a-ticket"}, {2, "build-it"}] do
+          assert has_element?(view, "#work-item-record-skip-#{i}", "#{workflow} #{words}")
+        end
+      end
     end
 
     test "the tab of a stage the work item went through has no such block", %{
@@ -3767,6 +3793,100 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-output-build-report")
       refute has_element?(view, "#work-item-suite-line")
       refute html =~ "The full test suite"
+    end
+  end
+
+  describe "the spend's line with a note, in a stage with feedback" do
+    test "the line shows the workflow that the note starts, and Confirm starts it", %{
+      conn: conn,
+      scope: scope
+    } do
+      process!(scope, %{
+        "sequence" => [
+          %{"workflow" => "build-it", "when" => %{"feedback" => "new"}},
+          %{"workflow" => "shape-a-ticket"}
+        ]
+      })
+
+      # No feedback at Shape's entry: build-it is passed over, and shape-a-ticket stops.
+      work_item = at_shape!(scope)
+      assert %{workflow: "shape-a-ticket"} = newest_run(work_item)
+      work_item = stopped!(work_item)
+      assert %WorkItem{stage_state: :escalated} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "another_round"})
+
+      assert has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      # A note is feedback: the line changes to build-it, and back with the note cleared.
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "Use the new format."})
+      assert has_element?(view, "#spend-dialog-line", "build-it")
+      refute has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "  "})
+      assert has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "Use the new format."})
+
+      view
+      |> form("#spend-dialog-form", %{"note" => "Use the new format."})
+      |> render_submit()
+
+      assert %{workflow: "build-it", stage_entry: 0} = newest_run(work_item)
+    end
+
+    test "where the act with no note starts no run, the dialog shows no line for it", %{
+      conn: conn,
+      scope: scope
+    } do
+      process!(scope, %{
+        "sequence" => [%{"workflow" => "build-it", "when" => %{"feedback" => "new"}}],
+        "outputs" => []
+      })
+
+      # Shape passes build-it over and waits at its gate; Request changes with no note
+      # passes it over again and starts no run.
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      assert Stages.starts(work_item, :request_changes) == :none
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "build-it"}
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      view
+      |> form("#work-item-stage-gate-changes", %{"note" => "Use the new format."})
+      |> render_submit()
+
+      assert has_element?(view, "#spend-dialog-line", "build-it")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => ""})
+      assert has_element?(view, "#spend-dialog")
+      refute has_element?(view, "#spend-dialog-line")
+      refute render(view) =~ "Starts the next run of"
+    end
+
+    test "Request changes with no note or a blank one fails with its fix line", %{scope: scope} do
+      process!(scope, %{
+        "sequence" => [%{"workflow" => "build-it", "when" => %{"feedback" => "new"}}],
+        "outputs" => []
+      })
+
+      work_item = at_shape!(scope)
+
+      for note <- [nil, " "] do
+        assert {:error, :note_missing} =
+                 Stages.request_changes(scope, work_item, note, nil, expect_stage: @shape)
+
+        assert ApiaryWeb.WorkItemLive.Show.refused(:note_missing, nil) ==
+                 "Add a note that says what to change."
+      end
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
     end
   end
 end

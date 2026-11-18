@@ -74,6 +74,9 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#add-card-runtime-claude h4", "Claude Code")
       assert has_element?(lv, "#add-card-runtime-claude-kind", "Agent")
 
+      assert has_element?(lv, "#add-card-runtime-codex h4", "Codex")
+      assert has_element?(lv, "#add-card-runtime-codex", "OpenAI's coding agent.")
+
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
@@ -117,7 +120,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       # The cards in their groups, in order: the agent, the outside APIs ending
       # with Custom API…, then the programs ending with From a release….
       assert card_ids(lv) == %{
-               "add-group-agent" => ["add-card-runtime-claude"],
+               "add-group-agent" => ["add-card-runtime-claude", "add-card-runtime-codex"],
                "add-group-apis" => [
                  "add-card-api-npm",
                  "add-card-api-sentry",
