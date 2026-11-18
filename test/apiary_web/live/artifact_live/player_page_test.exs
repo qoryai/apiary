@@ -313,18 +313,39 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       )
     end
 
-    test "is read again when a version is pushed", %{conn: conn, scope: scope} do
+    test "keeps what it read from the store, and reads only the stage of the version",
+         %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [first | _more] = queue(work_item)
+      view = page(conn, scope, work_item, first)
+      reads = :sys.get_state(view.pid).socket.assigns.reads
+
+      # The verification of the stage and the demo evidence of each scenario, each read once.
+      assert {:verification, 1} in Map.keys(reads)
+      assert length(for {:json, _id} <- Map.keys(reads), do: :json) == 3
+
+      scenario!(verify_run!(work_item, work_item.take_in), work_item, 4, :film)
+      _ = render(view)
+
+      assert length(
+               for {:json, _id} <- Map.keys(:sys.get_state(view.pid).socket.assigns.reads),
+                   do: :json
+             ) == 4
+    end
+
+    test "is read again when a scenario is pushed", %{conn: conn, scope: scope} do
       work_item = three_scenarios!(scope)
       [first | _more] = queue(work_item)
       view = page(conn, scope, work_item, first)
       assert has_element?(view, "#artifact-queue-title", "1 of 3")
+      refute has_element?(view, "#artifact-queue-item-scenario-4")
 
-      :sys.replace_state(view.pid, fn state ->
-        update_in(state.socket.assigns, &%{&1 | queue: [], scenario: nil})
-      end)
+      # A run pushes a fourth scenario's film and evidence; the page listens for the push.
+      scenario!(verify_run!(work_item, work_item.take_in), work_item, 4, :film)
+      _ = render(view)
 
-      send(view.pid, {:artifact_pushed, work_item.public_id, first.version.public_id})
-      assert has_element?(view, "#artifact-queue-title", "1 of 3")
+      assert has_element?(view, "#artifact-queue-title", "1 of 4")
+      assert has_element?(view, "#artifact-queue-item-scenario-4")
     end
   end
 

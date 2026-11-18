@@ -399,6 +399,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert has_element?(view, ~s|#{sizes} [data-leave-title="Leave full screen (Esc)"]|)
       assert has_element?(view, "#{sizes}[data-version=\"#{version.public_id}\"]")
+      assert has_element?(view, "#{sizes}[data-film=\"0\"]")
 
       # One Cinema and one Full screen for the page, on the first film.
       assert html

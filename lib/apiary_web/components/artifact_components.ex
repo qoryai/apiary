@@ -23,7 +23,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   # The content types an image view shows inline: raster formats only.
   @inline_images ~w(image/png image/jpeg image/gif image/webp)
-  @videos ~w(video/mp4 video/webm)
+  @videos Apiary.Artifacts.Format.video_types()
   @subtitles "text/vtt; charset=utf-8"
 
   # The most values a structured view shows; the file has the rest.
@@ -580,7 +580,7 @@ defmodule ApiaryWeb.ArtifactComponents do
               <.icon name="hero-chevron-left-micro" class="size-4 shrink-0" />
               <span>{gettext("Previous picture")}</span>
             </.button>
-            <span id="artifact-picture-count" class="px-1 text-[12.5px] text-muted tabular-nums">
+            <span id="artifact-picture-count" class="text-[12.5px] text-muted tabular-nums">
               {gettext("Picture %{number} of %{total}", number: @shown, total: @total)}
             </span>
             <.button
@@ -665,7 +665,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         </video>
         <div :if={controls?(@player, n)} class="q-player-bar flex flex-wrap items-center gap-2">
           <.speed id={"#{@id}-speed-#{n}"} />
-          <.sizes id={"#{@id}-sizes-#{n}"} version={@version.public_id} />
+          <.sizes id={"#{@id}-sizes-#{n}"} version={@version.public_id} film={n} />
         </div>
         <.speed :if={!controls?(@player, n)} id={"#{@id}-speed-#{n}"} />
         <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
@@ -723,6 +723,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   attr :id, :string, required: true
   attr :version, :string, required: true, doc: "the public id of the version the player shows"
+  attr :film, :integer, default: nil, doc: "the film's place among the version's films, from 0"
 
   # Cinema and Full screen, at the right end of the line under the player. The ArtifactPlayer
   # hook presses Cinema from the browser's storage, changes Full screen to Leave full screen
@@ -735,6 +736,7 @@ defmodule ApiaryWeb.ArtifactComponents do
       phx-hook="ArtifactPlayer"
       phx-update="ignore"
       data-version={@version}
+      data-film={@film}
       class="ml-auto flex items-center gap-1.5"
     >
       <.button

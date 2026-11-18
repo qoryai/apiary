@@ -42,7 +42,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   alias ApiaryWeb.ArtifactLive.Load
   alias ApiaryWeb.WorkItemLive.VerifyTab
 
-  @videos ~w(video/mp4 video/webm)
+  @videos Apiary.Artifacts.Format.video_types()
 
   @impl true
   def render(assigns) do
@@ -373,6 +373,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
              person_type?(scope, version.artifact.type),
          page_title: ArtifactComponents.title(version.artifact, version)
        )
+       |> assign(:reads, %{})
        |> load_history()
        |> load_queue()}
     else
@@ -386,7 +387,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # version in no scenario (a person's, an older one, a withdrawal, one of a cancelled run,
   # another type) has neither, so the page shows no queue.
   defp load_queue(socket) do
-    {queue, scenario} = read_queue(socket.assigns.work_item, socket.assigns.version)
+    %{work_item: work_item, version: version, reads: reads} = socket.assigns
+    {queue, scenario, reads} = read_queue(work_item, version, reads)
 
     pictures =
       if scenario && scenario.kind == :pictures, do: VerifyTab.pictures(scenario), else: []
@@ -398,7 +400,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       scenario: scenario,
       place: scenario && Enum.find_index(queue, &(&1.version.id == scenario.version.id)) + 1,
       pictures: pictures,
-      picture: picture |> min(max(length(pictures), 1)) |> max(1)
+      picture: picture |> min(max(length(pictures), 1)) |> max(1),
+      reads: reads
     )
   end
 
@@ -413,25 +416,32 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
   defp player(_base_view, _scenario, _pictures, _picture), do: nil
 
-  defp read_queue(work_item, version) do
+  # The queue, the scenario of `version` in it, and `reads`, what the page read from the
+  # store before (`VerifyTab.queue/5`). A version made at a stage with a `verification`
+  # output is looked for in that stage's scenarios alone; a version made elsewhere, in
+  # each such stage's in turn until one has it.
+  defp read_queue(work_item, version, reads) do
     with true <- version.artifact.type in VerifyTab.media(),
          false <- version.withdrawn,
          %{take_in: take_in} <- version.run do
       artifacts = work_item |> Artifacts.list() |> Enum.reject(&Artifacts.withdrawn?/1)
 
-      Enum.find_value(verify_stages(work_item, version), {[], nil}, fn stage_id ->
-        queue = VerifyTab.queue(work_item, artifacts, stage_id, take_in)
+      Enum.reduce_while(verify_stages(work_item, version), {[], nil, reads}, fn stage_id,
+                                                                                {_q, _s, reads} ->
+        {queue, reads} = VerifyTab.queue(work_item, artifacts, stage_id, take_in, reads)
 
-        with %{} = scenario <- Enum.find(queue, &(&1.version.id == version.id)),
-             do: {queue, scenario}
+        case Enum.find(queue, &(&1.version.id == version.id)) do
+          nil -> {:cont, {[], nil, reads}}
+          scenario -> {:halt, {queue, scenario, reads}}
+        end
       end)
     else
-      _no_scenario -> {[], nil}
+      _no_scenario -> {[], nil, reads}
     end
   end
 
-  # The ids of the stages of the work item's process with a `verification` output, the
-  # version's own stage first.
+  # The ids of the stages of the work item's process with a `verification` output: the
+  # stage of the version where that is one, else each of them.
   defp verify_stages(work_item, version) do
     stages =
       for %{"id" => id, "outputs" => outputs} <-
@@ -439,8 +449,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
           Enum.any?(outputs, &(&1["type"] == "verification")),
           do: id
 
-    {own, others} = Enum.split_with(stages, &(&1 == version.stage_id))
-    own ++ others
+    if version.stage_id in stages, do: [version.stage_id], else: stages
   end
 
   defp load_history(socket),

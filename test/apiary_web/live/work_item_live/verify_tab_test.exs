@@ -509,6 +509,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, ~s(figure video + div #{watch}[href="#{path.(film)}"]), "Watch")
       assert has_element?(view, "#{watch}[phx-hook=WatchHandoff]")
       assert has_element?(view, ~s(#{watch}[data-version="#{film.version.public_id}"]))
+      assert has_element?(view, ~s(#{watch}[data-film="0"]))
       assert has_element?(view, "#{watch} .hero-play-micro")
       assert has_element?(view, "figure > video + div + figcaption", "scenario-1.mp4")
 
@@ -647,7 +648,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                Enum.map(queue, & &1.artifact.id)
     end
 
-    test "queue/5 keeps what it read, so a second call reads nothing", %{scope: scope} do
+    test "queue/5 returns what it read, and a call with it uses it instead of reading again",
+         %{scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
           verification!(run, work_item)
@@ -656,13 +658,17 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       artifacts = Artifacts.list(work_item)
 
-      {[%{key: "scenario-1"}], reads} =
+      {[%{key: "scenario-1", title: "Title of scenario-1"}], reads} =
         VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, %{})
 
-      assert [{:json, _id}, {:verification, 1}] = reads |> Map.keys() |> Enum.sort()
+      assert [{:json, json_id}, {:verification, 1}] = reads |> Map.keys() |> Enum.sort()
 
-      assert {[%{key: "scenario-1"}], ^reads} =
-               VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, reads)
+      # A value in `reads` that the store does not hold is what the call shows, so it read
+      # nothing for that version.
+      kept = Map.update!(reads, {:json, json_id}, &Map.put(&1, "title", "Kept"))
+
+      assert {[%{key: "scenario-1", title: "Kept"}], ^kept} =
+               VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, kept)
     end
 
     test "is empty for another stage and for another take in", %{scope: scope} do

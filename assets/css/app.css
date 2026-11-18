@@ -13458,27 +13458,35 @@
      column and puts it above both columns, as wide as the page. The left column and the
      player's section become cells of the page's grid, so the film stays in the page and is
      not loaded again; the queue and Details stay in the right column, now under the player.
-     The button is hidden under 1024 px, so the rule is too. */
-  @media (min-width: 1024px) {
-    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > .q-art-main {
-      display: contents;
+     The button is hidden under 1024 px, so the rule is too, and in a browser with no `:has()`. */
+  @supports selector(:has(*)) {
+    @media (min-width: 1024px) {
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > .q-art-main {
+        display: contents;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) #artifact-view-part {
+        grid-column: 1 / -1;
+        grid-row: 1;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-art-rest {
+        grid-column: 1;
+        grid-row: 2;
+        min-width: 0;
+        align-content: start;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > aside {
+        grid-column: 2;
+        grid-row: 2;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-player > video {
+        width: 100%;
+      }
     }
-    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) #artifact-view-part {
-      grid-column: 1 / -1;
-      grid-row: 1;
-    }
-    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-art-rest {
-      grid-column: 1;
-      grid-row: 2;
-      min-width: 0;
-      align-content: start;
-    }
-    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > aside {
-      grid-column: 2;
-      grid-row: 2;
-    }
-    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-player > video {
-      width: 100%;
+  }
+  /* A browser with no `:has()` cannot move the player, so it has no Cinema button. */
+  @supports not selector(:has(*)) {
+    [data-cinema-toggle] {
+      display: none !important;
     }
   }
   /* The player's box in the browser's full screen: the film or the picture fills it, the line

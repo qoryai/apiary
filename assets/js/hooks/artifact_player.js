@@ -11,7 +11,8 @@
 //
 // Full screen asks the browser to show the player's `<figure>` (the film or the picture, the
 // line under it and the button) alone, and the button reads Leave full screen while it does.
-// Escape leaves, and so does the button. A browser with no full screen hides the button.
+// Escape leaves, and so does the button. A browser or a page with no full screen
+// (`document.fullscreenEnabled`) hides the button, and a refused request changes nothing.
 //
 // A Watch link on the Verify tab leaves a note (`watch_handoff.js`): where the film is
 // opened at the note's time and speed, the film is not started.
@@ -74,12 +75,12 @@ export const ArtifactPlayer = {
     this.cinema?.addEventListener("click", this.onCinema)
 
     if (this.full) {
-      if (typeof this.box?.requestFullscreen !== "function") {
+      if (!document.fullscreenEnabled || typeof this.box?.requestFullscreen !== "function") {
         this.full.hidden = true
       } else {
         this.onFull = () => {
-          if (document.fullscreenElement === this.box) document.exitFullscreen()
-          else this.box.requestFullscreen()
+          if (document.fullscreenElement === this.box) Promise.resolve(document.exitFullscreen()).catch(() => {})
+          else Promise.resolve(this.box.requestFullscreen()).catch(() => {})
         }
         this.onFullChange = () => this.setFull(document.fullscreenElement === this.box)
         this.full.addEventListener("click", this.onFull)
@@ -88,7 +89,7 @@ export const ArtifactPlayer = {
       }
     }
 
-    const note = this.video && takeHandoff(session(), el.dataset.version)
+    const note = this.video && takeHandoff(session(), el.dataset.version, Number(el.dataset.film ?? 0))
     if (note) applyHandoff(this.video, note)
   },
 

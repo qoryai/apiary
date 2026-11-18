@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   # The types whose versions are a scenario's film or pictures, in one Scenarios frame.
   @media ~w(demo-video screenshot)
-  @videos ~w(video/mp4 video/webm)
+  @videos Apiary.Artifacts.Format.video_types()
   @subtitles "text/vtt; charset=utf-8"
   @images ~w(image/png image/jpeg image/gif image/webp)
 
@@ -618,7 +618,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
               scenario={@scenario}
               scope={@scope}
               number={@number}
-              film
+              film={n}
             />
           </div>
           <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
@@ -697,7 +697,11 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   attr :scenario, :map, required: true
   attr :scope, :any, required: true
   attr :number, :integer, required: true
-  attr :film, :boolean, default: false, doc: "a film's link carries the time and speed"
+
+  attr :film, :integer,
+    default: nil,
+    doc:
+      "the film's place among the scenario's films, from 0; its link carries the time and speed"
 
   # The Watch button of a scenario: opens its version's page, the player page with the other
   # scenarios beside it. On a film, the `WatchHandoff` hook leaves the film's time and speed
@@ -712,6 +716,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       class={ArtifactComponents.size_class()}
       phx-hook={@film && "WatchHandoff"}
       data-version={@film && @scenario.version.public_id}
+      data-film={@film}
     >
       <.icon name="hero-play-micro" class="size-4 shrink-0" />
       <span>{gettext("Watch")}</span>

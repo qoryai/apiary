@@ -57,7 +57,7 @@ const film = () => {
 
 // The hook mounted on the controls of a player: a `<figure>` with `video`, and the
 // controls with Cinema and Full screen. `fullscreen` is false for a browser with none.
-const mount = ({video = film(), fullscreen = true, version = "av_one"} = {}) => {
+const mount = ({video = film(), fullscreen = true, version = "av_one", filmIndex = "0"} = {}) => {
   const cinema = button()
   const full = button({
     title: "Full screen",
@@ -68,7 +68,7 @@ const mount = ({video = film(), fullscreen = true, version = "av_one"} = {}) => 
   const box = {querySelector: selector => (selector === "video" ? video : null)}
   if (fullscreen) box.requestFullscreen = () => (globalThis.document.fullscreenElement = box)
   const el = {
-    dataset: {version},
+    dataset: {version, film: filmIndex},
     closest: selector => (selector === "figure" ? box : null),
     querySelector: selector =>
       selector === "[data-cinema-toggle]" ? cinema : selector === "[data-full-screen]" ? full : null,
@@ -83,6 +83,7 @@ beforeEach(() => {
   globalThis.localStorage = storage()
   globalThis.sessionStorage = storage()
   globalThis.document = target({
+    fullscreenEnabled: true,
     fullscreenElement: null,
     exitFullscreen: () => {
       globalThis.document.fullscreenElement = null
@@ -189,6 +190,23 @@ test("another element in full screen does not press the button", () => {
   assert.equal(full.getAttribute("aria-pressed"), "false")
 })
 
+test("a page that does not allow full screen has no Full screen button", () => {
+  globalThis.document.fullscreenEnabled = false
+  const {full, cinema} = mount()
+  assert.equal(full.hidden, true)
+  assert.equal(cinema.hidden, false)
+  full.fire("click")
+  assert.equal(globalThis.document.fullscreenElement, null)
+})
+
+test("a refused request for full screen changes nothing and raises no error", async () => {
+  const {full, box} = mount()
+  box.requestFullscreen = () => Promise.reject(new Error("not allowed"))
+  assert.doesNotThrow(() => full.fire("click"))
+  await new Promise(done => setImmediate(done))
+  assert.equal(full.getAttribute("aria-pressed"), "false")
+})
+
 test("a browser with no full screen has no Full screen button", () => {
   const {full, cinema} = mount({fullscreen: false})
   assert.equal(full.hidden, true)
@@ -198,7 +216,7 @@ test("a browser with no full screen has no Full screen button", () => {
 test("a note for this film opens it at the note's time and speed, deletes the note, and does not play", () => {
   globalThis.sessionStorage.setItem(
     HANDOFF_KEY,
-    JSON.stringify({version: "av_one", time: 4.5, rate: 1.5}),
+    JSON.stringify({version: "av_one", index: 0, time: 4.5, rate: 1.5}),
   )
   const video = film()
   video.readyState = 1
@@ -213,7 +231,20 @@ test("a note for this film opens it at the note's time and speed, deletes the no
 test("a note for another film changes nothing and is deleted", () => {
   globalThis.sessionStorage.setItem(
     HANDOFF_KEY,
-    JSON.stringify({version: "av_other", time: 4.5, rate: 2}),
+    JSON.stringify({version: "av_other", index: 0, time: 4.5, rate: 2}),
+  )
+  const video = film()
+  video.readyState = 1
+  mount({video})
+  assert.equal(video.currentTime, 0)
+  assert.equal(video.playbackRate, 1)
+  assert.equal(globalThis.sessionStorage.getItem(HANDOFF_KEY), null)
+})
+
+test("a note for another film of the version is not applied to the film with the controls", () => {
+  globalThis.sessionStorage.setItem(
+    HANDOFF_KEY,
+    JSON.stringify({version: "av_one", index: 1, time: 4.5, rate: 2}),
   )
   const video = film()
   video.readyState = 1
@@ -226,7 +257,7 @@ test("a note for another film changes nothing and is deleted", () => {
 test("a note applies its time when the film's length is known", () => {
   globalThis.sessionStorage.setItem(
     HANDOFF_KEY,
-    JSON.stringify({version: "av_one", time: 3, rate: 0.5}),
+    JSON.stringify({version: "av_one", index: 0, time: 3, rate: 0.5}),
   )
   const video = film()
   mount({video})
