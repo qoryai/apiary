@@ -90,6 +90,12 @@ msgid "Choose another provider for %{runtime}. %{runtime} has no environment var
 msgstr ""
 
 #: lib/apiary/model_choices.ex
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for this fallback: its provider no longer exists in this organisation."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is chosen already."
 msgstr ""

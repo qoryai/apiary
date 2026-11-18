@@ -350,7 +350,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # (`ApiaryWeb.ModelTiers.sent/5`): a change of the runtime keeps the models, and an
   # effort the runtime does not accept goes back to Not set. A row sent with a provider
   # the page does not list, which no select of the page offers, is marked `"unknown"`,
-  # and a save returns "is invalid" on its Provider for it (`unknown_rows/1`). With no
+  # and a save returns a refusal on its Provider for it (`unknown_rows/1`). With no
   # rows sent, the rows are as they were: a form without them, or with them off for a
   # reader.
   defp sent_rows(socket, %{"fallbacks" => %{} = sent}) do
@@ -497,11 +497,18 @@ defmodule ApiaryWeb.ModelChoiceLive do
       end)
 
   # The errors of the rows sent with a provider the page does not list, by the row's
-  # index: "is invalid" on its Provider, the error the workflow's fold returns for one.
+  # index: on its Provider, the refusal a save returns for a fallback whose provider is
+  # not found (`Apiary.ModelChoices`).
   defp unknown_rows(rows) do
+    refusal =
+      dgettext_noop(
+        "errors",
+        "Choose another provider for this fallback: its provider no longer exists in this organisation."
+      )
+
     for {%{"unknown" => true}, i} <- Enum.with_index(rows),
         into: %{},
-        do: {i, [{:provider, {"is invalid", []}}]}
+        do: {i, [{:provider, {refusal, []}}]}
   end
 
   # Whether the form sent a provider that the page does not list.

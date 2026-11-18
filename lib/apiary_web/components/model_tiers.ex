@@ -117,12 +117,12 @@ defmodule ApiaryWeb.ModelTiers do
   ## Values
 
   @doc """
-  The tiers' values of `choice` while `key` is its provider's entry; else `blank/0`. A
+  The tiers' values of `choice` while `entry` is its provider's entry; else `blank/0`. A
   tier the choice leaves out is blank.
   """
   @spec params(ModelChoice.t() | nil, map | nil) :: map
-  def params(%ModelChoice{} = choice, %{} = key) do
-    if chosen([key], choice), do: values(choice.tiers), else: blank()
+  def params(%ModelChoice{} = choice, %{} = entry) do
+    if chosen([entry], choice), do: values(choice.tiers), else: blank()
   end
 
   def params(_choice, _key), do: blank()
@@ -196,7 +196,7 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.find(runtimes, &(&1.name == name)) || List.first(runtimes)
 
   @doc """
-  The tiers' values a form sent, for the provider entry `key`, after the entry `before`,
+  The tiers' values a form sent, for the provider entry `entry`, after the entry `before`,
   with `old` the values before. While the provider stays the same, a tier keeps a model of its list,
   or its model as it was, and an effort of that model (`efforts/3`); a field the form did
   not send is as it was, so a disabled Effort keeps its effort while its model stays.
@@ -204,8 +204,8 @@ defmodule ApiaryWeb.ModelTiers do
   lists no models takes any model id, and no effort.
   """
   @spec sent(map | nil, map | nil, map, term, map | nil) :: map
-  def sent(key, before, old, values, stored) do
-    if key != nil and before != nil and ref(key) == ref(before) do
+  def sent(entry, before, old, values, stored) do
+    if entry != nil and before != nil and ref(entry) == ref(before) do
       values = if is_map(values), do: values, else: %{}
 
       Map.new(shown(), fn tier ->
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.ModelTiers do
         kept? = model == was["model"]
         effort = string(sent["effort"], if(kept?, do: was["effort"], else: ""))
 
-        {tier, fit(key, tier, String.trim(model), effort, kept?, stored)}
+        {tier, fit(entry, tier, String.trim(model), effort, kept?, stored)}
       end)
     else
       blank()
@@ -230,19 +230,19 @@ defmodule ApiaryWeb.ModelTiers do
   defp fit(%{free: true}, _tier, model, _effort, _kept?, _stored),
     do: %{"model" => model, "effort" => ""}
 
-  defp fit(key, tier, model, effort, kept?, stored) do
-    if kept? or Enum.any?(key.models, &(&1.id == model)) do
-      efforts = efforts(key, model, stored_effort(key, tier, model, stored))
+  defp fit(entry, tier, model, effort, kept?, stored) do
+    if kept? or Enum.any?(entry.models, &(&1.id == model)) do
+      efforts = efforts(entry, model, stored_effort(entry, tier, model, stored))
       %{"model" => model, "effort" => if(effort in efforts, do: effort, else: "")}
     else
       blank_tier()
     end
   end
 
-  # The effort the stored choice has for `tier`, while `key` is of its provider and the
+  # The effort the stored choice has for `tier`, while `entry` is of its provider and the
   # tier keeps its model; else "".
-  defp stored_effort(key, tier, model, %{provider_id: id, tiers: tiers}) do
-    if ref(key) == id and tiers[tier]["model"] == model,
+  defp stored_effort(entry, tier, model, %{provider_id: id, tiers: tiers}) do
+    if ref(entry) == id and tiers[tier]["model"] == model,
       do: tiers[tier]["effort"],
       else: ""
   end
@@ -253,9 +253,9 @@ defmodule ApiaryWeb.ModelTiers do
   # `stored`, the stored choice's effort for it, where they lack it.
   defp efforts(nil, _model, _stored), do: []
 
-  defp efforts(key, model, stored) do
+  defp efforts(entry, model, stored) do
     offered =
-      case Enum.find(key.models, &(&1.id == model)) do
+      case Enum.find(entry.models, &(&1.id == model)) do
         %{effort: effort} when is_list(effort) -> effort
         _none -> []
       end
@@ -265,15 +265,15 @@ defmodule ApiaryWeb.ModelTiers do
 
   # The models a tier offers: the provider's, by title, and the tier's model where the
   # list lacks it, by its id.
-  defp models(key, model) do
-    listed = for m <- key.models, do: {m.title || m.id, m.id}
+  defp models(entry, model) do
+    listed = for m <- entry.models, do: {m.title || m.id, m.id}
 
-    if model == "" or Enum.any?(key.models, &(&1.id == model)),
+    if model == "" or Enum.any?(entry.models, &(&1.id == model)),
       do: listed,
       else: listed ++ [{model, model}]
   end
 
-  @doc "Whether a provider entry `key` is chosen and every tier has a model."
+  @doc "Whether a provider's entry `entry` is chosen and every tier has a model."
   @spec complete?(map | nil, map) :: boolean
   def complete?(nil, _tiers), do: false
 
@@ -281,7 +281,7 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.all?(shown(), &(String.trim((tiers[&1] || %{})["model"] || "") != ""))
 
   @doc """
-  What a save of `key`, the entry of a provider of the organisation (not a catalogue
+  What a save of `entry`, a provider of the organisation's entry (not a catalogue
   provider's entry, `entry/3`), and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
   `provider` and `tiers`, each tier with a model, its effort where it has one;
   and `model` and `effort`, those of the `thinking` tier, as the run's model and effort
@@ -289,12 +289,12 @@ defmodule ApiaryWeb.ModelTiers do
   the run's.
   """
   @spec attrs(map, map) :: map
-  def attrs(key, tiers) do
+  def attrs(entry, tiers) do
     sent = saved_tiers(tiers)
     thinking = sent["thinking"] || %{}
 
     %{
-      provider: key.provider.public_id,
+      provider: entry.provider.public_id,
       tiers: sent,
       model: thinking["model"],
       effort: thinking["effort"]
@@ -416,7 +416,7 @@ defmodule ApiaryWeb.ModelTiers do
   field, and one that names no tier above the tiers.
   """
   def tiers(assigns) do
-    key = assigns.entry
+    entry = assigns.entry
 
     base =
       assigns.field_id ||
@@ -436,8 +436,8 @@ defmodule ApiaryWeb.ModelTiers do
           field_id: "#{base}_#{tier}",
           model: model,
           effort: values["effort"] || "",
-          models: if(key, do: models(key, model), else: []),
-          efforts: efforts(key, model, stored_effort(key, tier, model, assigns.stored)),
+          models: if(entry, do: models(entry, model), else: []),
+          efforts: efforts(entry, model, stored_effort(entry, tier, model, assigns.stored)),
           model_errors: messages(errors, {tier, :model}),
           effort_errors: messages(errors, {tier, :effort})
         }
@@ -445,7 +445,7 @@ defmodule ApiaryWeb.ModelTiers do
 
     assigns =
       assign(assigns,
-        free: key != nil and key.free,
+        free: entry != nil and entry.free,
         rows: rows,
         head_errors: messages(errors, :tiers)
       )

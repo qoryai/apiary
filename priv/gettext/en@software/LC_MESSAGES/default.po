@@ -7719,6 +7719,11 @@ msgstr ""
 msgid "Choose another name: this workspace has a type called %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test. The model provider chosen for this workspace has no key."
+msgstr ""
+
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another template, or save the shared harness again in a workspace's Harness step. The organisation that saved it no longer exists."
@@ -22229,11 +22234,6 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The model provider %{name}"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The model provider chosen for this workspace has no key. Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

@@ -920,7 +920,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
         }
       })
 
-      assert has_element?(lv, "#model_choice_fallbacks_0_provider-error", "is invalid")
+      assert has_element?(
+               lv,
+               "#model_choice_fallbacks_0_provider-error",
+               "Choose another provider for this fallback: its provider no longer exists in " <>
+                 "this organisation."
+             )
+
       assert choice(scope) == nil
       refute fallbacks_of_provider?(other, foreign)
     end

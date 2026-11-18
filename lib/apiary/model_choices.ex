@@ -1374,7 +1374,16 @@ defmodule Apiary.ModelChoices do
   # and the row ids of the providers taken, with `fallback`, at `index`, checked against
   # its provider, nil for none of the chain.
   defp check_fallback({changeset, checked, taken}, fallback, index, nil, _at) do
-    row = add_error(fallback_change(fallback), :provider, "is invalid")
+    row =
+      add_error(
+        fallback_change(fallback),
+        :provider,
+        dgettext_noop(
+          "errors",
+          "Choose another provider for this fallback: its provider no longer exists in this organisation."
+        )
+      )
+
     {fallback_errors(changeset, row, index), checked, taken}
   end
 

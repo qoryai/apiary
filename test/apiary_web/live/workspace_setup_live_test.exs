@@ -3934,9 +3934,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             "no longer serves it.",
         key_gone:
           @no_run_lead <>
-            "The model provider chosen for this workspace has no key. Choose another " <>
-            "provider on the Model step, or add a key to that provider in Organisation settings › " <>
-            "Model providers, then press Run the test.",
+            "Choose another provider on the Model step, or add a key to that provider in " <>
+            "Organisation settings › Model providers, then press Run the test. The model " <>
+            "provider chosen for this workspace has no key.",
         model_gone:
           @no_run_lead <>
             "The effort chosen for this model is no longer offered. Choose another model " <>

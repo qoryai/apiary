@@ -21,6 +21,8 @@ defmodule Apiary.ModelChoicesTest do
 
   @key "sk-choice-test-0123456789"
   @model "claude-sonnet-5-5"
+  @fallback_provider_gone "Choose another provider for this fallback: its provider no " <>
+                            "longer exists in this organisation."
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -1547,7 +1549,7 @@ defmodule Apiary.ModelChoicesTest do
                  :workspace,
                  attrs(provider, %{fallbacks: [%{fallback(subscription) | provider: "nope"}]})
                )
-             ) == [{0, :provider, "is invalid"}]
+             ) == [{0, :provider, @fallback_provider_gone}]
 
       assert [{0, :effort, "Choose one of claude-sonnet-5-5's effort values: " <> _values}] =
                fallback_errors(

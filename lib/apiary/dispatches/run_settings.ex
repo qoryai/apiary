@@ -589,7 +589,7 @@ defmodule Apiary.Dispatches.RunSettings do
         where: not is_nil(c.provider_kind) and c.chain == "organisation",
         preload: [
           workspaces: [],
-          secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
+          secret: [values: ^from(v in Value, select: struct(v, [:id]))]
         ]
       )
       |> Repo.all()
