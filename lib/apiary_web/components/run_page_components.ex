@@ -310,14 +310,18 @@ defmodule ApiaryWeb.RunPageComponents do
     <.rich text={
       if @terminal,
         do:
-          rich_gettext(
+          rich_ngettext(
+            "Only %{runtimes} sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
             "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            length(Runtimes.list()),
             runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           ),
         else:
-          rich_gettext(
+          rich_ngettext(
+            "Only %{runtimes} sends session events. This session ran %{runtime}: its connections are under Network access.",
             "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access.",
+            length(Runtimes.list()),
             runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           )

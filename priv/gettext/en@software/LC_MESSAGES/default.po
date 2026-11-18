@@ -15728,13 +15728,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its connections are under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
