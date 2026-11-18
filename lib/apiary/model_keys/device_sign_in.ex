@@ -1,32 +1,40 @@
 defmodule Apiary.ModelKeys.DeviceSignIn do
   @moduledoc """
   One device sign-in of a model key, for a form (the LiveView helper
-  ApiaryWeb.ModelKeyDevice): Qory Apiary requests a code from the
-  provider, the person enters the code on the provider's page, and Qory Apiary polls until
-  the person approves, exchanges the grant for the tokens and keeps them as a `t:Apiary.ModelKeys.Login.parsed/0`. The calls are
-  `Apiary.ModelKeys.LoginDevice`; their addresses and the client id come from
+  ApiaryWeb.ModelKeyDevice): Qory Apiary requests a code from the provider, the person
+  enters the code on the provider's page, and Qory Apiary polls until the person approves,
+  exchanges the grant for the tokens and keeps them as a `t:Apiary.ModelKeys.Login.parsed/0`.
+  The calls are `Apiary.ModelKeys.LoginDevice`; their addresses and the client id come from
   `oauth_device` and `oauth_refresh` of the provider's catalogue entry alone.
 
   The sign-in is a process that belongs to the form's process (the `owner`): it monitors
-  the owner and ends when the owner ends, and when `cancel/1` or `stop/1` says so. It polls
-  every `interval` seconds the provider sent, until the code's `expires_at`, and makes no
-  call after it ends. It sends the owner `{:device_sign_in, ref, event}`:
+  the owner and ends when the owner ends, and when `stop/1` says so. It polls every
+  `interval` seconds the provider sent, until the code's `expires_at` or 30 minutes after
+  the start, whichever is first, and makes no call after it ends. A poll that gets a 429
+  or a 5xx waits for the `Retry-After` header (at most 60 seconds) when there is one,
+  else for the interval; a 429 does not count as a failure, and five failed polls in a
+  row (a 5xx or any other failure) end the sign-in. It sends the owner
+  `{:device_sign_in, ref, event}`:
 
     * `{:code, %{user_code:, verification_url:, expires_at:}}`, once the provider has given
       a code: the only part of the sign-in the page shows;
-    * `:signed_in`, once the tokens are stored in the process;
-    * `{:ended, reason}`, when the sign-in ends without tokens: `:expired` (the code stopped
-      working before the person approved), `:off` (the provider has no device code sign-in
-      for the account) or `:failed` (any other failure: a call that failed five times in a
-      row, an answer that is no grant or no tokens, an address the catalogue entry has
-      wrong).
+    * `:signed_in`, once the tokens are in the process;
+    * `{:ended, :expired}`, when the code stopped working before the person approved;
+    * `{:ended, :off}`, when the provider has no device code sign-in for the account (a
+      404 for the code; unconfirmed until a real run);
+    * `{:ended, :failed, cause}`, for any other failure, where `cause` is the HTTP status
+      of the response that failed it, `:unknown` for a failure with no status (a network
+      error, a timeout, a response that is no grant or no tokens, an address the catalogue
+      entry has wrong), or nil for a response with no account id.
 
-  The tokens leave the process once, as `login/1` for the owner alone, which passes them to
-  `Apiary.Connections`. No token, code, device id or answer is in a message, a log line,
-  an audit entry or a telemetry event, and `format_status/1` hides the state from a crash
-  report.
+  `login/1` returns the tokens to the owner alone, as `t:Apiary.ModelKeys.Login.parsed/0`;
+  the owner passes them to `Apiary.Connections` when the person saves. The process keeps
+  them until it ends, so `login/1` can be read again. No token, code, device id or
+  response is in a message, a log line, an audit entry or a telemetry event, and
+  `format_status/1` hides the state from a crash report. A crash in a poll or in the
+  exchange ends the sign-in as failed, with no state or argument written out.
 
-  A catalogue entry without `oauth_device` has no device sign-in: `start/3` returns
+  A catalogue entry without `oauth_device` has no device sign-in: `start/2` returns
   `{:error, :device_flow_unavailable}`, and `available?/1` is false.
   """
 
@@ -40,6 +48,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
   # polled, whatever its `expires_at`.
   @failures_max 5
   @poll_limit_seconds 30 * 60
+  @test_seam Application.compile_env(:apiary, [__MODULE__, :test_seam], false)
 
   @typedoc "What a catalogue entry gives a device sign-in."
   @type description :: %{
@@ -120,8 +129,8 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
   @doc """
   The tokens of the finished sign-in `pid`, for its owner alone: `{:ok, login}`, as
   `Apiary.ModelKeys.Login.from_tokens/3` makes it, or `:error` for a sign-in that is not
-  finished, that is gone, or whose owner is another process. The sign-in keeps them, so a
-  form that cannot save them yet still can later.
+  finished, that is gone, or whose owner is another process. The sign-in keeps the tokens
+  until it ends, so the owner can read them again.
   """
   @spec login(pid | nil) :: {:ok, Login.parsed()} | :error
   def login(nil), do: :error
@@ -157,42 +166,10 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
   end
 
   @impl true
-  def handle_continue(:request_code, state) do
-    %{device: device, client_id: client_id} = state.description
-
-    case LoginDevice.request_code(device, client_id) do
-      {:ok, code} ->
-        send_owner(state, {:code, shown(code, device)})
-        state = %{state | code: code, expires_at: code.expires_at, interval_ms: ms(code)}
-        schedule(state)
-        {:noreply, state}
-
-      :off ->
-        ended(state, :off)
-
-      _failed ->
-        ended(state, :failed)
-    end
-  end
+  def handle_continue(:request_code, state), do: guarded(state, &request_code/1)
 
   @impl true
-  def handle_info(:poll, %{code: code} = state) when is_map(code) do
-    if expired?(state) do
-      ended(state, :expired)
-    else
-      case LoginDevice.poll(state.description.device, code) do
-        :pending ->
-          schedule(state)
-          {:noreply, %{state | failures: 0}}
-
-        {:ok, grant} ->
-          exchange(state, grant)
-
-        _failed ->
-          failed_call(state)
-      end
-    end
-  end
+  def handle_info(:poll, %{code: code} = state) when is_map(code), do: guarded(state, &poll/1)
 
   def handle_info({:DOWN, _ref, :process, owner, _reason}, %{owner: owner} = state),
     do: {:stop, :normal, state}
@@ -211,52 +188,138 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
   @impl true
   def format_status(status), do: Map.put(status, :state, :redacted)
 
+  # Any raise or exit in a step ends the sign-in as failed. The exception is not kept, so
+  # no crash report carries the grant that the step had as an argument.
+  defp guarded(state, step) do
+    step.(state)
+  rescue
+    _exception -> ended(state, :failed, :unknown)
+  catch
+    _kind, _reason -> ended(state, :failed, :unknown)
+  end
+
+  defp request_code(state) do
+    %{device: device, client_id: client_id} = state.description
+
+    case LoginDevice.request_code(device, client_id) do
+      {:ok, code} ->
+        send_owner(state, {:code, shown(code, device)})
+        state = %{state | code: code, expires_at: code.expires_at, interval_ms: ms(code)}
+        schedule(state)
+        {:noreply, state}
+
+      :off ->
+        ended(state, :off)
+
+      failure ->
+        ended(state, :failed, cause(failure))
+    end
+  end
+
+  defp poll(state) do
+    if expired?(state) do
+      ended(state, :expired)
+    else
+      case LoginDevice.poll(state.description.device, state.code) do
+        :pending ->
+          schedule(state)
+          {:noreply, %{state | failures: 0}}
+
+        {:ok, grant} ->
+          exchange(state, grant)
+
+        {:error, "http_429", retry_after} ->
+          # Told to slow down: not a failure of the sign-in.
+          schedule(state, delay(state, retry_after))
+          {:noreply, state}
+
+        {:error, _word, retry_after} = failure ->
+          failed_call(state, failure, delay(state, retry_after))
+
+        failure ->
+          failed_call(state, failure, state.interval_ms)
+      end
+    end
+  end
+
   defp exchange(state, grant) do
     %{description: description} = state
 
-    with {:ok, answer} <-
+    with true <- Process.alive?(state.owner),
+         {:ok, response} <-
            LoginDevice.exchange(
              description.token_url,
              description.device,
              description.client_id,
              grant
            ),
-         {:ok, login} <- Login.from_tokens(answer, description.account_claim) do
+         {:ok, login} <- Login.from_tokens(response, description.account_claim) do
       send_owner(state, :signed_in)
       {:noreply, %{state | login: login, code: nil}}
     else
-      _failed -> ended(state, :failed)
+      false -> {:stop, :normal, state}
+      {:error, :no_account} -> ended(state, :failed, nil)
+      {:error, :invalid} -> ended(state, :failed, :unknown)
+      failure -> ended(state, :failed, cause(failure))
     end
   end
 
   # A call that failed: the sign-in goes on after a few in a row, as a network that
   # failed once may be back at the next poll.
-  defp failed_call(%{failures: failures} = state) when failures + 1 >= @failures_max,
-    do: ended(state, :failed)
+  defp failed_call(%{failures: failures} = state, failure, _delay)
+       when failures + 1 >= @failures_max,
+       do: ended(state, :failed, cause(failure))
 
-  defp failed_call(state) do
-    schedule(state)
+  defp failed_call(state, _failure, delay) do
+    schedule(state, delay)
     {:noreply, %{state | failures: state.failures + 1}}
   end
+
+  # The wait after a response with a `Retry-After` of `seconds`, else the interval.
+  defp delay(_state, seconds) when is_integer(seconds), do: seconds * 1000
+  defp delay(state, _none), do: state.interval_ms
+
+  # The HTTP status of a failure's word, `:unknown` for a failure with no status.
+  defp cause({:error, "http_" <> status, _retry_after}), do: cause({:error, "http_" <> status})
+
+  defp cause({:error, "http_" <> status}) do
+    case Integer.parse(status) do
+      {status, ""} -> status
+      _other -> :unknown
+    end
+  end
+
+  defp cause(_failure), do: :unknown
 
   defp ended(state, reason) do
     send_owner(state, {:ended, reason})
     {:stop, :normal, state}
   end
 
+  defp ended(state, :failed, cause) do
+    send_owner(state, {:ended, :failed, cause})
+    {:stop, :normal, state}
+  end
+
   defp send_owner(%{owner: owner, ref: ref}, event),
     do: send(owner, {:device_sign_in, ref, event})
 
-  defp schedule(state), do: Process.send_after(self(), :poll, state.interval_ms)
+  defp schedule(state, delay \\ nil),
+    do: Process.send_after(self(), :poll, delay || state.interval_ms)
 
   defp expired?(state) do
     DateTime.compare(DateTime.utc_now(), state.expires_at) != :lt or
       System.monotonic_time(:second) >= state.limit
   end
 
-  # The seconds between two polls the provider sent, unless a test sets milliseconds.
-  defp ms(%{interval: seconds}) do
-    Application.get_env(:apiary, __MODULE__, [])[:interval_ms] || seconds * 1000
+  # The milliseconds between two polls: the seconds the provider sent. A test build may set
+  # `interval_ms`; any other build ignores it.
+  if @test_seam do
+    defp ms(%{interval: seconds}) do
+      Application.get_env(:apiary, __MODULE__, [])[:interval_ms] || seconds * 1000
+    end
+  else
+    defp ms(%{interval: seconds}), do: seconds * 1000
   end
 
   # What the page shows of a code: the code, the page it is entered on and until when it
@@ -269,8 +332,6 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
     }
 
   ## The seam of the tests
-
-  @test_seam Application.compile_env(:apiary, [__MODULE__, :test_seam], false)
 
   if @test_seam do
     @test_device {__MODULE__, :test_device}

@@ -142,10 +142,13 @@ defmodule Apiary.Kinds.Provider do
 
   @device_urls ~w(usercode_url poll_url verification_url redirect_uri)
 
-  @doc false
-  # Every URL endpoint, every `oauth_refresh` URL, every address of an `oauth_device` and
-  # every default of an address setting that the endpoint rule does not accept, each with
-  # the reason.
+  @doc """
+  addresses_refused/1 is every URL endpoint, every `oauth_refresh` URL, every address of an
+  `oauth_device` and every default of an address setting of `provider` that the endpoint
+  rule of `Apiary.Kinds.Endpoint` does not accept, each with the reason. `load!/1` calls it.
+  It is public so that a test can check the addresses of a provider it builds in memory:
+  `load!/1` reads a file, and the vendored schema of a description has no `oauth_device`.
+  """
   @spec addresses_refused(t) :: [{term, Endpoint.refusal()}]
   def addresses_refused(%__MODULE__{} = provider) do
     endpoint = for %{"endpoint" => address} <- provider.apis, is_binary(address), do: address

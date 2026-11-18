@@ -128,31 +128,141 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
       assert Stub.calls(:poll) == 0
     end
 
-    test "ends as failed for any other answer of the first call" do
+    test "ends as failed with the status for any other response to the first call" do
       for status <- [400, 403, 429, 500] do
         Stub.put(usercode: status)
         {pid, ref} = start!()
-        assert_receive {:device_sign_in, ^ref, {:ended, :failed}}, 1_000
+        assert_receive {:device_sign_in, ^ref, {:ended, :failed, ^status}}, 1_000
         assert_ended(pid)
       end
     end
 
-    test "ends as failed after five failed polls in a row, and goes on after fewer" do
+    test "ends as failed after five failed polls in a row" do
       Stub.put(poll: 500)
       {pid, ref} = start!()
-      assert_receive {:device_sign_in, ^ref, {:ended, :failed}}, 2_000
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, 500}}, 3_000
       assert_ended(pid)
       assert Stub.calls(:poll) == 5
     end
 
-    test "ends as failed when the exchange is refused, and when its tokens are no sign-in" do
+    test "goes on after fewer than five failed polls in a row" do
+      Stub.put(poll: 503, poll_failures: 4)
+      {_pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, :signed_in}, 3_000
+      assert Stub.calls(:poll) == 5
+    end
+
+    test "counts a pending poll as the end of a run of failures" do
+      Stub.put(poll: 500, poll_failures: 3, pending: 5)
+      {_pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, :signed_in}, 3_000
+    end
+
+    test "does not count a 429 as a failure, and goes on" do
+      Stub.put(poll: 429, poll_failures: 7)
+      {_pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, :signed_in}, 3_000
+      assert Stub.calls(:poll) == 8
+    end
+
+    test "waits for the Retry-After of a 429 or a 5xx, else for the interval" do
+      for status <- [429, 503] do
+        Stub.put(poll: status, poll_failures: 1, retry_after: "1")
+        {pid, ref} = start!()
+        assert_receive {:device_call, "/device/token", _body}, 1_000
+        first = System.monotonic_time(:millisecond)
+        assert_receive {:device_call, "/device/token", _body}, 3_000
+        assert System.monotonic_time(:millisecond) - first >= 900
+        assert_receive {:device_sign_in, ^ref, :signed_in}, 2_000
+        DeviceSignIn.stop(pid)
+        flush_calls()
+      end
+
+      Stub.put(poll: 503, poll_failures: 1)
+      {_pid, ref} = start!()
+      assert_receive {:device_call, "/device/token", _body}, 1_000
+      first = System.monotonic_time(:millisecond)
+      assert_receive {:device_call, "/device/token", _body}, 1_000
+      assert System.monotonic_time(:millisecond) - first < 900
+      assert_receive {:device_sign_in, ^ref, :signed_in}, 2_000
+    end
+
+    defp flush_calls do
+      receive do
+        {:device_call, _path, _body} -> flush_calls()
+      after
+        0 -> :ok
+      end
+    end
+
+    test "ends as failed with the status when the exchange is refused" do
       Stub.put(exchange: 400)
       {_pid, ref} = start!()
-      assert_receive {:device_sign_in, ^ref, {:ended, :failed}}, 2_000
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, 400}}, 2_000
+    end
 
-      Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not a jwt"})
+    test "ends as failed with no cause text for tokens with no account id" do
+      Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not.a.jwt"})
       {_pid, ref} = start!()
-      assert_receive {:device_sign_in, ^ref, {:ended, :failed}}, 2_000
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, nil}}, 2_000
+    end
+
+    test "ends as failed with an unknown cause for tokens whose account ids differ" do
+      other = jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-other"}})
+      Stub.put(tokens: %{login_tokens(tag: "x") | id_token: other})
+      {_pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, :unknown}}, 2_000
+    end
+
+    test "ends as failed with an unknown cause for a failure with no status" do
+      Stub.put(usercode: 200, code: "")
+      {_pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, :unknown}}, 2_000
+    end
+
+    test "makes no exchange call once its owner is gone" do
+      Stub.put(hold: true)
+      {pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, {:code, _shown}}, 1_000
+
+      dead = spawn(fn -> :ok end)
+      assert_ended(dead)
+      :sys.replace_state(pid, fn state -> %{state | owner: dead} end)
+      Stub.approve()
+
+      assert_ended(pid)
+      assert Stub.calls(:exchange) == 0
+    end
+
+    test "ends as failed when a step crashes, and writes no secret to the log" do
+      Stub.put(pending: :never)
+
+      log =
+        capture_log(fn ->
+          {pid, ref} = start!()
+          assert_receive {:device_sign_in, ^ref, {:code, _shown}}, 1_000
+          :sys.replace_state(pid, fn state -> %{state | expires_at: nil} end)
+          assert_receive {:device_sign_in, ^ref, {:ended, :failed, :unknown}}, 1_000
+          assert_ended(pid)
+        end)
+
+      for secret <- ["device-auth-fixture", "7QKD-M4TPX", "authorization-code-fixture"],
+          do: refute(log =~ secret)
+
+      refute log =~ "terminating"
+    end
+
+    test "ends at the 30-minute limit, whatever the code's expiry" do
+      Stub.put(pending: :never, expires_at: DateTime.add(DateTime.utc_now(), 7200))
+      {pid, ref} = start!()
+      assert_receive {:device_sign_in, ^ref, {:code, _shown}}, 1_000
+
+      :sys.replace_state(pid, fn state ->
+        %{state | limit: System.monotonic_time(:second) - 1}
+      end)
+
+      assert_receive {:device_sign_in, ^ref, {:ended, :expired}}, 1_000
+      assert_ended(pid)
     end
 
     test "ends as expired when the code stops working before the approval" do
@@ -211,42 +321,82 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
       Stub.script()
       {_pid, ref} = start!()
 
-      assert_receive {:device_sign_in, ^ref, {:ended, :failed}}, 1_000
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, :unknown}}, 1_000
       assert Stub.calls(:code) == 0
     end
 
     test "shows no token, code or device id in a status dump, a message or a log line" do
       tokens = Stub.put(pending: 1)
+      secrets = secrets_of(tokens)
 
       log =
         capture_log(fn ->
           {pid, ref} = start!()
-          assert_receive {:device_sign_in, ^ref, {:code, _shown}}, 1_000
+          assert_receive {:device_sign_in, ^ref, {:code, shown} = code_event}, 1_000
+          assert shown.user_code == "7QKD-M4TPX"
           dump = inspect(:sys.get_status(pid), limit: :infinity, printable_limit: :infinity)
-          assert_receive {:device_sign_in, ^ref, :signed_in}, 2_000
+          assert_receive {:device_sign_in, ^ref, :signed_in = signed_event}, 2_000
+          events = inspect([code_event, signed_event], limit: :infinity)
+          for secret <- secrets, do: refute(events =~ secret)
 
           dump =
             dump <> inspect(:sys.get_status(pid), limit: :infinity, printable_limit: :infinity)
 
           {:ok, login} = DeviceSignIn.login(pid)
           dump = dump <> inspect(login, limit: :infinity)
+          for secret <- secrets, do: refute(dump =~ secret)
 
-          for secret <- [
-                tokens.access_token,
-                tokens.refresh_token,
-                tokens.id_token,
-                "device-auth-fixture",
-                "authorization-code-fixture",
-                "verifier-fixture"
-              ] do
-            refute dump =~ secret
-          end
-
-          refute_received {:device_sign_in, _ref, {:token, _token}}
+          for secret <- secrets, do: refute(messages() =~ secret)
         end)
 
-      for secret <- [tokens.access_token, tokens.refresh_token, "device-auth-fixture"],
-          do: refute(log =~ secret)
+      for secret <- secrets, do: refute(log =~ secret)
+    end
+
+    test "shows no secret of an error response in a message or a log line" do
+      tokens = Stub.put(exchange: 400, error_body: "secret-in-the-error-body")
+      secrets = ["secret-in-the-error-body" | secrets_of(tokens)]
+
+      log =
+        capture_log(fn ->
+          {pid, ref} = start!()
+          assert_receive {:device_sign_in, ^ref, {:ended, :failed, 400}}, 2_000
+          assert_ended(pid)
+          for secret <- secrets, do: refute(messages() =~ secret)
+        end)
+
+      for secret <- secrets, do: refute(log =~ secret)
+
+      Stub.put(poll: 500, error_body: "secret-in-the-error-body")
+
+      log =
+        capture_log(fn ->
+          {pid, ref} = start!()
+          assert_receive {:device_sign_in, ^ref, {:ended, :failed, 500}}, 3_000
+          assert_ended(pid)
+          for secret <- secrets, do: refute(messages() =~ secret)
+        end)
+
+      for secret <- secrets, do: refute(log =~ secret)
+    end
+
+    defp secrets_of(tokens),
+      do: [
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.id_token,
+        "device-auth-fixture",
+        "authorization-code-fixture",
+        "verifier-fixture"
+      ]
+
+    # The messages the sign-in sent to the test process, as text. The messages of the stub,
+    # which has the requests it got, are not the sign-in's.
+    defp messages do
+      {:messages, messages} = Process.info(self(), :messages)
+
+      messages
+      |> Enum.filter(&match?({:device_sign_in, _ref, _event}, &1))
+      |> inspect(limit: :infinity, printable_limit: :infinity)
     end
 
     test "keeps an unrelated message from ending it" do

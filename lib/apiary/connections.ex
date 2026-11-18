@@ -1868,12 +1868,18 @@ defmodule Apiary.Connections do
   (`String.trim/1`; for a provider whose keys are logins, the sign-in of a device sign-in,
   `t:Apiary.ModelKeys.Login.parsed/0`, and any text is refused with "is invalid"), and,
   with `settings`, its settings, in one transaction, which also deletes the key's states
-  (`Apiary.ModelKeys.clear_states/2`): the new value is out of cooldown. The details of its `provider_keys_changed` entry have
-  `value_set: true`. `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
-  value and the states as they were.
+  (`Apiary.ModelKeys.clear_states/2`): the new value is out of cooldown. The details of
+  its `provider_keys_changed` entry have `value_set: true`. `{:ok, provider}`, or
+  `{:error, refusal}` as `Apiary.Secrets.set_value/5` returns, or a changeset of the
+  settings, which leaves the value and the states as they were.
   """
-  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
+  @spec set_provider_key(
+          Scope.t(),
+          Connection.t(),
+          String.t(),
+          String.t() | Login.parsed(),
+          map | nil
+        ) ::
           {:ok, Connection.t()} | {:error, refusal}
   def set_provider_key(
         %Scope{} = scope,

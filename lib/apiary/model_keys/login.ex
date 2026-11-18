@@ -5,15 +5,18 @@ defmodule Apiary.ModelKeys.Login do
   (`Apiary.ModelKeys.DeviceSignIn`) returns. The key is still one value of the provider's
   secret (`Apiary.ModelKeys`). Its stored value is the document `from_tokens/3` makes,
   `{"version": 1, "access_token", "refresh_token"}`, encrypted like any other key value,
-  and nothing else of the answer is kept; an `id_token` is not stored.
+  and nothing else of the response is kept; an `id_token` is not stored.
   The row of this module has what the server needs to know about the sign-in without
   decrypting it: the account, when the access token expires, and whether the provider
   still accepts the refresh token.
 
-  `from_tokens/3` reads the answer and makes no network call. It reads the access token's
-  `exp` from the JWT's payload without checking the signature: the server only uses the
-  time to decide when to refresh. An answer without a string for each of `access_token` and
-  `refresh_token` and an account id at the catalogue's claim is refused.
+  `from_tokens/3` reads the response and makes no network call. It trusts the TLS channel
+  to the token address of the catalogue entry's `oauth_refresh`: the JWT payloads (the
+  account id and the `exp`) are decoded and not signature-checked, because the server uses
+  them only to name the account and to decide when to refresh. A response without a string
+  for each of `access_token` and `refresh_token`, or without an account id at the
+  catalogue's claim, is refused, and so is one whose access token and ID token have
+  different account ids.
 
   `put/3` writes the row of a key's new login: `generation` 1, plus 1 for each sign-in
   over it, so a refresh that started before it can be dropped. The caller is
@@ -228,37 +231,41 @@ defmodule Apiary.ModelKeys.Login do
   def provider?(_kind), do: false
 
   @doc """
-  Reads the answer of the provider's code exchange at the end of a device sign-in
-  (`Apiary.ModelKeys.DeviceSignIn`): `answer`, the JSON object with `access_token`,
+  Reads the response of the provider's code exchange at the end of a device sign-in
+  (`Apiary.ModelKeys.DeviceSignIn`): `response`, the JSON object with `access_token`,
   `refresh_token` and, as the provider sends them, `id_token` and `expires_in`.
   `account_claim` is the JSON pointer of the account id in the access token's payload,
   `auth.account_claim` of the catalogue entry's API. `{:ok, parsed}` with the document to
-  store as the key's value, the account id and when the access token expires, or
-  `{:error, :invalid}` for an answer without a refresh token, a printable access token or
-  an account id. It makes no network call, never raises, and its answer contains nothing of
-  `answer`.
+  store as the key's value, the account id and when the access token expires;
+  `{:error, :no_account}` for a response that is a sign-in but has no account id at the
+  claim; `{:error, :invalid}` for any other response: one without a refresh token or a
+  printable access token, or with different account ids in the access token and the ID
+  token. It makes no network call, never raises, and its return value contains nothing of
+  `response`.
 
-  The expiry is the access token's `exp`, read from the JWT's payload without checking the
-  signature (the server only uses the time to decide when to refresh), else `expires_in`
-  seconds after `now`, else nil.
+  The expiry is the access token's `exp`, else `expires_in` seconds after `now`, else nil.
+  Either is used only when it is 1 second to 366 days after `now`; a value outside that
+  range is unreadable, as a value that is no number is.
   """
-  @spec from_tokens(term, String.t() | nil, DateTime.t()) :: {:ok, parsed} | {:error, :invalid}
+  @spec from_tokens(term, String.t() | nil, DateTime.t()) ::
+          {:ok, parsed} | {:error, :invalid | :no_account}
   def from_tokens(answer, account_claim, now \\ DateTime.utc_now())
 
-  def from_tokens(%{} = answer, account_claim, now) do
-    with {:ok, refresh_token} <- string(answer, "refresh_token"),
-         {:ok, access_token} <- string(answer, "access_token"),
+  def from_tokens(%{} = response, account_claim, now) do
+    with {:ok, refresh_token} <- string(response, "refresh_token"),
+         {:ok, access_token} <- string(response, "access_token"),
          true <- String.match?(access_token, ~r/\A[!-~]+\z/),
-         {:ok, account_id} <- account_id(answer, account_claim, access_token),
+         {:ok, account_id} <- account_id(response, account_claim, access_token),
          document = document(access_token, refresh_token),
          true <- byte_size(document) <= Value.value_max() do
       {:ok,
        %Parsed{
          document: document,
          account_id: account_id,
-         access_expires_at: expires_at(access_token, answer["expires_in"], now)
+         access_expires_at: expires_at(access_token, response["expires_in"], now)
        }}
     else
+      :no_account -> {:error, :no_account}
       _refused -> {:error, :invalid}
     end
   end
@@ -277,22 +284,23 @@ defmodule Apiary.ModelKeys.Login do
   defp account_id?(account_id), do: String.match?(account_id, ~r/\A[!-~]{1,255}\z/)
 
   # The id in the access token's payload at the JSON pointer `claim`, else in the id
-  # token's.
-  defp account_id(answer, claim, access_token) when is_binary(claim) do
-    id =
-      [access_token, answer["id_token"]]
-      |> Enum.find_value(fn token ->
-        with token when is_binary(token) <- token,
-             {:ok, payload} <- payload(token),
-             id when is_binary(id) <- pointer(payload, claim),
-             do: id,
-             else: (_ -> nil)
-      end)
+  # token's. When both have one, the two must be the same.
+  defp account_id(response, claim, access_token) when is_binary(claim) do
+    ids =
+      for token <- [access_token, response["id_token"]],
+          is_binary(token),
+          {:ok, payload} <- [payload(token)],
+          id when is_binary(id) <- [pointer(payload, claim)],
+          do: id
 
-    if is_binary(id) and account_id?(id), do: {:ok, id}, else: :error
+    case Enum.uniq(ids) do
+      [] -> :no_account
+      [id] -> if account_id?(id), do: {:ok, id}, else: :error
+      _different -> :error
+    end
   end
 
-  defp account_id(_answer, _claim, _access_token), do: :error
+  defp account_id(_response, _claim, _access_token), do: :error
 
   # The value at the JSON pointer (RFC 6901) `claim` of `payload`, nil where it has none.
   defp pointer(payload, "/" <> claim) do
@@ -318,20 +326,42 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   defp expires_at(access_token, expires_in, now) do
-    case expiry(access_token) do
+    case bounded_expiry(access_token, now) do
       {:ok, at} ->
         at
 
       {:error, :invalid} ->
-        if is_integer(expires_in) and expires_in > 0 do
-          at = DateTime.add(now, expires_in, :second)
+        with {:ok, seconds} <- lifetime(expires_in) do
+          at = DateTime.add(now, seconds, :second)
           %{at | microsecond: {elem(at.microsecond, 0), 6}}
+        else
+          _unreadable -> nil
         end
     end
   end
 
-  # The `exp` of a JWT's payload, in whole seconds since 1970, as a time. The signature is
-  # not checked: the time only decides when to refresh.
+  # The most a token may live, from `now`: 366 days, so that no sum of a time and a number
+  # of seconds from a response goes out of the range of `DateTime`.
+  @lifetime_max 366 * 86_400
+
+  defp lifetime(seconds) when is_integer(seconds) and seconds >= 1 and seconds <= @lifetime_max,
+    do: {:ok, seconds}
+
+  defp lifetime(_seconds), do: {:error, :invalid}
+
+  # The `exp` of a JWT's payload as a time, when it is 1 second to 366 days after `now`.
+  # The signature is not checked: the time only decides when to refresh.
+  defp bounded_expiry(token, now) do
+    with {:ok, %{"exp" => exp}} when is_integer(exp) <- payload(token),
+         {:ok, _seconds} <- lifetime(exp - DateTime.to_unix(now)) do
+      expiry(token)
+    else
+      _other -> {:error, :invalid}
+    end
+  end
+
+  # The `exp` of a JWT's payload, in whole seconds since 1970, as a time; the refresh reads
+  # a stored token's with this, so it has no bound.
   defp expiry(token) do
     with {:ok, %{"exp" => exp}} when is_integer(exp) <- payload(token),
          {:ok, at} <- DateTime.from_unix(exp) do

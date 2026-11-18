@@ -1,7 +1,7 @@
 defmodule Apiary.ModelKeys.LoginTest do
-  # `Apiary.ModelKeys.Login.from_tokens/3`, which reads the answer of a device sign-in's code
+  # `Apiary.ModelKeys.Login.from_tokens/3`, which reads the response of a device sign-in's code
   # exchange, and what the module says about a provider: the tokens are kept in a document,
-  # the rest is dropped, an answer that is no sign-in is refused, and no call fails on any
+  # the rest is dropped, a response that is no sign-in is refused, and no call fails on any
   # term.
   use ExUnit.Case, async: true
 
@@ -9,8 +9,8 @@ defmodule Apiary.ModelKeys.LoginTest do
 
   alias Apiary.ModelKeys.Login
 
-  # The answer of the code exchange for `tokens`, as the provider sends it.
-  defp answer(tokens, extra \\ %{}) do
+  # The response of the code exchange for `tokens`, as the provider sends it.
+  defp response(tokens, extra \\ %{}) do
     Map.merge(
       %{
         "access_token" => tokens.access_token,
@@ -22,13 +22,13 @@ defmodule Apiary.ModelKeys.LoginTest do
     )
   end
 
-  defp read(answer), do: Login.from_tokens(answer, account_claim())
+  defp read(response), do: Login.from_tokens(response, account_claim())
 
   describe "from_tokens/3" do
     test "keeps the access and refresh tokens in a document, and the account and the expiry apart" do
       tokens = login_tokens(exp: 1_800_000_000)
 
-      assert {:ok, parsed} = read(answer(tokens))
+      assert {:ok, parsed} = read(response(tokens))
 
       assert parsed.account_id == tokens.account_id
       assert parsed.access_expires_at == ~U[2027-01-15 08:00:00.000000Z]
@@ -40,16 +40,16 @@ defmodule Apiary.ModelKeys.LoginTest do
              }
     end
 
-    test "does not store the id token, and reads an answer without one" do
+    test "does not store the id token, and reads a response without one" do
       tokens = login_tokens()
-      assert {:ok, parsed} = read(answer(tokens))
+      assert {:ok, parsed} = read(response(tokens))
 
       assert Map.keys(Jason.decode!(parsed.document)) |> Enum.sort() ==
                ~w(access_token refresh_token version)
 
       refute parsed.document =~ tokens.id_token
 
-      without_id = answer(tokens) |> Map.delete("id_token")
+      without_id = response(tokens) |> Map.delete("id_token")
       assert {:ok, same} = read(without_id)
       assert same.document == parsed.document
     end
@@ -63,9 +63,22 @@ defmodule Apiary.ModelKeys.LoginTest do
       id_token = jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-id"}})
 
       assert {:ok, %{account_id: "acct-id"}} =
-               read(answer(tokens, %{"access_token" => bare, "id_token" => id_token}))
+               read(response(tokens, %{"access_token" => bare, "id_token" => id_token}))
 
-      assert read(answer(tokens, %{"access_token" => bare})) == {:error, :invalid}
+      assert read(response(tokens, %{"access_token" => bare})) == {:error, :no_account}
+    end
+
+    test "refuses a response whose access token and ID token have different account ids" do
+      tokens = login_tokens()
+
+      other =
+        jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-other"}})
+
+      assert read(response(tokens, %{"id_token" => other})) == {:error, :invalid}
+
+      same = jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => tokens.account_id}})
+      assert {:ok, %{account_id: account}} = read(response(tokens, %{"id_token" => same}))
+      assert account == tokens.account_id
     end
 
     test "reads the pointer of the claim as RFC 6901 writes it" do
@@ -73,25 +86,25 @@ defmodule Apiary.ModelKeys.LoginTest do
       access = jwt(%{"exp" => System.os_time(:second) + 100, "a/b" => %{"c~d" => "acct-x"}})
 
       assert {:ok, %{account_id: "acct-x"}} =
-               Login.from_tokens(answer(tokens, %{"access_token" => access}), "/a~1b/c~0d")
+               Login.from_tokens(response(tokens, %{"access_token" => access}), "/a~1b/c~0d")
 
-      assert Login.from_tokens(answer(tokens), "no-slash") == {:error, :invalid}
-      assert Login.from_tokens(answer(tokens), nil) == {:error, :invalid}
+      assert Login.from_tokens(response(tokens), "no-slash") == {:error, :no_account}
+      assert Login.from_tokens(response(tokens), nil) == {:error, :invalid}
     end
 
-    test "refuses an answer with no refresh token or no access token" do
+    test "refuses a response with no refresh token or no access token" do
       tokens = login_tokens()
 
       for refresh <- [nil, "", 42] do
-        assert read(answer(tokens, %{"refresh_token" => refresh})) == {:error, :invalid}
+        assert read(response(tokens, %{"refresh_token" => refresh})) == {:error, :invalid}
       end
 
-      assert read(answer(tokens) |> Map.delete("refresh_token")) == {:error, :invalid}
-      assert read(answer(tokens) |> Map.delete("access_token")) == {:error, :invalid}
-      assert read(answer(tokens, %{"access_token" => "has a space.b.c"})) == {:error, :invalid}
+      assert read(response(tokens) |> Map.delete("refresh_token")) == {:error, :invalid}
+      assert read(response(tokens) |> Map.delete("access_token")) == {:error, :invalid}
+      assert read(response(tokens, %{"access_token" => "has a space.b.c"})) == {:error, :invalid}
     end
 
-    test "refuses anything that is no answer" do
+    test "refuses anything that is no response" do
       for term <- ["", "sk-proj-an-api-key", [], nil, 42, %{}, <<255, 254, 253>>] do
         assert read(term) == {:error, :invalid}
       end
@@ -108,7 +121,7 @@ defmodule Apiary.ModelKeys.LoginTest do
           })
 
         assert {:ok, %{account_id: ^account_id}} =
-                 read(answer(tokens, %{"access_token" => access}))
+                 read(response(tokens, %{"access_token" => access}))
       end
     end
 
@@ -129,7 +142,6 @@ defmodule Apiary.ModelKeys.LoginTest do
             "acct-é",
             "acct-\u2028",
             "",
-            42,
             String.duplicate("a", 256)
           ] do
         access =
@@ -138,7 +150,7 @@ defmodule Apiary.ModelKeys.LoginTest do
             "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
           })
 
-        assert read(answer(tokens, %{"access_token" => access})) == {:error, :invalid}
+        assert read(response(tokens, %{"access_token" => access})) == {:error, :invalid}
       end
     end
 
@@ -152,7 +164,7 @@ defmodule Apiary.ModelKeys.LoginTest do
 
         assert {:ok, %{access_expires_at: at}} =
                  Login.from_tokens(
-                   answer(tokens, %{"access_token" => access, "expires_in" => 3600}),
+                   response(tokens, %{"access_token" => access, "expires_in" => 3600}),
                    account_claim(),
                    now
                  )
@@ -161,19 +173,88 @@ defmodule Apiary.ModelKeys.LoginTest do
 
         assert {:ok, %{access_expires_at: nil}} =
                  Login.from_tokens(
-                   answer(tokens, %{"access_token" => access}) |> Map.delete("expires_in"),
+                   response(tokens, %{"access_token" => access}) |> Map.delete("expires_in"),
                    account_claim(),
                    now
                  )
       end
     end
 
-    test "refuses a document past a value's size" do
-      long = String.duplicate("x", 17_000)
-      assert read(answer(login_tokens(), %{"refresh_token" => long})) == {:error, :invalid}
+    test "reads no account id from a claim that is no text" do
+      tokens = login_tokens()
+
+      access =
+        jwt(%{
+          "exp" => System.os_time(:second) + 100,
+          "https://api.openai.com/auth" => %{"chatgpt_account_id" => 42}
+        })
+
+      assert read(response(tokens, %{"access_token" => access, "id_token" => nil})) ==
+               {:error, :no_account}
     end
 
-    test "never raises, and what it returns has none of the answer" do
+    test "uses an expires_in only from 1 second to 366 days" do
+      tokens = login_tokens()
+      claim = %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-1"}}
+      access = jwt(claim)
+      now = ~U[2026-11-18 12:00:00Z]
+      day = 86_400
+
+      for {seconds, expected} <- [
+            {1, ~U[2026-11-18 12:00:01.000000Z]},
+            {366 * day, ~U[2027-11-19 12:00:00.000000Z]},
+            {0, nil},
+            {-5, nil},
+            {366 * day + 1, nil},
+            {1_000_000_000_000_000_000_000, nil},
+            {3600.5, nil},
+            {"3600", nil}
+          ] do
+        assert {:ok, %{access_expires_at: at}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access, "expires_in" => seconds}),
+                   account_claim(),
+                   now
+                 )
+
+        assert at == expected
+      end
+    end
+
+    test "uses an exp only from 1 second to 366 days after now, else falls back" do
+      tokens = login_tokens()
+      claim = %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-1"}}
+      now = ~U[2026-11-18 12:00:00Z]
+      unix = DateTime.to_unix(now)
+      fallback = ~U[2026-11-18 13:00:00.000000Z]
+
+      for {exp, expected} <- [
+            {unix + 1, ~U[2026-11-18 12:00:01.000000Z]},
+            {unix, fallback},
+            {unix - 3600, fallback},
+            {unix + 366 * 86_400 + 1, fallback},
+            {1_000_000_000_000_000_000_000, fallback},
+            {-1_000_000_000_000_000_000_000, fallback}
+          ] do
+        access = jwt(Map.put(claim, "exp", exp))
+
+        assert {:ok, %{access_expires_at: at}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access, "expires_in" => 3600}),
+                   account_claim(),
+                   now
+                 )
+
+        assert at == expected
+      end
+    end
+
+    test "refuses a document past a value's size" do
+      long = String.duplicate("x", 17_000)
+      assert read(response(login_tokens(), %{"refresh_token" => long})) == {:error, :invalid}
+    end
+
+    test "never raises, and what it returns has none of the response" do
       tokens = login_tokens()
       secret = tokens.refresh_token
 
@@ -189,7 +270,7 @@ defmodule Apiary.ModelKeys.LoginTest do
     end
 
     test "a read sign-in shows no token when inspected" do
-      {:ok, parsed} = read(answer(login_tokens(tag: "inspect")))
+      {:ok, parsed} = read(response(login_tokens(tag: "inspect")))
 
       refute inspect(parsed) =~ "rt-fixture-refresh-token-inspect"
     end

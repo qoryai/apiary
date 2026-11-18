@@ -485,27 +485,27 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "a result that is dropped" do
-    test "a login pasted during the call stays, and the result is dropped", %{scope: scope} do
+    test "a sign-in stored during the call stays, and the result is dropped", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
-      pasted = login_tokens(tag: "pasted")
+      stored_in = login_tokens(tag: "stored-in")
       fresh = new_tokens("lost")
 
       stub!(fn conn, _body ->
         {:ok, _} =
           Connections.update_provider_key(scope, plain(provider), "main", %{
             "value_id" => "main",
-            "value" => device_login(tokens: pasted)
+            "value" => device_login(tokens: stored_in)
           })
 
         Req.Test.json(conn, fresh)
       end)
 
       assert {:ok, access, _at} = token(provider)
-      assert access == pasted.access_token
+      assert access == stored_in.access_token
 
       assert stored(provider) == %{
-               access_token: pasted.access_token,
-               refresh_token: pasted.refresh_token
+               access_token: stored_in.access_token,
+               refresh_token: stored_in.refresh_token
              }
 
       assert %Login{generation: 2, lease_id: nil, failures: 0} = row(provider)
@@ -641,22 +641,22 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       end
     end
 
-    test "a new login pasted over a key that needs a sign-in starts it again", %{scope: scope} do
+    test "a new sign-in stored over a key that needs a sign-in starts it again", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
       stub!({401, %{"error" => "refresh_token_reused"}})
       assert token(provider) == {:error, :sign_in_needed}
 
-      pasted = login_tokens(tag: "again")
+      stored_in = login_tokens(tag: "again")
 
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => device_login(tokens: pasted)
+          "value" => device_login(tokens: stored_in)
         })
 
       assert %Login{state: "signed_in", sign_in_cause: nil, generation: 2} = row(provider)
       assert {:ok, access, _at} = token(provider)
-      assert access == pasted.access_token
+      assert access == stored_in.access_token
     end
   end
 
@@ -981,7 +981,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
              ]
     end
 
-    test "a login pasted over the key ends the streak with no entry", %{scope: scope} do
+    test "a sign-in stored over the key ends the streak with no entry", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 100)
       stub!({503, %{}})
       token(provider)
@@ -990,7 +990,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => device_login(tag: "pasted", expires_in: 100)
+          "value" => device_login(tag: "stored-in", expires_in: 100)
         })
 
       assert %Login{failing_since: nil, failures: 0, retry_at: nil} = row(provider)
@@ -1318,11 +1318,10 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       set_login!(provider, access_expires_at: 10, refreshed_at: -120)
       assert token(provider) == {:error, :sign_in_needed}
 
-      assert {:sign_in_needed, rejected, help} =
+      assert {:sign_in_needed, rejected} =
                ApiaryWeb.ModelKeyComponents.login(row(provider), plain(provider))
 
       assert rejected =~ "OpenAI rejected it on"
-      assert help == nil
 
       # The Activity line of each entry, as the page renders it.
       lines =

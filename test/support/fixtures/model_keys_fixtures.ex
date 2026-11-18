@@ -123,7 +123,17 @@ defmodule Apiary.ModelKeysFixtures do
         account_claim()
       )
 
-    login
+    # `from_tokens/3` keeps an `exp` only from 1 second to 366 days ahead, as a device
+    # sign-in's tokens have it. A test of a refresh needs a token that has expired, or one
+    # that expires in a year, as a stored row has them after a refresh, so the fixture
+    # sets the expiry from the token's `exp` as it is.
+    with [_header, payload, _signature] <- String.split(tokens.access_token, "."),
+         {:ok, json} <- Base.url_decode64(payload, padding: false),
+         {:ok, %{"exp" => exp}} when is_integer(exp) <- Jason.decode(json) do
+      %{login | access_expires_at: %{DateTime.from_unix!(exp) | microsecond: {0, 6}}}
+    else
+      _no_exp -> login
+    end
   end
 
   @doc "A JWT with `claims` and a signature that checks nothing."
