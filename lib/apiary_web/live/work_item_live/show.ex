@@ -909,6 +909,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
 
+  # The note typed in the spend's dialog, where it changes the run that starts.
+  def handle_event("spend_note", params, %{assigns: %{spend: %{} = spend}} = socket),
+    do: {:noreply, assign(socket, :spend, SpendDialog.noted(spend, params["note"]))}
+
+  def handle_event("spend_note", _params, socket), do: {:noreply, socket}
+
   def handle_event("show_earlier_comments", _params, socket),
     do: {:noreply, socket |> assign(:all_comments, true) |> load()}
 
@@ -1052,7 +1058,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       SpendDialog.ask("answer", params,
         title: title,
         action: action,
-        line: run_line(socket, :next_run),
+        line: run_line(socket, :next_run, comment_of(params) != nil),
         return_to: round_button(socket)
       )
     end
@@ -1118,6 +1124,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       title: gettext("Run another round?"),
       action: gettext("Run another round"),
       line: run_line(socket, :another_round),
+      noted_line: run_line(socket, :another_round, true),
       return_to: "work-item-stage-escalation-another",
       note: escalation_note()
     )
@@ -1176,23 +1183,50 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp escalation_note,
     do: [hint: gettext("A note you add goes to the next run as work item data.")]
 
-  # The dialog of `event` where `act` starts a run, named by its workflow; else nil.
+  # The dialog of `event` where `act` starts a run, named by its workflow; else nil. With
+  # the note of the click (`params["note"]`) or none, as the act stores it: a note is
+  # feedback where a stage has `{feedback: new}`, so the workflow can differ. A dialog with
+  # a note field has the line for each, and shows the one for the note typed
+  # (`SpendDialog.noted/2`).
   defp ask_if_run(event, params, socket, act, opts) do
-    case Stages.starts(socket.assigns.row, act) do
+    noted = note(params) != nil
+
+    case Stages.starts(socket.assigns.row, act, noted) do
       {:run, workflow} ->
-        line = SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
-        SpendDialog.ask(event, params, [line: line] ++ opts)
+        line = workflow_line(socket, {:run, workflow})
+
+        lines =
+          if Keyword.has_key?(opts, :note) do
+            {plain, with_note} =
+              if noted,
+                do: {Stages.starts(socket.assigns.row, act), {:run, workflow}},
+                else: {{:run, workflow}, Stages.starts(socket.assigns.row, act, true)}
+
+            [line: workflow_line(socket, plain), noted_line: workflow_line(socket, with_note)]
+          else
+            [line: line]
+          end
+
+        SpendDialog.ask(event, params, lines ++ opts)
 
       :none ->
         nil
     end
   end
 
-  # What `act` starts: a run of its workflow where the stage runner finds it, else the
-  # next run of the work item's stage, or of Explore with no stage.
-  defp run_line(socket, act) do
+  # The line of a run of `workflow`; for none, the next run of the work item's stage.
+  defp workflow_line(socket, {:run, workflow}),
+    do: SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
+
+  defp workflow_line(socket, :none),
+    do: SpendDialog.run_line({:stage, stage_now(socket.assigns.flow)}, scope(socket).workspace)
+
+  # What `act` starts, with a note or a comment for `noted` (`Apiary.Stages.starts/3`): a
+  # run of its workflow where the stage runner finds it, else the next run of the work
+  # item's stage, or of Explore with no stage.
+  defp run_line(socket, act, noted \\ false) do
     what =
-      case Stages.starts(socket.assigns.row, act) do
+      case Stages.starts(socket.assigns.row, act, noted) do
         {:run, workflow} -> {:workflow, workflow}
         :none -> {:stage, stage_now(socket.assigns.flow)}
       end

@@ -3795,4 +3795,48 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute html =~ "The full test suite"
     end
   end
+
+  describe "the spend's line with a note, in a stage with feedback" do
+    test "the line shows the workflow that the note starts, and Confirm starts it", %{
+      conn: conn,
+      scope: scope
+    } do
+      process!(scope, %{
+        "sequence" => [
+          %{"workflow" => "build-it", "when" => %{"feedback" => "new"}},
+          %{"workflow" => "shape-a-ticket"}
+        ]
+      })
+
+      # No feedback at Shape's entry: build-it is passed over, and shape-a-ticket stops.
+      work_item = at_shape!(scope)
+      assert %{workflow: "shape-a-ticket"} = newest_run(work_item)
+      work_item = stopped!(work_item)
+      assert %WorkItem{stage_state: :escalated} = work_item
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "another_round"})
+
+      assert has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      # A note is feedback: the line changes to build-it, and back with the note cleared.
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "Use the new format."})
+      assert has_element?(view, "#spend-dialog-line", "build-it")
+      refute has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "  "})
+      assert has_element?(view, "#spend-dialog-line", "shape-a-ticket")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => "Use the new format."})
+
+      view
+      |> form("#spend-dialog-form", %{"note" => "Use the new format."})
+      |> render_submit()
+
+      assert %{workflow: "build-it", stage_entry: 0} = newest_run(work_item)
+    end
+  end
 end

@@ -3605,7 +3605,11 @@ defmodule Apiary.StagesTest do
     # write-acceptance-checks passed, then three rounds whose review requested changes.
     defp at_round_limit!(scope) do
       feedback_process!(scope)
+      round_limit_item!(scope)
+    end
 
+    # Another work item at Build's round limit, in the process saved already.
+    defp round_limit_item!(scope) do
       work_item =
         in_build!(scope)
         |> end_run!(verdict("passed"))
@@ -3914,6 +3918,67 @@ defmodule Apiary.StagesTest do
         Stages.move(scope, reload(changed), @build, "Use the new format.", expect_stage: @build)
 
       assert %DispatchRun{workflow: "plan-the-build", stage_entry: 0} = newest_run(moved)
+    end
+
+    test "a plain answer starts nothing again: Run another round with no note reruns the stopped workflow",
+         %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+      refute escalation(work_item)
+
+      {:ok, _work_item} =
+        WorkItems.answer(scope, work_item, newest_run(work_item).attempt, %{"1" => "PDF."})
+
+      # plan-the-build runs again with the answer and stops: the answer is unhandled.
+      assert %DispatchRun{workflow: "plan-the-build", stage_entry: 1} = newest_run(work_item)
+
+      work_item =
+        reload(work_item) |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %WorkItem{stage_state: :escalated, stage_entry: 1} = work_item
+      assert Stages.starts(work_item, :another_round) == {:run, "plan-the-build"}
+
+      work_item = round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "plan-the-build", stage_entry: 1, round: 1} =
+               newest_run(work_item)
+
+      refute Enum.any?(runs(work_item), &(&1.workflow == "triage-review"))
+
+      # plan-the-build passes and handles the answer; a later stopped run reruns alone.
+      work_item = reload(work_item) |> end_run!(verdict("passed"))
+      assert %DispatchRun{workflow: "write-acceptance-checks"} = newest_run(work_item)
+      work_item = end_run!(work_item, nil, %{exit_state: "failed", outcome_state: "failed"})
+      work_item = round!(scope, work_item, nil)
+      assert %DispatchRun{workflow: "write-acceptance-checks"} = newest_run(work_item)
+      refute Enum.any?(runs(work_item), &(&1.workflow == "triage-review"))
+    end
+
+    test "the spend's workflow is triage-review for an act with a note or a comment", %{
+      scope: scope
+    } do
+      # At Build's gate: Request changes and a move into Build.
+      work_item = at_build_gate!(scope)
+      assert Stages.starts(work_item, :request_changes) == {:run, "implement-changes"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "triage-review"}
+      assert Stages.starts(work_item, {:move, @build}) == {:run, "implement-changes"}
+      assert Stages.starts(work_item, {:move, @build}, true) == {:run, "triage-review"}
+
+      # At the round limit: Run another round, with and without a note.
+      work_item = round_limit_item!(scope)
+      assert Stages.starts(work_item, :another_round) == {:run, "implement-changes"}
+      assert Stages.starts(work_item, :another_round, true) == {:run, "triage-review"}
+      assert Stages.starts(work_item, :accept, true) == Stages.starts(work_item, :accept)
+
+      # Questions with no escalation: answers alone, and answers with a comment.
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+      assert Stages.starts(work_item, :next_run) == {:run, "plan-the-build"}
+      assert Stages.starts(work_item, :next_run, true) == {:run, "triage-review"}
+
+      # An answer to an escalation's question.
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", true))
+      assert %Escalation{resolved_at: nil} = escalation(work_item)
+      assert Stages.starts(work_item, :next_run) == {:run, "triage-review"}
     end
   end
 
@@ -6672,6 +6737,65 @@ defmodule Apiary.StagesTest do
 
       assert %{escalation: %{cause: :return_limit, points: ^points}} =
                Stages.status(reload(work_item), scope)
+    end
+
+    test "a return from Verify's run with no member's note starts Build at triage-review", %{
+      scope: scope
+    } do
+      returning!(scope, [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}])
+
+      # No feedback at the take in: triage-review is passed over.
+      work_item = take_in!(scope)
+      assert %DispatchRun{workflow: "implement-changes"} = newest_run(work_item)
+      work_item = through_build!(work_item)
+
+      work_item = end_run!(work_item, verdict("changes-requested", @findings))
+      assert Stages.notes(work_item) == []
+      assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0} = work_item
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @build, round: 1} =
+               newest_run(work_item)
+
+      # triage-review passes and handles the return: Build goes on to its loop.
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %DispatchRun{workflow: "implement-changes", stage_id: @build} = newest_run(work_item)
+    end
+
+    test "Request changes with a note at Verify's gate returns to Build, whose triage-review reads the note",
+         %{scope: scope} do
+      feedback = %{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}
+
+      loop = %{
+        "loop" => %{
+          "rounds" => 3,
+          "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+        }
+      }
+
+      save!(scope, [
+        stage(@build, "Build", [feedback, loop], %{"gate" => %{"kind" => "none"}}),
+        stage(@verify, "Verify", [
+          feedback,
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
+        ])
+      ])
+
+      work_item = take_in!(scope) |> through_build!() |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      # With a note too, Request changes at Verify's gate returns the work item to Build.
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0}} =
+               Stages.request_changes(scope, work_item, "Drop the CSV option.", nil,
+                 expect_stage: @verify
+               )
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @build, round: 1} =
+               newest_run(work_item)
+
+      assert [%{kind: :request_changes, note: "Drop the CSV option."}] =
+               Stages.notes(reload(work_item))
     end
 
     test "a person's Request changes starts Build's first entry and counts no return", %{

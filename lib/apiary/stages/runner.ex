@@ -78,12 +78,14 @@ defmodule Apiary.Stages.Runner do
   #   * Feedback starts the stage again at its first entry, round 1, with no check of its
   #     inputs or workflows first, as Request changes does, in a stage with a workflow
   #     entry whose condition is `{feedback: new}` (`feedback_stage?/1`), while
-  #     `facts.feedback` is true: Another round; answers that resolve an open escalation
+  #     `facts.feedback` is true: Another round while feedback other than a plain answer is
+  #     unhandled (`facts.feedback_noted`); answers that resolve an open escalation
   #     (`facts.escalation_answer`) or come with a comment or a reply that no run handled
   #     (`facts.feedback_comment`); and Request changes with a note (`facts.feedback_note`).
-  #     Another round with no feedback left unhandled, and every such event in a stage
-  #     without that condition, runs as the rules before this one, and answers as the rule
-  #     of questions (`feedback_entry?/3`).
+  #     A plain answer, one given while no escalation was open, starts nothing again: it
+  #     stays unhandled until a run of the stage handles it. Another round with no such
+  #     feedback, and every such event in a stage without that condition, runs as the rules
+  #     before this one, and answers as the rule of questions (`feedback_entry?/3`).
   #   * A queued run's access level is the lower of the entry's and the workflow's
   #     declaration (addition 10); its machine type is the entry's, else the document's.
   #     An entry has no time limit: the runs of a workflow take its limit in
@@ -181,12 +183,13 @@ defmodule Apiary.Stages.Runner do
   none); and, for an entry of a stage that a person moved the work item into, `forced`,
   true: the condition on the stage then does not pass it over. For a stage with
   `{feedback: new}` (`feedback_stage?/1`): `feedback`, true while a member's note that is
-  feedback is open and no run handled it: no run of an entry with that condition, or of
-  any entry for an answer given while no escalation was open, was queued after the note
-  and ended with a verdict `passed` or `changes-requested` (`Apiary.Stages`);
-  `feedback_comment`, the same for a comment or a reply alone; `escalation_answer`, true
-  for answers that resolve an open escalation; and `feedback_note`, true for Request
-  changes with a note. For the conditions `{input: T, changed: true}` of the stage's
+  feedback is open, or a run returned the work item to the stage, and no run handled it:
+  no run of an entry with that condition, or of any entry for an answer given while no
+  escalation was open, was queued after the note or the return and ended with a verdict
+  `passed` or `changes-requested` (`Apiary.Stages`); `feedback_noted`, the same for
+  feedback other than such a plain answer; `feedback_comment`, the same for a comment or a
+  reply alone; `escalation_answer`, true for answers that resolve an open escalation; and
+  `feedback_note`, true for Request changes with a note. For the conditions `{input: T, changed: true}` of the stage's
   workflow entries (`changed?/3`): `stored`, the versions of each such `T` as
   `%{at:, by:}`, when each was stored and the entry key `{entry, loop_entry, workflow}` of
   the run that stored it, nil for a version that no run of the stage stored; and `passed`,
@@ -200,6 +203,7 @@ defmodule Apiary.Stages.Runner do
           optional(:stored) => %{String.t() => [stored_version]},
           optional(:passed) => [passed_run],
           optional(:feedback) => boolean,
+          optional(:feedback_noted) => boolean,
           optional(:feedback_comment) => boolean,
           optional(:escalation_answer) => boolean,
           optional(:feedback_note) => boolean,
@@ -375,11 +379,12 @@ defmodule Apiary.Stages.Runner do
   end
 
   # feedback_entry?/3 is whether `event` starts `stage` again at its first entry, round 1:
-  # Another round; answers that resolve an open escalation (`facts.escalation_answer`) or
-  # come with a comment or a reply that no run handled (`facts.feedback_comment`); or
-  # Request changes with a note (`facts.feedback_note`); in a stage with a workflow entry
-  # whose condition is `{feedback: new}`, while a member's feedback is unhandled
-  # (`facts.feedback`).
+  # Another round while feedback other than a plain answer is unhandled
+  # (`facts.feedback_noted`); answers that resolve an open escalation
+  # (`facts.escalation_answer`) or come with a comment or a reply that no run handled
+  # (`facts.feedback_comment`); or Request changes with a note (`facts.feedback_note`); in
+  # a stage with a workflow entry whose condition is `{feedback: new}`, while a member's
+  # feedback is unhandled (`facts.feedback`).
   @doc false
   @spec feedback_entry?(map, event, map) :: boolean
   def feedback_entry?(stage, event, facts) do
@@ -387,7 +392,8 @@ defmodule Apiary.Stages.Runner do
       feedback_stage?(stage)
   end
 
-  defp feedback_event?({:another_round, _cause}, _facts), do: true
+  defp feedback_event?({:another_round, _cause}, facts),
+    do: Map.get(facts, :feedback_noted, false) == true
 
   defp feedback_event?(:answered, facts),
     do:

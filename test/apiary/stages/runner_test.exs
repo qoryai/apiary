@@ -1492,20 +1492,30 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "Another round with new feedback enters the stage at its first entry, round 1" do
-      for cause <- [:round_limit, :escalate, :run_stopped, :check_failed] do
-        outcome =
-          Runner.step(with_feedback(), pos(2, 1, 3), {:another_round, cause}, %{feedback: true})
+      noted = %{feedback: true, feedback_noted: true}
 
+      for cause <- [:round_limit, :escalate, :run_stopped, :check_failed] do
+        outcome = Runner.step(with_feedback(), pos(2, 1, 3), {:another_round, cause}, noted)
         assert queued(outcome) == {"triage-review", 0, nil, 1}
       end
 
       # At the gate, a send with new feedback does the same.
       outcome =
-        Runner.step(with_feedback(), pos(3, nil, 2), {:another_round, :run_stopped}, %{
-          feedback: true
-        })
+        Runner.step(with_feedback(), pos(3, nil, 2), {:another_round, :run_stopped}, noted)
 
       assert queued(outcome) == {"triage-review", 0, nil, 1}
+    end
+
+    test "Another round leaves a plain answer out: with no other feedback it runs as before" do
+      facts = %{feedback: true, feedback_noted: false}
+
+      assert queued(
+               Runner.step(with_feedback(), pos(1, nil, 1), {:another_round, :run_stopped}, facts)
+             ) == {"plan-the-build", 1, nil, 1}
+
+      assert queued(
+               Runner.step(with_feedback(), pos(2, 1, 3), {:another_round, :round_limit}, facts)
+             ) == {"implement-changes", 2, 0, 4}
     end
 
     test "Another round with no new feedback runs as before: the failed workflow, or the loop" do
@@ -1617,7 +1627,12 @@ defmodule Apiary.Stages.RunnerTest do
     end
 
     test "feedback starts the first entry with no check of the workflows first" do
-      facts = %{feedback: true, undeclared: ["plan-the-build"], escalation_answer: true}
+      facts = %{
+        feedback: true,
+        feedback_noted: true,
+        undeclared: ["plan-the-build"],
+        escalation_answer: true
+      }
 
       # A workflow after the first that the harness does not list holds nothing back.
       for event <- [{:another_round, :round_limit}, :answered] do
@@ -1629,6 +1644,7 @@ defmodule Apiary.Stages.RunnerTest do
       outcome =
         Runner.step(with_feedback(), pos(2, 1, 3), {:another_round, :round_limit}, %{
           feedback: true,
+          feedback_noted: true,
           undeclared: ["triage-review"]
         })
 

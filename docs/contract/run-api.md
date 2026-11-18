@@ -619,8 +619,10 @@ The body, at most 64 KiB:
   points ends the last round of a loop, the stage escalates at its round limit with one
   point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
   by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
-  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." With
-  `passed`, a verdict has none.
+  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." The
+  stage runner writes this point, and the limit of one sentence and 500 characters below
+  does not apply to it: with points, its text is more than one sentence and can be
+  longer than 500 characters. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have

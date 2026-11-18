@@ -95,39 +95,46 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   "<workflow> did not run: the <type> did not change since it last passed." for a `when`, and
   "<workflow> did not run: the <type> changed since it last passed." for an `unless`.
 - A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
-  `{feedback: new}`. It is met while a member's feedback on the work item is open and no
-  run handled it. Feedback is the note of Request changes, the note of a move, an
-  answer, a review comment or a reply, the comment of Run another round, and the note of
-  an escalation that a member resolved otherwise than by accepting it; Request changes
-  or a move with no note is no feedback. A run of the stage handles the feedback that is
-  older than
-  its start when it runs an entry with `{feedback: new}` and ends with a verdict
-  `passed` or `changes-requested`; in a stage with `shared_run: true`, the session of
-  that entry handles it. An answer given while no escalation is open is handled by any
-  run of the stage, or session, that starts after it and ends with such a verdict. A run
-  that stops, escalates or ends with no verdict handles nothing. Saving a process fails
-  with any value but `new`, and with `{feedback: new}` on a stage, a loop, an input or
-  an output, where the error is "Move `feedback: new` to a workflow entry: only an entry
+  `{feedback: new}`. It is met while a member's feedback on the work item is open, or a
+  run returned the work item to the stage, and no run handled it. Feedback is the note
+  of Request changes, the note of a move, an answer, a review comment or a reply, the
+  comment of Run another round, the note of an escalation that a member resolved by any
+  choice but Accept as it is, and the return of a later stage's run to the stage,
+  whether or not a member wrote a note; Request changes or a move with no note is no
+  feedback. A run of the stage handles the feedback that is older than its start when it
+  runs an entry with `{feedback: new}` and ends with a verdict `passed` or
+  `changes-requested`; in a stage with `shared_run: true`, the session of that entry
+  handles it. An answer given while no escalation is open is handled by any run of the
+  stage, or session, that starts after it and ends with such a verdict. A run that
+  stops, escalates or ends with no verdict handles nothing. Saving a process fails with
+  any value but `new`, and with `{feedback: new}` on a stage, a loop, an input or an
+  output, where the error is "Move `feedback: new` to a workflow entry: only an entry
   starts a run." The tab of a stage shows why such an entry did not run: "<workflow> did
   not run: no member wrote new feedback." for a `when`, and "<workflow> did not run: a
   member wrote new feedback." for an `unless`.
 - In a stage with an entry that has `{feedback: new}`, feedback starts the stage again
-  at its first entry, round 1: Run another round while feedback is unhandled, a comment
-  with Run another round, a member's answer to the question of an open escalation,
-  Request changes with a note, and a move into the stage with a note. The stage starts
-  as Request changes starts it, with no check that its workflows are listed first: if
-  the harness does not list the first workflow, the member's feedback is kept and the
-  stage waits for the workflow. Run another round with no unhandled feedback runs as
+  at its first entry, round 1: Run another round while feedback other than an answer
+  given while no escalation is open is unhandled, a comment with Run another round, a
+  member's answer to the question of an open escalation, Request changes with a note,
+  and a move into the stage with a note. An answer given while no escalation is open
+  starts nothing again: it stays unhandled until a run of the stage handles it. The
+  stage starts as Request changes starts it, with no check that its workflows are listed
+  first: if the harness does not list the first workflow, the member's feedback is kept
+  and the stage waits for the workflow. Run another round with no such feedback runs as
   before: the workflow of a run that stopped, in a loop as the loop's next round; after
   another escalation in a loop, the loop's next round from its first workflow; at the
   end of the sequence, its last loop again, or with no loop its start. Each reads the
   condition of the entry it starts again, as before. Request changes with no note runs
-  as before, and Request changes at the gate of a stage whose entry has a `return` key
-  returns the
-  work item to that key's stage, with a note too. A stage with no such entry runs as
+  as before. Request changes at the gate of a stage whose entry has a `return` key
+  returns the work item to that key's stage, with a note too, and the note stays open
+  feedback for the stage the work item returns to. A stage with no such entry runs as
   before. These rules hold in a stage with `shared_run: true` too, where
   `changes-requested` in a loop starts the loop's next round as the run's next session.
-  Entering a stage again keeps the records of entries passed over for a condition.
+  The confirmation of Request changes, a move, Run another round and answers shows the
+  workflow that starts: with a note or a comment, the first workflow of the stage that
+  the act starts; the line changes as the member types the note in the confirmation.
+  Entering a stage again keeps the records of entries passed over for a condition, for
+  `{feedback: new}` too.
 - When a verdict `changes-requested` with points ends a loop's last round, the
   round-limit point's text is "3 of 3 rounds ran, and 2 review findings are still open."
   followed by the text of each of the verdict's points, and its fix is "Read the 2 open
