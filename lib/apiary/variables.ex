@@ -2,8 +2,10 @@ defmodule Apiary.Variables do
   @moduledoc """
   A workspace's variables: names and values for a run's process, set for the workspace or
   for one of its repositories (a target), resolved for each holder by
-  `Apiary.Variables.Resolution`. Nothing puts them in the run configuration: a run
-  receives only its security policy, and the pages say so.
+  `Apiary.Variables.Resolution`. A run receives them, a prebuild excepted: when its claim registers it, the
+  variables its workspace and target resolve to (`for_run/2`) are stored with it and
+  sent in its run configuration's `variables`, as they are then. A later change reaches
+  the next run.
 
   ## Levels and locks
 
@@ -21,13 +23,14 @@ defmodule Apiary.Variables do
       bytes, or with a NUL, a carriage return or a line feed;
     * a name beginning `QORY_`, whatever its case, at every level: "names beginning QORY_
       are reserved for Forager" (`Apiary.Variables.Denied.refused?/1`); any other name on
-      Forager's deny list is saved, and the page warns (`Apiary.Variables.Denied.denied?/1`);
+      Forager's deny list is saved, and the page warns (`Apiary.Variables.Denied.left_out?/1`):
+      a run is given no variable of such a name (`for_run/2`);
     * a name the level already sets, compared without case;
     * a name a level above locks;
     * a name that differs only in case from one set elsewhere in a chain it is in: for a
       workspace's, at the level above and in any repository of the workspace; for a
       repository's, at the level above and in the workspace;
-    * a change that would leave any holder it reaches over the contract's limits, 128
+    * a change that would leave any holder it reaches over the limits of a run, 126
       names or 64 KiB of names and values (`Apiary.Variables.Resolution.check_limits/1`).
       The holders are checked where the change leaves them, so one already over the
       limits refuses it too; except a deletion, which is refused only when it makes a
@@ -63,7 +66,7 @@ defmodule Apiary.Variables do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Repo}
+  alias Apiary.{Access, Audit, Features, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Policy.Above
@@ -120,6 +123,33 @@ defmodule Apiary.Variables do
     with :ok <- may_read(scope),
          {:ok, target} <- target(scope, holder) do
       {:ok, Resolution.resolve(chain(scope, scope.workspace, target || :workspace))}
+    end
+  end
+
+  @doc """
+  for_run/2 is the variables a run of `workspace` receives, `%{NAME => value}`: the
+  resolution (`Apiary.Variables.Resolution`) of the chain of `target`, a repository of the
+  workspace, or of the workspace's level alone for nil, with no person's scope, and
+  without the names Forager leaves out of a run (`Apiary.Variables.Denied.left_out?/1`).
+  The chain is the one `resolve/2` reads: the level above the workspace, where the
+  edition keeps one, the workspace, and the repository.
+
+  Empty while the `secrets` feature is off. The claim that registers a run reads it once,
+  and refuses a run that is not a prebuild and has more than the run configuration takes: 126 names, or
+  64 KiB of names and values. A prebuild gets none of these variables: its image is shared
+  by the organisation's workspaces, so it holds no workspace's value.
+  """
+  @spec for_run(%Workspace{}, Target.t() | nil) :: %{String.t() => String.t()}
+  def for_run(%Workspace{} = workspace, target \\ nil) do
+    if Features.on?(:secrets) do
+      workspace
+      |> chain(workspace, target || :workspace)
+      |> Resolution.resolve()
+      |> Map.fetch!(:entries)
+      |> Enum.reject(&Denied.left_out?(&1.name))
+      |> Map.new(&{&1.name, &1.value})
+    else
+      %{}
     end
   end
 
@@ -359,7 +389,7 @@ defmodule Apiary.Variables do
   delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was,
   or `{:error, refusal}`.
 
-  A deletion is checked against the limits, 128 names and 64 KiB, for every holder the
+  A deletion is checked against the limits, 126 names and 64 KiB, for every holder the
   variable reaches: the workspace and its repositories for a workspace's, the one
   repository for a repository's. It is let through when it leaves every holder no
   larger than before, in names and in bytes, and refused only when it makes a holder
@@ -420,7 +450,7 @@ defmodule Apiary.Variables do
       `name` is its spelling there;
     * `{:error, {:too_many_names, workspace}}` or `{:error, {:too_large, workspace}}`: the
       workspace, or one of its repositories, which is reported with its workspace, would
-      be given more than 128 names or 64 KiB of names and values, counted as
+      be given more than 126 names or 64 KiB of names and values, counted as
       `Apiary.Variables.Resolution` resolves the chain: a name `above` locks counts its
       value, and the values below it set aside count nothing.
 
@@ -629,7 +659,10 @@ defmodule Apiary.Variables do
     refuse(
       changeset,
       :name,
-      dgettext_noop("errors", "would raise a target's variables above %{limit}"),
+      dgettext_noop(
+        "errors",
+        "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables above %{limit}."
+      ),
       limit: Resolution.max_names()
     )
   end

@@ -12,14 +12,194 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: workflow_model -->
+- The harness sets the schema of the type that the process's `submit` is set to,
+  `submission` in the Qory harness. Qory Apiary checks a run's version of that type against
+  the schema in the harness commit that the run uses: for the Qory harness from the harness
+  files it stores for that commit, for a harness repository from `submit_schema` in the
+  process version's template record, which a save from a harness repository now writes. It
+  checks against the workspace's type, as before, where it cannot find that schema: a
+  version saved from a harness repository before this change, a Qory harness commit whose
+  files it does not store, and a run whose base is pinned to a tag or a commit, whose
+  base comes from a file or from the built-in harness, whose record is of another
+  harness, or that has no record.
+- On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
+  and no **Edit** and no **Delete**. The page shows a line under the table with the reason
+  and the step to change the schema, which is a link to **Harness settings**. With the
+  `operator_infrastructure` flag on, the step for the organisation's owners and admins in a
+  workspace that an operator operates is to ask the operator. With the flag off, the link
+  shows. The change and the delete are refused on the server too. A type that an older
+  process version in use sets stays set. **Add a version** does not offer the type, and a
+  person's push of it is refused with `unknown_type`, as for `questions`.
+<!-- /feature -->
+<!-- feature: factory -->
+- **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
+  runtime. Under **Organisation settings › Model providers › New model provider**, the
+  provider choice lists both, and the API key's help reads “Get the key from the provider
+  first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
+  **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
+  offers in the tiers when **Provider** is one of them. **Runtime** then shows **Codex**,
+  with the line “Codex is the only runtime that works with OpenAI API key.” Signing in
+  with an OpenAI subscription, refreshing that sign-in and limiting its paths are not
+  built yet.
+- The link to a vendor's terms in a provider's help names that provider's vendor, such as
+  “Anthropic's terms”.
+<!-- /feature -->
+<!-- feature: secrets -->
+- **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
+  **Claude Code**. A custom service's declaration may no longer use `OPENAI_API_KEY` as a
+  placeholder name, as Codex reads its key from that variable (`placeholder_conflict`).
+- A workspace variable named `OPENAI_API_KEY` or `CODEX_API_KEY` is left out of every run,
+  as Forager's deny list names both as model keys. The save works, and the variable form
+  and list say “OPENAI_API_KEY is on Forager's deny list.”
+<!-- /feature -->
+<!-- feature: observability -->
+- On a run's page, a Codex session shows its session events and the version it started
+  with, and no note that it sends none. The note “Only Claude Code and Codex send session
+  events.” stays for a program that is no runtime of the catalogue, and names the runtimes
+  of the catalogue.
+<!-- /feature -->
+<!-- feature: factory -->
+- A work item has a **Questions** tab, before **Thread**, once an agent has asked a
+  question that is not a decision. The tab label shows the number of open questions. The
+  frame **Open questions** comes first. Each question shows “Asked in Verify, Run 9”,
+  with the run linked where the reader may open it; “Asked in” names the run that
+  reopened a question, and that run's stage. A member who may answer picks an option or
+  writes an answer there, or in the same frame on the tab of the stage that waits. The
+  frame **Answered questions** follows, in groups under the names of the stages in the
+  process order, and “Explore” where there is no stage card. A withdrawn question has the
+  badge “Withdrawn”. The form shows the stage that waits. The caption reads “Run another
+  round of Verify starts Verify's next run. That run reads your answers and your comment,
+  and updates Verify's outputs.”, the field “Comment on Verify's outputs”, the button
+  **Run another round of Verify**, and its confirmation dialog “Run another round of
+  Verify?”. At Explore the caption ends “updates Explore's proposal.” and the field is
+  “Comment on the whole proposal”. While a question is open, the decisions of the stage
+  that waits, which a member may change, are in the frame **Open questions**.
+- The tab of the stage that waits for answers, and Explore's tab at Explore, have the
+  frame **Open questions** of the Questions tab below the stage's outputs, its decisions
+  and its gate, with the same form. Both forms show one draft: an answer picked or
+  written on one tab shows on the other until the page loads again, and **Run another
+  round of Verify** sends it from either tab. The tab of another stage shows that stage's
+  open questions as text. A work item that needs answers opens on the tab of the stage
+  that waits, and the stage card's “Answer the questions” and the step card's link go to
+  that tab's frame **Open questions**. The tab of a stage lists the output **Questions**
+  again, in the process's output order. Where agents of a stage asked questions and none
+  is open, its tab shows one line: “The agents of this stage asked 3 questions. See them
+  on the Questions tab.”, or “The agents of this stage asked 1 question. See it on the
+  Questions tab.”, which counts only the questions of that stage. The runs fold, the gate
+  card's list of outputs and the **About** list of **Request changes** do not list
+  “questions v5”; the list of **Artifacts** lists the questions artifact. “Answer
+  question 4.” in the wait block and “Asked as question 2” go to the Questions tab.
+  “Follows question 1” goes to that question on the same tab, so in a stage tab's frame
+  **Open questions** to the question on that tab. “Follows question 1” and “Asked as
+  question 2” are links only where the tab shows that question, else plain text.
+- An option of a question about an acceptance criterion (its `criterion`, such as `ac-4`)
+  may have a `proposal`, the new wording of the criterion that the agent proposes, 1 to
+  2,000 characters. The questions format, as qory's harness contract v1 has it since qory
+  `006a194`, allows it only on a question with a `criterion`; for a `proposal` elsewhere,
+  the push fails with `422` `invalid_artifact`. The first option with a `proposal` shows
+  as “Change AC-4:”, which Qory Apiary builds from the question's `criterion`, not from
+  the option's title, with the proposal in a field the member may edit. An edit of the
+  field with no option picked picks that option. Other options, with a `proposal` or not,
+  have no field. An answer with another wording keeps the option, and its note starts
+  with “Change AC-4: ” and that wording. Where that note would pass 2,000 characters, the
+  field shows “Shorten the new wording to at most 1,885 characters, or shorten your
+  note.”, with the number that the note leaves, and the round does not start. Where that
+  option is picked with the field empty, the field shows “Write the new wording of AC-4,
+  or pick another option.”, and the round does not start.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- The tab of a stage shows the result of the full test suite in one line under the build
+  report's frame. The line comes from the `full_suite` member of the newest verdict that has
+  one among the verdicts of the run that wrote that report. On the Standard track it reads
+  "The full test suite passed on that commit: 412 passed, 0 failed, 3 skipped, in 6
+  minutes." (or "failed", and "in 1 minute" for exactly 1). On the Fast track it reads the
+  same without "on that commit" and the minutes. A result with no counts reads "The full
+  test suite passed on that commit, in 6 minutes." or "The full test suite failed on that
+  commit, in 6 minutes." on the Standard track, and "The full test suite passed." or "The
+  full test suite failed." on the Fast track. For a suite that did not run it reads "The full test
+  suite did not run: <reason>.", where the reason is the one the run sent with white space
+  trimmed and one final full stop dropped, and the line ends in a full stop unless the
+  reason ends in "?" or "!". A run with no verdict that has a `full_suite` has no line.
+<!-- /feature -->
+- A run's verdict may have the optional member `full_suite`, the result of the full test
+  suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the number
+  `minutes` and the counts `passed`, `failed` and `skipped`, all three or none; with
+  `not_run`, a `reason` of one line and no counts. A member, state, type or negative count
+  the schema does not allow is `422` `invalid_artifact`. A verdict with no `full_suite` is
+  valid as before.
+<!-- feature: workflow_model -->
+- A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
+  `{input: <type>, changed: true}`. It is met when the type has a version and the entry has no
+  run on the work item that ended `passed`, or that version was stored after the newest such
+  run was queued. The entry's runs are the runs of its workflow at its position in the stage
+  (and in the loop's body). The version is the one the stage reads, whatever the size of its
+  files, and a version that a run of the stage stored, for example triage-review's, counts
+  too, except one that a run of the entry stored. A save refuses `changed` with any value but
+  `true`, refuses the type like any input condition (no earlier stage outputs it), and
+  refuses `changed: true` on a stage, a loop, an input and an output: "Move `changed: true`
+  to a workflow entry: only an entry has runs to compare with." `stage_skips.changed` is true
+  for the record of such an entry. The tab of a stage says why an entry did not run:
+  "<workflow> did not run: the <type> did not change since it last passed." for a `when`, and
+  "<workflow> did not run: the <type> changed since it last passed." for an `unless`.
+- A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
+  `{feedback: new}`. It is met while a member's feedback on the work item is open, or a
+  run returned the work item to the stage, and no run handled it. Feedback is the note
+  of Request changes, the note of a move, an answer, a review comment or a reply, the
+  comment of Run another round, the note of an escalation that a member resolved by any
+  choice but Accept as it is, and the return of a later stage's run to the stage,
+  whether or not a member wrote a note; a move with no note is no feedback. A run of the
+  stage handles the feedback that is older than its start when it runs an entry with
+  `{feedback: new}` and ends with a verdict `passed` or `changes-requested`; in a stage
+  with `shared_run: true`, the session of that entry handles it. An answer given while
+  no escalation is open is handled by any run of the stage, or session, that starts
+  after it and ends with such a verdict. A run that stops, escalates or ends with no
+  verdict handles nothing. Saving a process fails with any value but `new`, and with
+  `{feedback: new}` on a stage, a loop, an input or an output, where the error is "Move
+  `feedback: new` to a workflow entry: only an entry starts a run." The tab of a stage
+  shows why such an entry did not run: "<workflow> did not run: no member wrote new
+  feedback." for a `when`, and "<workflow> did not run: a member wrote new feedback."
+  for an `unless`.
+- In a stage with an entry that has `{feedback: new}`, feedback starts the stage again
+  at its first entry, round 1: Run another round while feedback other than an answer
+  given while no escalation is open is unhandled, a comment with Run another round, a
+  member's answer to the question of an open escalation, Request changes, and a move
+  into the stage with a note. An answer given while no escalation is open starts nothing
+  again: it stays unhandled until a run of the stage handles it. The stage starts as
+  Request changes starts it, with no check that its workflows are listed first: if the
+  harness does not list the first workflow, the member's feedback is kept and the stage
+  waits for the workflow. Run another round with no such feedback runs as before: the
+  workflow of a run that stopped, in a loop as the loop's next round; after another
+  escalation in a loop, the loop's next round from its first workflow; at the end of the
+  sequence, its last loop again, or with no loop its start. Each reads the condition of
+  the entry it starts again, as before. Request changes at the gate of a stage whose
+  entry has a `return` key returns the work item to that key's stage, and its note stays
+  open feedback for the stage the work item returns to. A stage with no such entry runs
+  as before. These rules hold in a stage with `shared_run: true` too, where
+  `changes-requested` in a loop starts the loop's next round as the run's next session.
+  The confirmation of Request changes, a move, a switch, Run another round and answers
+  shows the workflow that starts: with a note or a comment, the first workflow of the
+  stage that the act starts; the line changes as the member types the note in the
+  confirmation. Entering a stage again keeps the records of entries passed over for a
+  condition, for `{feedback: new}` too.
+- Request changes needs a note in every stage: with no note, or a note of only spaces,
+  it fails with "Add a note that says what to change." and changes nothing. The page
+  asked for the note before too.
+- When a verdict `changes-requested` with points ends a loop's last round, the
+  round-limit point's text is "3 of 3 rounds ran, and 2 review findings are still open."
+  followed by the text of each of the verdict's points, and its fix is "Read the 2 open
+  findings, then pick Accept as it is or Run another round." With 1 point: "3 of 3 rounds
+  ran, and 1 review finding is still open." and "Read the open finding, then pick Accept
+  as it is or Run another round." With no points the point is "3 of 3 rounds ran." as
+  before.
+<!-- /feature -->
 - With the `registry` feature, Instance settings › Configuration has a part Prebuilds,
   between Retention and Deletion, with the setting Largest prebuilt image: how large an
   image a prebuild may keep, a whole number of GB from 1 to 10,000, or empty for no
   limit, the default. A change applies to prebuilds that start after it. A prebuild's run
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
-  the member. The run contract is vendored at integrations `dbc1ce5`, with the tier rename
-  of integrations `b22085a` applied on top.
+  the member. The run contract is vendored at integrations `cd52a06e`.
 <!-- feature: factory -->
 - Providers whose description lists no models, such as LiteLLM, are hidden where a
   provider is offered, unless the feature `model_proxies` is on (off by default). With
@@ -58,6 +238,80 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after it writes the new version, so a choice or limit for a workflow the save adds
   stays. Such choices and limits made before this change stay until the next save of the
   process without their workflow, a close, or deletion of their provider. With `workflow_model` off, none is deleted.
+- A stage of a process takes `shared_run`, default `false`: with `true`, its workflows run
+  one after the other as sessions of one run, on one machine. A save of such a stage fails
+  when two of its workflows, those in a loop included, differ in access level or machine
+  type.
+- After each session of such a run, its gateway sends `POST /v1/runs/<run_id>/next-session`
+  with `{"session", "state", "reason"}`. Qory Apiary steps the stage and returns `200` with
+  the next session's `workflow`, `time_limit_minutes`, `full_suite` and `inputs`, or
+  `{"next": "end"}`, at most 1 MiB; a repeat for the same session returns the same body.
+- A save of a stage with `shared_run: true` compares the access each workflow runs with:
+  the lower of the entry's `access` and the level the workflow's harness sets. When they
+  differ, the save fails with "Move plan-the-build to a separate stage in Workspace
+  settings › Workflows, or ask whoever keeps the harness to give it write access.
+  plan-the-build runs with read access, because its harness sets read." Update from
+  harness reads the levels at the commit it updates to and, before a save, shows "Ask
+  whoever keeps the harness to give plan-the-build write access, or to move it to a
+  separate stage. plan-the-build runs with read access, because its harness sets read."
+  It saves nothing then. If that read of the levels fails, the update goes on without
+  them. Keep the process at the latest, a change of a level in the harness alone, or a
+  failed read of the levels can still make the levels differ after a save. The claim
+  then compares the levels again and ends such a run before it starts, with the end
+  cause `shared_access_differs` and the outcome error. Owners and admins see
+  an escalation with the save's fix and "then run the round again" after it.
+- `full_suite` is `true` only for a session of an entry with access `write` that is in a
+  loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
+  access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- The gate card of a stage starts with the draft of the work item's newest submission,
+  one line per repository that has one: “Submission: the draft in example/shop”, a link
+  that opens the draft in a new tab. A submission with no draft, a draft with no number or
+  a link that is not `https` shows no line.
+- The tab of a stage with a `verification` output, such as Verify, shows the run's
+  verification as a table of the acceptance criteria with the columns Criterion, State
+  and Evidence and the states Met and Not met, another state as the run wrote it; the
+  list “Not verified”, each item with its reason under it; and the model families after
+  the version, such as “Version 1 · Model families: Build claude · Verify deepseek”, as
+  the run wrote them.
+  When a member accepted the stage's escalation as it is after the run wrote the
+  verification, the frame starts with “Accepted as it is by dana”; the criteria keep the
+  states the run wrote. A verification with no such table shows as its Markdown, after
+  the same line. An Evidence cell links the phrases “Demo video: scenario 1”, “Pictures:
+  scenario 2” and “the pictures of scenario 2” to that scenario of the Scenarios frame.
+- On that tab, one frame “Scenarios” has the films and pictures of the verified commit,
+  in scenario order, in place of one frame per type: each film with its file name and
+  its captions, which start off, and, beside it, the scenario's title, each step with
+  its expected result, and the artifact row; for a pictures scenario, one picture per
+  step, each with the step's title and expected result. A scenario whose name is withdrawn
+  is left out, and so are the scenarios of an earlier take in.
+- On that tab, a **Watch** button under each film, and under each set of pictures above
+  its artifact row, opens that scenario's page. A film's button opens the page at the
+  time and the speed of the film on the tab, and does not start it.
+- The page of a scenario's film or pictures is a player page. Under the player it shows
+  the scenario's title and each step with its expected result, and the right column
+  starts with the work item's scenarios, “Scenarios 1 of 3”, in the order of the Verify
+  tab. Each scenario has a thumbnail, its title, and “Demo video · 0:10” or “3 pictures”;
+  a click opens that scenario's page, and the scenario you are on is marked. A film has
+  **Cinema**, which puts the player above both columns at the width of the page and stays
+  on from one page to the next, and **Full screen**, which shows the player alone until
+  you press **Esc** or **Leave full screen**. A scenario's pictures show one at a time,
+  with **Previous picture**, “Picture 2 of 3”, **Next picture**, then the step, its
+  expected result and the file name. No film starts by itself, and the next scenario does
+  not start when a film ends. A film or pictures that no scenario has show no queue, and
+  a set of pictures that no scenario has stays a stack of pictures.
+- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
+  Explainer, show the version and the artifact rows only, and a row names the artifact
+  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+  films and pictures together, in scenario order.
+- An output frame on a stage's tab lists the artifact row of each name of its type,
+  `main` first, and an output with only other names has a frame too.
+- A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
+  place of “Pushed”, and a version page's History shows it in place of “Version 3”,
+  with the artifact in the plain form of the gate card (the type with spaces, then the
+  name). The page of a withdrawn version shows that line in place of an empty view and
+  an empty list of files.
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
@@ -106,6 +360,39 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it ended at its time limit, was released or lost its machine. The migration adds the table
   `run_pushed_commits`.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- On the tab of a stage whose outputs include the submission type (`submit.type` of the
+  work item's process version), one frame, Submissions, captioned "Newest first", replaces
+  that type's frame. It has a row for each run that stored a version, newest first: the run
+  as a link to its page, the stage and the time the run ended, the badge Approved where a
+  gate approved the version, then for each repository the Branch (the branch and the head
+  commit), Commits and Draft. The record fold of the stage and the run's Timeline name the
+  type as before.
+- A run's page has the same row under the version list of Save the outputs, for the version
+  of the submission type that the run stored, headed "Submission v<number>". The block
+  shows only to a reader who may read the run.
+- Commits: where a stored submission lists the run's commits (`repositories[].base`,
+  `{commit, commit_url}`, and `repositories[].commits`, `[{commit, step, commit_url}]`, in
+  the order the run made them), the row has a fold, "<n> commits", with the base first
+  ("Base: the head of Run <n>", "Base: the result of Run <n>" outside a software
+  workspace, where an earlier submission of the work item ends at that commit in the
+  same repository; "Base: where the branch starts" where no earlier
+  submission can; the commit alone where a version that is not listed may), then each commit:
+  its short id, a link where the submission has an `https` address for it, the step ("d-2
+  · <text of the change>" for a deliverable of the build plan, read from the Change column
+  of the plan's Deliverables table, or "d-2" alone where the plan has no such row; "Fix of
+  review finding f1" for a fix; nothing for any other step) and the badge Head (Latest outside a software workspace)
+  on the repository's head commit. The newest row's fold is open. A submission with no list shows
+  no Commits line. A fold lists at most 100 commits, the first 100 or the first 99 and the head
+  where the head is a later one, and its count has them all. A commit with another step shows its short id
+  alone. The page reads the newest 50 versions; a stored text is cut to 200 characters, and
+  a submission over 1 MiB shows its row with no repository. A stored value that is not of the form the contract has is left out:
+  a commit that is not 40 or 64 lowercase hex characters, a link that is not `https`.
+- A draft shows its number beside its system's mark, the integration of the workspace's
+  collection for that system, with its title as a link: `#34 “Show delivery dates”`. A
+  submission that records why it sent no draft shows "The run sent no draft to the
+  destination."
+<!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
   refuses a value that is not such an id. A run can change the criterion of an open
@@ -135,12 +422,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   table, a gate that needs no member reads "Approved without a member: <stage>'s gate needs
   no member." The runs fold of that tab no longer repeats the entries. A sequence that names
   one workflow twice keeps the fold's rows and has no table.
-- The gate of a later stage for a work item on a track shows "Track" and the track's name, and
-  offers no choice. For a stage of a work item on a track that started no run, the card
-  reads "<stage> started no run. Read the inputs below, then approve." (in a software
-  workspace, "Read the build report and the draft, then approve.") and leaves out the list of
-  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
-  item on no track keeps both as before.
+- The gate of a later stage for a work item on a track shows "Track" and the track's name on
+  one row, and offers no choice. For a stage of a work item on a track that started no run,
+  the card reads "Read the inputs below, then approve." (in a software workspace, "Read the
+  build report below, then approve.") and leaves out the list of outputs, and the stage's tab
+  shows the newest version of each of the stage's inputs. A work item on no track keeps both
+  as before.
+- A gate card that every member may decide has no line about who approves; for a stage that
+  lists its approvers it reads "Only the members this stage lists can approve."
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -166,9 +455,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   track that a person's move recorded, "You moved the work item past <stage>'s gate on
   <date>, so it runs <track>. <track> skips <stage>." Another reader sees the member's
   name in place of "You". On Shape's tab, where Explore's approval lists a proposal version,
-  a second line reads "Shape did not run, so the work item has no shaping outputs. Proposal
-  v<n>, as approved, is what the next stages work to." (in a software workspace, "The work
-  item has no spec and no acceptance criteria. The exact change in proposal v<n> is the one
+  a second line reads "Proposal v<n>, as approved, is what the next stages work to." (in a
+  software workspace, "The exact change in proposal v<n> is the work item's one
   criterion."); with no version listed, there is no second line. The
   record of a stage lists an entry that a track or an `unless` passed over, with its reason.
 - A verdict can propose a track: `POST verdict` takes `track`, with `id` and `reason`, and
@@ -356,6 +644,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   text of at most 500 characters, with line breaks. A stage's card on the canvas shows it
   under the name, cut to three lines. A template's `process.yaml` may set `description` on
   a stage.
+- A workflow entry outside a loop may have a `return` key: `stage`, an earlier stage, and
+  `limit`, 1 to 10, 2 by default. When the entry's run asks for changes, the work item
+  returns to that stage and starts at its first entry. After `limit` returns of the
+  stage's runs in one take in, the next run that asks for changes escalates to a member,
+  with the member's action, the count of returns and the run's points; the escalation's
+  **Move back** offers the return's stage first. **Request changes** at the gate of the
+  entry's stage also returns the work item to that stage's first entry, and is not
+  counted. The stage editor shows the return under every workflow outside a loop, in a
+  stage that has an earlier stage: **On changes requested, return to** offers **Do not
+  return** and each earlier stage by name. With **Do not return** the fold shows only the
+  select (`On changes requested: do not return`); picking a stage sets **Returns at most**
+  to 2. The editor shows an error for a number outside 1 to 10 and for a stage that is
+  not earlier. A workflow with a return reads `returns to <stage> at most <n> times` in a
+  member's Sequence box, and its card on the canvas has the line `Returns to <stage>, at
+  most <n> times` under its name.
+- After a run's return (the `return` key above), `inputs` in `GET work-item` also lists,
+  for each run of the stage it returned the work item to, the newest `verdict` and the
+  newest `verification` made in the stage that returned it, with `"from": "return"` and
+  `"required": false`; a type with no version has no entry. The entries stay until the
+  returned stage's gate passes again (an approval of that stage) or the work item leaves
+  that stage by a move, after the return; a Request changes at its gate and a decision in
+  another stage end nothing. A later return lists its newer versions. No approval lists
+  these versions, an entry is left out when an input above it already has that version,
+  and the findings are not a person's note: `notes` is the same as before.
 - A workflow entry or an output of a stage may set `when: {input: <type>}`. The entry
   runs only when the version of that type that the stage reads has a file of more than
   0 bytes; otherwise no run starts for it, and the stage's tab lists it in the runs fold
@@ -848,7 +1160,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   why under it; no other provider is chosen in its place, and **Save** writes nothing
   until another provider is chosen. With no model provider, the page shows “Add a model provider in
   Organisation settings › Model providers.” to whoever may add one, and who adds one to
-  anyone else. The catalogue of this release has one runtime, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
+  anyone else. The catalogue of this release has two runtimes, `claude` and `codex`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
   Explore's tab and the Thread, in place of “The run ended with an error.”
 - **Workspace settings › Secrets and variables** lists the key of each model provider
@@ -916,7 +1228,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   written under “Qory Apiary does not draw this diagram, so it is shown as written.”,
   and one with an error under “This diagram has an error, so it is shown as written.”
   One fold at the foot of the tab lists each of Explore's runs in the take in; its first
-  line shows how many there are and the versions of the newest proposal and questions.
+  line shows how many there are and the version of the newest proposal.
   An earlier run that wrote a proposal opens to that version. The fold also lists the
   work item's artifacts under **Artifacts**, where, at the Explore stage, a version a run
   made reads “Run 14”, without its round; artifact pages keep “Run 14 · round 2”.
@@ -934,22 +1246,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   on the tab scrolls in a frame with a visible bar, as on the **Document** view, and its
   words stay whole.
 - An open work item whose current stage is Explore opens on the **Explore** tab from
-  every link that names no tab, and the **Ticket** tab has the address
-  `/work/<number>/ticket`.
+  every link that names no tab, or on the **Questions** tab while it needs answers, and
+  the **Ticket** tab has the address `/work/<number>/ticket`.
 - A work item has a tab for each stage of its process that runs a workflow, once the
   stage is the current one or has a run. The tab has the stage's name and the address
   `/work/<number>/stages/<stage id>`, which stays when the stage is renamed. An open
   work item opens on its current stage's tab from every link that names no tab, and on
   the **Ticket** tab at a stage with no workflow. `/work/<number>/explore` goes to the
   tab of the first stage with a proposal output. A stage's tab shows a frame for each
-  of the stage's outputs that has a version, the first one open, and the questions, runs
-  and artifacts of that stage's runs.
-- On the current stage's tab after Explore, **Run another round** works as on the
-  **Explore** tab. Where the stage waits for answers, it sends your answers; at the
-  stage's gate, the decisions of the stage's runs that you changed. It also sends one
+  of the stage's outputs that has a version, the first one open, then the runs and
+  artifacts of that stage's runs. Where agents of the stage asked questions, a line says
+  so and links to the **Questions** tab.
+- At the gate on the current stage's tab after Explore, **Run another round** works as on
+  the **Explore** tab. It sends the decisions of the stage's runs that you changed, one
   comment on the whole round, from the field **Comment on the stage's outputs**, and the
   open comments of that stage. The stage's next run reads them and updates the outputs.
-  The questions and comments of another stage stay on that stage's tab.
+  Where the stage waits for answers, **Run another round of Verify** on the **Questions**
+  tab sends the answers and the comment instead. The comments of another stage stay on
+  that stage's tab.
 - On a work item's **Explore** tab, step card and **Details**, a text about one run
   links to that run's page, and the link ends with the run's number in the workspace: a
   line with no attempt number, such as “Explore is running again, with your comments
@@ -977,33 +1291,34 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   wider than the text column scrolls in a frame, and a long word wraps, so neither runs
   under **Details**. A proposal's **Sources** on that view are a closed fold under the
   text, as on the tab.
-- The **Questions** frame under the proposal lists the questions that a run of this take
-  in wrote or reopened. For a member who may answer, the first line is “Run another
-  round starts the next run. That run reads your answers and your comment, and updates
-  the proposal.”, or “Run another round starts the next run. That run reads your answers
-  and updates the proposal.” where the tab has no comment field. Answered questions fold
-  to one line; the open ones follow under “Open questions”. Each question shows the
-  options the run wrote as cards, up to 4, then the card “Give your own option”, and one
-  field with the placeholder “Add details (optional)”, or “Your option” while **Give
-  your own option** is picked. That field is then required: “Write your option, or pick
-  one above.” A question with no options shows the field alone, with the placeholder
-  “Give your own option”. The option a run recommends has the mark “Recommended by the
-  agent” on its card, and on a closed answer that chose it. A reopened question shows
-  its earlier answer under “Earlier answer”, a question that follows another links to it
-  with “Follows question 1”, and a withdrawn one has the badge “Withdrawn”. Under the
-  last question, a member who may write comments, where a proposal exists, has the field
-  **Comment on the whole proposal**. **Run another round** sends every answer given, the
-  comment and the open comments to one run, at any count of runs. It is enabled once an
-  answer, a comment or an open comment the member may send is there. A question with no
-  option and no text stays open. With every answer blank, a member who may send comments
-  (with the workflow model, only the stage's approvers, where the stage lists them)
-  sends the open comments of this take in instead. With none open, or for any other
-  member, the form shows “Choose an option or write an answer. If nobody knows, say so:
-  Explore reads that too.” Questions that changed after the page showed them get no
-  answer, and the form shows “Check the questions and your answers, then click Run
-  another round again. The questions changed after the page showed them, so no answer
-  was sent.” While a run runs, and to a person who may not answer, the open questions
-  show as text.
+- The frames of the **Questions** tab list the questions that a run of this take in wrote
+  or reopened. For a member who may answer, the frame **Open questions** starts with the
+  line “Run another round of Verify starts Verify's next run. That run reads your answers
+  and your comment, and updates Verify's outputs.” (at Explore, “…and updates Explore's
+  proposal.”), or the same line without “and your comment” where the tab has no comment
+  field. Answered questions are in the frame **Answered questions**, each folded to one
+  line. Each open question shows the options the run wrote as cards, up to 4, then the
+  card “Give your own option”, and one field with the placeholder “Add details
+  (optional)”, or “Your option” while **Give your own option** is picked. That field is
+  then required: “Write your option, or pick one above.” A question with no options shows
+  the field alone, with the placeholder “Give your own option”. The option a run
+  recommends has the mark “Recommended by the agent” on its card, and on a closed answer
+  that chose it. A reopened question shows its earlier answer under “Earlier answer”, a
+  question that follows another links to it with “Follows question 1”, and a withdrawn
+  one has the badge “Withdrawn”. Under the last question, a member who may write
+  comments, where a proposal exists, has the field **Comment on Verify's outputs**
+  (**Comment on the whole proposal** at Explore). **Run another round of Verify** sends
+  every answer given, the comment and the open comments to one run, at any count of runs.
+  It is enabled once an answer, a comment or an open comment the member may send is
+  there. A question with no option and no text stays open. With every answer blank, a
+  member who may send comments (with the workflow model, only the stage's approvers,
+  where the stage lists them) sends the open comments of this take in instead. With none
+  open, or for any other member, the form shows “Choose an option or write an answer. If
+  nobody knows, say so: Explore reads that too.” Questions that changed after the page
+  showed them get no answer, and the form shows “Check the questions and your answers,
+  then click Run another round of Verify again. The questions changed after the page
+  showed them, so no answer was sent.” While a run runs, and to a person who may not
+  answer, the open questions show as text.
 - Each card under **Comments** shows who wrote it and on which version (“You, on version
   1”), or, for a comment on the whole round, on which attempt (“You, on the round of
   attempt 3”). The card also has the badge “Open” or “Reopened”, the text, its replies,
@@ -1061,10 +1376,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   approval, a close or an undo by another member, and that page has no button to send
   it; “Try again in a minute. The artifact store cannot be reached.”; “Check the page,
   then send again. The work item changed after the page showed it, so nothing was sent.”
-  (the questions form shows its changed-questions text instead); “Reload the page. Your
-  access or the work item changed, so nothing was sent.”; “Send again. Qory Apiary could
-  not save it.” for any other error. At the run limit, no line shows. **Approve** shows
-  no line when it fails.
+  (the form on the **Questions** tab shows its changed-questions text instead); “Reload
+  the page. Your access or the work item changed, so nothing was sent.”; “Send again.
+  Qory Apiary could not save it.” for any other error. At the run limit, no line shows.
+  **Approve** shows no line when it fails.
 - A comment on the whole proposal shows in the work item's Thread as “Dana wrote a
   comment on the proposal”, or “You wrote a comment on the proposal”, with its text, and
   answers sent with a comment as “You answered 1 question and wrote a comment”, and a
@@ -1096,24 +1411,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it was stored.
 - A work item's permanent address, `/work-items/<id>`, opens the work item.
 - Explore's tab has one field, **Comment on the whole proposal**, and one button, **Run
-  another round**. The button sends the answers, the comment and the open comments to
-  one run. A proposal's Background shows its first paragraph, **Read more** shows the
+  another round**. The button sends the comment and the open comments to one run; a
+  member answers the questions on the **Questions** tab. A proposal's Background shows its first paragraph, **Read more** shows the
   rest, and **Read less** closes it again. The field replaces the **Add review comment**
   page; its address, `…/explore?review=new`, opens the **Explore** tab.
 - Explore's tab shows the questions a run chose an option for without a member, as
   **Decisions**: one line each, with the question, the option the run chose and its
   reason. Opened, a decision shows the full reason, “Run 2 chose it 25 minutes ago” and
   the options, with “Chosen by the agent” on the run's option. A member who may answer
-  picks another option or writes one, and **Run another round** sends the change as that
-  member's answer; until then the change shows only to that member, and **Approve** is
-  disabled with “Run another round to apply your change.” A sent change shows
-  **Changed**, the member's option, who changed it and when, and under “Changed from”,
-  the run's option and reason. A note sent with the run's option shows under the
-  options, with who added it and when, and the decision shows no **Changed**. While
-  questions are open, the decisions sit in the questions frame, above the open
-  questions; otherwise in a **Decisions** frame above the comment field. Explore's rows
-  are numbered top to bottom, as they show; **Follows question** and **Asked as
-  question** use those numbers.
+  picks another option or writes one, and **Run another round** (on the **Questions** tab,
+  **Run another round of Verify**) sends the change as that member's answer; until then
+  the change shows only to that member, and **Approve** is disabled with “Run another
+  round to apply your change.” A sent change shows **Changed**, the member's option, who
+  changed it and when, and under “Changed from”, the run's option and reason. A note sent
+  with the run's option shows under the options, with who added it and when, and the
+  decision shows no **Changed**. While a question is open, the decisions of the stage that
+  waits sit in the frame **Open questions** of the **Questions** tab, above the open
+  questions; otherwise they are in a **Decisions** frame of the stage's tab or Explore's
+  tab, above the comment field. A question's number is its place in the order closed
+  questions, decisions, then open questions, or decisions then closed questions where
+  none is open; **Follows question** and **Asked as question** use those numbers.
 <!-- /feature -->
 - The Policy page's **Rules** tab lists **Allowed for every run**: the hosts Qory Apiary
   allows for every run of the workspace, by group, such as **Harness sources**,
@@ -1170,11 +1487,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   types that are on. A push of a type that is off returns `422 unknown_type`, and the
   message says to switch the type on. `proposal`, `questions`, `review-comments` and
   `verdict` are always on. A person adds no version of `questions` or `review-comments` by
-  hand: members write them on the **Explore** tab. A type stays on while an artifact of
+  hand: members answer questions on the **Questions** tab and write comments on the
+  **Explore** tab. A type stays on while an artifact of
   the workspace has it, or while the current process or a process version in use includes
   it. A workspace keeps every standard type until a person switches one off.
 - The version page of a questions or review-comments artifact has no **Add a version**
-  button. People answer questions and write comments in the work item's Explore tab.
+  button. People answer questions on the work item's **Questions** tab and write comments on its
+  **Explore** tab.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
@@ -1448,6 +1767,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deletes a run's transcript with the run's log output, by **Keep a run's log output
   for**, or by **Keep a run's events for** when the log setting is empty; a paused
   run's transcript stays until the run that continues it ends.
+- The run that continues a paused run resumes the transcript of the session that
+  paused, also when transcript chunks of an earlier session were sent later. If the
+  session that paused sent no transcript, the run that continues it starts that
+  session's workflow in a new agent session.
 - **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's key,
   and on **Add value** and **Change value** of such a key on **Workspace settings ›
   Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage from
@@ -1479,13 +1802,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the fix first: "set submit.type to a structured type of artifact_types: mockup is a
   standard type".
 - A run that runs a workflow with write access has `submit: {type, send}` in its run
-  documents, from its process version, where the version has one. A forge's adapter may
-  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
-  that contains the forge's program that opens the draft pull request. Such a run then
-  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
-  starts with `submit` alone where no adapter declares one. A start-up whose
-  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
-  400 `invalid_request`, and nothing is stored.
+  documents, from its process version, where the version has one.
 - A run that stores a version of its submission type, `submit.type` of its process
   version, adds a `watch` entry to the change feed of the adapter of the work item's
   target collection: the work item's public id and its page, `url`, as in a `work_item`
@@ -1510,11 +1827,61 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider's models or suggestions.
 - A run takes its tiers from the model choice in effect alone, and its model and effort from
   the Thinking tier.
+- A run receives the variables of its workspace. When a claim registers a run, Qory
+  Apiary resolves the variables of the organisation, the workspace, and the target (a
+  repository, in a software workspace) as they are then, and sends them in the run
+  configuration's `variables` and, for a run with a target, beside `QORY_RUN_SYSTEM` and
+  `QORY_RUN_REPOSITORIES`. The more specific level wins, and a lock of a broader level
+  holds. The organisation's level is included while the feature `organisation_variables`
+  is on. A later change reaches the next run: a run keeps what it received at its start,
+  and its run configuration, and the digest of it, do not change. A run registered
+  outside the workspace's queue, with `qory run register`, receives none, and a prebuild
+  receives none of the workspace's variables, because its image is shared by the
+  organisation's workspaces. The Variables tab of **Workspace settings › Secrets
+  and variables** and its pages read “A run receives these variables when it starts. A
+  change reaches the next run.” The organisation's **Variables** page reads “A run
+  receives the variables that its workspace and target inherit from this organisation, as
+  they are when it starts. A later change reaches the next run.” The Secrets tab and the
+  integration pages still read “A run receives only its security policy.”
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- Forager's deny list, `denied-variables.json`, is vendored, and a run receives no
+  variable of a name on it, whatever the case: its names, such as `PATH`, `HOME` and
+  `BUN_OPTIONS`, its patterns, `*_PROXY` and `QORY_*`, its forge tokens, such as
+  `GH_TOKEN`, and its model keys, such as `ANTHROPIC_API_KEY`. A save of such a name still
+  works, except a name beginning `QORY_`, which stays refused, and the form and the list
+  say “GH_TOKEN is on Forager's deny list.” and “On Forager's deny list”, which they could
+  not show before. A connection's placeholder may still take the name of a forge token.
+  The names and patterns of the list are now refused on save for a placeholder, in a tool
+  role's `placeholders` of an integration's description and in a service declaration's
+  `name`: `PATH`, `HOME`, `DOCKER_HOST` and a name ending in `_PROXY` are examples. Before,
+  only a name beginning `QORY_` was refused there.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A run takes at most 126 variables and 64 KiB of names and values, which the run
+  configuration's limit of 128 names leaves after its two names. A run whose workspace and
+  target set more does not start. Its stop cause reads “The run did not start: it has 129
+  variables, and a run takes at most 126.” or “The run did not start: its variables take
+  65 KiB, and a run takes at most 64 KiB.”, then “Owners and admins of <workspace> remove
+  variables on the Variables page of the workspace or its organisation, then start the run
+  again.” Its work item reads “Remove variables in the workspace or its organisation, then
+  start the run again. The run has more than 126 variables.” or “... The run's variables
+  take more than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
+  repository with more than 126 variables, all levels together, and says “Remove variables
+  at any level until each repository has at most 126. A run takes at most 126 variables,
+  and this change would raise a repository's variables above 126.” Before, a save allowed
+  128 names. The claim still refuses a run whose variables pass either limit, such as
+  variables saved before.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A workflow's model choice needs a provider and a model for each tier, as the workspace's
   does, and has no fallbacks. While every key of a workflow's choice is in cooldown, the
   run uses the workspace's choice, then that choice's fallbacks.
+- A run cannot withdraw a name of the type in `submit.type` of its process version or of
+  its work item's process version: the run API returns `422` `type_not_withdrawable`, with
+  "Push a new version of <type> instead. Qory Apiary reads its newest version as the run's
+  submission, so a run cannot withdraw it.", and stores nothing. Versions stored earlier
+  stay listed. A withdrawal of another custom type is as before.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
@@ -1564,6 +1931,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `400` `invalid_request` with `names` `["session"]`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- An approval at a stage's gate covers the newest version of each name of each output
+  type, such as one demo video per scenario, in place of only the newest version of each
+  type. The gate card lists one row per name, such as “demo video scenario-2 v1”, in the
+  order of the names, and **Request changes** offers each of them.
+- A version that a run a member cancelled wrote no longer counts as an artifact's newest
+  version: the work item's artifact list shows the newest version that counts, and the
+  approval marks show no “v2 is newer” or “Changed after approval” for it. In the run
+  API's artifact index, `newest_version` and `changed_after_approval` leave such
+  versions out too.
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
   stage?" and its button reads **Approve**. The line about a missing output reads "Add
@@ -1641,8 +2017,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - When a run escalates, the work item page shows the block “What the run needs from
   you”, with one numbered item for each point: the run's sentence on what is wrong or
   missing, then what you can do, “Answer question 4.”, with “question 4” linked to the
-  question, or “Run another round.” A stop cause that has a fix, such as “Owners and
-  admins choose a harness.”, shows that fix in place of “Run another round.” The block
+  **Questions** tab, or “Run another round.” A stop cause that has a fix, such as
+  “Owners and admins choose a harness.”, shows that fix in place of “Run another round.”
+  The block
   takes the place of the red banner “The run ended without a result” at the top of the
   Explore tab or of the stage's area, and the stage's note field and **Run another
   round** sit in it. In the side panel, the line “Waits for you: 2 points” links to the
@@ -1656,10 +2033,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   After a failed check whose outputs were all stored since, it shows no point. An
   `answer` point whose question the run withdrew asks for another round instead. A run
   that leaves questions open and escalates waits for answers first: its escalation is
-  kept, the block shows its points above the questions, and the answers run the next
-  round and resolve it; **Accept as it is**, **Move back** and **Close** are refused
-  while the answers wait. “Waiting on you” counts an escalated work item for the
-  approvers its gate lists who may resolve the escalation, else for its owner. A work
+  kept, the block shows its points, the **Questions** tab shows the questions, and the
+  answers run the next round and resolve it; **Accept as it is**, **Move back** and
+  **Close** are refused while the answers wait. “Waiting on you” counts an escalated work
+  item for the approvers its gate lists who may resolve the escalation, else for its
+  owner. A work
   item that left Explore while its proposal still waits, as after Explore's gate `none`,
   is not highlighted in the Work items list and is not counted in “Waiting on you”.
   Where a run ends without a result, with an error, lost or cancelled, and a proposal of
@@ -2204,6 +2582,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory -->
+- When an Explore run ends at its time limit, the work item page reads that the time
+  limit was reached, where it read that the run was cancelled. The header and the step
+  read “Explore's run reached its time limit”, the step has the badge **Time limit**,
+  the Explore tab reads “The run reached its time limit.”, and the Thread reads “Attempt
+  1 reached its time limit, so Explore has no result”. A run's line reads “Time limit
+  reached”, in place of “Cancelled”, and at the run limit the step reads “Attempt 3
+  reached its time limit, so Explore has no result. That was attempt 3 of 3, the last
+  attempt of this take in.” **Run Explore again** is offered as after a run with no
+  result, and “Cancelled” stays for a run that a member cancelled.
+<!-- /feature -->
 - A question that was reopened after a decision and then answered is no longer refused
   as too large.
 <!-- feature: secrets -->
@@ -2258,6 +2647,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A read-only run that qory closes shows a line on its run page, such as “read-only run
   with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
   installed pool, “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run that writes (access `write` or `write-no-push`) and that qory closes because it
+  has no wall shows “write run with no wall” on its run page, in place of
+  `write_needs_wall`. Its work item shows the fix, then the cause. On an installed pool,
+  “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run that reaches its time limit shows “Attempt 3 reached its time limit, so Build has
+  no result.” on its work item, after “The run stopped:”. Before, it read “The run ended
+  without a result.”
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - Explore starts on a work item of a software workspace made before the upgrade that
@@ -2422,12 +2822,42 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory, secrets -->
+- `runs` (20261118151000): a nullable column `paused_session`, the number of the session
+  where a run paused at its keys' limit. It changes no row.
+- `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops
+  the column `value_id`, the key a choice chose, with its check; runs take the keys of
+  the chosen provider. `model_choice_fallbacks` drops `model_id` and `effort`, with their
+  checks, and gains `runtime` and `tiers`, both `NOT NULL`, with a check of each as
+  `model_choices` has. The migration deletes every fallback first and moves no data. The
+  migration is short. Rolling back adds the dropped columns back empty and drops
+  `runtime` and `tiers`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
+  a stage with `shared_run: true`, with its foreign keys to `organisations`, `workspaces`
+  and `dispatch_runs`, and its indexes and checks. It changes no existing table.
+- `runs` (20261118130100): a nullable column `session_settings`, the settings of each
+  workflow entry of a shared run's stage as the claim read them. It changes no row.
+- `dispatch_runs` and `dispatches` (20261118130200): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `shared_access_differs`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes no
+  row.
+<!-- /feature -->
 - 19 migrations, versions 20260927100100 to 20261025170000 in
   `priv/repo/migrations`, which run although their versions are older than migrations
   an instance has run already. They only add 15 tables, with their foreign keys to
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` (20261118110000): the check on `end_detail` takes the cause
+  `variables_invalid`, with a code such as `names_129` or `bytes_70000`, the count or the
+  size of the variables a run did not start for. The new check scans the table as it is
+  added, under a lock that blocks reads and writes. It changes no row. Rolling back sets
+  `end_detail` to NULL on the runs ended `variables_invalid`, and their work items then
+  read that one of the run's variables breaks its rule.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - `model_choices` and `model_choice_fallbacks` (20261118120000): the function
   `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
@@ -2436,13 +2866,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices`; the function change locks no table. The migration is short. Rolling
   back restores the function with `fast` and deletes each model choice whose tier map
   has `balanced`, with its fallbacks.
-- `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops
-  the column `value_id`, the key a choice chose, with its check; runs take the keys of
-  the chosen provider. `model_choice_fallbacks` drops `model_id` and `effort`, with their
-  checks, and gains `runtime` and `tiers`, both `NOT NULL`, with a check of each as
-  `model_choices` has. The migration deletes every fallback first and moves no data. The
-  migration is short. Rolling back adds the dropped columns back empty and drops
-  `runtime` and `tiers`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
+  of a condition `{input: <type>, changed: true}`. It is not null with a constant default,
+  so adding it rewrites no row. Rolling back drops the column and the rows keep their
+  `input`.
+- `stage_skips` (20261118130300, 20261118130400): the check `stage_skips_condition_check`
+  takes the reason `feedback`, for the record of a condition `{feedback: new}`, which has
+  no input, track or cause entry. The first migration adds the check NOT VALID, and the
+  second validates it in a scan that does not block writes. It changes no row. Rolling
+  back deletes the rows with the reason `feedback`.
 <!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
@@ -2503,6 +2937,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   check and adds it without a scan, and the second validates it with a scan that does not
   block writes. It changes no row. Rolling back sets the track of every move to null, then
   restores the check for an approval alone.
+- `dispatch_runs` and `escalations` (20261116180000 and 20261116180100): nullable
+  columns `dispatch_runs.returned_to`, the stage a run returned its work item to, with a
+  check that it is a stage id, and `dispatch_runs.returned_at`, when it did; and the check
+  on `escalations.cause` takes `return_limit`. The columns have no default, so adding them
+  rewrites no row. The first migration adds both
+  checks without a scan, and the second validates them with scans that do not block
+  writes. It changes no row. Rolling back drops the two columns and sets the
+  cause of each `return_limit` escalation to `escalate`.
 - `escalations` (20261117100000 and 20261117100100): `resolution` may be `switch`, a work
   item switched to another track. The first migration replaces the check
   `escalations_resolution_check` and adds it without a scan, and the second validates it
@@ -2559,12 +3001,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
-  the submit program that an adapter's latest start-up declares, with a check that it is
-  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
-  reads and writes. It changes no row: Apiary stores the module that each adapter
-  declares at its next start-up.
-  Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.

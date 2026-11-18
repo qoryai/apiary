@@ -76,6 +76,9 @@ defmodule Apiary.Stages.StopCauseTest do
                "Close the work item, or take the ticket in again."
 
     assert text(:inputs_invalid, work_item) =~
+             ~r/\AThe run did not start, because a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.\n/
+
+    assert text(:inputs_invalid, work_item) =~
              "\nWhoever can edit the ticket where it comes from shortens or corrects it, then takes it in again."
   end
 
@@ -105,6 +108,37 @@ defmodule Apiary.Stages.StopCauseTest do
     assert text(:variables_invalid, work_item) ==
              "The run did not start, because one of its variables breaks its rule.\n" <>
                "Contact support with work item #12."
+  end
+
+  test "variables over the count a run takes show the count, and who removes some, and where",
+       %{work_item: work_item, ws: ws} do
+    assert text(:variables_invalid, work_item, end_detail: "names_129") ==
+             "The run did not start: it has 129 variables, and a run takes at most 126.\n" <>
+               "Owners and admins of #{ws} remove variables on the Variables page of the workspace or its organisation, then start the run again."
+
+    # The run's two names count toward the contract's 128, so 127 variables are over it.
+    assert text(:variables_invalid, work_item, end_detail: "names_127") =~
+             "it has 127 variables, and a run takes at most 126."
+  end
+
+  test "variables over the size a run takes show it in whole KiB, rounded up",
+       %{work_item: work_item, ws: ws} do
+    assert text(:variables_invalid, work_item, end_detail: "bytes_70000") ==
+             "The run did not start: its variables take 69 KiB, and a run takes at most 64 KiB.\n" <>
+               "Owners and admins of #{ws} remove variables on the Variables page of the workspace or its organisation, then start the run again."
+
+    # One byte over the limit reads as more than it, never as the limit.
+    assert text(:variables_invalid, work_item, end_detail: "bytes_65537") =~
+             "its variables take 65 KiB, and"
+  end
+
+  test "a detail of a variables refusal that is no number reads as a rule broken",
+       %{work_item: work_item} do
+    for detail <- ["names_", "names_many", "bytes_0", "bytes_-5", "names_12x"] do
+      assert text(:variables_invalid, work_item, end_detail: detail) ==
+               "The run did not start, because one of its variables breaks its rule.\n" <>
+                 "Contact support with work item #12."
+    end
   end
 
   test "a missing model key, or a provider with no key, links the set-up step Model",
@@ -205,6 +239,13 @@ defmodule Apiary.Stages.StopCauseTest do
     assert text(:write_without_work_item, work_item) ==
              "The run did not start, because it writes and has no work item to take its branch from.\n" <>
                "Contact support."
+  end
+
+  test "a shared stage whose access no longer differs names no workflow, and runs the round again",
+       %{work_item: work_item} do
+    assert text(:shared_access_differs, work_item) ==
+             "The run did not start, because the workflows of the stage would run with different access.\n" <>
+               "Run the round again."
   end
 
   test "a harness with no walk row, and an unknown cause, show the code with a description",
@@ -365,6 +406,119 @@ defmodule Apiary.Stages.StopCauseTest do
 
       assert words(scope, docker, nil) ==
                "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+    end
+  end
+
+  describe "a run that writes and has no wall" do
+    @describetag needs: :factory
+
+    @fix "Set a wall in the machine's forager.yaml, then start the run again."
+
+    test "has its fix, then its cause, on a pool of the workspace" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      assert words(scope, "write_needs_wall", pool) ==
+               @fix <>
+                 " A run that writes to the checkout needs a wall, and this machine has none."
+    end
+
+    test "splits into the cause and the fix for the escalation's point" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+      {run, work_item} = read_run(scope, "write_needs_wall", pool)
+
+      assert StopCause.parts(run, work_item) ==
+               {"A run that writes to the checkout needs a wall, and this machine has none.",
+                @fix}
+    end
+
+    test "says checkout only in a software workspace" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [domain: "example"]
+        )
+
+      assert words(scope, "write_needs_wall", pool) ==
+               @fix <> " A run that writes needs a wall, and this machine has none."
+    end
+
+    test "a read-only reason is not one: a run with another reason ends without a result" do
+      %{scope: scope} = sign_up_fixture()
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+
+      assert words(scope, "write_needs_something", pool) == "The run ended without a result."
+    end
+  end
+
+  describe "a run that reached its time limit" do
+    @describetag needs: [:factory, :workflow_model]
+
+    @stage "st_6ns22c4pav"
+
+    # The run of `read_run/3` as the third attempt, in the stage `name` of a saved process.
+    defp placed(scope, reason, name) do
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          %{
+            "id" => @stage,
+            "name" => name,
+            "inputs" => [],
+            "sequence" => [%{"workflow" => "capture-demo"}],
+            "outputs" => [],
+            "gate" => %{"kind" => "none"}
+          }
+        ]
+      }
+
+      {:ok, version} = Apiary.Processes.save(scope, scope.workspace, document)
+      {run, work_item} = read_run(scope, reason, nil)
+
+      {%{run | attempt: 3, stage_id: @stage, process_version_id: version.id}, work_item}
+    end
+
+    test "has the attempt and the stage's name, and no fix", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Build")
+      cause = "Attempt 3 reached its time limit, so Build has no result."
+
+      assert StopCause.text(run, work_item) == cause
+      assert StopCause.parts(run, work_item) == {cause, nil}
+    end
+
+    test "names the stage of the work item for a run with no stage", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Verify")
+      work_item = %{work_item | stage_id: @stage, process_version_id: run.process_version_id}
+
+      assert StopCause.text(%{run | stage_id: nil, process_version_id: nil}, work_item) ==
+               "Attempt 3 reached its time limit, so Verify has no result."
+    end
+
+    test "says the stage for a run placed in no stage", %{scope: scope} do
+      {run, work_item} = read_run(scope, "timeout", nil)
+      work_item = %{work_item | stage_id: nil, process_version_id: nil}
+      run = %{run | attempt: 2, stage_id: nil, process_version_id: nil}
+
+      assert StopCause.text(run, work_item) ==
+               "Attempt 2 reached its time limit, so the stage has no result."
+    end
+
+    test "a lost run keeps its line", %{scope: scope} do
+      {run, work_item} = placed(scope, "timeout", "Build")
+
+      assert StopCause.text(%{run | end_cause: :lost}, work_item) ==
+               "The run stopped reporting and was marked lost."
+    end
+
+    test "a run with another reason keeps its line", %{scope: scope} do
+      {run, work_item} = placed(scope, "no_session", "Build")
+
+      assert StopCause.text(run, work_item) == "The run ended without a result."
     end
   end
 

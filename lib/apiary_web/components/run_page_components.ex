@@ -47,6 +47,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   alias Apiary.ExternalText
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Runs.Record.Timeline
   alias Apiary.Runs.RunApi
   alias ApiaryWeb.Format
@@ -309,13 +310,19 @@ defmodule ApiaryWeb.RunPageComponents do
     <.rich text={
       if @terminal,
         do:
-          rich_gettext(
-            "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+          rich_ngettext(
+            "Only %{runtimes} sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            length(Runtimes.list()),
+            runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           ),
         else:
-          rich_gettext(
-            "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access.",
+          rich_ngettext(
+            "Only %{runtimes} sends session events. This session ran %{runtime}: its connections are under Network access.",
+            "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access.",
+            length(Runtimes.list()),
+            runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           )
     }>
@@ -1103,7 +1110,35 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # A version of an artifact the run pushed: the artifact's type and name, the type alone
   # while it has no name, and the version's number, marked when a member cancelled the
-  # run. No event has its place, so it has no event number.
+  # run; a withdrawal reads "Withdrew demo script scenario-2 (version 3)", the artifact in
+  # its plain form (`ApiaryWeb.ArtifactComponents.plain_name/2`). No event has its place, so
+  # it has no event number.
+  defp item_body(%{item: %{kind: :pushed, withdrawn: true}} = assigns) do
+    assigns =
+      assign(assigns,
+        artifact: ApiaryWeb.ArtifactComponents.plain_name(assigns.item.type, assigns.item[:name])
+      )
+
+    ~H"""
+    <div class="q-hd">
+      <span class="q-k">{gettext("Withdrew")}</span>
+      <span class="q-s"><bdi>{ApiaryWeb.ArtifactComponents.pushed_not_counted(
+        gettext("%{artifact} (version %{number})",
+          artifact: @artifact,
+          number: Format.number(@item.number)
+        ),
+        @item
+      )}</bdi></span>
+      <.tail
+        item={@item}
+        started_at={@started_at}
+        seq_path={@seq_path}
+        terminal_path={@terminal_path}
+      />
+    </div>
+    """
+  end
+
   defp item_body(%{item: %{kind: :pushed}} = assigns) do
     assigns =
       assign(assigns,
@@ -2508,4 +2543,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp detail(value) when is_binary(value), do: {value, :text}
   defp detail(value), do: {Jason.encode!(value), :json}
+
+  # The titles of the runtimes of the catalogue, which all send session events, as a list
+  # in a sentence: "A", "A and B", "A, B, and C".
+  defp runtime_titles, do: Enum.map(Runtimes.list(), & &1.title) |> titles_list()
+
+  @doc false
+  def titles_list([title]), do: title
+  def titles_list([first, second]), do: first <> " and " <> second
+
+  def titles_list(titles),
+    do: Enum.join(Enum.drop(titles, -1), ", ") <> ", and " <> List.last(titles)
 end

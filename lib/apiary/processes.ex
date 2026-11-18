@@ -95,6 +95,16 @@ defmodule Apiary.Processes do
   is required only while no condition holds it back, so a stage whose required output is
   held back goes on to its gate without it.
 
+  ## One run for a stage
+
+  A stage takes `shared_run: true` (default false, `shared_run?/1`): its workflow entries,
+  those in a loop's body included, run as sessions of one run, on one machine. Every
+  entry of such a stage runs with the same access level and on the same machine type (the
+  entry's `machine`, else the document's, else `default`), so a save fails when two
+  entries of the stage differ in one of them (`:shared_run_differs`). An entry's level is
+  the lower of its `access` and the level its workflow declares in the workspace's
+  harness (`shared_access/2`).
+
   ## Export
 
   `export/1` writes the current version, with the workspace type's texts and the
@@ -108,7 +118,7 @@ defmodule Apiary.Processes do
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{DispatchRun, HarnessReads}
   alias Apiary.Harnesses.Qory
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
@@ -140,15 +150,27 @@ defmodule Apiary.Processes do
   the document, `#/stages/1/name` for the name of the second stage), and why. `:too_large` for a document over the limits; `:schema` for one the
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
-  (names compared trimmed and without case); `:condition_input` for a condition
-  `{input: T}` in `when` or `unless` on a stage, an input, an output, a loop or a workflow
-  entry, where `T` is no output of an earlier stage, with `T` as `detail`;
+  (names compared trimmed and without case); `:return_not_earlier` for a workflow entry's
+  `return` whose stage is not one before the entry's stage; `:condition_input` for a condition
+  `{input: T}`, or `{input: T, changed: true}`, in `when` or `unless` on a stage, an input,
+  an output, a loop or a workflow entry, where `T` is no output of an earlier stage, with
+  `T` as `detail`;
   `:condition_track` for a condition `{track: ID}` where no earlier stage's gate offers `ID`,
   with `ID` as `detail`; both refuse any condition on the first stage;
+  `:condition_changed_entry_only` for `changed: true` in a condition on a stage, an input,
+  an output or a loop, at the place of the key `changed`;
+  `:condition_feedback_entry_only` for a condition `{feedback: new}` on a stage, an input,
+  an output or a loop, at the place of the key `feedback`;
   `:condition_both` for a stage, an input, an output, a loop or a workflow entry with both
   `when` and `unless`; `:duplicate_track_id` for the second track with an id; `:gate_track`
   for a track id in a gate's `tracks` that the document's `tracks` do not declare;
   `:gate_none_tracks` for tracks on a gate of kind `none`;
+  `:shared_run_differs` for the first workflow entry of a stage with `shared_run: true`
+  that differs from the stage's first entry in its access level or its machine type, with
+  `:access` or `:machine` as `detail`, one error for each of the two, and
+  `{:access, workflow, level, other}` in place of `:access` where the harness's level for
+  `workflow` lowers its entry's, `other` the level the other entry runs with
+  (`shared_access/2`);
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -333,15 +355,20 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once, every track id
-  once, each track a gate offers declared, the input of each condition an output of an earlier
-  stage, the track of each condition one that an earlier gate offers, and one condition on an item,
-  `when` or `unless`. `:ok`, or
+  and the rules it cannot say: every stage id and every stage name once, the stage of each
+  workflow entry's `return` before the entry's stage, every track id once, each track a gate
+  offers declared, the input of each condition an output of an earlier stage, the track of each
+  condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one access level and machine type in a stage with
+  `shared_run: true`, with the access levels the workflows declare in the harness,
+  `levels` (`declared_access/1`), none by default. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
   workflow the harness does not declare is no error here (`placement_check/3`).
   """
-  @spec validate(term) :: :ok | {:error, [error]}
-  def validate(document) when is_map(document) do
+  @spec validate(term, %{String.t() => :read | :write_no_push | :write}) ::
+          :ok | {:error, [error]}
+  def validate(document, levels \\ %{})
+
+  def validate(document, levels) when is_map(document) do
     cond do
       not Bounds.within?(document, @limits) ->
         {:error, [%{path: "#", error: :too_large, detail: Map.new(@limits)}]}
@@ -350,7 +377,10 @@ defmodule Apiary.Processes do
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
             case duplicates(document["stages"]) ++
-                   track_errors(document) ++ condition_errors(document["stages"]) do
+                   returns_not_earlier(document["stages"]) ++
+                   track_errors(document) ++
+                   condition_errors(document["stages"]) ++
+                   shared_run_errors(document, levels) do
               [] -> :ok
               errors -> {:error, errors}
             end
@@ -361,7 +391,8 @@ defmodule Apiary.Processes do
     end
   end
 
-  def validate(_document), do: {:error, [%{path: "#", error: :schema, detail: :type}]}
+  def validate(_document, _levels),
+    do: {:error, [%{path: "#", error: :schema, detail: :type}]}
 
   @doc false
   def root, do: Schema.file!(@schema)
@@ -384,6 +415,20 @@ defmodule Apiary.Processes do
     end)
     |> elem(0)
     |> Enum.reverse()
+  end
+
+  # The return key of each workflow entry (choice 10) is set to a stage before the
+  # entry's stage; a key in a loop's body fails the schema.
+  defp returns_not_earlier(stages) do
+    for {stage, index} <- Enum.with_index(stages),
+        earlier = MapSet.new(Enum.take(stages, index), & &1["id"]),
+        {%{"return" => %{"stage" => stage_id}}, at} <- Enum.with_index(stage["sequence"] || []),
+        not MapSet.member?(earlier, stage_id),
+        do: %{
+          path: "#/stages/#{index}/sequence/#{at}/return/stage",
+          error: :return_not_earlier,
+          detail: nil
+        }
   end
 
   # The refusals of tracks: a track id declared twice (`:duplicate_track_id`), a gate that
@@ -420,6 +465,106 @@ defmodule Apiary.Processes do
     duplicates ++ offered ++ none
   end
 
+  # The entries of a stage with `shared_run: true` that differ from its first entry, those
+  # in a loop's body included: for each of the access level and the machine type, the
+  # first entry that differs, at its place. An entry's access level is the lower of its
+  # `access` and its workflow's level in `levels` (`shared_access/2`); its machine type
+  # is its `machine`, else the document's, else `default`, as the stage runner reads it.
+  defp shared_run_errors(document, levels) do
+    for {stage, index} <- Enum.with_index(document["stages"]),
+        shared_run?(stage),
+        [{first, _path} | rest] <- [shared_entries(stage, "#/stages/#{index}")],
+        kind <- [:access, :machine],
+        value <- [shared_value(first, kind, document, levels)],
+        {entry, path} <-
+          [Enum.find(rest, &(shared_value(elem(&1, 0), kind, document, levels) != value))],
+        do: %{path: path, error: :shared_run_differs, detail: detail(kind, first, entry, levels)}
+  end
+
+  @doc """
+  shared_access/2 checks that every workflow entry of `stage`, a stage with
+  `shared_run: true`, those in a loop's body included, runs with one access level: the
+  lower of the entry's `access` and the level its workflow declares in `levels`
+  (`declared_access/1`), from lowest to highest `read`, `write-no-push` and `write`. An
+  entry with no `access` takes the workflow's level, and a workflow with no level in
+  `levels` is lowered by its entry's `access` alone. `:ok`, or `{:error, detail}` for the
+  first entry that differs from the first, with the detail of `:shared_run_differs`
+  (`validate/2`). The save checks it, and the claim checks it again, as an update from
+  the harness can change a level after the save.
+  """
+  @spec shared_access(map, %{String.t() => :read | :write_no_push | :write}) ::
+          :ok | {:error, :access | {:access, String.t(), String.t(), String.t()}}
+  def shared_access(stage, levels) when is_map(stage) and is_map(levels) do
+    case shared_entries(stage, "#") do
+      [{first, _path} | rest] ->
+        value = effective_access(first, levels)
+
+        case Enum.find(rest, &(effective_access(elem(&1, 0), levels) != value)) do
+          nil -> :ok
+          {entry, _path} -> {:error, detail(:access, first, entry, levels)}
+        end
+
+      [] ->
+        :ok
+    end
+  end
+
+  # The detail of a difference between `first` and `entry`: `:machine`; for the access,
+  # `{:access, workflow, level, other}` for the first of `entry` and `first` whose
+  # workflow's level in the harness lowers its entry's, with the level the other of the
+  # two runs with, else `:access`.
+  defp detail(:machine, _first, _entry, _levels), do: :machine
+
+  defp detail(:access, first, entry, levels) do
+    cond do
+      harness_lowered?(entry, levels) -> access_detail(entry, first, levels)
+      harness_lowered?(first, levels) -> access_detail(first, entry, levels)
+      true -> :access
+    end
+  end
+
+  defp access_detail(%{"workflow" => workflow}, other, levels),
+    do:
+      {:access, workflow, level_text(Map.fetch!(levels, workflow)),
+       level_text(effective_access(other, levels))}
+
+  defp harness_lowered?(%{"workflow" => workflow} = entry, levels) do
+    case Map.fetch(levels, workflow) do
+      {:ok, declared} -> level_rank(declared) < level_rank(entry_access(entry))
+      :error -> false
+    end
+  end
+
+  defp effective_access(%{"workflow" => workflow} = entry, levels) do
+    Enum.min_by([entry_access(entry), Map.get(levels, workflow, :write)], &level_rank/1)
+  end
+
+  # The level an entry's `access` lowers to, `:write` for none.
+  defp entry_access(%{"access" => "read"}), do: :read
+  defp entry_access(%{"access" => "write-no-push"}), do: :write_no_push
+  defp entry_access(_entry), do: :write
+
+  defp level_rank(:read), do: 0
+  defp level_rank(:write_no_push), do: 1
+  defp level_rank(:write), do: 2
+
+  defp shared_entries(stage, at) do
+    stage["sequence"]
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {%{"loop" => %{"body" => body}}, i} ->
+        for {entry, j} <- Enum.with_index(body), do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+
+      {entry, i} ->
+        [{entry, "#{at}/sequence/#{i}"}]
+    end)
+  end
+
+  defp shared_value(entry, :access, _document, levels), do: effective_access(entry, levels)
+
+  defp shared_value(entry, :machine, document, _levels),
+    do: entry["machine"] || document["machine"] || "default"
+
   # The conditions that no earlier stage can meet, in the document's order: an `input` type
   # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier
   # gate offers (`:condition_track`). A condition sits in `when` or `unless` on a stage, an
@@ -437,25 +582,25 @@ defmodule Apiary.Processes do
         |> Enum.with_index()
         |> Enum.flat_map(fn
           {%{"loop" => %{"body" => body}} = loop, i} ->
-            [{loop, "#{at}/sequence/#{i}"}] ++
+            [{loop, "#{at}/sequence/#{i}", false}] ++
               for {entry, j} <- Enum.with_index(body),
-                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}"}
+                  do: {entry, "#{at}/sequence/#{i}/loop/body/#{j}", true}
 
           {entry, i} ->
-            [{entry, "#{at}/sequence/#{i}"}]
+            [{entry, "#{at}/sequence/#{i}", true}]
         end)
 
       inputs =
         for {input, k} <- Enum.with_index(stage["inputs"] || []),
-            do: {input, "#{at}/inputs/#{k}"}
+            do: {input, "#{at}/inputs/#{k}", false}
 
       outputs =
         for {output, k} <- Enum.with_index(stage["outputs"] || []),
-            do: {output, "#{at}/outputs/#{k}"}
+            do: {output, "#{at}/outputs/#{k}", false}
 
       errors =
-        for {item, path} <- [{stage, at}] ++ inputs ++ entries ++ outputs,
-            error <- item_errors(item, path, earlier),
+        for {item, path, entry?} <- [{stage, at, false}] ++ inputs ++ entries ++ outputs,
+            error <- item_errors(item, path, earlier, entry?),
             do: error
 
       made = for o <- stage["outputs"] || [], do: o["type"]
@@ -465,8 +610,9 @@ defmodule Apiary.Processes do
   end
 
   # An item holds one condition: `when` or `unless`, not both (`:condition_both`, at the
-  # item's place).
-  defp item_errors(item, path, earlier) do
+  # item's place). `entry?` is whether the item is a workflow entry by its place: an element
+  # of a stage's sequence that is no loop, or of a loop's body; no key of the item decides it.
+  defp item_errors(item, path, earlier, entry?) do
     both =
       if Map.has_key?(item, "when") and Map.has_key?(item, "unless"),
         do: [%{path: path, error: :condition_both, detail: nil}],
@@ -474,26 +620,50 @@ defmodule Apiary.Processes do
 
     both ++
       for key <- ["when", "unless"],
-          error <- condition_error(item[key], path <> "/" <> key, earlier),
+          error <- condition_error(item[key], path <> "/" <> key, earlier, entry?),
           do: error
   end
 
-  defp condition_error(%{"input" => type}, path, {types, _tracks}) do
-    if type in types,
-      do: [],
-      else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+  # `{input: T, changed: true}` compares a version with the runs of one workflow entry, so
+  # only a workflow entry may have it (`:condition_changed_entry_only`, at `.../changed`),
+  # after the refusal of its type (`:condition_input`).
+  defp condition_error(%{"input" => type} = condition, path, {types, _tracks}, entry?) do
+    input =
+      if type in types,
+        do: [],
+        else: [%{path: path <> "/input", error: :condition_input, detail: type}]
+
+    changed =
+      if condition["changed"] == true and not entry?,
+        do: [%{path: path <> "/changed", error: :condition_changed_entry_only, detail: nil}],
+        else: []
+
+    input ++ changed
   end
 
-  defp condition_error(%{"track" => track}, path, {_types, tracks}) do
+  defp condition_error(%{"track" => track}, path, {_types, tracks}, _entry?) do
     if track in tracks,
       do: [],
       else: [%{path: path <> "/track", error: :condition_track, detail: track}]
   end
 
-  defp condition_error(_condition, _path, _earlier), do: []
+  # `{feedback: new}` starts or passes over a run of a workflow entry, so only a workflow
+  # entry may have it (`:condition_feedback_entry_only`, at `.../feedback`).
+  defp condition_error(%{"feedback" => _new}, path, _earlier, false),
+    do: [%{path: path <> "/feedback", error: :condition_feedback_entry_only, detail: nil}]
+
+  defp condition_error(_condition, _path, _earlier, _entry?), do: []
 
   defp add_if(errors, true, path, error), do: [%{path: path, error: error, detail: nil} | errors]
   defp add_if(errors, false, _path, _error), do: errors
+
+  @doc """
+  shared_run?/1 is whether the workflow entries of `stage`, a stage of a process document,
+  run as sessions of one run: its `shared_run`, false where the stage has none.
+  """
+  @spec shared_run?(map) :: boolean
+  def shared_run?(%{"shared_run" => true}), do: true
+  def shared_run?(_stage), do: false
 
   @doc """
   new_stage_id/0 is a fresh stage id: `st_` and 10 random Crockford base32 characters,
@@ -828,14 +998,68 @@ defmodule Apiary.Processes do
   @doc false
   # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
   # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
-  # where it has one (`Apiary.Processes.Version`).
+  # where it has one (`Apiary.Processes.Version`). A record of a harness repository also
+  # has `submit_schema`, the JSON Schema of the submit type in `template`, because the
+  # instance keeps no files of a harness repository (`submit_schema/2`).
   @spec with_submit(map, map) :: map
   def with_submit(record, template) do
     case Map.get(template, :submit) do
-      %{} = submit -> Map.put(record, "submit", submit)
+      %{} = submit ->
+        record
+        |> Map.put("submit", submit)
+        |> with_submit_schema(submit["type"], template)
+
+      nil ->
+        record
+    end
+  end
+
+  defp with_submit_schema(%{"source" => "repository"} = record, type, template) do
+    case entry_schema(submit_entry(template.artifact_types, type)) do
+      %{} = schema -> Map.put(record, "submit_schema", schema)
       nil -> record
     end
   end
+
+  defp with_submit_schema(record, _type, _template), do: record
+
+  defp submit_entry(listed, type) when is_list(listed),
+    do: Enum.find(listed, &(&1["name"] == type and &1["base_view"] == "structured"))
+
+  defp submit_entry(_listed, _type), do: nil
+
+  defp entry_schema(%{"json_schema" => %{} = schema}), do: schema
+  defp entry_schema(_entry), do: nil
+
+  @doc false
+  # submit_schema/2 is `{:ok, schema}`, the JSON Schema of the type `type` in the harness
+  # commit that the run `run` composes, where `type` is the `submit.type` of its process
+  # version and the run composes that version's commit (`HarnessReads.version_commit/2`).
+  # A Qory harness record reads it from the files kept for the commit
+  # (`Apiary.Harnesses.Qory.template/1`); a harness repository's record keeps it
+  # (`with_submit/2`). `:none` otherwise: the caller then checks the workspace's type.
+  @spec submit_schema(DispatchRun.t(), String.t()) :: {:ok, map} | :none
+  def submit_schema(%DispatchRun{process_version_id: version_id} = run, type) do
+    with %{"submit" => %{"type" => ^type}} = record <- harness_template(version_id),
+         {:ok, commit} <- HarnessReads.version_commit(run, record),
+         %{} = schema <- recorded_schema(record, commit, type) do
+      {:ok, schema}
+    else
+      _none -> :none
+    end
+  end
+
+  defp recorded_schema(%{"source" => "qory"}, commit, type) do
+    case Qory.template(commit) do
+      %{artifact_types: listed} -> entry_schema(submit_entry(listed, type))
+      nil -> nil
+    end
+  end
+
+  defp recorded_schema(%{"source" => "repository", "submit_schema" => schema}, _commit, _type),
+    do: schema
+
+  defp recorded_schema(_record, _commit, _type), do: nil
 
   @doc """
   copy_template/4 inserts version 1 of `workspace`, made from a template of a harness
@@ -916,7 +1140,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- Access.check(scope, :"process.edit", workspace),
-           :ok <- validate(document),
+           :ok <- validate(document, declared_access(workspace)),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
@@ -955,6 +1179,8 @@ defmodule Apiary.Processes do
     * the document may be the document of that version, since the commit changes; only
       the same document at the same commit is `:unchanged`;
     * the switch that keeps the process at the latest is not changed here;
+    * `levels:`, the access level each workflow of the harness declares, by name, checks
+      the stages with `shared_run: true` as `save/4` does (`validate/2`); none by default;
     * for the instance's scope (`Apiary.Accounts.Scope.for_instance/2`), with no person,
       it checks no access: the switch's update, which no person starts. Its version has
       no author.
@@ -972,7 +1198,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- harness_access(scope, workspace),
-           :ok <- validate(document),
+           :ok <- validate(document, Keyword.get(opts, :levels, %{})),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),

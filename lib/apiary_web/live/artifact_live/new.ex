@@ -3,7 +3,7 @@ defmodule ApiaryWeb.ArtifactLive.New do
   # feature `workflow_model`, for a member who may `artifact.write` the work item: a type
   # of the workspace's that a person adds by hand (`Apiary.Artifacts.person_types/1`: not
   # the questions or the review comments, which members write through Explore's
-  # actions), a name, `main` unless changed, the
+  # actions, nor the type that the process's `submit` sets), a name, `main` unless changed, the
   # files, uploaded with LiveView's uploads, and an optional note. `?type=` and `?name=`
   # fill the type and the name, as Add a version on a version's page does.
   #

@@ -196,16 +196,16 @@ defmodule ApiaryWeb.WorkItemLive.TestWorkItemTest do
 
     test "the questions' line has no ticket in its words", %{conn: conn, scope: scope} do
       {test_item, _run} = ran!(scope, result: questions_result())
-      {:ok, view, _html} = live(conn, page(scope, test_item.number, "/explore"))
+      {:ok, view, _html} = live(conn, page(scope, test_item.number, "/questions"))
 
       assert has_element?(
                view,
-               "#work-item-explore-questions-cap",
-               "Run another round starts the next run. That run reads your answers and updates the proposal."
+               "#work-item-questions-open-cap",
+               "Run another round of Explore starts Explore's next run. That run reads your answers and updates Explore's proposal."
              )
 
-      refute has_element?(view, "#work-item-explore-questions", "ticket")
-      refute has_element?(view, "#work-item-explore-questions", "its comments")
+      refute has_element?(view, "#work-item-questions-open", "ticket")
+      refute has_element?(view, "#work-item-questions-open", "its comments")
     end
   end
 

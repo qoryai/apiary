@@ -48,12 +48,14 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Access
   alias Apiary.Dispatches
   alias Apiary.Dispatches.{DispatchRun, MachineLogs, Pause}
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Policy.RequiredHosts
   alias Apiary.Runs
   alias Apiary.Runs.{Cancel, Preparation, Record, Run, TargetWrite}
+  alias Apiary.Submissions
   alias Apiary.Targets
   alias Apiary.Runs.Record.{Overview, Timeline}
   alias ApiaryWeb.ConnectionLive.Rules
@@ -715,6 +717,7 @@ defmodule ApiaryWeb.RunLive.Show do
         run_state={Run.shown_state(@run)}
         cancelling={cancelling?(@run)}
         wall={is_binary(@run.wall)}
+        submissions={@submissions}
         session_open={@focused && row_session(@preparation, focused_row(@index, @focused))}
       >
         <:session
@@ -1738,6 +1741,8 @@ defmodule ApiaryWeb.RunLive.Show do
        opened_for: {nil, nil},
        preparation: nil,
        preparation_settled: false,
+       submissions: nil,
+       submission_reads: %{},
        outputs: [],
        overview: [],
        overview_cx: false,
@@ -2888,7 +2893,7 @@ defmodule ApiaryWeb.RunLive.Show do
       other_runtime?(run.runtime) ->
         :other_runtime
 
-      is_binary(run.wall) and index.hook_events == 0 and settled? ->
+      hooks?(run.runtime) and is_binary(run.wall) and index.hook_events == 0 and settled? ->
         :vm_wall
 
       run.runtime == "claude" and is_nil(run.wall) and index.session_items == 0 and settled? ->
@@ -2899,9 +2904,15 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  # Whether a runtime is one that sends no session events: they come from Claude Code's
-  # hooks alone.
-  defp other_runtime?(runtime), do: is_binary(runtime) and runtime != "claude"
+  # Whether a runtime is one that sends no session events: a runtime of the catalogue
+  # sends them, Claude Code from its hooks and the others from the runtime's output; a
+  # program that is no runtime of the catalogue sends none.
+  defp other_runtime?(runtime),
+    do: is_binary(runtime) and Runtimes.fetch(runtime) == :error
+
+  # Whether a runtime's session events come from hooks, which a wall inside a virtual
+  # machine cuts off: Claude Code's, and a run's before its first session names a runtime.
+  defp hooks?(runtime), do: Timeline.hooks?(runtime)
 
   defp older_than?(%DateTime{} = at, seconds), do: DateTime.diff(DateTime.utc_now(), at) > seconds
   defp older_than?(_at, _seconds), do: false
@@ -3959,13 +3970,18 @@ defmodule ApiaryWeb.RunLive.Show do
     was = layout(socket.assigns)
     preparation = Preparation.read(scope, run)
 
+    {submissions, reads} =
+      Submissions.for_run(scope, run, preparation.outputs, socket.assigns.submission_reads)
+
     socket
     |> assign(
       preparation: preparation,
       preparation_settled:
         PreparationComponents.settled?(preparation, alive?(run)) or
           socket.assigns.index.session_items > 0,
-      machine_log: machine_log(scope, preparation, socket.assigns.machine_log)
+      machine_log: machine_log(scope, preparation, socket.assigns.machine_log),
+      submissions: submissions,
+      submission_reads: reads
     )
     |> assign_clean_up()
     |> resend_window(was)
@@ -4161,28 +4177,29 @@ defmodule ApiaryWeb.RunLive.Show do
   defp shown_limit(limit, _preparation), do: limit
 
   # The second note of a run whose sessions ran Claude Code and another runtime, nil for
-  # any other run: for a run whose last session ran another runtime, the note of the wall
-  # or the hooks of its Claude Code sessions; else the note of the other runtime.
-  defp mixed_limit(:other_runtime, run, index, %{sessions: sessions} = preparation) do
-    with true <- Enum.any?(sessions, &(&1.runtime == "claude")),
-         reason when reason != nil <- shown_limit(claude_limit(run, index, "claude"), preparation) do
-      {reason, nil}
+  # any other run: for a run whose last session ran a runtime without hooks, the note of
+  # the wall or the hooks of its Claude Code sessions; else the note of the program that
+  # is no runtime of the catalogue.
+  defp mixed_limit(:not_started, _run, _index, _preparation), do: nil
+
+  defp mixed_limit(_limit, run, index, %{sessions: sessions} = preparation) do
+    if hooks?(run.runtime) do
+      with %{runtime: runtime} <- Enum.find(sessions, &other_runtime?(&1.runtime)),
+           :other_runtime <- shown_limit(:other_runtime, preparation) do
+        {:other_runtime, runtime}
+      else
+        _none -> nil
+      end
     else
-      _none -> nil
+      with true <- Enum.any?(sessions, &(&1.runtime == "claude")),
+           reason when reason != nil <-
+             shown_limit(claude_limit(run, index, "claude"), preparation) do
+        {reason, nil}
+      else
+        _none -> nil
+      end
     end
   end
-
-  defp mixed_limit(limit, _run, _index, %{sessions: sessions} = preparation)
-       when limit != :not_started do
-    with %{runtime: runtime} <- Enum.find(sessions, &other_runtime?(&1.runtime)),
-         :other_runtime <- shown_limit(:other_runtime, preparation) do
-      {:other_runtime, runtime}
-    else
-      _none -> nil
-    end
-  end
-
-  defp mixed_limit(_limit, _run, _index, _preparation), do: nil
 
   # The note in the agent session that started at `sequence`, above its Timeline: for a
   # runtime that sends no session events, the note on that runtime; for Claude Code, the
@@ -4194,8 +4211,8 @@ defmodule ApiaryWeb.RunLive.Show do
       %{runtime: runtime} ->
         cond do
           other_runtime?(runtime) -> [{:other_runtime, runtime}]
-          limit in [:vm_wall, :no_hooks] -> [{limit, nil}]
-          reason = limit == :other_runtime && claude_limit(run, index, runtime) -> [{reason, nil}]
+          limit in [:vm_wall, :no_hooks] and hooks?(runtime) -> [{limit, nil}]
+          reason = not hooks?(run.runtime) && claude_limit(run, index, runtime) -> [{reason, nil}]
           true -> []
         end
 
@@ -4212,7 +4229,7 @@ defmodule ApiaryWeb.RunLive.Show do
     settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 
     cond do
-      is_binary(run.wall) and index.hook_events == 0 and settled? ->
+      hooks?(runtime) and is_binary(run.wall) and index.hook_events == 0 and settled? ->
         :vm_wall
 
       runtime == "claude" and is_nil(run.wall) and index.session_items == 0 and settled? ->

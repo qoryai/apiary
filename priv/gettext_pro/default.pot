@@ -343,9 +343,13 @@ msgid "A purged organisation"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
-#: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "A run receives only its security policy."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "A run receives the variables that its workspace and target inherit from this organisation, as they are when it starts. A later change reaches the next run."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -2450,6 +2454,11 @@ msgstr ""
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "This organisation's features can't be changed."
+msgstr ""
+
+#: lib/apiary_pro/workspace_operators.ex
+#, elixir-autogen, elixir-format
+msgid "To change the schema, ask the operator of this workspace."
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/organisations.ex

@@ -204,6 +204,8 @@ defmodule Apiary.Kinds.EndpointTest do
                "claude-subscription" => [],
                "deepseek" => [],
                "litellm" => ["address"],
+               "openai" => [],
+               "openai-subscription" => [],
                "openrouter" => []
              }
     end

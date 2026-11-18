@@ -40,7 +40,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 121
+      assert length(names) == 153
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -301,22 +301,26 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "c6b77016c47ddd29952718fb121646ff118fb474"
+  @integrations_ref "805a7bdb09a16441b8275857e9b50cdfe8227e2d"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "0a27d575e941f90d8a52fbe18389a039c2bbccac046c138081ea55876b7696b4",
+      "972bf687e27cdc33da52f74c33d4184426ba1f818edb03108b295de470ed5240",
     "priv/contract/integration/definitions.schema.json" =>
       "0e04d1d3e38af330351e585169decd78a9c629a8b1491a6ba86c0b910f2c16ff",
     "priv/contract/integration/descriptions/anthropic.json" =>
-      "04f85c67a8f04e06c925ce61b5210c7141aec7453b3e645a298f075b06491c1b",
+      "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
-      "7e927ff0484cd4d20e87404e6f05e8a04678abce2d6f4d19f69ed04dacd8b96c",
+      "7587c681a2dcd69b4aff0a2abf06bdceb82bf45ce38e60eacceac0b35ed344de",
     "priv/contract/integration/descriptions/deepseek.json" =>
-      "6cdf2ab9c102dfb01ba618b2b44fa7235e253cf29d3b349474eae5108cc6dd64",
+      "76841285dc0bbb74f74d20963793608c0e7cb6fba110887807551017bddd0972",
     "priv/contract/integration/descriptions/litellm.json" =>
-      "1f41df7746990683f8f23217275531a446aaa11a58e723a0eefd72cd23ceaf57",
+      "8eb1c9dfec32169cefd9a4a66059696633883eb7d167b342fec4dc75150f8e00",
+    "priv/contract/integration/descriptions/openai-subscription.json" =>
+      "c09e9e41b23359a86a241c4e462d3d67e43f325ab7eec6fae275d788dbd2af47",
+    "priv/contract/integration/descriptions/openai.json" =>
+      "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
     "priv/contract/integration/descriptions/openrouter.json" =>
-      "f77a4df6d8115eb3030a2053e8c97f87aef2a8e0566b629673d618cefb28d7bb",
+      "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
       "8ca580eaf26da82ddc439c40658b6b4ba0198706535a3abff194b25077c610eb",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
@@ -368,7 +372,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert names ==
                ~w(anthropic.json claude-subscription.json deepseek.json litellm.json
-                  openrouter.json)
+                  openai-subscription.json openai.json openrouter.json)
 
       for name <- names do
         assert {:ok, description} =

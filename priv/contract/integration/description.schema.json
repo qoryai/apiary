@@ -18,6 +18,7 @@
     },
     "title": {"description": "A human name, for a form or a listing.", "type": "string", "minLength": 1},
     "description": {"description": "A sentence or two on what the integration does, for a form or a listing.", "type": "string"},
+    "vendor": {"description": "The vendor's name, a line as $defs/line defines it of at most 40 characters, such as Anthropic, or your LiteLLM proxy for a proxy that the admin runs. The control plane shows it in lines such as \"Anthropic rejected it on <date time>.\". A line may start with the name, and the control plane then writes its first letter in upper case.", "$ref": "#/$defs/line", "maxLength": 40},
     "domains": {
       "description": "The domains the integration works with, each a domain name, such as software. When the integration names no domain, the field is absent, never an empty list.",
       "type": "array",
@@ -147,7 +148,7 @@
           "then": {"not": {"anyOf": [{"required": ["item_noun"]}, {"required": ["comments"]}]}}
         },
         "model_provider": {
-          "description": "A provider of models behind one or more APIs, in either form: the APIs it serves, each with its format, endpoint and auth, and the models a new provider of this kind starts with. A reader starts no program for this role. For each runtime a run uses, the control plane picks the API whose format that runtime speaks, and sends Forager that API's format, endpoint, auth and key_prefixes beside the key. When a credential role of an integration covers the host of an API's endpoint, the program of that credential role sets the key, for a key that must be minted; otherwise the API's auth applies. The key itself is never part of the description or of its settings.",
+          "description": "A provider of models behind one or more APIs, in either form: the APIs it serves, each with its format, endpoint and auth, and the models a new provider of this kind starts with. A reader starts no program for this role. For each runtime a run uses, the control plane picks the API whose format that runtime sends and whose runtimes, when present, list that runtime, and sends Forager that API's format, endpoint, auth and key_prefixes beside the key. When a credential role of an integration covers the host of an API's endpoint, the program of that credential role sets the key, for a key that must be minted; otherwise the API's auth applies. The key itself is never part of the description or of its settings.",
           "type": "object",
           "additionalProperties": false,
           "required": ["apis", "models"],
@@ -189,6 +190,12 @@
               "maxItems": 11,
               "uniqueItems": true,
               "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}
+            },
+            "key_lifetime_days": {
+              "description": "The days a key of this provider stays valid, counted from the time the key was added, such as 365: an integer from 1 to 3650. The control plane warns 14 days before the end of that lifetime. Absent, the lifetime is unknown, and the control plane shows no such warning.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650
             }
           }
         }
@@ -213,7 +220,7 @@
   },
   "$defs": {
     "api": {
-      "description": "One API of a model provider: its format, its endpoint, how the gateway sets the key on a request, and the prefixes a key must start with.",
+      "description": "One API of a model provider: its format, its endpoint, how the gateway sets the key on a request, the prefixes a key must start with, the runtimes that may use a key, the paths the key is set on, and how the control plane refreshes an OAuth login.",
       "type": "object",
       "additionalProperties": false,
       "required": ["format", "endpoint", "auth"],
@@ -235,7 +242,7 @@
           }
         },
         "auth": {
-          "description": "How the gateway sets the key on a request, as Forager's auth.schema.json defines it. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password. oauth, only with bearer, marks the value as an OAuth access token, such as the subscription token of a Claude subscription: the gateway sets it as any bearer value, and the session reads oauth to choose the runtime's variable for the key.",
+          "description": "How the gateway sets the key on a request, as Forager's auth.schema.json defines it. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password. oauth, only with bearer, marks the value as an OAuth access token, such as the OAuth access token of a Claude subscription: the gateway sets it as any bearer value, and the session reads oauth to choose the runtime's variable for the key. account_header and account_claim come both or neither, and only with oauth: the gateway sets the header account_header, such as chatgpt-account-id, to the claim at the JSON pointer account_claim in the access token's JWT payload.",
           "$ref": "https://qory.dev/contracts/forager/v1/auth.schema.json"
         },
         "key_prefixes": {
@@ -245,11 +252,40 @@
           "maxItems": 4,
           "uniqueItems": true,
           "items": {"type": "string", "pattern": "^[!-~]{1,32}$"}
+        },
+        "runtimes": {
+          "description": "The runtimes that may use a key of this API, such as claude: 1 to 16 names, none twice, each a name in Forager's runtimes.json, 1 to 64 characters of lower-case letters, digits and hyphens, starting with a letter, as runtime in Forager's descriptor.schema.json. Absent, every runtime that sends the API's format may use the key.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+        },
+        "paths": {
+          "description": "The paths of the endpoint's host that the gateway sets the key on, 1 to 32, none twice, in Forager's path grammar, as credential_paths in Forager's run-configuration.schema.json defines it: a path from the root, with no *, ? or # and no space character, whose last character may be a *, where a segment written exactly {} matches one segment that is not empty and a { or } anywhere else is refused. The control plane copies the list unchanged into paths of api_credential in the run configuration. Absent means every path of the host.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^/(?:\\{\\}|[^*?#\\s{}/]*)(?:/(?:\\{\\}|[^*?#\\s{}/]*))*\\*?$"}
+        },
+        "oauth_refresh": {
+          "description": "Where and with which client id the control plane refreshes an OAuth login of this API: a POST to url with a JSON body that has grant_type refresh_token, the login's refresh token, client_id and, when present, scope. It is allowed only with an auth whose oauth is true. Absent, the login needs no refresh.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "client_id"],
+          "properties": {
+            "url": {"description": "The URL the control plane sends the refresh request to, as $defs/endpoint defines it.", "$ref": "#/$defs/endpoint"},
+            "client_id": {"description": "The OAuth client id of the refresh request: 1 to 128 characters, with no white space.", "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^\\S+$"},
+            "scope": {"description": "The OAuth scope of the refresh request, such as openid profile email: 1 to 256 characters. Absent, the request has no scope.", "type": "string", "minLength": 1, "maxLength": 256}
+          }
         }
-      }
+      },
+      "if": {"required": ["oauth_refresh"]},
+      "then": {"properties": {"auth": {"required": ["oauth"]}}}
     },
     "endpoint": {
-      "description": "A model API's base URL, the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
+      "description": "An https URL, such as a model API's base URL or an OAuth refresh URL, in the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
       "type": "string",
       "maxLength": 2048,
       "pattern": "^https://[^/?#@\\s]+(/[^?#\\s]*)?$"

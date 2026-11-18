@@ -1217,13 +1217,15 @@ defmodule Apiary.ModelChoicesTest do
 
     test "a save without fallbacks keeps each stored fallback's runtime and tiers", ctx do
       %{scope: scope, provider: provider, subscription: subscription, deepseek: deepseek} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
       :ok = Runtimes.put_test_list([release, second])
 
+      # The Claude subscription's API is for the runtime `claude` alone, so DeepSeek takes
+      # the copy of that runtime.
       sent = [
-        fallback(subscription, every_tier("claude-haiku-5-5", "max"), second.name),
-        fallback(deepseek, every_tier("deepseek-flash", "low"))
+        fallback(subscription, every_tier("claude-haiku-5-5", "max")),
+        fallback(deepseek, every_tier("deepseek-flash", "low"), second.name)
       ]
 
       {:ok, _choice} =
@@ -1242,7 +1244,7 @@ defmodule Apiary.ModelChoicesTest do
       assert fallback_errors(
                ModelChoices.put_choice(scope, :workspace, attrs(provider, %{effort: "high"}))
              ) == [
-               {0, :runtime,
+               {1, :runtime,
                 "Choose one of the offered runtimes: #{second.name} is not one of them."}
              ]
     end
@@ -1379,7 +1381,7 @@ defmodule Apiary.ModelChoicesTest do
     test "are refused on the provider for a runtime of the fallback that its provider does not serve",
          ctx do
       %{scope: scope, provider: provider, subscription: subscription} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       # A runtime that sends only a format no provider of the catalogue serves.
       unserved = %{
@@ -1421,8 +1423,8 @@ defmodule Apiary.ModelChoicesTest do
     end
 
     test "check each tier's effort against the fallback's runtime", ctx do
-      %{scope: scope, provider: provider, subscription: subscription} = ctx
-      [release] = Runtimes.list()
+      %{scope: scope, provider: provider, deepseek: deepseek} = ctx
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       # A runtime that takes the effort value low alone.
       low_only = %{
@@ -1439,10 +1441,12 @@ defmodule Apiary.ModelChoicesTest do
                  scope,
                  :workspace,
                  attrs(provider, %{
-                   fallbacks: [fallback(subscription, every_tier(@model, "high"), low_only.name)]
+                   fallbacks: [
+                     fallback(deepseek, every_tier("deepseek-flash", "high"), low_only.name)
+                   ]
                  })
                )
-             ) == [{0, :effort, "Choose one of #{@model}'s effort values: low."}]
+             ) == [{0, :effort, "Choose one of deepseek-flash's effort values: low."}]
 
       # The choice's own tiers, on the release's runtime, keep the effort high.
       assert {:ok, choice} =
@@ -1451,12 +1455,14 @@ defmodule Apiary.ModelChoicesTest do
                  :workspace,
                  attrs(provider, %{
                    tiers: every_tier(@model, "high"),
-                   fallbacks: [fallback(subscription, every_tier(@model, "low"), low_only.name)]
+                   fallbacks: [
+                     fallback(deepseek, every_tier("deepseek-flash", "low"), low_only.name)
+                   ]
                  })
                )
 
       assert stored(choice) == [
-               {0, subscription.public_id, low_only.name, every_tier(@model, "low")}
+               {0, deepseek.public_id, low_only.name, every_tier("deepseek-flash", "low")}
              ]
     end
 

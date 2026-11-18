@@ -196,6 +196,18 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    test "reason_words says qory's reason for a run that writes with no wall, in the catalogue" do
+      pot = File.read!(Path.expand("../../../priv/gettext/default.pot", __DIR__))
+      reason = "write_needs_wall"
+      words = "write run with no wall"
+      ended = %Apiary.Runs.Run{state: "failed", reason: reason, exited_at: DateTime.utc_now()}
+
+      assert RunComponents.reason_words(%{reason: reason, state: "failed"}) == words
+      assert RunComponents.reason_words(ended) == words
+      assert RunComponents.exit_note(ended) == words
+      assert pot =~ ~s(\nmsgid "#{words}"\n)
+    end
+
     test "workflow_not_in_harness names the workflow and where the run's harness comes from" do
       alias Apiary.Dispatches.DispatchRun
       alias Apiary.Harnesses.RunHarness

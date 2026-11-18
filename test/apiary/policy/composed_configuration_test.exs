@@ -905,33 +905,14 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       %{document: document} = pinned_run!(ctx.scope, [])
       refute Map.has_key?(Jason.decode!(document), "stack_hosts")
     end
-  end
-
-  describe "a run whose documents have a submit_module" do
-    @describetag needs: :factory
-
-    # Run documents as a claim writes them, in the contract's order: `submit_module`, from
-    # `git`, then `submit`, then `inputs`.
-    defp module_documents(git) do
-      module = %{"name" => "forge-submit", "source" => %{"git" => git, "ref" => "main"}}
-
-      Jason.encode!(
-        Jason.OrderedObject.new([
-          {"step", "explore"},
-          {"submit_module", module},
-          {"submit", %{"type" => "code-change", "send" => "end_of_run"}},
-          {"inputs", %{"version" => 1}}
-        ])
-      )
-    end
 
     defp pins(count), do: for(n <- 1..count, do: pin("https://git#{n}.example/acme/stack"))
 
     test "gets the served digest from the events endpoint, which reads the run's row", ctx do
       %{run: run, document: document, digest: digest, secrets_key: {key, _seed}} =
-        pinned_run!(ctx.scope, [], module_documents("https://modules.example.org/acme/m"))
+        pinned_run!(ctx.scope, [pin("https://git.example/acme/stack")])
 
-      assert Jason.decode!(document)["stack_hosts"] == ["modules.example.org"]
+      assert Jason.decode!(document)["stack_hosts"] == ["git.example"]
 
       # A batch of a run the caller does not hold: the run is read by its subject.
       batch = %Batch{subject: run.node_run_id, events: []}
@@ -939,17 +920,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Serving.digest_for(key, run, batch, nil) == digest
     end
 
-    test "with 31 pins of other hosts is given 32 stack hosts, the module's last", ctx do
-      documents = module_documents("https://modules.example.org/acme/m")
-      %{document: document} = pinned_run!(ctx.scope, pins(31), documents)
-      hosts = Jason.decode!(document)["stack_hosts"]
-      assert length(hosts) == 32
-      assert List.last(hosts) == "modules.example.org"
-    end
-
-    test "with 32 pins of other hosts composes no document: 33 stack hosts", ctx do
-      documents = module_documents("https://modules.example.org/acme/m")
-      %{run: run, secrets_key: {key, _seed}} = walked_run!(ctx.scope, pins(32), documents)
+    test "with 33 pins of other hosts composes no document: 33 stack hosts", ctx do
+      %{run: run, secrets_key: {key, _seed}} = walked_run!(ctx.scope, pins(33), nil)
       assert {:ok, members} = ComposedConfiguration.members(run)
       assert length(members.stack_hosts) == 33
 
@@ -962,32 +934,26 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
                {:error, :unavailable}
     end
 
-    test "has the module's host once where a pin has the same host", ctx do
-      pins = [pin("https://Modules.example.org/acme/stack"), pin("https://git.example/a/b")]
-
-      %{document: document} =
-        pinned_run!(ctx.scope, pins, module_documents("https://modules.example.org/acme/m"))
-
-      assert Jason.decode!(document)["stack_hosts"] == ["modules.example.org", "git.example"]
-    end
-
-    test "after inputs has no stack host: the scan stops at inputs", ctx do
+    test "takes no host from a source in the run's stored documents", ctx do
       module = %{
         "name" => "forge-submit",
-        "source" => %{"git" => "https://modules.example.org/m"}
+        "source" => %{"git" => "https://modules.example.org/acme/m", "ref" => "main"}
       }
 
       documents =
         Jason.encode!(
           Jason.OrderedObject.new([
             {"step", "explore"},
-            {"inputs", %{"version" => 1}},
-            {"submit_module", module}
+            {"submit_module", module},
+            {"submit", %{"type" => "code-change", "send" => "end_of_run"}},
+            {"inputs", %{"version" => 1}}
           ])
         )
 
-      %{document: document} = pinned_run!(ctx.scope, [], documents)
-      refute Map.has_key?(Jason.decode!(document), "stack_hosts")
+      %{document: document} =
+        pinned_run!(ctx.scope, [pin("https://git.example/acme/stack")], documents)
+
+      assert Jason.decode!(document)["stack_hosts"] == ["git.example"]
     end
   end
 end

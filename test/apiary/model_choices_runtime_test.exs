@@ -27,7 +27,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
         keys: [%{value_id: "main", value: "sk-ant-runtime-test-0123456789"}]
       })
 
-    [release] = Runtimes.list()
+    release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
     %{
       scope: scope,
@@ -176,10 +176,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
   test "a run whose choices name no provider sends the default runtime", ctx do
     place = handover_place_fixture(ctx.scope, allow_secrets: true)
 
-    assert claim!(ctx.scope, place) == %{
-             "runtime" => ctx.release.name,
-             "time_limit_minutes" => 180
-           }
+    assert claim!(ctx.scope, place) == %{"runtime" => ctx.release.name}
   end
 
   # A fresh work item's explore run, queued and claimed: its run settings.

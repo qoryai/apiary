@@ -16,8 +16,7 @@ defmodule ApiaryWeb.Contract.AdapterController do
   # `Apiary.Adapters.declare/2`: a key `Apiary.Access` does not let declare
   # (`adapter.declare`) is `403` `forbidden`, or `404` `not_found` where its adapter is
   # not found to it; else the declaration is stored, with what the description's source
-  # role says of its items and its collections, the forge's `submit_module`, where the
-  # body has one, and, with a `call_url`, the request's
+  # role says of its items and its collections, and, with a `call_url`, the request's
   # `X-Qory-Instance-Id`, which Qory Apiary's calls to the adapter are signed for; and the
   # answer is `204`, signed, with no body. When it cannot be stored, the answer is `503`
   # `unavailable`. Nothing here logs the body, a header or a signature.

@@ -78,7 +78,9 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
     test "off: the add form leaves out LiteLLM, and a LiteLLM provider added stays listed",
          %{conn: conn, scope: scope} = ctx do
       {:ok, lv, _html} = live(conn, new_path(scope))
-      assert offered(lv) == ~w(anthropic claude-subscription deepseek openrouter)
+
+      assert offered(lv) ==
+               ~w(anthropic claude-subscription deepseek openai openai-subscription openrouter)
 
       # Added while the feature was on: with it off, a LiteLLM provider is not added.
       provider =
@@ -95,7 +97,9 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
     @tag with_features: Apiary.Features.all()
     test "on: the add form offers LiteLLM", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, new_path(scope))
-      assert offered(lv) == ~w(anthropic claude-subscription deepseek litellm openrouter)
+
+      assert offered(lv) ==
+               ~w(anthropic claude-subscription deepseek litellm openai openai-subscription openrouter)
     end
 
     @litellm %{

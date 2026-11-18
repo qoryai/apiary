@@ -33,13 +33,18 @@ const workflow = (h, name, key, mark) =>
 // The mark set for `name`, read with hasOwn: a name such as "constructor" is a key of every object.
 const markOf = (marks, name) => (marks && Object.hasOwn(marks, name) ? marks[name] : undefined)
 
+// The line of a workflow's return to an earlier stage, under the workflow, in the size and
+// colour of the description. Under a check or a cross it starts where the name does.
+const returns = (h, text, key, marked) =>
+  line(h, text, key, ["break-words text-[14px]/5 text-muted", marked ? "pl-5" : ""].join(" ").trim())
+
 // The words of a condition on a track, under a workflow or inside a loop's bracket.
 const condition = (h, text, key) => h("p", {key, className: "text-[14px]/5 text-muted"}, text)
 
 const steps = (h, sequence, words, marks) =>
   sequence.length === 0
     ? [line(h, words.no_workflow, "none", "text-muted")]
-    : sequence.map((item, i) =>
+    : sequence.flatMap((item, i) =>
         "loop" in item
           ? // A loop: a bracket around its workflows, labelled with its rounds, and its condition.
             h(
@@ -63,12 +68,15 @@ const steps = (h, sequence, words, marks) =>
               ),
               item.condition ? condition(h, item.condition, "c") : null,
             )
-          : item.condition
+          : item.condition || item.returns
             ? h(
                 "div",
                 {key: `s${i}`, className: "grid gap-0.5"},
-                workflow(h, item.workflow, "w", markOf(marks, item.workflow)),
-                condition(h, item.condition, "c"),
+                ...[
+                  workflow(h, item.workflow, "w", markOf(marks, item.workflow)),
+                  item.condition && condition(h, item.condition, "c"),
+                  item.returns && returns(h, item.returns, "r", markOf(marks, item.workflow) !== undefined),
+                ].filter(Boolean),
               )
             : workflow(h, item.workflow, `s${i}`, markOf(marks, item.workflow)),
       )

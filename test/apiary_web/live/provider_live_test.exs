@@ -432,6 +432,37 @@ defmodule ApiaryWeb.ProviderLiveTest do
              )
     end
 
+    test "OpenAI is a choice with its title, its subtitle and where to get its key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      for {name, title} <- [
+            {"openai", "OpenAI API key"},
+            {"openai-subscription", "OpenAI subscription"}
+          ] do
+        index = Enum.find_index(Providers.list(), &(&1.name == name))
+        assert has_element?(lv, "label[for=provider_provider-#{index}]", title)
+        assert has_element?(lv, ~s{#provider_provider-#{index}[value="#{name}"]})
+      end
+
+      lv |> form("#new-provider-form", provider: %{provider: "openai"}) |> render_change()
+
+      assert text(lv, "#new-provider-get-key") ==
+               "Get the key from the provider first: create an API key in the OpenAI Platform."
+
+      # Its description's address on About model providers is the subscription's alone.
+      assert {:ok, openai} = Providers.fetch("openai")
+      assert Index.terms_url(openai) == nil
+      assert {:ok, subscription} = Providers.fetch("openai-subscription")
+      assert Index.terms_url(subscription) == "https://openai.com/policies/terms-of-use/"
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "openai-subscription"})
+      |> render_change()
+
+      refute has_element?(lv, "#new-provider-get-key")
+    end
+
     test "the Key field's hint says the key is stored encrypted and never shown again", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
@@ -501,12 +532,16 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       assert Index.terms_url(provider) == nil
 
-      html = rendered_to_string(Index.terms(%{href: nil}))
+      html = rendered_to_string(Index.terms(%{href: nil, vendor: "Anthropic"}))
       refute html =~ "<a"
       assert html =~ "Anthropic&#39;s terms"
 
-      html = rendered_to_string(Index.terms(%{href: "https://terms.example.com"}))
+      html = rendered_to_string(Index.terms(%{href: nil, vendor: "your LiteLLM proxy"}))
+      assert html =~ "Your LiteLLM proxy&#39;s terms"
+
+      html = rendered_to_string(Index.terms(%{href: "https://terms.example.com", vendor: "Acme"}))
       assert html =~ ~s(href="https://terms.example.com")
+      assert html =~ "Acme&#39;s terms"
     end
 
     test "a refused key leaves the field empty and says why", %{conn: conn, scope: scope} do

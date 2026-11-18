@@ -14,11 +14,11 @@ defmodule Apiary.Dispatches.WireTest do
   @base "https://qory.dev/contracts/"
 
   # The vendored schemas, by their URL under the contracts' base: the provisioner
-  # contract's, the run contract's documents under `run/v1/`, and the integration
-  # contract's they refer to under `integration/v1/`; and Forager's, which the documents'
-  # `run_settings` refers to, from Forager's contract directory
-  # (`Apiary.ContractFixtures.contract_dir/0`), so a test that builds the documents'
-  # schema is tagged `:contract`. Nothing is fetched.
+  # contract's, the run contract's documents and next-session call under `run/v1/`, and
+  # the integration contract's they refer to under `integration/v1/`; and Forager's,
+  # which the documents' `run_settings` and the next-session call refer to, from
+  # Forager's contract directory (`Apiary.ContractFixtures.contract_dir/0`), so a test
+  # that builds a run schema is tagged `:contract`. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -108,14 +108,16 @@ defmodule Apiary.Dispatches.WireTest do
   # The vendored contracts are at different integrations commits. The provisioner contract
   # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
   # commit comes after 0506879f, which binds a group role to a list of agents. The run
-  # contract is at dbc1ce51, which adds largest_prebuilt_image_bytes to a prebuild's
-  # documents, with the tier rename of b22085a (fast becomes balanced) applied on top. The
-  # integration contract is at c6b77016, which adds the watch kind to the change feed.
-  test "the vendored contracts are the commits their refs name, plus the tier rename of b22085a" do
+  # contract is at cd52a06e, which adds the next-session request and its answer,
+  # time_limit_minutes, shared_run and full_suite to the documents of a run of a stage,
+  # the tier balanced in place of fast, and the outcome of a run with its end codes.
+  # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
+  # `paths` and `oauth_refresh` of an API, to the description of a model provider.
+  test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
-          {"run/v1", "dbc1ce51ad47806febc95940c409d0817398a981"},
-          {"integration/v1", "c6b77016c47ddd29952718fb121646ff118fb474"},
+          {"run/v1", "cd52a06e2fa55d658ede1a5fffdbc85901066303"},
+          {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
         ] do
@@ -123,26 +125,36 @@ defmodule Apiary.Dispatches.WireTest do
     end
   end
 
+  # The run contract's schemas, each with a fixture directory of its name.
+  @run_schemas ~w(documents next-session-request next-session-answer outcome)
+
   # A run fixture's schema is its directory's name under `fixtures/`, or, under
-  # `invalid/`, the part of its file name before the first `-`.
+  # `invalid/`, the run schema its file name starts with.
   @tag :contract
   test "every run fixture is valid under its schema, or refused under it under invalid/" do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
-    valid = Path.wildcard(Path.join(fixtures, "documents/*.json"))
-    invalid = Path.wildcard(Path.join(fixtures, "invalid/*.json"))
-    assert length(valid) == 31 and length(invalid) == 125
-    assert Path.wildcard(Path.join(fixtures, "**/*.json")) |> length() == 31 + 125
+    count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    for path <- valid ++ invalid do
+    assert count.("documents/*.json") == 33
+    assert count.("next-session-request/*.json") == 6
+    assert count.("next-session-answer/*.json") == 3
+    assert count.("outcome/*.json") == 11
+    assert count.("invalid/*.json") == 174
+    assert count.("**/*.json") == 33 + 6 + 3 + 11 + 174
+
+    for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
 
       {schema, expected} =
         case Path.split(relative) do
-          ["invalid", name] -> {name |> String.split("-") |> hd(), false}
-          [dir, _name] -> {dir, true}
+          ["invalid", name] ->
+            {Enum.find(@run_schemas, &String.starts_with?(name, &1 <> "-")), false}
+
+          [dir, _name] ->
+            {dir, true}
         end
 
-      assert schema == "documents", relative
+      assert schema in @run_schemas, relative
       document = path |> File.read!() |> Jason.decode!()
 
       assert match?({:ok, _}, JSV.validate(document, validator(schema, "run/v1"))) == expected,

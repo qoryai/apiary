@@ -62,6 +62,33 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     error -> Plug.Exception.status(error)
   end
 
+  # The workspace's `submission` takes any object.
+  defp any_submission!(ctx) do
+    {1, _rows} =
+      Repo.update_all(
+        from(t in Artifacts.Type,
+          where: t.workspace_id == ^ctx.scope.workspace.id and t.name == "submission"
+        ),
+        set: [json_schema: %{"type" => "object"}]
+      )
+
+    :ok
+  end
+
+  # The workspace's current process version has `submission` as its submit type: the type
+  # that the harness sets.
+  defp set_by_harness!(ctx) do
+    version = Processes.current(ctx.scope.workspace)
+    submit = %{"type" => "submission", "send" => "end_of_run"}
+
+    {1, _rows} =
+      Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+        set: [template: Map.put(version.template || %{}, "submit", submit)]
+      )
+
+    :ok
+  end
+
   defp pushed!(ctx, type, files, opts \\ []) do
     files = Enum.map(files, fn {filename, bytes} -> %{filename: filename, binary: bytes} end)
     {:ok, version} = Artifacts.push({:run, ctx.run}, ctx.work_item, type, files, opts)
@@ -354,8 +381,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       id = "artifact-view-#{version.public_id}-speed-0"
       row = "##{id}"
 
-      assert has_element?(view, "figure video + #{row}[phx-hook=VideoSpeed][phx-update=ignore]")
-      assert has_element?(view, "#{row} + figcaption", "demo.mp4")
+      # The first film is the player: its Speed row is in the line with Cinema and Full screen.
+      bar = "#artifact-player > video + .q-player-bar"
+      assert has_element?(view, "#{bar} > #{row}[phx-hook=VideoSpeed][phx-update=ignore]")
+      assert has_element?(view, "#{bar} + figcaption", "demo.mp4")
       assert has_element?(view, "#{row}-label", "Speed")
       assert has_element?(view, ~s(#{row} [role=group][aria-labelledby="#{id}-label"]))
 
@@ -371,7 +400,66 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert LazyHTML.attribute(buttons, "aria-pressed") == ["false", "true", "false", "false"]
 
       second = "#artifact-view-#{version.public_id}-speed-1"
-      assert has_element?(view, "#{second}[phx-hook=VideoSpeed] + figcaption", "other.mp4")
+
+      assert has_element?(
+               view,
+               "video + #{second}[phx-hook=VideoSpeed] + figcaption",
+               "other.mp4"
+             )
+    end
+
+    test "gives the first film Cinema and Full screen, and starts no film", ctx do
+      version = pushed!(ctx, "demo-video", [{"demo.mp4", @mp4}, {"other.mp4", @mp4}])
+      {:ok, view, html} = live(ctx.conn, page(ctx, version))
+      sizes = "#artifact-view-#{version.public_id}-sizes-0"
+
+      assert has_element?(view, "#artifact-player.q-player video")
+      assert has_element?(view, "#{sizes}[phx-hook=ArtifactPlayer][phx-update=ignore]")
+      assert has_element?(view, ~s(#{sizes} #artifact-cinema[aria-pressed="false"]), "Cinema")
+      assert has_element?(view, ~s(#{sizes} #artifact-cinema.hidden.lg\\:flex))
+
+      assert has_element?(
+               view,
+               ~s(#{sizes} #artifact-full-screen[aria-pressed="false"]),
+               "Full screen"
+             )
+
+      assert has_element?(view, ~s|#{sizes} [data-leave-title="Leave full screen (Esc)"]|)
+      assert has_element?(view, "#{sizes}[data-version=\"#{version.public_id}\"]")
+      assert has_element?(view, "#{sizes}[data-film=\"0\"]")
+
+      # One Cinema and one Full screen for the page, on the first film.
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#artifact-cinema")
+             |> Enum.count() == 1
+
+      refute has_element?(view, "#artifact-view-#{version.public_id}-sizes-1")
+
+      refute html =~ "autoplay"
+    end
+
+    test "gives a film's view no controls where the page passes no player" do
+      version = %Apiary.Artifacts.Version{
+        public_id: "av_x",
+        files: [
+          %Apiary.Artifacts.ArtifactFile{filename: "demo.mp4", content_type: "video/mp4"}
+        ]
+      }
+
+      html =
+        render_component(&ArtifactComponents.view/1,
+          id: "run-view",
+          type: %Apiary.Artifacts.Type{name: "demo-video", base_view: :video},
+          version: version,
+          path: &"/files/#{&1.filename}"
+        )
+
+      assert html =~ "run-view-speed-0"
+      refute html =~ "artifact-cinema"
+      refute html =~ "artifact-full-screen"
+      refute html =~ "ArtifactPlayer"
+      refute html =~ "q-player"
     end
 
     test "shows structured JSON as a table of text, a URL as text", ctx do
@@ -633,6 +721,80 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
     end
 
+    test "lists a withdrawal as Withdrew, with its artifact and version", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               "#artifact-history-#{withdrawal.public_id} a",
+               "Withdrew explainer scenario-2 (version 2)"
+             )
+
+      assert has_element?(view, "#artifact-history-#{version.public_id} a", "Version 1")
+    end
+
+    test "writes the type of a withdrawal in its plain form, as the gate card does", ctx do
+      {:ok, _type} =
+        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+          "name" => "demo-note",
+          "base_view" => "file"
+        })
+
+      version =
+        pushed!(ctx, "demo-note", [{"note.bin", "x"}], name: "voucher-expired")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "demo-note", name: "voucher-expired")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+
+      assert has_element?(
+               view,
+               "#artifact-history-#{withdrawal.public_id} a",
+               "Withdrew demo note voucher-expired (version 2)"
+             )
+
+      # The title of the other versions keeps the type's id.
+      assert has_element?(view, "#artifact-header", "demo-note voucher-expired v1")
+    end
+
+    test "a withdrawal's own page reads as a withdrawal, with no view and no file list", ctx do
+      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+
+      {:ok, withdrawal} =
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, withdrawal))
+
+      assert has_element?(
+               view,
+               "#artifact-withdrawn",
+               "Withdrew explainer scenario-2 (version 2)"
+             )
+
+      refute has_element?(view, "#artifact-view-part")
+      refute has_element?(view, "#artifact-files-part")
+
+      # The version before it keeps its view and its files.
+      {:ok, view, _html} = live(ctx.conn, page(ctx, version))
+      assert has_element?(view, "#artifact-view-part")
+      assert has_element?(view, "#artifact-files-part")
+      refute has_element?(view, "#artifact-withdrawn")
+    end
+
+    test "plain_name/2 is the type with spaces, then the name unless it is main" do
+      alias ApiaryWeb.ArtifactComponents, as: Components
+
+      assert Components.plain_name("demo-video", "scenario-1") == "demo video scenario-1"
+      assert Components.plain_name("demo-video", "main") == "demo video"
+      assert Components.plain_name("explainer", nil) == "explainer"
+    end
+
     test "is read again when a version is pushed to its work item", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
@@ -760,6 +922,24 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         {:ok, view, _html} = live(ctx.conn, page(ctx, version))
         assert has_element?(view, "#artifact-add")
       end
+    end
+
+    test "has no Add a version for the type that the process's submit sets", ctx do
+      any_submission!(ctx)
+      submission = pushed!(ctx, "submission", [{"submission.json", ~s({"summary": "Done"})}])
+      proposal = pushed!(ctx, "proposal", [{"proposal.md", "# Proposal"}])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, submission))
+      assert has_element?(view, "#artifact-add")
+
+      set_by_harness!(ctx)
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, submission))
+      refute has_element?(view, "#artifact-add")
+      refute render(view) =~ "Add a version"
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, proposal))
+      assert has_element?(view, "#artifact-add")
     end
 
     test "is not found for another work item's version or another workspace", ctx do
@@ -963,6 +1143,32 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         view
         |> element("#artifact-form")
         |> render_submit(%{artifact: %{type: "questions", name: "main", note: ""}})
+
+      assert html =~ "Choose a type from the list."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "lists the type that the process's submit sets only where no version sets it, and refuses a push of it",
+         ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "submission"))
+      assert has_element?(view, ~s(#artifact-form option[value="submission"]))
+
+      set_by_harness!(ctx)
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "submission"))
+      refute has_element?(view, ~s(#artifact-form option[value="submission"]))
+      assert has_element?(view, ~s(#artifact-form option[value="explainer"]))
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "submission.json", content: ~s({"summary": "Done"}), type: "application/json"}
+      ])
+      |> render_upload("submission.json")
+
+      html =
+        view
+        |> element("#artifact-form")
+        |> render_submit(%{artifact: %{type: "submission", name: "main", note: ""}})
 
       assert html =~ "Choose a type from the list."
       assert Artifacts.list(ctx.work_item) == []
@@ -1549,6 +1755,26 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
              [812, 1024, 65_536, 1_572_864, 1_048_576, 10_485_760, 1_073_741_824, 1_048_575],
              &ArtifactComponents.size/1
            ) == ["812 B", "1 KiB", "64 KiB", "1.5 MiB", "1 MiB", "10 MiB", "1 GiB", "1 MiB"]
+  end
+
+  test "file_size/1 shows a size with one decimal from 1 KiB up, and size/1 is unchanged" do
+    sizes = [0, 812, 1024, 9_216, 65_536, 1_572_864, 1_048_576, 1_073_741_824, 1_048_575]
+
+    assert Enum.map(sizes, &ArtifactComponents.file_size/1) ==
+             [
+               "0 B",
+               "812 B",
+               "1.0 KiB",
+               "9.0 KiB",
+               "64.0 KiB",
+               "1.5 MiB",
+               "1.0 MiB",
+               "1.0 GiB",
+               "1.0 MiB"
+             ]
+
+    assert Enum.map(sizes, &ArtifactComponents.size/1) ==
+             ["0 B", "812 B", "1 KiB", "9 KiB", "64 KiB", "1.5 MiB", "1 MiB", "1 GiB", "1 MiB"]
   end
 
   describe "the plain list" do

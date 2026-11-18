@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.RunApi.Body do
   @moduledoc false
 
-  # The bodies of the run API's three POSTs, read from the raw bytes the request was signed
+  # The bodies of the run API's four POSTs, read from the raw bytes the request was signed
   # over, each held to its size before it is decoded.
   #
   # - `push/1`: `{"type", "name"?, "note"?, "files": [{"filename", "content_type",
@@ -10,12 +10,20 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   #   been checked against their decoded sizes (`decoded_size/1`). With `withdraw` true,
   #   `files` may be absent, null or empty, which reads as no files; files sent with it are
   #   read as without it, and the caller refuses them.
-  # - `verdict/1`: `{"verdict", "points"?, "track"?}`, at most `max_bytes(:verdict)` bytes.
-  #   The points and the track pass as they are: the schema of the type `verdict` checks
-  #   them (`priv/schemas/artifacts/verdict.schema.json`).
+  # - `verdict/1`: `{"verdict", "points"?, "track"?, "full_suite"?}`, at most
+  #   `max_bytes(:verdict)` bytes. The points, the track and the full suite pass as they are:
+  #   the schema of the type `verdict` checks them
+  #   (`priv/schemas/artifacts/verdict.schema.json`).
   # - `pushed_commits/1`: `{"repositories": [{"system", "path", "commit"}]}`, at most
   #   `max_bytes(:pushed_commits)` bytes, else `{:error, :too_large}`, and at most
   #   `max_repositories/0` repositories, else `{:error, :invalid_request, "repositories"}`.
+  # - `next_session/1`: `{"session", "state", "reason"}`, at most `max_bytes(:next_session)`
+  #   bytes, as the run contract's `next-session-request.schema.json` has it: `session` an
+  #   integer from 1, `state` `succeeded`, `failed` or `cancelled`, and `reason` null or a
+  #   code of a lower-case letter, then lower-case letters, digits and `_`, up to 64
+  #   characters; a `cancelled` session has a reason, `timeout` and `interrupted` are for
+  #   a `cancelled` session only, and `gateway_lost` for a `failed` one only, else
+  #   `{:error, :invalid_request, "reason"}`.
   #
   # A member the body does not define, a member of the wrong form or a body that is not a
   # JSON object is `{:error, :invalid_request, member}`, where `member` is the path of the
@@ -30,6 +38,10 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   @verdict_max_bytes 64 * 1024
   @pushed_commits_max_bytes 64 * 1024
   @max_repositories 64
+  # The gateway's limit of the next-session request's body.
+  @next_session_max_bytes 4 * 1024
+  @session_states ["succeeded", "failed", "cancelled"]
+  @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
 
   # A media type: `type/subtype`, without parameters.
   @content_type ~r/\A[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\z/
@@ -43,10 +55,11 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   @verdicts ["passed", "changes-requested", "escalate"]
 
-  @spec max_bytes(:push | :verdict | :pushed_commits) :: pos_integer
+  @spec max_bytes(:push | :verdict | :pushed_commits | :next_session) :: pos_integer
   def max_bytes(:push), do: @push_max_bytes
   def max_bytes(:verdict), do: @verdict_max_bytes
   def max_bytes(:pushed_commits), do: @pushed_commits_max_bytes
+  def max_bytes(:next_session), do: @next_session_max_bytes
 
   @doc "The most repositories one report of pushed commits has."
   @spec max_repositories() :: pos_integer
@@ -85,16 +98,22 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   defp push_files(files, _withdraw), do: files(files)
 
   @spec verdict(binary) ::
-          {:ok, %{verdict: String.t(), points: term, track: term}}
+          {:ok, %{verdict: String.t(), points: term, track: term, full_suite: term}}
           | {:error, :too_large}
           | {:error, :invalid_request, String.t()}
   def verdict(raw_body) when byte_size(raw_body) > @verdict_max_bytes, do: {:error, :too_large}
 
   def verdict(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(verdict points track)),
+         :ok <- members(body, ~w(verdict points track full_suite)),
          {:ok, verdict} <- required(body, "verdict", &(&1 in @verdicts)) do
-      {:ok, %{verdict: verdict, points: Map.get(body, "points"), track: Map.get(body, "track")}}
+      {:ok,
+       %{
+         verdict: verdict,
+         points: Map.get(body, "points"),
+         track: Map.get(body, "track"),
+         full_suite: Map.get(body, "full_suite")
+       }}
     end
   end
 
@@ -111,6 +130,36 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
       repositories(body["repositories"])
     end
   end
+
+  @spec next_session(binary) ::
+          {:ok, %{session: pos_integer, state: String.t(), reason: String.t() | nil}}
+          | {:error, :too_large}
+          | {:error, :invalid_request, String.t()}
+  def next_session(raw_body) when byte_size(raw_body) > @next_session_max_bytes,
+    do: {:error, :too_large}
+
+  def next_session(raw_body) do
+    with {:ok, body} <- object(raw_body),
+         :ok <- members(body, ~w(session state reason)),
+         {:ok, session} <- required(body, "session", &(is_integer(&1) and &1 >= 1)),
+         {:ok, state} <- required(body, "state", &(&1 in @session_states)),
+         {:ok, reason} <- required(body, "reason", &reason?/1),
+         :ok <- reason_of(state, reason) do
+      {:ok, %{session: session, state: state, reason: reason}}
+    end
+  end
+
+  defp reason?(nil), do: true
+  defp reason?(reason), do: is_binary(reason) and Regex.match?(@reason, reason)
+
+  defp reason_of("cancelled", nil), do: invalid("reason")
+
+  defp reason_of(state, reason)
+       when reason in ["timeout", "interrupted"] and state != "cancelled",
+       do: invalid("reason")
+
+  defp reason_of(state, "gateway_lost") when state != "failed", do: invalid("reason")
+  defp reason_of(_state, _reason), do: :ok
 
   defp repositories([_ | _] = repositories) when length(repositories) <= @max_repositories do
     repositories

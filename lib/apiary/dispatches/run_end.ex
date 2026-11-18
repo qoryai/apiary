@@ -81,7 +81,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
   # `run_ended` as any exit ends it, and then, in the same transaction, the run that
   # continues it is queued (`Apiary.Dispatches.requeue_for_pause/2`), with the earliest
-  # end of a cooldown of its provider's keys kept on it when every one of them is in
+  # end of a cooldown of the keys of the provider of the session that paused
+  # (`Apiary.Runs.Run.session_provider_ids/2`) kept on it when every one of them is in
   # cooldown then (`Apiary.ModelKeys.cooling_until/2`). The stage runner then reads the
   # continuation as the stage's newest run, so the paused run's end moves no stage. Its
   # work item is held `FOR UPDATE` (`hold/1`), as for a missing image; an end that finds
@@ -447,7 +448,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
     if Run.paused?(run) and not Run.cancel_requested?(run) do
-      providers = if run.provider_connection_id, do: [run.provider_connection_id], else: []
+      providers = Run.session_provider_ids(run, run.paused_session)
 
       case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do
         {:ok, next} -> [next.workspace_id | Settle.told(next.work_item_id)]
@@ -495,6 +496,11 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # The refusal's code, which the fold kept as the run's reason (`Apiary.Runs.Fold`); nil
   # for any other cause.
+  defp unformed_outcome(%DispatchRun{step: @prebuild}, _cause), do: []
+
+  defp unformed_outcome(%DispatchRun{}, cause),
+    do: if(cause in Apiary.Dispatches.Handover.unformed(), do: [result_outcome: :error], else: [])
+
   defp detail(:run_refused, %Run{reason: reason}), do: reason
   defp detail(_cause, _run), do: nil
 
@@ -523,6 +529,33 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   def run_ended(%Run{}), do: []
+
+  # unformed/2 ends the run of the queue of `run`, a run of a stage whose workflows run
+  # as sessions of one run, with `cause`, `ticket_gone` or `inputs_invalid`, when the
+  # input of its next session cannot be formed (`Apiary.Stages.next_session/2`), in a
+  # separate transaction, with the locks of `run_ended/1`, and the outcome `error` as at
+  # a claim that cannot form a run's input. The registered run is left as it is: its
+  # gateway closes it. The ids of the workspaces whose slots changed, and the work item to
+  # tell, for the caller to tell (`Apiary.Dispatches.broadcast/1`); none for a run of the
+  # queue no longer handed over.
+  @doc false
+  @spec unformed(Run.t(), :ticket_gone | :inputs_invalid) :: [Ecto.UUID.t() | Settle.told()]
+  def unformed(%Run{id: run_id, dispatch_run_id: dispatch_run_id}, cause)
+      when is_binary(dispatch_run_id) and cause in [:ticket_gone, :inputs_invalid] do
+    {:ok, changed} =
+      Repo.transact(fn ->
+        held = hold(dispatch_run_id)
+
+        with %DispatchRun{state: :handed_over} = dispatch_run <- lock(dispatch_run_id),
+             %Run{} = run <- locked_run(run_id) do
+          {:ok, finish(dispatch_run, run, cause, now(), held)}
+        else
+          _not_handed_over -> {:ok, []}
+        end
+      end)
+
+    changed
+  end
 
   # refused/1 ends the run of the queue of `run`, a run that is not a prebuild whose
   # projection folded a refusal, `run_refused`, in a separate transaction: with the
@@ -907,10 +940,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
   # whether or not the slot was freed. Its end may leave its workflow's overrides unused
   # (`Apiary.Processes.delete_leftovers_after_runs/1`).
-  defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now, detail) do
+  # A cause of a handover that cannot form a run (`Apiary.Dispatches.Handover.unformed/0`)
+  # comes with the outcome `error` on a run that is not a prebuild, as at the claim.
+  defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now, detail) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
-        set: [state: :ended, end_cause: cause, end_detail: detail, updated_at: now]
+        set:
+          [state: :ended, end_cause: cause, end_detail: detail, updated_at: now] ++
+            unformed_outcome(run, cause)
       )
 
     :ok = Apiary.Processes.delete_leftovers_after_runs([id])

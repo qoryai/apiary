@@ -3,6 +3,7 @@
   "name": "acme-models",
   "title": "Acme models",
   "description": "Models of Acme, at one fixed address.",
+  "vendor": "Acme",
   "settings": {"type": "object"},
   "roles": {
     "model_provider": {

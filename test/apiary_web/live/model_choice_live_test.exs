@@ -51,6 +51,9 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   defp models_only(tiers),
     do: Map.new(tiers, fn {tier, set} -> {tier, %{"model" => set["model"]}} end)
 
+  defp openai_key(kind),
+    do: %{provider: kind, keys: [%{value_id: "main", value: "sk-#{kind}-model-page-0123456789"}]}
+
   # Sets each tier of `tiers` through the form: the models first, then the efforts, as
   # an Effort is disabled until its tier has a model.
   defp set_tiers(lv, tiers) do
@@ -330,7 +333,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
         tiers: @tiers
       })
 
-    [release] = Runtimes.list()
+    release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
     :ok = Runtimes.put_test_list([%{release | effort_values: ~w(low medium)}])
 
     {:ok, lv, _html} = live(conn, path(scope))
@@ -366,7 +369,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       })
 
     # The runtime no longer offers Balanced's stored effort.
-    [release] = Runtimes.list()
+    release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
     :ok = Runtimes.put_test_list([%{release | effort_values: ~w(low medium)}])
     {:ok, lv, _html} = live(conn, path(scope))
     lv |> form("#model-form") |> render_submit()
@@ -791,7 +794,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       # The runtime no longer offers the second row's stored effort: the row keeps it
       # shown, and the save refuses it.
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       :ok = Runtimes.put_test_list([%{release | effort_values: ~w(low medium)}])
       {:ok, lv, _html} = live(conn, path(scope))
 
@@ -974,7 +977,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     # only from the bearer variable: Anthropic (an `x-api-key` header) serves the first
     # alone, OpenRouter (bearer) serves both.
     defp two_runtimes do
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       bearer = %{
         release
@@ -1023,7 +1026,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     # from a header other than bearer, which Anthropic serves alone, and the bearer
     # runtime, which OpenRouter serves alone.
     defp split_runtimes do
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       bearer_auth = %{"scheme" => "bearer"}
 
       header = %{
@@ -1057,7 +1060,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     test "with one runtime of the catalogue, is its name as text; the choice names none",
          ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Enum.find(Runtimes.list(), &(&1.name == "claude"))
+      :ok = Runtimes.put_test_list([release])
       {:ok, lv, _html} = live(conn, path(scope))
 
       refute has_element?(lv, "#model_choice_runtime")
@@ -1072,6 +1076,45 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
       assert %ModelChoice{runtime: nil, model_id: "claude-opus-5-5"} = choice(scope)
+    end
+
+    test "with the release's two runtimes, an OpenAI provider runs on Codex with its models and efforts",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, openai} = Connections.create_provider(scope, openai_key("openai"))
+      {:ok, subscription} = Connections.create_provider(scope, openai_key("openai-subscription"))
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      # Anthropic works with Claude Code alone, and OpenAI with Codex alone.
+      assert has_element?(lv, "#model-runtime-name", "Claude Code")
+      choose_provider(lv, openai.public_id)
+      refute has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, "#model-runtime-name", "Codex")
+
+      assert has_element?(
+               lv,
+               "#model-runtime-line",
+               "Codex is the only runtime that works with OpenAI API key."
+             )
+
+      codex = Runtimes.list() |> Enum.find(&(&1.name == "codex"))
+
+      assert [
+               %{id: "gpt-6-astra", effort: ~w(low medium high xhigh max)},
+               %{id: "gpt-6-luna", effort: ~w(none low medium high xhigh max)} | _
+             ] = ModelChoices.suggestions(openai, codex)
+
+      assert [%{id: "gpt-6.1-sol", effort: ~w(low medium high xhigh max ultra)} | _] =
+               ModelChoices.suggestions(subscription, codex)
+
+      tiers = Map.new(Map.keys(@tiers), &{&1, %{"model" => "gpt-6-luna", "effort" => "none"}})
+      lv |> set_tiers(tiers) |> form("#model-form") |> render_submit()
+
+      assert %ModelChoice{runtime: "codex", model_id: "gpt-6-luna", effort: "none"} =
+               choice(scope)
+
+      assert saved_tiers(scope) == tiers
     end
 
     test "comes after the tiers and before the fallbacks", ctx do
@@ -1211,7 +1254,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "a change of the runtime keeps the models and takes back an effort it refuses", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       narrow = %{
         release
@@ -1250,7 +1293,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     test "a stored effort stays shown on the stored runtime, and is not offered on a runtime that does not accept it",
          ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       narrow = %{release | name: release.name <> "-narrow", effort_values: ~w(low medium)}
 
       {:ok, _choice} =
@@ -1444,7 +1487,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     test "a change of a row's Runtime keeps its models and takes back an effort that runtime refuses",
          ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       narrow = %{
         release
@@ -1527,7 +1570,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     # The catalogue has only a bearer runtime, which Anthropic (an `x-api-key` header)
     # does not serve and OpenRouter does.
     defp bearer_only do
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       bearer = %{
         release
@@ -1723,7 +1766,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with one runtime, says where to add a model provider", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       :ok = Runtimes.put_test_list([unserved])
 
@@ -1746,7 +1789,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "to a member, says who adds a model provider", ctx do
       %{scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       :ok = Runtimes.put_test_list([unserved])
       %{user: user} = member_fixture(scope, :member)
@@ -1759,7 +1802,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with two runtimes that no provider serves, says to add a provider", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       other = %{unserved | name: release.name <> "-other", title: release.title <> " other"}
       :ok = Runtimes.put_test_list([unserved, other])
@@ -1872,7 +1915,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
          ctx do
       %{conn: conn, scope: scope, provider: anthropic} = ctx
       openrouter = openrouter(scope)
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
       :ok = Runtimes.put_test_list([release, second])
 

@@ -99,13 +99,49 @@ defmodule Apiary.Kinds.BoundsTest do
           },
           "c" => %{"type" => "array", "maxItems" => 7, "items" => %{"const" => 1}}
         },
-        "$defs" => %{"b" => %{"type" => "string"}},
+        "$defs" => %{"b" => %{"type" => "integer", "minimum" => 0, "maximum" => 9}},
         "anyOf" => [%{"required" => ["a"]}, %{"required" => ["c"]}],
         "oneOf" => [%{"properties" => %{"a" => %{"const" => 1}}}, true],
         "not" => %{"required" => ["d"]}
       }
 
       assert Bounds.from_schema(schema) == [list: 7, members: 2]
+    end
+
+    test "dependentRequired is read and adds no list or member bound and loosens none" do
+      schema = %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => %{
+          "a" => %{"type" => "string"},
+          "b" => %{"type" => "array", "maxItems" => 3, "items" => %{"const" => 1}},
+          "c" => %{"type" => "string"}
+        }
+      }
+
+      with_dependency =
+        Map.put(schema, "dependentRequired", %{"a" => ["b", "c"], "c" => ["a", "b", "c", "d"]})
+
+      assert Bounds.from_schema(schema) == [list: 3, members: 3]
+      assert Bounds.from_schema(with_dependency) == Bounds.from_schema(schema)
+
+      # Inside a member, it makes no unbounded array bounded and no bounded array larger.
+      nested =
+        put_in(schema, ["properties", "a"], %{
+          "type" => "object",
+          "additionalProperties" => false,
+          "properties" => %{"x" => %{"type" => "string"}},
+          "dependentRequired" => %{"x" => ["x"]}
+        })
+
+      assert Bounds.from_schema(nested) == [list: 3, members: 3]
+
+      assert_raise ArgumentError, fn ->
+        Bounds.from_schema(%{
+          "type" => "array",
+          "dependentRequired" => %{"a" => ["b"]}
+        })
+      end
     end
 
     test "a $ref into another document is followed, and that document is read as a schema" do

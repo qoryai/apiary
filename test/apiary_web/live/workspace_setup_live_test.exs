@@ -4366,6 +4366,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # Whether Continue is enabled.
   defp continue?(lv), do: not has_element?(lv, "#set-up-continue[disabled]")
 
+  test "the runtime follows the provider chosen: OpenAI gives Codex, Anthropic gives Claude Code",
+       %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{provider: "openai"}) |> render_change()
+    assert has_element?(lv, "#set-up-model-runtime p", "Codex")
+    refute has_element?(lv, "#set-up-model-runtime p", "Claude Code")
+    assert has_element?(lv, ~s(#set-up-model-form input[name="model[runtime]"][value=codex]))
+
+    lv |> form("#set-up-model-form", model: %{provider: "anthropic"}) |> render_change()
+    assert has_element?(lv, "#set-up-model-runtime p", "Claude Code")
+    refute has_element?(lv, "#set-up-model-runtime p", "Codex")
+    assert has_element?(lv, ~s(#set-up-model-form input[name="model[runtime]"][value=claude]))
+  end
+
   test "with no provider, Add a key alone, open: adds the provider and the workspace's choice with its tiers; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4773,7 +4789,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # the bearer variable: Anthropic (an `x-api-key` header) serves the first alone,
   # OpenRouter (bearer) serves both.
   defp two_runtimes do
-    [release] = Apiary.Kinds.Runtimes.list()
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
     bearer = %{
       release
@@ -4847,7 +4863,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   # The release's runtime as it reads a key from a header other than bearer, which
   # Anthropic serves alone, and a bearer runtime, which OpenRouter serves alone.
   defp split_runtimes do
-    [release] = Apiary.Kinds.Runtimes.list()
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
     bearer_auth = %{"scheme" => "bearer"}
 
     header = %{
@@ -4998,7 +5014,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, "anthropic", "main")
     openrouter = provider!(scope, "openrouter", "router")
-    [release] = Apiary.Kinds.Runtimes.list()
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
     # The catalogue has only a bearer runtime, which Anthropic (an `x-api-key` header)
     # does not serve and OpenRouter does.
@@ -5039,7 +5055,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     provider = provider!(scope, "anthropic", "main")
-    [release] = Apiary.Kinds.Runtimes.list()
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
     narrow = %{
       release
@@ -6678,7 +6694,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   test "off: Provider and the catalogue's Provider leave out LiteLLM", ctx do
     assert offers(ctx) ==
              {[ctx.anthropic.public_id, "add"],
-              ~w(anthropic claude-subscription deepseek openrouter)}
+              ~w(anthropic claude-subscription deepseek openai openai-subscription openrouter)}
   end
 
   @tag with_features: Apiary.Features.all() -- [:model_proxies]
@@ -6845,6 +6861,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   test "on: Provider and the catalogue's Provider offer LiteLLM", ctx do
     {keys, providers} = offers(ctx)
     assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])
-    assert providers == ~w(anthropic claude-subscription deepseek litellm openrouter)
+
+    assert providers ==
+             ~w(anthropic claude-subscription deepseek litellm openai openai-subscription openrouter)
   end
 end

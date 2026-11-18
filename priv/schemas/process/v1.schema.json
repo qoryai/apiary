@@ -56,6 +56,10 @@
           "items": {"$ref": "#/$defs/output"}
         },
         "gate": {"$ref": "#/$defs/gate"},
+        "shared_run": {
+          "description": "Optional, default false. With true, the workflow entries of the stage, those in a loop's body included, run one after the other as sessions of one run, on one machine. Every entry of such a stage has the same access level and machine type: a save fails when two entries differ.",
+          "type": "boolean"
+        },
         "when": {
           "description": "The stage runs only when its condition is met; otherwise the work item passes over it. Not on the first stage: no earlier stage exists to test.",
           "$ref": "#/$defs/condition"
@@ -101,6 +105,15 @@
           "description": "Lowers the access level the stack declares: read, or write-no-push, the level of a workflow that writes in its checkout and has no push credential. Left out, the run has the stack's level.",
           "enum": ["read", "write-no-push"]
         },
+        "return": {
+          "description": "Outside a loop only. When a run of the entry ends changes-requested, the work item enters the stage `stage`, an earlier stage, at its first entry. Qory Apiary counts these returns; the run after `limit` returns escalates to a member. Request changes at the gate of the entry's stage also enters `stage` at its first entry, and counts no return.",
+          "type": "object",
+          "required": ["stage"],
+          "properties": {
+            "stage": {"type": "string", "pattern": "^st_[0-9a-hjkmnp-tv-z]{10}$"},
+            "limit": {"description": "The most returns; 2 by default.", "type": "integer", "minimum": 1, "maximum": 10}
+          }
+        },
         "when": {
           "description": "The entry runs only when its condition is met; otherwise no run starts for it. A loop whose every entry is passed over is passed over too.",
           "$ref": "#/$defs/condition"
@@ -130,11 +143,14 @@
           "properties": {
             "rounds": {"type": "integer", "minimum": 1, "maximum": 10},
             "body": {
-              "description": "Workflow entries only: loops do not nest.",
+              "description": "Workflow entries only, with no return: loops do not nest.",
               "type": "array",
               "minItems": 1,
               "maxItems": 10,
-              "items": {"$ref": "#/$defs/workflow_entry", "properties": {"first_attempt": false}}
+              "items": {
+                "allOf": [{"$ref": "#/$defs/workflow_entry"}, {"not": {"required": ["return"]}}],
+                "properties": {"first_attempt": false}
+              }
             }
           }
         }
@@ -224,15 +240,25 @@
       }
     },
     "condition": {
-      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it.",
-      "oneOf": [{"$ref": "#/$defs/input_condition"}, {"$ref": "#/$defs/track_condition"}]
+      "description": "One test. `{input: T}` is met when the version of the type T that the stage reads has a file of more than 0 bytes; T is an output of an earlier stage. `{input: T, changed: true}`, only on a workflow entry, is met when T has a version and the entry has no run on the work item that ended `passed`, or that version was stored after the newest such run was queued; saving a process with it on a stage, a loop, an input or an output fails. `{track: ID}` is met when the track ID is the one chosen at an earlier gate; an earlier gate offers it. `{feedback: new}`, only on a workflow entry, is met while a member's feedback on the work item is open, or a run returned the work item to the stage, and no run of an entry with this condition that ended `passed` or `changes-requested` started after it (for an answer given while no escalation is open, no run of the stage that ended so): the note of Request changes or of a move, an answer, a review comment or a reply, the comment of Run another round, the note of an escalation resolved by any choice but Accept as it is, or the return of a run of a later stage. In a stage with such an entry, Run another round while feedback other than such an answer is unhandled, a comment with Run another round, answers to an open escalation, Request changes with a note, and a move into the stage with a note start the stage again at its first entry. Saving a process with it on a stage, a loop, an input or an output fails.",
+      "oneOf": [
+        {"$ref": "#/$defs/input_condition"},
+        {"$ref": "#/$defs/track_condition"},
+        {"$ref": "#/$defs/feedback_condition"}
+      ]
     },
     "input_condition": {
       "description": "Met when the version of the type `input` that the stage reads has a file of more than 0 bytes. `input` is an output of an earlier stage.",
       "type": "object",
       "required": ["input"],
       "additionalProperties": false,
-      "properties": {"input": {"$ref": "#/$defs/artifact_type"}}
+      "properties": {
+        "input": {"$ref": "#/$defs/artifact_type"},
+        "changed": {
+          "description": "Only `true`, and only on a workflow entry: the condition is met when the version of `input` is new since the entry last ran and passed, whatever the size of its files. The schema allows the key wherever an input condition is; a save refuses it on a stage, a loop, an input and an output (`condition_changed_entry_only`).",
+          "const": true
+        }
+      }
     },
     "track_condition": {
       "description": "Met when the track `track` is the one chosen at an earlier gate.",
@@ -240,6 +266,13 @@
       "required": ["track"],
       "additionalProperties": false,
       "properties": {"track": {"$ref": "#/$defs/track_id"}}
+    },
+    "feedback_condition": {
+      "description": "Met while a member's feedback on the work item is open, or a run returned the work item to the stage, and no run of the stage handled it: a run of an entry with this condition, or of any entry of the stage for an answer given while no escalation is open, that started after it and ended `passed` or `changes-requested`. Only the value `new`, and only on a workflow entry: the schema allows it wherever a condition is; saving a process with it on a stage, a loop, an input or an output fails (`condition_feedback_entry_only`).",
+      "type": "object",
+      "required": ["feedback"],
+      "additionalProperties": false,
+      "properties": {"feedback": {"const": "new"}}
     },
     "track_id": {
       "description": "One lower-case word, or lower-case words joined by hyphens: fast-track.",

@@ -297,6 +297,41 @@ defmodule ApiaryWeb.RunLive.ShowRunListTest do
     assert has_element?(lv, "#run-tab-timeline .q-tabs-n", "7")
   end
 
+  test "a withdrawal the run stored reads Withdrew, with its artifact and version", ctx do
+    pool = Apiary.NodesFixtures.pool_fixture(ctx.scope, name: "build-pool")
+    %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
+
+    %{run: run, dispatch_run: dispatch_run} =
+      Apiary.DispatchedRunsFixtures.handed_over_fixture(ctx.scope, key)
+
+    run = project!(run, [{1, "run.started", started_data(), time: DateTime.utc_now()}])
+    dispatch_run = Apiary.Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id)
+    work_item = Apiary.Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id)
+    file = %{filename: "explainer.md", content_type: "text/markdown", binary: "Plan\n"}
+
+    {:ok, pushed} =
+      Apiary.Artifacts.push({:run, dispatch_run}, work_item, "explainer", [file],
+        name: "scenario-2"
+      )
+
+    {:ok, withdrawal} =
+      Apiary.Artifacts.withdraw({:run, dispatch_run}, work_item, "explainer", name: "scenario-2")
+
+    lv = open(ctx.conn, run_path(ctx.scope, run))
+
+    assert has_element?(lv, "#push-#{pushed.public_id} .q-k", "Pushed")
+    assert has_element?(lv, "#push-#{pushed.public_id}", "explainer/scenario-2 version 1")
+    assert has_element?(lv, "#push-#{withdrawal.public_id} .q-k", "Withdrew")
+
+    assert has_element?(
+             lv,
+             "#push-#{withdrawal.public_id} .q-s",
+             "explainer scenario-2 (version 2)"
+           )
+
+    refute has_element?(lv, "#push-#{withdrawal.public_id}", "Pushed")
+  end
+
   defp timeline_ids(lv) do
     lv
     |> render()

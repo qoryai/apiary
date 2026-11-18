@@ -821,6 +821,7 @@ defmodule Apiary.Runs.Preparation do
           number: v.number,
           at: v.inserted_at,
           public_id: v.public_id,
+          withdrawn: v.withdrawn,
           cancelled: type(^cancelled, :boolean),
           run_number: type(^run.number, :integer),
           round: d.round

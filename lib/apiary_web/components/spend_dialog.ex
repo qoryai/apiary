@@ -43,9 +43,12 @@ defmodule ApiaryWeb.SpendDialog do
 
   @typedoc """
   An open confirmation: the action's `event` and the `params` of its click, the dialog's
-  `title` and `action` (the confirm button's words), its `line`, rich text, the id of the
-  action's button (`return_to`), the action's note, or nil for none, and the box's
-  distance from the top of the page in px (`top`).
+  `title` and `action` (the confirm button's words), its `line`, rich text, or nil where
+  the act starts no run, the id of the action's button (`return_to`), the action's note,
+  or nil for none, and the box's distance from the top of the page in px (`top`).
+  `lines` is nil, or the line with no note (`plain`) and the line with a note (`noted`),
+  where the note changes what starts: the dialog then shows the one for the note typed
+  (`noted/2`).
   """
   @type t :: %{
           event: String.t(),
@@ -55,13 +58,17 @@ defmodule ApiaryWeb.SpendDialog do
           line: term,
           return_to: String.t() | nil,
           top: pos_integer,
-          note: nil | %{value: String.t(), optional: boolean, hint: String.t() | nil}
+          note: nil | %{value: String.t(), optional: boolean, hint: String.t() | nil},
+          lines: nil | %{plain: term, noted: term}
         }
 
   # ask/3 is the confirmation of `event`, sent with `params`; `opts` has `:title`,
   # `:action`, `:line` and `:return_to`, and `:note` for an action with a note: the
   # dialog then shows the note's field with `params["note"]`, and `optional` and `hint`
-  # as set in `:note`; `:top` for a box at another distance from the top than 170 px.
+  # as set in `:note`; `:top` for a box at another distance from the top than 170 px;
+  # `:noted_line`, with `:note`, for the line where the note is not blank, `:line` then
+  # being the line with no note; either is nil where that act starts no run, and the
+  # dialog then shows no line.
   @doc false
   @spec ask(String.t(), map, keyword) :: t
   def ask(event, params, opts) do
@@ -78,16 +85,41 @@ defmodule ApiaryWeb.SpendDialog do
           }
       end
 
-    %{
-      event: event,
-      params: params,
-      title: Keyword.fetch!(opts, :title),
-      action: Keyword.fetch!(opts, :action),
-      line: Keyword.fetch!(opts, :line),
-      return_to: Keyword.get(opts, :return_to),
-      top: top(Keyword.get(opts, :top, @top)),
-      note: note
-    }
+    lines =
+      if note && Keyword.has_key?(opts, :noted_line),
+        do: %{plain: Keyword.fetch!(opts, :line), noted: Keyword.fetch!(opts, :noted_line)},
+        else: nil
+
+    noted(
+      %{
+        event: event,
+        params: params,
+        title: Keyword.fetch!(opts, :title),
+        action: Keyword.fetch!(opts, :action),
+        line: Keyword.fetch!(opts, :line),
+        return_to: Keyword.get(opts, :return_to),
+        top: top(Keyword.get(opts, :top, @top)),
+        note: note,
+        lines: lines
+      },
+      note && note.value
+    )
+  end
+
+  # noted/2 is the confirmation with the note `value` typed in the dialog, and the line for
+  # it where the confirmation has `lines`: `noted` for a note that is not blank, else
+  # `plain`.
+  @doc false
+  @spec noted(t, term) :: t
+  def noted(%{note: nil} = spend, _value), do: spend
+
+  def noted(%{lines: nil} = spend, value),
+    do: %{spend | note: %{spend.note | value: note_value(value)}}
+
+  def noted(%{lines: lines} = spend, value) do
+    value = note_value(value)
+    line = if String.trim(value) == "", do: lines.plain, else: lines.noted
+    %{spend | note: %{spend.note | value: value}, line: line}
   end
 
   # `:top` of `ask/3`: an integer of px; any other value raises.
@@ -190,7 +222,9 @@ defmodule ApiaryWeb.SpendDialog do
   attr :spend, :map, required: true, doc: "the open confirmation (`ask/3`)"
   attr :id, :string, default: "spend-dialog"
 
-  # The open confirmation: its line, then the action's note, where it has one.
+  # The open confirmation: its line, then the action's note, where it has one. Where the
+  # note changes what starts (`lines`), the form sends `"spend_note"` as the note changes,
+  # and the page sets the confirmation to `noted/2`'s.
   @doc false
   def dialog(assigns) do
     ~H"""
@@ -199,10 +233,11 @@ defmodule ApiaryWeb.SpendDialog do
       title={@spend.title}
       action={@spend.action}
       return_to={@spend.return_to}
-      describedby={"#{@id}-line"}
+      describedby={@spend.line && "#{@id}-line"}
       top={@spend.top}
+      change={@spend[:lines] && "spend_note"}
     >
-      <p id={"#{@id}-line"}><.rich text={@spend.line} /></p>
+      <p :if={@spend.line} id={"#{@id}-line"}><.rich text={@spend.line} /></p>
       <.input
         :if={@spend.note}
         id={"#{@id}-note"}
@@ -339,6 +374,7 @@ defmodule ApiaryWeb.SpendDialog do
         class="q-spend-box"
         style={@width && "width: min(#{@width}, 100%)"}
         phx-submit={@confirm}
+        phx-change={@change}
         phx-click-away={@cancel}
         novalidate
       >

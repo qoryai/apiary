@@ -160,13 +160,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert settings(handed) == %{"runtime" => @runtime}
     end
 
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert settings(handed) == %{"runtime" => @runtime}
 
       assert %Run{
                run_settings: %{"runtime" => @runtime},
@@ -226,14 +226,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "provider_models" => models(@efforts),
                "tiers" =>
                  Map.new(Resolution.tiers(), &{&1, "claude-haiku-5-5"})
-                 |> Map.put(thinking, haiku_tiers[thinking]),
-               "time_limit_minutes" => 180
+                 |> Map.put(thinking, haiku_tiers[thinking])
              }
 
       ordered = handed.run_settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
 
       assert Enum.map(ordered.values, &elem(&1, 0)) ==
-               ~w(runtime model effort provider_models tiers time_limit_minutes)
+               ~w(runtime model effort provider_models tiers)
     end
 
     test "of a run with a target reads the target's level first", ctx do
@@ -278,8 +277,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "runtime" => @runtime,
                "model" => "claude-opus-5-5",
                "provider_models" => models(@efforts),
-               "tiers" => Map.new(Resolution.tiers(), &{&1, "claude-opus-5-5"}),
-               "time_limit_minutes" => 180
+               "tiers" => Map.new(Resolution.tiers(), &{&1, "claude-opus-5-5"})
              }
     end
 
@@ -330,8 +328,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "provider_models" =>
                  models(@efforts) ++
                    [%{"id" => "claude-opus-4-8"}, %{"id" => "claude-sonnet-4-6"}],
-               "tiers" => tiers,
-               "time_limit_minutes" => 180
+               "tiers" => tiers
              }
     end
 
@@ -356,8 +353,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "runtime" => @runtime,
                "model" => "acme-large",
                "provider_models" => models(@efforts) ++ [%{"id" => "acme-large"}],
-               "tiers" => %{"light" => "claude-haiku-5-5"},
-               "time_limit_minutes" => 180
+               "tiers" => %{"light" => "claude-haiku-5-5"}
              }
     end
 
@@ -385,8 +381,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "provider_models" =>
                  for(id <- described, do: %{"id" => id, "effort" => @efforts}) ++
                    [%{"id" => gemini}],
-               "tiers" => Map.new(Resolution.tiers(), &{&1, gemini}),
-               "time_limit_minutes" => 180
+               "tiers" => Map.new(Resolution.tiers(), &{&1, gemini})
              }
 
       assert %Run{provider_connection_id: router_id} = Repo.get!(Run, handed.run.id)
@@ -559,7 +554,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "come from a fallback on another runtime, with that runtime, an API it takes and the fallback's tiers",
          ctx do
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       # A runtime that takes only a bearer key: the API of the choice's provider, with its
       # x-api-key header, is not one it takes; OpenRouter's is.

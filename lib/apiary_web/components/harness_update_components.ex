@@ -191,6 +191,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
     assigns =
       assign(assigns,
         stages: stages,
+        refused: Map.get(update, :refused, []),
         removed?: Enum.any?(stages, &match?({:del, _text}, &1)) and edits?(update.base)
       )
 
@@ -273,6 +274,11 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
       <p :if={@switch_off} id="harness-update-switch" class="text-[13.5px]/5 text-muted">
         {gettext("Save also turns Keep the process at the latest on again.")}
       </p>
+      <.notice :if={@refused != []} kind={:error}>
+        <span id="harness-update-refused">
+          {Enum.map_join(@refused, " ", &refused_words(&1, @update.document))}
+        </span>
+      </.notice>
       <div class="flex flex-wrap gap-2">
         <.button
           id="harness-update-save"
@@ -280,6 +286,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="false"
+          disabled={@refused != []}
         >
           {gettext("Save")}
         </.button>
@@ -288,6 +295,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="true"
+          disabled={@refused != []}
         >
           {gettext("Try first")}
         </.button>
@@ -298,6 +306,23 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
     </section>
     """
   end
+
+  # Why the update cannot be saved: the stages come from the harness, so the fix is the
+  # harness keeper's, for a shared stage whose workflows the harness sets to different
+  # access; any other error in the save's words.
+  defp refused_words(
+         %{error: :shared_run_differs, detail: {:access, workflow, level, other}},
+         _document
+       ),
+       do:
+         gettext(
+           "Ask whoever keeps the harness to give %{workflow} %{other} access, or to move it to a separate stage. %{workflow} runs with %{level} access, because its harness sets %{level}.",
+           workflow: workflow,
+           other: other,
+           level: level
+         )
+
+  defp refused_words(error, document), do: Words.refusal(error, document)
 
   attr :kind, :atom, required: true, values: [:add, :del, :ctx]
   attr :sub, :boolean, default: false, doc: "whether the line is an entry under a change"

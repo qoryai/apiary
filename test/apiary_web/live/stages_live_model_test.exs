@@ -446,7 +446,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
   test "a save sends the runtime Runtime shows: the override's, kept by a change of Provider",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
-    [release] = Runtimes.list()
+    release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
     second = %{release | name: release.name <> "-second", title: release.title <> " second"}
     :ok = Runtimes.put_test_list([release, second])
     default!(scope, anthropic)
@@ -565,7 +565,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     # from the bearer variable: Anthropic (an `x-api-key` header) serves the first alone,
     # OpenRouter (bearer) serves both.
     defp two_runtimes do
-      [release] = Apiary.Kinds.Runtimes.list()
+      release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       bearer = %{
         release
@@ -597,7 +597,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       scope: scope,
       anthropic: anthropic
     } do
-      [release] = Apiary.Kinds.Runtimes.list()
+      release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       default!(scope, anthropic)
       {:ok, view, _html} = live(conn, path)
 
@@ -712,7 +712,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       anthropic: anthropic,
       openrouter: openrouter
     } do
-      [release] = Apiary.Kinds.Runtimes.list()
+      release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       narrow = %{
         release
@@ -812,7 +812,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
       # The catalogue has only a bearer runtime, which Anthropic (an `x-api-key` header)
       # does not serve and OpenRouter does.
-      [release] = Apiary.Kinds.Runtimes.list()
+      release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
       bearer = %{
         release

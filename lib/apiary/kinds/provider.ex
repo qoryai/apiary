@@ -11,7 +11,10 @@ defmodule Apiary.Kinds.Provider do
   when the description lists them, its `key_prefixes`; and `models`, each with `id`,
   `title` and, when the description lists them, `effort`; and `limit_windows`, the
   windows of the provider's limits that a key's Use up to percentage applies to, such as
-  `five_hour` and `seven_day`, `[]` when the role has none. `egress_hosts` is the
+  `five_hour` and `seven_day`, `[]` when the role has none. `vendor` is the description's
+  `vendor`, the company that runs the model API, such as `OpenAI`, nil when the description
+  has none. An API may also have `runtimes`, `paths` and `oauth_refresh`, kept as the
+  description has them. `egress_hosts` is the
   description's top-level list, `[]` when it has none. `description` is the description
   as `parse/1` returns it, and `sha256` the SHA-256 of the file's bytes, in lower-case
   hex, which a provider connection records.
@@ -31,6 +34,7 @@ defmodule Apiary.Kinds.Provider do
   @enforce_keys [:name, :title, :description]
   defstruct name: nil,
             title: nil,
+            vendor: nil,
             description: nil,
             sha256: nil,
             apis: [],
@@ -48,6 +52,7 @@ defmodule Apiary.Kinds.Provider do
   @type t :: %__MODULE__{
           name: String.t(),
           title: String.t(),
+          vendor: String.t() | nil,
           description: Description.t(),
           sha256: String.t() | nil,
           apis: [api],
@@ -164,6 +169,7 @@ defmodule Apiary.Kinds.Provider do
     %__MODULE__{
       name: description.name,
       title: description.title,
+      vendor: Map.get(document, "vendor"),
       description: description,
       apis: Map.fetch!(role, "apis"),
       models: Map.fetch!(role, "models"),

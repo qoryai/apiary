@@ -1623,8 +1623,16 @@ needs becomes a component, or an attribute of one, not a copy.
   "About" and the page's topic, such as **About models**, and labelled by that heading,
   in the muted text with no box (A form is a page,
   under No modals); and
-  `not_on_runs/1`, the one plain line a page over data no run receives says, in the
-  page's sentence (`inner_block`, required): the component adds no words.
+  `not_on_runs/1`, the one plain line a page over a workspace's secrets, variables or
+  integrations says, in the page's sentence (`inner_block`, required): the component adds
+  no words. The Secrets tab and the integration pages say "A run receives only its
+  security policy."; the workspace's Variables tab, "A run receives these variables when
+  it starts. A change reaches the next run."; the organisation's Variables page, "A run
+  receives the variables that its workspace and target inherit from this organisation, as
+  they are when it starts. A later change reaches the next run." and the line that Qory
+  Apiary keeps the variables and works out what each workspace and target inherits.
+  A software workspace reads "repository" for "target" in both sentences.
+  The guides say it so: A run receives the variables when it starts. It receives no secrets.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
   `patch` or `href`, unless it is `disabled`: a disabled one is a `<button disabled>`
@@ -2256,15 +2264,19 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        session with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
        (an exit code of -1 is no exit status and is left out); and Model, from the
        session's last `dev.qory.runtime.started`. A session whose runtime, the `runtime`
-       of its `dev.qory.session.started`, is not Claude Code (`claude`) then has a note:
-       "Only Claude Code sends session events. This session ran qory: its output is
+       of its `dev.qory.session.started`, is no runtime of the catalogue
+       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note, which lists the
+       runtimes of the catalogue, all of which send session events:
+       "Only Claude Code and Codex send session events. This session ran qory: its output is
        under Terminal, and its connections under Network access." For a reader without
-       the Terminal, the note ends "its connections are under Network access." A Claude
-       Code session whose hooks sent no event has the note about the wall instead, "This
-       run's session events could not be recorded: the wall it ran behind runs inside a
-       virtual machine.", or, on a run with no wall, "No session events arrived." Each
-       Claude Code session of the run has that note, as the wall and the hook events are
-       counted for the run. In a run of two sessions on different runtimes, each session
+       the Terminal, the note ends "its connections are under Network access." A Codex
+       session has no note: it has no hooks, and its events come from the runtime's output.
+       A Claude Code session whose hooks sent no event has the note about the wall
+       instead, "This run's session events could not be recorded: the wall it ran behind
+       runs inside a virtual machine.", or, on a run with no wall, "No session events
+       arrived." Each Claude Code session of the run has that note, as the wall is the run's
+       and the hook events are counted for the run's Claude Code sessions together, never
+       those of a Codex session. In a run of two sessions on different runtimes, each session
        has the note about its runtime. No note is above the Run list. A run whose Timeline
        follows the list, as one whose sessions ran no agent, has the notes after the
        list, above the Timeline, and a run with no Run list has them above its Timeline.
@@ -2305,7 +2317,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      image**, between Prepare the machine and Remove the machine, with no Agent session,
      Prepare the session or Run the agent. Build the image opens to the session's join,
      **Start the build**, and its wall, then Started and Finished as Run the agent has
-     them, the note of a runtime that is not Claude Code as Run the agent has it, and the
+     them, the note of a program that is no runtime of the catalogue as Run the agent has it, and the
      session's Timeline. The join of any other run is Start the agent. A
      prebuild's `image` step, which Forager writes in the session's join after the
      session's start, is in Prepare the machine. A prebuild's `dev.qory.run.built` is
@@ -2486,8 +2498,19 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   Docker." ("repository's" in a software workspace); and "Start the
   run again. The setup container was not removed, so a process in it could still write
   the files.". On the Qory Pool, whose forager.yaml a person in an organisation cannot
-  edit, "Contact support." replaces the fix of the first two. Any other code is the
-  run's starter's, shown as given with spaces for underscores: "no longer needed".
+  edit, "Contact support." replaces the fix of the first two. A run that writes, with
+  access `write` or `write-no-push`, that qory closes for want of a wall gives
+  `write_needs_wall`, which reads "write run with no wall"; the work item shows, under
+  "The run ended without a result.", "Set a wall in the machine's forager.yaml, then
+  start the run again. A run that writes to the checkout needs a wall, and this machine
+  has none." ("A run that writes needs a wall, and this machine has none." outside a
+  software workspace), and on the Qory Pool "Contact support." replaces the fix. A run that ended with `timeout` reads "time limit
+  reached" on its run page; the work item shows "Attempt 3 reached its time limit, so
+  Build has no result." ("Attempt" stays capitalised after "The run stopped:"; "Build" is
+  the stage's name, and "the stage" stands for a run with no stage), with no fix: another
+  round is the next step. A lost run and a run with another end keep their lines. Any
+  other code is the run's starter's, shown as given with spaces for underscores: "no
+  longer needed".
   A run a pool's claim registered whose machine never started it reads its cause in
   the meta line, the rail and the preview: "No machine was made: <the starter's reason>."
   when the starter released its dispatch, "The pool did not start a machine within 10

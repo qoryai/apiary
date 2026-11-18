@@ -395,13 +395,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
+    shown = assigns.page |> shown_outputs() |> Enum.flat_map(&named_rows/1) |> by_scenario()
+
     assigns =
       assign(assigns,
-        marks: Map.new(assigns.page.index, &{&1.type, &1}),
-        versions: Enum.filter(assigns.page.outputs, & &1.version_id),
+        marks: Map.new(assigns.page.index, &{{&1.type, &1.name}, &1}),
+        versions: Enum.filter(shown, & &1.version_id),
         # At a Confirm gate the proposal can exist with no artifact, so an output with no
         # version is not shown as missing.
-        shown: shown_outputs(assigns.page),
+        shown: shown,
+        drafts: Map.get(assigns.page, :drafts, []),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none",
         started_no_run: started_no_run?(assigns.page),
@@ -412,14 +415,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
+      <p :for={{draft, i} <- Enum.with_index(@drafts)} id={"#{@id}-draft-#{i}"}>
+        {gettext("Submission:")}
+        <.external_link href={draft.url}>
+          {gettext("the draft in %{repository}", repository: draft.path)}
+        </.external_link>
+      </p>
       <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
-        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
-        <p>
+        <p id={"#{@id}-path"} class="flex items-center gap-2">
+          <span class="text-sm font-semibold">{gettext("Track")}</span>
           <.badge color="success">{@page.track.name}</.badge>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
-          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
-            " " <> gettext("Read the inputs below, then approve.")}
+          {gettext("Read the inputs below, then approve.")}
         </p>
       </div>
       <h3
@@ -432,10 +440,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         {gettext("This stage has no outputs.")}
       </p>
       <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
-        <li :for={output <- @shown} id={"#{@id}-output-#{output.type}"}>
-          <span>{version_words(output.type, output.version)}</span>
-          · <span id={"#{@id}-check-#{output.type}"}>{check_words(output)}</span>
-          <.approval_mark id={"#{@id}-mark-#{output.type}"} mark={@marks[output.type]} />
+        <li :for={output <- @shown} id={"#{@id}-output-#{output.key}"}>
+          <span>{version_words(output.type, output.name, output.version)}</span>
+          · <span id={"#{@id}-check-#{output.key}"}>{check_words(output)}</span>
+          <.approval_mark
+            id={"#{@id}-mark-#{output.key}"}
+            mark={@marks[{output.type, output.name}]}
+          />
         </li>
       </ul>
       <.needs
@@ -445,13 +456,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
         add_path={@add_path}
       />
-      <p :if={@decides and not @page.confirm_gate} id={"#{@id}-approvers"} class="text-xs opacity-70">
-        <%= case @page.approvers do %>
-          <% :members -> %>
-            {gettext("One approval covers each version. Any member approves.")}
-          <% {:listed, _ids} -> %>
-            {gettext("One approval covers each version. The members this stage lists approve.")}
-        <% end %>
+      <p
+        :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}
+        id={"#{@id}-approvers"}
+        class="text-xs opacity-70"
+      >
+        {gettext("Only the members this stage lists can approve.")}
       </p>
       <%= if @page.can_decide and not @page.confirm_gate do %>
         <%= if @asking == :changes and @decides do %>
@@ -467,7 +477,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             <select id={"#{@id}-changes-version"} name="version">
               <option value="">{gettext("The whole stage")}</option>
               <option :for={output <- @versions} value={output.version_id}>
-                {version_words(output.type, output.version)}
+                {version_words(output.type, output.name, output.version)}
               </option>
             </select>
             <.note
@@ -527,10 +537,50 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   def started_no_run?(_page), do: false
 
+  # The questions are in the Open questions frame of the stage's tab and on the Questions
+  # tab, so the list of outputs leaves them out.
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
-    do: Enum.filter(outputs, & &1.version_id)
+    do: Enum.filter(outputs, &(&1.version_id && &1.type != "questions"))
 
-  defp shown_outputs(%{outputs: outputs}), do: outputs
+  defp shown_outputs(%{outputs: outputs}), do: Enum.reject(outputs, &(&1.type == "questions"))
+
+  # An output's rows on the gate card: one for the newest version of each of its names
+  # (`names`), or one for the output where it has none, its version nil or `main`'s. A
+  # row's `key` is its type, with the name after it where the name is not `main`.
+  defp named_rows(%{names: [_ | _] = names} = output) do
+    for named <- names do
+      key = if named.name == "main", do: output.type, else: "#{output.type}-#{named.name}"
+
+      output
+      |> Map.merge(Map.take(named, [:name, :version, :version_id]))
+      |> Map.put(:key, key)
+    end
+  end
+
+  defp named_rows(output), do: [output |> Map.put(:name, "main") |> Map.put(:key, output.type)]
+
+  # The gate card's rows at a stage with a `verification` output: the films and pictures
+  # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) together, in the place of the first, in
+  # the order of their names (`Apiary.Artifacts.name_order/1`), so each scenario's film or
+  # pictures follow the one before; the other rows as they are. Elsewhere, `rows`.
+  defp by_scenario(rows) do
+    media = ApiaryWeb.WorkItemLive.VerifyTab.media()
+
+    case Enum.split_with(rows, &(&1.type in media)) do
+      {[], _rows} ->
+        rows
+
+      {films, others} ->
+        if Enum.any?(rows, &(&1.type == "verification")) do
+          at = Enum.find_index(rows, &(&1.type in media))
+          sorted = Enum.sort_by(films, &{Apiary.Artifacts.name_order(&1.name), &1.type})
+          {before, later} = Enum.split(others, at)
+          before ++ sorted ++ later
+        else
+          rows
+        end
+    end
+  end
 
   defp check_words(%{version: nil, required: false}), do: gettext("Optional, none")
   defp check_words(%{check: :passed}), do: gettext("Passed")
@@ -579,7 +629,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns,
         :escalation,
         assigns.page.escalation ||
-          %{cause: :escalate, result: true, points: [], run: nil, harness_path: nil}
+          %{
+            cause: :escalate,
+            result: true,
+            points: [],
+            run: nil,
+            harness_path: nil,
+            return_to: nil
+          }
       )
       |> assign(:switch, Map.get(assigns.page, :switch) || [])
 
@@ -638,7 +695,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
-            <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
+            <option
+              :for={stage <- Enum.reverse(@page.earlier)}
+              value={stage.id}
+              selected={stage.id == Map.get(@escalation, :return_to)}
+            >
+              {stage.name}
+            </option>
           </select>
           <.button id={"#{@id}-move"} type="submit" name="how" value="move_back">
             {gettext("Move back")}
@@ -682,7 +745,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
-  with "question N" linked to the question on the current stage's tab, or "Run another
+  with "question N" linked to the question on the Questions tab, or "Run another
   round.", or the point's fix line in its place. While the stage is escalated, a reader who
   may decide finds the note field and Run another round under the points; they belong to
   the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
@@ -700,8 +763,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     doc: "the path of the tab where the questions are; empty on that tab"
 
   attr :questions_id, :string,
-    default: "work-item-explore-questions",
-    doc: "the id of that tab's questions frame, before `-question-N`"
+    default: "work-item-questions",
+    doc: "the id before `-question-N` of a question on that tab"
 
   attr :scope, :any,
     default: nil,
@@ -1124,12 +1187,28 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp version_words(type, number),
     do: gettext("%{type} v%{number}", type: type_words(type), number: Format.number(number))
 
+  # A version of a named artifact in today's plain form: the type's words, the name where
+  # it is not `main`, and the number, such as "demo video scenario-1 v1".
+  defp version_words(type, name, number) when name in [nil, "main"],
+    do: version_words(type, number)
+
+  defp version_words(type, _name, nil), do: type_words(type)
+
+  defp version_words(type, name, number),
+    do:
+      gettext("%{type} %{name} v%{number}",
+        type: type_words(type),
+        name: name,
+        number: Format.number(number)
+      )
+
   @doc false
   # output_versions/1 is the summary's pieces of the record block at a stage after Explore:
   # "spec v1" for each of the current stage's outputs that has a version, in the stage's
-  # order. An output with no version has no piece, as Explore's proposal and questions do.
+  # order. An output with no version has no piece, as Explore's proposal does. The
+  # questions have none: they are on the Questions tab.
   def output_versions(%{outputs: outputs}) do
-    for %{type: type, version: number} when is_integer(number) <- outputs,
+    for %{type: type, version: number} when is_integer(number) and type != "questions" <- outputs,
         do: version_words(type, number)
   end
 
