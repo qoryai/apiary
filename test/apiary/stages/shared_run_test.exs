@@ -673,6 +673,37 @@ defmodule Apiary.Stages.SharedRunTest do
       assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
     end
+
+    test "in its second session, claimed through the handover, stores the resume of that session",
+         %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2}} = report(run, 1)
+
+      {paused, continuation} = paused_in!(scope, run, [1, 2])
+      assert paused.runtime == "claude"
+      walk!(continuation, :read)
+
+      # The claim forms the run settings of session 2's workflow, which has no model
+      # choice: the catalogue's runtime, the runtime session 2 ran on.
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+      %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+      %{dispatch_run: claimed, run: registered} =
+        Apiary.DispatchedRunsFixtures.handed_over(scope, key, continuation, %{})
+
+      assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = claimed
+      assert registered.run_settings["runtime"] == paused.runtime
+
+      assert %{"run_id" => run_id, "session_id" => "e5f6a7b8", "path" => path} =
+               registered.resume
+
+      assert {run_id, path} == {paused.node_run_id, transcript_path(2)}
+    end
   end
 
   describe "the end of a run after a session" do
