@@ -568,6 +568,143 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
   end
 
+  describe "a run with keys of two providers" do
+    @checkout_key "sk-ant-checkout-0123456789"
+
+    # A second provider of the organisation, Checkout keys, whose key is the run's second
+    # key, `<its public id>-1`, as a claim stores the key of a later session's provider;
+    # and the digest of the run configuration that a reload returns now.
+    setup ctx do
+      {:ok, checkout} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: @checkout_key}]
+        })
+
+      [value] = Repo.all(from v in Value, where: v.secret_id == ^checkout.secret_id)
+
+      Apiary.ModelKeysFixtures.run_keys!(ctx.run, [
+        %{
+          provider: checkout,
+          secret_value_id: value.id,
+          position: 2,
+          name: "#{checkout.public_id}-1",
+          start: false
+        }
+      ])
+
+      %{checkout: checkout, digest: digest(ctx)}
+    end
+
+    defp digest(ctx) do
+      {key, _seed} = ctx.secrets_key
+
+      {:ok, %{digest: digest}} =
+        Apiary.Runs.Registration.fetch(key, ctx.run.node_run_id, instance_id())
+
+      digest
+    end
+
+    defp both(ctx), do: [start(ctx), "#{ctx.checkout.public_id}-1"]
+
+    defp opened_at(ctx, conn, digest) do
+      {key, seed} = ctx.secrets_key
+
+      expected = %{
+        access_key_id: key.key_id,
+        run_id: ctx.run.node_run_id,
+        run_configuration: digest,
+        signing_public_key: SigningKey.current().public_key,
+        x25519_private_key: SealedOpen.x25519_private_key(seed)
+      }
+
+      assert {:ok, plaintext, _sealed} = SealedOpen.open(conn.resp_body, expected)
+      Jason.decode!(plaintext)
+    end
+
+    test "is answered the key of each provider it names", ctx do
+      conn = post_secrets(ctx, request(ctx, digest: ctx.digest, credentials: both(ctx)))
+      assert conn.status == 200
+
+      # The values are in the order of their credential names.
+      expected =
+        Enum.sort_by(
+          [
+            %{"credential" => start(ctx), "value" => model_key()},
+            %{"credential" => "#{ctx.checkout.public_id}-1", "value" => @checkout_key}
+          ],
+          & &1["credential"]
+        )
+
+      assert opened_at(ctx, conn, ctx.digest)["values"] == expected
+    end
+
+    test "409 credential_unavailable for the whole request where one provider's secret changed",
+         ctx do
+      # Checkout keys' rows keep a secret that is no longer the provider's.
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.connection_id == ^ctx.checkout.id),
+          set: [secret_id: ctx.provider.secret_id]
+        )
+
+      {conn, log} =
+        with_log(fn ->
+          post_secrets(ctx, request(ctx, digest: digest(ctx), credentials: both(ctx)))
+        end)
+
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "#{ctx.checkout.public_id} may not be sealed for its gateway (secret)"
+      refute conn.resp_body =~ model_key()
+      refute log =~ model_key()
+      assert seals() == []
+    end
+
+    test "409 credentials_differ for a name of a provider's key the run has no row of", ctx do
+      for credentials <- [
+            both(ctx) ++ ["#{ctx.checkout.public_id}-2"],
+            [start(ctx), "#{ctx.checkout.public_id}-2"]
+          ] do
+        conn = post_secrets(ctx, request(ctx, digest: ctx.digest, credentials: credentials))
+        assert conn.status == 409, inspect(credentials)
+        assert code(conn) == "credentials_differ"
+      end
+
+      assert seals() == []
+    end
+
+    test "409 credential_unavailable, revealing nothing, for a key row of one provider with a key of the other",
+         ctx do
+      # Checkout keys' row has the row id of the start provider's key in place of its key.
+      %{secret_value_id: theirs} = hd(stored_keys(ctx.run))
+
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.connection_id == ^ctx.checkout.id),
+          set: [secret_value_id: theirs]
+        )
+
+      for credentials <- [both(ctx), ["#{ctx.checkout.public_id}-1"]] do
+        {conn, log} =
+          with_log(fn ->
+            post_secrets(ctx, request(ctx, digest: digest(ctx), credentials: credentials))
+          end)
+
+        assert conn.status == 409, inspect(credentials)
+        assert code(conn) == "credential_unavailable"
+
+        assert log =~
+                 "the key #{ctx.checkout.public_id}-1 of the model provider " <>
+                   "#{ctx.checkout.public_id} cannot be read (not_found)"
+
+        refute conn.resp_body =~ model_key()
+        refute log =~ model_key()
+      end
+
+      assert seals() == []
+    end
+  end
+
   describe "where the factory feature is off and the registry feature on" do
     @describetag :work
 

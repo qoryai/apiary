@@ -878,6 +878,59 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       assert workspaces(organisation) == []
     end
 
+    test "a template whose shared stage the organisation's default choice gives 7 providers shows that line alone",
+         %{
+           conn: conn,
+           user: user,
+           organisation: organisation
+         } = ctx do
+      # Answer's two workflows share one run.
+      file =
+        String.replace(
+          support_desk_file(),
+          "      name: Answer\n",
+          "      name: Answer\n      shared_run: true\n"
+        )
+
+      files = Apiary.HarnessReadsFixtures.repository_files("R_harness", %{"support-desk" => file})
+      Apiary.HarnessReadsFixtures.serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+
+      # The organisation's default choice, on Northwind 1 with 6 fallbacks, Northwind 2 to 7.
+      scope = scope_of(user, organisation)
+
+      [first | rest] =
+        providers =
+        for n <- 1..7 do
+          {:ok, provider} =
+            Apiary.Connections.create_provider(scope, %{
+              provider: "anthropic",
+              name: "Northwind #{n}",
+              keys: [%{value_id: "main", value: "sk-ant-northwind-#{n}-0123456789"}]
+            })
+
+          provider
+        end
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :organisation, %{
+          provider: first.public_id,
+          model: "claude-opus-5-5",
+          fallbacks: for(p <- rest, do: %{provider: p.public_id, model: "claude-sonnet-5-5"})
+        })
+
+      view = open(conn, user, organisation, ctx.collection.public_id <> ".support-desk")
+      view |> element("#workspace-type-create") |> render_click()
+
+      names = Enum.map_join(providers, ", ", & &1.name)
+
+      assert flash_error(view) ==
+               squash(
+                 "Use at most 6 model providers in one stage. Its workflows use 7: #{names}."
+               )
+
+      assert workspaces(organisation) == []
+    end
+
     test "a template of a type no domain has is not a template",
          %{
            conn: conn,

@@ -142,6 +142,36 @@ defmodule Apiary.Dispatches.PauseTest do
     assert Pause.of_public_ids([paused.public_id]) == %{paused.public_id => Pause.of_run(paused)}
   end
 
+  test "the continuation of a run paused with model_key_switch is claimed only once its report window ends",
+       ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, %{@paused | "reason" => "model_key_switch"})
+
+    assert %Run{state: "paused", exit_reason: "model_key_switch"} = Repo.get!(Run, run.id)
+    assert runs_of(dispatch_run.work_item_id) == [{1, :ended, :run_ended}, {2, :waiting, nil}]
+
+    # The window ends Report.after_exit_seconds/0 after the end of the paused run.
+    next = run_of(dispatch_run.work_item_id, 2)
+    assert %DateTime{} = wait = next.report_wait_until
+    window = Apiary.ModelKeys.Report.after_exit_seconds()
+    assert DateTime.diff(wait, DateTime.utc_now()) in (window - 10)..window
+
+    # A claim one second before the window ends takes no run; a claim at its end takes the
+    # continuation.
+    assert {:ok, :none} = walked_claim(ctx.key, DateTime.add(wait, -1, :second))
+    assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, next.id)
+
+    assert {:ok, %{run: %DispatchRun{id: id}}} = walked_claim(ctx.key, wait)
+    assert id == next.id
+  end
+
+  test "the continuation of a run paused at the limit has no report window", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @paused)
+
+    assert %DispatchRun{report_wait_until: nil} = run_of(dispatch_run.work_item_id, 2)
+  end
+
   @tag needs: [:factory, :secrets, :observability]
   test "a paused run a member cancelled is not continued", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
