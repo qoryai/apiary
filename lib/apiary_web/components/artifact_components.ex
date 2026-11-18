@@ -569,29 +569,31 @@ defmodule ApiaryWeb.ArtifactComponents do
         </div>
         <div class="q-player-bar flex flex-wrap items-center gap-2">
           <div class="flex items-center gap-1.5">
-            <button
+            <.button
               id="artifact-picture-prev"
               type="button"
+              size="xs"
               phx-click="picture-prev"
               disabled={@shown <= 1}
-              class={size_button()}
+              class={size_class()}
             >
               <span class="hero-chevron-left-micro size-4 shrink-0" aria-hidden="true"></span>
               <span>{gettext("Previous picture")}</span>
-            </button>
+            </.button>
             <span id="artifact-picture-count" class="px-1 text-[12.5px] text-muted tabular-nums">
               {gettext("Picture %{number} of %{total}", number: @shown, total: @total)}
             </span>
-            <button
+            <.button
               id="artifact-picture-next"
               type="button"
+              size="xs"
               phx-click="picture-next"
               disabled={@shown >= @total}
-              class={size_button()}
+              class={size_class()}
             >
               <span>{gettext("Next picture")}</span>
               <span class="hero-chevron-right-micro size-4 shrink-0" aria-hidden="true"></span>
-            </button>
+            </.button>
           </div>
           <.sizes id={"#{@id}-sizes"} version={@version.public_id} />
         </div>
@@ -735,20 +737,22 @@ defmodule ApiaryWeb.ArtifactComponents do
       data-version={@version}
       class="ml-auto flex items-center gap-1.5"
     >
-      <button
+      <.button
         id="artifact-cinema"
         type="button"
+        size="xs"
         data-cinema-toggle
         aria-pressed="false"
         title={gettext("Cinema: the player takes the width of the page")}
-        class={[size_button(), "hidden lg:flex"]}
+        class={[size_class(), "hidden lg:flex"]}
       >
         <span class="hero-arrows-right-left size-4 shrink-0" aria-hidden="true"></span>
         <span>{gettext("Cinema")}</span>
-      </button>
-      <button
+      </.button>
+      <.button
         id="artifact-full-screen"
         type="button"
+        size="xs"
         data-full-screen
         aria-pressed="false"
         title={gettext("Full screen")}
@@ -756,18 +760,21 @@ defmodule ApiaryWeb.ArtifactComponents do
         data-label={gettext("Full screen")}
         data-leave-title={gettext("Leave full screen (Esc)")}
         data-leave-label={gettext("Leave full screen")}
-        class={size_button()}
+        class={size_class()}
       >
         <span data-icon class="hero-arrows-pointing-out-micro size-4 shrink-0" aria-hidden="true"></span>
         <span data-text>{gettext("Full screen")}</span>
-      </button>
+      </.button>
     </div>
     """
   end
 
-  defp size_button,
+  @doc false
+  # size_class/0 is the classes that make a `<.button size="xs">` the small button of the
+  # Speed row and the player's line: the same height, face and pressed state.
+  def size_class,
     do:
-      "btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2"
+      "h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2"
 
   defp inline_images, do: @inline_images
 

@@ -596,7 +596,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       class="grid gap-3 border-b border-base-300 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)]"
     >
       <div class="grid content-start gap-2">
-        <figure :for={file <- @videos} class="grid content-start gap-2">
+        <figure :for={{file, n} <- Enum.with_index(@videos)} class="grid content-start gap-2">
           <video
             controls
             preload="metadata"
@@ -612,6 +612,15 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
               src={file_src(assigns, track)}
             />
           </video>
+          <div class="flex flex-wrap items-center gap-2">
+            <.watch
+              id={if n == 0, do: "#{@id}-watch", else: "#{@id}-watch-#{n}"}
+              scenario={@scenario}
+              scope={@scope}
+              number={@number}
+              film
+            />
+          </div>
           <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
         </figure>
       </div>
@@ -670,6 +679,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           </figcaption>
         </figure>
       </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <.watch id={"#{@id}-watch"} scenario={@scenario} scope={@scope} number={@number} />
+      </div>
       <ArtifactComponents.list
         id={"#{@id}-row"}
         artifacts={[@scenario.artifact]}
@@ -678,6 +690,32 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         label={&label/2}
       />
     </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :scenario, :map, required: true
+  attr :scope, :any, required: true
+  attr :number, :integer, required: true
+  attr :film, :boolean, default: false, doc: "a film's link carries the time and speed"
+
+  # The Watch button of a scenario: opens its version's page, the player page with the other
+  # scenarios beside it. On a film, the `WatchHandoff` hook leaves the film's time and speed
+  # for that page, which does not start it.
+  defp watch(assigns) do
+    ~H"""
+    <.button
+      id={@id}
+      navigate={ArtifactComponents.version_path(@scope, @number, @scenario.version.public_id)}
+      size="xs"
+      title={gettext("Watch this scenario on its page, with the other scenarios beside it")}
+      class={ArtifactComponents.size_class()}
+      phx-hook={@film && "WatchHandoff"}
+      data-version={@film && @scenario.version.public_id}
+    >
+      <span class="hero-play-micro size-4 shrink-0" aria-hidden="true"></span>
+      <span>{gettext("Watch")}</span>
+    </.button>
     """
   end
 
