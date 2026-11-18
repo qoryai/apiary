@@ -4492,14 +4492,13 @@ defmodule Apiary.Stages do
 
   # gate_frames/3 is the versions the work item page frames on the tab of the stage
   # `stage_id` of the process version `version`, the work item's
-  # (`ApiaryWeb.WorkItemLive.StageTab.frames/1`; on the tab of a stage with a
-  # `verification` output, the versions a person made, `verify_frames/3`), each with its
-  # artifact's type and name. At the work item's stage, until its last stage is done, they
-  # are the versions an approval would record now (`recorded_versions/4`, the set
-  # `approve_locked/7` lists). At any other stage with a person's approval in this take
-  # in, they are the versions the newest such approval recorded, in its order; with none,
-  # the versions its gate shows. A person's version of the submission type is never one
-  # (`recordable/2`). [] for a stage the work item's process version does not have.
+  # (`ApiaryWeb.WorkItemLive.StageTab.frames/1`), each with its artifact's type and name.
+  # At the work item's stage, until its last stage is done, they are the versions an
+  # approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
+  # At any other stage with a person's approval in this take in, they are the versions the
+  # newest such approval recorded, in its order; with none, the versions its gate shows. A
+  # person's version of the submission type is never one (`recordable/2`). [] for a stage
+  # the work item's process version does not have.
   @doc false
   @spec gate_frames(WorkItem.t(), Processes.Version.t(), String.t()) :: [
           %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}

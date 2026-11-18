@@ -483,7 +483,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   defp member(user), do: People.short(People.email(user) || People.former_member())
 
   # verify?/1 is whether `stage` has an output of the type `verification`: its tab has the
-  # frames of `verify_frames/3`, every other stage's tab those of `frames/1`.
+  # frames of `verify_frames/2`, every other stage's tab those of `frames/1`.
   @spec verify?(map) :: boolean
   def verify?(stage), do: "verification" in stage.outputs
 
@@ -499,7 +499,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
         do: %{artifact | versions: versions}
   end
 
-  # newest/3 is `newest`, the newest version of each type's `main` (`verify_frames/3`), with
+  # newest/3 is `newest`, the newest version of each type's `main` (`verify_frames/2`), with
   # each type of the tab's `artifacts` that has no `main` there: the highest number among
   # the newest version of each of its names that a run of the take in `take_in` wrote
   # (`of_take_in/2`) and no member cancelled (`Apiary.Artifacts.newest_counted/1`).
@@ -515,40 +515,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     end
   end
 
-  # verify_frames/3 is the output frames of the tab of `stage`, a stage with a
-  # `verification` output (`verify?/1`), in its order: `%{type:, name:, version:, open:,
-  # writer:, kind:, persons:}`, `name` `main`, every frame open. A type has a frame where a
-  # run of the take in pushed a version of it at the stage (`newest`, its number by type) or
-  # where `recorded` (`Apiary.Stages.gate_frames/3`) has a version of it that a person made,
-  # such as a change to an earlier stage's output, whose frame follows the stage's; the
-  # review comments and the questions have none. `version` is the highest of those.
-  #
-  # The scenarios' films and pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one
-  # frame of the kind `:scenarios`, in the place of the first. Each output other than the
-  # verification is a frame of the kind `:row`, with its artifact rows and no text; its
-  # `writer` is the short name of the member who made its version where a person's version
-  # is higher than every run's, else nil. The verification's frame is of the kind `:output`,
-  # with the higher of the run's version and the version of `main` a person made, the one
-  # an approval records, and `writer` as a row frame has it. `persons` is the versions of
-  # the frame's types that a person made in `recorded`, each `%{type:, name:, id:, number:,
-  # writer:}`: the Scenarios frame's are its entries
-  # (`ApiaryWeb.WorkItemLive.VerifyTab.scenarios/6`), a row frame's and the verification
-  # frame's are rows. A person's verification of another name is a row of that frame only.
-  @spec verify_frames(map, %{String.t() => pos_integer}, [map]) :: [map]
-  def verify_frames(stage, newest, recorded) do
-    persons = for %{version: %{writer: :person}} = entry <- recorded, do: entry
-
-    shown =
-      for %{type: type, name: name, version: %{number: number}} <- persons,
-          type != "verification" or name == "main",
-          reduce: newest do
-        shown -> Map.update(shown, type, number, &max(&1, number))
-      end
-
+  # verify_frames/2 is the output frames of the tab of `stage`, a stage with a
+  # `verification` output (`verify?/1`), in its order, with the newest version a run of the
+  # take in pushed at the stage of each type (`newest`): `%{type:, name:, version:, open:,
+  # writer:, kind:}`, `name` `main` and `writer` nil, every frame open. A type with no such
+  # version has no frame, nor do the review comments and the questions. The scenarios' films
+  # and pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind
+  # `:scenarios`, in the place of the first, with the highest of their versions; each output
+  # other than the verification is a frame of the kind `:row`, with its version and its
+  # artifact rows, and no text; the verification's frame is of the kind `:output`.
+  @spec verify_frames(map, %{String.t() => pos_integer}) :: [map]
+  def verify_frames(stage, newest) do
     types =
-      (stage.outputs ++ Enum.map(persons, & &1.type))
-      |> Enum.uniq()
-      |> Enum.filter(&(Map.has_key?(shown, &1) and &1 not in ["review-comments", "questions"]))
+      Enum.filter(
+        stage.outputs,
+        &(Map.has_key?(newest, &1) and &1 not in ["review-comments", "questions"])
+      )
 
     media = Enum.filter(types, &(&1 in VerifyTab.media()))
 
@@ -558,52 +540,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       frame = %{
         type: type,
         name: "main",
-        version: shown[type],
+        version: newest[type],
         open: true,
         writer: nil,
-        kind: :output,
-        persons: []
+        kind: :output
       }
 
       cond do
         type in media ->
-          %{
-            frame
-            | kind: :scenarios,
-              version: media |> Enum.map(&shown[&1]) |> Enum.max(),
-              persons: for(%{type: t} = entry <- persons, t in media, do: fed(entry))
-          }
+          %{frame | kind: :scenarios, version: media |> Enum.map(&newest[&1]) |> Enum.max()}
 
         type != "verification" ->
-          fed = for %{type: ^type} = entry <- persons, do: fed(entry)
-          %{frame | kind: :row, persons: fed, writer: row_writer(shown[type], newest[type], fed)}
+          %{frame | kind: :row}
 
         true ->
-          fed = for %{type: ^type} = entry <- persons, do: fed(entry)
-          main = Enum.filter(fed, &(&1.name == "main"))
-          %{frame | persons: fed, writer: row_writer(shown[type], newest[type], main)}
+          frame
       end
     end)
   end
 
-  defp fed(%{type: type, name: name, version: version}),
-    do: %{
-      type: type,
-      name: name,
-      id: version.public_id,
-      number: version.number,
-      writer: member(version.user)
-    }
-
-  # The writer of a row frame's caption: the member of the person's version of `number`,
-  # where no run of the take in pushed a version as high (`run`).
-  defp row_writer(number, run, fed) when is_nil(run) or number > run,
-    do: Enum.find_value(fed, &(&1.number == number && &1.writer))
-
-  defp row_writer(_number, _run, _fed), do: nil
-
   @doc """
-  with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/3`), then
+  with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/2`), then
   `inputs`, the input frames (`input_frames/2`), folded, but for an input of a type that an
   output frame already shows: the Scenarios frame shows both the films and the pictures
   (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). With no output frame, it is `inputs` as

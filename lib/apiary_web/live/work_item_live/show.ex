@@ -2356,9 +2356,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The output frames of the tab of `stage`: on a tab whose stage has a `verification`
   # output (`StageTab.verify?/1`), the verification, the Scenarios frame and the row frames
-  # of the newest versions the take in's runs wrote, with the versions a person made that an
-  # approval of the stage records (`StageTab.verify_frames/3`); on any other tab, one frame
-  # for each version an approval of the stage records (`StageTab.frames/1`).
+  # of the newest versions the take in's runs wrote (`StageTab.verify_frames/2`); on any
+  # other tab, one frame for each version an approval of the stage records
+  # (`StageTab.frames/1`).
   defp output_frames(assigns, stage) do
     if StageTab.verify?(stage) do
       newest =
@@ -2366,7 +2366,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         |> ExploreView.newest_outputs(stage.id, stage.outputs)
         |> StageTab.newest(assigns.view.artifacts, assigns.row.take_in)
 
-      StageTab.verify_frames(stage, newest, recorded(assigns, stage.id))
+      StageTab.verify_frames(stage, newest)
     else
       assigns |> recorded(stage.id) |> StageTab.frames()
     end
@@ -2399,17 +2399,16 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp approver(_socket, frame), do: frame
 
   # A frame's key among the texts the page read: its type, name and version; for the
-  # Scenarios frame, the stage, the take in, the newest version of each name of the types
-  # its scenarios are read from and the versions a person made that it shows (`persons`), so
-  # a new version of any of them reads them again.
-  defp read_key(%{kind: :scenarios} = frame, %{view: view, artifacts: artifacts, row: row}) do
+  # Scenarios frame, the stage, the take in and the newest version of each name of the types
+  # its scenarios are read from, so a new version of any of them reads them again.
+  defp read_key(%{kind: :scenarios}, %{view: view, artifacts: artifacts, row: row}) do
     ids =
       for artifact <- artifacts,
           artifact.type in ["verification", "demo-evidence", "demo-script" | VerifyTab.media()],
           %{public_id: id} <- [Artifacts.newest_counted(artifact)],
           do: id
 
-    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids), frame.persons}
+    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids)}
   end
 
   defp read_key(%{type: type, name: name, version: version}, _assigns),
@@ -2417,12 +2416,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # A verification is read as its parts (`VerifyTab.verification/1`), else, as any other
   # output, as Markdown. The scenarios are those of the verified commit, that of the
-  # stage's verification, where it has one (`VerifyTab.scenarios/6`). `reads` is what the
+  # stage's verification, where it has one (`VerifyTab.scenarios/5`). `reads` is what the
   # page read from the store before (`stored_reads`), by version: a version never
   # changes, so each is read once. Each clause returns the read and `reads`.
-  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids, persons}, reads) do
+  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids}, reads) do
     {scenarios, reads} =
-      VerifyTab.queue(assigns.row, assigns.artifacts, stage_id, take_in, reads, persons)
+      VerifyTab.queue(assigns.row, assigns.artifacts, stage_id, take_in, reads)
 
     {{:scenarios, scenarios}, reads}
   end
@@ -2469,29 +2468,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp verify_frame(%{read: {:verification, verification}} = frame, socket, reads) do
-    version = ApiaryWeb.Format.number(frame.version)
-    families = Enum.join(verification.families, " · ")
-
-    # With no families, the frame's caption is "Version N", with the member after it for a
-    # person's version (`ApiaryWeb.WorkItemComponents.output_frame/1`).
     caption =
-      cond do
-        verification.families == [] ->
-          nil
-
-        frame[:writer] ->
-          gettext("Version %{version} · %{member} · Model families: %{families}",
-            version: version,
-            member: frame.writer,
-            families: families
-          )
-
-        true ->
+      if verification.families != [],
+        do:
           gettext("Version %{version} · Model families: %{families}",
-            version: version,
-            families: families
+            version: ApiaryWeb.Format.number(frame.version),
+            families: Enum.join(verification.families, " · ")
           )
-      end
 
     {frame, reads} =
       %{frame | kind: :verification} |> Map.put(:caption, caption) |> accepted(socket, reads)
@@ -2551,13 +2534,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # The artifacts of `type` that a frame of the tab lists, `main` first and then by name
-  # (`Apiary.Artifacts.name_order/1`): `main`, each other name with a version that a run of
-  # the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take in's names
-  # stay off the tab, and each `{type, name}` of `persons`.
-  defp named(artifacts, type, view, row, persons) do
+  # (`Apiary.Artifacts.name_order/1`): `main`, and each other name with a version that a
+  # run of the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take
+  # in's names stay off the tab.
+  defp named(artifacts, type, view, row) do
     taken =
       for artifact <- StageTab.of_take_in(view.artifacts, row.take_in),
-          into: MapSet.new(persons),
+          into: MapSet.new(),
           do: {artifact.type, artifact.name}
 
     artifacts
@@ -2566,19 +2549,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # The artifacts a frame's row lists: on the tab of a stage with a `verification` output,
-  # those of the frame's type (`named/5`), with the names of the versions a person made that
-  # the frame shows (`persons`); elsewhere, the artifact of the frame's type and name. An
-  # artifact of `submit_type`, the type in `submit.type`, has its runs' versions alone, so
-  # the row links the run's newest, as only a run's submit step writes a submission; one
-  # with no run's version is left out.
+  # those of the frame's type (`named/4`); elsewhere, the artifact of the frame's type and
+  # name. An artifact of `submit_type`, the type in `submit.type`, has its runs' versions
+  # alone, so the row links the run's newest, as only a run's submit step writes a
+  # submission; one with no run's version is left out.
   defp row_artifacts(artifacts, output, view, row, submit_type) do
     listed =
-      if StageTab.verify?(view.stage) do
-        persons = for person <- Map.get(output, :persons, []), do: {person.type, person.name}
-        named(artifacts, output.type, view, row, persons)
-      else
-        Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
-      end
+      if StageTab.verify?(view.stage),
+        do: named(artifacts, output.type, view, row),
+        else: Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
 
     for artifact <- listed,
         artifact = runs_only(artifact, submit_type),

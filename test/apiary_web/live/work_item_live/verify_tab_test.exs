@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.Markdown
-  alias ApiaryWeb.WorkItemLive.{StageTab, VerifyTab}
+  alias ApiaryWeb.WorkItemLive.VerifyTab
   alias ApiaryWeb.WorkflowFake
 
   @moduletag needs: [:factory, :workflow_model]
@@ -1200,293 +1200,25 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     end
   end
 
-  describe "a person's versions on the tab (780 (c))" do
-    # A version that the scope's member adds at the work item's stage.
-    defp upload!(scope, work_item, type, name, files) do
-      {:ok, version} =
-        Stages.add_version(scope, Repo.get!(WorkItem, work_item.id), type, files, name: name)
+  test "the questions have no frame on the tab", %{conn: conn, scope: scope} do
+    save_process!(scope, ~w(verification questions explainer))
 
-      version
-    end
+    work_item =
+      at_verify_gate!(scope, fn run, work_item ->
+        verification!(run, work_item)
+        explainer!(run, work_item)
 
-    defp picture(name),
-      do: [%{filename: "#{name}-step-1.png", content_type: "image/png", binary: @png}]
-
-    defp words(text),
-      do: [%{filename: "explainer.md", content_type: "text/markdown", binary: text}]
-
-    # The versions that the newest approval of Verify records.
-    defp recorded(work_item) do
-      Repo.one(
-        from d in Apiary.Stages.GateDecision,
-          where:
-            d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^@verify,
-          order_by: [desc: d.inserted_at],
-          limit: 1,
-          select: d.versions
-      )
-    end
-
-    test "a picture is a Scenarios entry with its caption, and the count has it",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item)
-          scenario!(run, work_item, 1, :film)
-          scenario!(run, work_item, 2, :pictures)
-        end)
-
-      phone = upload!(scope, work_item, "screenshot", "phone-check", picture("phone-check"))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-demo-video-s", "Version 1 · 3 scenarios")
-
-      assert texts(view, "#work-item-tab-scenarios h3") == [
-               "Scenario 1: Title of scenario-1",
-               "Scenario 2: Title of scenario-2",
-               "phone-check"
-             ]
-
-      entry = "#work-item-tab-scenarios-screenshot--phone-check--"
-      assert has_element?(view, "#{entry}-caption", "Version 1 · #{short}")
-      assert has_element?(view, "#{entry}-pictures img")
-      assert has_element?(view, "#{entry}-row", "screenshot phone-check v1")
-      refute has_element?(view, "#work-item-tab-scenarios-scenario-2-caption")
-      refute has_element?(view, "#work-item-tab-output-screenshot")
-
-      # The gate card lists the picture once, on its row.
-      assert has_element?(
-               view,
-               "#work-item-stage-gate-output-screenshot--phone-check--",
-               "screenshot phone-check v1"
-             )
-
-      refute has_element?(view, "#work-item-stage-gate-recorded")
-
-      {:ok, _approved} =
-        Stages.approve(scope, Repo.get!(WorkItem, work_item.id), nil, expect_stage: @verify)
-
-      assert phone.public_id in recorded(work_item)
-    end
-
-    test "a version of another type is a row, and its frame has the caption",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item)
-          explainer!(run, work_item)
-        end)
-
-      upload!(scope, work_item, "explainer", "main", words("Words by hand."))
-      upload!(scope, work_item, "demo-evidence", "extra", words("Evidence by hand."))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-explainer-s", "Version 2 · #{short}")
-      assert has_element?(view, "#work-item-tab-output-explainer-row", "explainer v2")
-      refute has_element?(view, "#work-item-tab-output-explainer-v2")
-
-      # A type that no run wrote has a row frame from the person's version alone.
-      assert has_element?(view, "#work-item-tab-output-demo-evidence-s", "Version 1 · #{short}")
-
-      assert has_element?(
-               view,
-               "#work-item-tab-output-demo-evidence-row",
-               "demo evidence extra v1"
-             )
-    end
-
-    test "a row frame whose highest version a run wrote has no member in its caption",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item)
-          explainer!(run, work_item)
-        end)
-
-      upload!(scope, work_item, "explainer", "notes", words("Notes by hand."))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-explainer-s", "Version 1")
-      refute has_element?(view, "#work-item-tab-output-explainer-s", short)
-      assert has_element?(view, "#work-item-tab-output-explainer-row", "explainer v1")
-      assert has_element?(view, "#work-item-tab-output-explainer-row", "explainer notes v1")
-    end
-
-    test "with no run's film or picture, a person's picture has the Scenarios frame",
-         %{conn: conn, scope: scope} do
-      work_item = at_verify_gate!(scope, &verification!(&1, &2))
-      upload!(scope, work_item, "screenshot", "phone-check", picture("phone-check"))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-screenshot-h", "Scenarios")
-      assert has_element?(view, "#work-item-tab-output-screenshot-s", "Version 1 · 1 scenario")
-      assert texts(view, "#work-item-tab-scenarios h3") == ["phone-check"]
-
-      assert has_element?(
-               view,
-               "#work-item-tab-scenarios-screenshot--phone-check---caption",
-               "Version 1 · #{short}"
-             )
-    end
-
-    test "a person's change of a type that is not Verify's output is a row frame after them",
-         %{conn: conn, scope: scope} do
-      {:ok, _type} =
-        Artifacts.create_type(scope, scope.workspace, %{"name" => "notes", "base_view" => "file"})
-
-      work_item = at_verify_gate!(scope, &verification!(&1, &2))
-      upload!(scope, work_item, "notes", "main", words("Notes by hand."))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert ids(view, "section.q-xp-frame") == [
-               "work-item-tab-output-verification",
-               "work-item-tab-output-notes"
-             ]
-
-      assert has_element?(view, "#work-item-tab-output-notes-s", "Version 1 · #{short}")
-      assert has_element?(view, "#work-item-tab-output-notes-row", "notes v1")
-    end
-
-    test "a person's verification above the run's is the Verification frame's version, " <>
-           "read as its table, and the approval records it",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, &verification!(&1, &2, "## Summary\n\nThe run's text.\n"))
-
-      by_hand =
-        upload!(scope, work_item, "verification", "main", [
-          %{filename: "verification.md", content_type: "text/markdown", binary: @verification}
+        push!(run, work_item, "questions", "main", [
+          {"questions.json", Jason.encode!(%{"questions" => []})}
         ])
+      end)
 
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
+    assert Enum.any?(Artifacts.list(work_item), &(&1.type == "questions"))
+    view = tab(conn, scope, work_item)
 
-      assert has_element?(
-               view,
-               "#work-item-tab-output-verification-s",
-               "Version 2 · #{short} · Model families: Build claude · Verify deepseek"
-             )
-
-      assert has_element?(view, "#work-item-tab-output-verification-parts-matrix-1")
-      refute render(view) =~ "The run's text."
-
-      assert [%{type: "verification", version: 2} | _rest] =
-               :sys.get_state(view.pid).socket.assigns.frames
-
-      {:ok, _approved} =
-        Stages.approve(scope, Repo.get!(WorkItem, work_item.id), nil, expect_stage: @verify)
-
-      assert by_hand.public_id in recorded(work_item)
-    end
-
-    test "with no run's verification, a person's has the Verification frame, as Markdown",
-         %{conn: conn, scope: scope} do
-      work_item = at_verify_gate!(scope, &explainer!(&1, &2))
-
-      upload!(scope, work_item, "verification", "main", [
-        %{
-          filename: "verification.md",
-          content_type: "text/markdown",
-          binary: "## Summary\n\nChecked by hand.\n"
-        }
-      ])
-
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-verification-s", "Version 1 · #{short}")
-      assert has_element?(view, "#work-item-tab-output-verification", "Checked by hand.")
-    end
-
-    test "a person's picture named main has the key of its type and name, and the type " <>
-           "as its title",
-         %{conn: conn, scope: scope} do
-      work_item = at_verify_gate!(scope, &verification!(&1, &2))
-      upload!(scope, work_item, "screenshot", "main", picture("main"))
-      view = tab(conn, scope, work_item)
-
-      assert ids(view, "#work-item-tab-scenarios > div") == [
-               "work-item-tab-scenarios-screenshot--main--"
-             ]
-
-      assert texts(view, "#work-item-tab-scenarios h3") == ["Screenshot"]
-    end
-
-    test "a person's higher version of a run's scenario takes its place, captioned, " <>
-           "counted once",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item)
-          scenario!(run, work_item, 1, :film)
-          scenario!(run, work_item, 2, :pictures)
-        end)
-
-      upload!(scope, work_item, "screenshot", "scenario-2", picture("scenario-2"))
-      view = tab(conn, scope, work_item)
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-tab-output-demo-video-s", "Version 2 · 2 scenarios")
-
-      assert texts(view, "#work-item-tab-scenarios h3") == [
-               "Scenario 1: Title of scenario-1",
-               "Scenario 2: Title of scenario-2"
-             ]
-
-      entry = "#work-item-tab-scenarios-scenario-2"
-      assert has_element?(view, "#{entry}-caption", "Version 2 · #{short}")
-      assert has_element?(view, "#{entry}-row", "screenshot scenario-2 v2")
-      refute has_element?(view, "#work-item-tab-scenarios-screenshot--scenario-2--")
-      refute has_element?(view, "#work-item-tab-scenarios-scenario-1-caption")
-    end
-
-    test "the questions have no frame on the tab", %{conn: conn, scope: scope} do
-      save_process!(scope, ~w(verification questions explainer))
-
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item)
-          explainer!(run, work_item)
-
-          push!(run, work_item, "questions", "main", [
-            {"questions.json", Jason.encode!(%{"questions" => []})}
-          ])
-        end)
-
-      assert Enum.any?(Artifacts.list(work_item), &(&1.type == "questions"))
-      view = tab(conn, scope, work_item)
-
-      assert ids(view, "section.q-xp-frame") == [
-               "work-item-tab-output-verification",
-               "work-item-tab-output-explainer"
-             ]
-    end
-
-    test "a person's picture alone has the Scenarios frame, open, then the inputs, folded" do
-      stage = %{outputs: ~w(verification demo-video screenshot explainer)}
-      version = %{public_id: "av_phone", number: 1, writer: :person, user: nil}
-      phone = %{type: "screenshot", name: "phone-check", version: version}
-
-      assert [frame] = StageTab.verify_frames(stage, %{}, [phone])
-
-      assert %{
-               type: "screenshot",
-               kind: :scenarios,
-               version: 1,
-               open: true,
-               persons: [%{name: "phone-check", id: "av_phone"}]
-             } = frame
-
-      input = &%{type: &1, name: "main", version: 2, open: &2, writer: nil, kind: :output}
-      inputs = [input.("build-report", true), input.("screenshot", false), input.("spec", false)]
-
-      assert [^frame, %{type: "build-report", open: false}, %{type: "spec", open: false}] =
-               StageTab.with_inputs([frame], inputs)
-    end
+    assert ids(view, "section.q-xp-frame") == [
+             "work-item-tab-output-verification",
+             "work-item-tab-output-explainer"
+           ]
   end
 end

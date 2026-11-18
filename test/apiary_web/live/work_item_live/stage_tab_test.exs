@@ -3151,9 +3151,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     # first entry is the Fast track's, a first attempt; its other entries and its loop run on
     # Standard only, and its gate needs no member. Verify's workflow runs on Standard only,
     # and a person approves its gate.
-    defp screens!(scope, build \\ nil, opts \\ []) do
-      report = Keyword.get(opts, :report, "test-features")
-      verify_outputs = Keyword.get(opts, :verify_outputs, [])
+    defp screens!(scope, build \\ nil, report \\ "test-features") do
       document = Processes.default_document("software")
 
       :ok =
@@ -3201,7 +3199,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
               "sequence" => [
                 %{"workflow" => "shape-a-ticket", "unless" => %{"track" => "fast-track"}}
               ],
-              "outputs" => verify_outputs,
+              "outputs" => [],
               "gate" => %{"kind" => "person", "approvers" => "members"}
             })
 
@@ -3913,71 +3911,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert report =~ "The report text"
     end
 
-    test "with a verification output, a person's picture has the Scenarios frame, open, " <>
-           "then the build report, folded",
-         %{conn: conn, scope: scope} do
-      {:ok, _type} =
-        Artifacts.create_type(scope, scope.workspace, %{
-          "name" => "verification",
-          "base_view" => "document"
-        })
-
-      screens!(scope, nil,
-        verify_outputs: [
-          %{"type" => "verification", "required" => false},
-          %{"type" => "screenshot", "required" => false}
-        ]
-      )
-
-      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
-      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
-
-      work_item =
-        work_item
-        |> reload()
-        |> end_run!(fn run, _registered ->
-          push!(run, work_item, "test-features", "## The report text")
-          passed!(run)
-        end)
-        |> reload()
-
-      {:ok, _version} =
-        Stages.add_version(
-          scope,
-          work_item,
-          "screenshot",
-          [
-            %{
-              filename: "phone-check-step-1.png",
-              content_type: "image/png",
-              binary: <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
-            }
-          ],
-          name: "phone-check"
-        )
-
-      {:ok, view, html} = live(conn, stage(scope, work_item.number, @verify))
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      assert has_element?(view, "#work-item-stage-gate-no-run")
-      assert has_element?(view, "#work-item-tab-output-screenshot-h", "Scenarios")
-      assert has_element?(view, "#work-item-tab-output-screenshot-fold[open]")
-
-      assert has_element?(
-               view,
-               "#work-item-tab-scenarios-screenshot--phone-check---caption",
-               "Version 1 · #{short}"
-             )
-
-      assert has_element?(view, "#work-item-tab-output-test-features-fold")
-      refute has_element?(view, "#work-item-tab-output-test-features-fold[open]")
-
-      [scenarios, _report] =
-        String.split(html, ~s(id="work-item-tab-output-test-features"), parts: 2)
-
-      assert scenarios =~ ~s(id="work-item-tab-output-screenshot")
-    end
-
     test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",
          %{conn: conn, scope: scope} do
       work_item = at_verify_gate!(scope)
@@ -4234,7 +4167,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     # verdict with `suite` as its full_suite (nil for none). Shape and Verify's workflow
     # run on a track no work item is on, and Build's run on both.
     defp report_gate!(scope, suite, track \\ "fast-track") do
-      screens!(scope, [%{"workflow" => "build-it"}], report: "build-report")
+      screens!(scope, [%{"workflow" => "build-it"}], "build-report")
       document = Processes.current(scope.workspace).document
 
       stages =

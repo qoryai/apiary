@@ -2645,7 +2645,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   slot :row,
     doc:
-      "an output's body: its artifact rows, for a version with no Markdown, or the verification's or the scenarios' parts; takes its frame (`:type`, `:name`, `:kind`; `ApiaryWeb.WorkItemLive.StageTab.frames/1` and `verify_frames/3`)"
+      "an output's body: its artifact rows, for a version with no Markdown, or the verification's or the scenarios' parts; takes its frame (`:type`, `:name`, `:kind`; `ApiaryWeb.WorkItemLive.StageTab.frames/1` and `verify_frames/2`)"
 
   attr :cancel, :map,
     default: nil,

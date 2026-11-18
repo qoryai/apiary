@@ -160,7 +160,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   ## The scenarios
 
   @doc false
-  # scenarios/6 is the stage `stage_id`'s scenarios of the take in `take_in`, in scenario
+  # scenarios/5 is the stage `stage_id`'s scenarios of the take in `take_in`, in scenario
   # order, from `artifacts` (`Apiary.Artifacts.list/1`, without a withdrawn name):
   # `%{key:, number:, title:, steps:, kind:, artifact:, version:}`, `kind` `:film` for a
   # `demo-video` version and `:pictures` for a `screenshot` one, `steps` each `%{title:,
@@ -171,65 +171,23 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # pictures (`media`), title and steps; with `commit`, only the evidence of that commit.
   # At a stage with no `demo-evidence`, each `demo-video` and `screenshot` name's newest
   # version is a scenario, with the title and steps of the newest `demo-script` of the same
-  # name. Of the versions not in `persons`, only those that a run of the take in wrote count
+  # name. Only the versions that a run of the take in wrote count
   # (`ApiaryWeb.WorkItemLive.StageTab.of_take_in/2`), and a version a cancelled run wrote
   # counts for none (`Apiary.Artifacts.cancelled?/1`). `read_json` is a version's JSON
   # document, nil for none, for each version of `documents/3`.
-  #
-  # `persons` is the versions of films and pictures that a person made and that an approval
-  # of the stage records (`ApiaryWeb.WorkItemLive.StageTab.verify_frames/3`), each
-  # `%{type:, name:, id:, number:, writer:}`, `id` the version's public id and `writer` the
-  # member's short name. Each is a scenario with `writer` set, for its caption: in the
-  # place of the scenario of the same artifact where that one has a lower number, else
-  # after the others, with its name as its title (the type's words for `main`) and no
-  # number. A run's scenario has `writer` nil.
-  @spec scenarios(
-          [map],
-          String.t(),
-          integer | nil,
-          String.t() | nil,
-          (map -> map | nil),
+  @spec scenarios([map], String.t(), integer | nil, String.t() | nil, (map -> map | nil)) ::
           [map]
-        ) :: [map]
-  def scenarios(artifacts, stage_id, take_in, commit, read_json, persons \\ []) do
-    of_take_in = StageTab.of_take_in(artifacts, take_in)
+  def scenarios(artifacts, stage_id, take_in, commit, read_json) do
+    artifacts = StageTab.of_take_in(artifacts, take_in)
 
-    scenarios =
-      case evidence(of_take_in, stage_id) do
-        [] -> media_scenarios(of_take_in, stage_id, read_json)
-        evidence -> evidence_scenarios(evidence, of_take_in, commit, read_json)
-      end
-
-    Enum.reduce(persons, scenarios, &fed(&2, artifacts, &1))
-  end
-
-  # `scenarios` with the person's version `person` (`scenarios/6`).
-  defp fed(scenarios, artifacts, %{type: type, name: name, id: id, writer: writer}) do
-    with %{} = artifact <- Enum.find(artifacts, &(&1.type == type and &1.name == name)),
-         %{} = version <- Enum.find(artifact.versions, &(&1.public_id == id)) do
-      shown = %{artifact: %{artifact | versions: [version]}, version: version, writer: writer}
-      at = Enum.find_index(scenarios, &(&1.artifact.type == type and &1.artifact.name == name))
-
-      cond do
-        at == nil ->
-          # The key has the type and the name between "--", so it is no run scenario's key
-          # and no such key with a suffix of an id after it.
-          entry = scenario("#{type}--#{name}--", nil, %{}, artifact, version)
-          scenarios ++ [Map.merge(entry, shown)]
-
-        Enum.at(scenarios, at).version.number < version.number ->
-          List.update_at(scenarios, at, &Map.merge(&1, shown))
-
-        true ->
-          scenarios
-      end
-    else
-      _none -> scenarios
+    case evidence(artifacts, stage_id) do
+      [] -> media_scenarios(artifacts, stage_id, read_json)
+      evidence -> evidence_scenarios(evidence, artifacts, commit, read_json)
     end
   end
 
   @doc false
-  # documents/3 is the versions whose JSON documents `scenarios/6` reads for the same
+  # documents/3 is the versions whose JSON documents `scenarios/5` reads for the same
   # `artifacts`, `stage_id` and `take_in`: each scenario's demo evidence, or, at a stage
   # with none, the demo script of each film or pictures.
   @spec documents([map], String.t(), integer | nil) :: [map]
@@ -249,11 +207,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   end
 
   @doc false
-  # queue/4 is the scenarios of the stage `stage_id` of the take in `take_in` (`scenarios/6`)
+  # queue/4 is the scenarios of the stage `stage_id` of the take in `take_in` (`scenarios/5`)
   # for `work_item`, whose `artifacts` are `Apiary.Artifacts.list/1`: the verified commit
   # is that of the stage's verification, and each JSON document is read from the store. The
-  # artifact page of a scenario's film or pictures shows this list; the tab also shows the
-  # versions a person made that an approval of the stage records (`queue/6`).
+  # tab and the artifact page of a scenario's film or pictures show the same list.
   @spec queue(map, [map], String.t(), integer | nil) :: [map]
   def queue(work_item, artifacts, stage_id, take_in) do
     {queue, _reads} = queue(work_item, artifacts, stage_id, take_in, %{})
@@ -263,10 +220,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   @doc false
   # queue/5 is `queue/4` and `reads`, what the page read from the store before, by version
   # (`stored_json/3`, `verification_parts/3`): a version never changes, so each is read
-  # once. It returns the scenarios and `reads` with what it read. queue/6 adds the
-  # versions a person made that the tab shows (`persons` of `scenarios/6`).
-  @spec queue(map, [map], String.t(), integer | nil, map, [map]) :: {[map], map}
-  def queue(work_item, artifacts, stage_id, take_in, reads, persons \\ []) do
+  # once. It returns the scenarios and `reads` with what it read.
+  @spec queue(map, [map], String.t(), integer | nil, map) :: {[map], map}
+  def queue(work_item, artifacts, stage_id, take_in, reads) do
     {commit, reads} = verified_commit(work_item, artifacts, stage_id, take_in, reads)
 
     reads =
@@ -274,17 +230,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       |> documents(stage_id, take_in)
       |> Enum.reduce(reads, &stored_json(&2, &1.public_id, &1))
 
-    scenarios =
-      scenarios(
-        artifacts,
-        stage_id,
-        take_in,
-        commit,
-        &Map.get(reads, {:json, &1.public_id}),
-        persons
-      )
-
-    {scenarios, reads}
+    {scenarios(artifacts, stage_id, take_in, commit, &Map.get(reads, {:json, &1.public_id})),
+     reads}
   end
 
   # The commit that the stage's verification verified: that of the newest version of the
@@ -411,8 +358,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         ),
       kind: if(artifact.type == "screenshot", do: :pictures, else: :film),
       artifact: %{artifact | versions: [version]},
-      version: version,
-      writer: nil
+      version: version
     }
   end
 
@@ -608,7 +554,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   defp state_badge(assigns), do: ~H|<.badge>{@state}</.badge>|
 
   attr :id, :string, required: true
-  attr :scenarios, :list, required: true, doc: "`scenarios/6`"
+  attr :scenarios, :list, required: true, doc: "`scenarios/5`"
   attr :scope, :any, required: true
   attr :number, :integer, required: true
 
@@ -680,7 +626,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       </div>
       <div class="grid content-start gap-2">
         <h3 id={"#{@id}-h"} class="q-xp-sec-t">{scenario_title(@scenario)}</h3>
-        <.caption id={@id} scenario={@scenario} />
         <ul :if={@scenario.steps != []} id={"#{@id}-steps"} class="grid gap-2 text-[13px]/5">
           <li :for={{step, i} <- Enum.with_index(@scenario.steps, 1)} class="grid gap-0.5">
             <span>{step_title(i, step)}</span>
@@ -707,7 +652,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     ~H"""
     <div id={@id} class="grid gap-3 border-b border-base-300 last:border-b-0">
       <h3 id={"#{@id}-h"} class="q-xp-sec-t">{scenario_title(@scenario)}</h3>
-      <.caption id={@id} scenario={@scenario} />
       <p class="text-[12.5px]/5 text-muted">
         {gettext("Pictures, one for each step, 390 px wide.")}
       </p>
@@ -746,20 +690,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         label={&label/2}
       />
     </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :scenario, :map, required: true
-
-  # A person's scenario's caption: the version's number and the member's short name, as an
-  # output frame's caption has them.
-  defp caption(assigns) do
-    ~H"""
-    <p :if={@scenario.writer} id={"#{@id}-caption"} class="q-xp-cap">
-      <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-      <span phx-no-format>{gettext("Version %{version}", version: ApiaryWeb.Format.number(@scenario.version.number))} · {@scenario.writer}</span>
-    </p>
     """
   end
 
@@ -817,19 +747,13 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @doc false
   # scenario_title/1 is a scenario's heading: "Scenario 2: Voucher line on a phone", else
-  # its title as written, else its artifact's name, the type's words for `main`.
+  # its title as written, else its artifact's name.
   @spec scenario_title(map) :: String.t()
   def scenario_title(%{number: number, title: title})
       when is_integer(number) and is_binary(title),
       do: gettext("Scenario %{number}: %{title}", number: number, title: title)
 
   def scenario_title(%{title: title}) when is_binary(title), do: title
-  # A name `main` reads as the type, as an output frame's heading has it.
-  def scenario_title(%{artifact: %{name: "main", type: type}}) do
-    {first, rest} = type |> StageComponents.type_words() |> String.split_at(1)
-    String.upcase(first) <> rest
-  end
-
   def scenario_title(%{artifact: artifact}), do: artifact.name
 
   @doc false
