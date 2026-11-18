@@ -371,10 +371,10 @@ key. A pool claims a run only with the feature `factory` on (`dispatch.claim`), 
 too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
 `provider_models` and `tiers` and no key, and checks neither the chosen key nor the
 provider's endpoint. An explore run's documents have `time_limit_minutes`, an integer from
-15 to 1440, after `run_settings`, for a run with a workflow and `factory` on
-(`Apiary.Stacks.workflow/2`, or, with the workflow model, the workflow of its stage
-entry): the limit set for that workflow at the run's target, else the one set at its
-workspace (`Apiary.TimeLimits`), else 180 minutes.
+15 to 1440, after `run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`,
+or, with the workflow model, the workflow of its stage entry) and `factory` on: the limit
+set for that workflow at the run's target, else the one set at its workspace
+(`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent, and the run takes the default of the
 workflow's stack, which the machine applies. After it come `shared_run`, `true` for a run
 of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access

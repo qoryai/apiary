@@ -144,7 +144,7 @@ defmodule Apiary.Dispatches.Handover do
   # `time_limit_minutes`, its workflow's time limit, and `shared_run` and `full_suite`
   # where true. For a run of a stage with `shared_run: true`, the claim keeps the settings
   # of each entry of the stage on the run it registers and writes the run's first session
-  # (`Apiary.Stages.claim_sessions!/2`), which each later session reads. Its input is
+  # (`Apiary.Stages.claim_sessions!/3`), which each later session reads. Its input is
   # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
   # run's target, or none for an explore run whose work item has none, and takes what the
   # rest of the run's documents leave of their limit: it leaves out its oldest comments
@@ -441,7 +441,13 @@ defmodule Apiary.Dispatches.Handover do
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
           if formed.push, do: RunCredentials.insert!(formed.push, run)
-          :ok = Apiary.Stages.claim_sessions!(locked.run, time_limits(locked))
+
+          :ok =
+            Apiary.Stages.claim_sessions!(
+              locked.run,
+              time_limits(locked),
+              session_models(formed)
+            )
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -932,6 +938,11 @@ defmodule Apiary.Dispatches.Handover do
   # for a run with no run settings.
   defp time_limits(%{held: %{time_limits: limits}}), do: limits
   defp time_limits(_locked), do: %{}
+
+  # The models of the later sessions of a shared run as the claim formed them
+  # (`RunSettings.build/2`), none for a run with no provider's key.
+  defp session_models(%{settings: %{sessions: sessions}}), do: sessions
+  defp session_models(_formed), do: %{}
 
   # The run settings, and the providers whose keys are all in cooldown, nil where the run
   # has keys: a run whose keys are all in cooldown is formed with the choice's settings,

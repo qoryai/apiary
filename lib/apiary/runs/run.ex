@@ -212,9 +212,10 @@ defmodule Apiary.Runs.Run do
     field :provider_api, :map, redact: true
 
     # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
-    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/2`): by the entry's
+    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/3`): by the entry's
     # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
-    # `"time_limit_minutes"` and `"full_suite"`. Written by the claim; nil for every
+    # `"time_limit_minutes"`, `"full_suite"`, `"model_choice"` and `"model_credential"`
+    # (`Apiary.Dispatches.RunSettings.build/2`). Written by the claim; nil for every
     # other run. Not folded: a rebuild keeps it.
     field :session_settings, :map
 

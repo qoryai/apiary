@@ -1611,6 +1611,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the
   feature `factory` or `secrets` off too: the choice's runtime and model, no model key,
   and, with `factory` off, no `time_limit_minutes`. A pool claims a run only with
@@ -1618,13 +1619,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `run_settings` as before. The runtime and model come from the first model choice in
   this order: a locked choice of the workspace, the workflow's choice at the run's
   target, the target's choice, the workflow's choice at the workspace, the workspace's on
-  **Workspace settings › Model**, and the organisation's default. With no choice,
+  Workspace settings › Model, and the organisation's default. With no choice,
   `run_settings` has the catalogue's default runtime alone, and the run uses the
-  gateway's key. A prebuild gets no `run_settings`. The answer to a next-session request
-  has `model_choice`, the model the choices for the session's workflow resolve to in the
-  same order, and `model_credential`, the run's start key. Both are left out where the
-  run has no provider's key, or where the choices resolve to another provider or runtime
-  than the run's; the session then uses the run's model choice and key.
+  gateway's key. A prebuild gets no `run_settings`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- The answer to a next-session request has `model_choice`, the model of the session's
+  workflow, resolved in the same order at the claim, and `model_credential`, the run's
+  start key. The claim keeps both for each workflow of the stage, so a model choice saved
+  after the claim changes nothing for the run. `model_choice` is the run's model where
+  the choice's provider, key or model is no longer valid. Both are left out where the
+  session's workflow resolves to no model choice at any level, or where the run has no
+  provider's key: the session uses the gateway's key and the runtime's default model.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
   its work item's process version: the run API returns `422` `type_not_withdrawable`, with

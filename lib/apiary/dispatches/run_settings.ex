@@ -25,15 +25,17 @@ defmodule Apiary.Dispatches.RunSettings do
   # on (`Apiary.Runs.ProviderCredential.applies?/0`). With either off, the run still gets
   # the choice's runtime, model, effort, `provider_models` and `tiers`, and no key: the
   # claim checks no key and no endpoint (no `key_gone`), keeps no provider column and no
-  # key on the run, and leaves no run waiting for a key; the run uses the gateway's key.
+  # key on the run, and waits for no key; the run uses the gateway's key.
   # `time_limit_minutes` needs `factory`, whose pages set the time limits.
   #
   # ## What it holds
   #
-  # `hold/1` reads the choices of the run's chain and their fallbacks without a lock, locks
+  # `hold/1` reads the choices of the run's chain and their fallbacks without a lock, and
+  # for a run of a stage with `shared_run: true` the choices for each workflow of the
+  # stage (`Apiary.Stages.shared_workflows/1`), the models of its later sessions. It locks
   # the rows of the model providers they name, as a provider or a fallback, `FOR SHARE`,
-  # by id, then the rows of those providers' keys'
-  # secrets `FOR SHARE`, by id, and reads the choices again. Each read that names a
+  # by id, then the rows of those providers' keys' secrets `FOR SHARE`, by id, and reads
+  # the choices again. Each read that names a
   # provider not yet locked locks it the same way. It reads the choices at most four times
   # and locks at most three times: when the fourth read still names a provider not yet
   # locked, the choices changed while the claim read them (`:unstable`), and the claim is
@@ -101,7 +103,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # limit of the run's first session (`Apiary.Dispatches.Handover`). `time_limits` has
   # the minutes of the run's workflow and, for a run of a stage with `shared_run: true`,
   # of each workflow of that stage (`Apiary.Stages.shared_workflows/1`), which the claim
-  # keeps on the run (`Apiary.Stages.claim_sessions!/2`). The process document has no
+  # keeps on the run (`Apiary.Stages.claim_sessions!/3`). The process document has no
   # time limit. The workflows and the limits are read without a lock. Beside it, the run keeps the provider's row
   # id, its keys' secret's row id, its keys (`runs.model_keys`: each key's row id, its
   # credential name `<provider's public id>-<place from 1>`, `start` on the start key, and
@@ -132,7 +134,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.ModelChoices.Resolution
   alias Apiary.ModelKeys.Order
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{ProviderCredential, Run, Target}
+  alias Apiary.Runs.{ProviderCredential, Target}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.WorkItems.WorkItem
 
@@ -179,15 +181,18 @@ defmodule Apiary.Dispatches.RunSettings do
     target = target(workspace, id)
     workflow = workflow(dispatch_run, workspace, target)
 
-    case lock(workspace, target, workflow, [], @lock_rounds) do
-      {:ok, input} ->
-        time_limits = time_limits(dispatch_run, workspace, target, workflow)
+    shared = Apiary.Stages.shared_workflows(dispatch_run)
+
+    case lock(workspace, target, {workflow, shared}, [], @lock_rounds) do
+      {:ok, input, sessions} ->
+        time_limits = time_limits(workspace, target, workflow, shared)
 
         %{
           organisation: organisation,
           workspace: workspace,
           target: target,
           input: input,
+          sessions: sessions,
           keyed: ProviderCredential.applies?(),
           time_limit: workflow && Map.get(time_limits, workflow),
           time_limits: time_limits
@@ -220,71 +225,6 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def choice_in_effect(%DispatchRun{}), do: nil
 
-  # session_model/2 is the model of a later session of the shared run of the queue
-  # `dispatch_run`, a session of `workflow`, for the answer to a next-session request:
-  # `model_choice`, the `model`, `effort`, `provider_models` and `tiers` that the choices
-  # for `workflow` resolve to in the order of the claim (`Apiary.ModelChoices.Resolution`),
-  # as a JSON map, and `model_credential`, the name of the run's start key. Both are nil
-  # where the run has no provider's key, where the choices resolve to another provider
-  # or another runtime than the run's, where the provider is gone or fails its integrity
-  # code, and where the choice no longer forms (`form/6`): the session then uses the
-  # run's model choice and key. Every session uses the runtime of the run's
-  # `run_settings`. Reads without a lock; writes nothing.
-  @doc false
-  @spec session_model(DispatchRun.t(), String.t()) :: %{
-          model_choice: map | nil,
-          model_credential: String.t() | nil
-        }
-  def session_model(%DispatchRun{} = dispatch_run, workflow) when is_binary(workflow) do
-    run = Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run.id)
-
-    with %Run{provider_connection_id: id, run_settings: %{"runtime" => name}} when is_binary(id) <-
-           run,
-         name_of_start when is_binary(name_of_start) <- start_name(run.model_keys),
-         {:ok, built} <- session_built(dispatch_run, workflow, id, name) do
-      %{model_choice: model_choice(built), model_credential: name_of_start}
-    else
-      _none -> %{model_choice: nil, model_credential: nil}
-    end
-  end
-
-  # The settings the choices for `workflow` form for the run's provider `id` and runtime
-  # `name`, else `:none`.
-  defp session_built(
-         %DispatchRun{workspace_id: workspace_id, work_item_id: work_item_id},
-         workflow,
-         id,
-         name
-       ) do
-    workspace = Repo.get!(Workspace, workspace_id)
-    organisation = Repo.get!(Organisation, workspace.organisation_id)
-    input = ModelChoices.choices_for(workspace, target(workspace, work_item_id), workflow)
-    input = %{input | choices: Repo.preload(input.choices, :fallbacks)}
-    providers = providers(%{organisation: organisation, input: input})
-
-    described =
-      Map.new(providers, fn {key, provider} -> {key, Connections.provider(provider)} end)
-
-    input =
-      Map.put(
-        input,
-        :providers,
-        Map.new(providers, fn {key, provider} ->
-          {key, ModelChoices.resolution_provider(provider, described[key])}
-        end)
-      )
-
-    with {:ok, %Resolution{connection_id: ^id} = resolution} <- Resolution.resolve(input),
-         {:ok, %Runtime{name: ^name} = runtime} <- runtime(resolution),
-         provider = Map.fetch!(providers, id),
-         :ok <- intact(provider),
-         {:ok, built} <- form(resolution, provider, described[id], runtime, workspace.id) do
-      {:ok, built}
-    else
-      _other_or_not_formed -> :none
-    end
-  end
-
   # The run's start key's credential name: the key it keeps with `start`, else its first
   # (`Apiary.Runs.ProviderCredential`); nil for none.
   defp start_name([_ | _] = keys),
@@ -303,16 +243,19 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
   # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,
-  # read without a lock, as `hold/1` reads them.
+  # read without a lock, as `hold/1` reads them; nil with `factory` off, as `hold/1`
+  # reads none then.
   @doc false
-  @spec time_limit_minutes(DispatchRun.t(), String.t()) :: pos_integer
+  @spec time_limit_minutes(DispatchRun.t(), String.t()) :: pos_integer | nil
   def time_limit_minutes(
         %DispatchRun{workspace_id: workspace_id, work_item_id: id},
         workflow
       )
       when is_binary(workflow) do
-    workspace = Repo.get!(Workspace, workspace_id)
-    time_limit(workspace, target(workspace, id), workflow)
+    if Features.on?(:factory) do
+      workspace = Repo.get!(Workspace, workspace_id)
+      time_limit(workspace, target(workspace, id), workflow)
+    end
   end
 
   # The run's workflow: with the workflow model, the one its stage entry names
@@ -322,10 +265,10 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The minutes of the run's workflow and of each workflow of its shared stage, by name;
   # none with `factory` off, whose pages set the time limits.
-  defp time_limits(dispatch_run, workspace, target, workflow) do
+  defp time_limits(workspace, target, workflow, shared) do
     if Features.on?(:factory) do
       Map.new(
-        Enum.uniq(List.wrap(workflow) ++ Apiary.Stages.shared_workflows(dispatch_run)),
+        Enum.uniq(List.wrap(workflow) ++ shared),
         &{&1, time_limit(workspace, target, &1)}
       )
     else
@@ -364,23 +307,26 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The choices once every provider they name is held, their fallbacks' among them: read,
-  # lock what is new, read again.
-  defp lock(workspace, target, workflow, locked, tries) do
+  # The choices once every provider they name is held, their fallbacks' among them, and
+  # the choices for each workflow of `shared`, a later session's, with the providers they
+  # name: read, lock what is new, read again. `{:ok, input, sessions}`, `sessions` the
+  # input of each workflow of `shared` by its name.
+  defp lock(workspace, target, {workflow, shared} = workflows, locked, tries) do
     input = ModelChoices.choices_for(workspace, target, workflow)
     input = %{input | choices: Repo.preload(input.choices, :fallbacks)}
-    ids = provider_ids(input)
+    sessions = Map.new(shared, &{&1, ModelChoices.choices_for(workspace, target, &1)})
+    ids = all_provider_ids(input, sessions)
 
     case ids -- locked do
       [] ->
-        {:ok, input}
+        {:ok, input, sessions}
 
       _new when tries == 0 ->
         :unstable
 
       new ->
         lock_rows(Enum.sort(new))
-        lock(workspace, target, workflow, locked ++ new, tries - 1)
+        lock(workspace, target, workflows, locked ++ new, tries - 1)
     end
   end
 
@@ -434,14 +380,12 @@ defmodule Apiary.Dispatches.RunSettings do
     providers = providers(held)
     described = Map.new(providers, fn {id, provider} -> {id, Connections.provider(provider)} end)
 
-    input =
-      Map.put(
-        held.input,
-        :providers,
-        Map.new(providers, fn {id, provider} ->
-          {id, ModelChoices.resolution_provider(provider, described[id])}
-        end)
-      )
+    resolved_providers =
+      Map.new(providers, fn {id, provider} ->
+        {id, ModelChoices.resolution_provider(provider, described[id])}
+      end)
+
+    input = Map.put(held.input, :providers, resolved_providers)
 
     case Resolution.resolve(input) do
       :none ->
@@ -472,7 +416,81 @@ defmodule Apiary.Dispatches.RunSettings do
                  held,
                  now
                ),
-             do: sealed(built)
+             do:
+               built
+               |> sealed()
+               |> with_sessions(held, {resolved_providers, providers, described}, runtime)
+    end
+  end
+
+  # The model of each later session of a shared run, by its workflow, as `sessions` beside
+  # `built`, which the claim keeps on the run (`Apiary.Stages.claim_sessions!/3`). Each
+  # workflow's entry is a map, so that it can later hold the session's runtime and the key
+  # of its provider beside its model. For a workflow whose choices resolve to the run's
+  # provider and runtime: `model_choice`, the `model`, `effort`, `provider_models` and
+  # `tiers` of that choice, and `model_credential`, the run's start key. Where the
+  # choice's provider, key or model is no longer valid (`form/6`), `model_choice` is the
+  # run's: the members of its `run_settings` but `runtime`. A workflow whose choices
+  # resolve to no choice at any level has no entry, and neither has any workflow of a run
+  # with no provider's key: the session uses the gateway's key and the runtime's default
+  # model. A settings check of the session's
+  # provider that ran out of time or crashed is `{:unchecked, provider}`, which leaves the
+  # run waiting as for the run's provider.
+  #
+  # A workflow whose choices resolve to another provider or runtime than the run's has no
+  # entry here yet: the run takes the keys of one provider.
+  defp with_sessions(
+         {:ok, %{columns: %{provider_connection_id: id, model_keys: keys}} = built},
+         held,
+         resolved,
+         runtime
+       ) do
+    start = start_name(keys)
+    run = %{"model_choice" => model_choice(built), "model_credential" => start}
+
+    held.sessions
+    |> Enum.reduce_while({:ok, %{}}, fn {workflow, input}, {:ok, sessions} ->
+      case session_choice(input, id, resolved, runtime, held.workspace.id) do
+        :none ->
+          {:cont, {:ok, sessions}}
+
+        :run ->
+          {:cont, {:ok, Map.put(sessions, workflow, run)}}
+
+        {:ok, choice} ->
+          entry = %{"model_choice" => choice, "model_credential" => start}
+          {:cont, {:ok, Map.put(sessions, workflow, entry)}}
+
+        {:unchecked, _provider} = unchecked ->
+          {:halt, unchecked}
+      end
+    end)
+    |> case do
+      {:ok, sessions} -> {:ok, Map.put(built, :sessions, sessions)}
+      unchecked -> unchecked
+    end
+  end
+
+  defp with_sessions(other, _held, _resolved, _runtime), do: other
+
+  # What the choices `input` of a later session's workflow come to against the run's
+  # provider `id` and `runtime`: `{:ok, model_choice}`, `:run` for the run's model,
+  # `:none` for no choice or for another provider or runtime (`with_sessions/4`), or
+  # `{:unchecked, provider}`.
+  defp session_choice(input, id, {resolved, providers, described}, runtime, workspace_id) do
+    with {:ok, %Resolution{connection_id: ^id} = resolution} <-
+           Resolution.resolve(Map.put(input, :providers, resolved)),
+         {:ok, %Runtime{name: name} = session_runtime} when name == runtime.name <-
+           runtime(resolution) do
+      provider = Map.fetch!(providers, id)
+
+      case form(resolution, provider, described[id], session_runtime, workspace_id) do
+        {:ok, built} -> {:ok, model_choice(built)}
+        {:unchecked, _provider} = unchecked -> unchecked
+        {:end, _cause} -> :run
+      end
+    else
+      _none_or_other -> :none
     end
   end
 
@@ -592,6 +610,18 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The providers the choices name, and their fallbacks', each once.
+  # The providers the run's choices name, their fallbacks', and those the choices of the
+  # later sessions name, each once. A later session takes no fallback.
+  defp all_provider_ids(input, sessions) do
+    session_ids =
+      for {_workflow, session} <- sessions,
+          choice <- session.choices,
+          is_binary(choice.connection_id),
+          do: choice.connection_id
+
+    Enum.uniq(provider_ids(input) ++ session_ids)
+  end
+
   defp provider_ids(input) do
     for choice <- input.choices,
         id <- [choice.connection_id | Enum.map(choice.fallbacks, & &1.connection_id)],
@@ -602,8 +632,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The providers the choices and their fallbacks name, as they are now: with the
   # workspaces they apply to and their keys' secret's value ids, by row id.
-  defp providers(%{organisation: organisation, input: input}) do
-    ids = provider_ids(input)
+  defp providers(%{organisation: organisation, input: input} = held) do
+    ids = all_provider_ids(input, Map.get(held, :sessions, %{}))
 
     # The providers of the run's chain are the rows of the run's organisation.
     if ids == [] do
@@ -658,7 +688,7 @@ defmodule Apiary.Dispatches.RunSettings do
     if byte_size(Jason.encode!(wire)) <= @max_bytes, do: {:ok, built}, else: :unavailable
   end
 
-  # form/5 is the settings of `resolution` for `provider`, the connection as `hold/1` read
+  # form/6 is the settings of `resolution` for `provider`, the connection as `hold/1` read
   # it, whose description in the catalogue is `description` (`Connections.provider/1`),
   # for the runs of `runtime` in the workspace `workspace_id`. The first cause of the
   # moduledoc that applies, else `{:ok, built}`; `{:unchecked, provider}` where the check

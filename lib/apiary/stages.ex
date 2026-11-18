@@ -365,7 +365,7 @@ defmodule Apiary.Stages do
 
   def session_flags(%DispatchRun{}, _level), do: %{shared_run: false, full_suite: false}
 
-  # claim_sessions!/2 keeps, at the claim of `run`, a run of the queue of a stage with
+  # claim_sessions!/3 keeps, at the claim of `run`, a run of the queue of a stage with
   # `shared_run: true` (`shared_stage/1`), what its later sessions read, inside the
   # caller's transaction, which holds the run and wrote its run record
   # (`Apiary.Dispatches.Handover`):
@@ -373,18 +373,26 @@ defmodule Apiary.Stages do
   #   * on its run record, `session_settings` (`Apiary.Runs.Run`): for each workflow entry
   #     of the stage, those in a loop's body included, by its place, its `workflow`, its
   #     `time_limit_minutes` (the workflow's minutes in `limits`, the time limits as the
-  #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now) and
-  #     `full_suite` (`full_suite?/4`, with the run's access level, which every entry of
-  #     the stage shares). `next_session/2` reads these, so a change to the time limits
-  #     after the claim changes nothing for the run;
+  #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now; none with
+  #     `factory` off), `full_suite` (`full_suite?/4`, with the run's access level, which
+  #     every entry of the stage shares), and `model_choice` and `model_credential`, the
+  #     workflow's in `models` as the claim formed them
+  #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), left out for a workflow
+  #     with none. `next_session/2` reads these, so a change to the time limits or the model
+  #     choices after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
   #     with the run's workflow. The sessions of an earlier claim of the run that no
   #     report reached are replaced, as a run whose lease lapsed is claimed again.
   #
   # Nothing for any other run.
   @doc false
-  @spec claim_sessions!(DispatchRun.t(), %{optional(String.t()) => pos_integer}) :: :ok
-  def claim_sessions!(%DispatchRun{} = run, limits) when is_map(limits) do
+  @spec claim_sessions!(
+          DispatchRun.t(),
+          %{optional(String.t()) => pos_integer},
+          %{optional(String.t()) => %{String.t() => map | String.t()}}
+        ) :: :ok
+  def claim_sessions!(%DispatchRun{} = run, limits, models \\ %{})
+      when is_map(limits) and is_map(models) do
     case shared_stage(run) do
       nil ->
         :ok
@@ -402,11 +410,14 @@ defmodule Apiary.Stages do
               end)
 
             {place,
-             %{
-               "workflow" => workflow,
-               "time_limit_minutes" => minutes,
-               "full_suite" => full_suite?(run, entry, loop_entry, level)
-             }}
+             Map.merge(
+               %{
+                 "workflow" => workflow,
+                 "time_limit_minutes" => minutes,
+                 "full_suite" => full_suite?(run, entry, loop_entry, level)
+               },
+               Map.take(Map.get(models, workflow, %{}), ["model_choice", "model_credential"])
+             )}
           end)
 
         {1, _rows} =
@@ -532,17 +543,16 @@ defmodule Apiary.Stages do
   # escalation, open questions, the gate, or the next stage, whose run is queued through
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
-  # claim kept them, `claim_sessions!/2`), `inputs` (the run's inputs,
+  # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
   # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
-  # model the choices for the session's workflow resolve to and the run's start key
-  # (`Apiary.Dispatches.RunSettings.session_model/2`), both nil where the session uses
-  # the run's model choice and key.
+  # model of the entry's workflow and the run's start key as the claim kept them, both nil
+  # where the claim kept none (`claim_sessions!/3`).
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
   # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage
   # without `shared_run`, and a run that no claim of a shared stage registered
-  # (`claim_sessions!/2`); `{:error, :invalid_request}` for a report of another form;
+  # (`claim_sessions!/3`); `{:error, :invalid_request}` for a report of another form;
   # `{:error, :run_ended}` for a run that ended, that the stage no longer runs, whose work
   # item is placed in another process version whose stage is gone or has other entries
   # than the run's, whose next entry has no settings the claim kept, or whose last step
@@ -646,7 +656,7 @@ defmodule Apiary.Stages do
   end
 
   # The settings of the entries of the run's stage, as its claim kept them on its run
-  # record (`claim_sessions!/2`); `:not_found` for a run no such claim registered.
+  # record (`claim_sessions!/3`); `:not_found` for a run no such claim registered.
   defp session_settings(%DispatchRun{id: id}) do
     case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, select: r.session_settings) do
       %{} = settings -> {:ok, settings}
@@ -748,7 +758,7 @@ defmodule Apiary.Stages do
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and
   # the stage has the entries it had in the process version the run was claimed for: the
-  # settings the claim kept are that version's (`claim_sessions!/2`). A work item moved to
+  # settings the claim kept are that version's (`claim_sessions!/3`). A work item moved to
   # another version whose stage is gone or has other entries ends the run as a stage that
   # no longer runs it does. Another version whose stage differs only in its entries'
   # machine types, such as a machine type's new key (`Apiary.Processes.rekey_machine/3`),
@@ -887,14 +897,12 @@ defmodule Apiary.Stages do
       if work_item.target_system,
         do: %{system: work_item.target_system, path: work_item.target_path}
 
-    model = Apiary.Dispatches.RunSettings.session_model(run, spec.workflow)
-
     stored = %{
       "next" => "session",
       "session" => pending.sequence + 1,
       "workflow" => spec.workflow,
-      "model_choice" => model.model_choice,
-      "model_credential" => model.model_credential,
+      "model_choice" => entry["model_choice"],
+      "model_credential" => entry["model_credential"],
       "time_limit_minutes" => entry["time_limit_minutes"],
       "full_suite" => entry["full_suite"],
       "inputs" => %{}

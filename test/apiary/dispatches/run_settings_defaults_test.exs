@@ -192,6 +192,45 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
     end
   end
 
+  describe "a claim of a run of a shared stage" do
+    @describetag needs: [:factory, :workflow_model]
+
+    test "keeps the model of each later session's workflow on the run", ctx do
+      stage = %{
+        "id" => "st_6ns22c4pav",
+        "name" => "Build",
+        "inputs" => [],
+        "shared_run" => true,
+        "sequence" => [
+          %{"workflow" => "plan-the-build"},
+          %{"workflow" => "write-acceptance-checks"}
+        ],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+      choose!(ctx, :workspace, "claude-opus-5-5")
+      choose!(ctx, {:workspace, "write-acceptance-checks"}, "claude-sonnet-5-5")
+      place = handover_place_fixture(ctx.scope, allow_secrets: true)
+      claimed = claim!(ctx, place)
+
+      assert %{"model" => "claude-opus-5-5"} = settings(claimed)
+
+      assert %Run{session_settings: %{"1" => session}} = Repo.get!(Run, claimed.run.id)
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_choice" => %{"model" => "claude-sonnet-5-5"},
+               "model_credential" => credential
+             } = session
+
+      assert credential == "#{ctx.provider.public_id}-1"
+    end
+  end
+
   describe "a prebuild" do
     @describetag with_features: Apiary.Features.all()
     test "has no run settings, whatever the features", _ctx do
