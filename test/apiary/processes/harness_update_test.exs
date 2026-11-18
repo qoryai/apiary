@@ -74,6 +74,31 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     ]
   end
 
+  # The fixture's files with Build running plan-the-build and write-acceptance-checks as
+  # sessions of one run, and the software stack setting their access levels to `plan`
+  # and `checks`.
+  defp shared_files(plan, checks) do
+    QoryHarnessFixture.files()
+    |> Map.update!(
+      "stacks/software/qory-stack.yaml",
+      &String.replace(
+        &1,
+        "  explore-a-ticket: {access: read}\n",
+        "  explore-a-ticket: {access: read}\n  plan-the-build: {access: #{plan}}\n" <>
+          "  write-acceptance-checks: {access: #{checks}}\n"
+      )
+    )
+    |> Map.update!(
+      @process,
+      &String.replace(
+        &1,
+        "      name: Build\n      inputs: []\n      sequence: []\n",
+        "      name: Build\n      shared_run: true\n      inputs: []\n      sequence:\n" <>
+          "        - workflow: plan-the-build\n        - workflow: write-acceptance-checks\n"
+      )
+    )
+  end
+
   # The adapter calls the stub adapters received (`Apiary.HarnessReadsFixtures`).
   defp calls do
     receive do
@@ -215,6 +240,35 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                "ref_kind" => "branch",
                "ref" => "main"
              }
+    end
+
+    test "of a shared stage whose harness sets its workflows different access saves nothing",
+         ctx do
+      main_at!(shared_files("write", "read"))
+
+      assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert [
+               %{
+                 error: :shared_run_differs,
+                 detail: {:access, "write-acceptance-checks", "read", "write"}
+               } = refused
+             ] = update.refused
+
+      assert ApiaryWeb.StagesLive.Words.refusal(refused, update.document) ==
+               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. write-acceptance-checks runs with read access, because its harness sets read."
+
+      assert {:error, [%{error: :shared_run_differs, detail: {:access, _, _, _}}]} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert Enum.map(versions(ctx.workspace), & &1.number) == [1]
+    end
+
+    test "of a shared stage whose harness sets its workflows one access saves", ctx do
+      main_at!(shared_files("read", "read"))
+
+      assert {:ok, %{refused: []} = update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
     end
 
     test "lists the stack of the template where it differs from the workspace's", ctx do

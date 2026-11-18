@@ -926,6 +926,8 @@ defmodule Apiary.Processes do
     * the document may be the document of that version, since the commit changes; only
       the same document at the same commit is `:unchanged`;
     * the switch that keeps the process at the latest is not changed here;
+    * `levels:`, the access level each workflow of the harness declares, by name, checks
+      the stages with `shared_run: true` as `save/4` does (`validate/2`); none by default;
     * for the instance's scope (`Apiary.Accounts.Scope.for_instance/2`), with no person,
       it checks no access: the switch's update, which no person starts. Its version has
       no author.
@@ -943,7 +945,7 @@ defmodule Apiary.Processes do
     Repo.transact(fn ->
       with {:ok, scope, workspace} <- hold(scope, workspace),
            :ok <- harness_access(scope, workspace),
-           :ok <- validate(document),
+           :ok <- validate(document, Keyword.get(opts, :levels, %{})),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),

@@ -73,12 +73,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `{"next": "end"}`, at most 1 MiB; a repeat for the same session returns the same body.
 - A save of a stage with `shared_run: true` compares the access each workflow runs with:
   the lower of the entry's `access` and the level the workflow's harness sets. When they
-  differ, the save fails with "Give every workflow in Build the same access.
-  plan-the-build runs with read access, because its harness sets read." An update from
-  the harness can change a level after the save, so the claim compares the levels again
-  and ends a run whose levels differ before it starts, with the end cause
+  differ, the save fails with "Move plan-the-build to a separate stage in Workspace
+  settings › Workflows, or ask whoever keeps the harness to give it write access, then
+  run the round again. plan-the-build runs with read access, because its harness sets
+  read." Update from harness shows the same error in its difference, before a save, and
+  saves nothing. Keep the process at the latest, or a change of a level in the harness
+  alone, can still make the levels differ after the save, so the claim compares the
+  levels again and ends a run whose levels differ before it starts, with the end cause
   `shared_access_differs` and the outcome error. Owners and admins see an escalation with
-  the fix: give every workflow in the stage the same access on the Stages page.
+  the same fix.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.

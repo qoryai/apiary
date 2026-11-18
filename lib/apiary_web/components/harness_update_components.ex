@@ -191,6 +191,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
     assigns =
       assign(assigns,
         stages: stages,
+        refused: Map.get(update, :refused, []),
         removed?: Enum.any?(stages, &match?({:del, _text}, &1)) and edits?(update.base)
       )
 
@@ -273,6 +274,11 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
       <p :if={@switch_off} id="harness-update-switch" class="text-[13.5px]/5 text-muted">
         {gettext("Save also turns Keep the process at the latest on again.")}
       </p>
+      <.notice :if={@refused != []} kind={:error}>
+        <span id="harness-update-refused">
+          {Enum.map_join(@refused, " ", &Words.refusal(&1, @update.document))}
+        </span>
+      </.notice>
       <div class="flex flex-wrap gap-2">
         <.button
           id="harness-update-save"
@@ -280,6 +286,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="false"
+          disabled={@refused != []}
         >
           {gettext("Save")}
         </.button>
@@ -288,6 +295,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
           size="sm"
           phx-click="update_save"
           phx-value-trial="true"
+          disabled={@refused != []}
         >
           {gettext("Try first")}
         </.button>
