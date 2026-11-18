@@ -17,6 +17,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   import ApiaryWeb.PolicyComponents, only: [sect: 1]
 
+  alias Apiary.Stages.Runner
   alias Apiary.TimeLimits
   alias ApiaryWeb.MachineTypeWords
   alias ApiaryWeb.StagesLive.Words
@@ -42,6 +43,11 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :stage, :map, required: true
   attr :may, :boolean, required: true
   attr :last, :boolean, default: false, doc: "whether the stage is the only one"
+
+  attr :stages, :list,
+    default: [],
+    doc: "the document's stages, for the stages a workflow's return may go to"
+
   attr :declared, :list, required: true
 
   attr :declared_access, :map,
@@ -53,7 +59,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :members, :list, required: true
   attr :people, :map, required: true, doc: "each member's name by user id"
   attr :stage_errors, :map, default: %{}, doc: "refusals of a save, by stage id"
-  attr :rounds_errors, :map, default: %{}, doc: "refused rounds, by the loop's place"
+
+  attr :rounds_errors, :map,
+    default: %{},
+    doc: "refused rounds and most returns, by the loop's or the workflow's place"
 
   attr :workflow_errors, :map,
     default: %{},
@@ -300,6 +309,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
                   name={"stage[sequence][#{i}]"}
                   id={"stage-entry-#{i}"}
                   stage_id={@stage["id"]}
+                  stages={@stages}
+                  return_errors={List.wrap(@rounds_errors[to_string(i)])}
                   declared={@declared}
                   declared_access={@declared_access}
                   machine={@machine}
@@ -482,6 +493,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :rule, :boolean, required: true, doc: "whether a line separates the row from the one above"
   attr :time_limit, :map, default: nil, doc: "the row's time limit (`time_limit_field/4`), or nil"
 
+  attr :stages, :list,
+    default: [],
+    doc: "the document's stages; only a workflow outside a loop has them, for its return"
+
+  attr :return_errors, :list, default: [], doc: "what is wrong with its most returns"
+
   # A workflow's row: its name, its check or cross and Remove, and under them one line with
   # its settings, which opens them in place. The whole line is the `summary`, so a key or a
   # tap opens and closes the fold, and it ends in the word for what that does. The fold's id
@@ -626,6 +643,15 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         <span class="size-3.5 shrink-0" aria-hidden="true"></span>
         <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{access}</span>
       </p>
+      <.return_fold
+        :if={return_fold?(@entry, @stage_id, @stages)}
+        id={@id}
+        name={@name}
+        stage_id={@stage_id}
+        key={@entry["return"]}
+        stages={@stages}
+        errors={@return_errors}
+      />
     </div>
     """
   end
@@ -872,6 +898,119 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     do: gettext("Time limit: %{minutes} minutes", minutes: minutes)
 
   attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :stage_id, :string, required: true
+  attr :key, :map, default: nil, doc: "the entry's return key; nil for an entry with none"
+  attr :stages, :list, required: true
+  attr :errors, :list, default: [], doc: "what is wrong with its most returns"
+
+  # The fold of a workflow entry's return key (choice 10), under its machine type: the
+  # stage to return to on changes requested, "Do not return" or one of the stages before
+  # the entry's, and, with a stage picked, the most returns and the line on what happens
+  # after them. An entry with no key has the fold with "Do not return" picked, and only
+  # the select. Picking a stage sets the key (`Draft`), "Do not return" removes it. A key
+  # to a stage that is not earlier, or to a removed stage, keeps its stage in the field,
+  # where it and the fold's line show what to pick, and a save shows the same error.
+  defp return_fold(assigns) do
+    earlier = earlier_stages(assigns.stages, assigns.stage_id)
+    to = assigns.key && assigns.key["stage"]
+    limit = assigns.key && Runner.returns_limit(assigns.key)
+
+    refused =
+      if to && not Enum.any?(earlier, &(&1["id"] == to)),
+        do: Words.return_refused(stage_name(assigns.stages, assigns.stage_id))
+
+    options =
+      [{gettext("Do not return"), ""} | Enum.map(earlier, &{&1["name"], &1["id"]})] ++
+        if(refused, do: [{refused, to}], else: [])
+
+    assigns =
+      assign(assigns,
+        options: options,
+        limit: limit,
+        to: to || "",
+        summary:
+          cond do
+            is_nil(assigns.key) ->
+              gettext("On changes requested: do not return")
+
+            refused ->
+              refused
+
+            true ->
+              ngettext(
+                "On changes requested: return to %{stage}, at most %{count} return",
+                "On changes requested: return to %{stage}, at most %{count} returns",
+                limit,
+                stage: stage_name(assigns.stages, to)
+              )
+          end,
+        line: limit && Words.return_line(limit)
+      )
+
+    ~H"""
+    <details
+      id={"#{@id}-return-#{@stage_id}"}
+      class="q-tool group"
+      phx-mounted={JS.ignore_attributes(["open"])}
+    >
+      <summary class="nokey">
+        <span class="flex items-center gap-1.5 text-[12.5px]/[18px] text-muted max-md:min-h-10 pointer-coarse:min-h-10">
+          <.icon name="hero-chevron-right-micro" class="q-chev size-3.5" />
+          <span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{@summary}</span>
+          <span class="shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:hidden">
+            {gettext("Change")}
+          </span>
+          <span class="hidden shrink-0 font-medium text-accent underline underline-offset-[3px] group-open:inline">
+            {gettext("Close")}
+          </span>
+        </span>
+      </summary>
+      <div class="grid gap-3 pt-2 pb-2 pl-5">
+        <.input
+          id={"#{@id}-return"}
+          name={"#{@name}[return]"}
+          type="select"
+          value={@to}
+          label={gettext("On changes requested, return to")}
+          options={@options}
+          class="w-64"
+        />
+        <div :if={@key} class="q-stage-rounds">
+          <.input
+            id={"#{@id}-returns"}
+            name={"#{@name}[returns]"}
+            type="number"
+            min="1"
+            max="10"
+            value={@limit}
+            errors={@errors}
+            label={gettext("Returns at most")}
+            class="w-14"
+          />
+        </div>
+        <p :if={@key} class="text-[13px]/5 text-muted">{@line}</p>
+      </div>
+    </details>
+    """
+  end
+
+  # Whether a workflow entry has the return fold: it has a key, or it is outside a loop
+  # (`stages` is empty in a loop) in a stage that has an earlier stage.
+  defp return_fold?(entry, stage_id, stages),
+    do: stages != [] and (is_map(entry["return"]) or earlier_stages(stages, stage_id) != [])
+
+  defp earlier_stages(stages, stage_id), do: Enum.take_while(stages, &(&1["id"] != stage_id))
+
+  # The name of the stage `id` in `stages`; the id itself for a stage that is not there.
+  defp stage_name(stages, id) do
+    case Enum.find(stages, &(&1["id"] == id)) do
+      %{"name" => name} -> name
+      nil -> to_string(id)
+    end
+  end
+
+  attr :id, :string, required: true
   attr :key, :string, required: true
   attr :workflow, :string, required: true
   attr :fallback, :string, required: true, doc: "the name of the type the runs start on"
@@ -1036,8 +1175,9 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # Each line of a member's Sequence, with the workflow a line runs, nil for a loop's
   # label, and the notes under it: an entry's name and condition, a loop's condition. A
   # machine type is the default's words of the picker or a type's name
-  # (`MachineTypeWords.entry_words/3`). With time limits, a workflow's line ends with its
-  # limit, the saved minutes or the default.
+  # (`MachineTypeWords.entry_words/3`). A workflow with a return to an earlier stage
+  # (choice 10) says to which stage and how many times at most. With time limits, a
+  # workflow's line ends with its limit, the saved minutes or the default.
   defp sequence_lines(stage, machine, types, doc, time_limit) do
     Enum.flat_map(stage["sequence"], fn
       %{"loop" => %{"rounds" => rounds, "body" => body}} = loop ->
@@ -1056,28 +1196,43 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   defp entry_line(entry, machine, types, doc, stage_id, time_limit) do
     workflow = entry["workflow"]
     machine = MachineTypeWords.entry_words(types, machine, entry["machine"])
+    stage = Enum.find(doc["stages"] || [], &(&1["id"] == stage_id))
 
     line =
-      case time_limit && Map.get(time_limit.saved, workflow) do
-        nil when is_nil(time_limit) ->
-          gettext("%{workflow}, machine type %{machine}", workflow: workflow, machine: machine)
-
-        nil ->
-          gettext("%{workflow}, machine type %{machine}, time limit %{minutes} minutes (default)",
-            workflow: workflow,
-            machine: machine,
-            minutes: TimeLimits.default_minutes()
-          )
-
-        minutes ->
-          gettext("%{workflow}, machine type %{machine}, time limit %{minutes} minutes",
-            workflow: workflow,
-            machine: machine,
-            minutes: minutes
-          )
-      end
+      gettext("%{workflow}, machine type %{machine}", workflow: workflow, machine: machine) <>
+        return_clause(Words.earlier_return(entry, stage, doc)) <>
+        limit_clause(time_limit, workflow)
 
     {line, workflow, Words.entry_notes(entry, doc, stage_id)}
+  end
+
+  # The clause of a workflow with a return to an earlier stage: the stage and the most
+  # returns. Empty for a workflow with none.
+  defp return_clause(nil), do: ""
+
+  defp return_clause({to, limit}) do
+    ngettext(
+      ", returns to %{stage} at most %{count} time",
+      ", returns to %{stage} at most %{count} times",
+      limit,
+      stage: to
+    )
+  end
+
+  # The clause of a workflow's time limit: the saved minutes, or the default. Empty with no
+  # time limits.
+  defp limit_clause(nil, _workflow), do: ""
+
+  defp limit_clause(time_limit, workflow) do
+    case Map.get(time_limit.saved, workflow) do
+      nil ->
+        gettext(", time limit %{minutes} minutes (default)",
+          minutes: TimeLimits.default_minutes()
+        )
+
+      minutes ->
+        gettext(", time limit %{minutes} minutes", minutes: minutes)
+    end
   end
 
   defp artifact_line(%{"type" => type, "required" => true}),

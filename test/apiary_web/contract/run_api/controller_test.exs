@@ -452,6 +452,84 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
     end
 
+    test "lists, after a return, Verify's newest verdict and verification, marked from return",
+         ctx do
+      build = "st_6ns22c4pav"
+      verify = "st_m1mqbeywdg"
+      people = %{"inputs" => [], "sequence" => [], "outputs" => []}
+      gate = %{"kind" => "person", "approvers" => "members"}
+
+      {:ok, _type} =
+        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      stages = [
+        Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
+        Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate}),
+        Map.merge(people, %{"id" => verify, "name" => "Verify", "gate" => gate})
+      ]
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
+
+      verification =
+        store!(ctx, "verification", [file("v.md", "text/markdown", "# Criterion 2 fails")],
+          stage_id: verify
+        )
+
+      {:ok, verdict} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, ctx.dispatch_run},
+          ctx.work_item,
+          "verdict",
+          %{"verdict" => "changes-requested"},
+          stage_id: verify
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: build,
+            stage_state: :running,
+            stage_round: 1,
+            stage_entry: 0,
+            stage_entered_at: DateTime.utc_now()
+          ]
+        )
+
+      # The run of Verify that ended and returned the work item to Build.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [stage_id: verify, returned_to: build, returned_at: DateTime.utc_now()]
+        )
+
+      conn = read(ctx, "/work-item")
+      body = json_response(conn, 200)
+
+      assert body["inputs"] == [
+               %{
+                 "type" => "verdict",
+                 "required" => false,
+                 "version" => %{"id" => verdict.public_id, "number" => 1},
+                 "from" => "return"
+               },
+               %{
+                 "type" => "verification",
+                 "required" => false,
+                 "version" => %{"id" => verification.public_id, "number" => 1},
+                 "from" => "return"
+               }
+             ]
+
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      [marked, _verification] = ordered["inputs"]
+      assert Enum.map(marked.values, &elem(&1, 0)) == ~w(type required version from)
+      assert body["notes"] == []
+    end
+
     test "leaves out the move that resolved an escalation, and lists the escalation", ctx do
       place!(ctx)
       work_item = Repo.get!(WorkItem, ctx.work_item.id)

@@ -621,6 +621,96 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
+  describe "the return to an earlier stage (choice 10)" do
+    @build_id "st_6ns22c4pav"
+    @earlier %{"st_r79kph11eg" => "Explore", @build_id => "Build"}
+
+    # Verify: capture-demos, then verify-a-ticket, which returns to Build, at most `limit`.
+    defp verify(key \\ %{"stage" => @build_id}) do
+      %{
+        stage([wf("capture-demos"), wf("verify-a-ticket", %{"return" => key})])
+        | "name" => "Verify"
+      }
+    end
+
+    defp changes(points \\ nil), do: {:run, {:verdict, :changes_requested, points}}
+
+    test "changes-requested returns to the key's stage, while the returns are under the limit" do
+      for returns <- [0, 1] do
+        assert Runner.step(verify(), pos(1, nil, 1), changes(), %{
+                 earlier: @earlier,
+                 returns: returns
+               }) == %{state: :done, position: pos(1, nil, 1), actions: [{:return, @build_id}]}
+      end
+    end
+
+    test "at the limit escalates return_limit: the action, the count, then the findings" do
+      findings = [again("Criterion 2 is not met: the export has no PDF option.")]
+
+      assert %{state: :escalated, actions: [{:escalate, :return_limit, points}]} =
+               Runner.step(verify(), pos(1, nil, 1), changes(findings), %{
+                 earlier: @earlier,
+                 returns: 2
+               })
+
+      assert points == [
+               %{
+                 "text" =>
+                   "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
+                 "action" => "run_again",
+                 "fix" =>
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+               }
+               | findings
+             ]
+    end
+
+    test "the limit is the key's setting" do
+      key = %{"stage" => @build_id, "limit" => 1}
+      facts = %{earlier: @earlier, returns: 1}
+
+      assert %{actions: [{:escalate, :return_limit, [point]}]} =
+               Runner.step(verify(key), pos(1, nil, 1), changes(), facts)
+
+      assert point["fix"] ==
+               "Verify's run asked for changes again after 1 return to Build, the most that Verify allows."
+
+      assert %{actions: [{:return, @build_id}]} =
+               Runner.step(verify(%{key | "limit" => 3}), pos(1, nil, 1), changes(), facts)
+    end
+
+    test "passed and no verdict go on as on an entry with no key" do
+      facts = %{earlier: @earlier, returns: 0}
+
+      assert %{state: :at_gate} =
+               Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, facts)
+
+      assert %{actions: [{:escalate, :run_stopped, _points}]} =
+               Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, nil, nil}}, facts)
+    end
+
+    test "a key to a stage that is not earlier goes on as with no key" do
+      assert %{state: :at_gate} =
+               Runner.step(verify(), pos(1, nil, 1), changes(), %{earlier: %{}, returns: 0})
+    end
+
+    test "Request changes at the gate returns to the key's stage, whatever the count" do
+      for returns <- [0, 2, 5] do
+        assert %{state: :done, actions: [{:return, @build_id}]} =
+                 Runner.step(verify(), pos(2, nil, 1), :request_changes, %{
+                   earlier: @earlier,
+                   returns: returns
+                 })
+      end
+    end
+
+    test "an entry before the key's entry still runs on and does not return" do
+      assert queued(
+               Runner.step(verify(), pos(0, nil, 1), changes(), %{earlier: @earlier, returns: 0})
+             ) == {"verify-a-ticket", 1, nil, 1}
+    end
+  end
+
   describe "resolving an escalation" do
     test "accept counts the loop as passed and goes on" do
       seq = stage([loop([wf("a")]), wf("b")])
@@ -708,7 +798,7 @@ defmodule Apiary.Stages.RunnerTest do
     @demos %{"when" => %{"input" => "demo-scenarios"}}
 
     # Verify: capture-demos only with demo scenarios, then verify-a-ticket.
-    defp verify(gate \\ @person),
+    defp verify_demos(gate \\ @person),
       do: stage([wf("capture-demos", @demos), wf("verify-a-ticket")], gate: gate)
 
     defp skip(workflow, entry, loop_entry, round),
@@ -725,7 +815,7 @@ defmodule Apiary.Stages.RunnerTest do
          }}
 
     test "with no demo scenarios, capture-demos starts no run and verify-a-ticket starts" do
-      outcome = Runner.step(verify(), nil, :enter, %{counted: []})
+      outcome = Runner.step(verify_demos(), nil, :enter, %{counted: []})
 
       capture = skip("capture-demos", 0, nil, 1)
       assert %{state: :running} = outcome
@@ -733,11 +823,11 @@ defmodule Apiary.Stages.RunnerTest do
       assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] = outcome.actions
 
       # With no facts on the input, the condition is not met either.
-      assert [{:skip, _spec}, {:queue, _run}] = Runner.step(verify(), nil, :enter).actions
+      assert [{:skip, _spec}, {:queue, _run}] = Runner.step(verify_demos(), nil, :enter).actions
     end
 
     test "with demo scenarios, capture-demos runs first" do
-      outcome = Runner.step(verify(), nil, :enter, %{counted: ["demo-scenarios"]})
+      outcome = Runner.step(verify_demos(), nil, :enter, %{counted: ["demo-scenarios"]})
       assert queued(outcome) == {"capture-demos", 0, nil, 1}
     end
 
@@ -752,7 +842,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert failed.([]) == []
 
       outcome =
-        Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+        Runner.step(verify_demos(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
           counted: [],
           failed_checks: failed.([])
         })
@@ -762,7 +852,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert failed.(["demo-scenarios"]) == ["demo-video"]
 
       outcome =
-        Runner.step(verify(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
+        Runner.step(verify_demos(), pos(1, nil, 1), {:run, {:verdict, :passed, nil}}, %{
           counted: ["demo-scenarios"],
           failed_checks: failed.(["demo-scenarios"])
         })
@@ -772,22 +862,22 @@ defmodule Apiary.Stages.RunnerTest do
 
     test "a stage does not wait for an undeclared workflow whose condition is not met" do
       facts = %{counted: [], undeclared: ["capture-demos"]}
-      outcome = Runner.step(verify(), nil, :enter, facts)
+      outcome = Runner.step(verify_demos(), nil, :enter, facts)
 
       assert %{state: :running} = outcome
 
       assert [{:skip, %{workflow: "capture-demos"}}, {:queue, %{workflow: "verify-a-ticket"}}] =
                outcome.actions
 
-      assert %{state: :running} = Runner.step(verify(), pos(0, nil, 1), :resume, facts)
+      assert %{state: :running} = Runner.step(verify_demos(), pos(0, nil, 1), :resume, facts)
 
       # With demo scenarios, capture-demos runs, so the stage waits for it.
       assert %{state: :waiting_workflow, actions: []} =
-               Runner.step(verify(), nil, :enter, %{facts | counted: ["demo-scenarios"]})
+               Runner.step(verify_demos(), nil, :enter, %{facts | counted: ["demo-scenarios"]})
 
-      assert Runner.workflows(verify(), []) == ["verify-a-ticket"]
+      assert Runner.workflows(verify_demos(), []) == ["verify-a-ticket"]
 
-      assert Runner.workflows(verify(), ["demo-scenarios"]) == [
+      assert Runner.workflows(verify_demos(), ["demo-scenarios"]) == [
                "capture-demos",
                "verify-a-ticket"
              ]
@@ -811,10 +901,10 @@ defmodule Apiary.Stages.RunnerTest do
       capture = skip("capture-demos", 0, nil, 1)
 
       assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
-               Runner.step(verify(), pos(2, nil, 1), :request_changes, %{}).actions
+               Runner.step(verify_demos(), pos(2, nil, 1), :request_changes, %{}).actions
 
       assert [^capture, {:queue, %{workflow: "verify-a-ticket"}}] =
-               Runner.step(verify(), pos(2, nil, 1), {:another_round, :check_failed}, %{}).actions
+               Runner.step(verify_demos(), pos(2, nil, 1), {:another_round, :check_failed}, %{}).actions
     end
 
     test "in a loop, the ring goes on past a workflow whose condition is not met" do
