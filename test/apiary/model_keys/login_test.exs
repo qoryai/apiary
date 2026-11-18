@@ -12,7 +12,7 @@ defmodule Apiary.ModelKeys.LoginTest do
   defp paste!(tokens), do: login_paste(tokens: tokens)
 
   describe "parse/1" do
-    test "keeps the three tokens in a document, and the account and the expiry apart" do
+    test "keeps the access and refresh tokens in a document, and the account and the expiry apart" do
       tokens = login_tokens(exp: 1_800_000_000)
 
       assert {:ok, parsed} = Login.parse(paste!(tokens))
@@ -23,9 +23,27 @@ defmodule Apiary.ModelKeys.LoginTest do
       assert Jason.decode!(parsed.document) == %{
                "version" => 1,
                "access_token" => tokens.access_token,
-               "refresh_token" => tokens.refresh_token,
-               "id_token" => tokens.id_token
+               "refresh_token" => tokens.refresh_token
              }
+    end
+
+    test "ignores a pasted id token: it is not stored, and a paste without one is read" do
+      tokens = login_tokens()
+      assert {:ok, parsed} = Login.parse(paste!(tokens))
+
+      assert Map.keys(Jason.decode!(parsed.document)) |> Enum.sort() ==
+               ~w(access_token refresh_token version)
+
+      refute parsed.document =~ tokens.id_token
+
+      without_id =
+        paste!(tokens) |> Jason.decode!() |> update_in(["tokens"], &Map.delete(&1, "id_token"))
+
+      assert {:ok, same} = Login.parse(Jason.encode!(without_id))
+      assert same.document == parsed.document
+
+      blank_id = put_in(without_id, ["tokens", "id_token"], 42)
+      assert {:ok, ^same} = Login.parse(Jason.encode!(blank_id))
     end
 
     test "drops every member but the tokens" do
@@ -70,7 +88,6 @@ defmodule Apiary.ModelKeys.LoginTest do
             ~s({"tokens": []}),
             ~s({"tokens": "x"}),
             without.("access_token"),
-            without.("id_token"),
             without.("account_id"),
             Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", 42)}),
             Jason.encode!(%{"tokens" => Map.put(tokens, "access_token", "not-a-jwt")}),
@@ -83,6 +100,39 @@ defmodule Apiary.ModelKeys.LoginTest do
             42,
             %{"tokens" => tokens}
           ] do
+        assert Login.parse(text) == {:error, :invalid}
+      end
+    end
+
+    test "accepts an account id of printable ASCII without a space, up to 255 characters" do
+      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+
+      for account_id <- ["acct-1", "a", "!~", "A.b_c:d/e=", String.duplicate("a", 255)] do
+        text = Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", account_id)})
+        assert {:ok, %{account_id: ^account_id}} = Login.parse(text)
+      end
+    end
+
+    test "refuses an account id with a control character, a space or a character past ASCII" do
+      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+
+      for account_id <- [
+            "acct\r\nX-Injected: 1",
+            "acct-1\n",
+            "acct-1\r",
+            "acct\n1",
+            "acct 1",
+            " acct-1",
+            "acct-1 ",
+            "acct\t1",
+            "acct\0 1",
+            "acct\u007F1",
+            "acct-é",
+            "acct-\u2028",
+            "",
+            String.duplicate("a", 256)
+          ] do
+        text = Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", account_id)})
         assert Login.parse(text) == {:error, :invalid}
       end
     end
@@ -111,7 +161,7 @@ defmodule Apiary.ModelKeys.LoginTest do
 
       assert Login.parse(String.duplicate(" ", 32_769)) == {:error, :invalid}
 
-      long = Map.put(tokens, "id_token", String.duplicate("x", 17_000))
+      long = Map.put(tokens, "refresh_token", String.duplicate("x", 17_000))
       assert Login.parse(Jason.encode!(%{"tokens" => long})) == {:error, :invalid}
     end
 

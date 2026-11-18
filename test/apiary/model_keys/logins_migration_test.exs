@@ -14,7 +14,7 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
 
   @moduletag needs: [:factory, :secrets]
 
-  @migration {20_261_118_110_000, Apiary.Repo.Migrations.CreateModelKeyLogins,
+  @migration {20_261_118_140_000, Apiary.Repo.Migrations.CreateModelKeyLogins,
               "create_model_key_logins"}
 
   setup_all do
@@ -93,18 +93,52 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
 
     for set <- [
           [state: "sign_in_needed"],
-          [state: "signed_in", sign_in_cause: "unauthorized"],
+          [state: "signed_in", sign_in_cause: "refresh_unauthorized"],
+          [state: "sign_in_needed", sign_in_cause: "unauthorized"],
+          [state: "sign_in_needed", sign_in_cause: "Refresh_Token_Expired"],
+          [state: "sign_in_needed", sign_in_cause: ""],
           [state: "sleeping"],
           [failures: -1],
           [generation: 0],
           [account_id: ""],
           [lease_id: Ecto.UUID.generate()]
         ] do
-      assert_raise Postgrex.Error, ~r/model_key_logins_\w+_check/, fn ->
-        Repo.transaction(fn ->
-          Repo.update_all(from(l in Login, where: l.secret_value_id == ^id), set: set)
-        end)
-      end
+      refused =
+        try do
+          Repo.transaction(fn ->
+            Repo.update_all(from(l in Login, where: l.secret_value_id == ^id), set: set)
+          end)
+
+          false
+        rescue
+          error in Postgrex.Error ->
+            error.postgres.constraint =~ ~r/\Amodel_key_logins_\w+_check\z/
+        end
+
+      assert refused, "the table took #{inspect(set)}"
+    end
+  end
+
+  test "the check accepts each cause the module lists, and no other" do
+    %{scope: scope} = sign_up_fixture()
+
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "openai-subscription",
+        keys: [%{value_id: "main", value: login_paste()}]
+      })
+
+    %Value{id: id} = key_value!(provider, "main")
+
+    assert Login.causes() ==
+             ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated
+                invalid_grant refresh_unauthorized)
+
+    for cause <- Login.causes() do
+      assert {1, _} =
+               Repo.update_all(from(l in Login, where: l.secret_value_id == ^id),
+                 set: [state: "sign_in_needed", sign_in_cause: cause]
+               )
     end
   end
 

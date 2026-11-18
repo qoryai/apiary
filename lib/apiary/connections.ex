@@ -2019,10 +2019,15 @@ defmodule Apiary.Connections do
     do: read_logins(rest, [other | stored], logins)
 
   # The login rows of the keys of the secret `secret_id` that `logins` has parsed logins
-  # for, by value id; none for nil.
-  defp put_logins(_secret_id, logins) when logins == %{}, do: :ok
+  # for, by value id; none for nil. `{:error, :login_not_stored}` and no row written when a
+  # login matches no key of the secret: the caller's transaction then rolls back, so a key
+  # is never left without its row.
+  @doc false
+  @spec put_logins(Ecto.UUID.t(), %{String.t() => Login.parsed()}) ::
+          :ok | {:error, :login_not_stored | Ecto.Changeset.t()}
+  def put_logins(_secret_id, logins) when logins == %{}, do: :ok
 
-  defp put_logins(secret_id, logins) do
+  def put_logins(secret_id, logins) do
     values =
       Repo.all(
         from v in Value,
@@ -2030,12 +2035,16 @@ defmodule Apiary.Connections do
           select: struct(v, [:id, :organisation_id, :value_id])
       )
 
-    Enum.reduce_while(values, :ok, fn value, :ok ->
-      case Login.put(value, Map.fetch!(logins, value.value_id)) do
-        {:ok, _row} -> {:cont, :ok}
-        {:error, changeset} -> {:halt, {:error, changeset}}
-      end
-    end)
+    if length(values) == map_size(logins) do
+      Enum.reduce_while(values, :ok, fn value, :ok ->
+        case Login.put(value, Map.fetch!(logins, value.value_id)) do
+          {:ok, _row} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
+    else
+      {:error, :login_not_stored}
+    end
   end
 
   # The login row of the key `value_id` after its value was written, nothing for a key

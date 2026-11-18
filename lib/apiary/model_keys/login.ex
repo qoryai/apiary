@@ -4,17 +4,18 @@ defmodule Apiary.ModelKeys.Login do
   entry, such as an OpenAI subscription: the contents of the `auth.json` that `codex login`
   writes, pasted as the key's value. The key is still one value of the provider's secret
   (`Apiary.ModelKeys`). Its stored value is the document `parse/1` makes from the paste,
-  `{"version": 1, "access_token", "refresh_token", "id_token"}`, encrypted like any other
-  key value, and nothing else of the paste is kept. The row of this module has what the
-  server needs to know about the sign-in without decrypting it: the account, when the
-  access token expires, and whether the provider still accepts the refresh token.
+  `{"version": 1, "access_token", "refresh_token"}`, encrypted like any other key value,
+  and nothing else of the paste is kept; a pasted `id_token` is ignored and not stored.
+  The row of this module has what the server needs to know about the sign-in without
+  decrypting it: the account, when the access token expires, and whether the provider
+  still accepts the refresh token.
 
   `parse/1` reads the paste and makes no network call. It reads the access token's `exp`
   from the JWT's payload without checking the signature: the server only uses the time to
   decide when to refresh. A paste that is not an `auth.json` with a string for each of
-  `tokens.access_token`, `tokens.refresh_token`, `tokens.id_token` and `tokens.account_id`,
-  and an access token with an `exp`, is refused with a reason (`refusal/1`) that never
-  contains any of the paste.
+  `tokens.access_token`, `tokens.refresh_token` and `tokens.account_id`, and an access
+  token with an `exp`, is refused with a reason (`refusal/1`) that never contains any of
+  the paste.
 
   `put/3` writes the row of a key's new login: `generation` 1, plus 1 for each login pasted
   over it, so a refresh that started before it can be dropped. The caller is
@@ -57,11 +58,12 @@ defmodule Apiary.ModelKeys.Login do
 
   @states ~w(signed_in sign_in_needed)
   # The provider's permanent refusals of a refresh (plan 521): the refresh token expired,
-  # was used already, or was invalidated; a 400 `invalid_grant`; any 401.
+  # was used already, or was invalidated; a 400 `invalid_grant`; a 401 from the refresh
+  # call, `refresh_unauthorized` (`unauthorized` is the model API's 401). The check of
+  # `model_key_logins` lists the same five.
   @causes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated
-             invalid_grant unauthorized)
+             invalid_grant refresh_unauthorized)
   @paste_max 32_768
-  @account_id_max 255
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -121,11 +123,10 @@ defmodule Apiary.ModelKeys.Login do
     with {:ok, %{"tokens" => %{} = tokens}} <- decode(text),
          {:ok, refresh_token} <- string(tokens, "refresh_token", :no_refresh_token),
          {:ok, access_token} <- string(tokens, "access_token", :invalid),
-         {:ok, id_token} <- string(tokens, "id_token", :invalid),
          {:ok, account_id} <- string(tokens, "account_id", :invalid),
-         true <- String.length(account_id) <= @account_id_max or {:error, :invalid},
+         true <- account_id?(account_id) or {:error, :invalid},
          {:ok, expires_at} <- expiry(access_token),
-         document = document(access_token, refresh_token, id_token),
+         document = document(access_token, refresh_token),
          true <- byte_size(document) <= Value.value_max() or {:error, :invalid} do
       {:ok, %Parsed{document: document, account_id: account_id, access_expires_at: expires_at}}
     else
@@ -135,6 +136,10 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   def parse(_text), do: {:error, :invalid}
+
+  # The account id goes into a request header: 1 to 255 printable ASCII characters, no
+  # space. `\z`, not `$`, so a line feed at the end is refused too.
+  defp account_id?(account_id), do: String.match?(account_id, ~r/\A[!-~]{1,255}\z/)
 
   defp decode(text) do
     case Jason.decode(text) do
@@ -163,12 +168,11 @@ defmodule Apiary.ModelKeys.Login do
     end
   end
 
-  defp document(access_token, refresh_token, id_token) do
+  defp document(access_token, refresh_token) do
     Jason.encode!(%{
       "version" => 1,
       "access_token" => access_token,
-      "refresh_token" => refresh_token,
-      "id_token" => id_token
+      "refresh_token" => refresh_token
     })
   end
 
@@ -264,30 +268,43 @@ defmodule Apiary.ModelKeys.Login do
 
   @doc """
   The tokens of the key `secret_value_id` of `provider`, decrypted for the refresh and for
-  nothing else: `{:ok, %{access_token:, refresh_token:, id_token:}}`, or `{:error, reason}`
+  nothing else: `{:ok, %{access_token:, refresh_token:}}`, or `{:error, reason}`
   as `Apiary.Secrets.reveal_login/2` returns, with `:invalid` for a stored value that is
   not the document `parse/1` makes. The tokens go to the provider's token endpoint and
   nowhere else: not into a log, an assign, an error or an audit entry.
   """
   @spec tokens(Connection.t(), Ecto.UUID.t()) ::
-          {:ok, %{access_token: String.t(), refresh_token: String.t(), id_token: String.t()}}
+          {:ok, %{access_token: String.t(), refresh_token: String.t()}}
           | {:error, :not_found | :unavailable | :invalid}
   def tokens(%Connection{} = provider, secret_value_id) do
-    with {:ok, plaintext} <- Secrets.reveal_login(provider, secret_value_id) do
-      case Jason.decode(plaintext) do
-        {:ok,
-         %{
-           "version" => 1,
-           "access_token" => access_token,
-           "refresh_token" => refresh_token,
-           "id_token" => id_token
-         }}
-        when is_binary(access_token) and is_binary(refresh_token) and is_binary(id_token) ->
-          {:ok, %{access_token: access_token, refresh_token: refresh_token, id_token: id_token}}
+    with {:ok, plaintext} <- Secrets.reveal_login(provider, secret_value_id),
+         do: read_document(plaintext)
+  end
 
-        _other ->
-          {:error, :invalid}
-      end
+  @doc """
+  Whether `text` is a stored login's document, as `parse/1` makes it: a JSON object with
+  `version` 1 and a non-empty string for each of `access_token` and `refresh_token`.
+  `Apiary.Secrets.write_refreshed_key/3` refuses any other text.
+  """
+  @spec document?(term) :: boolean
+  def document?(text), do: match?({:ok, _tokens}, read_document(text))
+
+  defp read_document(text) when is_binary(text) do
+    case Jason.decode(text) do
+      {:ok,
+       %{
+         "version" => 1,
+         "access_token" => access_token,
+         "refresh_token" => refresh_token
+       }}
+      when is_binary(access_token) and access_token != "" and is_binary(refresh_token) and
+             refresh_token != "" ->
+        {:ok, %{access_token: access_token, refresh_token: refresh_token}}
+
+      _other ->
+        {:error, :invalid}
     end
   end
+
+  defp read_document(_text), do: {:error, :invalid}
 end

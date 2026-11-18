@@ -492,6 +492,45 @@ defmodule Apiary.DeletionTest do
       assert Repo.get(Apiary.Accounts.User, scope.user.id)
     end
 
+    test "an organisation's purge removes the sign-in rows of its model keys", %{scope: scope} do
+      {:ok, _} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+        })
+
+      %{scope: other} = sign_up_fixture()
+
+      {:ok, kept} =
+        Apiary.Connections.create_provider(other, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste(tag: "k")}]
+        })
+
+      id = scope.organisation.id
+
+      logins = fn organisation_id ->
+        Repo.aggregate(
+          from(l in Apiary.ModelKeys.Login, where: l.organisation_id == ^organisation_id),
+          :count
+        )
+      end
+
+      assert logins.(id) == 1
+      assert logins.(other.organisation.id) == 1
+
+      {:ok, _} = Deletion.delete_organisation(scope, scope.organisation.slug)
+      overdue!(Organisation, id)
+
+      assert :ok =
+               perform_job(PurgeOrganisationJob, %{"organisation_id" => id, "workspace_id" => nil})
+
+      assert logins.(id) == 0
+      assert Repo.get(Organisation, id) == nil
+      assert logins.(other.organisation.id) == 1
+      assert map_size(Apiary.ModelKeys.Login.by_key(kept)) == 1
+    end
+
     test "a purge that stopped half way goes on where it stopped", %{scope: scope} do
       fill!(scope)
       id = scope.organisation.id

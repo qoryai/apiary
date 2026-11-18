@@ -1170,10 +1170,11 @@ defmodule Apiary.Secrets do
   # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row.
   # `:ok`, or `{:error, reason}`: `:not_found` for a provider whose keys are not logins
   # and for a key that is gone, `:unavailable` as `reveal_login/2` has it, `:too_large`
-  # for a document past a value's size.
+  # for a document past a value's size, `:invalid` for a text that is no login's document
+  # (`Apiary.ModelKeys.Login.document?/1`).
   @doc false
   @spec write_refreshed_key(Connection.t(), Ecto.UUID.t(), binary) ::
-          :ok | {:error, :not_found | :unavailable | :too_large}
+          :ok | {:error, :not_found | :unavailable | :too_large | :invalid}
   def write_refreshed_key(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
         secret_value_id,
@@ -1184,6 +1185,7 @@ defmodule Apiary.Secrets do
              not is_nil(provider.provider_kind) do
     with true <- Login.provider?(provider) or {:error, :not_found},
          true <- byte_size(plaintext) <= Value.value_max() or {:error, :too_large},
+         true <- Login.document?(plaintext) or {:error, :invalid},
          {:ok, row_id} <- cast_row_id(secret_value_id),
          {query, secret_id, workspace_id} <- provider_values(provider) || {:error, :not_found},
          {%Value{value_id: value_id}, data_key} when is_binary(value_id) <-

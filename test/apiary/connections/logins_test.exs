@@ -85,22 +85,26 @@ defmodule Apiary.Connections.LoginsTest do
 
       assert stored(provider, "main") == %{
                access_token: tokens.access_token,
-               refresh_token: tokens.refresh_token,
-               id_token: tokens.id_token
+               refresh_token: tokens.refresh_token
              }
 
       refute_leaks(log, tokens)
     end
 
-    test "stores no more than the tokens", %{scope: scope} do
-      provider = subscription!(scope)
+    test "stores the access and refresh tokens and nothing else of the paste", %{scope: scope} do
+      tokens = login_tokens(tag: "doc")
+      provider = subscription!(scope, tokens)
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "main")
 
       {:ok, document} = Secrets.reveal_login(plain, value.id)
 
+      # The paste had an id token. It is decrypted away from the stored document.
       assert document |> Jason.decode!() |> Map.keys() |> Enum.sort() ==
-               ~w(access_token id_token refresh_token version)
+               ~w(access_token refresh_token version)
+
+      refute document =~ tokens.id_token
+      refute document =~ tokens.account_id
     end
 
     test "refuses a paste that is no login, and creates nothing", %{scope: scope} do
@@ -457,8 +461,7 @@ defmodule Apiary.Connections.LoginsTest do
         Jason.encode!(%{
           "version" => 1,
           "access_token" => tokens.access_token,
-          "refresh_token" => tokens.refresh_token,
-          "id_token" => tokens.id_token
+          "refresh_token" => tokens.refresh_token
         })
 
     test "keeps the copies that runs hold of the value", %{scope: scope} do
@@ -535,14 +538,31 @@ defmodule Apiary.Connections.LoginsTest do
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "main")
       before = Repo.get!(Value, value.id)
+      document = refreshed(login_tokens(tag: "next"))
 
       too_large = String.duplicate("x", Value.value_max() + 1)
       assert Secrets.write_refreshed_key(plain, value.id, too_large) == {:error, :too_large}
 
-      assert Secrets.write_refreshed_key(plain, Ecto.UUID.generate(), "{}") ==
+      for text <- [
+            "{}",
+            "",
+            "not json",
+            "[]",
+            "null",
+            "sk-proj-an-api-key",
+            Jason.encode!(%{"version" => 1, "refresh_token" => "r"}),
+            Jason.encode!(%{"version" => 1, "access_token" => "a"}),
+            Jason.encode!(%{"version" => 2, "access_token" => "a", "refresh_token" => "r"}),
+            Jason.encode!(%{"version" => 1, "access_token" => "a", "refresh_token" => ""}),
+            Jason.encode!(%{"version" => 1, "access_token" => "a", "refresh_token" => 7})
+          ] do
+        assert Secrets.write_refreshed_key(plain, value.id, text) == {:error, :invalid}
+      end
+
+      assert Secrets.write_refreshed_key(plain, Ecto.UUID.generate(), document) ==
                {:error, :not_found}
 
-      assert Secrets.write_refreshed_key(plain, "not-an-id", "{}") == {:error, :not_found}
+      assert Secrets.write_refreshed_key(plain, "not-an-id", document) == {:error, :not_found}
 
       {:ok, api} =
         Connections.create_provider(scope, %{
@@ -553,11 +573,99 @@ defmodule Apiary.Connections.LoginsTest do
       assert Secrets.write_refreshed_key(
                Repo.get!(Connection, api.id),
                key_value!(api, "main").id,
-               "{}"
+               document
              ) ==
                {:error, :not_found}
 
-      assert Repo.get!(Value, value.id).ciphertext == before.ciphertext
+      after_refusals = Repo.get!(Value, value.id)
+      assert after_refusals.ciphertext == before.ciphertext
+      assert after_refusals.nonce == before.nonce
+    end
+  end
+
+  describe "at rest" do
+    test "the stored ciphertext and nonce contain none of the three tokens", %{scope: scope} do
+      tokens = login_tokens(tag: "rest")
+      provider = subscription!(scope, tokens)
+      row = Repo.get!(Value, key_value!(provider, "main").id)
+
+      for stored <- [row.ciphertext, row.nonce],
+          token <- [tokens.access_token, tokens.refresh_token, tokens.id_token] do
+        refute :binary.match(stored, token) != :nomatch
+        refute :binary.match(stored, Base.url_encode64(token, padding: false)) != :nomatch
+      end
+
+      assert Repo.get!(Login, row.id).account_id == tokens.account_id
+    end
+  end
+
+  describe "a value of another organisation" do
+    test "is not found by any read or write of the login", %{scope: scope} do
+      provider = subscription!(scope)
+      %{scope: other_scope} = sign_up_fixture()
+      other = subscription!(other_scope, login_tokens(tag: "other"))
+      foreign_id = key_value!(other, "main").id
+      plain = Repo.get!(Connection, provider.id)
+      before = Repo.get!(Value, foreign_id)
+
+      assert Secrets.reveal_login(plain, foreign_id) == {:error, :not_found}
+      assert Login.tokens(plain, foreign_id) == {:error, :not_found}
+
+      assert Secrets.write_refreshed_key(plain, foreign_id, refreshed(login_tokens(tag: "x"))) ==
+               {:error, :not_found}
+
+      assert Secrets.reveal_key_for_sealing(plain, foreign_id) == {:error, :login}
+      refute Map.has_key?(Login.by_key(plain), foreign_id)
+      assert Map.keys(Login.by_key(plain)) == [key_value!(provider, "main").id]
+
+      after_write = Repo.get!(Value, foreign_id)
+      assert after_write.ciphertext == before.ciphertext
+      assert after_write.nonce == before.nonce
+    end
+  end
+
+  describe "Connections.put_logins/2" do
+    test "writes a row for each key it has a login for", %{scope: scope} do
+      provider = subscription!(scope)
+      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+
+      assert {:ok, :ok} =
+               Repo.transact(fn ->
+                 {:ok, Connections.put_logins(provider.secret_id, %{"main" => parsed})}
+               end)
+
+      assert %Login{generation: 2} = row(provider, "main")
+    end
+
+    test "fails with no row written when a login matches no key of the secret", %{scope: scope} do
+      provider = subscription!(scope)
+      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+      before = row(provider, "main")
+
+      assert {:error, :login_not_stored} =
+               Repo.transact(fn ->
+                 Connections.put_logins(provider.secret_id, %{"main" => parsed, "ghost" => parsed})
+               end)
+
+      assert row(provider, "main") == before
+      assert Repo.aggregate(Login, :count) == 1
+    end
+
+    test "matches no key of another secret", %{scope: scope} do
+      provider = subscription!(scope)
+
+      {:ok, other} =
+        Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "other", value: login_paste(tag: "o")}]
+        })
+
+      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+
+      assert {:error, :login_not_stored} =
+               Connections.put_logins(other.secret_id, %{"main" => parsed})
+
+      assert row(provider, "main").generation == 1
     end
   end
 
