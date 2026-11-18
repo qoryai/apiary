@@ -20,8 +20,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and the paused run keeps its record as attempt 1. A value that the runtime did not report
   is empty, never 0. No page shows the records yet. A run's events written before this
   change have no record until the run is projected again. A record is written after the
-  run's events are projected, and once more after the end of a run that its gateway exited
-  or refused is committed, so a write that failed before the end is made good. A run whose
+  run's events are projected, and once more after the end of the run of the queue it belongs
+  to is committed, whichever end it is (exit, refusal, lost, machine stopped, or an input
+  that could not be formed), so a write that failed before the end is made good. A run whose
   events are deleted, or are due to be, gets no new record and keeps its cost.
 <!-- feature: factory, secrets -->
 - A key report that names a session also counts into that session's record, for each key and

@@ -1835,28 +1835,31 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   each session number of a run, after the pass that projected one of the session's
   `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or
   `dev.qory.session.exited` has committed, in a separate transaction, and again after every
-  later such pass, to the same row. For a run that a workspace's queue handed over and whose
-  passes folded an exit or a refusal, the projector writes the records once more after the
-  end of the run's queue entry has committed, in a transaction that does not hold the end's
-  locks, so a write that failed before the end is made good. A failure of a write is logged
-  and the records stay as they are. The write holds the run's projection lock and, `FOR KEY
-  SHARE`, the run's work item, run of the queue and run, in the order the end of a run locks
-  them, so the end and the write lock in one order. It has a row for a session with a start
-  that is not `bare` or with a result; a session with no runtime, and a refused join, which
-  has an exit and no start, have none. Its work item, target, stage, workflow and attempt
-  come from Qory Apiary, not from the events: the attempt is `dispatch_runs.attempt`, so the
-  run that continues a paused run has the paused run's attempt plus 1, while the paused run
-  keeps its record as attempt 1; the stage and workflow are those of the run of the queue,
-  and, for a shared run, those of the row of `shared_run_sessions` that Forager's session
-  number is: the row whose reported `forager_session` is the number, else, for a session
-  that no report ended, such as the one open when a run paused, the newest row with none,
-  else the row of that sequence. A run the queue did not start has none of the five. The
-  model is that of the session's `dev.qory.runtime.started` in the main conversation, and
-  none when no such event says it: the run's `run_settings` are not proof of what ran. A
-  step that a rerun keeps is not run again, so it has no session and no record; its record
-  stays on the run where it ran. The records stay when `Apiary.Retention` deletes the run's
-  events, and a run whose events retention has deleted or is due to delete is not written
-  to: its records, and its cost, are what is left.
+  later such pass, to the same row. For a run that a workspace's queue handed over, the
+  records are written once more after the end of its run of the queue has committed,
+  whichever end it is: its exit or refusal folded by the projector, the lost-run check, a
+  machine that stopped, or an input that could not be formed. The write runs outside the
+  end's transaction, so the end's locks are not held, and a write that failed before the end
+  is made good; it writes nothing for a run with no session event. A failure of a write is
+  logged and the records stay as they are. The write holds the run's projection lock and,
+  `FOR KEY SHARE`, the run's work item, run of the queue and run, in the order the end of a
+  run locks them, so the end and the write lock in one order. It has a row for a session
+  with a start that is not `bare` or with a result; a session with no runtime, and a refused
+  join, which has an exit and no start, have none. Its work item, target, stage, workflow
+  and attempt come from Qory Apiary, not from the events: the attempt is
+  `dispatch_runs.attempt`, so the run that continues a paused run has the paused run's
+  attempt plus 1, while the paused run keeps its record as attempt 1; the stage and workflow
+  are those of the run of the queue, and, for a shared run, those of the row of
+  `shared_run_sessions` that Forager's session number is: the row whose reported
+  `forager_session` is the number, else, for a session that no report ended, such as the one
+  open when a run paused, the newest row with none, else the row of that sequence. A run the
+  queue did not start has none of the five. The model is that of the session's
+  `dev.qory.runtime.started` in the main conversation, and none when no such event says it:
+  the run's `run_settings` are not proof of what ran. A step that a rerun keeps is not run
+  again, so it has no session and no record; its record stays on the run where it ran. The
+  records stay when `Apiary.Retention` deletes the run's events, and a run whose events
+  retention has deleted or is due to delete is not written to: its records, and its cost,
+  are what is left.
 - A key report that has a `session` (`model-keys-report.schema.json`) is also counted into
   that session's key windows (`session_key_windows`, `Apiary.Runs.SessionKeyWindow`): one
   row for each session, key and window, with the utilization of the report with the earliest

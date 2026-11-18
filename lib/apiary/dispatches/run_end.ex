@@ -537,23 +537,26 @@ defmodule Apiary.Dispatches.RunEnd do
   # a claim that cannot form a run's input. The registered run is left as it is: its
   # gateway closes it. The ids of the workspaces whose slots changed, and the work item to
   # tell, for the caller to tell (`Apiary.Dispatches.broadcast/1`); none for a run of the
-  # queue no longer handed over.
+  # queue no longer handed over. Once the end has committed the run's session records are
+  # written again, outside it (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec unformed(Run.t(), :ticket_gone | :inputs_invalid) :: [Ecto.UUID.t() | Settle.told()]
   def unformed(%Run{id: run_id, dispatch_run_id: dispatch_run_id}, cause)
       when is_binary(dispatch_run_id) and cause in [:ticket_gone, :inputs_invalid] do
-    {:ok, changed} =
+    {:ok, {changed, ended}} =
       Repo.transact(fn ->
         held = hold(dispatch_run_id)
 
         with %DispatchRun{state: :handed_over} = dispatch_run <- lock(dispatch_run_id),
              %Run{} = run <- locked_run(run_id) do
-          {:ok, finish(dispatch_run, run, cause, now(), held)}
+          {:ok, {finish(dispatch_run, run, cause, now(), held), true}}
         else
-          _not_handed_over -> {:ok, []}
+          _not_handed_over -> {:ok, {[], false}}
         end
       end)
 
+    # The records are written once the end has committed (`Apiary.Runs.Sessions`).
+    if ended, do: Apiary.Runs.Sessions.write_after_end(run_id)
     changed
   end
 
@@ -600,7 +603,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # separate transaction, the run of the queue locked first, then the registered run.
   # Nothing changes for a dispatch not handed over, of a run of the queue not handed over
   # any more, or of a run that redeemed its code. The ids of the workspaces whose slots
-  # changed, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # changed, for the caller to tell (`Apiary.Dispatches.broadcast/1`). Once the end has
+  # committed the run's session records are written again, outside it
+  # (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec machine_stopped(Dispatch.t()) :: [Ecto.UUID.t() | Settle.told()]
   def machine_stopped(%Dispatch{
@@ -636,7 +641,11 @@ defmodule Apiary.Dispatches.RunEnd do
         end
       end)
 
-    if failed, do: Apiary.Runs.broadcast_changed(failed)
+    if failed do
+      Apiary.Runs.broadcast_changed(failed)
+      Apiary.Runs.Sessions.write_after_end(failed.id)
+    end
+
     changed
   end
 
@@ -657,7 +666,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`run_refused`): at most `@batch`, each in a separate transaction. One that
   # raises is logged by its id and the exception's module, in one line, and the rest are
   # still ended. The ids of the workspaces whose slots changed, and the work items whose
-  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`). After each end
+  # has committed, its run's session records are written again, outside it
+  # (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec lose(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
   def lose(%DateTime{} = now), do: now |> lose(nil) |> elem(0)
@@ -709,8 +720,9 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # A silent run lost for good is broadcast as changed once its end commits.
   defp lose_guarded(id, now) do
-    {:ok, {changed, silenced}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
+    {:ok, {changed, silenced, run_id}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
     if silenced, do: Apiary.Runs.broadcast_changed(silenced)
+    if run_id, do: Apiary.Runs.Sessions.write_after_end(run_id)
     Apiary.Runs.StuckLog.clear({:lose, id})
     changed
   rescue
@@ -736,9 +748,9 @@ defmodule Apiary.Dispatches.RunEnd do
            Repo.one(from r in Run, where: r.dispatch_run_id == ^id, lock: "FOR UPDATE"),
          cause when not is_nil(cause) <- cause(dispatch_run, run, now) do
       silenced = if cause == :lost and silent?(run, now), do: silenced(run, now)
-      {finish(dispatch_run, run, cause, now, held), silenced}
+      {finish(dispatch_run, run, cause, now, held), silenced, run.id}
     else
-      _nothing -> {[], nil}
+      _nothing -> {[], nil, nil}
     end
   end
 

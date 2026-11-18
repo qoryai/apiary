@@ -41,13 +41,13 @@ defmodule Apiary.Runs.Projector do
   A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, after the pass
   that folded one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
   `dev.qory.runtime.started` or `dev.qory.runtime.result` events has committed, in a
-  separate transaction, from all the run's events of those types
-  (`Apiary.Runs.Sessions`), and once more after the end of a run of the queue that folded
-  an exit or a refusal has committed. A rebuild does not delete the records: the key
-  windows that hang on them come from the gateway's reports, not from the events, and the
-  records stay when retention deletes the events. A run whose events retention has deleted,
-  or is due to delete (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost:
-  a pass over it writes neither, because the results they come from are partly gone.
+  separate transaction, from all the run's events of those types (`Apiary.Runs.Sessions`),
+  and once more after the end of the run's place in the queue has committed, whichever end
+  it is. A rebuild does not delete the records: the key windows that hang on them come from
+  the gateway's reports, not from the events, and the records stay when retention deletes
+  the events. A run whose events retention has deleted, or is due to delete
+  (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost: a pass over it
+  writes neither, because the results they come from are partly gone.
 
   A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
   its sequence, with the workspace's target of its system and path when the workspace has
@@ -535,30 +535,19 @@ defmodule Apiary.Runs.Projector do
 
     :ok
   rescue
-    error -> log_sessions_failure(id, error)
+    error -> Sessions.log_failure(id, error)
   end
 
   # The records once more, for a run a workspace's queue handed over that the passes folded
-  # an exit or a refusal of, after its end committed (`end_handed_over/1`, `end_refused/1`),
-  # outside that transaction, so the write takes its locks in the order the end took them.
-  # The write in `project/2` before the end is the first try; when it failed, and was
-  # logged, this is the second, and the last one the run's passes make. The write is the
-  # same for the same events, and a failure is logged as there: the records stay as they are.
+  # an exit or a refusal of, after its end committed (`end_handed_over/1`, `end_refused/1`)
+  # (`Apiary.Runs.Sessions.write_after_end/1`). The write in `project/2` before the end is
+  # the first try; when it failed, and was logged, this is the second.
   defp write_sessions_after_end(%Run{dispatch_run_id: queue_id, id: id} = run)
        when is_binary(queue_id) and
-              (is_struct(run.exited_at, DateTime) or is_struct(run.refused_at, DateTime)) do
-    Sessions.write(id)
-    :ok
-  rescue
-    error -> log_sessions_failure(run.id, error)
-  end
+              (is_struct(run.exited_at, DateTime) or is_struct(run.refused_at, DateTime)),
+       do: Sessions.write_after_end(id)
 
   defp write_sessions_after_end(_run), do: :ok
-
-  defp log_sessions_failure(id, error) do
-    Logger.error("session records not written run=#{id} error=#{inspect(error.__struct__)}")
-    :ok
-  end
 
   defp session_pass?(events), do: Enum.any?(events, &(&1.type in Sessions.types()))
 

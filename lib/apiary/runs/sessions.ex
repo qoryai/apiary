@@ -52,6 +52,8 @@ defmodule Apiary.Runs.Sessions do
 
   import Ecto.Query
 
+  require Logger
+
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.{Repo, Retention}
   alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord}
@@ -326,6 +328,36 @@ defmodule Apiary.Runs.Sessions do
 
         {:ok, :ok}
       end)
+
+    :ok
+  end
+
+  @doc """
+  `write/1` for the end of a run of the queue, called once the end's transaction has
+  committed and outside it, so the write takes its locks in the order the end took them:
+  the end of a run the projector folded an exit or a refusal of, of a run whose input
+  could not be formed, of a run whose machine stopped, and of a run the lost-run check
+  ended. It writes nothing for a run with no run of the queue or no session event. A
+  failure is logged by the run's id and the exception's module, and the records stay as
+  they are. Returns `:ok`.
+  """
+  @spec write_after_end(Ecto.UUID.t()) :: :ok
+  def write_after_end(run_id) when is_binary(run_id) do
+    with true <-
+           Repo.exists?(from r in Run, where: r.id == ^run_id and not is_nil(r.dispatch_run_id)),
+         true <- Repo.exists?(from e in Event, where: e.run_id == ^run_id and e.type in ^@types) do
+      write(run_id)
+    else
+      false -> :ok
+    end
+  rescue
+    error -> log_failure(run_id, error)
+  end
+
+  @doc "Logs that the records of the run `run_id` were not written, by the exception's module."
+  @spec log_failure(Ecto.UUID.t(), Exception.t()) :: :ok
+  def log_failure(run_id, error) do
+    Logger.error("session records not written run=#{run_id} error=#{inspect(error.__struct__)}")
 
     :ok
   end

@@ -8,7 +8,7 @@ defmodule Apiary.Runs.SessionsTest do
   import Apiary.RunEventsFixtures, except: [at: 1]
   import Apiary.RunListFixtures, only: [queue_run!: 3]
 
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{DispatchRun, RunEnd}
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord, Sessions}
   alias Apiary.Stages.Session
@@ -461,13 +461,9 @@ defmodule Apiary.Runs.SessionsTest do
              ]
     end
 
-    test "a write that failed before the end of the run is made again after it", %{
-      scope: scope
-    } do
-      {run, queued, _rows} = shared_run!(scope)
-
-      # The records of a run of the queue that is handed over are refused, as a write that
-      # fails for a reason that is over once the end of the run has committed.
+    # The records of a run of the queue that is handed over are refused, as a write that
+    # fails for a reason that is over once the end of the run has committed.
+    defp refuse_records_before_the_end! do
       Repo.query!("""
       CREATE FUNCTION refuse_before_the_end() RETURNS trigger AS $$
       BEGIN
@@ -484,6 +480,14 @@ defmodule Apiary.Runs.SessionsTest do
       CREATE TRIGGER refuse_before_the_end BEFORE INSERT OR UPDATE ON session_records
       FOR EACH ROW EXECUTE FUNCTION refuse_before_the_end()
       """)
+    end
+
+    test "a write that failed before the end of the run is made again after it", %{
+      scope: scope
+    } do
+      {run, queued, _rows} = shared_run!(scope)
+
+      refuse_records_before_the_end!()
 
       events =
         for session <- 1..3, event <- session_events(session, session / 100), do: event
@@ -503,6 +507,34 @@ defmodule Apiary.Runs.SessionsTest do
 
       assert Enum.map(records, &Decimal.to_float(&1.cost_usd)) == [0.01, 0.02, 0.03]
       assert Decimal.equal?(Repo.get!(Run, run.id).cost_usd, Decimal.new("0.06"))
+    end
+
+    test "a write that failed is made again after the lost-run check ends the run", %{
+      scope: scope
+    } do
+      {run, queued, _rows} = shared_run!(scope)
+      refuse_records_before_the_end!()
+
+      events = for session <- 1..2, event <- session_events(session, session / 100), do: event
+      events_fixture(run, events)
+
+      # No exit: the pass does not end the run, and its write is refused and logged.
+      log = ExUnit.CaptureLog.capture_log(fn -> assert {:ok, run} = Projector.project(run) end)
+      assert log =~ "session records not written"
+      assert records(run) == []
+
+      # The run was released, as a cancel after the hand-over records it: the check loses the
+      # run of the queue.
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [released_at: DateTime.utc_now(), state: "cancelled", reason: "released"]
+      )
+
+      assert [_ | _] = RunEnd.lose(DateTime.utc_now())
+      refute Repo.get!(DispatchRun, queued.id).state == :handed_over
+
+      assert Enum.map(records(run), & &1.session_number) == [1, 2]
+      assert Enum.map(records(run), &Decimal.to_float(&1.cost_usd)) == [0.01, 0.02]
+      assert Decimal.equal?(Repo.get!(Run, run.id).cost_usd, Decimal.new("0.03"))
     end
 
     test "a session of a run the queue started takes its place from the run of the queue", %{
