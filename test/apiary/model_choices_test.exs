@@ -728,16 +728,42 @@ defmodule Apiary.ModelChoicesTest do
                  }
       end
 
-      # The first refused tier is named, in the order of the tiers.
+      # The first refused tier is named, in the order the pages show the tiers: `second`
+      # comes before `first`.
       both =
         Map.merge(every_tier(@model), %{first => "deepseek-flash", second => "acme-small"})
 
       assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider, %{tiers: both}))) ==
                %{
                  tiers: [
-                   "Choose models of Anthropic API key: deepseek-flash is not one of its models."
+                   "Choose models of Anthropic API key: acme-small is not one of its models."
                  ]
                }
+
+      assert Repo.aggregate(ModelChoice, :count) == 0
+    end
+
+    test "name the first tier refused in the order the pages show them, thinking first", ctx do
+      %{scope: scope, provider: provider} = ctx
+      [light, _middle, thinking] = Resolution.tiers()
+
+      # A model of another provider on the first and the last tier of `Resolution.tiers/0`.
+      wrong =
+        Map.merge(every_tier(@model), %{light => "deepseek-flash", thinking => "acme-small"})
+
+      assert errors(ModelChoices.put_choice(scope, :workspace, attrs(provider, %{tiers: wrong}))) ==
+               %{
+                 tiers: [
+                   "Choose models of Anthropic API key: acme-small is not one of its models."
+                 ]
+               }
+
+      # The same two tiers missing: the refusal names the same tier.
+      missing = Map.drop(every_tier(@model), [light, thinking])
+
+      assert errors(
+               ModelChoices.put_choice(scope, :workspace, attrs(provider, %{tiers: missing}))
+             ) == %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
 
       assert Repo.aggregate(ModelChoice, :count) == 0
     end

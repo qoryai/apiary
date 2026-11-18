@@ -118,9 +118,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # then, while a provider with its description is left, `:other_runtime` when another
   # runtime of the catalogue has a provider that serves it, else `:none`. A provider whose
   # settings check ran out of time or crashed has no line: it serves nothing on this
-  # read, and the next read checks it again. A provider with its description that is not
-  # offered (`Apiary.Kinds.Providers.offered?/1`) serves no runtime here, so with only
-  # such providers the line is `:none`.
+  # read, and the next read checks it again. A described provider that is not offered
+  # (`Apiary.Kinds.Providers.offered?/1`) serves no runtime here, so where every described
+  # provider is one of these, the line is `:none`.
   defp unserved(described, runtime, runtimes) do
     descriptions = for {_provider, {:ok, description}} <- described, do: description
     offered = Enum.filter(descriptions, &Providers.offered?/1)

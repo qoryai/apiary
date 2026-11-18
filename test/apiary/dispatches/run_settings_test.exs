@@ -358,6 +358,38 @@ defmodule Apiary.Dispatches.RunSettingsTest do
              }
     end
 
+    test "keeps an OpenRouter thinking model that only the suggestions list, and runs on it",
+         ctx do
+      {:ok, router} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-run-settings-0123456789"}]
+        })
+
+      # A model of `priv/models/suggestions.json` that the description does not list.
+      gemini = "google/gemini-3.1-pro-preview"
+      described = Enum.map(Connections.provider_models(router), & &1["id"])
+      refute gemini in described
+      assert gemini in ModelChoices.resolution_provider(router).suggested
+
+      choose!(ctx.scope, :workspace, %{provider: router.public_id, tiers: every_tier(gemini)})
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      assert settings(handed) == %{
+               "runtime" => @runtime,
+               "model" => gemini,
+               "provider_models" =>
+                 for(id <- described, do: %{"id" => id, "effort" => @efforts}) ++
+                   [%{"id" => gemini}],
+               "tiers" => Map.new(Resolution.tiers(), &{&1, gemini}),
+               "time_limit_minutes" => 180
+             }
+
+      assert %Run{provider_connection_id: router_id} = Repo.get!(Run, handed.run.id)
+      assert router_id == router.id
+    end
+
     test "sends the thinking tier's model and effort as the run's", ctx do
       [_light, middle, _thinking] = Resolution.tiers()
 
@@ -976,11 +1008,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           keys: [%{value_id: "main", value: "sk-team"}]
         })
 
-      # Past the save, which needs every tier at the workspace: a choice with no tiers.
-      ctx.scope
-      |> choose!(:workspace, %{provider: litellm.public_id})
-      |> Ecto.Changeset.change(tiers: nil)
-      |> Repo.update!()
+      # The target's level, where a choice may map no tier: no thinking tier, and no
+      # default model.
+      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      choose!(ctx.scope, target, %{provider: litellm.public_id})
 
       {answer, queued, dispatch} = handover!(ctx)
       assert answer == {:error, :gone}

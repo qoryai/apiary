@@ -49,12 +49,13 @@ defmodule Apiary.ModelChoices do
   #   * `tiers`: tiers among `Apiary.ModelChoices.Resolution.tiers/0`, each a model id, or
   #     a map of `model` and `effort`. A tier with a blank model is left out, and so is a
   #     blank effort, as a form posts them. At levels 4, 5 and 6 every tier is needed, and
-  #     the first missing one, in the order the pages show the tiers (`tiers/0` reversed),
-  #     is refused. Each tier's model is one of the provider's models as
-  #     `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them: of its description or of
-  #     its suggestions (`priv/models/suggestions.json`), any id where the description
-  #     lists no model; a model of another provider is refused. Each tier's effort is
-  #     checked as `effort` is;
+  #     the first missing one is refused. Each tier's model is one of the provider's
+  #     models as `Apiary.ModelChoices.Resolution.tier_ok?/2` reads them: of its
+  #     description or of its suggestions (`priv/models/suggestions.json`), any id where
+  #     the description lists no model; a model of another provider is refused. Each
+  #     tier's effort is checked as `effort` is. Both checks go through the tiers in the
+  #     order the pages show them (`tiers/0` reversed, `thinking` first), and the first
+  #     tier refused is the one named;
   #   * `fallbacks`: a list of the providers runs use, in order, while every key of the
   #     choice's provider is in cooldown, each a map of `provider`, `model` and `effort`.
   #     A workflow's choice (levels 2 and 4) has none: runs use the fallbacks of the
@@ -821,12 +822,15 @@ defmodule Apiary.ModelChoices do
     |> Map.put(:action, :validate)
   end
 
+  # The tiers in the order the pages show them: `Resolution.tiers/0` reversed, `thinking`
+  # first. Both tier refusals name the first tier in this order.
+  defp page_tiers, do: Enum.reverse(Resolution.tiers())
+
   # At levels 4, 5 and 6, a tier map with every tier: the first missing one, in the order
-  # the pages show the tiers (`Resolution.tiers/0` reversed), is refused, unless the tier
-  # map is refused already.
+  # of `page_tiers/0`, is refused, unless the tier map is refused already.
   defp every_tier(changeset, level) when level in [4, 5, 6] do
     tiers = get_field(changeset, :tiers) || %{}
-    missing = Resolution.tiers() |> Enum.reverse() |> Enum.reject(&Map.has_key?(tiers, &1))
+    missing = Enum.reject(page_tiers(), &Map.has_key?(tiers, &1))
 
     if missing == [] or Keyword.has_key?(changeset.errors, :tiers),
       do: changeset,
@@ -1224,13 +1228,13 @@ defmodule Apiary.ModelChoices do
   defp check_tiers(%Ecto.Changeset{valid?: false} = changeset, _provider, _runtime),
     do: changeset
 
-  # Each tier, in the order of `Resolution.tiers/0`: a model of the provider
+  # Each tier, in the order of `page_tiers/0`: a model of the provider
   # (`Resolution.tier_ok?/2`), then an effort that goes with it. The first refusal is kept.
   defp check_tiers(changeset, %Connection{} = provider, runtime) do
     tiers = get_field(changeset, :tiers) || %{}
     described = resolution_provider(provider)
 
-    Resolution.tiers()
+    page_tiers()
     |> Enum.filter(&Map.has_key?(tiers, &1))
     |> Enum.reduce_while(changeset, fn tier, changeset ->
       %{"model" => model_id} = entry = tier_entry(tiers[tier])
