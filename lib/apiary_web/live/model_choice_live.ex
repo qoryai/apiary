@@ -350,8 +350,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # (`ApiaryWeb.ModelTiers.sent/5`): a change of the runtime keeps the models, and an
   # effort the runtime does not accept goes back to Not set. A row sent with a provider
   # the page does not list, which no select of the page offers, is marked `"unknown"`,
-  # and a save returns "is invalid" on its Provider for it (`unknown_rows/1`). With no rows sent, the rows are as they
-  # were: a form without them, or with them off for a reader.
+  # and a save returns "is invalid" on its Provider for it (`unknown_rows/1`). With no
+  # rows sent, the rows are as they were: a form without them, or with them off for a
+  # reader.
   defp sent_rows(socket, %{"fallbacks" => %{} = sent}) do
     old = socket.assigns.fallbacks
     page = socket.assigns

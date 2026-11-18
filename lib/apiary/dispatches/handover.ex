@@ -118,16 +118,17 @@ defmodule Apiary.Dispatches.Handover do
   # run that is not a prebuild the variables of its workspace and target as they are at
   # the claim, `Apiary.Variables.for_run/2`; none where there are none), for a
   # continuation of a paused run its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`,
-  # none where the run's runtime is not that of the session that paused), its
-  # registration digest the SHA-256 of the claim's body, with no heartbeat interval, no answer digest and no contract version
-  # until its attach; with the gateway and a run code in place of a run key
-  # (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the claim,
-  # the grant its run key will be made from at the code's redemption, `run_key_issued_at`
-  # the claim and `attach_by` the code's expiry. A run key of the grant is made all the
-  # same, and given to nobody, so a grant no run key can be made for refuses the claim as
-  # step 2 says. The run key's instance id is the run's id. A run with a work credential
-  # entry has it stored with the run (`Apiary.Runs.RunCredentials.insert!/2`). The
-  # dispatch stays claimed, and so does the run of the queue.
+  # none where the run's runtime is not that of the session that paused), its registration
+  # digest the SHA-256 of the claim's body, with no heartbeat interval, no answer digest
+  # and no contract version until its attach; with the gateway and a run code in place of
+  # a run key (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the
+  # claim, the grant its run key will be made from at the code's redemption,
+  # `run_key_issued_at` the claim and `attach_by` the code's expiry. A run key of the
+  # grant is made all the same, and given to nobody, so a grant no run key can be made for
+  # refuses the claim as step 2 says. The run key's instance id is the run's id. A run
+  # with a work credential entry has it stored with the run
+  # (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so does the
+  # run of the queue.
   #
   # A prebuild's documents have its destinations in the registry: `image_destination`,
   # and `environment_destination` or `environment_image`
