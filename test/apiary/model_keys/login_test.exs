@@ -54,18 +54,46 @@ defmodule Apiary.ModelKeys.LoginTest do
       assert same.document == parsed.document
     end
 
-    test "takes the account id from the id token when the access token has none" do
+    test "reads the account id from the access token, and the ID token's only to compare" do
       tokens = login_tokens()
+      claim = fn id -> %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => id}} end
+      bare = jwt(%{"exp" => System.os_time(:second) + 100})
+      with_id = jwt(Map.put(claim.("acct-a"), "exp", System.os_time(:second) + 100))
 
-      bare =
-        jwt(%{"exp" => System.os_time(:second) + 100})
+      # The claim only in the ID token: no account.
+      assert read(
+               response(tokens, %{"access_token" => bare, "id_token" => jwt(claim.("acct-a"))})
+             ) ==
+               {:error, :no_account}
 
-      id_token = jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-id"}})
+      # The claim only in the access token.
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(response(tokens, %{"access_token" => with_id, "id_token" => jwt(%{})}))
 
-      assert {:ok, %{account_id: "acct-id"}} =
-               read(response(tokens, %{"access_token" => bare, "id_token" => id_token}))
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(response(tokens, %{"access_token" => with_id}) |> Map.delete("id_token"))
 
-      assert read(response(tokens, %{"access_token" => bare})) == {:error, :no_account}
+      # Both, and they agree.
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(
+                 response(tokens, %{
+                   "access_token" => with_id,
+                   "id_token" => jwt(claim.("acct-a"))
+                 })
+               )
+
+      # Both, and they differ.
+      assert read(
+               response(tokens, %{"access_token" => with_id, "id_token" => jwt(claim.("acct-b"))})
+             ) ==
+               {:error, :invalid}
+
+      # Neither.
+      assert read(response(tokens, %{"access_token" => bare, "id_token" => jwt(%{})})) ==
+               {:error, :no_account}
+
+      assert read(response(tokens, %{"access_token" => bare}) |> Map.delete("id_token")) ==
+               {:error, :no_account}
     end
 
     test "refuses a response whose access token and ID token have different account ids" do

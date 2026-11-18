@@ -4415,7 +4415,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
         |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
         |> render_submit()
 
-      assert html =~ "can&#39;t be blank" or html =~ "can't be blank"
+      assert html =~ "then save. This key has no sign-in yet."
+      assert has_element?(lv, "#set-up-model-sign-in-error-1 b", "Sign in with ChatGPT")
+      refute html =~ "be blank"
       assert {:ok, []} = Connections.list_providers(scope)
 
       lv |> element("#set-up-model-sign-in-start") |> render_click()

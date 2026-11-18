@@ -175,7 +175,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
 
   # When the code stops working: an ISO 8601 text with an offset, or seconds since 1970.
   # The format was never measured, so anything else (a missing member, a timestamp with no
-  # offset, a float) is 15 minutes from now; the sign-in's own 30-minute limit bounds it.
+  # offset, a float) is 15 minutes from now; the 30-minute limit of a sign-in bounds it.
   defp expires_at(value) do
     with :error <- time(value),
          do: DateTime.add(DateTime.utc_now(), @default_lifetime, :second)
@@ -197,10 +197,13 @@ defmodule Apiary.ModelKeys.LoginDevice do
 
   defp time(_value), do: :error
 
-  # The seconds a `Retry-After` header gives, 1 to 60; an HTTP date and anything else is nil.
+  # The seconds a `Retry-After` header gives, 1 to 60. It is digits only: an HTTP date, a
+  # sign and anything else is nil.
   defp retry_after(headers) do
     with [value | _] <- headers["retry-after"] || [],
-         {seconds, ""} when seconds > 0 <- Integer.parse(String.trim(value)) do
+         value = String.trim(value),
+         true <- String.match?(value, ~r/\A[0-9]{1,9}\z/),
+         seconds when seconds > 0 <- String.to_integer(value) do
       min(seconds, @retry_after_max)
     else
       _none -> nil

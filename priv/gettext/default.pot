@@ -7852,6 +7852,11 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
+msgid "Click %{label}, then save. This key has no sign-in yet."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
 msgid "Click Sign in with ChatGPT for a new code."
 msgstr ""
 
@@ -16217,6 +16222,11 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id for this sign-in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
 msgid "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
 msgstr ""
 
@@ -17251,6 +17261,11 @@ msgstr ""
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the new sign-in on %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the sign-in."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

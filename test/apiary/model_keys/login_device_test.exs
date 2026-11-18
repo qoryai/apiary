@@ -165,6 +165,9 @@ defmodule Apiary.ModelKeys.LoginDeviceTest do
             {"3600", 60},
             {"0", nil},
             {"-4", nil},
+            {"+5", nil},
+            {"5.5", nil},
+            {"5 s", nil},
             {"Wed, 21 Oct 2026 07:28:00 GMT", nil},
             {"soon", nil}
           ] do

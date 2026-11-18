@@ -645,7 +645,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
     * `:signed_in`: the state of a new sign-in;
     * `:expired`, `:off`, `:failed`: the fix, the cause and the button.
 
-  `errors` are the form's errors on the sign-in, as sentences. `key` is the value id of the
+  `errors` are the form's errors on the sign-in, as sentences or `:sign_in_missing`. `key` is the value id of the
   key a button in a list row starts the sign-in for, nil on a form.
   """
   attr :id, :string, required: true
@@ -667,14 +667,11 @@ defmodule ApiaryWeb.ModelKeyComponents do
   def sign_in_with_chatgpt(%{device: nil} = assigns) do
     ~H"""
     <div :if={@errors != []} id={@id} class="grid gap-1">
-      <p
+      <.sign_in_error
         :for={{message, index} <- Enum.with_index(@errors)}
         id={"#{@id}-error-#{index + 1}"}
-        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
-      >
-        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
-        {message}
-      </p>
+        message={message}
+      />
     </div>
     """
   end
@@ -758,7 +755,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
         )}
       </span>
       <span
-        :if={@device.state == :failed and @device.cause != nil}
+        :if={@device.state == :failed}
         id={"#{@id}-cause"}
         class="text-muted"
       >
@@ -779,14 +776,11 @@ defmodule ApiaryWeb.ModelKeyComponents do
           "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
         )}
       </p>
-      <p
+      <.sign_in_error
         :for={{message, index} <- Enum.with_index(@errors)}
         id={"#{@id}-error-#{index + 1}"}
-        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
-      >
-        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
-        {message}
-      </p>
+        message={message}
+      />
     </div>
     """
   end
@@ -805,8 +799,37 @@ defmodule ApiaryWeb.ModelKeyComponents do
     """
   end
 
+  # An error of the sign-in under the button: `:sign_in_missing` for a save before the
+  # sign-in (`ApiaryWeb.ModelKeyDevice.errors/1`), else the sentence of the error.
+  attr :id, :string, required: true
+  attr :message, :any, required: true
+
+  defp sign_in_error(assigns) do
+    ~H"""
+    <p id={@id} class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error">
+      <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+      <%= if @message == :sign_in_missing do %>
+        <span>
+          <.rich text={
+            rich_gettext("Click %{label}, then save. This key has no sign-in yet.",
+              label: {:b, "Sign in with ChatGPT"}
+            )
+          } />
+        </span>
+      <% else %>
+        {@message}
+      <% end %>
+    </p>
+    """
+  end
+
   # The cause line of a failed sign-in: the status of the response that failed it, when
-  # there is one.
+  # there is one; a sign-in that could not be saved; a response with no account id.
+  defp failed_cause(:store), do: gettext("Qory Apiary could not save the sign-in.")
+
+  defp failed_cause(:no_account),
+    do: gettext("OpenAI returned no account id for this sign-in.")
+
   defp failed_cause(status) when is_integer(status),
     do:
       gettext("Qory Apiary could not complete the sign-in with OpenAI (HTTP %{status}).",

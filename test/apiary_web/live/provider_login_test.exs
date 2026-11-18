@@ -127,7 +127,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       lv |> form("#key-form", key: %{value_id: "spare"}) |> render_submit()
 
-      assert text(lv, "#key-sign-in-error-1") == "can't be blank"
+      assert text(lv, "#key-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
+      assert has_element?(lv, "#key-sign-in-error-1 b", "Sign in with ChatGPT")
 
       assert [%{value_id: "main"}] =
                Repo.all(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
@@ -302,7 +305,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
                "Qory Apiary could not complete the sign-in with OpenAI."
     end
 
-    test "shows only the fix for tokens with no account id", ctx do
+    test "shows the fix and the cause for tokens with no account id", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not.a.jwt"})
       provider = subscription!(scope)
@@ -312,7 +315,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
       eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
 
       assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
-      refute has_element?(lv, "#key-sign-in-cause")
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "OpenAI returned no account id for this sign-in."
     end
 
     test "copies the code as text, with no white space around it", ctx do
@@ -336,7 +341,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
       lv |> form("#key-form", key: %{value_id: "Bad Name"}) |> render_submit()
 
       assert has_element?(lv, "#key_value_id-error")
-      assert text(lv, "#key-sign-in-error-1") == "can't be blank"
+
+      assert text(lv, "#key-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
       assert has_element?(lv, "#key-sign-in-start")
     end
   end
@@ -513,7 +521,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       lv |> form("#new-provider-form") |> render_submit()
 
-      assert text(lv, "#new-provider-sign-in-error-1") == "can't be blank"
+      assert text(lv, "#new-provider-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
       assert Repo.all(Apiary.Connections.Connection) == []
     end
 
@@ -766,6 +776,32 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_in_assigns(lv, tokens)
     end
 
+    test "shows the fix and the cause when the sign-in cannot be stored", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "gone"), hold: true)
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      sign_in!(lv, "provider-key-main-sign-in")
+      value = key_value!(provider, "main")
+      Repo.delete_all(from l in Login, where: l.secret_value_id == ^value.id)
+      Repo.delete_all(from v in Apiary.Secrets.Value, where: v.id == ^value.id)
+      Stub.approve()
+
+      eventually(fn -> assert has_element?(lv, "#provider-key-main-sign-in-fix") end)
+
+      assert text(lv, "#provider-key-main-sign-in-fix") ==
+               "Click Sign in with ChatGPT for a new code."
+
+      assert text(lv, "#provider-key-main-sign-in-cause") ==
+               "Qory Apiary could not save the sign-in."
+
+      assert has_element?(lv, "#provider-key-main-sign-in-start")
+      refute_tokens(render(lv), tokens)
+      refute_in_assigns(lv, tokens)
+    end
+
     test "turns the other rows' buttons off while one row has a sign-in going on", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put(pending: :never)
@@ -864,7 +900,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
 
-      assert text(lv, "#secret-sign-in-error-1") == "can't be blank"
+      assert text(lv, "#secret-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
       assert has_element?(lv, "#secret-sign-in-start")
     end
 

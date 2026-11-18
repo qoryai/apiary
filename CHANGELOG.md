@@ -64,11 +64,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   secret's **Add value** and **Change value**) has the button **Sign in with ChatGPT**. The
   form shows the page to open, the code with **Copy**, the time it works until, and
   **Cancel**. Qory Apiary polls until the person approves, cancels or leaves, or the code
-  expires, and **Save** stores the tokens encrypted. An expired code, a provider with device
-  code sign-in off, and a failed sign-in each show a fix and a cause. A key that needs a new
-  sign-in has the button in **Edit key** and in its row. The
-  addresses come from `oauth_device` of the catalogue entry; an entry without it has no
-  button. No token or code appears in a page, a log line or an audit entry.
+  expires, and **Save** stores the tokens encrypted. A failed sign-in
+  (an expired code, device code sign-in off, a failed call to OpenAI, a response with no
+  account id, a sign-in that cannot be saved) shows a fix line and a cause line. A save
+  before the sign-in shows what to click. A key that needs a new sign-in has the button in
+  **Edit key** and in its row. An entry without `oauth_device` has no button. No token or
+  code appears in a page, a log line or an audit entry.
 - Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a time
   for each key, in the way `codex` does: when the access token's `exp` is near, or, for a
   token whose `exp` cannot be read, 8 days after the last refresh. A run's request refreshes

@@ -30,7 +30,7 @@ defmodule ApiaryWeb.ModelKeyDevice do
           user_code: String.t() | nil,
           verification_url: String.t() | nil,
           expires_at: DateTime.t() | nil,
-          cause: pos_integer | :unknown | nil
+          cause: pos_integer | :unknown | :no_account | :store | nil
         }
 
   @doc """
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.ModelKeyDevice do
     case socket.assigns[:device] do
       %{kind: kind, key: key} = device ->
         stop(device)
-        assign(socket, :device, %{idle(kind) | state: :failed, key: key, cause: nil})
+        assign(socket, :device, %{idle(kind) | state: :failed, key: key, cause: :store})
 
       nil ->
         socket
@@ -147,10 +147,20 @@ defmodule ApiaryWeb.ModelKeyDevice do
 
   def put_login(params, _socket), do: params
 
-  @doc "The errors of a form `field` as sentences, for the component's `errors`."
-  @spec errors(Phoenix.HTML.FormField.t()) :: [String.t()]
-  def errors(%Phoenix.HTML.FormField{errors: errors}),
-    do: Enum.map(errors, &ApiaryWeb.CoreComponents.translate_error/1)
+  @doc """
+  The errors of a form `field` for the component's `errors`: a missing value, which for a
+  key that is a sign-in is a save before the sign-in, is `:sign_in_missing`; any other
+  error is its sentence.
+  """
+  @spec errors(Phoenix.HTML.FormField.t()) :: [String.t() | :sign_in_missing]
+  def errors(%Phoenix.HTML.FormField{errors: errors}) do
+    Enum.map(errors, fn
+      {_message, opts} = error ->
+        if opts[:validation] == :required,
+          do: :sign_in_missing,
+          else: ApiaryWeb.CoreComponents.translate_error(error)
+    end)
+  end
 
   @doc "The value id of the key the sign-in was started for, nil on a form."
   @spec key(Phoenix.LiveView.Socket.t()) :: String.t() | nil
@@ -206,7 +216,7 @@ defmodule ApiaryWeb.ModelKeyDevice do
          })}
 
       {:error, :device_flow_unavailable} ->
-        {:halt, assign(socket, :device, %{idle(device.kind) | state: :failed})}
+        {:halt, assign(socket, :device, %{idle(device.kind) | state: :failed, cause: :unknown})}
     end
   end
 

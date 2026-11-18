@@ -238,9 +238,9 @@ defmodule Apiary.ModelKeys.Login do
   `auth.account_claim` of the catalogue entry's API. `{:ok, parsed}` with the document to
   store as the key's value, the account id and when the access token expires;
   `{:error, :no_account}` for a response that is a sign-in but has no account id at the
-  claim; `{:error, :invalid}` for any other response: one without a refresh token or a
-  printable access token, or with different account ids in the access token and the ID
-  token. It makes no network call, never raises, and its return value contains nothing of
+  claim of the access token; `{:error, :invalid}` for any other response: one without a
+  refresh token or a printable access token, or with different account ids in the access
+  token and the ID token (the ID token's id is compared only when it has one). It makes no network call, never raises, and its return value contains nothing of
   `response`.
 
   The expiry is the access token's `exp`, else `expires_in` seconds after `now`, else nil.
@@ -283,24 +283,33 @@ defmodule Apiary.ModelKeys.Login do
   # space. `\z`, not `$`, so a line feed at the end is refused too.
   defp account_id?(account_id), do: String.match?(account_id, ~r/\A[!-~]{1,255}\z/)
 
-  # The id in the access token's payload at the JSON pointer `claim`, else in the id
-  # token's. When both have one, the two must be the same.
+  # The id in the access token's payload at the JSON pointer `claim`. An access token with
+  # none is `:no_account`, whatever the ID token has. When the ID token has one too, the
+  # two must be the same.
   defp account_id(response, claim, access_token) when is_binary(claim) do
-    ids =
-      for token <- [access_token, response["id_token"]],
-          is_binary(token),
-          {:ok, payload} <- [payload(token)],
-          id when is_binary(id) <- [pointer(payload, claim)],
-          do: id
-
-    case Enum.uniq(ids) do
-      [] -> :no_account
-      [id] -> if account_id?(id), do: {:ok, id}, else: :error
-      _different -> :error
+    case {claimed(access_token, claim), claimed(response["id_token"], claim)} do
+      {nil, _id_token} -> :no_account
+      {id, nil} -> checked(id)
+      {id, id} -> checked(id)
+      {_id, _other} -> :error
     end
   end
 
   defp account_id(_response, _claim, _access_token), do: :error
+
+  defp checked(id), do: if(account_id?(id), do: {:ok, id}, else: :error)
+
+  # The text at the JSON pointer `claim` of the payload of `token`, nil where there is none.
+  defp claimed(token, claim) when is_binary(token) do
+    with {:ok, payload} <- payload(token),
+         id when is_binary(id) <- pointer(payload, claim) do
+      id
+    else
+      _none -> nil
+    end
+  end
+
+  defp claimed(_token, _claim), do: nil
 
   # The value at the JSON pointer (RFC 6901) `claim` of `payload`, nil where it has none.
   defp pointer(payload, "/" <> claim) do

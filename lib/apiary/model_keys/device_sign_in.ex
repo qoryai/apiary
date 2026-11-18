@@ -11,8 +11,8 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
   the owner and ends when the owner ends, and when `stop/1` says so. It polls every
   `interval` seconds the provider sent, until the code's `expires_at` or 30 minutes after
   the start, whichever is first, and makes no call after it ends. A poll that gets a 429
-  or a 5xx waits for the `Retry-After` header (at most 60 seconds) when there is one,
-  else for the interval; a 429 does not count as a failure, and five failed polls in a
+  or a 5xx waits for the longer of the interval and the `Retry-After` header (at most 60
+  seconds); a 429 does not count as a failure, and five failed polls in a
   row (a 5xx or any other failure) end the sign-in. It sends the owner
   `{:device_sign_in, ref, event}`:
 
@@ -25,7 +25,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
     * `{:ended, :failed, cause}`, for any other failure, where `cause` is the HTTP status
       of the response that failed it, `:unknown` for a failure with no status (a network
       error, a timeout, a response that is no grant or no tokens, an address the catalogue
-      entry has wrong), or nil for a response with no account id.
+      entry has wrong), or `:no_account` for a response with no account id.
 
   `login/1` returns the tokens to the owner alone, as `t:Apiary.ModelKeys.Login.parsed/0`;
   the owner passes them to `Apiary.Connections` when the person saves. The process keeps
@@ -258,7 +258,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
       {:noreply, %{state | login: login, code: nil}}
     else
       false -> {:stop, :normal, state}
-      {:error, :no_account} -> ended(state, :failed, nil)
+      {:error, :no_account} -> ended(state, :failed, :no_account)
       {:error, :invalid} -> ended(state, :failed, :unknown)
       failure -> ended(state, :failed, cause(failure))
     end
@@ -275,8 +275,11 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
     {:noreply, %{state | failures: state.failures + 1}}
   end
 
-  # The wait after a response with a `Retry-After` of `seconds`, else the interval.
-  defp delay(_state, seconds) when is_integer(seconds), do: seconds * 1000
+  # The wait after a response with a `Retry-After` of `seconds`: the longer of that and the
+  # interval, so a short `Retry-After` never makes the polls faster than the interval.
+  defp delay(state, seconds) when is_integer(seconds),
+    do: max(state.interval_ms, seconds * 1000)
+
   defp delay(state, _none), do: state.interval_ms
 
   # The HTTP status of a failure's word, `:unknown` for a failure with no status.

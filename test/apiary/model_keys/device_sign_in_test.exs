@@ -201,10 +201,10 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
       assert_receive {:device_sign_in, ^ref, {:ended, :failed, 400}}, 2_000
     end
 
-    test "ends as failed with no cause text for tokens with no account id" do
+    test "ends as failed with the no-account cause for tokens with no account id" do
       Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not.a.jwt"})
       {_pid, ref} = start!()
-      assert_receive {:device_sign_in, ^ref, {:ended, :failed, nil}}, 2_000
+      assert_receive {:device_sign_in, ^ref, {:ended, :failed, :no_account}}, 2_000
     end
 
     test "ends as failed with an unknown cause for tokens whose account ids differ" do
@@ -250,6 +250,53 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
           do: refute(log =~ secret)
 
       refute log =~ "terminating"
+    end
+
+    test "ends as failed when the exchange raises, and writes no grant to the log" do
+      Stub.put(hold: true)
+
+      log =
+        capture_log(fn ->
+          {pid, ref} = start!()
+          assert_receive {:device_sign_in, ^ref, {:code, _shown}}, 1_000
+
+          # The exchange reads `description.token_url` with the grant as its argument.
+          :sys.replace_state(pid, fn state ->
+            %{state | description: Map.delete(state.description, :token_url)}
+          end)
+
+          Stub.approve()
+          assert_receive {:device_sign_in, ^ref, {:ended, :failed, :unknown}}, 2_000
+          assert_ended(pid)
+          assert Stub.calls(:exchange) == 0
+        end)
+
+      for secret <- [
+            "device-auth-fixture",
+            "7QKD-M4TPX",
+            "authorization-code-fixture",
+            "verifier-fixture"
+          ],
+          do: refute(log =~ secret)
+
+      refute log =~ "terminating"
+      refute log =~ "GenServer"
+    end
+
+    test "waits for the interval when a Retry-After is shorter than it" do
+      Stub.put(poll: 503, poll_failures: 1, retry_after: "1")
+      {pid, ref} = start!()
+
+      # Suspended before the first poll at 100 ms, so the poll reads the 5 s interval.
+      :sys.suspend(pid)
+      :sys.replace_state(pid, fn state -> %{state | interval_ms: 5_000} end)
+      :sys.resume(pid)
+
+      assert_receive {:device_call, "/device/token", _body}, 1_000
+      first = System.monotonic_time(:millisecond)
+      assert_receive {:device_call, "/device/token", _body}, 7_000
+      assert System.monotonic_time(:millisecond) - first >= 4_900
+      assert_receive {:device_sign_in, ^ref, :signed_in}, 2_000
     end
 
     test "ends at the 30-minute limit, whatever the code's expiry" do

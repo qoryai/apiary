@@ -468,7 +468,9 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
       lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
-      assert words(lv, "#secret-sign-in-error-1") == "can't be blank"
+
+      assert words(lv, "#secret-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
 
       assert [%{value_id: "main"}] =
                Repo.all(from v in Secrets.Value, where: v.secret_id == ^subscription.secret_id)
