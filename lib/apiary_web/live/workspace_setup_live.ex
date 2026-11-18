@@ -1090,7 +1090,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # The tiers when the step opens: those of the workspace's choice, `stored`
   # (`ApiaryWeb.ModelTiers.stored/1`), while `key` is of its provider, also where the
-  # choice's key is gone; else none.
+  # provider has no key; else none.
   defp first_tiers(%{provider_id: id, tiers: tiers}, %{provider: %Connection{id: id}}), do: tiers
   defp first_tiers(_stored, _key), do: ModelTiers.blank()
 

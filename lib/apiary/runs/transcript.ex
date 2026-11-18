@@ -26,8 +26,8 @@ defmodule Apiary.Runs.Transcript do
   the paused run queues, reads the transcript of that run alone, and only while it is the
   paused run this run continues (`paused_run/1`): of the same organisation, workspace,
   work item and stage, registered, and ended with the reason `model_key_limit`
-  (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/1`) for
-  a path a machine may write at (`resumable_path?/2`), as the contract has it fixed when
+  (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/2`) for
+  a path a machine may write at, while the run has the paused run's runtime (`resumable_path?/2`), as the contract has it fixed when
   the run starts; every run configuration of the run then has it (`resume/1`), and its
   gateway fetches the file through the run API.
 
@@ -320,13 +320,17 @@ defmodule Apiary.Runs.Transcript do
   The `resume` of the run of the queue `continuation` at its claim, which the claim
   stores with the run (`runs.resume`): the paused run's id, the session id and the path
   of its last chunk, and `runs` (`continued_runs/1`), while that run is the paused run it
-  continues and its transcript there passes `check/2`; nil for any other run, so the
-  continuation starts a new session.
+  continues, its transcript there passes `check/2`, and `runtime`, the runtime of
+  `continuation`'s run settings, is the runtime of the paused run's run settings (nil
+  where a run has none); nil for any other run, so the continuation starts a new session.
+  A continuation on another runtime, as one that takes a fallback on another runtime,
+  cannot read the paused runtime's transcript.
   """
-  @spec resume_at_claim(map) :: map | nil
-  def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation)
+  @spec resume_at_claim(map, String.t() | nil) :: map | nil
+  def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation, runtime)
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
+         true <- (paused.run_settings || %{})["runtime"] == runtime,
          %{session_id: session_id, path: path} <- last(paused.id),
          true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do
@@ -341,7 +345,7 @@ defmodule Apiary.Runs.Transcript do
     end
   end
 
-  def resume_at_claim(%DispatchRun{}), do: nil
+  def resume_at_claim(%DispatchRun{}, _runtime), do: nil
 
   # continued_runs/1 is the run ids of the runs of the queue that `continuation`
   # continues, oldest first: the run its `continues_id` links to, the run that run's
@@ -385,7 +389,7 @@ defmodule Apiary.Runs.Transcript do
 
   @doc """
   The `resume` member of the run configuration of `run`: the one its claim stored
-  (`resume_at_claim/1`), nil for a run with none.
+  (`resume_at_claim/2`), nil for a run with none.
   """
   @spec resume(Run.t() | map) :: map | nil
   def resume(%{resume: %{"run_id" => _, "session_id" => _, "path" => _} = resume}), do: resume

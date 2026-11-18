@@ -804,6 +804,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
           stored={@stored}
           errors={@tier_errors}
           disabled={!@page.writes}
+          fit_effort
         />
         <ModelTiers.runtime_part
           :if={@runtime}

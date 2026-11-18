@@ -21637,14 +21637,14 @@ msgstr ""
 msgid "The mode is observe or enforce."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
-msgstr ""
-
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The model provider %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The model provider chosen for this workspace has no key. Choose another provider on the Model step, or add a key to it in Organisation settings › Model providers, then press Run the test."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

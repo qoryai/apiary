@@ -109,7 +109,8 @@ defmodule Apiary.Dispatches.Handover do
   # with its QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run,
   # its work item, its run variables (`registration_variables`), none where the domain
   # gives none, for a continuation of a paused run its `resume`
-  # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
+  # (`Apiary.Runs.Transcript.resume_at_claim/2`, none where the run's runtime is not the
+  # paused run's), its registration digest the SHA-256 of
   # the claim's body, with no heartbeat interval, no answer digest and no contract version
   # until its attach; with the gateway and a run code in place of a run key
   # (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the claim,
@@ -1409,7 +1410,11 @@ defmodule Apiary.Dispatches.Handover do
       registration_about: formed.about,
       registration_digest: :crypto.hash(:sha256, body),
       registration_variables: formed.variables,
-      resume: Apiary.Runs.Transcript.resume_at_claim(dispatch_run),
+      resume:
+        Apiary.Runs.Transcript.resume_at_claim(
+          dispatch_run,
+          formed.settings && formed.settings.stored["runtime"]
+        ),
       run_settings: formed.settings && formed.settings.stored,
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,

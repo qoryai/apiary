@@ -1395,7 +1395,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   reset, the default key first, else the key whose known reset is closest. Forager's gateway moves
   to the next key when a key reaches its limit. Where every key of the provider is in
   cooldown, the run gets the keys of the first fallback with a key out of cooldown, and
-  that fallback's runtime and tiers. Where every key of the provider and of each
+  that fallback's runtime and tiers. A run that continues a paused run on another
+  runtime than the paused run's, as one that takes such a fallback, starts a new session
+  instead of resuming the paused run's transcript. Where every key of the provider and of each
   fallback is in cooldown, the run waits in the queue, and its page shows “Waiting for a
   model key: every key of Northwind Claude is in cooldown until 14:00.”, for the
   provider whose key leaves its cooldown first. The first claim after that time takes

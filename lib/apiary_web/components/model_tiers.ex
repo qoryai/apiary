@@ -403,6 +403,10 @@ defmodule ApiaryWeb.ModelTiers do
     default: false,
     doc: "whether each tier's name and line stay above its fields at every width"
 
+  attr :fit_effort, :boolean,
+    default: false,
+    doc: "whether each Effort is as wide as its chosen value, so Model gets the rest"
+
   @doc """
   The tiers of the provider entry `entry`: one section, "Model and effort per tier", with a group per tier,
   its name and line as the group's legend, then its Model and Effort. Model lists the
@@ -533,7 +537,11 @@ defmodule ApiaryWeb.ModelTiers do
                   id={"#{row.field_id}_effort"}
                   name={"#{row.name}[effort]"}
                   form={@form}
-                  class={["select select-sm w-full", row.effort_errors != [] && "select-error"]}
+                  class={[
+                    "select select-sm",
+                    if(@fit_effort, do: "w-full lg:w-auto lg:field-sizing-content", else: "w-full"),
+                    row.effort_errors != [] && "select-error"
+                  ]}
                   aria-invalid={row.effort_errors != [] && "true"}
                   aria-describedby={error_ids("#{row.field_id}_effort", row.effort_errors)}
                   disabled={@disabled or row.efforts == []}

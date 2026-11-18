@@ -933,7 +933,7 @@ stage, when the work item's stage does not run, such as one that waits for a per
 while another run of the take in has not ended. The paused run keeps
 `paused_until`, the earliest end of a cooldown among its provider's keys, when every one
 of them is in cooldown then. The claim of the continuation stores its `resume`
-(`Apiary.Runs.Transcript.resume_at_claim/1`): the paused run's id, and `session_id` and
+(`Apiary.Runs.Transcript.resume_at_claim/2`): the paused run's id, and `session_id` and
 `path` of the paused run's last `dev.qory.session.transcript` by sequence.
 `resume.runs` contains every paused run the continuation continues, found through each
 run's `continues_id`, oldest first: the last is `run_id`, the continuation is not among
@@ -941,7 +941,9 @@ them, and of a chain of more than 256 runs only the newest 256 are listed. The r
 stores it once, so every run configuration of the run has the same `resume`, however
 the chain changes later. A continuation registered before `resume` was stored, or of a
 paused run whose transcript is absent or cannot be restored, has none, and its session
-starts a new session. A continuation registered before `runs` was stored has a `resume`
+starts a new session. So does a continuation whose run settings have another `runtime`
+than the paused run's, as one that takes a fallback on another runtime: a runtime cannot
+resume another runtime's transcript. A continuation registered before `runs` was stored has a `resume`
 without `runs`.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is

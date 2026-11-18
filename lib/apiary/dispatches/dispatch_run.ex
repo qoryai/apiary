@@ -74,7 +74,7 @@ defmodule Apiary.Dispatches.DispatchRun do
   # does not apply to the workspace, has settings that no longer fit the catalogue's entry
   # of its kind or a kind the catalogue no longer has, or has an endpoint address that
   # fails the endpoint rule (`provider_gone`); no longer serves the runtime
-  # (`runtime_unserved`); no longer has the chosen key (`key_gone`); or has no model for
+  # (`runtime_unserved`); has no key (`key_gone`); or has no model for
   # the run, or no longer offers the chosen effort value (`model_gone`)
   # (`Apiary.Dispatches.RunSettings`), 410 gone;
   # `secrets_not_allowed`, a claimed explore run whose model choice has a provider, whose
