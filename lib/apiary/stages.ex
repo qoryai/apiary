@@ -2392,6 +2392,155 @@ defmodule Apiary.Stages do
     end
   end
 
+  @doc false
+  # full_suite_versions/2 is the verdict versions that belong to the build report version
+  # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`), newest
+  # first: the versions of the artifact `verdict`, name `main`, that the run which wrote the
+  # report wrote, that are no withdrawal and that no cancelled run wrote
+  # (`Artifacts.cancelled?/1`). [] where the report has no run (a person wrote it) or that run
+  # pushed no verdict. A verdict of another run or another stage is never the result of the
+  # work the report is about.
+  @spec full_suite_versions([Artifacts.Artifact.t()], pos_integer) :: [map]
+  def full_suite_versions(artifacts, number) do
+    with %{run_id: run_id} when is_binary(run_id) <- report_version(artifacts, number) do
+      artifacts
+      |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
+      |> Stream.flat_map(& &1.versions)
+      |> Enum.filter(
+        &(&1.run_id == run_id and not Map.get(&1, :withdrawn, false) and
+            not Artifacts.cancelled?(&1))
+      )
+    else
+      _none -> []
+    end
+  end
+
+  defp report_version(artifacts, number) do
+    artifacts
+    |> Stream.filter(&(&1.type == "build-report" and &1.name == "main"))
+    |> Stream.flat_map(& &1.versions)
+    |> Enum.find(&(&1.number == number and not Artifacts.cancelled?(&1)))
+  end
+
+  @doc false
+  # full_suite_read/1 is the full test suite result in the file of the verdict version
+  # `version` (one of `full_suite_versions/2`): `{:ok, result}` with `%{state:, passed:,
+  # failed:, skipped:, minutes:, reason:}`; `:none` for a file that has no result (no
+  # version, no `full_suite`, or a result that is not whole); `{:error, :store_unavailable}`
+  # where the store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`.
+  # `:passed` and `:failed` have `minutes`, a number, and the three counts, whole numbers
+  # (12.0 is 12), or nil for all three where the file has none; `reason` is nil. `:not_run`
+  # has `reason` and nil for the others: the reason with white space trimmed and one final
+  # full stop dropped, which is a line of text, so a reason of no text is no result. The
+  # version's file does not change, so `{:ok, _}` and `:none` may be kept by the version's
+  # public id; the error may not.
+  @spec full_suite_read(map | nil) ::
+          {:ok,
+           %{
+             state: :passed | :failed | :not_run,
+             passed: non_neg_integer | nil,
+             failed: non_neg_integer | nil,
+             skipped: non_neg_integer | nil,
+             minutes: number | nil,
+             reason: String.t() | nil
+           }}
+          | :none
+          | {:error, :store_unavailable}
+  def full_suite_read(nil), do: :none
+
+  def full_suite_read(version) do
+    case Artifacts.stored_json(version) do
+      {:ok, %{"full_suite" => %{} = suite}} ->
+        case suite_result(suite) do
+          nil -> :none
+          result -> {:ok, result}
+        end
+
+      {:ok, _no_suite} ->
+        :none
+
+      {:error, :store_unavailable} = unavailable ->
+        unavailable
+    end
+  end
+
+  @doc false
+  # full_suite/3 is the result of the full test suite of the build report version `number`
+  # among `artifacts`: the result in the newest of the report's verdicts
+  # (`full_suite_versions/2`) that has one, so a later verdict of the run with no result does
+  # not hide an earlier one. Returns `{result, reads}`, `result` as in `{:ok, result}` of
+  # `full_suite_read/1` or nil for none. `reads` is the reads of verdict files kept by the
+  # version's public id, `%{id => {:ok, result} | :none}`: a version in it is not read again,
+  # and a file the store cannot read is not kept, so it is read again at the next call; it
+  # ends the search with no result.
+  @spec full_suite([Artifacts.Artifact.t()], pos_integer, map) :: {map | nil, map}
+  def full_suite(artifacts, number, reads \\ %{}) do
+    artifacts
+    |> full_suite_versions(number)
+    |> Enum.reduce_while({nil, reads}, fn version, {nil, reads} ->
+      read = Map.get_lazy(reads, version.public_id, fn -> full_suite_read(version) end)
+
+      case read do
+        {:ok, result} -> {:halt, {result, Map.put(reads, version.public_id, read)}}
+        :none -> {:cont, {nil, Map.put(reads, version.public_id, read)}}
+        {:error, :store_unavailable} -> {:halt, {nil, reads}}
+      end
+    end)
+  end
+
+  defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed) do
+    keys = ~w(passed failed skipped)
+    minutes = suite["minutes"]
+
+    # The three counts come together or not at all; a count that is there is a whole number.
+    counts =
+      case Enum.filter(keys, &Map.has_key?(suite, &1)) do
+        [] ->
+          {:ok, [nil, nil, nil]}
+
+        ^keys ->
+          if Enum.all?(keys, &(suite_count(suite[&1]) != nil)),
+            do: {:ok, Enum.map(keys, &suite_count(suite[&1]))}
+
+        _some ->
+          nil
+      end
+
+    with {:ok, [passed, failed, skipped]} <- counts,
+         true <- is_number(minutes) and not Map.has_key?(suite, "reason") do
+      %{
+        state: String.to_existing_atom(state),
+        passed: passed,
+        failed: failed,
+        skipped: skipped,
+        minutes: minutes,
+        reason: nil
+      }
+    else
+      _not_whole -> nil
+    end
+  end
+
+  defp suite_result(%{"state" => "not_run", "reason" => reason}) when is_binary(reason) do
+    case reason |> String.trim() |> String.replace_suffix(".", "") do
+      "" ->
+        nil
+
+      reason ->
+        %{state: :not_run, passed: nil, failed: nil, skipped: nil, minutes: nil, reason: reason}
+    end
+  end
+
+  defp suite_result(_suite), do: nil
+
+  # A count the file has as 12.0 is the whole number 12.
+  defp suite_count(count) when is_integer(count) and count >= 0, do: count
+
+  defp suite_count(count) when is_float(count) and count >= 0 and count == trunc(count),
+    do: trunc(count)
+
+  defp suite_count(_count), do: nil
+
   # `{:ok, %{id:, reason:}}` or `{:ok, nil}` for the track proposed; `{:error,
   # :store_unavailable}` where a verdict's file cannot be read from the store.
   defp proposal(work_item, artifacts \\ nil)

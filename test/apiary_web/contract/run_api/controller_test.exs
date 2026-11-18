@@ -2604,6 +2604,59 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert Jason.decode!(content) == %{"verdict" => "passed"}
     end
 
+    test "a full_suite is stored in the verdict's file as the run sent it", ctx do
+      suite = %{
+        "state" => "failed",
+        "passed" => 9,
+        "failed" => 2,
+        "skipped" => 0,
+        "minutes" => 12.5
+      }
+
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => suite}).status ==
+               201
+
+      assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => suite}
+
+      # Minutes alone are a result: the counts come all three or not at all.
+      only_minutes = %{"state" => "passed", "minutes" => 3}
+
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => only_minutes}).status ==
+               201
+
+      assert [_first, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => only_minutes}
+
+      # A null is stored as no member.
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => nil}).status == 201
+      assert [_first, _second, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed"}
+    end
+
+    test "a full_suite the schema refuses is 422 invalid_artifact", ctx do
+      counts = %{"passed" => 1, "failed" => 0, "skipped" => 0, "minutes" => 1}
+
+      for suite <- [
+            %{"state" => "not_run"},
+            %{"state" => "not_run", "reason" => "No test command.", "passed" => 1},
+            Map.merge(counts, %{"state" => "passed", "passed" => -1}),
+            Map.merge(counts, %{"state" => "passed", "reason" => "x"}),
+            %{"state" => "passed", "minutes" => 1, "passed" => 1, "failed" => 0},
+            %{"state" => "unknown"},
+            "passed"
+          ] do
+        conn = write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => suite})
+
+        assert %{"error" => "invalid_artifact", "names" => ["files[0]"], "message" => message} =
+                 json_response(conn, 422)
+
+        assert message =~ "Fix verdict.json to match the format of verdict: at #/full_suite"
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
     test "a pushed verdict artifact whose value is not one of the three is 422, as Apiary.Artifacts refuses it",
          ctx do
       body =

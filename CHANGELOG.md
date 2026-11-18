@@ -61,6 +61,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   tab shows that question, else plain text.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- The tab of a stage shows the result of the full test suite in one line under the build
+  report's frame. The line comes from the `full_suite` member of the newest verdict that has
+  one among the verdicts of the run that wrote that report. On the Standard track it reads
+  "The full test suite passed on that commit: 412 passed, 0 failed, 3 skipped, in 6
+  minutes." (or "failed", and "in 1 minute" for exactly 1). On the Fast track it reads the
+  same without "on that commit" and the minutes. A result with no counts reads "The full
+  test suite passed on that commit, in 6 minutes." or "The full test suite failed on that
+  commit, in 6 minutes." on the Standard track, and "The full test suite passed." or "The
+  full test suite failed." on the Fast track. For a suite that did not run it reads "The full test
+  suite did not run: <reason>.", where the reason is the one the run sent with white space
+  trimmed and one final full stop dropped, and the line ends in a full stop unless the
+  reason ends in "?" or "!". A run with no verdict that has a `full_suite` has no line.
+<!-- /feature -->
+- A run's verdict may have the optional member `full_suite`, the result of the full test
+  suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the number
+  `minutes` and the counts `passed`, `failed` and `skipped`, all three or none; with
+  `not_run`, a `reason` of one line and no counts. A member, state, type or negative count
+  the schema does not allow is `422` `invalid_artifact`. A verdict with no `full_suite` is
+  valid as before.
+<!-- feature: workflow_model -->
 - A condition in `when` or `unless` on a workflow entry, in a loop's body too, can be
   `{input: <type>, changed: true}`. It is met when the type has a version and the entry has no
   run on the work item that ended `passed`, or that version was stored after the newest such
