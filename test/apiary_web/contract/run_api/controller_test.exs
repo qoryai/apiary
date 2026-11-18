@@ -2243,6 +2243,71 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    # The run's process version has the submit step `submit`, as a template's does.
+    defp submits!(ctx, submit) do
+      version = Apiary.Processes.version_for(ctx.work_item)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Apiary.Processes.Version, where: v.id == ^version.id),
+          set: [template: %{"commit" => String.duplicate("a", 40), "submit" => submit}]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [process_version_id: version.id]
+        )
+
+      :ok
+    end
+
+    test "refuses the type in submit.type of the run's process version, before the files",
+         ctx do
+      file_type!(ctx, "demo-submission", 1000, 2)
+      submits!(ctx, %{"type" => "demo-submission", "send" => "end_of_run"})
+
+      store!(ctx, "demo-submission", [file("one.txt", "text/plain", "a")], name: "main")
+
+      for body <- [
+            withdrawal("demo-submission", "main"),
+            push_body("demo-submission", [{"a.txt", "text/plain", "a"}], %{
+              "name" => "main",
+              "withdraw" => true
+            })
+          ] do
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "type_not_withdrawable",
+                 "type" => "demo-submission",
+                 "message" =>
+                   "Push a new version of demo-submission instead. Qory Apiary reads its " <>
+                     "newest version as the run's submission, so a run cannot withdraw it."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "withdraws a name of another custom type when the process has a submit type", ctx do
+      file_type!(ctx, "demo-submission", 1000, 2)
+      file_type!(ctx, "demo-script", 1000, 2)
+      submits!(ctx, %{"type" => "demo-submission", "send" => "end_of_run"})
+
+      store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-script", "scenario-2"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
+    test "withdraws a name of a type that a process with no submit does not name", ctx do
+      file_type!(ctx, "demo-submission", 1000, 2)
+      store!(ctx, "demo-submission", [file("one.txt", "text/plain", "a")], name: "main")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-submission", "main"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
     test "refuses a standard type its template sets withdrawable false for", ctx do
       store!(ctx, "mockup", [file("one.png", "image/png", @png)], name: "home")
 

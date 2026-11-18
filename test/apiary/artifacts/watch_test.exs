@@ -290,7 +290,7 @@ defmodule Apiary.Artifacts.WatchTest do
     assert entries(ctx.source) == [watch(ctx.work_item)]
   end
 
-  test "a withdrawal of a submission version adds no entry", ctx do
+  test "a refused withdrawal of the submission type adds no entry", ctx do
     submits!(ctx, @submit)
     forge = forge!(ctx)
 
@@ -299,10 +299,11 @@ defmodule Apiary.Artifacts.WatchTest do
 
     assert [%{seq: 1}] = Feed.entries(forge)
 
-    assert {:ok, %Version{number: 2}} =
+    assert {:error, {:withdraw, :submit_type}} =
              Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "submission")
 
     assert Enum.map(Feed.entries(forge), & &1.seq) == [1]
+    assert Repo.aggregate(Version, :count) == 1
   end
 
   test "a push refused because the run ended adds no entry", ctx do
