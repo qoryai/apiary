@@ -1,44 +1,43 @@
 defmodule Apiary.Runs.ProviderCredential do
   @moduledoc false
 
-  # The model keys of a run that its claim set a model provider for
+  # The model keys of a run that its claim stored keys for
   # (`Apiary.Dispatches.RunSettings`), as its run configuration contains them: one entry
   # of the contract's `credentials` per key, an API credential, in the order the run keeps
-  # its keys (`runs.model_keys`); and the hosts the provider needs,
+  # its keys (`run_model_keys`, `Apiary.Runs.ModelKey`); and the hosts its providers need,
   # which the run's `egress.allow` and `egress.allow_first` gain
-  # (`Apiary.Policy.ComposedConfiguration`). Both come from the run's stored provider
-  # columns and the provider's row, so a choice or a key's state changed after the claim
-  # changes neither.
+  # (`Apiary.Policy.ComposedConfiguration`). Both come from the run's key rows and their
+  # providers' rows, so a choice or a key's state changed after the claim changes neither.
+  # A run's keys may be of several providers, one provider per session.
   #
   # Each entry has, in the schema's order: `name`, the key's credential name as the run
-  # keeps it; `format`, `endpoint` and `auth` of the API the run uses
-  # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
-  # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
-  # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
-  # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows,
-  # which the claim wrote once for the run into `runs.provider_api` from the catalogue's
-  # entry. In a run whose `provider_api` has no windows, such as one claimed before runs
-  # kept them, no key has either member, as the contract requires both or none. Every key
-  # has `pause_for_s`: from its claim, or, for a run claimed before runs kept several
-  # keys, from the migration that keeps a run's model keys. The start key,
-  # `model_credential`, is the key the run keeps with `start`, else its first. An entry
-  # has no key value, no secret id and no value id: the gateway fetches the values with
-  # the secrets request (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
+  # keeps it; `format`, `endpoint` and `auth` of the API its row keeps, the same for every
+  # key of one provider; `key_prefixes` when the API has them; and, as the claim wrote
+  # them, `resets_at`, `schedule_resets_at`, `pause_for_s`, `cooldown_until`, `chosen` and
+  # `use_up_to_percent`, each where the row has it. A key with `use_up_to_percent` also
+  # has `use_up_to_windows`, its provider's limit windows, which the claim wrote into the
+  # row's API from the catalogue's entry; a row whose API has no windows has neither
+  # member, as the contract requires both or none. The start key, `model_credential`, is
+  # the key the run keeps with `start`, else its first. An entry has no key value, no
+  # secret id and no value id: the gateway fetches the values with the secrets request
+  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
-  # The hosts are the description's `egress_hosts`, in its order, each once. An entry
-  # `{"setting": name}` is the host of that setting's address: the address in
-  # `runs.provider_api` when the run's API takes its endpoint from that setting, else the
+  # The hosts are, for each provider of the run's keys, the description's
+  # `egress_hosts`, in its order; each host once across the providers. An entry
+  # `{"setting": name}` is the host of that setting's address: the address in the API of
+  # the provider's rows when that API takes its endpoint from that setting, else the
   # provider's value of the setting. An address that fails the check of
   # `Apiary.Kinds.Endpoint` adds no host, with a line in the log.
   #
   # Only with both features `factory` and `secrets` on; with either off, a run has none.
-  # `{:error, :unavailable}` when the run has a provider whose row is gone, fails its
-  # integrity code (`Apiary.Connections.intact?/1`), or for which
-  # `Apiary.Connections.provider/1` returns an error, and when the stored endpoint fails
-  # the endpoint rule: the run then has no run configuration, since one without its keys
-  # would run on another. A check of the provider's settings that ran out of time or
-  # crashed returns `{:error, :unavailable}` too, and the next request checks them again.
-  # Reads; it locks and writes nothing.
+  # `{:error, :unavailable}` when one of the run's providers has a row that is gone,
+  # fails its integrity code (`Apiary.Connections.intact?/1`), or for which
+  # `Apiary.Connections.provider/1` returns an error, and when a stored endpoint fails the
+  # endpoint rule: the run then has no run configuration, since one without its keys
+  # would run on another. A check of a provider's settings that ran out of time or crashed
+  # returns `{:error, :unavailable}` too, and the next request checks them again. Each
+  # provider's endpoint is checked, and its description read, once. Reads; it locks and
+  # writes nothing.
 
   import Ecto.Query, only: [from: 2]
 
@@ -48,20 +47,28 @@ defmodule Apiary.Runs.ProviderCredential do
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Endpoint, Provider}
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.ModelKey
 
   @typedoc """
   A run's model keys: `name`, the start key's credential name, the run configuration's
-  `model_credential`; `keys`, each key's credential `name`, row id (`secret_value_id`) and
-  `entry` as the run configuration writes it, in order; the `hosts` the run reaches them
-  on; and the provider's row they were read from.
+  `model_credential`; `keys`, each key's credential `name`, row id (`secret_value_id`),
+  `entry` as the run configuration writes it, the provider's row it was read from
+  (`provider`) and the run's row of it (`row`), in order; the `hosts` the run reaches
+  them on; and the rows of the keys' providers, each once, in the order of their keys.
   """
   @type t :: %{
           name: String.t(),
           keys: [
-            %{name: String.t(), secret_value_id: Ecto.UUID.t(), entry: Jason.OrderedObject.t()}
+            %{
+              name: String.t(),
+              secret_value_id: Ecto.UUID.t(),
+              entry: Jason.OrderedObject.t(),
+              provider: Connection.t(),
+              row: ModelKey.t()
+            }
           ],
           hosts: [String.t()],
-          provider: Connection.t()
+          providers: [Connection.t()]
         }
 
   # The order the contract's `auth.schema.json` lists its members in.
@@ -71,16 +78,34 @@ defmodule Apiary.Runs.ProviderCredential do
                   use_up_to_percent)
 
   @doc false
-  # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none, as for a run
-  # that keeps no key, whose key was gone when the run's keys were first stored.
+  # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none. The run's key
+  # rows are read by its id, unless `run` has them loaded (`Apiary.Runs.Run`,
+  # `model_keys`).
   @spec for_run(map | nil) :: {:ok, t | nil} | {:error, :unavailable}
-  def for_run(%{provider_api: %{} = api, model_keys: [_ | _] = keys} = run) do
-    if applies?(Apiary.Runs.Run.kept_features(run)),
-      do: credential(run, api, keys),
-      else: {:ok, nil}
+  def for_run(%{} = run) do
+    case rows(run) do
+      [_ | _] = rows ->
+        if applies?(Apiary.Runs.Run.kept_features(run)),
+          do: credential(run, rows),
+          else: {:ok, nil}
+
+      [] ->
+        {:ok, nil}
+    end
   end
 
   def for_run(_run), do: {:ok, nil}
+
+  @doc false
+  # rows/1 is the key rows of `run` in their order (`Apiary.Runs.ModelKey`): those it has
+  # loaded, else those read by its id; none for a run with neither.
+  @spec rows(map) :: [ModelKey.t()]
+  def rows(%{model_keys: rows}) when is_list(rows), do: Enum.sort_by(rows, & &1.position)
+
+  def rows(%{id: id}) when is_binary(id),
+    do: Repo.all(from k in ModelKey, where: k.run_id == ^id, order_by: [asc: k.position])
+
+  def rows(_run), do: []
 
   @doc false
   # workspace_hosts/1 is the hosts of the model providers the model choices that reach
@@ -90,7 +115,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # gives a run of each of its APIs
   # (`hosts/3`). `[%{host:, connection:}]` with the provider's `id`, `public_id` and
   # `name`, each host once per provider. A provider that cannot be read, as `for_run/1`
-  # reads it, adds none. A run gains the hosts of the one provider and API it is given.
+  # reads it, adds none. A run gains the hosts of the providers and APIs of its keys.
   # `[]` unless `applies?/0`.
   @spec workspace_hosts(Apiary.Organisations.Workspace.t()) :: [
           %{host: String.t(), connection: map}
@@ -210,26 +235,65 @@ defmodule Apiary.Runs.ProviderCredential do
   defp sealable_at?(_chain, _level, _gateway_organisation_id, _run_organisation_id),
     do: false
 
-  defp credential(run, api, keys) do
-    with {:ok, provider} <- provider(Map.get(run, :provider_connection_id)),
-         :ok <- endpoint(provider, api["endpoint"]),
-         {:ok, description} <- description(provider) do
-      start = Enum.find(keys, hd(keys), &(&1["start"] == true))["name"]
+  defp credential(_run, rows) do
+    groups = rows |> Enum.group_by(& &1.connection_id) |> Map.new()
+    ids = rows |> Enum.map(& &1.connection_id) |> Enum.uniq()
+
+    read =
+      Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, read} ->
+        api = hd(Map.fetch!(groups, id)).api
+
+        with {:ok, provider} <- provider(id),
+             :ok <- endpoint(provider, api["endpoint"]),
+             {:ok, description} <- description(provider) do
+          {:cont, {:ok, read ++ [{provider, hosts(provider, description, api)}]}}
+        else
+          {:error, :unavailable} = unavailable -> {:halt, unavailable}
+        end
+      end)
+
+    with {:ok, read} <- read do
+      providers = Map.new(read, fn {provider, _hosts} -> {provider.id, provider} end)
+      start = Enum.find(rows, hd(rows), & &1.start).name
 
       keys =
-        for %{"id" => id, "name" => name} = key <- keys do
-          %{name: name, secret_value_id: id, entry: entry(name, api, key)}
+        for row <- rows do
+          %{
+            name: row.name,
+            secret_value_id: row.secret_value_id,
+            entry: entry(row.name, row.api, kept(row)),
+            provider: Map.fetch!(providers, row.connection_id),
+            row: row
+          }
         end
 
       {:ok,
        %{
          name: start,
          keys: keys,
-         hosts: hosts(provider, description, api),
-         provider: provider
+         hosts: read |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq(),
+         providers: Enum.map(read, &elem(&1, 0))
        }}
     end
   end
+
+  # What a key row keeps for its run configuration entry, by the contract's member names,
+  # each where the row has it (`entry/3`).
+  defp kept(%ModelKey{} = row) do
+    [
+      {"resets_at", time(row.resets_at)},
+      {"schedule_resets_at", time(row.schedule_resets_at)},
+      {"pause_for_s", row.pause_for_s},
+      {"cooldown_until", time(row.cooldown_until)},
+      {"chosen", if(row.chosen, do: true)},
+      {"use_up_to_percent", row.use_up_to_percent}
+    ]
+    |> Enum.reject(fn {_member, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  defp time(nil), do: nil
+  defp time(%DateTime{} = time), do: DateTime.to_iso8601(time)
 
   # The provider's row as it was written, or `:unavailable` with a line in the log.
   defp provider(id) when is_binary(id) do
@@ -297,9 +361,9 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   @doc false
-  # entry/3 is the API credential named `name` for `api`, the run's `provider_api`, with
-  # the members the run keeps for the key `key` (`runs.model_keys`), and with the run's
-  # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
+  # entry/3 is the API credential named `name` for `api`, the API of the key's row, with
+  # the members the run keeps for the key `key`, by the contract's member names, and with
+  # the row's `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
   @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
   def entry(
         name,

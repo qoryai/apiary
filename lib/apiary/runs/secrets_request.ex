@@ -15,8 +15,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # for the entries whose values expire; each entry is a separate call to the adapter, with
   # the access of that entry. A request reveals a
   # model key only when it names it, and only a key the run's claim stored for the run
-  # (`runs.model_keys`), by its row id, under the value id the key has at the request: a
-  # key renamed since the claim is revealed, one removed since is refused at step 8. It
+  # (`run_model_keys`), by its row id, from the secret of that key's provider, under the
+  # value id the key has at the request: a key renamed since the claim is revealed, one
+  # removed since is refused at step 8. A run's keys may be of several providers. It
   # makes a registry secret only when it names `registry`, and the run's row keeps the
   # SHA-256 of the one sealed last.
   # `ApiaryWeb.Contract.SecretsController` verifies the request and answers it.
@@ -42,12 +43,12 @@ defmodule Apiary.Runs.SecretsRequest do
   #  5. `{:error, :run_configuration_superseded}`, a digest other than the one a reload
   #     of the run returns now: the gateway reads the run configuration and its digest
   #     from a reload;
-  #  6. `{:error, :credential_unavailable}`, a run with no model provider, no registry
-  #     credential and no work entry (a push entry comes with a work entry), or whose
-  #     provider cannot be read: the run configuration has no credential, or none can be composed. The provider's columns
-  #     of a run are NULL when its claim set no provider, or when the provider was
-  #     deleted; a provider's deletion is refused while a live run uses it, as step 4
-  #     reads it, so only a run that ended, refused at step 4, has them NULL after a
+  #  6. `{:error, :credential_unavailable}`, a run with no model key, no registry
+  #     credential and no work entry (a push entry comes with a work entry), or one of
+  #     whose keys' providers cannot be read: the run configuration has no credential, or
+  #     none can be composed. A key row's provider is NULL when the provider was deleted;
+  #     a provider's deletion is refused while a live run has a key of it, as step 4
+  #     reads it, so only a run that ended, refused at step 4, has it NULL after a
   #     deletion;
   #  7. `{:error, :credentials_differ}`, a `credentials` list that is not a subset of the
   #     credential names of that run configuration, in its order (the schema already
@@ -57,10 +58,12 @@ defmodule Apiary.Runs.SecretsRequest do
   #     `secret.seal` on the run, for a request that names the model key: a gateway that
   #     may no longer serve the run's workspace;
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway (the
-  #     checks of the provider apply to a request that names the model key): the
+  #     checks of a provider apply to a request that names one of its keys, and run for
+  #     each provider of the named keys; one failure refuses the whole request): the
   #     provider's row, its secret or a named key fails its integrity check or is gone, or
-  #     the key is no longer a value of the provider's secret; the provider's secret or
-  #     chain differs from the run's; the provider's keys are a
+  #     the key is no longer a value of the secret of the provider its row has, so a key
+  #     under another provider's name reveals nothing; the provider's secret or chain
+  #     differs from the one its key rows keep; the provider's keys are a
   #     workspace's secret (`Apiary.Secrets.provider_keys_workspace/1`) and the run is of
   #     another workspace; the provider of the organisation's chain is of another
   #     organisation than the run's (`provider_organisation/2`); the gateway may not
@@ -98,8 +101,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #
   # `{:error, :unavailable}` when the run configuration cannot be read, or the seal or its
   # audit entry fails. A seal of model keys is recorded as `secret.seal`, by the access
-  # key, with the provider's public id, the first named key's credential name
-  # (`credential`) and every named key's (`credentials`), in the run's organisation's
+  # key, with the public id of the first named key's provider (`provider_id`), that of
+  # each named key's provider once (`provider_ids`), the first named key's credential
+  # name (`credential`) and every named key's (`credentials`), in the run's organisation's
   # trail, about the run. In one transaction with that entry, before it, a row per named
   # key keeps when the sealed value was set (`Apiary.ModelKeys.keep_copies/2`). A seal
   # without a model key is not recorded.
@@ -336,16 +340,13 @@ defmodule Apiary.Runs.SecretsRequest do
     end
   end
 
-  defp model(%Run{provider_api: %{}, model_keys: [_ | _]} = run)
-       when is_binary(run.provider_connection_id) and is_binary(run.provider_secret_id) do
+  defp model(%Run{} = run) do
     case ProviderCredential.for_run(run) do
       {:ok, %{} = credential} -> {:ok, credential}
       {:ok, nil} -> {:ok, nil}
       {:error, :unavailable} -> {:error, :credential_unavailable}
     end
   end
-
-  defp model(%Run{}), do: {:ok, nil}
 
   # The digest a reload of the run returns now, with the reload's refusals. A reload that
   # fails while the credentials cannot be read is the credentials' refusal.
@@ -392,15 +393,25 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp sealable(_run, nil, _access_key), do: :ok
 
-  defp sealable(%Run{} = run, %{provider: provider}, access_key),
-    do: sealable_provider(run, provider, access_key)
+  # Each provider of the named keys, checked against its first named key's row: the rows
+  # of one provider have the same secret and chain, as the claim wrote them together.
+  defp sealable(%Run{} = run, %{keys: keys}, access_key) do
+    keys
+    |> Enum.uniq_by(& &1.provider.id)
+    |> Enum.reduce_while(:ok, fn key, :ok ->
+      case sealable_provider(run, key.provider, key.row, access_key) do
+        :ok -> {:cont, :ok}
+        refused -> {:halt, refused}
+      end
+    end)
+  end
 
-  defp sealable_provider(%Run{} = run, provider, %AccessKey{node: node}) do
+  defp sealable_provider(%Run{} = run, provider, row, %AccessKey{node: node}) do
     cond do
-      provider.secret_id != run.provider_secret_id ->
+      provider.secret_id != row.secret_id ->
         refused(run, provider, :secret)
 
-      provider.chain != run.provider_chain ->
+      provider.chain != row.chain ->
         refused(run, provider, :chain)
 
       not keys_of_run_workspace?(provider, run) ->
@@ -618,15 +629,15 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp model_value(_run, nil), do: {:ok, [], []}
 
-  # Each named key of the run, revealed by its row id, under the value id it has now
-  # (`Apiary.Secrets.reveal_key_and_set_at/2`): a key renamed since the claim is
-  # revealed, and for one removed since, or no longer a value of the provider's secret,
-  # this returns a refusal, `{:error, :credential_unavailable}`. With the copies,
+  # Each named key of the run, revealed by its row id from the secret of the provider its
+  # row has, under the value id it has now (`Apiary.Secrets.reveal_key_and_set_at/2`): a
+  # key renamed since the claim is revealed, and for one removed since, or not a value of
+  # that provider's secret, this returns a refusal, `{:error, :credential_unavailable}`. With the copies,
   # `[{secret_value_id, value_set_at}]`, when each revealed value was set, read with it
   # (`Apiary.ModelKeys.keep_copies/2`).
   defp model_value(run, credential) do
     Enum.reduce_while(credential.keys, {:ok, [], []}, fn key, {:ok, values, copies} ->
-      case Secrets.reveal_key_and_set_at(credential.provider, key.secret_value_id) do
+      case Secrets.reveal_key_and_set_at(key.provider, key.secret_value_id) do
         {:ok, value, value_set_at} ->
           {:cont,
            {:ok, values ++ [%{"credential" => key.name, "value" => value}],
@@ -635,7 +646,7 @@ defmodule Apiary.Runs.SecretsRequest do
         {:error, reason} ->
           Logger.error(
             "a secrets request for the run #{run.node_run_id} was refused: the key " <>
-              "#{key.name} of the model provider #{credential.provider.public_id} cannot " <>
+              "#{key.name} of the model provider #{key.provider.public_id} cannot " <>
               "be read (#{reason})"
           )
 
@@ -654,8 +665,10 @@ defmodule Apiary.Runs.SecretsRequest do
 
       {:error, refusal} ->
         if credential do
+          providers = credential.keys |> Enum.map(& &1.provider.public_id) |> Enum.uniq()
+
           Logger.error(
-            "the key of the model provider #{credential.provider.public_id} for the run " <>
+            "the keys of the model providers #{Enum.join(providers, ", ")} for the run " <>
               "#{run.node_run_id} could not be sealed (#{refusal})"
           )
         else
@@ -678,7 +691,8 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp record(access_key, run, {credential, copies}) do
     details = %{
-      "provider_id" => credential.provider.public_id,
+      "provider_id" => hd(credential.keys).provider.public_id,
+      "provider_ids" => credential.keys |> Enum.map(& &1.provider.public_id) |> Enum.uniq(),
       "credential" => hd(credential.keys).name,
       "credentials" => Enum.map(credential.keys, & &1.name)
     }

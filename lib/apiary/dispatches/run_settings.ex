@@ -73,16 +73,21 @@ defmodule Apiary.Dispatches.RunSettings do
   # the choice's fallbacks, in their order, that forms as the choice's provider does
   # above, with the fallback's model and effort and the tiers that go with its provider
   # (`Apiary.ModelChoices.Resolution.fallback/3`), and that has a key not in cooldown; a
-  # fallback that does not form is passed over and ends nothing. A run takes the keys of
-  # one provider alone. With none, `build/2` returns `{:cooling, built, ids}`: the claim
+  # fallback that does not form is passed over and ends nothing. That provider's keys are
+  # the group of the run's start key. With none, `build/2` returns `{:cooling, built,
+  # ids}`: the claim
   # checks what can end the run first, then leaves it waiting with `ids` as the providers
   # it waits for (`Apiary.Dispatches.Handover`): the choice's provider, each fallback
   # that formed, and each fallback whose settings check ran out of time or crashed.
   #
-  # The run gets at most 6 keys, picked in the order of `Apiary.ModelKeys.Order`, the key
-  # the choice names first while it is not in cooldown; the first of that order is the
-  # start key, never one in cooldown. They are kept in the order the run configuration
-  # sends them (`Apiary.ModelKeys.Order.sent/2`), the start key marked.
+  # A run of a stage with `shared_run: true` also takes the keys of each provider its later
+  # sessions run on, one provider per session (`with_sessions/3`). The run gets at most 6
+  # keys across its providers (`merge/3`): the start key's provider's keys, picked in the
+  # order of `Apiary.ModelKeys.Order`, the key the choice names first while it is not in
+  # cooldown, the first of that order the start key, never one in cooldown; at least one
+  # key of each other provider; then the rest. Each provider's keys are kept in the order
+  # the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`), the start key
+  # marked.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
   # integration.
@@ -104,14 +109,16 @@ defmodule Apiary.Dispatches.RunSettings do
   # the minutes of the run's workflow and, for a run of a stage with `shared_run: true`,
   # of each workflow of that stage (`Apiary.Stages.shared_workflows/1`), which the claim
   # keeps on the run (`Apiary.Stages.claim_sessions!/3`). The process document has no
-  # time limit. The workflows and the limits are read without a lock. Beside it, the run keeps the provider's row
-  # id, its keys' secret's row id, its keys (`runs.model_keys`: each key's row id, its
-  # credential name `<provider's public id>-<place from 1>`, `start` on the start key, and
-  # what its run configuration entry has of it), the provider's chain and the API the run
-  # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
-  # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
-  # limit windows as `use_up_to_windows`), for the reads that follow the claim. The run
-  # settings take at most 64 KiB encoded; a claim with more fails.
+  # time limit. The workflows and the limits are read without a lock. Beside it, the run
+  # keeps the start key's provider's row id (`provider_connection_id`) and its keys
+  # (`run_model_keys`, `Apiary.Runs.ModelKey`: each key's place, its row id, its
+  # credential name `<provider's public id>-<place from 1>`, the place counted per
+  # provider, `start` on the start key, its provider's row id, keys' secret's row id and
+  # chain, the API its sessions use, with its `format`, its `endpoint` with a setting
+  # resolved to its address, its `auth`, and, when the description lists them, its
+  # `key_prefixes` and its limit windows as `use_up_to_windows`, and what its run
+  # configuration entry has of it), for the reads that follow the claim. The run settings
+  # take at most 64 KiB encoded; a claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -151,13 +158,16 @@ defmodule Apiary.Dispatches.RunSettings do
 
   @typedoc """
   What a claim writes: `wire`, the documents' `run_settings`; `stored`, the same as a
-  map, for the run's column; and `columns`, the run's provider columns, empty where no
-  provider was chosen.
+  map, for the run's column; `columns`, the run's provider column, empty where the run
+  has no key; `keys`, the run's key rows (`merge/3`); and `sessions`, each later
+  session's entry by its workflow (`with_sessions/3`).
   """
   @type built :: %{
-          wire: Jason.OrderedObject.t(),
-          stored: map,
-          columns: %{optional(atom) => term}
+          required(:wire) => Jason.OrderedObject.t(),
+          required(:stored) => map,
+          required(:columns) => %{optional(atom) => term},
+          optional(:keys) => [map],
+          optional(:sessions) => map
         }
 
   # max_bytes/0 is the most bytes the run settings take, encoded.
@@ -193,6 +203,7 @@ defmodule Apiary.Dispatches.RunSettings do
           target: target,
           input: input,
           sessions: sessions,
+          shared: shared,
           keyed: ProviderCredential.applies?(),
           time_limit: workflow && Map.get(time_limits, workflow),
           time_limits: time_limits
@@ -375,14 +386,20 @@ defmodule Apiary.Dispatches.RunSettings do
 
     input = Map.put(held.input, :providers, resolved_providers)
 
-    sessions = {resolved_providers, providers, described}
+    context = %{
+      resolved: resolved_providers,
+      providers: providers,
+      described: described,
+      held: held,
+      now: now
+    }
 
     case Resolution.resolve(input) do
       :none ->
         ModelChoices.default_runtime()
         |> runtime_only()
         |> sealed()
-        |> with_sessions(held, sessions)
+        |> with_sessions(nil, context)
 
       {:error, :provider_removed} ->
         {:end, :provider_gone}
@@ -401,7 +418,7 @@ defmodule Apiary.Dispatches.RunSettings do
                  held.workspace.id,
                  held.keyed
                ),
-             {:ok, built} <-
+             {:ok, built, start} <-
                keys(
                  built,
                  provider,
@@ -412,128 +429,324 @@ defmodule Apiary.Dispatches.RunSettings do
              do:
                built
                |> sealed()
-               |> with_sessions(held, sessions)
+               |> with_sessions(start, context)
     end
   end
 
-  # The model of each later session of a shared run, by its workflow, as `sessions` beside
-  # `built`, which the claim keeps on the run (`Apiary.Stages.claim_sessions!/3`): a map
-  # with `model_choice` for each workflow, which always has `runtime`, the runtime the
-  # session runs on. A run takes the keys of one provider, so every key of the run is in
-  # the start key's group, and no entry has `model_credential`: each session joins with
-  # the group of the run's start key.
+  # The model and the key of each later session of a shared run, by its workflow, as
+  # `sessions` beside `built`, which the claim keeps on the run
+  # (`Apiary.Stages.claim_sessions!/3`), and the run's keys, as `keys`, with the start
+  # key's provider as `columns` (`merged/3`). `start` is the group of the run's start key
+  # (`keys/5`): its provider, the API its sessions use, and its keys in their order; nil
+  # for a run with no key. The workflows are walked in session order
+  # (`Apiary.Stages.shared_workflows/1`). Each entry has `model_choice`, which always has
+  # `runtime`, the runtime the session runs on, and, for a session on a provider other
+  # than the start key's, `model_credential`, the name of that provider's first free key
+  # (`Apiary.ModelKeys.Order.start/2`), else its first key: the session starts on that
+  # key's group. A session with no `model_credential` joins the group of the run's start
+  # key.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
-  #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice,
-  #     where its provider is the run's and its runtime uses the run's API (`format`,
-  #     `endpoint` and `auth`), so the run's keys serve it; or of its fallback, where the
-  #     run's provider is that choice's fallback, as when the claim took the fallback
-  #     (`Apiary.ModelChoices.Resolution.fallback/3`);
-  #   * the run's `run_settings`, where that choice's provider, key or model is no longer
+  #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice on
+  #     its provider, where that provider has a free key; else on its first fallback
+  #     that forms and has a free key (`Apiary.ModelChoices.Resolution.fallback/3`); else
+  #     on its provider, whose keys are all in cooldown. A choice on the start key's
+  #     provider whose runtime uses the start key's API (`format`, `endpoint` and `auth`)
+  #     joins the start key's group;
+  #   * the run's `run_settings`, where that choice's runtime, key or model is no longer
   #     valid (`form/6`), or its runtime is no longer in the catalogue;
-  #   * `runtime` alone, the runtime of the choice, where its provider is another
-  #     provider, or its runtime uses another API of the run's provider; or the
-  #     catalogue's default runtime (`Apiary.ModelChoices.default_runtime/0`), where the
-  #     choices resolve to no choice at any level or to a provider that is gone. The
-  #     same where the run has no provider's key. The session then uses the default model
-  #     of that runtime.
+  #   * `runtime` alone, the runtime of the choice, where its runtime uses another API of
+  #     a provider an earlier session uses, where its provider has no key, or where the
+  #     run has no start key; or the catalogue's default runtime
+  #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
+  #     at any level. The session then uses the default model of that runtime.
   #
-  # A settings check of the session's provider that ran out of time or crashed is
-  # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider.
-  defp with_sessions({:ok, built}, held, resolved) do
-    held.sessions
-    |> Enum.reduce_while({:ok, %{}}, fn {workflow, input}, {:ok, sessions} ->
-      case session_choice(input, built, resolved, held.workspace.id) do
-        {:ok, choice} ->
-          {:cont, {:ok, Map.put(sessions, workflow, %{"model_choice" => choice})}}
+  # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
+  # does: the choice names a provider that was removed, or its provider is not there,
+  # fails its integrity code, or `form/6` ends `provider_gone` for it. A settings check of
+  # the session's provider that ran out of time or crashed is `{:unchecked, provider}`,
+  # which leaves the run waiting as for the run's provider.
+  defp with_sessions({:ok, built}, start, context) do
+    sessions = context.held.sessions
+
+    context.held
+    |> Map.get(:shared, Map.keys(sessions))
+    |> Enum.filter(&Map.has_key?(sessions, &1))
+    |> Enum.reduce_while({:ok, [], []}, fn workflow, {:ok, chosen, groups} ->
+      case session_choice(Map.fetch!(sessions, workflow), built, start, context) do
+        {:ok, choice, group} ->
+          {choice, group} = same_api(choice, group, groups)
+          groups = if is_map(group) and group not in groups, do: groups ++ [group], else: groups
+          {:cont, {:ok, chosen ++ [{workflow, choice, group}], groups}}
+
+        {:end, :provider_gone} = ended ->
+          {:halt, ended}
 
         {:unchecked, _provider} = unchecked ->
           {:halt, unchecked}
       end
     end)
     |> case do
-      {:ok, sessions} -> {:ok, Map.put(built, :sessions, sessions)}
-      unchecked -> unchecked
+      {:ok, chosen, groups} -> {:ok, merged(built, start, {chosen, groups}, context.now)}
+      other -> other
     end
   end
 
-  defp with_sessions(other, _held, _resolved), do: other
+  defp with_sessions(other, _start, _context), do: other
 
-  # What the choices `input` of a later session's workflow come to against the run's
-  # settings `built` (`with_sessions/3`): `{:ok, model_choice}` or `{:unchecked,
-  # provider}`.
-  defp session_choice(input, built, {resolved, providers, described}, workspace_id) do
-    input = Map.put(input, :providers, resolved)
+  # A session's group, where an earlier session's group of the same provider uses the
+  # same API, is that group; where it uses another API, the session gets `runtime` alone:
+  # a provider's keys are kept with one API per run.
+  defp same_api(choice, %{provider: %{id: id}, api: api} = group, groups) do
+    case Enum.find(groups, &(&1.provider.id == id)) do
+      nil ->
+        {choice, group}
 
-    case Resolution.resolve(input) do
-      {:ok, %Resolution{} = resolution} ->
-        case runtime(resolution) do
-          {:ok, runtime} ->
-            on_run_keys(input, resolution, runtime, built, {providers, described}, workspace_id)
-
-          {:end, :runtime_unserved} ->
-            {:ok, built.stored}
-        end
-
-      _none_or_gone ->
-        {:ok, %{"runtime" => ModelChoices.default_runtime().name}}
+      earlier ->
+        if same_api?(earlier.api, api),
+          do: {choice, earlier},
+          else: {%{"runtime" => choice["runtime"]}, nil}
     end
   end
 
-  # The choice `resolution`, for `runtime`, on the run's provider and API, else `runtime`
-  # alone.
-  defp on_run_keys(
-         input,
-         resolution,
-         runtime,
-         %{columns: %{provider_connection_id: id, provider_api: api}} = built,
-         {providers, described},
-         workspace_id
-       ) do
-    with %Resolution{connection_id: ^id} = resolution <- on_provider(input, resolution, id),
-         provider = Map.fetch!(providers, id),
-         {:ok, formed} <- form(resolution, provider, described[id], runtime, workspace_id) do
-      if same_api?(formed.columns.provider_api, api),
-        do: {:ok, formed.stored},
-        else: {:ok, %{"runtime" => runtime.name}}
-    else
-      {:unchecked, _provider} = unchecked -> unchecked
-      {:end, _cause} -> {:ok, built.stored}
-      _another_provider -> {:ok, %{"runtime" => runtime.name}}
-    end
-  end
-
-  defp on_run_keys(_input, _resolution, runtime, _built, _providers, _workspace_id),
-    do: {:ok, %{"runtime" => runtime.name}}
+  defp same_api(choice, group, _groups), do: {choice, group}
 
   defp same_api?(api, other),
     do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
 
-  # `resolution` where its provider is `id`, else its fallback whose provider is `id`
-  # (`Resolution.fallback/3`), else `:none`.
-  defp on_provider(_input, %Resolution{connection_id: id} = resolution, id), do: resolution
+  # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
+  # `columns` with the start key's provider, and each session's entry with the name of
+  # its group's start key as `model_credential`. A run with no start key keeps no key.
+  defp merged(built, nil, {chosen, _groups}, _now) do
+    sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
+    built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
+  end
 
-  defp on_provider(input, %Resolution{fallbacks: fallbacks} = resolution, id) do
-    case Enum.find(fallbacks, &(&1.connection_id == id)) do
-      nil -> :none
-      fallback -> Resolution.fallback(input, resolution, fallback)
+  defp merged(built, start, {chosen, groups}, now) do
+    {keys, credentials} = merge(start, groups, now)
+
+    sessions =
+      Map.new(chosen, fn {workflow, choice, group} ->
+        {workflow, entry(choice, group && Map.fetch!(credentials, group.provider.id))}
+      end)
+
+    built
+    |> Map.put(:columns, %{provider_connection_id: start.provider.id})
+    |> Map.put(:keys, keys)
+    |> Map.put(:sessions, sessions)
+  end
+
+  defp entry(choice, credential \\ nil)
+  defp entry(choice, nil), do: %{"model_choice" => choice}
+  defp entry(choice, name), do: %{"model_choice" => choice, "model_credential" => name}
+
+  # merge/3 is the keys a run gets from the group of its start key, `start`, and the
+  # groups of its later sessions' other providers, `groups`, in session order, at `now`,
+  # each group's keys in their order (`Apiary.ModelKeys.Order.order/2`): the start key's
+  # provider's keys, at most 6 less the number of other providers, so at least 1; then
+  # the first key of each other provider; then the other providers' remaining keys,
+  # provider by provider in session order, until the run has 6. `{keys, credentials}`:
+  # each key as the run keeps it (`stored_key/5`), the start key's provider's first, then
+  # each other provider's, each provider's keys in the order the run configuration sends
+  # them (`Apiary.ModelKeys.Order.sent/2`) and named `<provider's public id>-<place>`,
+  # the place counted per provider from 1; and the name of each other provider's first
+  # free key (`Apiary.ModelKeys.Order.start/2`), else its first, by provider id. The
+  # claim's guard keeps the providers of a run's stage at 6 or fewer
+  # (`Apiary.Stages.shared_models/1`), so every provider gets a key.
+  @doc false
+  @spec merge(map, [map], DateTime.t()) :: {[map], %{Ecto.UUID.t() => String.t()}}
+  def merge(start, groups, %DateTime{} = now) do
+    max = Order.max_keys()
+    others = Enum.take(groups, max - 1)
+    first = Enum.take(start.keys, max - length(others))
+    heads = Enum.map(others, &Enum.take(&1.keys, 1))
+    left = max - length(first) - Enum.sum(Enum.map(heads, &length/1))
+
+    {tails, _left} =
+      Enum.map_reduce(others, left, fn group, left ->
+        taken = group.keys |> Enum.drop(1) |> Enum.take(left)
+        {taken, left - length(taken)}
+      end)
+
+    taken = [{start, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
+    start_key = Order.start(first, now)
+
+    named =
+      Enum.map(taken, fn {group, keys} ->
+        {group,
+         keys
+         |> Order.sent(now)
+         |> Enum.with_index(1)
+         |> Enum.map(fn {key, place} -> {key, "#{group.provider.public_id}-#{place}"} end)}
+      end)
+
+    keys =
+      named
+      |> Enum.flat_map(fn {group, keys} -> Enum.map(keys, &{group, &1}) end)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{group, {key, name}}, position} ->
+        start? = group == start and start_key != nil and key.id == start_key.id
+        stored_key(group, key, {position, name}, start?, now)
+      end)
+
+    credentials =
+      for {group, keys} <- tl(named), into: %{} do
+        {first_key, first_name} = hd(keys)
+        free = Order.start(Enum.map(keys, &elem(&1, 0)), now) || first_key
+        {_key, name} = Enum.find(keys, {first_key, first_name}, &(elem(&1, 0).id == free.id))
+        {group.provider.id, name}
+      end
+
+    {keys, credentials}
+  end
+
+  defp taken({group, head, tail}), do: {group, head ++ tail}
+
+  # What the choices `input` of a later session's workflow come to (`with_sessions/3`):
+  # `{:ok, model_choice, group}`, `group` the session's provider's group where it is not
+  # the start key's, else nil; `{:end, :provider_gone}`; or `{:unchecked, provider}`.
+  defp session_choice(input, built, start, context) do
+    input = Map.put(input, :providers, context.resolved)
+
+    case Resolution.resolve(input) do
+      {:ok, %Resolution{} = resolution} ->
+        case runtime(resolution) do
+          {:ok, runtime} -> session_on(input, resolution, runtime, built, start, context)
+          {:end, :runtime_unserved} -> {:ok, built.stored, nil}
+        end
+
+      {:error, :provider_removed} ->
+        {:end, :provider_gone}
+
+      :none ->
+        {:ok, %{"runtime" => ModelChoices.default_runtime().name}, nil}
     end
+  end
+
+  # A run with no start key keeps no key: the session gets `runtime` alone, once its
+  # provider is checked for `provider_gone`.
+  defp session_on(_input, resolution, runtime, built, nil, context) do
+    provider = Map.fetch!(context.providers, resolution.connection_id)
+
+    with :ok <- intact(provider),
+         {:ok, _formed} <- session_form(resolution, provider, runtime, built, context) do
+      {:ok, %{"runtime" => runtime.name}, nil}
+    end
+    |> session_result(built)
+  end
+
+  defp session_on(input, resolution, runtime, built, start, context) do
+    provider = Map.fetch!(context.providers, resolution.connection_id)
+
+    with :ok <- intact(provider),
+         {:ok, formed} <- session_form(resolution, provider, runtime, built, context) do
+      cond do
+        provider.id == start.provider.id ->
+          on_start(formed, runtime, start)
+
+        group = free_group(provider, formed, context.now) ->
+          {:ok, formed.stored, group}
+
+        fallen = on_fallback(input, resolution, runtime, start, context) ->
+          fallen
+
+        true ->
+          case group(provider, formed, context.now) do
+            %{keys: [_ | _]} = group -> {:ok, formed.stored, group}
+            _no_key -> {:ok, %{"runtime" => runtime.name}, nil}
+          end
+      end
+    end
+    |> session_result(built)
+  end
+
+  # The session's choice formed on `provider`, as `form/6` forms the run's, with or
+  # without a key as the run has one.
+  defp session_form(resolution, provider, runtime, _built, context) do
+    form(
+      resolution,
+      provider,
+      context.described[provider.id],
+      runtime,
+      context.held.workspace.id,
+      context.held.keyed
+    )
+  end
+
+  # A session whose provider is gone ends the claim; one whose choice no longer forms for
+  # another cause gets the run's `run_settings`.
+  defp session_result({:end, :provider_gone} = ended, _built), do: ended
+  defp session_result({:end, _cause}, built), do: {:ok, built.stored, nil}
+  defp session_result(other, _built), do: other
+
+  # A choice on the start key's provider joins the start key's group where its runtime
+  # uses the same API; else the session gets `runtime` alone.
+  defp on_start(formed, runtime, start) do
+    if same_api?(formed.columns.provider_api, start.api),
+      do: {:ok, formed.stored, nil},
+      else: {:ok, %{"runtime" => runtime.name}, nil}
+  end
+
+  # The first fallback of `resolution`, in their order, that forms and has a free key at
+  # the claim, or that is the start key's provider with the same API: `{:ok, choice,
+  # group}`, or nil for none. A fallback that does not form, or whose settings check ran
+  # out of time or crashed, is passed over.
+  defp on_fallback(input, %Resolution{fallbacks: fallbacks} = resolution, runtime, start, ctx) do
+    Enum.find_value(fallbacks, fn %{connection_id: id} = fallback ->
+      provider = Map.fetch!(ctx.providers, id)
+      fallen = Resolution.fallback(input, resolution, fallback)
+
+      with true <- Connections.intact?(provider),
+           {:ok, formed} <- session_form(fallen, provider, runtime, nil, ctx) do
+        cond do
+          id == start.provider.id ->
+            if same_api?(formed.columns.provider_api, start.api),
+              do: {:ok, formed.stored, nil}
+
+          group = free_group(provider, formed, ctx.now) ->
+            {:ok, formed.stored, group}
+
+          true ->
+            nil
+        end
+      else
+        _not_formed -> nil
+      end
+    end)
+  end
+
+  # The group of `provider`'s keys for the API `formed` uses, at `now`, where one of them
+  # is free; else nil.
+  defp free_group(provider, formed, now) do
+    group = group(provider, formed, now)
+    if Order.start(group.keys, now), do: group
+  end
+
+  # The keys of `provider` a run gets at `now` (`Apiary.ModelKeys.Order.order/2`), with
+  # the provider and the API of `formed`. Only the choice of the run's start key names a
+  # key (`chosen`).
+  defp group(provider, formed, now, named \\ nil) do
+    %{
+      provider: provider,
+      api: formed.columns.provider_api,
+      keys: provider |> ModelKeys.claim_keys(named, now) |> Order.order(now)
+    }
   end
 
   # Without the features under which a run is given its provider's key
   # (`Apiary.Runs.ProviderCredential.applies?/0`), the run gets the choice's runtime and
   # models and no key: it keeps no provider column and waits for no key.
   defp keys(built, _provider, _resolved, %{keyed: false}, _now),
-    do: {:ok, %{built | columns: %{}}}
+    do: {:ok, %{built | columns: %{}}, nil}
 
-  # The settings `built` of the choice's provider with its keys, else those of the first
-  # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
-  # choice's settings without keys, and the choice's provider first, then the fallbacks
-  # of `fallback/6`'s `{:cooling, ids}`.
+  # The settings `built` of the choice's provider with the group of its keys, else those
+  # of the first fallback with a key not in cooldown, else `{:cooling, built,
+  # provider_ids}`: the choice's settings without keys, and the choice's provider first,
+  # then the fallbacks of `fallback/6`'s `{:cooling, ids}`.
   defp keys(built, provider, {input, resolution, providers, described, runtime}, held, now) do
     with nil <- keyed(built, provider, named_value_id(input), now) do
       case fallback(input, resolution, {providers, described}, runtime, held.workspace.id, now) do
-        {:ok, _built} = fallen ->
+        {:ok, _built, _start} = fallen ->
           fallen
 
         {:cooling, ids} ->
@@ -550,57 +763,46 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The settings `built` with the run's keys of `provider` at `now`, or nil where every
-  # key is in cooldown: the keys a run gets and its start key by their order
-  # (`Apiary.ModelKeys.Order.order/2`), kept in the order the run configuration sends
-  # them (`Apiary.ModelKeys.Order.sent/2`). Each key is a credential named by the
-  # provider's public id and the key's place in that order, from 1: `<public id>-1`,
-  # `<public id>-2` and on; the start key is marked `start`.
+  # The settings `built` with the group of the run's start key, `provider`'s keys at
+  # `now` in their order (`Apiary.ModelKeys.Order.order/2`), the key the choice names,
+  # `named`, first while it is free; or nil where every key is in cooldown. `merge/3`
+  # takes the run's keys from the group.
   defp keyed(built, %Connection{} = provider, named, now) do
-    keys = provider |> ModelKeys.claim_keys(named, now) |> Order.order(now)
-
-    if start = Order.start(keys, now) do
-      stored =
-        keys
-        |> Order.sent(now)
-        |> Enum.with_index(1)
-        |> Enum.map(fn {key, place} ->
-          stored_key(key, "#{provider.public_id}-#{place}", key.id == start.id, now)
-        end)
-
-      {:ok, %{built | columns: Map.put(built.columns, :model_keys, stored)}}
-    end
+    group = group(provider, built, now, named)
+    if Order.start(group.keys, now), do: {:ok, built, group}
   end
 
-  # A key as the run keeps it and its run configuration writes it: its row id, its name,
-  # `start` on the start key, its Pause for, and, where it has them, its known reset from
-  # the providers' responses, the next reset of its schedule, whether the choice is set to
-  # it, the end of its cooldown while it is in cooldown at `now`, a window at its Use up
-  # to percentage included, and that percentage. The limit windows are not on the key:
-  # the run keeps them once, in `provider_api` (`with_windows/2`). Times are in whole
-  # seconds, rounded up.
-  defp stored_key(key, name, start?, now) do
-    [
-      {"id", key.id},
-      {"name", name},
-      {"start", if(start?, do: true)},
-      {"pause_for_s", key.pause_seconds},
-      {"resets_at", time(key.resets_at)},
-      {"schedule_resets_at", time(key.schedule_resets_at)},
-      {"chosen", if(key.named, do: true)},
-      {"cooldown_until", if(Order.cooling?(key, now), do: time(key.cooldown_until))},
-      {"use_up_to_percent", key.use_up_to_percent}
-    ]
-    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
-    |> Map.new()
+  # A key as the run keeps it (`Apiary.Runs.ModelKey`) and its run configuration writes
+  # it: its place, its name, its row id, its provider, its keys' secret, its chain and the
+  # API its group uses; `start` on the start key, its Pause for, and, where it has them,
+  # its known reset from the providers' responses, the next reset of its schedule,
+  # whether the choice is set to it, the end of its cooldown while it is in cooldown at
+  # `now`, a window at its Use up to percentage included, and that percentage. Times are
+  # in whole seconds, rounded up.
+  defp stored_key(group, key, {position, name}, start?, now) do
+    %{
+      position: position,
+      name: name,
+      start: start?,
+      secret_value_id: key.id,
+      connection_id: group.provider.id,
+      secret_id: group.provider.secret_id,
+      chain: group.provider.chain,
+      api: group.api,
+      pause_for_s: key.pause_seconds,
+      resets_at: time(key.resets_at),
+      schedule_resets_at: time(key.schedule_resets_at),
+      chosen: key.named == true,
+      cooldown_until: if(Order.cooling?(key, now), do: time(key.cooldown_until)),
+      use_up_to_percent: key.use_up_to_percent
+    }
   end
 
   defp time(nil), do: nil
 
   defp time(%DateTime{} = time) do
     whole = DateTime.truncate(time, :second)
-    whole = if DateTime.compare(whole, time) == :lt, do: DateTime.add(whole, 1), else: whole
-    DateTime.to_iso8601(whole)
+    if DateTime.compare(whole, time) == :lt, do: DateTime.add(whole, 1), else: whole
   end
 
   # The first of the choice's fallbacks, in their order, that forms and has a key not in
@@ -625,7 +827,7 @@ defmodule Apiary.Dispatches.RunSettings do
       with true <- Connections.intact?(provider),
            {:ok, built} <- form(fallen, provider, described[id], runtime, ws) do
         case keyed(built, provider, nil, now) do
-          {:ok, _built} = keyed -> {:halt, keyed}
+          {:ok, _built, _start} = keyed -> {:halt, keyed}
           nil -> {:cont, {:cooling, ids ++ [provider.id]}}
         end
       else
@@ -635,17 +837,11 @@ defmodule Apiary.Dispatches.RunSettings do
     end)
   end
 
-  # The providers of the run's choices and their fallbacks, and the providers of the
-  # choices of its later sessions, each once. A provider that is only a later session's
-  # fallback is not read: a later session takes a fallback only where its provider is
-  # the run's, which is among the run's.
+  # The providers of the run's choices and their fallbacks, and those of the choices of
+  # its later sessions and their fallbacks, each once: a later session takes its first
+  # fallback with a free key where its choice's provider has none.
   defp all_provider_ids(input, sessions) do
-    session_ids =
-      for {_workflow, session} <- sessions,
-          choice <- session.choices,
-          is_binary(choice.connection_id),
-          do: choice.connection_id
-
+    session_ids = for {_workflow, session} <- sessions, id <- provider_ids(session), do: id
     Enum.uniq(provider_ids(input) ++ session_ids)
   end
 
@@ -746,8 +942,8 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The API with the description's limit windows as `use_up_to_windows`, which the run
-  # keeps in `provider_api` for each key's Use up to percentage
+  # The API with the description's limit windows as `use_up_to_windows`, which each key
+  # row of the run keeps in its `api` for the key's Use up to percentage
   # (`Apiary.Runs.ProviderCredential`); none for a provider without them.
   defp with_windows(api, %Provider{limit_windows: [_ | _] = windows}),
     do: Map.put(api, "use_up_to_windows", windows)
@@ -828,6 +1024,8 @@ defmodule Apiary.Dispatches.RunSettings do
     %{
       wire: wire,
       stored: wire |> Jason.encode!() |> Jason.decode!(),
+      # The provider and the API the choice uses, until `with_sessions/3` replaces them
+      # with the run's column and keys (`merged/4`).
       columns: %{
         provider_connection_id: provider.id,
         provider_secret_id: provider.secret_id,

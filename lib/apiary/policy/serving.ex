@@ -148,8 +148,6 @@ defmodule Apiary.Policy.Serving do
             :dispatch_run_id,
             :registration_variables,
             :provider_connection_id,
-            :provider_api,
-            :model_keys,
             :id,
             :public_id,
             :organisation_id,
@@ -158,7 +156,8 @@ defmodule Apiary.Policy.Serving do
             :run_key_payload,
             :run_code_sha256,
             :run_documents
-          ])
+          ]),
+        preload: [:model_keys]
     )
   end
 

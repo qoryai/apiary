@@ -247,6 +247,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.Runs.{
     About,
+    ModelKey,
     Number,
     ProviderCredential,
     Registration,
@@ -444,6 +445,8 @@ defmodule Apiary.Dispatches.Handover do
               formed,
               through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
             )
+
+          insert_keys!(run, formed.settings)
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
           if formed.push, do: RunCredentials.insert!(formed.push, run)
@@ -773,7 +776,7 @@ defmodule Apiary.Dispatches.Handover do
   # either key may attach the run and ask for the entry's value. A run formed with a model
   # provider, with the features under which it is given its credential
   # (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed` on the same
-  # keys, or when the provider's key may not be sealed for the gateway
+  # keys, or when the key of one of its providers may not be sealed for the gateway
   # (`Apiary.Runs.ProviderCredential.sealable_to?/3`). `run` is the run of the queue, read
   # under lock at the claim.
   defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, run, keys) do
@@ -785,30 +788,30 @@ defmodule Apiary.Dispatches.Handover do
   defp sealable(formed, gateway, run, keys), do: model_sealable(formed, gateway, run, keys)
 
   @doc false
-  # model_sealable/4 is `formed` when the run's model key may be sealed for `gateway`, else
-  # `{:end, :secrets_not_allowed}`. The seal is checked for the organisation and the
-  # workspace of `dispatch_run`, the run of the queue read under lock at the claim, not
-  # for the workspace of the claiming pool.
+  # model_sealable/4 is `formed` when every model key of the run, of each of its
+  # providers, may be sealed for `gateway`, else `{:end, :secrets_not_allowed}`. The seal
+  # is checked for the organisation and the workspace of `dispatch_run`, the run of the
+  # queue read under lock at the claim, not for the workspace of the claiming pool.
   @spec model_sealable(term, Node.t(), DispatchRun.t(), [AccessKey.t()]) :: term
   def model_sealable(
-        {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
+        {:ok, %{settings: %{keys: [_ | _] = model_keys}}} = ok,
         %Node{} = gateway,
         %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id},
         keys
       ) do
     run = %{organisation_id: organisation_id, workspace_id: workspace_id}
+    chains = model_keys |> Enum.map(& &1.chain) |> Enum.uniq()
 
     cond do
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway, run) -> ok
+      Enum.all?(chains, &ProviderCredential.sealable_to?(&1, gateway, run)) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
 
-  # A run formed with no model provider, or not formed: nothing to seal. Any gateway or
-  # run of the queue of another shape raises `FunctionClauseError`, so the seal is not
-  # skipped.
+  # A run formed with no model key, or not formed: nothing to seal. Any gateway or run of
+  # the queue of another shape raises `FunctionClauseError`, so the seal is not skipped.
   def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
 
   # The run's work credential entry, formed from what the run is formed from, with the
@@ -1499,6 +1502,21 @@ defmodule Apiary.Dispatches.Handover do
         |> PublicId.Insert.insert!()
     end
   end
+
+  # The run's model keys as the claim formed them (`Apiary.Dispatches.RunSettings.build/2`),
+  # one `run_model_keys` row each, after the run's row, which the claim holds
+  # `FOR UPDATE`. Their foreign keys take the provider and secret rows `FOR KEY SHARE`,
+  # which `Apiary.Dispatches.RunSettings.hold/1` already holds `FOR SHARE`, so the insert
+  # waits for no lock that a provider's deletion takes first (`Apiary.Connections`). None
+  # for a run with no key.
+  defp insert_keys!(%Run{id: run_id}, %{keys: [_ | _] = keys}) do
+    rows = Enum.map(keys, &Map.put(Map.take(&1, ModelKey.fields()), :run_id, run_id))
+    {count, _rows} = Repo.insert_all(ModelKey, rows)
+    ^count = length(rows)
+    :ok
+  end
+
+  defp insert_keys!(_run, _settings), do: :ok
 
   # What the claim sets on the run it registers.
   defp registered(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do

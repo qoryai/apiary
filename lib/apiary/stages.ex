@@ -714,6 +714,38 @@ defmodule Apiary.Stages do
 
   def newest_session(%DispatchRun{}), do: nil
 
+  # session_credential/2 is the `model_credential` that the claim of `run`, a registered
+  # run of a stage with `shared_run: true`, kept for its session number `session`
+  # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
+  # one a report numbered `session` ended, else the open session (`open_session/1`), the
+  # one a run that paused was in. Nil for a session of the start key's group, and for a
+  # run with no session settings.
+  @doc false
+  @spec session_credential(map, pos_integer) :: String.t() | nil
+  def session_credential(
+        %{dispatch_run_id: dispatch_run_id, session_settings: %{} = settings},
+        session
+      )
+      when is_binary(dispatch_run_id) and is_integer(session) do
+    sessions =
+      Repo.all(
+        from s in Session,
+          where: s.dispatch_run_id == ^dispatch_run_id,
+          order_by: [desc: s.sequence]
+      )
+
+    case Enum.find(sessions, &(&1.forager_session == session)) ||
+           Enum.find(sessions, &is_nil(&1.forager_session)) do
+      %Session{stage_entry: entry, loop_entry: loop_entry} when is_integer(entry) ->
+        get_in(settings, [session_place(entry, loop_entry), "model_credential"])
+
+      _none ->
+        nil
+    end
+  end
+
+  def session_credential(_run, _session), do: nil
+
   # open_session/1 is the newest session of `run` that no report ended
   # (`newest_session/1`): the session a run that paused was in; nil for none.
   @doc false
