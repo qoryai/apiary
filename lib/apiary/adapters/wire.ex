@@ -140,8 +140,7 @@ defmodule Apiary.Adapters.Wire do
           default_interval: pos_integer,
           minimum_interval: pos_integer,
           sends_changes: boolean,
-          description: Apiary.Integrations.Description.t(),
-          submit_module: map | nil
+          description: Apiary.Integrations.Description.t()
         }
 
   @type target :: %{system: String.t(), path: String.t()}
@@ -287,22 +286,19 @@ defmodule Apiary.Adapters.Wire do
   def call_url?(_value), do: false
 
   # The raw body of `POST /v1/adapter`: `{:ok, declaration}` or `:error`. The description
-  # is read last, once every other member is as the contract has it. `submit_module` is
-  # the forge's harness module with the submit program, nil where the body has none
-  # (`submit_module/1`).
+  # is read last, once every other member is as the contract has it.
   @doc false
   @spec declaration(term) :: {:ok, declaration} | :error
   def declaration(raw) when is_binary(raw) do
     with {:ok, body} <- decode(raw),
          true <-
-           Enum.sort(Map.keys(Map.drop(body, ["setup_url", "call_url", "submit_module"]))) ==
+           Enum.sort(Map.keys(Map.drop(body, ["setup_url", "call_url"]))) ==
              @declaration_keys,
          true <- body["version"] === 1,
          {:ok, time} <- time(body["time"]),
          true <- url?(body["connect_url"]),
          {:ok, setup_url} <- setup_url(body),
          {:ok, call_url} <- call_url(body),
-         {:ok, submit_module} <- submit_module(body),
          %{} = sync <- body["sync"],
          true <- Enum.sort(Map.keys(sync)) == @sync_keys,
          default when is_integer(default) <- sync["default_interval"],
@@ -322,8 +318,7 @@ defmodule Apiary.Adapters.Wire do
          default_interval: default,
          minimum_interval: minimum,
          sends_changes: sends_changes,
-         description: description,
-         submit_module: submit_module
+         description: description
        }}
     else
       _ -> :error
@@ -331,15 +326,6 @@ defmodule Apiary.Adapters.Wire do
   end
 
   def declaration(_raw), do: :error
-
-  # `submit_module` when the body has one: the run contract's `submit_module`, a harness
-  # module whose source is pinned to a full commit hash, with no exclude, only or variant,
-  # and whose `git` is an https address, as every harness source Qory Apiary takes is
-  # (`Apiary.Stacks.Document.submit_module?/1`). nil when the body has none.
-  defp submit_module(%{"submit_module" => module}),
-    do: if(Apiary.Stacks.Document.submit_module?(module), do: {:ok, module}, else: :error)
-
-  defp submit_module(%{}), do: {:ok, nil}
 
   # `setup_url` when the body gives one, held to `setup_url?/1`; nil when it gives none.
   defp setup_url(%{"setup_url" => url}),
@@ -365,15 +351,9 @@ defmodule Apiary.Adapters.Wire do
   # brackets outside strings; any other value to the first byte that cannot be in it.
   # Each step looks for its next byte with `:binary.match/3`, so the scan is linear in the
   # size of `raw`, at most the 1 MiB `ApiaryWeb.Contract.RawBody` reads.
-  #
-  # `stop` is a list of member names that come after `name` in `raw`'s order, where
-  # `raw` has one: the scan returns `:error` at the first of them, before it steps over
-  # that member's value, so the bytes after it are never read.
   @doc false
-  @spec member_value(binary, String.t(), [String.t()]) :: {:ok, binary} | :error
-  def member_value(raw, name, stop \\ [])
-
-  def member_value(raw, name, stop) when is_binary(raw) and is_binary(name) and is_list(stop) do
+  @spec member_value(binary, String.t()) :: {:ok, binary} | :error
+  def member_value(raw, name) when is_binary(raw) and is_binary(name) do
     patterns = %{
       string: :binary.compile_pattern(["\"", "\\"]),
       nested: :binary.compile_pattern(["\"", "{", "[", "}", "]"]),
@@ -381,30 +361,29 @@ defmodule Apiary.Adapters.Wire do
     }
 
     case skip_space(raw) do
-      "{" <> rest -> members(rest, {name, stop}, patterns)
+      "{" <> rest -> members(rest, name, patterns)
       _other -> :error
     end
   end
 
-  def member_value(_raw, _name, _stop), do: :error
+  def member_value(_raw, _name), do: :error
 
-  defp members(rest, {name, stop} = names, patterns) do
+  defp members(rest, name, patterns) do
     with "\"" <> _ = rest <- skip_space(rest),
          {key, rest} <- string_span(rest, patterns),
          ":" <> rest <- skip_space(rest),
          {:ok, key} <- Jason.decode(key),
-         false <- key in stop,
          value = skip_space(rest),
          after_value when is_binary(after_value) <- skip_value(value, patterns) do
       bytes = binary_part(value, 0, byte_size(value) - byte_size(after_value))
 
       case {key == name, skip_space(after_value)} do
         {true, _rest} -> {:ok, bytes}
-        {false, "," <> rest} -> members(rest, names, patterns)
+        {false, "," <> rest} -> members(rest, name, patterns)
         {false, _end_of_object} -> :error
       end
     else
-      _end_of_object_stop_or_unreadable -> :error
+      _end_of_object_or_unreadable -> :error
     end
   end
 

@@ -10,6 +10,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Phoenix.Component, only: [sigil_H: 2]
   import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
@@ -255,6 +256,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-tabs-ticket[aria-current=page]")
+    end
+
+    test "open questions at a stage with no tab: the Questions tab", %{conn: conn, scope: scope} do
+      work_item = waiting!(scope)
+
+      # The work item waits for answers at Build, which runs no workflow in the default
+      # process, so has no tab.
+      {1, _} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: @build]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-tabs-#{@build}")
+      assert has_element?(view, "#work-item-tabs-questions[aria-current=page]")
+      assert has_element?(view, "#work-item-questions-open-form")
     end
   end
 
@@ -763,16 +781,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     } do
       work_item = waiting!(scope, ["A question of Shape?"])
 
-      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      # The questions are on the Questions tab; Shape's tab counts them and links there.
-      refute html =~ "A question of Shape?"
-
-      assert has_element?(
-               view,
-               ~s|#work-item-tab-questions-line a[href="#{questions(scope, work_item.number)}"]|,
-               "Questions tab"
-             )
+      # Shape's tab has the question in its frame Open questions, as the Questions tab
+      # has it, and no line that counts the questions.
+      assert has_element?(view, "#work-item-tab-questions-open", "A question of Shape?")
+      refute has_element?(view, "#work-item-tab-questions-line")
 
       {:ok, questions_view, _html} = live(conn, questions(scope, work_item.number))
       assert has_element?(questions_view, "#work-item-questions-open", "A question of Shape?")
@@ -1634,12 +1648,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "the stage card's link to the questions" do
-    test "goes to the Questions tab from any tab", %{conn: conn, scope: scope} do
+    test "goes to the frame Open questions of the waiting stage's tab, from any tab", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = waiting!(scope, ["A question of Shape?"])
-      to = questions(scope, work_item.number)
+      to = stage(scope, work_item.number) <> "#work-item-tab-questions-open"
 
       for address <- [
             stage(scope, work_item.number, @explore),
+            stage(scope, work_item.number),
+            page(scope, work_item.number, "/questions"),
             page(scope, work_item.number, "/thread")
           ] do
         {:ok, view, _html} = live(conn, address)
@@ -3419,6 +3438,57 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert length(Regex.scan(~r/id="work-item-tab-gate"/, html)) == 1
       assert html =~ ~s(id="work-item-tab-output-gate")
+    end
+  end
+
+  describe "the order of a stage tab's frames" do
+    test "Build's and Verify's tabs: Open questions after the outputs, decisions and gate" do
+      decision = %{
+        id: "q1",
+        number: 1,
+        text: "Which store keeps the orders?",
+        context: nil,
+        options: [
+          %{title: "Postgres", explanation: "The orders stay with the shop's data."},
+          %{title: "Redis", explanation: "The other services use Redis."}
+        ],
+        state: :decided,
+        decision: %{option: "Redis", reason: "The other services use Redis.", run: 4, at: nil},
+        asked_run: 4,
+        run: 4,
+        stage_id: @build,
+        answer: nil,
+        history: [],
+        follows: []
+      }
+
+      for {name, type} <- [{"Build", "build-report"}, {"Verify", "verification"}] do
+        assigns = %{name: name, type: type, decision: decision}
+
+        html =
+          rendered_to_string(~H"""
+          <ApiaryWeb.WorkItemComponents.stage_tab
+            stage={%{name: @name, outputs: [@type]}}
+            work_item={%{number: 1, status: :confirm, run: nil}}
+            outputs={[%{type: @type, version: 1, open: true, read: nil}]}
+            questions={[@decision]}
+            waiting={false}
+            current
+            round_gate
+            can_change
+            can_send
+          >
+            <:open_questions>
+              <section id="work-item-tab-questions-open"></section>
+            </:open_questions>
+          </ApiaryWeb.WorkItemComponents.stage_tab>
+          """)
+
+        at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+        assert at.("work-item-tab-output-#{type}") < at.("work-item-tab-decisions"), name
+        assert at.("work-item-tab-decisions") < at.("work-item-tab-gate"), name
+        assert at.("work-item-tab-gate") < at.("work-item-tab-questions-open"), name
+      end
     end
   end
 

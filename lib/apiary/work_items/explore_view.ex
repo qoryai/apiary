@@ -39,8 +39,10 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, options:, state:, asked_run:, run:, run_workspace_id:, stage_id:,
-  #     answer:, history:, follows:, decision:}`: `run` the number of the run that wrote
+  #     text:, context:, criterion:, options:, state:, asked_run:, run:, run_workspace_id:,
+  #     stage_id:, answer:, history:, follows:, decision:}`: `criterion` the id of the
+  #     acceptance criterion the question is about, such as `ac-3`, nil for none; `run`
+  #     the number of the run that wrote
   #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
   #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
   #     questions (`shown_numbers/1`), `state` `:open`,
@@ -373,6 +375,7 @@ defmodule Apiary.WorkItems.ExploreView do
         number: numbers[id],
         text: question["question"],
         context: question["context"],
+        criterion: question["criterion"],
         options: options,
         state: question_state(question["state"]),
         asked_run: get_in(question, ["asked", "run"]),

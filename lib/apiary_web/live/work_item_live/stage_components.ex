@@ -537,7 +537,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   def started_no_run?(_page), do: false
 
-  # The questions are on the Questions tab, so the list of outputs leaves them out.
+  # The questions are in the Open questions frame of the stage's tab and on the Questions
+  # tab, so the list of outputs leaves them out.
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
     do: Enum.filter(outputs, &(&1.version_id && &1.type != "questions"))
 

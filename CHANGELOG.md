@@ -79,30 +79,51 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
   question that is not a decision. The tab label shows the number of open questions. The
-  frame **Open questions** comes first. Each question shows “Asked in Verify, Run 9”, with
-  the run linked where the reader may open it; “Asked in” names the run that reopened a
-  question, and that run's stage. A member who may answer picks an option or writes an
-  answer there. This tab is the only place where a member answers. The frame **Answered
-  questions** follows, in groups under the names of the stages in the process order, and
-  “Explore” where there is no stage card. A withdrawn question has the badge “Withdrawn”.
-  The form names the stage that waits. The caption reads “Run another round of Verify
-  starts Verify's next run. That run reads your answers and your comment, and updates
-  Verify's outputs.”, the field “Comment on Verify's outputs”, the button **Run another
-  round of Verify**, and its confirmation dialog “Run another round of Verify?”. At
-  Explore the caption ends “updates Explore's proposal.” and the field is “Comment on the
-  whole proposal”. While a question is open, the decisions of the stage that waits, which
-  a member may change, are in the frame **Open questions**. A work item that needs answers
-  opens on this tab. The tab of a stage, and Explore's tab, no longer have the questions
-  or the output **Questions**. Where agents of that stage asked questions, they show one
-  line: “The agents of this stage asked 3 questions. See them on the Questions tab.”, or
-  “The agents of this stage asked 1 question. See it on the Questions tab.”, which counts
-  only the questions of that stage. The **Decisions** frame and the gate stay on the
-  stage's tab. The runs fold, the gate card's list of outputs and the **About** list of
-  **Request changes** no longer list “questions v5”; the list of **Artifacts** still lists
-  the questions artifact. The stage card's “Answer the questions”, the step card's link,
-  “Answer question 4.” in the wait block, “Follows question 1” and “Asked as question 2”
-  go to this tab. “Follows question 1” and “Asked as question 2” are links only where the
-  tab shows that question, else plain text.
+  frame **Open questions** comes first. Each question shows “Asked in Verify, Run 9”,
+  with the run linked where the reader may open it; “Asked in” names the run that
+  reopened a question, and that run's stage. A member who may answer picks an option or
+  writes an answer there, or in the same frame on the tab of the stage that waits. The
+  frame **Answered questions** follows, in groups under the names of the stages in the
+  process order, and “Explore” where there is no stage card. A withdrawn question has the
+  badge “Withdrawn”. The form shows the stage that waits. The caption reads “Run another
+  round of Verify starts Verify's next run. That run reads your answers and your comment,
+  and updates Verify's outputs.”, the field “Comment on Verify's outputs”, the button
+  **Run another round of Verify**, and its confirmation dialog “Run another round of
+  Verify?”. At Explore the caption ends “updates Explore's proposal.” and the field is
+  “Comment on the whole proposal”. While a question is open, the decisions of the stage
+  that waits, which a member may change, are in the frame **Open questions**.
+- The tab of the stage that waits for answers, and Explore's tab at Explore, have the
+  frame **Open questions** of the Questions tab below the stage's outputs, its decisions
+  and its gate, with the same form. Both forms show one draft: an answer picked or
+  written on one tab shows on the other until the page loads again, and **Run another
+  round of Verify** sends it from either tab. The tab of another stage shows that stage's
+  open questions as text. A work item that needs answers opens on the tab of the stage
+  that waits, and the stage card's “Answer the questions” and the step card's link go to
+  that tab's frame **Open questions**. The tab of a stage lists the output **Questions**
+  again, in the process's output order. Where agents of a stage asked questions and none
+  is open, its tab shows one line: “The agents of this stage asked 3 questions. See them
+  on the Questions tab.”, or “The agents of this stage asked 1 question. See it on the
+  Questions tab.”, which counts only the questions of that stage. The runs fold, the gate
+  card's list of outputs and the **About** list of **Request changes** do not list
+  “questions v5”; the list of **Artifacts** lists the questions artifact. “Answer
+  question 4.” in the wait block and “Asked as question 2” go to the Questions tab.
+  “Follows question 1” goes to that question on the same tab, so in a stage tab's frame
+  **Open questions** to the question on that tab. “Follows question 1” and “Asked as
+  question 2” are links only where the tab shows that question, else plain text.
+- An option of a question about an acceptance criterion (its `criterion`, such as `ac-4`)
+  may have a `proposal`, the new wording of the criterion that the agent proposes, 1 to
+  2,000 characters. The questions format, as qory's harness contract v1 has it since qory
+  `006a194`, allows it only on a question with a `criterion`; for a `proposal` elsewhere,
+  the push fails with `422` `invalid_artifact`. The first option with a `proposal` shows
+  as “Change AC-4:”, which Qory Apiary builds from the question's `criterion`, not from
+  the option's title, with the proposal in a field the member may edit. An edit of the
+  field with no option picked picks that option. Other options, with a `proposal` or not,
+  have no field. An answer with another wording keeps the option, and its note starts
+  with “Change AC-4: ” and that wording. Where that note would pass 2,000 characters, the
+  field shows “Shorten the new wording to at most 1,885 characters, or shorten your
+  note.”, with the number that the note leaves, and the round does not start. Where that
+  option is picked with the field empty, the field shows “Write the new wording of AC-4,
+  or pick another option.”, and the round does not start.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The tab of a stage shows the result of the full test suite in one line under the build
@@ -230,9 +251,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a link that is not `https` shows no line.
 - The tab of a stage with a `verification` output, such as Verify, shows the run's
   verification as a table of the acceptance criteria with the columns Criterion, State
-  and Evidence and the states Met, Not met and Needs a person; the list “Not verified”,
-  each item with its reason under it; and the model families after the version, such as
-  “Version 1 · Model families: Build claude · Verify deepseek”, as the run wrote them.
+  and Evidence and the states Met and Not met, another state as the run wrote it; the
+  list “Not verified”, each item with its reason under it; and the model families after
+  the version, such as “Version 1 · Model families: Build claude · Verify deepseek”, as
+  the run wrote them.
   When a member accepted the stage's escalation as it is after the run wrote the
   verification, the frame starts with “Accepted as it is by dana”; the criteria keep the
   states the run wrote. A verification with no such table shows as its Markdown, after
@@ -1720,13 +1742,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the fix first: "set submit.type to a structured type of artifact_types: mockup is a
   standard type".
 - A run that runs a workflow with write access has `submit: {type, send}` in its run
-  documents, from its process version, where the version has one. A forge's adapter may
-  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
-  that contains the forge's program that opens the draft pull request. Such a run then
-  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
-  starts with `submit` alone where no adapter declares one. A start-up whose
-  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
-  400 `invalid_request`, and nothing is stored.
+  documents, from its process version, where the version has one.
 - A run that stores a version of its submission type, `submit.type` of its process
   version, adds a `watch` entry to the change feed of the adapter of the work item's
   target collection: the work item's public id and its page, `url`, as in a `work_item`
@@ -2921,12 +2937,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
-  the submit program that an adapter's latest start-up declares, with a check that it is
-  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
-  reads and writes. It changes no row: Apiary stores the module that each adapter
-  declares at its next start-up.
-  Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.

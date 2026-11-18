@@ -6979,6 +6979,11 @@ msgstr ""
 msgid "Change"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change %{criterion}:"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Change %{value_id} of %{name}"
@@ -13969,11 +13974,6 @@ msgstr ""
 msgid "Needs %{features}."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/verify_tab.ex
-#, elixir-autogen, elixir-format
-msgid "Needs a person"
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -20017,6 +20017,11 @@ msgstr ""
 msgid "Shorten the line in Say hi to your agent, then press Run the test. The line breaks a rule for the agent's input, such as its size limit."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Shorten the new wording to at most %{count} characters, or shorten your note."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the note to 4,000 characters or fewer."
@@ -25368,6 +25373,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Write the new wording of %{criterion}, or pick another option."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

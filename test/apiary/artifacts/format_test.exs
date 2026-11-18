@@ -346,6 +346,34 @@ defmodule Apiary.Artifacts.FormatTest do
       end
     end
 
+    test "an option's proposal is optional text, only on a question with a criterion",
+         context do
+      option = %{
+        "title" => "Change AC-3",
+        "explanation" => "Why.",
+        "proposal" => "AC-3 Demo: new."
+      }
+
+      assert {:ok, "application/json"} =
+               questions(context, [question(%{"criterion" => "ac-3", "options" => [option]})])
+
+      # The run reads what to fix: the question needs its criterion.
+      assert {:error,
+              {:schema, %{path: "#/questions/0", error: "property 'criterion' is required"}}} =
+               questions(context, [question(%{"options" => [option]})])
+
+      for value <- [3, nil, ["AC-3"]] do
+        assert {:error, {:schema, %{path: "#/questions/0/options/0/proposal"}}} =
+                 questions(context, [
+                   question(%{
+                     "criterion" => "ac-3",
+                     "options" => [%{option | "proposal" => value}]
+                   })
+                 ]),
+               inspect(value)
+      end
+    end
+
     test "a question with each of its 11 members is taken", context do
       option = %{"title" => "Yes", "explanation" => "Why."}
       answer = %{"option" => "Yes", "by" => %{"name" => "Ann"}, "at" => @at}

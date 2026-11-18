@@ -63,7 +63,12 @@ defmodule Apiary.WorkItems.Proposal do
   @refused ~r/[\x{0}-\x{8}\x{B}\x{C}\x{E}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
 
   @typedoc "An option a run offers for a question."
-  @type option :: %{title: String.t(), explanation: String.t(), recommended: boolean}
+  @type option :: %{
+          optional(:proposal) => String.t(),
+          title: String.t(),
+          explanation: String.t(),
+          recommended: boolean
+        }
 
   @typedoc "A question a run asks, as the work item pages draw it."
   @type question :: %{question: String.t(), options: [option]}
@@ -85,6 +90,13 @@ defmodule Apiary.WorkItems.Proposal do
   @spec max_answer() :: pos_integer
   def max_answer, do: @max_short
 
+  # text?/1 is whether `text` is valid UTF-8 with no character that an answer refuses
+  # (questions.schema.json `$defs/text`).
+  @doc false
+  @spec text?(String.t()) :: boolean
+  def text?(text) when is_binary(text),
+    do: String.valid?(text) and not Regex.match?(@refused, text)
+
   # max_questions/0 is the most questions a form answers at once.
   @doc false
   @spec max_questions() :: pos_integer
@@ -92,18 +104,26 @@ defmodule Apiary.WorkItems.Proposal do
 
   ## The questions
 
-  # question/1 is one question of a questions document as the pages draw it.
+  # question/1 is one question of a questions document as the pages draw it. An option
+  # with a `proposal`, the criterion's new wording that the run proposes, has it as
+  # `:proposal`; an option with none has no such key.
   @doc false
   @spec question(map | String.t()) :: question
   def question(%{"question" => text} = question) when is_binary(text) do
     options =
       for %{"title" => title, "explanation" => explanation} = option <-
-            List.wrap(question["options"]),
-          do: %{
-            title: title,
-            explanation: explanation,
-            recommended: option["recommended"] == true
-          }
+            List.wrap(question["options"]) do
+        drawn = %{
+          title: title,
+          explanation: explanation,
+          recommended: option["recommended"] == true
+        }
+
+        case option["proposal"] do
+          proposal when is_binary(proposal) -> Map.put(drawn, :proposal, proposal)
+          _none -> drawn
+        end
+      end
 
     %{question: text, options: options}
   end

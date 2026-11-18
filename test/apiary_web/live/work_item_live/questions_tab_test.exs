@@ -160,6 +160,15 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
   end
 
+  # The DOM ids of the elements the selector matches, in the page's order.
+  defp ids(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(selector)
+    |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+  end
+
   # The line "Asked in <stage>, Run N" under the question `number`.
   defp asked(view, number) do
     view
@@ -693,16 +702,163 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
     end
   end
 
-  describe "the line on a stage's tab and on Explore's" do
-    test "one question: the singular line, linked to the Questions tab", %{
+  describe "the Open questions frame on a stage's tab and on Explore's" do
+    test "the waiting stage's tab: its open questions with the form, below the outputs", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting!(scope)
+      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-questions-open-h", "Open questions")
+      assert has_element?(view, "#work-item-tab-questions-open-form")
+      assert has_element?(view, "#work-item-tab-questions-question-1", "Which basket?")
+      assert has_element?(view, "#work-item-tab-questions-question-2", "Which sale?")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-questions-open-go",
+               "Run another round of Shape"
+             )
+
+      refute has_element?(view, "#work-item-tab-questions-line")
+
+      # The outputs, then the questions, then the runs fold.
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      assert at.("work-item-tab-output-spec") < at.("work-item-tab-questions-open")
+      assert at.("work-item-tab-questions-open") < at.("work-item-record")
+    end
+
+    test "a run's decision sits in the frame's form while a question is open", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_with_decision!(scope)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      # While a question is open, the run's decision is in the frame's form, as on the
+      # Questions tab, and the tab has no Decisions frame.
+      assert has_element?(view, "#work-item-tab-questions-open-decisions")
+      refute has_element?(view, "#work-item-tab-decisions")
+    end
+
+    test "every question's last answer reads Give your own option, on both tabs", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        waiting!(scope, [
+          %{"question" => "Which store keeps the baskets?", "options" => @options},
+          %{"question" => "Which sale?", "options" => @options}
+        ])
+
+      for {address, prefix} <- [
+            {stage(scope, work_item.number), "work-item-tab-questions"},
+            {questions(scope, work_item.number), "work-item-questions"}
+          ] do
+        {:ok, view, _html} = live(conn, address)
+
+        for n <- [1, 2] do
+          assert texts(view, "##{prefix}-question-#{n} .q-xp-opt-t") ==
+                   ["Redis", "Postgres", "Give your own option"]
+        end
+      end
+    end
+
+    test "one draft: an answer picked on the stage's tab shows on the Questions tab, and back",
+         %{conn: conn, scope: scope} do
+      work_item =
+        waiting!(scope, [%{"question" => "Which store?", "options" => @options}, "Which sale?"])
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      view
+      |> element("#work-item-tab-questions-open-form")
+      |> render_change(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"option" => "2", "note" => "The storefront's."}}
+      })
+
+      render_patch(view, questions(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-questions-open-answer-1-2[checked]")
+      assert has_element?(view, "#work-item-questions-open-answer-1", "The storefront's.")
+
+      view
+      |> element(@form)
+      |> render_change(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{
+          "q1" => %{"option" => "2", "note" => "The storefront's."},
+          "q2" => %{"note" => "The spring sale."}
+        }
+      })
+
+      render_patch(view, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-questions-open-answer-1-2[checked]")
+      assert has_element?(view, "#work-item-tab-questions-open-answer-1", "The storefront's.")
+      assert has_element?(view, "#work-item-tab-questions-open-answer-2", "The spring sale.")
+    end
+
+    test "a round sent from the stage's tab stores the answer and queues the next run", %{
       conn: conn,
       scope: scope
     } do
       work_item = waiting!(scope, ["Which basket?"])
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      before = attempt(work_item)
+
+      view
+      |> element("#work-item-tab-questions-open-form")
+      |> render_submit(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"note" => "The cart."}}
+      })
+
+      assert has_element?(view, "#spend-dialog-title", "Run another round of Shape?")
+      assert has_element?(view, "#spend-dialog-go", "Run another round of Shape")
+
+      assert has_element?(
+               view,
+               ~s|#spend-dialog[data-return="work-item-tab-questions-open-go"]|
+             )
+
+      confirm_spend(view)
+
+      assert %DispatchRun{state: :waiting, stage_id: @shape, attempt: attempt} =
+               newest_run(work_item)
+
+      assert attempt == before + 1
+
+      assert %{"state" => "answered", "answer" => %{"option" => nil, "note" => "The cart."}} =
+               Enum.find(question_document(reload(work_item))["questions"], &(&1["id"] == "q1"))
+
+      refute has_element?(view, "#work-item-tab-questions-open-form")
+    end
+
+    test "Answer the questions opens the stage's tab at the frame", %{conn: conn, scope: scope} do
+      work_item = waiting!(scope)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/ticket"))
+
+      assert has_element?(
+               view,
+               ~s|a[href="#{stage(scope, work_item.number)}#work-item-tab-questions-open"]|,
+               "Answer the questions"
+             )
+    end
+
+    test "a stage whose questions are all answered keeps the line to the Questions tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = answered_at_gate!(scope)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-tab-questions-open")
 
       assert sentence(view, "#work-item-tab-questions-line") ==
-               "The agents of this stage asked 1 question. See it on the Questions tab."
+               "The agents of this stage asked 2 questions. See them on the Questions tab."
 
       assert has_element?(
                view,
@@ -711,31 +867,10 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
              )
     end
 
-    test "the sentence ends with the link and a full stop, with no space before it", %{
+    test "a stage's tab counts only the answered questions of that stage", %{
       conn: conn,
       scope: scope
     } do
-      work_item = waiting!(scope, ["Which basket?"])
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
-
-      assert line(view, "#work-item-tab-questions-line") ==
-               "The agents of this stage asked 1 question. See it on the Questions tab."
-    end
-
-    test "three questions: the plural line", %{conn: conn, scope: scope} do
-      work_item = waiting!(scope, ["Which basket?", "Which sale?", "Which store?"])
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
-
-      assert sentence(view, "#work-item-tab-questions-line") ==
-               "The agents of this stage asked 3 questions. See them on the Questions tab."
-
-      assert has_element?(
-               view,
-               ~s|#work-item-tab-questions-line a[href="#{questions(scope, work_item.number)}"]|
-             )
-    end
-
-    test "a stage's tab counts only the questions of that stage", %{conn: conn, scope: scope} do
       work_item = asked_at_two_stages!(scope)
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
@@ -745,7 +880,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       assert sentence(view, "#work-item-explore-questions-line") =~ "asked 1 question. See it"
     end
 
-    test "a move back to Explore leaves Shape's open questions on Shape's tab", %{
+    test "a move back to Explore: Shape's tab shows Shape's open questions as text", %{
       conn: conn,
       scope: scope
     } do
@@ -754,73 +889,86 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       work_item = reload(work_item)
       assert work_item.stage_id == @explore
 
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
-      refute has_element?(view, "#work-item-explore-questions-line")
-
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
-      assert sentence(view, "#work-item-tab-questions-line") =~ "asked 2 questions. See them"
-    end
-
-    test "a stage with no question has no line", %{conn: conn, scope: scope} do
-      work_item = at_shape!(scope)
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
-
+      assert has_element?(view, "#work-item-tab-questions-question-1", "Which basket?")
+      assert has_element?(view, "#work-item-tab-questions-question-2", "Which sale?")
+      refute has_element?(view, "#work-item-tab-questions-open-form")
       refute has_element?(view, "#work-item-tab-questions-line")
     end
 
-    test "Explore's tab at Explore: the line, with the link", %{conn: conn, scope: scope} do
-      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
-
-      assert sentence(view, "#work-item-explore-questions-line") ==
-               "The agents of this stage asked 1 question. See it on the Questions tab."
-
-      assert has_element?(
-               view,
-               ~s|#work-item-explore-questions-line a[href="#{questions(scope, work_item.number)}"]|
-             )
-    end
-
-    test "Explore's tab with no stage card: the line, singular and plural", %{
+    test "a stage with no question has neither the frame nor the line", %{
       conn: conn,
       scope: scope
     } do
-      one = asked_first!(scope)
-      {:ok, view, _html} = live(conn, page(scope, one.number, "/explore"))
+      work_item = at_shape!(scope)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert sentence(view, "#work-item-explore-questions-line") ==
-               "The agents of this stage asked 1 question. See it on the Questions tab."
+      refute has_element?(view, "#work-item-tab-questions-open")
+      refute has_element?(view, "#work-item-tab-questions-line")
+    end
+
+    test "Explore's tab at Explore: the frame with the form", %{conn: conn, scope: scope} do
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
+
+      assert has_element?(view, "#work-item-explore-questions-open-form")
+      assert has_element?(view, "#work-item-explore-questions-question-1", "Which basket?")
 
       assert has_element?(
                view,
-               ~s|#work-item-explore-questions-line a[href="#{questions(scope, one.number)}"]|,
-               "Questions tab"
+               "#work-item-explore-questions-open-go",
+               "Run another round of Explore"
              )
 
-      two = asked_after_proposal!(scope)
-      {:ok, view, _html} = live(conn, page(scope, two.number, "/explore"))
-
-      assert sentence(view, "#work-item-explore-questions-line") ==
-               "The agents of this stage asked 2 questions. See them on the Questions tab."
+      refute has_element?(view, "#work-item-explore-questions-line")
     end
 
-    test "the stage's tab and Explore's tab draw no questions frame", %{conn: conn, scope: scope} do
-      work_item = waiting!(scope)
+    test "Explore's tab with no stage card: the frame with the form", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = asked_after_proposal!(scope)
+      {:ok, view, html} = live(conn, page(scope, work_item.number, "/explore"))
 
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
-      refute has_element?(view, "#work-item-tab-questions")
-      refute has_element?(view, "#work-item-tab-questions-form")
-      refute has_element?(view, "#work-item-tab-questions-go")
+      assert has_element?(view, "#work-item-explore-questions-open-form")
+      assert has_element?(view, "#work-item-explore-questions-open", "Which currency?")
+      refute has_element?(view, "#work-item-explore-questions-line")
 
-      none = asked_first!(scope)
-      {:ok, view, _html} = live(conn, page(scope, none.number, "/explore"))
-      refute has_element?(view, "#work-item-explore-questions")
-      refute has_element?(view, "#work-item-explore-questions-form")
+      # The proposal, then the questions.
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      assert at.("work-item-explore-proposal") < at.("work-item-explore-questions-open")
+    end
+  end
+
+  describe "the order of the Questions tab" do
+    test "the unanswered questions come first, then the answered ones", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Explore asked q1, which a member answered; Shape's first run asks q2.
+      work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which currency?"]))
+      work_item = scope |> answer_all!(work_item) |> end_run!(understood_result())
+      {:ok, _confirmed} = WorkItems.confirm(scope, work_item, attempt(work_item))
+      work_item = reload(work_item)
+
+      work_item
+      |> end_run!(fn run, registered ->
+        push!(run, work_item, "spec", "## The spec text")
+        push_result!(run, registered, questions_result(["Which basket?"]))
+      end)
+
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+
+      assert ids(view, "#work-item-questions > section") ==
+               ["work-item-questions-open", "work-item-questions-answered"]
     end
   end
 
   describe "the output frame and the version of the questions" do
-    test "a stage's tab has no output frame Questions", %{conn: conn, scope: scope} do
+    test "a stage's tab lists the output Questions again, after the others", %{
+      conn: conn,
+      scope: scope
+    } do
       process!(scope, [
         %{"type" => "spec", "required" => true},
         %{"type" => "questions", "required" => false}
@@ -831,8 +979,10 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert has_element?(view, "#work-item-tab-output-spec")
-      refute has_element?(view, "#work-item-tab-output-questions")
-      refute has_element?(view, "#work-item-tab-output-questions-fold")
+      assert has_element?(view, "#work-item-tab-output-questions-h", "Questions")
+
+      assert ids(view, "[id^=work-item-tab-output-][id$=-h]") ==
+               ["work-item-tab-output-spec-h", "work-item-tab-output-questions-h"]
     end
 
     test "the runs fold line has no questions vN, on the stage tab, Ticket, Thread and Explore's tab",
@@ -910,12 +1060,15 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
   end
 
   describe "the tab a work item opens on" do
-    test "the Questions tab while Shape waits for answers", %{conn: conn, scope: scope} do
+    test "Shape's tab, with its questions frame, while Shape waits for answers", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = waiting!(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-tabs-questions[aria-current=page]")
-      assert has_element?(view, @form)
+      assert has_element?(view, "#work-item-tabs-#{@shape}[aria-current=page]")
+      assert has_element?(view, "#work-item-tab-questions-open-form")
     end
 
     test "Shape's tab once the questions are answered and Shape is at its gate", %{
@@ -936,14 +1089,15 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       assert has_element?(view, "#work-item-tabs-#{@shape}[aria-current=page]")
     end
 
-    test "Explore's stage waiting for answers opens on the Questions tab", %{
+    test "Explore's stage waiting for answers opens on Explore's tab", %{
       conn: conn,
       scope: scope
     } do
       work_item = scope |> taken_in_fixture() |> end_run!(questions_result(["Which basket?"]))
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-tabs-questions[aria-current=page]")
+      assert has_element?(view, "#work-item-tabs-explore[aria-current=page]")
+      assert has_element?(view, "#work-item-explore-questions-open-form")
     end
 
     test "a work item whose run is closed over its questions opens on the usual tab", %{
@@ -959,15 +1113,15 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       refute has_element?(view, "#work-item-tabs-questions[aria-current=page]")
     end
 
-    test "with no stage card: the Questions tab while the work item needs answers", %{
+    test "with no stage card: Explore's tab while the work item needs answers", %{
       conn: conn,
       scope: scope
     } do
       work_item = asked_after_proposal!(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-tabs-questions[aria-current=page]")
-      assert has_element?(view, @form)
+      assert has_element?(view, "#work-item-tabs-explore[aria-current=page]")
+      assert has_element?(view, "#work-item-explore-questions-open-form")
     end
 
     test "with no stage card: the usual tab once the questions are answered", %{
@@ -1450,14 +1604,16 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       assert {here, there} == {1, 0}
     end
 
-    test "Explore's decision shows once after a move back to Explore, with Shape's question open",
+    test "Explore's decision shows once on each tab after a move back to Explore, with Shape's question open",
          %{conn: conn, scope: scope} do
       work_item = decided_then_asked!(scope)
       {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
       assert reload(work_item).stage_id == @explore
 
+      # Explore is current and a question is open: the decision is in the frame Open
+      # questions, which Explore's tab and the Questions tab both draw, once each.
       {here, there} = decision_places(conn, scope, work_item, @explore, @explore_decision)
-      assert {here, there} == {0, 1}
+      assert {here, there} == {1, 1}
     end
 
     test "Follows question is text where the tab draws no such question", %{
