@@ -126,7 +126,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
              errors(
                ModelChoices.put_choice(scope, :workspace, %{
                  runtime: release.name,
-                 tiers: %{"fast" => "claude-haiku-5-5"}
+                 tiers: %{"balanced" => "claude-haiku-5-5"}
                })
              )
   end

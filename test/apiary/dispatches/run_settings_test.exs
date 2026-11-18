@@ -181,13 +181,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         effort: "high"
       })
 
-      choose!(scope, :workspace, %{tiers: %{"fast" => "claude-haiku-5-5"}})
+      choose!(scope, :workspace, %{tiers: %{"balanced" => "claude-haiku-5-5"}})
 
       # Levels 2 and 3 belong to a target: a run without one reads neither.
       choose!(scope, target, %{
         provider: ctx.provider.public_id,
         model: "claude-sonnet-5-5",
-        tiers: %{"fast" => "claude-sonnet-5-5"}
+        tiers: %{"balanced" => "claude-sonnet-5-5"}
       })
 
       {{:ok, handed}, _queued, _dispatch} =
@@ -200,7 +200,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "model" => "claude-opus-5-5",
                "effort" => "high",
                "provider_models" => models(@efforts),
-               "tiers" => %{"fast" => "claude-haiku-5-5"}
+               "tiers" => %{"balanced" => "claude-haiku-5-5"}
              }
 
       ordered = handed.run_settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
@@ -285,7 +285,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         model: "acme-large",
         tiers: %{
           "light" => "claude-haiku-5-5",
-          "fast" => "acme-small",
+          "balanced" => "acme-small",
           "thinking" => "acme-large"
         }
       })
@@ -299,7 +299,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                  models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
                "tiers" => %{
                  "light" => "claude-haiku-5-5",
-                 "fast" => "acme-small",
+                 "balanced" => "acme-small",
                  "thinking" => "acme-large"
                }
              }
@@ -972,7 +972,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           effort: nil,
           tiers: %{
             "light" => %{"model" => "claude-haiku-5-5"},
-            "fast" => %{"model" => "acme-small"},
+            "balanced" => %{"model" => "acme-small"},
             "thinking" => %{"model" => "acme-large"}
           }
       }

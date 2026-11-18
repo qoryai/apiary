@@ -39,14 +39,14 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
         keys: [%{value_id: "main", value: "sk-ant-budget-0123456789"}]
       })
 
-    [model, light, fast, thinking] =
+    [model, light, balanced, thinking] =
       for n <- 1..4, do: String.pad_trailing("team-#{n}-", 200, "x")
 
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         model: model,
-        tiers: %{"light" => light, "fast" => fast, "thinking" => thinking}
+        tiers: %{"light" => light, "balanced" => balanced, "thinking" => thinking}
       })
 
     provider
