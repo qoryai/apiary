@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/next-session-request.schema.json",
+  "title": "Next-session request",
+  "description": "The body of the next-session request: the request that qory sends to the control plane after a session of the run ended, to ask for the next session. It is an object of session, state and reason, with no verdict. The control plane reads the newest verdict that the run stored after the previous step, and the rules by which it picks the next session from that verdict are the control plane's, not this schema's. What qory posts for a red full suite after the session comes before this request, so the newest verdict is read after that post. State and reason follow the rules of dev.qory.session.exited that do not depend on its exit_code: a cancelled session has a reason; the reasons timeout and interrupted are for a cancelled session only; and the reason gateway_lost is for a failed session only. qory sends the request after each session that did not pause, and only for a run whose run documents have shared_run true. The answer is next-session-answer.schema.json. qory sends the request through Forager's link, and the gateway forwards it to the control plane. A container cannot send it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session",
+    "state",
+    "reason"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "cancelled"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "timeout",
+              "interrupted"
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "const": "cancelled"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": {
+            "const": "gateway_lost"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "session": {
+      "description": "Forager's number of the session that ended, from 1: the session of its dev.qory.session.exited, https://qory.dev/contracts/forager/v1/events/session.exited.schema.json.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "state": {
+      "description": "How the session ended, the state of its dev.qory.session.exited: succeeded, failed or cancelled. A session that paused has no request: qory closes the run as paused.",
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "reason": {
+      "description": "Why the session ended, the reason of its dev.qory.session.exited, or null when that event has none.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "https://qory.dev/contracts/forager/v1/events/session.exited.schema.json#/properties/reason"
+        }
+      ]
+    }
+  }
+}

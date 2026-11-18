@@ -211,6 +211,13 @@ defmodule Apiary.Runs.Run do
     field :provider_chain, :string
     field :provider_api, :map, redact: true
 
+    # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
+    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/2`): by the entry's
+    # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
+    # `"time_limit_minutes"` and `"full_suite"`. Written by the claim; nil for every
+    # other run. Not folded: a rebuild keeps it.
+    field :session_settings, :map
+
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
     # `time` its body was built at, on the starter's clock; when this server took it; and

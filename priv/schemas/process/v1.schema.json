@@ -56,6 +56,10 @@
           "items": {"$ref": "#/$defs/output"}
         },
         "gate": {"$ref": "#/$defs/gate"},
+        "shared_run": {
+          "description": "Optional, default false. With true, the workflow entries of the stage, those in a loop's body included, run one after the other as sessions of one run, on one machine. Every entry of such a stage has the same access level and machine type: a save fails when two entries differ.",
+          "type": "boolean"
+        },
         "when": {
           "description": "The stage runs only when its condition is met; otherwise the work item passes over it. Not on the first stage: no earlier stage exists to test.",
           "$ref": "#/$defs/condition"

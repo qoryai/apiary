@@ -612,6 +612,35 @@ defmodule ApiaryWeb.StagesLive.Words do
     )
   end
 
+  # A workflow entry of a stage with `shared_run: true` whose access level or machine type
+  # differs from the stage's first entry (`Apiary.Processes.validate/2`); where the
+  # harness's level for a workflow lowers its entry's, that workflow and its level.
+  def refusal(%{error: :shared_run_differs, path: path, detail: kind}, doc) do
+    {stage, _field} = place(path, doc)
+
+    case kind do
+      {:access, workflow, level} ->
+        gettext(
+          "Give every workflow in %{stage} the same access. %{workflow} runs with %{level} access, because its harness sets %{level}.",
+          stage: stage,
+          workflow: workflow,
+          level: level
+        )
+
+      :access ->
+        gettext(
+          "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine.",
+          stage: stage
+        )
+
+      :machine ->
+        gettext(
+          "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine.",
+          stage: stage
+        )
+    end
+  end
+
   def refusal(%{error: error, path: path} = refused, doc) do
     {stage, field} = place(path, doc)
     error_detail = refused[:detail]

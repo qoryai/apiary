@@ -273,6 +273,7 @@ defmodule ApiaryWeb.Routes do
         post "/artifacts", Controller, :push
         post "/verdict", Controller, :verdict
         post "/pushed-commits", Controller, :pushed_commits
+        post "/next-session", Controller, :next_session
       end
 
       scope "/v1", ApiaryWeb.Contract do

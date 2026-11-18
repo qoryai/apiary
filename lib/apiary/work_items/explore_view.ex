@@ -758,6 +758,9 @@ defmodule Apiary.WorkItems.ExploreView do
       outcome: step.outcome,
       end_cause: step.dispatch_run.end_cause,
       end_detail: step.dispatch_run.end_detail,
+      # The session after which a run of a stage with `shared_run: true` ended, when the
+      # input of its next session could not be formed (`Apiary.Stages.ended_after_session/1`).
+      ended_after_session: ended_after_session(step.dispatch_run),
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
@@ -800,6 +803,12 @@ defmodule Apiary.WorkItems.ExploreView do
       [] -> view
     end
   end
+
+  defp ended_after_session(%{end_cause: cause} = dispatch_run)
+       when cause in [:ticket_gone, :inputs_invalid],
+       do: Apiary.Stages.ended_after_session(dispatch_run)
+
+  defp ended_after_session(_dispatch_run), do: nil
 
   defp confirmed_result(
          %{take_in: take_in, attempt: attempt},

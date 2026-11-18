@@ -11069,6 +11069,26 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same access. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in the stage the same access on the Stages page, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Give the loop 1 to 10 rounds."
 msgstr ""
 
@@ -22127,6 +22147,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run did not start."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run ended after session %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

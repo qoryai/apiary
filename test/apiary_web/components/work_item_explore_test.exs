@@ -2901,6 +2901,36 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end)
     end
 
+    test "a run of a shared stage that ended after a session says after which, with the fix" do
+      for {cause, fix} <- [
+            {:ticket_gone,
+             "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
+            {:inputs_invalid,
+             "Shorten or correct the ticket, then run Explore again. A value in the ticket or the work item breaks a rule for the agent's input, such as the size limit."}
+          ],
+          {session, heading} <- [
+            {2, "The run ended after session 2."},
+            {nil, "The run did not start."}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: cause,
+            ended_after_session: session,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert texts(html, "#work-item-explore-none p") == [heading, fix], "#{cause} #{session}"
+      end
+    end
+
     test "a read-only run's target is a repository only in a software workspace" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@example", fn ->
         assert read_needs_body("read_needs_no_nested_docker", false) ==

@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Repo, Stacks, WorkItems}
+  alias Apiary.{Dispatches, Repo, Stacks, TimeLimits, WorkItems}
   alias Apiary.Harnesses.{Builtin, Reader}
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
@@ -503,6 +503,233 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert Map.take(documents, @harness) == %{}
       refute Map.has_key?(documents, "submit")
       refute Map.has_key?(documents, "submit_module")
+    end
+  end
+
+  describe "a run of a stage" do
+    @describetag needs: [:factory, :workflow_model]
+
+    @build "st_6ns22c4pav"
+
+    # The workspace's process: one stage, Build, with `sequence` and `extra`, whose first
+    # workflow, plan-the-build, has a stack row. The runs queued after it are of this
+    # version.
+    defp build!(ctx, sequence, extra) do
+      {:ok, _stack} =
+        Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.scope.workspace, "plan-the-build"},
+          @document
+        )
+
+      stage =
+        Map.merge(
+          %{
+            "id" => @build,
+            "name" => "Build",
+            "inputs" => [],
+            "sequence" => sequence,
+            "outputs" => [],
+            "gate" => %{"kind" => "person", "approvers" => "members"}
+          },
+          extra
+        )
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+    end
+
+    # The run of the queue of `work_item`, its run record and its sessions.
+    defp claimed(work_item) do
+      run = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      sessions =
+        Repo.all(
+          from s in Apiary.Stages.Session,
+            where: s.dispatch_run_id == ^run.id,
+            order_by: s.sequence
+        )
+
+      {Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id), sessions}
+    end
+
+    # The members of the documents from `run_settings` to `workflow`.
+    defp around_settings(json) do
+      json
+      |> members()
+      |> Enum.drop_while(&(&1 != "run_settings"))
+      |> Enum.take_while(&(&1 != "workflow"))
+    end
+
+    test "with shared_run, of a write run, has the first session's limit, shared_run and full_suite, and the claim keeps each entry's settings and the first session",
+         ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "first_attempt" => true},
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+            }
+          }
+        ],
+        %{"shared_run" => true}
+      )
+
+      {:ok, _limit} = TimeLimits.put_limit(ctx.scope, :workspace, "plan-the-build", 45)
+      {:ok, _limit} = TimeLimits.put_limit(ctx.scope, :workspace, "review-changes", 90)
+      work_item = walked!(ctx, :write)
+      json = claim(ctx) |> stored()
+      documents = Jason.decode!(json)
+      valid!(documents)
+
+      assert %{
+               "workflow" => "plan-the-build",
+               "time_limit_minutes" => 45,
+               "shared_run" => true,
+               "full_suite" => true
+             } = documents
+
+      refute Map.has_key?(documents["run_settings"], "time_limit_minutes")
+      assert around_settings(json) == ~w(run_settings time_limit_minutes shared_run full_suite)
+
+      {run, sessions} = claimed(work_item)
+
+      assert run.session_settings == %{
+               "0" => %{
+                 "workflow" => "plan-the-build",
+                 "time_limit_minutes" => 45,
+                 "full_suite" => true
+               },
+               "1.0" => %{
+                 "workflow" => "implement-changes",
+                 "time_limit_minutes" => 180,
+                 "full_suite" => true
+               },
+               "1.1" => %{
+                 "workflow" => "review-changes",
+                 "time_limit_minutes" => 90,
+                 "full_suite" => true
+               }
+             }
+
+      assert [%{sequence: 1, workflow: "plan-the-build", stage_entry: 0, forager_session: nil}] =
+               sessions
+    end
+
+    test "without shared_run has neither member where both are false, and the claim keeps nothing for sessions",
+         ctx do
+      build!(ctx, [%{"workflow" => "plan-the-build"}], %{})
+      work_item = walked!(ctx, :read)
+      json = claim(ctx) |> stored()
+      documents = Jason.decode!(json)
+      valid!(documents)
+
+      assert %{"workflow" => "plan-the-build", "time_limit_minutes" => 180} = documents
+      refute Map.has_key?(documents, "shared_run")
+      refute Map.has_key?(documents, "full_suite")
+      assert around_settings(json) == ~w(run_settings time_limit_minutes)
+
+      assert {%{session_settings: nil}, []} = claimed(work_item)
+    end
+
+    test "without shared_run has full_suite for an entry with first_attempt of a write run",
+         ctx do
+      build!(ctx, [%{"workflow" => "plan-the-build", "first_attempt" => true}], %{})
+      walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "full_suite" => true} = documents
+      refute Map.has_key?(documents, "shared_run")
+    end
+
+    test "with shared_run ends before it starts where the harness changed a workflow's access after the save",
+         ctx do
+      build!(
+        ctx,
+        [%{"workflow" => "plan-the-build"}, %{"workflow" => "implement-changes"}],
+        %{"shared_run" => true}
+      )
+
+      # An update from the harness sets implement-changes to read after the save.
+      :ok =
+        Apiary.Processes.record_declared(ctx.scope.workspace, %{
+          "plan-the-build" => :write,
+          "implement-changes" => :read
+        })
+
+      work_item = walked!(ctx, :write)
+      :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+
+      # The claim ends the run and finds no other: no run to hand over.
+      claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
+      assert claim.status == 204
+
+      assert %Apiary.Dispatches.DispatchRun{
+               state: :ended,
+               end_cause: :shared_access_differs,
+               result_outcome: :error
+             } = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      assert {_run, []} = claimed(work_item)
+      work_item = Repo.get!(WorkItems.WorkItem, work_item.id)
+      assert work_item.stage_state == :escalated
+
+      assert [%{points: [%{"text" => text}]}] =
+               Repo.all(
+                 from e in Apiary.Stages.Escalation, where: e.work_item_id == ^work_item.id
+               )
+
+      assert text ==
+               "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with read access, because its harness sets read."
+    end
+
+    test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do
+      workflow!(ctx)
+
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [
+          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+        ],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+      work_item = walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "workflow" => "explore-a-ticket"} = documents
+      refute Map.has_key?(documents, "full_suite")
+
+      assert %Apiary.Dispatches.DispatchRun{explore: true} =
+               Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+    end
+
+    test "of a run that reads or does not push has no full_suite, nor does any session", ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "first_attempt" => true},
+          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+        ],
+        %{"shared_run" => true}
+      )
+
+      work_item = walked!(ctx, :write_no_push)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write-no-push", "shared_run" => true} = documents
+      refute Map.has_key?(documents, "full_suite")
+      {run, _sessions} = claimed(work_item)
+
+      assert %{"0" => %{"full_suite" => false}, "1.0" => %{"full_suite" => false}} =
+               run.session_settings
     end
   end
 
