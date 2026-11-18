@@ -281,7 +281,7 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.all?(shown(), &(String.trim((tiers[&1] || %{})["model"] || "") != ""))
 
   @doc """
-  What a save of `entry`, a provider of the organisation's entry (not a catalogue
+  What a save of `entry`, the entry of a provider of the organisation (not a catalogue
   provider's entry, `entry/3`), and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
   `provider` and `tiers`, each tier with a model, its effort where it has one;
   and `model` and `effort`, those of the `thinking` tier, as the run's model and effort
