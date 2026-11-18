@@ -704,7 +704,7 @@ defmodule Apiary.ModelKeys.Login do
 
   `expires_before:` (a time) makes a refresh due also when the access token expires before
   it: the background refresh of a key a run's claim found expiring before the end of the
-  run's time limit (`Apiary.ModelKeys.LoginRefreshJob`).
+  run's time limit (the job `LoginRefreshJob`).
 
   `recover: true` is a renewal after the model provider returned 401 to the stored token
   (`unauthorized_recovery`). The token is then not served as it is, even when it is far

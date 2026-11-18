@@ -32,7 +32,7 @@ defmodule Apiary.ModelKeys do
   state `new_key_needed`, `reject/3`). Such a key stays so until it gets a new value, which
   also ends a rejection when it equals the old value. A sign-in whose access token expires
   before the run's time limit ends is skipped too, while a refresh in the background
-  (`Apiary.ModelKeys.LoginRefreshJob`) makes it usable. Nothing here calls a provider.
+  (the job `LoginRefreshJob`) makes it usable. Nothing here calls a provider.
 
   **A run's keys** (`run_keys/1`): the model keys of a run, each with the name of its
   credential in the run's run configuration and the time the run's value of it was set.
@@ -514,7 +514,7 @@ defmodule Apiary.ModelKeys do
   or its provider rejected its value and the key's value is the one that was rejected
   (`Apiary.ModelKeys.Rejection`). A sign-in that expires before the run's time limit ends
   is not in this condition: the time limit is the claim's to read
-  (`Apiary.Dispatches.RunSettings`). A provider that is gone, or has no keys, is not
+  (the claim's run settings). A provider that is gone, or has no keys, is not
   cooling, so the claim takes the run and ends it as it would without a cooldown. The
   condition reads every key of every provider of the run.
 
@@ -676,7 +676,7 @@ defmodule Apiary.ModelKeys do
     1. `{:refreshing, provider, value_id}`: a sign-in that a refresh in the background
        makes usable, one that runs, one that is retried after a failure, or, `{:restart,
        provider, value_id}`, one whose refresh starts after this node starts again, as
-       this node is stopping (`Apiary.ModelKeys.Login.stopping?/0`);
+       this node is stopping (the check of `Login`'s `stopping?/0`);
     2. `{:cooldown, provider, until}`: the key that leaves its cooldown first;
     3. `{:sign_in, provider, value_id}`: a sign-in that needs a new one, and
        `{:new_key, provider, value_id}`, a key whose provider rejected its value; each
