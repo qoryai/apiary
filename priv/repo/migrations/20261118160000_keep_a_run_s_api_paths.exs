@@ -5,16 +5,16 @@ defmodule Apiary.Repo.Migrations.KeepARunSApiPaths do
   # `runs.provider_api` may have `paths`, 1 to 32 paths, the `paths` of the API in the
   # catalogue entry of the run's model provider at the claim, once for the run, beside its
   # `format`, `endpoint`, `auth`, `key_prefixes` and `use_up_to_windows`. The bound of 8192
-  # octets stays. The check holds the bound only: each path is 1 to 256 printable ASCII
-  # characters with no space, and starts with `/`. The path grammar of the Forager
-  # contract's `credential_paths` is checked when the catalogue entry loads
-  # (`Apiary.Kinds.Provider`), not here.
+  # octets stays, and it bounds the length of the paths. The check holds the shape only:
+  # each path is a string that starts with `/`. The path grammar of the Forager contract's
+  # `credential_paths` is checked when the catalogue entry loads
+  # (`Apiary.Integrations.Description`), not here.
   #
   # The check is added NOT VALID, so adding it takes no scan of the table under its lock;
   # the next migration validates it. It changes no row: a run claimed before has no paths,
   # so every path of the endpoint's host applies to its key, as before.
   @window "^[a-z][a-z0-9_]{0,63}$"
-  @path "^/[!-~]{0,255}$"
+  @path "^/"
 
   def up do
     drop constraint(:runs, :runs_provider_api_check)
