@@ -529,6 +529,42 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     end
   end
 
+  describe "a row whose id starts with the id of another row" do
+    test "an open question that names AC-10 links the AC-10 row, not the AC-1 row",
+         %{conn: conn, scope: scope} do
+      text =
+        matrix([
+          {~s|AC-1, "The total includes the voucher"|, "Needs a person", @demo_check},
+          {~s|AC-10, "The receipt shows the voucher"|, "Needs a person", @demo_check}
+        ])
+
+      work_item =
+        at_verify_gate!(
+          scope,
+          fn run, work_item ->
+            verification!(run, work_item, text)
+            registered = Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
+
+            Apiary.WorkItemsFixtures.push_output!(
+              run,
+              registered,
+              Apiary.WorkItemsFixtures.questions_result([
+                %{"question" => "Check the receipt.", "options" => [], "criterion" => "ac-10"}
+              ])
+            )
+          end,
+          :waiting_answers
+        )
+
+      view = tab(conn, scope, work_item)
+      parts = "#work-item-tab-output-verification-parts"
+
+      assert has_element?(view, "#{parts}-matrix-1-answer", "Answer question 1.")
+      refute has_element?(view, "#{parts}-matrix-0-answer")
+      assert texts(view, "#{parts}-matrix-0 td:nth-child(2)") == ["Needs a person"]
+    end
+  end
+
   describe "criterion_id/1" do
     test "is the id at the start of the cell, in lower case" do
       assert VerifyTab.criterion_id(@ac2) == "ac-2"

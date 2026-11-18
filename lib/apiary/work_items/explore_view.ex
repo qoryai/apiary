@@ -41,7 +41,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
   #     text:, context:, criterion:, options:, state:, asked_run:, run:, run_workspace_id:,
   #     stage_id:, answer:, history:, follows:, decision:}`: `criterion` the id of the
-  #     acceptance criterion the question is about, such as `ac-3`, nil for none; `run` the number of the run that wrote
+  #     acceptance criterion the question is about, such as `ac-3`, nil for none; `run` the
+  #     number of the run that wrote
   #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
   #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
   #     questions (`shown_numbers/1`), `state` `:open`,

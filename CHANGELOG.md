@@ -78,13 +78,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the same line. An Evidence cell links the phrases “Demo video: scenario 1”, “Pictures:
   scenario 2” and “the pictures of scenario 2” to that scenario of the Scenarios frame.
 - In that table, a row in the state Needs a person shows “Answer question 4.” under the
-  state, a link to that question on the Questions tab. The question is the open question
-  of that stage whose `criterion` is the id at the start of the row's Criterion cell
-  (`AC-3` is `ac-3`; `AC-10` is not `ac-1`). A row with no such question, and a row in
-  another state, shows the state alone. The check to make and the member who accepted the
-  escalation are the run's words in the Evidence cell: the tab adds neither. A work item
-  whose capture ended with an accepted escalation has no film, so the tab has no Scenarios
-  frame.
+  state, a link to that question on the Questions tab. The question is an open question
+  that a run of that stage asked, whose `criterion` is the id at the start of the row's
+  Criterion cell (`AC-3` is `ac-3`; `AC-10` is not `ac-1`). With several open questions
+  about one criterion, the link goes to the one with the lowest number. A question that
+  is answered, decided or withdrawn gets no link. A row with no such question, and a row
+  in another state, shows the state alone. The check to make and the member who accepted
+  the escalation are the run's words in the Evidence cell: the tab adds neither.
 - On that tab, one frame “Scenarios” has the films and pictures of the verified commit,
   in scenario order, in place of one frame per type: each film with its file name and
   its captions, which start off, and, beside it, the scenario's title, each step with
