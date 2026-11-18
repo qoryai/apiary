@@ -2417,6 +2417,51 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert recorded -- drawn == []
     end
 
+    test "two names of one type, main and other: a frame and a gate row for each, and the " <>
+           "approval records both",
+         %{conn: conn, scope: scope} do
+      work_item = at_shape!(scope)
+
+      work_item =
+        work_item
+        |> end_run!(fn run, _registered ->
+          push!(run, work_item, "spec", "## The spec text")
+          push!(run, work_item, "test-features", "## The main features")
+          push!(run, work_item, "test-features", "## The other features", "other")
+          passed!(run)
+        end)
+        |> reload()
+
+      features =
+        for %{type: "test-features"} = artifact <- Artifacts.list(work_item),
+            into: %{},
+            do: {artifact.name, hd(artifact.versions).public_id}
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-output-test-features-h", "Test features")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features--other---h",
+               "Test features · other"
+             )
+
+      assert has_element?(view, "#work-item-stage-gate-output-test-features", "test features v1")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-output-test-features--other--",
+               "test features other v1"
+             )
+
+      {recorded, drawn, _view, _html} = approved_and_drawn(conn, scope, work_item, @shape)
+
+      assert features["main"] in recorded and features["other"] in recorded
+      assert length(recorded) == 3
+      assert Enum.sort(recorded) == Enum.sort(drawn)
+    end
+
     test "a version that only a person uploaded, with who uploaded it",
          %{conn: conn, scope: scope} do
       process!(scope, %{"outputs" => [%{"type" => "spec", "required" => false}]})

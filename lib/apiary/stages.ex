@@ -1520,8 +1520,8 @@ defmodule Apiary.Stages do
   # status/2 is where the work item stands in its stage, as the work item page draws it;
   # nil for a work item the runner has not placed. `scope` decides whether its person may
   # approve the gate; with none, `approvable?` is false. Each of `outputs` has `names`,
-  # the newest version of each name of its type made in the stage, which an approval
-  # covers at a gate `none` (`newest_outputs/2`). `missing_outputs` is the
+  # the version of each name of its type that the gate shows, which a person's approval
+  # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
   # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
@@ -3469,18 +3469,31 @@ defmodule Apiary.Stages do
         do: version
   end
 
-  # The version of each output type of `stage` that its gate shows, by type: the newest
-  # version made in the stage, or a higher-numbered version of that artifact that a
-  # person's approval lists or that is its change (`listed_higher/3`), which every later
-  # run reads (`read_version/6`). So a person approves the text the runs use, also after a
-  # move back (624 (a)). `approvals` is `approvals_by_version/1`.
+  # The version of each name of each output type of `stage` that its gate shows, in the
+  # stage's order of types and `Artifacts.name_order/1` within a type (`gate_names/4`).
+  # `approvals` is `approvals_by_version/1`.
   defp gate_versions(stage, artifacts, approvals) do
     for output <- Map.get(stage, "outputs", []),
-        version = gate_version(artifacts, output["type"], stage["id"], approvals),
-        version != nil,
+        {_name, version} <- gate_names(artifacts, output["type"], stage["id"], approvals),
         do: version
   end
 
+  # The version of each name of `type` that the gate of `stage_id` shows, as `{name,
+  # version}` in `Artifacts.name_order/1`: the newest version of the name made in the
+  # stage (`newest_names/3`), or a higher-numbered version of that artifact that a
+  # person's approval lists or that is its change (`listed_higher/3`), which every later
+  # run reads (`read_version/6`). So a person approves the text the runs use, also after a
+  # move back (624 (a)).
+  defp gate_names(artifacts, type, stage_id, approvals) do
+    for {name, start} <- newest_names(artifacts, type, stage_id) do
+      artifact = Enum.find(artifacts, &(&1.id == start.artifact_id))
+      {name, listed_higher(artifact, start, approvals)}
+    end
+  end
+
+  # The version of `type` that the gate shows for the output as a whole: that of the name
+  # whose newest version made in the stage is the newest (`newest_made_in/3`), taken as
+  # `gate_names/4` takes it.
   defp gate_version(artifacts, type, stage_id, approvals) do
     case newest_made_in(artifacts, type, stage_id) do
       nil ->
@@ -3653,7 +3666,7 @@ defmodule Apiary.Stages do
         version: version && %{id: version.public_id, number: version.number},
         names:
           for(
-            {name, named} <- newest_names(artifacts, type, stage["id"]),
+            {name, named} <- gate_names(artifacts, type, stage["id"], approvals),
             do: %{name: name, id: named.public_id, number: named.number}
           ),
         check: check

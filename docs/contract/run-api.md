@@ -278,8 +278,10 @@ such a stage, the approval has the member in `by` and `automatic` false. `decisi
 the id of the person's note that asked for the version (`POST artifacts`), and
 `decision_at` the time of that note, as `at` of the note in `GET work-item`; both are
 null for a version with none. A gate `none` lists no version that has a `decision`.
-The next approval by a person at a gate lists, beside the stage's newest versions, the
-change of each type that `inputs` in `GET work-item` reads. The index
+The next approval by a person at a gate lists the newest version of each name of each
+output type made in the stage, or a higher-numbered version of that name that a person's
+approval lists or that is a change, and beside them the change of each type that
+`inputs` in `GET work-item` reads. The index
 contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
