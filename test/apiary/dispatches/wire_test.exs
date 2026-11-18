@@ -111,13 +111,14 @@ defmodule Apiary.Dispatches.WireTest do
   # contract is at cd52a06e, which adds the next-session request and its answer,
   # time_limit_minutes, shared_run and full_suite to the documents of a run of a stage,
   # the tier balanced in place of fast, and the outcome of a run with its end codes.
-  # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
-  # `paths` and `oauth_refresh` of an API, to the description of a model provider.
+  # The integration contract is at b5ae1a43, which adds `oauth_device` of an API to the
+  # description of a model provider, `submissions` to the source role, and the submission
+  # entry of the change feed with its reply and its failure report.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
           {"run/v1", "cd52a06e2fa55d658ede1a5fffdbc85901066303"},
-          {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
+          {"integration/v1", "b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
         ] do

@@ -3,9 +3,10 @@
 # invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
 # signed connect pass and return and the signed setup pass, with and without the
 # organisation's slug, with their keys and payloads, setup passes refused, the adapter's
-# declarations, accepted and refused, with a setup_url and a submit_module among them,
+# declarations, accepted and refused, with a setup_url among them,
 # the change feed's
-# answers, accepted and refused, the listings of
+# answers, with the submission entries, their replies and their failure reports, accepted
+# and refused, the listings of
 # collections, each collection with the grant_ref of the grant that covers it, and a
 # disconnect of one, accepted and refused, the bodies of a collection's items and of an
 # item's comments, accepted and refused, a grant report with its external account, a
@@ -23,9 +24,10 @@
 # refers to are vendored under priv/contract/integration/ from this commit too, and the
 # data descriptions of model providers, descriptions/*.json at the repository's root,
 # under priv/contract/integration/descriptions/. A description of a model provider has
-# `vendor`, its APIs have `runtimes`, `paths` and `oauth_refresh`, and its role has
-# `key_lifetime_days`, each optional. Qory Apiary holds the bounds of a
-# description: the 256 KiB of a fetched description.json when it is fetched, and every
-# bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
-# adapter's start-up gives the description's value as its body carries it.
-805a7bdb09a16441b8275857e9b50cdfe8227e2d
+# `vendor`, its APIs have `runtimes`, `paths`, `oauth_refresh` and `oauth_device`, and its
+# role has `key_lifetime_days`, each optional. A source role may have `submissions`. Qory
+# Apiary holds the bounds of a description: the 256 KiB of a fetched description.json when
+# it is fetched, and every bound, those 256 KiB included, in
+# Apiary.Integrations.Description.parse/1, which an adapter's start-up gives the
+# description's value as its body carries it.
+b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d

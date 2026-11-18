@@ -32,7 +32,7 @@ defmodule Apiary.Integrations.DescriptionTest do
                   acme-tracker.json example-gateway.json example-projects.json example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
                   example-source-comments.json example-source-guide.json
-                  example-source-targets.json example-tracker.json github.json
+                  example-source-submissions.json example-source-targets.json example-tracker.json github.json
                   unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
@@ -40,7 +40,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 153
+      assert length(names) == 161
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -59,7 +59,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 49
+      assert length(names) == 52
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -104,7 +104,10 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"},
             {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
-            {"targets-string", :const, "#/roles/source/targets"}
+            {"targets-string", :const, "#/roles/source/targets"},
+            {"submissions-false", :const, "#/roles/source/submissions"},
+            {"submissions-string", :const, "#/roles/source/submissions"},
+            {"submissions-without-targets", :dependentRequired, "#/roles/source"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -301,12 +304,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "805a7bdb09a16441b8275857e9b50cdfe8227e2d"
+  @integrations_ref "b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "972bf687e27cdc33da52f74c33d4184426ba1f818edb03108b295de470ed5240",
+      "9ff7010e1c1a11be43e07ee32b0509807931ddca7d537c1fb17207811b5e77b6",
     "priv/contract/integration/definitions.schema.json" =>
-      "0e04d1d3e38af330351e585169decd78a9c629a8b1491a6ba86c0b910f2c16ff",
+      "c20092d51508581fc286a635621d7243255726e7307f35b909bb2b45414d5a05",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -316,19 +319,21 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/litellm.json" =>
       "8eb1c9dfec32169cefd9a4a66059696633883eb7d167b342fec4dc75150f8e00",
     "priv/contract/integration/descriptions/openai-subscription.json" =>
-      "c09e9e41b23359a86a241c4e462d3d67e43f325ab7eec6fae275d788dbd2af47",
+      "0bd977a294b8be3fc724a294eeb2bc74701864dc1f397f8d690d88364d230be1",
     "priv/contract/integration/descriptions/openai.json" =>
       "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "8ca580eaf26da82ddc439c40658b6b4ba0198706535a3abff194b25077c610eb",
+      "ed774f53ea456cb07a740ca7c01d1df7fd8e10897bc1a778884a147761d392f7",
+    "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
+      "2300b80517fe113deaefd128abd77620f0b6af0910afd6076df2c42441b7486c",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "cfc7153e3b5d1f1e4bb966e351adea3694ceb8bfc625b28dd63685fb0adbf7f3",
+      "e14112a6e9eea6c803ae37d1c3ec1ca4b0bb12823142dfc70a1f8bb3eeaa9556",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "0e04d1d3e38af330351e585169decd78a9c629a8b1491a6ba86c0b910f2c16ff",
+      "c20092d51508581fc286a635621d7243255726e7307f35b909bb2b45414d5a05",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "c4c84ffc71e09fc3849232377c9536bd9523cedcb5973f63db3128e61f836a4f"
+      "11f080fb999c58eea81fce16d3a1c261a3d7eea02aab60458eecd26360622a43"
   }
 
   @root Path.expand("../../..", __DIR__)
