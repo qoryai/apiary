@@ -430,6 +430,7 @@ defmodule Apiary.SchemaConstraintsTest do
   # dumped by the caller.
   defp insert!(table, columns) do
     {names, values} = columns |> Map.to_list() |> Enum.unzip()
+    names = Enum.map(names, &~s("#{&1}"))
     marks = Enum.map_join(1..length(values), ", ", &"$#{&1}")
 
     Repo.query!(
@@ -486,11 +487,11 @@ defmodule Apiary.SchemaConstraintsTest do
              )
   end
 
-  test "the database refuses a session record that names another workspace than its run's" do
+  test "the database refuses a session record of a workspace of another organisation" do
     run = run_fixture(scope_fixture())
     other = scope_fixture()
 
-    refused("session_records_run_id_fkey", fn ->
+    refused("session_records_workspace_id_fkey", fn ->
       insert!(
         "session_records",
         record_columns(run, %{workspace_id: Ecto.UUID.dump!(other.workspace.id)})
@@ -498,7 +499,7 @@ defmodule Apiary.SchemaConstraintsTest do
     end)
   end
 
-  test "the database refuses a key window of another workspace, and one out of its bounds" do
+  test "the database refuses a key window of another organisation's workspace, and one out of its bounds" do
     run = run_fixture(scope_fixture())
     other = scope_fixture()
     record = record_columns(run)
@@ -523,7 +524,7 @@ defmodule Apiary.SchemaConstraintsTest do
 
     assert %{num_rows: 1} = insert!("session_key_windows", window.(%{}))
 
-    refused("session_key_windows_session_record_id_fkey", fn ->
+    refused("session_key_windows_workspace_id_fkey", fn ->
       insert!(
         "session_key_windows",
         window.(%{workspace_id: Ecto.UUID.dump!(other.workspace.id)})
