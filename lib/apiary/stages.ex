@@ -148,6 +148,8 @@ defmodule Apiary.Stages do
   # The runs a workflow outside a loop may have in one round of its entry: its first,
   # and one after each set of answers, as today's Explore has in one take in.
   @question_runs 3
+  # The types of a stage's run that a return lists as inputs (`returned_inputs/4`).
+  @returned_types ["verdict", "verification"]
   @action :"gate.approve"
   @max_note 4000
 
@@ -1018,7 +1020,9 @@ defmodule Apiary.Stages do
 
   # request_changes/4 runs the stage's sequence again from its first loop, or from its
   # start, with the person's note, which may point at one artifact version of the work
-  # item (`av_…`).
+  # item (`av_…`). At the gate of a stage with an entry that has a return key, the work
+  # item enters that key's earlier stage at its first entry instead, and no return is
+  # counted (`Apiary.Stages.Runner`).
   @doc false
   @spec request_changes(Scope.t(), WorkItem.t(), String.t() | nil, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1471,6 +1475,9 @@ defmodule Apiary.Stages do
       :advance, {_none, later} ->
         {:halt, {entered(work_item, version, next_stage(version, stage), later), later}}
 
+      {:return, stage_id}, {_none, later} ->
+        {:halt, {entered(work_item, version, Processes.stage(version, stage_id), later), later}}
+
       _other, acc ->
         {:cont, acc}
     end)
@@ -1591,8 +1598,9 @@ defmodule Apiary.Stages do
   #
   # After a person moved the work item to an earlier stage, it ends with one entry for each
   # output of each stage the work item left that way (`moved_inputs/5`), marked
-  # `from: :move`. No other entry has `from`, and the entries `status/1` and the stage's
-  # checks read are the unmarked ones.
+  # `from: :move`. After a return (`returned_inputs/5`), it ends with the newest `verdict`
+  # and `verification` of the stage that returned it, marked `from: :return`. No other entry
+  # has `from`, and the entries `status/1` and the stage's checks read are the unmarked ones.
   @doc false
   @spec inputs(WorkItem.t()) :: [map]
   def inputs(%WorkItem{} = work_item) do
@@ -1604,7 +1612,8 @@ defmodule Apiary.Stages do
         approvals = approvals_by_version(work_item)
         facts = condition_facts(work_item, version, stage, artifacts, false, approvals)
         read = inputs(work_item, version, stage, artifacts, facts, approvals)
-        read ++ moved_inputs(work_item, version, stage, artifacts, read)
+        moved = moved_inputs(work_item, version, stage, artifacts, read)
+        read ++ moved ++ returned_inputs(work_item, stage, artifacts, read ++ moved)
 
       _other ->
         []
@@ -1652,6 +1661,69 @@ defmodule Apiary.Stages do
         from: :move
       }
     end
+  end
+
+  # returned_inputs/4 is, for a work item whose stage was last entered by a return of a
+  # later stage's run (`returned!/2`), the newest version of `verdict` and then of
+  # `verification` made in the stage that run belongs to, marked `from: :return` and not
+  # required; a type with no such version has no entry. A version in `listed` (the entries
+  # already there) is left out. The entries last until the stage's gate passes again or the
+  # work item leaves the stage by a move: an approval of the stage, or a move out of it,
+  # made after the return (`left_since?/2`). A Request changes at the gate and a decision
+  # in another stage end nothing. A newer return replaces them. They are not the stage's
+  # outputs, so no approval lists them, and they are no person's note (`{feedback: new}`
+  # stays false).
+  defp returned_inputs(%WorkItem{take_in: take_in} = work_item, stage, artifacts, listed)
+       when is_integer(take_in) do
+    with %DispatchRun{} = run <- returning_run(work_item, stage),
+         false <- left_since?(work_item, run) do
+      listed_ids = for %{version: %{id: id}} <- listed, do: id
+      approvals = approvals_by_version(work_item)
+
+      found =
+        for type <- @returned_types,
+            found = newest_made_in(artifacts, type, run.stage_id),
+            found.public_id not in listed_ids,
+            do: {type, found}
+
+      times = decision_times(work_item, for({_type, version} <- found, do: version))
+
+      for {type, version} <- found do
+        %{
+          type: type,
+          required: false,
+          version: version_map(version, approvals, times),
+          from: :return
+        }
+      end
+    else
+      _none -> []
+    end
+  end
+
+  defp returned_inputs(%WorkItem{}, _stage, _artifacts, _listed), do: []
+
+  # The newest run of the work item's take in that returned it to `stage` (`returned_to`),
+  # by `returned_at`, nil for none.
+  defp returning_run(%WorkItem{id: id, take_in: take_in}, stage) do
+    Repo.one(
+      from d in DispatchRun,
+        where: d.work_item_id == ^id and d.take_in == ^take_in and d.returned_to == ^stage["id"],
+        where: not is_nil(d.returned_at),
+        order_by: [desc: d.returned_at, desc: d.id],
+        limit: 1
+    )
+  end
+
+  # Whether the work item's take in has, after the run's return, an approval of the stage
+  # the return entered, or a move out of it.
+  defp left_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{} = run) do
+    Repo.exists?(
+      from d in GateDecision,
+        where:
+          d.work_item_id == ^id and d.take_in == ^take_in and d.stage_id == ^run.returned_to and
+            d.kind in [:approve, :move] and d.inserted_at > ^run.returned_at
+    )
   end
 
   # departures/2 is the decisions of the work item's take in that moved it out of a stage to
@@ -2250,6 +2322,10 @@ defmodule Apiary.Stages do
         :ok = approve_none!(work_item, version, stage, by)
         {work_item, run}
 
+      {:return, stage_id}, {work_item, _run} ->
+        returned!(run_id, stage_id)
+        enter_locked(work_item, version, Processes.stage(version, stage_id))
+
       :advance, {work_item, _run} ->
         advance(work_item, version, stage)
     end)
@@ -2283,6 +2359,20 @@ defmodule Apiary.Stages do
       inserted_at: DateTime.utc_now()
     }
     |> PublicId.Insert.insert!()
+
+    :ok
+  end
+
+  # The run whose end returned the work item to the stage `stage_id` keeps it, so the
+  # stage runner counts its entry's returns (`returns/2`). A person's Request changes has
+  # no run, and counts none.
+  defp returned!(nil, _stage_id), do: :ok
+
+  defp returned!(run_id, stage_id) do
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run_id),
+        set: [returned_to: stage_id, returned_at: DateTime.utc_now()]
+      )
 
     :ok
   end
@@ -2746,8 +2836,35 @@ defmodule Apiary.Stages do
       failed_checks:
         missing(outputs(work_item, version, stage, artifacts, conditions, approvals)),
       machine: version.document["machine"],
-      test: work_item.test
+      test: work_item.test,
+      earlier: Map.new(earlier_stages(version, stage), &{&1["id"], &1["name"]}),
+      returns: returns(work_item, stage)
     })
+  end
+
+  # The stages of the version before `stage`, in order.
+  defp earlier_stages(version, stage) do
+    stages = version.document["stages"] || []
+    Enum.take_while(stages, &(&1["id"] != stage["id"]))
+  end
+
+  # The runs of `stage` in the work item's take in that returned the work item to an
+  # earlier stage (`returned!/2`), counted by stage id, so a version that keeps the stage
+  # under another index keeps the count; 0 at an entry with no return key.
+  defp returns(work_item, stage) do
+    with %{entry: entry, loop_entry: nil} <- position(work_item),
+         true <- work_item.stage_id == stage["id"],
+         %{"return" => %{}} <- Enum.at(stage["sequence"] || [], entry) do
+      Repo.aggregate(
+        from(d in DispatchRun,
+          where: d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in,
+          where: d.stage_id == ^stage["id"] and not is_nil(d.returned_to)
+        ),
+        :count
+      )
+    else
+      _other -> 0
+    end
   end
 
   # The stage's workflows that hold it back: with a snapshot of the names the workspace's
@@ -3508,9 +3625,22 @@ defmodule Apiary.Stages do
       run: run && %{id: run.id, attempt: run.attempt, workflow: run.workflow},
       build_run: build_run(run, escalation),
       set_up_step: StopCause.set_up_step(run),
+      return_to: return_to(escalation, work_item, stage),
       inserted_at: escalation.inserted_at
     }
   end
+
+  # The stage that the return key at the work item's entry is set to (choice 10), for an
+  # escalation at the return limit, so Move back offers that stage first; nil otherwise.
+  defp return_to(%Escalation{cause: :return_limit}, %WorkItem{stage_entry: entry}, stage)
+       when is_integer(entry) do
+    case Enum.at(stage["sequence"] || [], entry) do
+      %{"return" => %{"stage" => stage_id}} -> stage_id
+      _other -> nil
+    end
+  end
+
+  defp return_to(_escalation, _work_item, _stage), do: nil
 
   # The escalation's points. An escalation with none (one open when points replaced its
   # gaps, or `placed_escalation/3`) shows the points the stage runner writes for its cause

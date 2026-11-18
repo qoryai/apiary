@@ -255,18 +255,53 @@ defmodule ApiaryWeb.StagesLive.Draft do
         do: %{entry | "workflow" => p["workflow"]},
         else: entry
 
-    case p["machine"] do
-      nil ->
-        entry
+    entry =
+      case p["machine"] do
+        nil ->
+          entry
 
-      text ->
-        if String.trim(text) == "",
-          do: Map.delete(entry, "machine"),
-          else: Map.put(entry, "machine", String.trim(text))
-    end
+        text ->
+          if String.trim(text) == "",
+            do: Map.delete(entry, "machine"),
+            else: Map.put(entry, "machine", String.trim(text))
+      end
+
+    merge_return(entry, p)
   end
 
   defp merge_entry(entry, _p), do: entry
+
+  # An entry's return key (choice 10), from the fields of its fold, which an entry outside
+  # a loop has in a stage with an earlier stage (`ApiaryWeb.StagesLive.Inspector`): "Do
+  # not return", sent as "", removes the key; a stage sets its `stage`, and makes the key
+  # for an entry with none, with the default limit; "Returns at most" from 1 to 10 sets
+  # its `limit`, which the key leaves out while it is the default. A number outside 1 to
+  # 10 keeps the limit the key has. Every other field of the key stays.
+  defp merge_return(%{"return" => %{} = key} = entry, p) do
+    case p["return"] do
+      "" ->
+        Map.delete(entry, "return")
+
+      stage_id when is_binary(stage_id) ->
+        %{entry | "return" => key |> Map.put("stage", stage_id) |> put_limit(p["returns"])}
+
+      _none ->
+        %{entry | "return" => put_limit(key, p["returns"])}
+    end
+  end
+
+  defp merge_return(entry, %{"return" => stage_id}) when is_binary(stage_id) and stage_id != "",
+    do: Map.put(entry, "return", %{"stage" => stage_id})
+
+  defp merge_return(entry, _p), do: entry
+
+  defp put_limit(key, text) do
+    cond do
+      not rounds?(text) -> key
+      String.to_integer(text) == Apiary.Stages.Runner.returns_limit(key) -> key
+      true -> Map.put(key, "limit", String.to_integer(text))
+    end
+  end
 
   # Whether `text` is a workflow name the process schema takes
   # (`priv/schemas/process/v1.schema.json`, `workflow_name`): a lower-case letter, then up
