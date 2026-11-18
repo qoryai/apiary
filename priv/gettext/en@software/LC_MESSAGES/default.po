@@ -16054,6 +16054,11 @@ msgstr ""
 msgid "Open work item #%{number} in %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI's coding agent."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/adapter.ex
 #, elixir-autogen, elixir-format
 msgid "Opens %{address}"

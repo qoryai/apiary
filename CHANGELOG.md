@@ -19,7 +19,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
   **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
   shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
-  field of that page and of the set-up's Model step is shown, with **Claude Code** first.
+  field of that page and of the set-up's Model step is shown, with **Claude Code** first,
+  and **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
+  **Claude Code**.
   The link to a vendor's terms in a provider's help names that provider's vendor, such as
   “Anthropic's terms”. On a run's page, a Codex session shows its session events, the
   version it started with, and no note that it sends none; the note “Only Claude Code and
