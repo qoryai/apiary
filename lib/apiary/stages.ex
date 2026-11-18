@@ -1493,7 +1493,7 @@ defmodule Apiary.Stages do
   # approvals of earlier stages: applied first, so the nearest approval wins, as a stage
   # reads its inputs (`read_version/6`).
   defp approved(work_item, stage, gate, later, own \\ & &1) do
-    artifacts = Artifacts.list(work_item)
+    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
 
     shown =
       case gate do
@@ -1543,7 +1543,7 @@ defmodule Apiary.Stages do
 
     with %WorkItem{} <- work_item,
          {:ok, version, stage} <- placed(work_item) do
-      artifacts = Artifacts.list(work_item)
+      artifacts = work_item |> Artifacts.list() |> recordable(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       # Read once: the shown state, the inputs and the condition inputs that count use them.
       approvals = approvals_by_version(work_item)
@@ -1594,7 +1594,8 @@ defmodule Apiary.Stages do
   # person's change to it that no approval lists yet, else a person's version added on
   # the work item in this stage, else the version the gate of the stage that made it
   # approved; nil for none (`read_version/6`). A name whose newest version is a
-  # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
+  # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`), and so is a person's version
+  # of the submission type (`recordable/2`).
   #
   # After a person moved the work item to an earlier stage, it ends with one entry for each
   # output of each stage the work item left that way (`moved_inputs/5`), marked
@@ -1608,7 +1609,7 @@ defmodule Apiary.Stages do
 
     case placed(work_item) do
       {:ok, version, stage} ->
-        artifacts = Artifacts.list(work_item)
+        artifacts = work_item |> Artifacts.list() |> recordable(work_item)
         approvals = approvals_by_version(work_item)
         facts = condition_facts(work_item, version, stage, artifacts, false, approvals)
         read = inputs(work_item, version, stage, artifacts, facts, approvals)
@@ -2811,7 +2812,7 @@ defmodule Apiary.Stages do
   defp facts(work_item, version, stage) do
     # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
     workspace = Repo.get!(Workspace, work_item.workspace_id)
-    artifacts = Artifacts.list(work_item)
+    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
@@ -3863,10 +3864,13 @@ defmodule Apiary.Stages do
 
   # recordable/2 is `artifacts` with no version a person made of the submission type, the
   # type in `submit.type` that the Submissions list reads (`Artifacts.submit_type/1`): only
-  # a run's submit step writes a submission (696 (c)), so an approval records no person's
-  # version of it, at a person's gate or a gate `none` (`approve_none!/4`), and the work
-  # item page frames none (`recorded_versions/4`, `gate_frames/3`); nor does it reopen a
-  # gate (`reopened?/4`). A person's version of every other type stays.
+  # a run's submit step writes a submission (696 (c)), so a person's version of it is no
+  # change. An approval records none, at a person's gate or a gate `none`
+  # (`approve_none!/4`); the work item page frames none (`recorded_versions/4`,
+  # `gate_frames/3`); none reopens a gate (`reopened?/4`); the gate's outputs leave it out
+  # (`status/2`, `gate_versions/3`); and no stage reads it as an input (`inputs/1`,
+  # `read_version/6`, by way of `status/2`, `facts/3` and `approved/5`). A person's
+  # version of every other type stays.
   defp recordable(artifacts, work_item) do
     case Artifacts.submit_type(work_item) do
       nil ->

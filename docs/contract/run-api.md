@@ -134,7 +134,9 @@ Returns `200` with the work item snapshot:
   version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
   stage, that no approval lists, and whose number is higher than that of every version
   of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
-  a version by a run that a member cancelled are never a change. Each name's change is
+  a version by a run that a member cancelled are never a change. A person's version of the
+  type in `submit.type` of the process version's harness is not a change: no approval
+  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.

@@ -3504,6 +3504,51 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
     end
 
+    test "Verify's input frame shows a person's version, but the run's for the submit type",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+
+      ran =
+        Repo.one(
+          from v in Artifacts.Version,
+            join: a in Artifacts.Artifact,
+            on: a.id == v.artifact_id,
+            where: a.work_item_id == ^work_item.id and a.type == "test-features",
+            select: v
+        )
+
+      {:ok, person} =
+        Stages.add_version(
+          scope,
+          reload(work_item),
+          "test-features",
+          [%{filename: "test-features.md", content_type: "text/markdown", binary: "## By hand"}],
+          name: "main"
+        )
+
+      frame = "#work-item-tab-output-test-features"
+
+      # With no submit type, the person's version is a change, and the input frame has it.
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+      assert has_element?(view, frame, "Version #{person.number}")
+
+      # With test-features as the submit type, the person's version is no change.
+      template = %{
+        "commit" => String.duplicate("a", 40),
+        "submit" => %{"type" => "test-features", "send" => "end_of_run"}
+      }
+
+      {_n, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.workspace_id == ^scope.workspace.id),
+          set: [template: template]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+      assert has_element?(view, frame, "Version #{ran.number}")
+      refute has_element?(view, frame, "Version #{person.number}")
+    end
+
     test "only Explore's gate offers tracks: Verify's gate shows the track and no choice", %{
       conn: conn,
       scope: scope

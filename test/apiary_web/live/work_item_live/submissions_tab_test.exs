@@ -26,6 +26,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   @moduletag :tmp_dir
 
   @shape "st_p9w5cvh311"
+  @build "st_6ns22c4pav"
   @head String.duplicate("a1", 20)
   @base String.duplicate("9f", 20)
   @change String.duplicate("4c", 20)
@@ -89,7 +90,12 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   end
 
   # The default process with Shape running a workflow and outputting the submission type.
-  defp process!(scope, submit, more_outputs \\ [], gate \\ "person") do
+  # `opts`: `outputs`, more output types of Shape; `gate`, Shape's gate kind, "person" by
+  # default; `build_inputs`, the input types of Build, the stage after Shape.
+  defp process!(scope, submit, opts \\ []) do
+    more_outputs = Keyword.get(opts, :outputs, [])
+    gate = Keyword.get(opts, :gate, "person")
+    build_inputs = Keyword.get(opts, :build_inputs, [])
     document = Processes.default_document("software")
 
     stages =
@@ -106,6 +112,13 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
                 else: %{"kind" => "person", "approvers" => "members"}
               )
           })
+
+        %{"id" => @build} = stage when build_inputs != [] ->
+          Map.put(
+            stage,
+            "inputs",
+            for(type <- build_inputs, do: %{"type" => type, "required" => false})
+          )
 
         stage ->
           stage
@@ -576,6 +589,17 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       version
     end
 
+    defp person_submission!(scope, work_item) do
+      person_version!(
+        scope,
+        work_item,
+        "submission",
+        "submission.json",
+        "application/json",
+        Jason.encode!(%{"ref" => "by-hand"})
+      )
+    end
+
     defp at_gate!(work_item) do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -607,7 +631,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
     test "is neither recorded nor framed; a person's version of another output is", ctx do
       notes_type!(ctx.scope)
-      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, ["notes"])
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, outputs: ["notes"])
       work_item = at_shape!(ctx.scope)
       %{one: one, two: two} = two_runs!(work_item)
       work_item = at_gate!(work_item)
@@ -649,16 +673,13 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
       refute has_element?(view, "#work-item-tab-output-submission-#{submission.public_id}")
 
-      # The gate card's list of what an approval records has the run's version.
+      # The gate card shows the run's version and links nowhere to the person's.
       assert has_element?(
                view,
-               ~s(#work-item-stage-gate-recorded-submission [href$="/#{two.public_id}"])
+               ~s(#work-item-stage-gate-version-submission[href$="/#{two.public_id}"])
              )
 
-      refute has_element?(
-               view,
-               ~s(#work-item-stage-gate-recorded-submission [href$="/#{submission.public_id}"])
-             )
+      refute has_element?(view, ~s(#work-item-stage-gate [href$="/#{submission.public_id}"]))
 
       # The notes frame has the person's version with its caption.
       short = ApiaryWeb.People.short(ctx.user.email)
@@ -693,7 +714,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     end
 
     test "a gate none approval records the run's version, not a person's later one", ctx do
-      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, [], "none")
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, gate: "none")
       work_item = at_shape!(ctx.scope)
 
       parent = self()
@@ -735,6 +756,67 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
       assert ran.public_id in recorded
       refute person.public_id in recorded
+    end
+
+    test "is no change: the gate card and the next stage's inputs have the run's version; a person's notes count",
+         ctx do
+      notes_type!(ctx.scope)
+
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"},
+        outputs: ["notes"],
+        build_inputs: ["submission", "notes"]
+      )
+
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+      ran = submission!(run, work_item, repository())
+      push!(run, work_item, "notes", "notes.md", "text/markdown", "## By the run")
+      work_item = at_gate!(work_item)
+
+      submission = person_submission!(ctx.scope, work_item)
+
+      notes =
+        person_version!(ctx.scope, work_item, "notes", "notes.md", "text/markdown", "## By hand")
+
+      # The gate card: the run's submission, the person's notes.
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-gate-version-submission[href$="/#{ran.public_id}"]),
+               "submission v#{ran.number}"
+             )
+
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-gate-version-notes[href$="/#{notes.public_id}"]),
+               "notes v#{notes.number}"
+             )
+
+      # The run API's view of the gate agrees.
+      outputs = Map.new(Apiary.Stages.status(work_item).outputs, &{&1.type, &1.version})
+      assert outputs["submission"].id == ran.public_id
+      assert outputs["notes"].id == notes.public_id
+
+      {:ok, _approved} =
+        Apiary.Stages.approve(ctx.scope, Repo.get!(WorkItem, work_item.id), nil,
+          expect_stage: @shape
+        )
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+      assert work_item.stage_id == @build
+
+      # A person's later versions at Build: the notes are a change, the submission is not.
+      later_submission = person_submission!(ctx.scope, work_item)
+
+      later_notes =
+        person_version!(ctx.scope, work_item, "notes", "notes.md", "text/markdown", "## Later")
+
+      assert later_submission.number > submission.number
+
+      inputs = Map.new(Apiary.Stages.inputs(work_item), &{&1.type, &1.version})
+      assert inputs["submission"].id == ran.public_id
+      assert inputs["notes"].id == later_notes.public_id
     end
 
     test "with no submit type, a person's version of the type is recorded as any other", ctx do

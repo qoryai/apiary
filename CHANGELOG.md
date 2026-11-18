@@ -229,9 +229,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and its caption has the member's short name; a version of another type is a row in its
   type's frame, whose caption has the member's short name where that version is the
   frame's highest. A person's version makes its frame also where no run wrote one. A
-  person's version of the type in `submit.type` is the one exception: an approval does not
-  record it and the tab has no frame or Submissions row for it, as only a run's submit step
-  writes a submission. In a stage that started no run, the input frames follow the output
+  person's version of the type in `submit.type` is not a change: no approval lists it,
+  the gate card leaves it out, and runs read the run's version. The tab has no frame or
+  Submissions row for it, as only a run's submit step writes a submission. In a stage that started no run, the input frames follow the output
   frames, folded. On the stage card, each output's version at the gate
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
