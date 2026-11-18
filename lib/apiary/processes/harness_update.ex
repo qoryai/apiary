@@ -91,7 +91,13 @@ defmodule Apiary.Processes.HarnessUpdate do
       alone, and a custom type no custom type of the workspace has the name of;
     * `stack`: `%{from: stack, to: stack}` where the template's stack differs from the
       stack of the workspace's harness choice, else nil;
-    * `template`: the record the saved version keeps as its `template`.
+    * `template`: the record the saved version keeps as its `template`;
+    * `levels`: the access level each workflow of the template's stack declares at
+      `commit`, by name; for a harness repository, a second read of the source at that
+      commit, none where that read fails;
+    * `refused`: the errors of `Apiary.Processes.validate/2` with `levels` for a stage with
+      `shared_run: true` whose workflows would run with different access, which a save
+      returns; empty for none.
   """
   @type update :: %{
           source: :qory | :repository,
@@ -105,7 +111,9 @@ defmodule Apiary.Processes.HarnessUpdate do
           added_types: [map],
           stack: %{from: String.t() | nil, to: String.t()} | nil,
           template: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          levels: %{String.t() => :read | :write_no_push | :write},
+          refused: [Processes.error()]
         }
 
   @typedoc """
@@ -412,8 +420,25 @@ defmodule Apiary.Processes.HarnessUpdate do
 
     with {:ok, source, _stack} <- chosen_source(workspace),
          {:ok, %{commit: commit} = read} <- templates(scope, source),
-         {:ok, template} <- repository_template(read, in_use, chosen, workspace.type) do
-      {:ok, update(workspace, chosen, base, version, commit, template, :repository)}
+         {:ok, template} <- repository_template(read, in_use, chosen, workspace.type),
+         {:ok, levels} <- levels_at(scope, source, commit, template) do
+      {:ok, update(workspace, chosen, base, version, commit, template, :repository, levels)}
+    end
+  end
+
+  # The access level each workflow of the template's stack declares at `commit`, the
+  # commit the update reads: a second read of the source, as the scope's person, pinned to
+  # that commit and narrowed to that stack (`Apiary.Stacks.Sources.read/2`); of every
+  # stack for a template with none. A read that fails gives no levels: the update goes on,
+  # and the claim ends a run whose stage's workflows would run with different access
+  # (`Apiary.Dispatches.Handover`).
+  defp levels_at(scope, source, commit, template) do
+    stack = Map.get(template, :stack)
+    narrowing = if is_binary(stack), do: %{"stack" => stack}, else: %{}
+
+    case Sources.read(scope, %{source | ref: commit, narrowing: narrowing}) do
+      {:ok, stacks} -> {:ok, Sources.levels_of(stacks, stack)}
+      {:error, _reason} -> {:ok, %{}}
     end
   end
 
@@ -465,8 +490,21 @@ defmodule Apiary.Processes.HarnessUpdate do
     end
   end
 
-  defp update(workspace, chosen, base, {kind, name} = version, commit, template, source) do
+  defp update(
+         workspace,
+         chosen,
+         base,
+         {kind, name} = version,
+         commit,
+         template,
+         source,
+         levels \\ nil
+       ) do
+    levels = levels || levels(workspace, source, commit, template)
+
     %{
+      levels: levels,
+      refused: refused(template.process, levels),
       source: source,
       git: chosen.git,
       version: version,
@@ -494,6 +532,32 @@ defmodule Apiary.Processes.HarnessUpdate do
           template
         )
     }
+  end
+
+  # The access level each workflow of the harness declares (`t:update/0`), where the read
+  # gave none: for a harness repository, the switch's update, which saves without them.
+  defp levels(_workspace, :qory, commit, template),
+    do: Qory.workflow_levels(commit, Map.get(template, :stack))
+
+  defp levels(workspace, :repository, _commit, _template),
+    do: Processes.declared_access(workspace)
+
+  # The errors of a stage with `shared_run: true` whose workflows would run with different
+  # access under `levels`, as a save returns them (`t:update/0`).
+  defp refused(document, levels) do
+    case Processes.validate(document, levels) do
+      :ok ->
+        []
+
+      {:error, errors} when is_list(errors) ->
+        Enum.filter(
+          errors,
+          &match?(%{error: :shared_run_differs, detail: {:access, _, _, _}}, &1)
+        )
+
+      {:error, _reason} ->
+        []
+    end
   end
 
   # The entries of `listed` the workspace does not have (`t:update/0`).
@@ -527,12 +591,18 @@ defmodule Apiary.Processes.HarnessUpdate do
   """
   @spec save(Scope.t(), %Workspace{}, update, keyword) ::
           {:ok, Version.t()} | {:error, term}
-  def save(%Scope{} = scope, %Workspace{} = workspace, %{} = update, opts \\ []),
-    do: save_update(scope, workspace, update, Keyword.get(opts, :trial, false), &keep_on/1)
+  def save(%Scope{} = scope, %Workspace{} = workspace, %{} = update, opts \\ []) do
+    trial? = Keyword.get(opts, :trial, false)
+    save_update(scope, workspace, update, trial?, &keep_on/1, Map.get(update, :levels, %{}))
+  end
 
   # The save of `update`; `after_save`, called with the workspace held, for the switch:
-  # turned on by a person's save, and checked still on by the switch's update.
-  defp save_update(scope, workspace, update, trial?, after_save) do
+  # turned on by a person's save, and checked still on by the switch's update. A person's
+  # save checks the stages with `shared_run: true` against the harness's `levels`, as the
+  # Workflows page's save does; the switch's update checks none, and the claim ends a run
+  # whose stage's workflows would run with different access
+  # (`Apiary.Dispatches.Handover`).
+  defp save_update(scope, workspace, update, trial?, after_save, levels \\ %{}) do
     Repo.transact(fn ->
       with {:ok, version} <-
              Processes.save_harness(
@@ -541,7 +611,8 @@ defmodule Apiary.Processes.HarnessUpdate do
                update.document,
                with_added(workspace, update),
                trial: trial?,
-               based_on: update.base
+               based_on: update.base,
+               levels: levels
              ),
            held = Repo.get!(Workspace, workspace.id),
            :ok <- same_choice(held, update),

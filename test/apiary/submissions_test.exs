@@ -605,12 +605,17 @@ defmodule Apiary.SubmissionsTest do
     end
 
     test "a version a member added by hand is left out", ctx do
-      store!(ctx, ctx.first, submission())
+      # A person adds no version of a type that the process sets as its submit type, so
+      # the version is pushed while the process sets none, as before the process set it.
+      ctx = submits!(ctx, nil)
 
       {:ok, _version} =
         Artifacts.push({:person, ctx.scope}, ctx.work_item, "submission", json(submission()),
           name: "main"
         )
+
+      ctx = submits!(ctx, @submit)
+      store!(ctx, ctx.first, submission())
 
       assert [%{run: run}] = rows(ctx)
       assert run == ctx.first_number

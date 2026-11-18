@@ -122,6 +122,8 @@ defmodule Apiary.Stages do
   @ignored_ends [:closed, :undone, :released, :superseded]
   # The ends one stage sweep reads at most (`sweep/3`).
   @stage_batch 100
+  # The most bytes a session's result takes, encoded (`session_answer_limit/0`).
+  @session_answer_bytes 1_048_576
 
   alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, Repo}
   alias Apiary.Accounts.Scope
@@ -131,7 +133,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Points, Runner}
-  alias Apiary.Stages.Skip
+  alias Apiary.Stages.{Session, Skip}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -313,6 +315,632 @@ defmodule Apiary.Stages do
       Logger.warning("stage end left for later, newest questions unreadable dispatch_run=#{id}")
       []
   end
+
+  # The states a run reports for a session of a shared run that ended
+  # (`next_session/2`). A session that paused sends no report.
+  @session_states ~w(succeeded failed cancelled)
+
+  # shared_workflows/1 is the workflows of the stage of `run`, a run of the queue, where
+  # the stage has `shared_run: true` and the run is no run of Explore (`shared_stage/1`):
+  # each workflow of its workflow entries once, those in a loop's body included, in the
+  # sequence's order. Empty for any other run. The claim reads the time limit of each
+  # (`Apiary.Dispatches.RunSettings.hold/1`).
+  @doc false
+  @spec shared_workflows(DispatchRun.t()) :: [String.t()]
+  def shared_workflows(%DispatchRun{} = run) do
+    case shared_stage(run) do
+      nil -> []
+      stage -> stage |> workflow_entries() |> Enum.map(&elem(&1, 1)["workflow"]) |> Enum.uniq()
+    end
+  end
+
+  # session_flags/2 is what the documents of `run`, a run of the queue of a stage, have of
+  # its stage and its entry (`Apiary.Dispatches.Handover`), for the access level the claim
+  # computed for it (`level`, `Apiary.Runs.RunCredentials.run_access/1`): `shared_run`,
+  # true where the stage has `shared_run: true` and the run is no run of Explore, the rule
+  # that `next_session/2` takes reports by; and `full_suite` (`full_suite?/4`). Both false
+  # for a run the stage runner did not queue.
+  @doc false
+  @spec session_flags(DispatchRun.t(), :read | :write_no_push | :write) :: %{
+          shared_run: boolean,
+          full_suite: boolean
+        }
+  def session_flags(
+        %DispatchRun{stage_id: stage_id, process_version_id: version_id, stage_entry: entry} =
+          run,
+        level
+      )
+      when is_binary(stage_id) and is_binary(version_id) and is_integer(entry) do
+    case Processes.stage(Processes.get_version!(version_id), stage_id) do
+      nil ->
+        %{shared_run: false, full_suite: false}
+
+      stage ->
+        %{
+          shared_run: shared_stage(run) != nil,
+          full_suite: full_suite?(run, Enum.at(stage["sequence"] || [], entry), nil, level)
+        }
+    end
+  end
+
+  def session_flags(%DispatchRun{}, _level), do: %{shared_run: false, full_suite: false}
+
+  # claim_sessions!/2 keeps, at the claim of `run`, a run of the queue of a stage with
+  # `shared_run: true` (`shared_stage/1`), what its later sessions read, inside the
+  # caller's transaction, which holds the run and wrote its run record
+  # (`Apiary.Dispatches.Handover`):
+  #
+  #   * on its run record, `session_settings` (`Apiary.Runs.Run`): for each workflow entry
+  #     of the stage, those in a loop's body included, by its place, its `workflow`, its
+  #     `time_limit_minutes` (the workflow's minutes in `limits`, the time limits as the
+  #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now) and
+  #     `full_suite` (`full_suite?/4`, with the run's access level, which every entry of
+  #     the stage shares). `next_session/2` reads these, so a change to the time limits
+  #     after the claim changes nothing for the run;
+  #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
+  #     with the run's workflow. The sessions of an earlier claim of the run that no
+  #     report reached are replaced, as a run whose lease lapsed is claimed again.
+  #
+  # Nothing for any other run.
+  @doc false
+  @spec claim_sessions!(DispatchRun.t(), %{optional(String.t()) => pos_integer}) :: :ok
+  def claim_sessions!(%DispatchRun{} = run, limits) when is_map(limits) do
+    case shared_stage(run) do
+      nil ->
+        :ok
+
+      stage ->
+        level = Apiary.Runs.RunCredentials.run_access(run)
+
+        settings =
+          Map.new(workflow_entries(stage), fn {place, entry, loop_entry} ->
+            workflow = entry["workflow"]
+
+            minutes =
+              Map.get_lazy(limits, workflow, fn ->
+                Apiary.Dispatches.RunSettings.time_limit_minutes(run, workflow)
+              end)
+
+            {place,
+             %{
+               "workflow" => workflow,
+               "time_limit_minutes" => minutes,
+               "full_suite" => full_suite?(run, entry, loop_entry, level)
+             }}
+          end)
+
+        {1, _rows} =
+          Repo.update_all(from(r in Run, where: r.dispatch_run_id == ^run.id),
+            set: [session_settings: settings]
+          )
+
+        {_count, _rows} =
+          Repo.delete_all(
+            from s in Session,
+              where: s.dispatch_run_id == ^run.id and is_nil(s.forager_session),
+              where: is_nil(s.response)
+          )
+
+        insert_session!(
+          run,
+          1,
+          %{
+            workflow: run.workflow,
+            entry: run.stage_entry,
+            loop_entry: run.loop_entry,
+            round: run.round
+          },
+          on_conflict: :nothing,
+          conflict_target: [:dispatch_run_id, :sequence]
+        )
+
+        :ok
+    end
+  end
+
+  # The workflow entries of `stage`, those in a loop's body included, in the sequence's
+  # order: `{place, entry, loop_entry}`, `place` the key of `session_settings`
+  # (`session_place/2`) and `loop_entry` the entry's index in its loop's body, nil outside
+  # a loop.
+  defp workflow_entries(stage) do
+    (stage["sequence"] || [])
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {%{"loop" => %{"body" => body}}, i} ->
+        for {entry, j} <- Enum.with_index(body), do: {session_place(i, j), entry, j}
+
+      {entry, i} ->
+        [{session_place(i, nil), entry, nil}]
+    end)
+  end
+
+  defp session_place(entry, nil), do: Integer.to_string(entry)
+  defp session_place(entry, loop_entry), do: "#{entry}.#{loop_entry}"
+
+  # full_suite?/4: whether a session of `entry`, a workflow entry, or a loop entry for a run
+  # placed at a loop, of the run of the queue `run` with the access level `level`, runs the
+  # full suite after it: for a run with `write` access that is no run of Explore, an entry
+  # of a loop's body (`loop_entry` an index), a loop, or an entry with
+  # `first_attempt: true`. A run that reads or does not push runs none.
+  defp full_suite?(%DispatchRun{explore: true}, _entry, _loop_entry, _level), do: false
+  defp full_suite?(_run, _entry, _loop_entry, level) when level != :write, do: false
+  defp full_suite?(_run, _entry, loop_entry, _level) when is_integer(loop_entry), do: true
+  defp full_suite?(_run, %{"loop" => _loop}, nil, _level), do: true
+  defp full_suite?(_run, %{"first_attempt" => true}, nil, _level), do: true
+  defp full_suite?(_run, _entry, nil, _level), do: false
+
+  # shared_access/1 checks, at the claim of `run`, a run of the queue, that the workflow
+  # entries of its stage, where the stage has `shared_run: true`, run with one access
+  # level, with the levels the workflows declare in the workspace's harness now
+  # (`Apiary.Processes.declared_access/1`, `Apiary.Processes.shared_access/2`): an update
+  # from the harness can change a level after the process was saved. `:ok` for any other
+  # run; `{:error, detail}` with the stage's name for a run whose entries differ, which
+  # the claim ends `shared_access_differs` (`Apiary.Dispatches.Handover`).
+  @doc false
+  @spec shared_access(DispatchRun.t()) ::
+          :ok
+          | {:error,
+             %{
+               stage: String.t(),
+               detail: :access | {:access, String.t(), String.t(), String.t()}
+             }}
+  def shared_access(%DispatchRun{} = run) do
+    with %{} = stage <- shared_stage(run),
+         workspace = Repo.get!(Workspace, run.workspace_id),
+         {:error, detail} <- Processes.shared_access(stage, Processes.declared_access(workspace)) do
+      {:error, %{stage: stage["name"], detail: detail}}
+    else
+      _same -> :ok
+    end
+  end
+
+  # The stage of `run`, a run of the queue, where the stage has `shared_run: true` and the
+  # run is no run of Explore; nil for any other run.
+  defp shared_stage(%DispatchRun{
+         step: "explore",
+         work_item_id: work_item_id,
+         stage_id: stage_id,
+         process_version_id: version_id,
+         explore: explore
+       })
+       when is_binary(work_item_id) and is_binary(stage_id) and is_binary(version_id) and
+              explore != true do
+    stage = Processes.stage(Processes.get_version!(version_id), stage_id)
+    if stage && Processes.shared_run?(stage), do: stage
+  end
+
+  defp shared_stage(%DispatchRun{}), do: nil
+
+  # next_session/2 steps the stage runner on the end of a session of `run`, a run of the
+  # queue (or its id) of a stage with `shared_run: true` (`Apiary.Processes.shared_run?/1`),
+  # whose entries run as sessions of that one run, and records the session
+  # (`Apiary.Stages.Session`). `report` is the session's end as the run reports it:
+  # `session`, the run's number for the session that ended, and `state` (`succeeded`,
+  # `failed` or `cancelled`) and `reason`, nil for none.
+  #
+  # The step reads the session's end as the end of a run of today is read: the open
+  # questions of the run's take in, else the newest `verdict` version that the run stored
+  # after the previous step, else, for `failed` or `cancelled`, a stopped run with the
+  # cause "The run ended without a result.". A session with none of these is a run
+  # with no verdict, and the runner steps as for a run of today that ended with no
+  # verdict: in a loop the ring goes on, so `implement-changes` with no verdict runs
+  # `review-changes`; outside a loop the stage escalates `run_stopped`. A verdict the run
+  # stored before the previous step does not count again.
+  #
+  # The result is the runner's outcome: `{:session, next}` where it queues a workflow of
+  # the same stage, which runs as the run's next session; `:end` where it queues none (an
+  # escalation, open questions, the gate, or the next stage, whose run is queued through
+  # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
+  # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
+  # claim kept them, `claim_sessions!/2`), `inputs` (the run's inputs,
+  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`,
+  # both nil: no model choice or key is resolved per session here.
+  #
+  # The step is recorded with its result, and a repeat for the same `session` returns
+  # that result and steps nothing. Errors, with nothing written:
+  # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage
+  # without `shared_run`, and a run that no claim of a shared stage registered
+  # (`claim_sessions!/2`); `{:error, :invalid_request}` for a report of another form;
+  # `{:error, :run_ended}` for a run that ended, that the stage no longer runs, whose work
+  # item is placed in another process version whose stage is gone or has other entries
+  # than the run's, whose next entry has no settings the claim kept, or whose last step
+  # returned `:end`;
+  # `{:error, :run_cancelled}` for a run that a member cancelled;
+  # `{:error, :session_mismatch}` for a `session` lower than the newest the run reported;
+  # `{:error, :unavailable}` when the store cannot read the verdict's or the questions'
+  # file; and `{:error, :ticket_gone}` or `{:error, :inputs_invalid}` for inputs that
+  # cannot be formed (`Apiary.Dispatches.Inputs.explore/4`), or that do not fit the
+  # result's 1 MiB with every comment left out (`session_response/5`).
+  @doc false
+  @spec next_session(DispatchRun.t() | Ecto.UUID.t(), map) ::
+          {:session, map}
+          | :end
+          | {:error,
+             :not_found
+             | :invalid_request
+             | :run_ended
+             | :run_cancelled
+             | :session_mismatch
+             | :unavailable
+             | :ticket_gone
+             | :inputs_invalid}
+  def next_session(%DispatchRun{id: id}, report), do: next_session(id, report)
+
+  def next_session(id, %{session: number, state: state} = report)
+      when is_binary(id) and is_integer(number) and number >= 1 and state in @session_states do
+    reason = Map.get(report, :reason)
+
+    if is_nil(reason) or is_binary(reason) do
+      case Repo.transact(fn -> session_step(id, number, state, reason) end) do
+        {:ok, response} ->
+          Dispatches.broadcast(Map.get(response, :told, []))
+          response.result
+
+        {:error, _reason} = refused ->
+          refused
+      end
+    else
+      {:error, :invalid_request}
+    end
+  rescue
+    _unreadable in [Apiary.Stages.VerdictUnreadable, Apiary.Stages.QuestionsUnreadable] ->
+      {:error, :unavailable}
+  end
+
+  def next_session(_run, _report), do: {:error, :invalid_request}
+
+  defp session_step(id, number, state, reason) do
+    :ok = MachineTypes.hold()
+
+    with {:ok, run} <- shared_run(id),
+         work_item = lock!(run.work_item_id),
+         run = Repo.get!(DispatchRun, id),
+         :ok <- run_live(run),
+         {:ok, settings} <- session_settings(run),
+         sessions = sessions(run),
+         {:step, pending} <- reported(sessions, number),
+         {:ok, version, stage} <- session_stage(work_item, run),
+         {:ok, pending} <- pending_session(pending, work_item) do
+      previous = sessions |> Enum.map(& &1.verdict_number) |> Enum.reject(&is_nil/1)
+      {result, seen} = session_result(work_item, run, state, Enum.max(previous, fn -> nil end))
+      facts = facts(work_item, version, stage)
+      outcome = Runner.step(stage, position(work_item), {:run, result}, facts)
+
+      {work_item, next} =
+        apply_outcome(work_item, version, stage, outcome, run.id, nil, :session)
+
+      with {:ok, stored} <- session_response(next, work_item, run, settings, pending) do
+        pending
+        |> Ecto.Changeset.change(
+          forager_session: number,
+          state: state,
+          reason: reason,
+          verdict_number: seen,
+          response: stored
+        )
+        |> Repo.update!()
+
+        if next_session = session_spec(next),
+          do: insert_session!(run, pending.sequence + 1, next_session)
+
+        {:ok, %{result: response(stored), told: told(work_item)}}
+      end
+    else
+      {:stored, stored} -> {:ok, %{result: response(stored)}}
+      {:error, _reason} = refused -> refused
+    end
+  end
+
+  # The run of the queue `id`, once it is a run of a stage with `shared_run: true` that is
+  # no run of Explore (`shared_stage/1`).
+  defp shared_run(id) do
+    with {:ok, id} <- Ecto.UUID.cast(id),
+         %DispatchRun{} = run <- Repo.get(DispatchRun, id),
+         %{} <- shared_stage(run) do
+      {:ok, run}
+    else
+      _other -> {:error, :not_found}
+    end
+  end
+
+  # The settings of the entries of the run's stage, as its claim kept them on its run
+  # record (`claim_sessions!/2`); `:not_found` for a run no such claim registered.
+  defp session_settings(%DispatchRun{id: id}) do
+    case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, select: r.session_settings) do
+      %{} = settings -> {:ok, settings}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp run_live(%DispatchRun{state: :ended}), do: {:error, :run_ended}
+
+  defp run_live(run),
+    do: if(Cancel.dispatch_run_cancelled?(run), do: {:error, :run_cancelled}, else: :ok)
+
+  defp sessions(%DispatchRun{id: id}),
+    do: Repo.all(from s in Session, where: s.dispatch_run_id == ^id, order_by: s.sequence)
+
+  # newest_session/1 is the newest session of `run`, a run of the queue of a stage with
+  # `shared_run: true` (`Apiary.Stages.Session`): the session the run is in, or ended
+  # last; nil for a run with none. Its `workflow`, `stage_entry`, `loop_entry` and `round`
+  # are the run's place now, as the run's columns keep only its first session's.
+  @doc false
+  @spec newest_session(DispatchRun.t()) :: Session.t() | nil
+  def newest_session(%DispatchRun{id: id}) when is_binary(id) do
+    Repo.one(
+      from s in Session,
+        where: s.dispatch_run_id == ^id,
+        order_by: [desc: s.sequence],
+        limit: 1
+    )
+  end
+
+  def newest_session(%DispatchRun{}), do: nil
+
+  # open_session/1 is the newest session of `run` that no report ended
+  # (`newest_session/1`): the session a run that paused was in; nil for none.
+  @doc false
+  @spec open_session(DispatchRun.t()) :: Session.t() | nil
+  def open_session(%DispatchRun{id: id}) when is_binary(id) do
+    Repo.one(
+      from s in Session,
+        where: s.dispatch_run_id == ^id and is_nil(s.forager_session),
+        order_by: [desc: s.sequence],
+        limit: 1
+    )
+  end
+
+  def open_session(%DispatchRun{}), do: nil
+
+  # ended_after_session/1 is the number of the session after which `run` ended, for a run
+  # that ran a session: one whose dispatch was handed over or whose run record registered
+  # a start, and that has a session (`newest_session/1`). Nil for any other run, such as
+  # one a claim ended, whose sessions an earlier claim that lapsed kept.
+  @doc false
+  @spec ended_after_session(DispatchRun.t()) :: pos_integer | nil
+  def ended_after_session(%DispatchRun{id: id} = run) when is_binary(id) do
+    ran? =
+      Repo.exists?(
+        from d in Apiary.Dispatches.Dispatch,
+          where: d.dispatch_run_id == ^id and not is_nil(d.handed_over_at)
+      ) or
+        Repo.exists?(from r in Run, where: r.dispatch_run_id == ^id and not is_nil(r.started_at))
+
+    if ran? do
+      case newest_session(run) do
+        %Session{sequence: sequence} -> sequence
+        nil -> nil
+      end
+    end
+  end
+
+  def ended_after_session(%DispatchRun{}), do: nil
+
+  # What a report of the session `number` does: a repeat of the newest session the run
+  # reported returns that step's result; an older one is a mismatch; a newer one steps on
+  # the session the run is in, the first with no report recorded yet. A run with no
+  # session recorded is one that no claim of a shared stage registered.
+  defp reported(sessions, number) do
+    newest =
+      sessions
+      |> Enum.filter(& &1.forager_session)
+      |> Enum.max_by(& &1.forager_session, fn -> nil end)
+
+    cond do
+      newest && number == newest.forager_session ->
+        {:stored, newest.response}
+
+      newest && number < newest.forager_session ->
+        {:error, :session_mismatch}
+
+      sessions == [] ->
+        {:error, :not_found}
+
+      true ->
+        case Enum.find(sessions, &is_nil(&1.forager_session)) do
+          nil -> {:error, :run_ended}
+          pending -> {:step, pending}
+        end
+    end
+  end
+
+  # The work item's stage, while the run is the newest of that stage, the stage runs, and
+  # the stage has the entries it had in the process version the run was claimed for: the
+  # settings the claim kept are that version's (`claim_sessions!/2`). A work item moved to
+  # another version whose stage is gone or has other entries ends the run as a stage that
+  # no longer runs it does. Another version whose stage differs only in its entries'
+  # machine types, such as a machine type's new key (`Apiary.Processes.rekey_machine/3`),
+  # changes nothing for the run, which runs on the machine its claim took.
+  defp session_stage(work_item, run) do
+    with true <- current_run?(work_item, run),
+         {:ok, version, stage} = placed <- placed(work_item),
+         true <- same_entries?(version, stage, run) do
+      placed
+    else
+      _other -> {:error, :run_ended}
+    end
+  end
+
+  defp same_entries?(%{id: id}, _stage, %DispatchRun{process_version_id: id}), do: true
+  defp same_entries?(_version, _stage, %DispatchRun{process_version_id: nil}), do: true
+
+  defp same_entries?(_version, stage, %DispatchRun{} = run) do
+    case Processes.stage(Processes.get_version!(run.process_version_id), run.stage_id) do
+      nil -> false
+      claimed -> entries(claimed) == entries(stage)
+    end
+  end
+
+  # The entries of `stage`'s sequence, those in a loop's body included, without their
+  # machine types.
+  defp entries(stage), do: Enum.map(stage["sequence"] || [], &without_machine/1)
+
+  defp without_machine(%{"loop" => %{"body" => body} = loop} = entry) when is_list(body),
+    do: %{entry | "loop" => %{loop | "body" => Enum.map(body, &without_machine/1)}}
+
+  defp without_machine(%{} = entry), do: Map.delete(entry, "machine")
+  defp without_machine(entry), do: entry
+
+  # The session the report ends, recorded by the claim or by the step before, while the
+  # work item is at its position.
+  defp pending_session(%Session{} = pending, work_item) do
+    if position(work_item) ==
+         %{entry: pending.stage_entry, loop_entry: pending.loop_entry, round: pending.round},
+       do: {:ok, pending},
+       else: {:error, :run_ended}
+  end
+
+  defp insert_session!(run, sequence, spec, opts \\ []) do
+    %Session{
+      organisation_id: run.organisation_id,
+      workspace_id: run.workspace_id,
+      dispatch_run_id: run.id,
+      sequence: sequence,
+      stage_entry: spec.entry,
+      loop_entry: spec.loop_entry,
+      round: spec.round,
+      workflow: spec.workflow
+    }
+    |> Repo.insert!(opts)
+  end
+
+  # The result of the session, as `reported_result/2` reads a run's end, with the number of the
+  # run's newest verdict version: a verdict counts only when it is newer than `previous`,
+  # the number the previous step saw.
+  defp session_result(work_item, run, state, previous) do
+    open = open_questions(work_item, run)
+    {verdict, seen} = session_verdict(run, previous)
+
+    result =
+      cond do
+        open != [] ->
+          {:questions, question_texts(open), escalate_points(verdict, open)}
+
+        verdict ->
+          open_points(verdict, open)
+
+        state in ["failed", "cancelled"] ->
+          {:stopped, Points.run_stopped(StopCause.no_result(), nil)}
+
+        true ->
+          {:verdict, nil, nil}
+      end
+
+    {result, seen}
+  end
+
+  defp session_verdict(run, previous) do
+    case Artifacts.newest_of_run(run, "verdict", "main") do
+      nil ->
+        {nil, previous}
+
+      %{number: number} when is_integer(previous) and number <= previous ->
+        {nil, previous}
+
+      version ->
+        case Artifacts.stored_json(version) do
+          {:ok, document} ->
+            document = document || %{}
+            {{:verdict, verdict(document["verdict"]), points(document["points"])}, version.number}
+
+          {:error, :store_unavailable} ->
+            raise Apiary.Stages.VerdictUnreadable
+        end
+    end
+  end
+
+  defp session_spec({:session, spec}), do: spec
+  defp session_spec(_other), do: nil
+
+  # The step's result as a session records it, with string keys: the next session, with
+  # the settings of its entry as the claim kept them (`settings`), or the end of the run.
+  # The session's inputs take the bytes of `session_answer_limit/0` that the rest of the
+  # result leaves, with the oldest comments left out first (`Apiary.Dispatches.Inputs`);
+  # inputs that cannot fit with every comment left out are `{:error, :inputs_invalid}`.
+  defp session_response({:session, spec}, work_item, run, settings, pending) do
+    with {:ok, entry} <- entry_settings(settings, spec),
+         do: session_answer(work_item, run, pending, spec, entry)
+  end
+
+  defp session_response(_end, _work_item, _run, _settings, _pending),
+    do: {:ok, %{"next" => "end"}}
+
+  # The settings the claim kept for the entry of `spec`; a place the claim kept none for,
+  # as of a version the claim did not read, ends the run as a stage that no longer runs
+  # it does.
+  defp entry_settings(settings, spec) do
+    case Map.fetch(settings, session_place(spec.entry, spec.loop_entry)) do
+      {:ok, %{"time_limit_minutes" => _minutes, "full_suite" => _full_suite} = entry} ->
+        {:ok, entry}
+
+      _other ->
+        {:error, :run_ended}
+    end
+  end
+
+  defp session_answer(work_item, run, pending, spec, entry) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+
+    target =
+      if work_item.target_system,
+        do: %{system: work_item.target_system, path: work_item.target_path}
+
+    stored = %{
+      "next" => "session",
+      "session" => pending.sequence + 1,
+      "workflow" => spec.workflow,
+      # No model choice or key is resolved per session here: both are nil.
+      "model_choice" => nil,
+      "model_credential" => nil,
+      "time_limit_minutes" => entry["time_limit_minutes"],
+      "full_suite" => entry["full_suite"],
+      "inputs" => %{}
+    }
+
+    rest = byte_size(Jason.encode!(stored)) - byte_size("{}")
+
+    case Apiary.Dispatches.Inputs.explore(
+           work_item,
+           run,
+           %{domain: Apiary.Lingo.Domain.name(workspace), target: target},
+           max(session_answer_limit() - rest, 1)
+         ) do
+      {:ok, inputs} ->
+        {:ok, Map.put(stored, "inputs", inputs |> Jason.encode!() |> Jason.decode!())}
+
+      {:error, :answer_too_large} ->
+        {:error, :inputs_invalid}
+
+      {:error, _cause} = unformed ->
+        unformed
+    end
+  end
+
+  # session_answer_limit/0 is the most bytes a session's result takes, encoded: 1 MiB,
+  # the largest `200` the gateway passes back to the next-session request. A test sets
+  # `config :apiary, Apiary.Stages, session_answer_limit: bytes` (`Application.put_env/3`,
+  # in a module that is not async), to see the inputs cut.
+  defp session_answer_limit do
+    :apiary
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:session_answer_limit, @session_answer_bytes)
+  end
+
+  # A recorded result as `next_session/2` returns it.
+  defp response(%{"next" => "session"} = stored) do
+    {:session,
+     %{
+       session: stored["session"],
+       workflow: stored["workflow"],
+       model_choice: stored["model_choice"],
+       model_credential: stored["model_credential"],
+       time_limit_minutes: stored["time_limit_minutes"],
+       full_suite: stored["full_suite"],
+       inputs: stored["inputs"]
+     }}
+  end
+
+  defp response(%{"next" => "end"}), do: :end
 
   # sweep/3 acts on the ends the stage runner has not read: each run of Explore that is
   # the newest of its work item's take in, ended, with its work item exploring and the
@@ -2216,11 +2844,17 @@ defmodule Apiary.Stages do
     apply_outcome(work_item, version, stage, outcome, run_id, by)
   end
 
-  defp apply_outcome(work_item, version, stage, outcome, run_id, by) do
+  # `mode` `:session`, for a step on a session of a shared run (`next_session/2`): a
+  # workflow of the stage runs as the run's next session, `{:session, spec}` in place of a
+  # run queued. The next stage's run is queued as for any mode.
+  defp apply_outcome(work_item, version, stage, outcome, run_id, by, mode \\ :queue) do
     %{state: state, position: position, actions: actions} = outcome
     work_item = place!(work_item, version, stage["id"], state, position)
 
     Enum.reduce(actions, {work_item, nil}, fn
+      {:queue, spec}, {work_item, _run} when mode == :session ->
+        {work_item, {:session, spec}}
+
       {:queue, spec}, {work_item, _run} ->
         {:ok, run} = queue!(work_item, version, stage, spec)
         {work_item, run}
@@ -3134,17 +3768,18 @@ defmodule Apiary.Stages do
 
   # A run of a workflow other than Explore: the open questions of the run's take in
   # (`open_questions/2`), with the points of its verdict `escalate` where it pushed one,
-  # else the newest verdict named `main` that the run pushed (`verdict!/1`), else stopped
-  # when its registered run failed, was lost or was cancelled, or a member cancelled it
-  # (`stopped?/1`).
+  # else the newest verdict named `main` that the run pushed (`ended_verdict!/1`), else
+  # stopped when its registered run failed, was lost or was cancelled, or a member
+  # cancelled it (`stopped?/1`).
   defp reported_result(work_item, run) do
     open = open_questions(work_item, run)
+    verdict = ended_verdict!(run)
 
     cond do
       open != [] ->
-        {:questions, question_texts(open), escalate_points(verdict!(run), open)}
+        {:questions, question_texts(open), escalate_points(verdict, open)}
 
-      verdict = verdict!(run) ->
+      verdict ->
         open_points(verdict, open)
 
       stopped?(run) ->
@@ -3192,6 +3827,23 @@ defmodule Apiary.Stages do
       {:error, :store_unavailable} -> raise Apiary.Stages.VerdictUnreadable
       verdict -> verdict
     end
+  end
+
+  # The verdict of a run's end as `verdict!/1` reads it; for a run of a stage with
+  # `shared_run: true` whose sessions stepped the stage runner (`next_session/2`), only a
+  # verdict newer than the newest one those steps saw, as a session's step reads it: a
+  # verdict that a session's step used does not count again.
+  defp ended_verdict!(run) do
+    seen =
+      Repo.one(
+        from s in Session,
+          where: s.dispatch_run_id == ^run.id and not is_nil(s.response),
+          select: max(s.verdict_number)
+      )
+
+    if is_integer(seen) and not Cancel.dispatch_run_cancelled?(run),
+      do: run |> session_verdict(seen) |> elem(0),
+      else: verdict!(run)
   end
 
   # The points of a verdict `escalate`, with the open questions `open` (`open_points/2`);

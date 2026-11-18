@@ -79,15 +79,20 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   # `run_settings`, in the schema's order: `runtime`, `model`, `effort` when the choice has
   # one, `provider_models` and `tiers`, a tier left out when no choice maps it to a model
-  # that goes with the provider (`Apiary.ModelChoices.Resolution`); then
-  # `time_limit_minutes`, the minutes the time limits of the run's workspace and target
-  # come to for the run's workflow
+  # that goes with the provider (`Apiary.ModelChoices.Resolution`). The documents have no
+  # key, no secret and no id of a key, and neither has the stored copy.
+  #
+  # `hold/1` also reads the time limits: `time_limit`, the minutes the time limits of the
+  # run's workspace and target come to for the run's workflow
   # (`Apiary.TimeLimits.Resolution`, `Apiary.Stacks.workflow/2`), with the workflow model
   # the workflow of its stage entry (`Apiary.Stages.run_workflow/1`); 180 minutes for a
-  # workflow with no limit (`Apiary.TimeLimits.default_minutes/0`), and left out when the
-  # run has no workflow. The process document has no time limit. The workflow and the
-  # limits are read without a lock in `hold/1`. The documents have no key, no secret and no id of
-  # a key, and neither has the stored copy. Beside it, the run keeps the provider's row
+  # workflow with no limit (`Apiary.TimeLimits.default_minutes/0`), and nil when the run
+  # has no workflow. The documents have it as their top-level `time_limit_minutes`, the
+  # limit of the run's first session (`Apiary.Dispatches.Handover`). `time_limits` has
+  # the minutes of the run's workflow and, for a run of a stage with `shared_run: true`,
+  # of each workflow of that stage (`Apiary.Stages.shared_workflows/1`), which the claim
+  # keeps on the run (`Apiary.Stages.claim_sessions!/2`). The process document has no
+  # time limit. The workflows and the limits are read without a lock. Beside it, the run keeps the provider's row
   # id, its keys' secret's row id, its keys (`runs.model_keys`: each key's row id, its
   # credential name `<provider's public id>-<place from 1>`, `start` on the start key, and
   # what its run configuration entry has of it), the provider's chain and the API the run
@@ -166,12 +171,19 @@ defmodule Apiary.Dispatches.RunSettings do
 
       case lock(workspace, target, workflow, [], @lock_rounds) do
         {:ok, input} ->
+          time_limits =
+            Map.new(
+              Enum.uniq(List.wrap(workflow) ++ Apiary.Stages.shared_workflows(dispatch_run)),
+              &{&1, time_limit(workspace, target, &1)}
+            )
+
           %{
             organisation: organisation,
             workspace: workspace,
             target: target,
             input: input,
-            time_limit: time_limit(workspace, target, workflow)
+            time_limit: workflow && Map.fetch!(time_limits, workflow),
+            time_limits: time_limits
           }
 
         :unstable ->
@@ -201,6 +213,20 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   def choice_in_effect(%DispatchRun{}), do: nil
+
+  # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
+  # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,
+  # read without a lock, as `hold/1` reads them.
+  @doc false
+  @spec time_limit_minutes(DispatchRun.t(), String.t()) :: pos_integer
+  def time_limit_minutes(
+        %DispatchRun{workspace_id: workspace_id, work_item_id: id},
+        workflow
+      )
+      when is_binary(workflow) do
+    workspace = Repo.get!(Workspace, workspace_id)
+    time_limit(workspace, target(workspace, id), workflow)
+  end
 
   # The run's workflow: with the workflow model, the one its stage entry names
   # (`Apiary.Stages.run_workflow/1`); else the one the Harness page saved.
@@ -319,7 +345,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
     case Resolution.resolve(input) do
       :none ->
-        sealed(with_time_limit(runtime_only(ModelChoices.default_runtime()), held))
+        sealed(runtime_only(ModelChoices.default_runtime()))
 
       {:error, :provider_removed} ->
         {:end, :provider_gone}
@@ -339,7 +365,7 @@ defmodule Apiary.Dispatches.RunSettings do
                  held,
                  now
                ),
-             do: sealed(with_time_limit(built, held))
+             do: sealed(built)
     end
   end
 
@@ -354,7 +380,7 @@ defmodule Apiary.Dispatches.RunSettings do
           fallen
 
         {:cooling, ids} ->
-          {:cooling, with_time_limit(built, held), Enum.uniq([provider.id | ids])}
+          {:cooling, built, Enum.uniq([provider.id | ids])}
       end
     end
   end
@@ -513,14 +539,6 @@ defmodule Apiary.Dispatches.RunSettings do
       columns: %{}
     }
   end
-
-  # `time_limit_minutes` after the other members, for a run with a workflow.
-  defp with_time_limit(built, %{time_limit: minutes}) when is_integer(minutes) do
-    wire = Jason.OrderedObject.new(built.wire.values ++ [{"time_limit_minutes", minutes}])
-    %{built | wire: wire, stored: Map.put(built.stored, "time_limit_minutes", minutes)}
-  end
-
-  defp with_time_limit(built, _held), do: built
 
   # The settings within the column's bound, or the claim is refused.
   defp sealed(%{wire: wire} = built) do

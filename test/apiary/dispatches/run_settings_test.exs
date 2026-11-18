@@ -150,13 +150,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Apiary.AccessKeysFixtures.node_key_fixture(ctx.scope, ctx.gateway)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert settings(handed) == %{"runtime" => @runtime}
     end
 
     test "sends the runtime alone, and the run keeps no provider", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
-      assert settings(handed) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert settings(handed) == %{"runtime" => @runtime}
 
       assert %Run{
                run_settings: %{"runtime" => @runtime},
@@ -199,14 +199,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                "model" => "claude-opus-5-5",
                "effort" => "high",
                "provider_models" => models(@efforts),
-               "tiers" => %{"balanced" => "claude-haiku-5-5"},
-               "time_limit_minutes" => 180
+               "tiers" => %{"balanced" => "claude-haiku-5-5"}
              }
 
       ordered = handed.run_settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
 
       assert Enum.map(ordered.values, &elem(&1, 0)) ==
-               ~w(runtime model effort provider_models tiers time_limit_minutes)
+               ~w(runtime model effort provider_models tiers)
     end
 
     test "of a run with a target reads the target's level first", ctx do
@@ -251,8 +250,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert settings(handed) == %{
                "runtime" => @runtime,
                "model" => "claude-opus-5-5",
-               "provider_models" => models(@efforts),
-               "time_limit_minutes" => 180
+               "provider_models" => models(@efforts)
              }
     end
 
@@ -302,8 +300,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                  "light" => "claude-haiku-5-5",
                  "balanced" => "acme-small",
                  "thinking" => "acme-large"
-               },
-               "time_limit_minutes" => 180
+               }
              }
     end
   end

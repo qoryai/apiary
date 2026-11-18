@@ -659,7 +659,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "stack" => "support",
                "type" => read.type,
                "version" => nil,
-               "submit" => %{"type" => "facts", "send" => "after_gate"}
+               "submit" => %{"type" => "facts", "send" => "after_gate"},
+               "submit_schema" => %{"type" => "object"}
              }
     end
 

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/next-session-answer.schema.json",
+  "title": "Next-session answer",
+  "description": "The answer to the next-session request, next-session-request.schema.json: either the next session of the run, with next session, or the end of the run, with next end. The next session has session, workflow, time_limit_minutes, full_suite and inputs, and optionally model_choice and model_credential; the end has next only. An answer with the members of both shapes is refused. It answers a request that qory sends through Forager's link, which the gateway forwards to the control plane.",
+  "type": "object",
+  "oneOf": [
+    {
+      "description": "The next session of the run: the session that qory starts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "next",
+        "session",
+        "workflow",
+        "time_limit_minutes",
+        "full_suite",
+        "inputs"
+      ],
+      "properties": {
+        "next": {
+          "description": "The kind of the answer: session, a session follows.",
+          "const": "session"
+        },
+        "session": {
+          "description": "The control plane's sequence number of this session in the run, from 1. It is not Forager's number of the session, which Forager assigns when qory joins the session.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "workflow": {
+          "description": "The workflow that the session starts, as workflow of the run documents.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/workflow"
+        },
+        "model_choice": {
+          "description": "The model choice of the session, as the model, effort, provider_models and tiers of run_settings. Absent when no provider is chosen: the session uses the gateway's configured key and the runtime's default model.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/model_choice"
+        },
+        "model_credential": {
+          "description": "The credential of the run that the session joins with, such as <the provider's public id>-<its place from 1>: example-provider-1. The schema checks only the pattern of a credential's name in Forager's policy. A credential of the start key's provider is the active key of that provider's group. Absent when no provider is chosen.",
+          "$ref": "https://qory.dev/contracts/forager/v1/policy.schema.json#/properties/credentials/items/properties/name"
+        },
+        "time_limit_minutes": {
+          "description": "The time limit of the session, in minutes, from 15 to 1440.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/time_limit_minutes"
+        },
+        "full_suite": {
+          "description": "Whether the session runs the full test suite after the agent ends.",
+          "type": "boolean"
+        },
+        "inputs": {
+          "description": "The input of the session, as inputs of the run documents. qory writes it to the inputs file of the session.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/inputs"
+        }
+      }
+    },
+    {
+      "description": "The end of the run: no session follows, and qory closes the run.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "next"
+      ],
+      "properties": {
+        "next": {
+          "description": "The kind of the answer: end, no session follows.",
+          "const": "end"
+        }
+      }
+    }
+  ]
+}

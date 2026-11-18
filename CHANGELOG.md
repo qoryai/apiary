@@ -12,6 +12,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: workflow_model -->
+- The harness sets the schema of the type that the process's `submit` is set to,
+  `submission` in the Qory harness. Qory Apiary checks a run's version of that type against
+  the schema in the harness commit that the run uses: for the Qory harness from the harness
+  files it stores for that commit, for a harness repository from `submit_schema` in the
+  process version's template record, which a save from a harness repository now writes. It
+  checks against the workspace's type, as before, where it cannot find that schema: a
+  version saved from a harness repository before this change, a Qory harness commit whose
+  files it does not store, and a run whose base is pinned to a tag or a commit, whose
+  base comes from a file or from the built-in harness, whose record is of another
+  harness, or that has no record.
+- On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
+  and no **Edit** and no **Delete**. The page shows a line under the table with the reason
+  and the step to change the schema, which is a link to **Harness settings**. With the
+  `operator_infrastructure` flag on, the step for the organisation's owners and admins in a
+  workspace that an operator operates is to ask the operator. With the flag off, the link
+  shows. The change and the delete are refused on the server too. A type that an older
+  process version in use sets stays set. **Add a version** does not offer the type, and a
+  person's push of it is refused with `unknown_type`, as for `questions`.
+<!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
   question that is not a decision. The tab label shows the number of open questions. The
@@ -81,8 +101,34 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   limit, the default. A change applies to prebuilds that start after it. A prebuild's run
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
-  the member. The run contract is vendored at integrations `dbc1ce5`, with the tier rename
-  of integrations `b22085a` applied on top.
+  the member. The run contract is vendored at integrations `cd52a06e`.
+<!-- feature: workflow_model -->
+- A stage of a process takes `shared_run`, default `false`: with `true`, its workflows run
+  one after the other as sessions of one run, on one machine. A save of such a stage fails
+  when two of its workflows, those in a loop included, differ in access level or machine
+  type.
+- After each session of such a run, its gateway sends `POST /v1/runs/<run_id>/next-session`
+  with `{"session", "state", "reason"}`. Qory Apiary steps the stage and returns `200` with
+  the next session's `workflow`, `time_limit_minutes`, `full_suite` and `inputs`, or
+  `{"next": "end"}`, at most 1 MiB; a repeat for the same session returns the same body.
+- A save of a stage with `shared_run: true` compares the access each workflow runs with:
+  the lower of the entry's `access` and the level the workflow's harness sets. When they
+  differ, the save fails with "Move plan-the-build to a separate stage in Workspace
+  settings › Workflows, or ask whoever keeps the harness to give it write access.
+  plan-the-build runs with read access, because its harness sets read." Update from
+  harness reads the levels at the commit it updates to and, before a save, shows "Ask
+  whoever keeps the harness to give plan-the-build write access, or to move it to a
+  separate stage. plan-the-build runs with read access, because its harness sets read."
+  It saves nothing then. If that read of the levels fails, the update goes on without
+  them. Keep the process at the latest, a change of a level in the harness alone, or a
+  failed read of the levels can still make the levels differ after a save. The claim
+  then compares the levels again and ends such a run before it starts, with the end
+  cause `shared_access_differs` and the outcome error. Owners and admins see
+  an escalation with the save's fix and "then run the round again" after it.
+- `full_suite` is `true` only for a session of an entry with access `write` that is in a
+  loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
+  access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate card of a stage starts with the draft of the work item's newest submission,
   one line per repository that has one: “Submission: the draft in example/shop”, a link
@@ -104,6 +150,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its expected result, and the artifact row; for a pictures scenario, one picture per
   step, each with the step's title and expected result. A scenario whose name is withdrawn
   is left out, and so are the scenarios of an earlier take in.
+- On that tab, a **Watch** button under each film, and under each set of pictures above
+  its artifact row, opens that scenario's page. A film's button opens the page at the
+  time and the speed of the film on the tab, and does not start it.
+- The page of a scenario's film or pictures is a player page. Under the player it shows
+  the scenario's title and each step with its expected result, and the right column
+  starts with the work item's scenarios, “Scenarios 1 of 3”, in the order of the Verify
+  tab. Each scenario has a thumbnail, its title, and “Demo video · 0:10” or “3 pictures”;
+  a click opens that scenario's page, and the scenario you are on is marked. A film has
+  **Cinema**, which puts the player above both columns at the width of the page and stays
+  on from one page to the next, and **Full screen**, which shows the player alone until
+  you press **Esc** or **Leave full screen**. A scenario's pictures show one at a time,
+  with **Previous picture**, “Picture 2 of 3”, **Next picture**, then the step, its
+  expected result and the file name. No film starts by itself, and the next scenario does
+  not start when a film ends. A film or pictures that no scenario has show no queue, and
+  a set of pictures that no scenario has stays a stack of pictures.
 - On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
   Explainer, show the version and the artifact rows only, and a row names the artifact
   as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
@@ -2534,6 +2595,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: workflow_model -->
+- `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
+  a stage with `shared_run: true`, with its foreign keys to `organisations`, `workspaces`
+  and `dispatch_runs`, and its indexes and checks. It changes no existing table.
+- `runs` (20261118130100): a nullable column `session_settings`, the settings of each
+  workflow entry of a shared run's stage as the claim read them. It changes no row.
+- `dispatch_runs` and `dispatches` (20261118130200): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `shared_access_differs`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes no
+  row.
+<!-- /feature -->
 - 19 migrations, versions 20260927100100 to 20261025170000 in
   `priv/repo/migrations`, which run although their versions are older than migrations
   an instance has run already. They only add 15 tables, with their foreign keys to

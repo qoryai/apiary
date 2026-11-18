@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/outcome.schema.json",
+  "title": "Run end",
+  "description": "A run's end: how the run ended. It is not Forager's run-outcome.schema.json, the body with which a run's starter says how the run ended. It has state, and optionally reason and exit_code, the members of Forager's dev.qory.run.exited, https://qory.dev/contracts/forager/v1/events/run.exited.schema.json. This schema checks the values of reason and exit_code as that event does. The control plane reads these members from the run's dev.qory.run.exited event. A paused run has not ended; its event is not a run end. qory sets reason to say why a run failed, and $defs end_codes lists the codes that it sets, each with its cause in plain words. The list contains no advice and no action text: what each reader does for a code is the control plane's text. The list is closed in this contract and open on the wire: a reason that is not in the list passes this schema, as a newer qory may send a code that an older reader does not know. A reason in the list is valid only with state failed, so an outcome with state succeeded or cancelled and one of those codes is refused. An outcome with a member this schema does not define, such as message or action, is refused.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state"
+  ],
+  "if": {
+    "required": [
+      "reason"
+    ],
+    "properties": {
+      "reason": {
+        "$ref": "#/$defs/end_codes"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "state": {
+        "const": "failed"
+      }
+    }
+  },
+  "properties": {
+    "state": {
+      "description": "How the run ended: succeeded, failed or cancelled.",
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "reason": {
+      "description": "Why the run ended, the reason of the run's dev.qory.run.exited: a code, a lower-case letter, then lower-case letters, digits and underscores, up to 64 characters. Any code of that pattern passes. The codes of $defs end_codes are the ones qory sets for a failed run. Forager drops a reserved reason from a starter's outcome and keeps the outcome.",
+      "$ref": "https://qory.dev/contracts/forager/v1/events/run.exited.schema.json#/properties/reason"
+    },
+    "exit_code": {
+      "description": "The run's exit code, the exit_code of its dev.qory.run.exited: the exit status of the last session, 124 when the run's time limit was reached, -1 when no session ran. An integer from -1.",
+      "$ref": "https://qory.dev/contracts/forager/v1/events/run.exited.schema.json#/properties/exit_code"
+    }
+  },
+  "$defs": {
+    "end_codes": {
+      "description": "The end codes: the codes that qory sets in reason, each with the cause of the end in plain words. A code is a lower-case letter, then lower-case letters, digits and underscores, up to 64 characters, and none is one of Forager's reserved reasons. The causes are what happened.",
+      "type": "string",
+      "oneOf": [
+        {
+          "const": "push_credential_missing",
+          "description": "The run's configuration in Forager has no credential with the purpose push, so qory pushed nothing."
+        },
+        {
+          "const": "push_refused",
+          "description": "A push of the run's commits was refused with status 403. One of: the run's push proxy refuses a push that is not a plain push to the push_ref of the push credential; the push credential has no item for the path of the push; the forge refuses a push that the permission of the push credential or a branch rule does not allow."
+        },
+        {
+          "const": "prebuilt_image_too_large",
+          "description": "The image that the build made from the target is larger than largest_prebuilt_image_bytes of the run documents, measured before qory adds its layer, so qory removes the image."
+        },
+        {
+          "const": "push_not_recorded",
+          "description": "qory pushed the run's commits to the forge, and the control plane has no record of the push: the report of the push was refused with a status from 400 to 499 other than 429, or got no accepted answer in 4 sends."
+        },
+        {
+          "const": "environment_image_missing",
+          "description": "The prebuild's environment image (`environment_image` in the run documents) is not in the registry."
+        }
+      ]
+    }
+  }
+}
