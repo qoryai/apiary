@@ -221,7 +221,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
         ModelChoices.put_choice(ctx.scope, :workspace, %{
           provider: provider.public_id,
           model: "claude-opus-5-5",
-          tiers: %{"fast" => "claude-haiku-5-5"}
+          tiers: %{"balanced" => "claude-haiku-5-5"}
         })
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 45)

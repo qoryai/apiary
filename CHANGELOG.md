@@ -1692,6 +1692,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and this change would raise a repository's variables above 126.” Before, a save allowed
   128 names. The claim still refuses a run whose variables pass either limit, such as
   variables saved before.
+- The tier `fast` is now `balanced`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
@@ -2663,6 +2664,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   added, under a lock that blocks reads and writes. It changes no row. Rolling back sets
   `end_detail` to NULL on the runs ended `variables_invalid`, and their work items then
   read that one of the run's variables breaks its rule.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- `model_choices` and `model_choice_fallbacks` (20261118120000): the function
+  `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
+  the tier `balanced` in place of `fast`. The migration deletes each model choice whose
+  tier map has `fast`, with its fallbacks, and moves no data. The delete scans
+  `model_choices`; the function change locks no table. The migration is short. Rolling
+  back restores the function with `fast` and deletes each model choice whose tier map
+  has `balanced`, with its fallbacks.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
