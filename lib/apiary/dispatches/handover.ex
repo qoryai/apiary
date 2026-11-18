@@ -806,15 +806,17 @@ defmodule Apiary.Dispatches.Handover do
   # queue read under lock at the claim, not for the workspace of the claiming pool.
   @spec model_sealable(term, Node.t(), DispatchRun.t(), [AccessKey.t()]) :: term
   def model_sealable(
-        {:ok, %{settings: %{keys: [_ | _] = model_keys}}} = ok,
+        {:ok, %{settings: settings}} = ok,
         %Node{} = gateway,
         %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id},
         keys
       ) do
     run = %{organisation_id: organisation_id, workspace_id: workspace_id}
-    chains = model_keys |> Enum.map(& &1.chain) |> Enum.uniq()
+    chains = model_chains(settings)
 
     cond do
+      # A run formed with no model key: nothing to seal.
+      chains == [] -> ok
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
       Enum.all?(chains, &ProviderCredential.sealable_to?(&1, gateway, run)) -> ok
@@ -822,9 +824,17 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # A run formed with no model key, or not formed: nothing to seal. Any gateway or run of
+  # A run not formed: nothing to seal. Any gateway or run of
   # the queue of another shape raises `FunctionClauseError`, so the seal is not skipped.
   def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
+
+  # The chains of the run's keys; for a run whose keys are all in cooldown, which waits
+  # for them, the chain of its choice's provider, so that such a run ends before it waits.
+  defp model_chains(%{keys: [_ | _] = model_keys}),
+    do: model_keys |> Enum.map(& &1.chain) |> Enum.uniq()
+
+  defp model_chains(%{columns: %{provider_chain: chain}}) when is_binary(chain), do: [chain]
+  defp model_chains(_settings), do: []
 
   # The run's work credential entry, formed from what the run is formed from, with the
   # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
