@@ -12,6 +12,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- Each session of a run has a record, which Qory Apiary keeps when the run's events are
+  deleted. The record has the session's work item, target, stage, workflow, attempt,
+  session number, start and end, duration, turns, tokens in and out with cache reads and
+  writes, cost and model, and whether a result line was an error. The attempt is that of the
+  run of the queue: a run that continues a paused run has the paused run's attempt plus 1,
+  and the paused run keeps its record as attempt 1. A value that the runtime did not report
+  is empty, never 0. No page shows the records yet. A run's events written before this
+  change have no record until the run is projected again.
+<!-- feature: factory, secrets -->
+- A key report that names a session also counts into that session's record, for each key and
+  limit window, the first and the last utilization that the gateway reported and their
+  difference, the share. A report with no session changes no record. The key states that
+  decide which key a run uses are as before.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The harness sets the schema of the type that the process's `submit` is set to,
   `submission` in the Qory harness. Qory Apiary checks a run's version of that type against
@@ -1646,6 +1660,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A run's cost, the **Cost** on the run page that every spend total reads, is the sum, over
+  the run's sessions, of the `cost_usd` of each session's last result line. It was the sum of
+  all the result lines. A Claude Code launch with a subagent in the background writes up to
+  three result lines, and each line has the launch's total so far, so a cost of 0.0129 showed
+  as 0.0387. A run projected before this change keeps its cost until it is projected again.
 <!-- feature: factory, secrets -->
 - A run receives the variables of its workspace. When a claim registers a run, Qory
   Apiary resolves the variables of the organisation, the workspace, and the target (a
@@ -2640,6 +2659,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+- `session_records` and `session_key_windows` (20261118161000): two new tables, with their
+  foreign keys to `organisations`, `workspaces`, `runs`, `dispatch_runs`, `work_items`,
+  `targets` and each other, their indexes and their checks. The migration changes no
+  existing table and no row. Each foreign key takes a short lock on the table it points to
+  that blocks writes while the key is added, and the new tables are empty, so no table is
+  scanned. Rolling back drops both tables with the records in them.
 <!-- feature: workflow_model -->
 - `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
   a stage with `shared_run: true`, with its foreign keys to `organisations`, `workspaces`
