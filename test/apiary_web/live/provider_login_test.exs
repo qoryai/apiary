@@ -194,7 +194,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Sign-in")
       refute has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
-      assert text(lv, "#key-value-0-hint") == @hint
+      assert text(lv, "#key-value-0-hint") == @hint <> " Leave it empty to keep the value."
 
       lv
       |> form("#key-form", key: %{value_id: "main", key: "sk-proj-an-api-key"})

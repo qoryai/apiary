@@ -125,7 +125,10 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp key_label(:new, false), do: gettext("Key")
   defp key_label(:edit, false), do: gettext("New value")
 
-  defp key_hint(_action, true), do: ModelKeyComponents.sign_in_hint()
+  defp key_hint(:new, true), do: ModelKeyComponents.sign_in_hint()
+
+  defp key_hint(:edit, true),
+    do: ModelKeyComponents.sign_in_hint() <> " " <> gettext("Leave it empty to keep the value.")
 
   defp key_hint(:new, false),
     do: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
