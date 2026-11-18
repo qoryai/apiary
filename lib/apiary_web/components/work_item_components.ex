@@ -96,6 +96,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.RunCancelComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.SubmissionComponents
   alias ApiaryWeb.StagesLive.Words, as: StagesWords
   alias ApiaryWeb.WorkItemLive.StageComponents
 
@@ -2577,6 +2578,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: [],
     doc: "the versions the stage's runs wrote, `%{type, version}`, for the runs' summary"
 
+  attr :suite, :map,
+    default: nil,
+    doc:
+      "the full test suite result shown under the build report's frame: the `{result, reads}` of `Apiary.Stages.full_suite/3` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
+
+  attr :submissions, :map,
+    default: nil,
+    doc:
+      "the Submissions list in place of the frame of the type it is for (`ApiaryWeb.SubmissionComponents.frame/1`): `%{type:, rows:, names:}`, nil for none"
+
   attr :questions, :list, default: []
 
   attr :waiting, :boolean,
@@ -2734,14 +2745,32 @@ defmodule ApiaryWeb.WorkItemComponents do
           question_numbers={@question_numbers}
         />
       </div>
-      <.output_frame
-        :for={output <- @outputs}
-        id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
-        number={@work_item.number}
-        output={output}
-      >
-        {render_slot(@row, output)}
-      </.output_frame>
+      <%= for output <- @outputs do %>
+        <SubmissionComponents.frame
+          :if={submissions_frame?(@submissions, output)}
+          id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
+          rows={@submissions.rows}
+          open={output.open}
+          names={@submissions.names}
+          stage_names={@stage_names}
+          now={@now}
+        />
+        <.output_frame
+          :if={!submissions_frame?(@submissions, output)}
+          id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
+          number={@work_item.number}
+          output={output}
+        >
+          {render_slot(@row, output)}
+        </.output_frame>
+        <p
+          :if={@suite && output.type == "build-report" && main_frame?(output)}
+          id="work-item-suite-line"
+          class="mt-3 text-sm"
+        >
+          {suite_words(@suite)}
+        </p>
+      <% end %>
       <.decisions_frame
         :if={@decisions_frame != []}
         id={"#{@id}-decisions"}
@@ -2798,6 +2827,104 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  # Whether the Submissions list takes the place of `output`'s frame: the frame of the
+  # submission type with name `main`, the only name the list reads
+  # (`Apiary.Submissions.list_cached/5`).
+  defp submissions_frame?(%{type: type}, %{type: type} = output), do: main_frame?(output)
+  defp submissions_frame?(_submissions, _output), do: false
+
+  # Whether `output` is the frame of name `main`; a frame with no name is, as
+  # `StageComponents.frame_key/1` reads it.
+  defp main_frame?(output), do: Map.get(output, :name, "main") == "main"
+
+  # The line under the build report's frame for a full test suite result
+  # (`Apiary.Stages.full_suite/3`). The two Standard track lines say "version" in their
+  # source text and "commit" in the software domain's catalogue. The track `fast-track` has
+  # no minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for
+  # 4.5. A suite that did not run shows its reason as the run sent it, trimmed and without
+  # one final full stop (the reader drops it). The line ends in a full stop, but not after a
+  # reason that ends in a question mark or an exclamation mark.
+  defp suite_words(%{state: :not_run, reason: reason}) do
+    if String.ends_with?(reason, ["?", "!"]),
+      do: gettext("The full test suite did not run: %{reason}", reason: reason),
+      else: gettext("The full test suite did not run: %{reason}.", reason: reason)
+  end
+
+  # A result with no counts: the Standard track has the minutes, the Fast track nothing.
+  defp suite_words(%{fast: true, state: :passed, passed: nil}),
+    do: gettext("The full test suite passed.")
+
+  defp suite_words(%{fast: true, state: :failed, passed: nil}),
+    do: gettext("The full test suite failed.")
+
+  defp suite_words(%{state: :passed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite passed on that version, in %{minutes} minute.",
+      "The full test suite passed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite failed on that version, in %{minutes} minute.",
+      "The full test suite failed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{fast: true, state: :passed} = suite) do
+    gettext("The full test suite passed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{fast: true, state: :failed} = suite) do
+    gettext("The full test suite failed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped)
+    )
+  end
+
+  defp suite_words(%{state: :passed} = suite) do
+    ngettext(
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
+      "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed} = suite) do
+    ngettext(
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
+      "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      passed: Format.number(suite.passed),
+      failed: Format.number(suite.failed),
+      skipped: Format.number(suite.skipped),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  # The count that selects the singular: 1 for minutes of exactly 1 (1 or 1.0), and 2 for any
+  # other number, 0 and 0.25 among them.
+  defp suite_plural(minutes) when minutes == 1, do: 1
+  defp suite_plural(_minutes), do: 2
+
+  defp suite_minutes(minutes) when is_float(minutes) and minutes == trunc(minutes),
+    do: Format.number(trunc(minutes))
+
+  defp suite_minutes(minutes), do: Format.number(minutes)
 
   attr :id, :string, required: true
   attr :stage, :map, required: true
@@ -6315,6 +6442,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
        read_needs_words(facts)}
 
+  defp no_result_words(%{write_needs: %{} = facts}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
+       write_needs_words(facts)}
+
   defp no_result_words(%{outcome: :none}, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -6384,6 +6516,22 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Start the run again. The setup container was not removed, so a process in it could still write the files."
+      )
+
+  # What a person does about a run that writes and has no wall (`Apiary.Runs.WriteNeeds`),
+  # the fix first. A person in an organisation cannot edit the instance pool's
+  # forager.yaml. `Apiary.Stages.StopCause` stores the same words in English.
+  defp write_needs_words(%{installed: true}),
+    do:
+      rich_gettext(
+        "%{contact_support}. A run that writes needs a wall, and this machine has none.",
+        contact_support: ApiaryWeb.Support.rich()
+      )
+
+  defp write_needs_words(_facts),
+    do:
+      gettext(
+        "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none."
       )
 
   # What a member does about a run that stopped at a call to an adapter

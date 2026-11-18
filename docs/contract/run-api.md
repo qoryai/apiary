@@ -572,17 +572,20 @@ Apiary reads them itself, and a run pushes a new version of them instead. It can
 withdraw a name of a type whose entry in the template's `artifact_types` sets
 `withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
 a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
-whose newest version a member approved at a gate, and pushes a new version instead. An
-approval that the runner recorded for a gate `none` does not count, and neither does an
-approval of an older version.
+of the type in `submit.type` of its process version or of its work item's process
+version: Qory Apiary reads the newest version of that type as the run's submission.
+Versions stored earlier stay listed. It cannot withdraw a name whose newest version a member approved at a
+gate, and pushes a new version instead. An approval that the runner recorded for a gate
+`none` does not count, and neither does an approval of an older version.
 
 Checks, in order, after the checks of every request:
 
 1. A body that is not the push's object, as for a push: `400` `invalid_request`.
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
-3. `questions`, `review-comments`, `verdict` or `proposal`, or a type with
-   `withdrawable: false`: `422` `type_not_withdrawable`.
+3. `questions`, `review-comments`, `verdict` or `proposal`, a type with
+   `withdrawable: false`, or the type in `submit.type` of the run's process version or of
+   the work item's: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
@@ -592,6 +595,36 @@ Checks, in order, after the checks of every request:
 6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
+
+## The submission the pages list
+
+Qory Apiary lists the versions of the type in `submit.type` of the work item's process
+version on the work item's pages (the Submissions list and a run's Submission block). It
+reads these members of a version's JSON file, at most 1 MiB, and leaves out any value that
+is not of the form below. A stored text is cut to its first 200 characters.
+
+- `ref`: the branch, a string.
+- `repositories`: at most 20 objects, each with `system`, `path`, `commit` (the head, 40 or
+  64 lowercase hex characters) and, optionally:
+  - `commit_url`: an `https` address of the head commit, at most 2048 characters.
+  - `base`: `{commit, commit_url}`, the commit the run started at.
+  - `commits`: `[{commit, step, commit_url}]`, the run's commits in the order it made
+    them, the last the head. `step` is `deliverable:<id>`, the id of a row in the Id column
+    of the build plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
+    is not a full hex id is left out. The head is marked on the last entry whose `commit`
+    is the repository's `commit`; where no entry is, none is marked and the list is shown as
+    read. A page lists at most 100 entries of a repository: the first 100, or the first 99
+    and the head where the head is a later entry; the count has every entry.
+  - `draft`: `{number, url, title}` for a draft sent to the destination, or `{none: <reason>}`.
+
+A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>" ("the result of Run <n>" outside a software workspace)
+where an earlier submission of the work item, among the newest 50 versions, ends at the base
+commit in the same repository. Where a version that is not listed (older than those, or
+written by a run a member cancelled) may end at it, the line shows the commit alone.
+
+The text of a change comes from the Change column of the first 200 rows of the build plan
+(`build-plan`, the file `build-plan.md`) that was newest when the version was stored. A plan
+over 256 KiB gives no change texts, and a stored submission over 1 MiB lists no repository.
 
 ## POST verdict
 
@@ -628,11 +661,24 @@ The body, at most 64 KiB:
   one sentence on one line of 1 to 300 characters. Both are required when `track` is
   present. When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
+- `full_suite`: optional, for any verdict. The result of the run of the full test suite, as
+  the run reports it. `state` is required and is `passed`, `failed` or `not_run`.
+  - With `passed` or `failed`, `minutes` is required: how long the run took, a number from 0
+    to 100,000. `passed`, `failed` and `skipped` are the counts of tests, each a whole number
+    from 0 to 1,000,000,000, either all three or none of them: one or two of the three is
+    refused. `reason` is not allowed.
+  - With `not_run`, `reason` is required: why the suite did not run, one sentence on one
+    line of 1 to 300 characters, as `track.reason` is. The counts and `minutes` are not
+    allowed.
+  - Any other member, a state other than the three, and a value of another type are
+    refused. A verdict with no `full_suite` reports no result.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ...}`, without `points`
-or `track` when the body has none. A body with `"track": null` has none: it is stored
-without `track`, as `"points": null` is stored without `points`. A run of any workflow may
+file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ..., "full_suite": ...}`,
+without `points`, `track` or `full_suite` when the body has none. `full_suite` is stored as
+the run sent it. A body with `"track": null` has none: it is stored
+without `track`, as `"points": null` is stored without `points`, and `"full_suite": null`
+is stored without `full_suite`. A run of any workflow may
 push a verdict. A `changes-requested` verdict moves the stage in the same way with points
 as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
@@ -651,8 +697,9 @@ that left open questions: Explore's result is its proposal or its questions. A r
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
-`verdict`, `points` and `track`, or a `verdict` that is not one of the three, is `400`
-`invalid_request`; points or a track the schema refuses are `422` `invalid_artifact`. A
+`verdict`, `points`, `track` and `full_suite`, or a `verdict` that is not one of the
+three, is `400` `invalid_request`; points, a track or a `full_suite` the schema refuses are
+`422` `invalid_artifact`. A
 `track.id` that the gate of the run's stage does not offer is `422` `invalid_artifact`
 with `names` `["track"]` and the message in "The messages", for a push of the artifact
 `verdict` too. The question
@@ -737,7 +784,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, or of a name whose newest version a member approved at a gate |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
@@ -770,6 +817,9 @@ The messages:
 - `type_not_withdrawable`, for a type with `withdrawable: false`: "Push a new
   version of demo-script instead. The artifact type demo-script has withdrawable set to
   false, so a run cannot withdraw its names."
+- `type_not_withdrawable`, for the type in `submit.type` of the run's process version:
+  "Push a new version of submission instead. Qory Apiary reads its newest version as the
+  run's submission, so a run cannot withdraw it."
 - `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
   version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
   a run cannot withdraw the name."
