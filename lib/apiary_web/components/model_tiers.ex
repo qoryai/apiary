@@ -618,8 +618,15 @@ defmodule ApiaryWeb.ModelTiers do
     assigns = assign(assigns, line: runtime_line(assigns.runtimes, assigns.provider))
 
     ~H"""
-    <div :if={match?([_], @runtimes)} id={@id} class="grid gap-1">
-      <p class="text-[13px]/[18px] font-medium">{gettext("Runtime")}</p>
+    <div
+      :if={match?([_], @runtimes)}
+      id={@id}
+      role="group"
+      aria-labelledby={"#{@id}-label"}
+      aria-describedby={String.trim("#{error_ids(@id, @errors)} #{@id}-line")}
+      class="grid gap-1"
+    >
+      <p id={"#{@id}-label"} class="text-[13px]/[18px] font-medium">{gettext("Runtime")}</p>
       <p id={"#{@id}-name"} class="text-[13.5px]/5">{@runtime.title}</p>
       <input type="hidden" name={@name} value={@runtime.name} form={@form} />
       <.tier_error :for={{message, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>

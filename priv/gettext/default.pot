@@ -5080,7 +5080,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model provider that serves %{runtime} in %{place}. None of the model providers of %{organisation} serves %{runtime}."
+msgid "Add a model provider in %{place}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -15547,6 +15547,7 @@ msgstr ""
 msgid "Only owners and admins add machines."
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add model providers."

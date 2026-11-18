@@ -832,7 +832,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   OpenRouter.”. **Key** lists every key, whichever runtime is chosen. A change of **Key**
   keeps the runtime while the new provider works with it, else takes the first that does.
   A change of **Runtime** keeps the models, and an effort the runtime does not accept goes
-  back to “Not set”. The catalogue of this release has one runtime, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
+  back to “Not set”. With no model provider, the page shows “Add a model provider in
+  Organisation settings › Model providers.” to whoever may add one, and who adds one to
+  anyone else. The catalogue of this release has one runtime, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
   Explore's tab and the Thread, in place of “The run ended with an error.”
 - **Workspace settings › Secrets and variables** lists the key of each model provider

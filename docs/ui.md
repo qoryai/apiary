@@ -497,7 +497,7 @@ replaces the navigation it is in.
   saves the settings and keeps the key's value. Another secret's value is saved as typed,
   its last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
-  part Fallbacks (`#model-fallbacks`) under Runtime, Key and the tiers: the line "When
+  part Fallbacks (`#model-fallbacks`) under Key, the tiers and Runtime: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above
   it. A row is a group named by its place, "Fallback 2", with Provider, Model and
@@ -508,7 +508,10 @@ replaces the navigation it is in.
   Thinking tier's model where the provider has a model of that id, else the provider's
   first. With no provider left, the part shows "Add another model provider that serves
   Claude Code in Organisation settings › Model providers, then add it here as a
-  fallback.", the place a link. Save writes the rows with the choice, and an
+  fallback.", the place a link. A row whose provider does not work with the chosen
+  runtime, after a change of Key or Runtime, shows under its Provider "Choose another
+  provider or remove this fallback. Northwind Claude does not work with Codex.", and Save
+  is disabled while such a row is on the page. Save writes the rows with the choice, and an
   error shows under its row's field, such as "Choose another provider: Northwind Claude
   is chosen already." A save that sends no rows, as the set-up's Model step saves, keeps
   the rows but one of the chosen provider, which it drops. A save that changes the chosen

@@ -587,6 +587,17 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   defp blank_to_nil(_value), do: nil
 
+  defp who_adds(scope) do
+    if Access.reader(scope),
+      do: ApiaryWeb.Access.reads_only(scope),
+      else:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"provider.write",
+          gettext("Only owners and admins add model providers.")
+        )
+  end
+
   defp who_changes(scope) do
     if Access.reader(scope),
       do: ApiaryWeb.Access.reads_only(scope),
@@ -623,7 +634,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp line_id({cause, %Connection{public_id: id}}), do: "model-#{cause}-#{id}"
   defp line_id(cause), do: "model-#{cause}"
 
-  defp unserved_text({:changed, provider}, scope, _runtime),
+  defp unserved_text({:changed, provider}, scope),
     do:
       rich_gettext(
         "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary.",
@@ -631,7 +642,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         place: providers_link(scope)
       )
 
-  defp unserved_text({:unknown, provider}, scope, _runtime),
+  defp unserved_text({:unknown, provider}, scope),
     do:
       rich_gettext(
         "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from.",
@@ -639,14 +650,13 @@ defmodule ApiaryWeb.ModelChoiceLive do
         place: providers_link(scope)
       )
 
-  defp unserved_text(:none, scope, runtime),
-    do:
-      rich_gettext(
-        "Add a model provider that serves %{runtime} in %{place}. None of the model providers of %{organisation} serves %{runtime}.",
-        runtime: runtime.title,
-        organisation: scope.organisation.name,
-        place: providers_link(scope)
-      )
+  # With no provider at all: where to add one, for whoever may add one there; for anyone
+  # else, who adds one, as Organisation settings › Model providers says it.
+  defp unserved_text(:none, scope) do
+    if Access.can?(scope, :"provider.write", scope.organisation),
+      do: rich_gettext("Add a model provider in %{place}.", place: providers_link(scope)),
+      else: who_adds(scope)
+  end
 
   defp providers_link(scope),
     do:
@@ -891,7 +901,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
               id={line_id(line)}
               class="text-[13.5px]/5 text-muted"
             >
-              <.rich text={unserved_text(line, @current_scope, @runtime)} />
+              <.rich text={unserved_text(line, @current_scope)} />
             </p>
           </div>
           <.input
