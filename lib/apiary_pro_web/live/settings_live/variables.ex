@@ -25,10 +25,11 @@ defmodule ApiaryProWeb.SettingsLive.Variables do
   button. Cancel, Escape and a lock or an unlock done give the focus back to the row's
   menu button; a deletion done, to the next row's.
 
-  A run receives only its security policy: the run configuration a gateway fetches holds
-  it alone (`Apiary.Policy.Render`). Every view says so, in the core's
-  line (`ApiaryWeb.PageComponents.not_on_runs/1`): the sentence of the core's Variables
-  tab, word for word, then the page's.
+  A run receives the variables its workspace and target inherit from the organisation, as
+  they are when its claim registers it (`Apiary.Variables.for_run/2`); a later change
+  reaches the next run. Every view says so, in the core's line
+  (`ApiaryWeb.PageComponents.not_on_runs/1`): that sentence, then the page's, that Qory
+  Apiary keeps the variables and works out what each workspace and target inherits.
 
   Owners and admins read and change them (`organisation_variable.edit`). A reader, an
   instance admin, reads them and sees no control, and one line that says who changes them;
@@ -83,8 +84,7 @@ defmodule ApiaryProWeb.SettingsLive.Variables do
     """
   end
 
-  # The section: its title and sentence, the line that a run receives only its security
-  # policy, who changes them, New variable beside the search and Filter, and the list, as
+  # The section: its title and sentence, the line of what a run receives, who changes them, New variable beside the search and Filter, and the list, as
   # the core's Variables tab has them. One status line, there from the start, says what a
   # search or a filter left.
   def render(assigns) do
@@ -295,12 +295,14 @@ defmodule ApiaryProWeb.SettingsLive.Variables do
     """
   end
 
-  # That a run receives only its security policy, on every view of the page: the core's line, its
-  # first sentence the core's Variables tab's msgid word for word, the second the page's.
+  # What a run receives of the organisation's variables, on every view of the page: the core's
+  # line, with the page's two sentences.
   defp not_in_runs(assigns) do
     ~H"""
     <.not_on_runs id="variables-not-in-runs">
-      {gettext("A run receives only its security policy.")}
+      {gettext(
+        "A run receives the variables that its workspace and target inherit from this organisation, as they are when it starts. A later change reaches the next run."
+      )}
       {gettext(
         "Qory Apiary keeps the variables and works out what each workspace and target inherits."
       )}

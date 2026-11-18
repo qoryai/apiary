@@ -1220,6 +1220,26 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       end
     end
 
+    test "a run that ended because its variables are too many, or too large, says which",
+         %{conn: conn, scope: scope} do
+      for {detail, body} <- [
+            {"names_129",
+             "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."},
+            {"bytes_70000",
+             "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."},
+            {nil,
+             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."}
+          ] do
+        work_item = work_item_fixture(scope)
+        explore_run_fixture(work_item, end_cause: :variables_invalid, end_detail: detail)
+
+        {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+        assert has_element?(view, "#work-item-explore-none-h", "The run did not start.")
+        assert has_element?(view, "#work-item-explore-none p", body)
+      end
+    end
+
     test "a run that stopped at a call to an adapter names the adapter on Explore's tab",
          %{conn: conn, scope: scope} do
       work_item = work_item_fixture(scope)

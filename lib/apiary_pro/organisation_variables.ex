@@ -32,8 +32,11 @@ defmodule ApiaryPro.OrganisationVariables do
   the deletion of an unlocked one, says so and is refused, naming the workspace; the
   workspace clears it by changing or deleting its variable.
 
-  A run receives only its security policy: the core keeps and resolves variables at every
-  level, and the run configuration does not carry them.
+  A run receives what its workspace and target inherit: the core resolves the chain,
+  this level first, when a claim registers the run (`Apiary.Variables.for_run/2`), and
+  the run configuration carries the result in its `variables`. A later change reaches the next
+  run. With the instance's `organisation_variables` feature off, a run inherits none
+  (`for_above/1`).
 
   ## Who
 

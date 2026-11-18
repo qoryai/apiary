@@ -33,10 +33,21 @@ defmodule Apiary.Runs.RunVariables do
 
   # The contract's rules for any variable (`run-configuration.schema.json`).
   @name ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
+  @max_names 128
   @max_value 4096
   @value_refused ["\0", "\r", "\n"]
 
   @type variables :: %{required(String.t()) => String.t()}
+
+  # The run configuration takes 128 names in all: the two above, and the rest. A person
+  # sees only the rest, so a run takes at most 126 of them.
+  @own_names 2
+
+  @typedoc "Why the variables a workspace sets cannot go into a run (`with_resolved/2`)."
+  @type resolved_refusal ::
+          {:too_many_names, pos_integer}
+          | {:too_large, pos_integer}
+          | {:invalid, String.t()}
 
   @typedoc "Why a list of further repositories breaks the rules (`check_repositories/2`)."
   @type repositories_reason ::
@@ -124,6 +135,47 @@ defmodule Apiary.Runs.RunVariables do
     end
   end
 
+  @doc "The most variables a person's levels give a run: 126, the contract's 128 less its two names."
+  @spec max_resolved() :: pos_integer
+  def max_resolved, do: @max_names - @own_names
+
+  @doc """
+  with_resolved/2 is the variables of a run: `own`, what `for_target/2` made (nil for a run
+  without a target), with `resolved`, the variables its workspace and target set
+  (`Apiary.Variables.for_run/2`), each name to its value. `{:ok, variables}`, nil where
+  there are none, or the first refusal, in this order:
+
+    * `{:invalid, name}`, a variable that breaks the contract's rules for one: its name or
+      its value, which `Apiary.Variables` refuses on save, so none should;
+    * `{:too_many_names, count}`, `count` names in `resolved`, over `max_resolved/0`;
+    * `{:too_large, bytes}`, the bytes of the names and values in `resolved`, over the
+      `Apiary.Variables.Resolution.max_bytes/0` a save keeps a holder within.
+
+  A name of `own` is never one of `resolved`, which leaves a name beginning `QORY_` out.
+  """
+  @spec with_resolved(variables | nil, variables) ::
+          {:ok, variables | nil} | {:error, resolved_refusal}
+  def with_resolved(own, resolved) when is_map(resolved) do
+    bytes = Enum.reduce(resolved, 0, fn {name, value}, sum -> sum + byte_size(name <> value) end)
+
+    cond do
+      invalid = Enum.find(Enum.sort(resolved), fn {name, value} -> not variable?(name, value) end) ->
+        {:error, {:invalid, elem(invalid, 0)}}
+
+      map_size(resolved) > max_resolved() ->
+        {:error, {:too_many_names, map_size(resolved)}}
+
+      bytes > Apiary.Variables.Resolution.max_bytes() ->
+        {:error, {:too_large, bytes}}
+
+      true ->
+        case Map.merge(resolved, own || %{}) do
+          merged when map_size(merged) == 0 -> {:ok, nil}
+          merged -> {:ok, merged}
+        end
+    end
+  end
+
   @doc """
   The `variables` member of a run configuration for `variables`: each name, in order,
   with an object holding its value.
@@ -164,7 +216,9 @@ defmodule Apiary.Runs.RunVariables do
   # A path's owner, its first segment, compared without case.
   defp owner(path), do: path |> String.split("/") |> hd() |> String.downcase()
 
-  defp variable?({name, value}),
+  defp variable?({name, value}), do: variable?(name, value)
+
+  defp variable?(name, value),
     do:
       Regex.match?(@name, name) and byte_size(value) <= @max_value and String.valid?(value) and
         not String.contains?(value, @value_refused)

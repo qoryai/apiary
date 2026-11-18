@@ -402,8 +402,9 @@ workspace, and a gateway that may not serve the run's workspace, are refused
 The claim registers the run, in the claim's transaction, with the run of the queue and
 its dispatch held, through the gateway the pool's choice resolves to: the run's `run_id`
 is the one the run of the queue was given, and so is its instance id; its labels and its
-run variables come from the target, the work item's or the prebuild's collection's, and
-what it is about from the step and the work item, never from the request; a prebuild's
+run variables come from the target, the work item's or the prebuild's collection's, with
+the variables its workspace and target resolve to when the claim registers it
+(`Apiary.Variables.for_run/2`), and what it is about from the step and the work item, never from the request; a prebuild's
 input is the `environment_ref` its run of the queue was queued for. The claim encodes
 the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
 `access` (`read`, `write-no-push` or `write`) and `target` together or neither,
@@ -449,7 +450,8 @@ run of the queue and its dispatch in the claim's transaction and claims the next
 that waits: a prebuild's collection ended, moved to another workspace, unassigned or
 left without a target (`collection_ended`), a prebuild of an `environment_ref` its
 collection no longer has (`superseded`), run variables that break their rules for the
-target (`variables_invalid`), a work item whose ticket is no longer kept
+target, or more variables of its workspace and target than a run takes, 126 names or 64 KiB
+(`variables_invalid`), a work item whose ticket is no longer kept
 (`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
 item with no target in a domain that requires one (`inputs_invalid`).
 

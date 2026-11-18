@@ -22,9 +22,14 @@ policy, and with none they add nothing to the workspaces' security policy.
 The organisation's variables are in its settings, under Organisation settings › Secrets
 and variables, on the **Variables** tab.
 
-**A run receives only its security policy.** Qory Apiary keeps the variables, checks them
-and resolves them at every level, for each workspace and repository, and the configuration
-Qory Apiary returns when a run registers does not contain them.
+**A run receives the variables that its workspace and target inherit from the
+organisation, as they are when it starts.** Qory Apiary keeps the variables, checks them
+and resolves them at every level, for each workspace and repository, and puts the result
+in the run's configuration when the run starts. A later change reaches the next run, and
+a run already started keeps what it received. A run takes at most 126 variables of all
+levels together, and 64 KiB of names and values: a run over either does not start, and
+its work item says why. A name that Forager leaves out of every run, such as `PATH` or a
+name ending in `_PROXY`, is not given to a run.
 
 ## Three levels
 

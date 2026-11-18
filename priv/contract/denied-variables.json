@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "names": [
+    "AWS_CA_BUNDLE",
+    "BASH_ENV",
+    "BUN_OPTIONS",
+    "CURL_CA_BUNDLE",
+    "DOCKER_CERT_PATH",
+    "DOCKER_CONFIG",
+    "DOCKER_CONTEXT",
+    "DOCKER_HOST",
+    "DOCKER_TLS_VERIFY",
+    "GIT_SSL_CAINFO",
+    "GIT_SSL_CAPATH",
+    "HOME",
+    "LD_PRELOAD",
+    "NODE_EXTRA_CA_CERTS",
+    "NODE_OPTIONS",
+    "PATH",
+    "REQUESTS_CA_BUNDLE",
+    "SSL_CERT_DIR",
+    "SSL_CERT_FILE"
+  ],
+  "patterns": [
+    "*_PROXY",
+    "QORY_*"
+  ],
+  "forge_tokens": [
+    "BITBUCKET_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GH_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GITHUB_TOKEN",
+    "GITLAB_TOKEN",
+    "GL_TOKEN"
+  ],
+  "model_keys": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ]
+}

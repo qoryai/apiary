@@ -1055,8 +1055,10 @@ and `secrets`; [access.md](access.md), The organisation's variables). The core k
 seam (`Apiary.Policy.Above`, its `variables`, which `c:Apiary.Edition.above_workspace/1`
 answers), resolves the level first in every chain (`Apiary.Variables.Resolution`) and
 refuses below it what the level refuses; the edition keeps the rows and makes the writes.
-A run receives only its security policy: the core keeps and resolves variables at every
-level, and the run configuration does not carry them.
+A run receives what its workspace and target inherit: the core resolves the chain, this
+level first (`Apiary.Variables.for_run/2`, with the `secrets` feature), when the claim
+registers the run, and the run configuration carries the result in its `variables`
+(`runs.registration_variables`, kept with the run). A later change reaches the next run.
 
 - **The rows** (`organisation_variables`) are a name, a value and a lock each, with the
   core's checks of `variables` copied: a name's rule, a value of one line of at most 4096

@@ -4548,6 +4548,11 @@ msgstr ""
 msgid "A run receives only its security policy."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A run receives these variables when it starts. A change reaches the next run."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run reloads at its next heartbeat."
@@ -17715,6 +17720,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove value %{number}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

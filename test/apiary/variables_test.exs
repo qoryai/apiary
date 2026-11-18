@@ -75,6 +75,59 @@ defmodule Apiary.VariablesTest do
     |> Enum.count(&(&1["change"] == "deleted"))
   end
 
+  describe "for_run/2" do
+    test "is the workspace's resolution with no person's scope, the repository's over it",
+         %{scope: scope, site: site} do
+      set!(scope, :workspace, "NODE_ENV", "production")
+      set!(scope, :workspace, "REGISTRY", "https://registry.example.com", %{locked: true})
+      set!(scope, site, "NODE_ENV", "test")
+      set!(scope, site, "SITE_ONLY", "yes")
+
+      assert Variables.for_run(scope.workspace) == %{
+               "NODE_ENV" => "production",
+               "REGISTRY" => "https://registry.example.com"
+             }
+
+      assert Variables.for_run(scope.workspace, site) == %{
+               "NODE_ENV" => "test",
+               "REGISTRY" => "https://registry.example.com",
+               "SITE_ONLY" => "yes"
+             }
+
+      # The same as the resolution a reader sees, less nothing here.
+      assert Variables.for_run(scope.workspace, site) == values(scope, site)
+    end
+
+    test "a lock of the workspace holds against the repository, whichever was set first",
+         %{scope: scope, site: site} do
+      set!(scope, site, "REGISTRY", "from the repository")
+      set!(scope, :workspace, "REGISTRY", "from the workspace", %{locked: true})
+
+      assert Variables.for_run(scope.workspace, site) == %{"REGISTRY" => "from the workspace"}
+    end
+
+    test "leaves out a name Forager leaves out, whatever its case, and keeps the rest",
+         %{scope: scope, site: site} do
+      for name <- ["PATH", "http_proxy", "Bun_Options", "GITHUB_TOKEN", "anthropic_api_key"],
+          do: set!(scope, :workspace, name, "x")
+
+      set!(scope, site, "NODE_ENV", "test")
+
+      assert Variables.for_run(scope.workspace, site) == %{"NODE_ENV" => "test"}
+      # The reader still sees them, with the page's warning.
+      assert map_size(values(scope, site)) == 6
+    end
+
+    test "a variable of one workspace reaches no run of another",
+         %{scope: scope} do
+      set!(scope, :workspace, "NODE_ENV", "production")
+      %{scope: other} = sign_up_fixture()
+
+      assert Variables.for_run(other.workspace) == %{}
+      assert Variables.for_run(scope.workspace) == %{"NODE_ENV" => "production"}
+    end
+  end
+
   describe "levels" do
     test "a repository takes the workspace's variables and overrides them with its own",
          %{scope: scope, site: site} do

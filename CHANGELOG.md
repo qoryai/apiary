@@ -1506,6 +1506,42 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
+- A run receives the variables of its workspace. When a claim registers a run, Qory
+  Apiary resolves the variables of the organisation, the workspace, and the target (a
+  repository, in a software workspace) as they are then, and sends them in the run
+  configuration's `variables`, beside `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`. The
+  more specific level wins, and a lock of a broader level holds. The organisation's level
+  is included while the feature `organisation_variables` is on. A later change reaches the
+  next run: a run keeps what it received at its start, and its run configuration, and the
+  digest of it, do not change. A run registered outside the workspace's queue, with
+  `qory run register`, receives none. The Variables tab of **Workspace settings › Secrets
+  and variables** and its pages read “A run receives these variables when it starts. A
+  change reaches the next run.” The organisation's **Variables** page reads “A run
+  receives the variables that its workspace and target inherit from this organisation, as
+  they are when it starts. A later change reaches the next run.” The Secrets tab and the
+  integration pages still read “A run receives only its security policy.”
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- Forager's deny list, `denied-variables.json`, is vendored, and a run receives no
+  variable of a name on it, whatever the case: its names, such as `PATH`, `HOME` and
+  `BUN_OPTIONS`, its patterns, `*_PROXY` and `QORY_*`, its forge tokens, such as
+  `GH_TOKEN`, and its model keys, such as `ANTHROPIC_API_KEY`. A save of such a name still
+  works, except a name beginning `QORY_`, which stays refused, and the form and the list
+  say “GH_TOKEN is on Forager's deny list.” and “On Forager's deny list”, which they could
+  not show before. A connection's placeholder may still take the name of a forge token.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A run takes at most 126 variables and 64 KiB of names and values, which the run
+  configuration's limit of 128 names leaves after its two names. A run whose workspace and
+  target set more does not start. Its stop cause reads “The run did not start: it has 129
+  variables, and a run takes at most 126.” or “The run did not start: its variables take
+  65 KiB, and a run takes at most 64 KiB.”, then “Owners and admins of <workspace> remove
+  variables on the Variables page of the workspace or its organisation, then start the run
+  again.” Its work item reads “Remove variables in the workspace's settings, then start the
+  run again. The run has more than 126 variables.” or “... The run's variables take more
+  than 64 KiB.” A save still allows 128 names.
+<!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
   `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
@@ -2440,6 +2476,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` (20261118110000): the check on `end_detail` takes the cause
+  `variables_invalid`, with a code such as `names_129` or `bytes_70000`, the count or the
+  size of the variables a run did not start for. The new check scans the table as it is
+  added, under a lock that blocks reads and writes. It changes no row. Rolling back sets
+  `end_detail` to NULL on the runs ended `variables_invalid`, and their work items then
+  read that one of the run's variables breaks its rule.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
   of a condition `{input: <type>, changed: true}`. It is not null with a constant default,

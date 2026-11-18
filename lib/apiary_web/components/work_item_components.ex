@@ -6296,6 +6296,22 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
+  # A run whose variables are more than it takes, or take more than it takes: the claim
+  # kept which, as the end's detail (`Apiary.Dispatches.Handover`).
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "names_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace's settings, then start the run again. The run has more than 126 variables."
+       )}
+
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "bytes_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."
+       )}
+
   defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),

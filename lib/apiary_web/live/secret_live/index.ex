@@ -17,9 +17,11 @@ defmodule ApiaryWeb.SecretLive.Index do
   their paths, which must not act as they open, ask on the row first. A confirmation the
   context refuses stays open and says why under its question.
 
-  A run receives its security policy alone. Each tab, and each of its pages, says so
-  once, near its top (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the
-  section says a run is given what it holds.
+  A run receives its security policy and the variables it resolves to when it starts, never
+  a secret. Each tab, and each of its pages, says so once, near its top
+  (`ApiaryWeb.PageComponents.not_on_runs/1`): the Secrets tab, that a run receives only
+  its security policy, and the Variables tab, that a run receives its variables when it
+  starts and a change reaches the next run.
 
   - **Secrets** (`Apiary.Secrets`): a secret's name and note, its value ids, who changed
     each value and when, and what uses it; never a value. New secret, with one value or
@@ -94,8 +96,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   @impl true
   # A form is a page of its own (`ApiaryWeb.PageComponents.page_form/1`): the section's
   # list beside it as the frame's second column, the breadcrumb ending with the section and
-  # the page, its title, one sentence, the line that a run receives only its security
-  # policy, the form, its button and Cancel back to the tab.
+  # the page, its title, one sentence, the line of what a run receives (`not_on_runs_words/1`),
+  # the form, its button and Cancel back to the tab.
   def render(%{act: act} = assigns) when act in @pages do
     assigns = assign(assigns, :sentence, form_sentence(assigns))
 
@@ -129,8 +131,8 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The section: its title and sentence, then its two tabs, Secrets and Variables, each a
   # link with an address of its own (`page_tabs/1`, not an ARIA tablist) that wraps and
-  # does not stick. Under them the panel of the tab: the line that a run receives only its
-  # security policy, who changes them, its New beside its search, Filter and Sort, and its
+  # does not stick. Under them the panel of the tab: the line of what a run receives
+  # (`not_on_runs_words/1`), who changes them, its New beside its search, Filter and Sort, and its
   # list.
   # One status line, there from the start and outside both tabs' parts, says a switch
   # ("Variables, 7") and what a search left.
@@ -244,7 +246,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
 
   # The one line each tab, and each of its pages, says of what it holds: a run receives
-  # its security policy alone (`/v1`).
+  # its security policy alone, and the variables it resolves to when it starts.
+  defp not_on_runs_words(:variables),
+    do: gettext("A run receives these variables when it starts. A change reaches the next run.")
+
   defp not_on_runs_words(_view), do: gettext("A run receives only its security policy.")
 
   ## The secrets
@@ -1680,9 +1685,11 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp token_words({:lock, :no}), do: gettext("Not locked")
   defp token_words({:targets, :own}), do: gettext("Set by a target too")
 
-  # A name on Forager's deny list, which the context saves: warned. No run receives a
-  # variable, so the words say where the name is, and nothing of a run.
-  defp warned?(name) when is_binary(name), do: Denied.denied?(name) and not Denied.refused?(name)
+  # A name on Forager's deny list, which the context saves: warned. A run is given no
+  # variable of it (`Apiary.Variables.for_run/2`); the words say where the name is.
+  defp warned?(name) when is_binary(name),
+    do: Denied.left_out?(name) and not Denied.refused?(name)
+
   defp warned?(_name), do: false
 
   defp warning(name) do

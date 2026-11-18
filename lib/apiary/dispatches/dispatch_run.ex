@@ -30,8 +30,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
-  # the refusal's code of a run ended `run_refused`, or the failure code of a run ended
-  # `harness_unresolved`, nil for any other. `queued_at`
+  # the refusal's code of a run ended `run_refused`, the failure code of a run ended
+  # `harness_unresolved`, or `names_<count>` or `bytes_<bytes>` of a run ended
+  # `variables_invalid` for the variables of its workspace and target, nil for any other.
+  # `queued_at`
   # orders the queue, oldest first.
   #
   # `result_outcome` is what the run gave once Qory reads it as decided

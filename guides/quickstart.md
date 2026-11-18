@@ -153,8 +153,8 @@ the log-in take you to the workspace.
 
 <!-- feature: secrets -->
 Secrets and variables are under **Workspace settings › Secrets and variables**,
-`/<organisation>/<workspace>/settings/secrets`, in two views; a run receives only its
-security policy. A **secret**, such as a token for a forge, holds one value or several,
+`/<organisation>/<workspace>/settings/secrets`, in two views; a run receives its
+variables when it starts. A **secret**, such as a token for a forge, holds one value or several,
 each named by a **value ID**; once saved, a value is never shown again, to anyone, and the
 page lists only names, value IDs and who changed each value and when. A **variable** is a
 plain value of the workspace, such as the address of a package registry. A **locked**

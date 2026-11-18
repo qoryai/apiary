@@ -17,6 +17,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   # refused one.
   @value "ghp_exampleTokenValue0123456789"
 
+  # What the line of each view says a run receives (`not_on_runs/1`): the Secrets tab, its
+  # security policy alone; the Variables tab, its variables when it starts.
+  @variables_words "A run receives these variables when it starts. A change reaches the next run."
+
   setup :register_and_log_in_user
 
   defp secrets_path(scope, rest \\ ""),
@@ -181,7 +185,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#secrets-tabs-panel #not-on-runs",
-               "A run receives only its security policy."
+               @variables_words
              )
 
       lv |> element("#secrets-tabs-secrets") |> render_click()
@@ -1026,13 +1030,12 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
 
-      # A run receives only its security policy, which the view says once, and nothing says
-      # otherwise.
-      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
+      # A run receives its variables when it starts, which the view says once, and nothing
+      # says otherwise.
+      assert has_element?(lv, "#not-on-runs", @variables_words)
 
       refute html =~ "runs are given"
       refute html =~ "Runs are given"
-      refute html =~ "receives these"
 
       lv |> element("#new-variable") |> render_click()
       assert_patch(lv, variables_path(scope, "/new"))
@@ -1078,6 +1081,31 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       refute has_element?(lv, "#variable-#{variable.id}-value.truncate")
       refute has_element?(lv, "#variable-#{variable.id}-lock.q-stw-wrap")
+    end
+
+    test "a name on Forager's deny list is saved with a warning, and its row says so",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/new"))
+      refute has_element?(lv, "#variable-warning")
+
+      # Warned while typed, for a name and a pattern, a forge token and a model key.
+      for name <- ["PATH", "http_proxy", "GH_TOKEN", "ANTHROPIC_API_KEY"] do
+        lv |> form("#variable-form", variable: %{name: name, value: "x"}) |> render_change()
+        assert has_element?(lv, "#variable-warning", "#{name} is on Forager's deny list.")
+      end
+
+      lv |> form("#variable-form", variable: %{name: "NODE_ENV", value: "x"}) |> render_change()
+      refute has_element?(lv, "#variable-warning")
+
+      # Saved all the same, and its row says it is on the list.
+      lv
+      |> form("#variable-form", variable: %{name: "PATH", value: "/opt/bin"})
+      |> render_submit()
+
+      assert_patch(lv, variables_path(scope))
+      {:ok, [variable]} = Variables.list_variables(scope, :workspace)
+      assert variable.name == "PATH"
+      assert has_element?(lv, "#variable-#{variable.id}-denied")
     end
 
     test "a QORY_ name is refused, and a name already set too", %{conn: conn, scope: scope} do
@@ -1156,7 +1184,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#variable-page #not-on-runs",
-               "A run receives only its security policy."
+               @variables_words
              )
 
       refute render(lv) =~ "Runs are given"

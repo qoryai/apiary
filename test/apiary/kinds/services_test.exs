@@ -259,7 +259,8 @@ defmodule Apiary.Kinds.ServicesTest do
       assert Enum.sort(vendored) ==
                Enum.sort(
                  ~w(api-format.schema.json auth.schema.json policy.schema.json
-                    run-configuration.schema.json runtimes.json secrets-request.schema.json
+                    run-configuration.schema.json runtimes.json denied-variables.json
+                    secrets-request.schema.json
                     secrets-answer.schema.json sealed-plaintext.schema.json
                     model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json

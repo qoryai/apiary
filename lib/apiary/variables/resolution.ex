@@ -20,12 +20,15 @@ defmodule Apiary.Variables.Resolution do
   itself (`Apiary.Variables.Denied.refused?/1`) or that breaks the name rule is left out,
   from whichever level it comes, so a level above that sets one does not pass it on.
 
-  `values/1` maps each name to its value, `%{NAME => value}`. Nothing puts them in the run
-  configuration: a run receives only its security policy. A holder's resolved variables
-  are at most #{128} names and #{65_536} bytes of names and values (`check_limits/1`), the
-  limits of the run configuration's `variables`
+  `values/1` maps each name to its value, `%{NAME => value}`. A run receives its workspace's
+  and its repository's resolution, less the names Forager leaves out of a run
+  (`Apiary.Variables.for_run/2`), in its run configuration's `variables`. A holder's
+  resolved variables are at most #{128} names and #{65_536} bytes of names and values
+  (`check_limits/1`), the limits of the run configuration's `variables`
   (`priv/contract/run-configuration.schema.json`); `Apiary.Variables` refuses a save that
-  would take any holder over them.
+  would take any holder over them. The run configuration also has the run's two names,
+  `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`, so the claim that
+  registers a run refuses one whose resolution has more than 126 names.
   """
 
   alias Apiary.Variables.{Denied, Variable}

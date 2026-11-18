@@ -103,19 +103,61 @@ defmodule Apiary.Variables.ResolutionTest do
   end
 
   describe "the deny list" do
-    test "QORY_* is on it and refused, whatever the case" do
-      assert Denied.patterns() == ["QORY_*"]
-      assert Denied.names() == []
+    test "it is Forager's, vendored: names, patterns, forge tokens and model keys" do
+      list =
+        "priv/contract/denied-variables.json" |> File.read!() |> Jason.decode!()
 
+      assert Denied.names() == list["names"]
+      assert Denied.patterns() == list["patterns"]
+      assert Denied.forge_tokens() == list["forge_tokens"]
+      assert Denied.model_keys() == list["model_keys"]
+
+      assert "BUN_OPTIONS" in Denied.names()
+      assert Denied.patterns() == ["*_PROXY", "QORY_*"]
+      assert "GH_TOKEN" in Denied.forge_tokens()
+      assert "ANTHROPIC_API_KEY" in Denied.model_keys()
+    end
+
+    test "a name, a pattern, a forge token and a model key are left out of a run, whatever the case" do
+      for name <- ["PATH", "path", "Bun_Options", "HTTP_PROXY", "no_proxy", "QORY_TOKEN"],
+          do: assert(Denied.left_out?(name), name)
+
+      for name <- [
+            "GH_TOKEN",
+            "gh_token",
+            "GITHUB_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "anthropic_api_key"
+          ],
+          do: assert(Denied.left_out?(name), name)
+
+      for name <- ["NODE_ENV", "PATHS", "HTTP_PROXY_X", "MY_GH_TOKEN", "OPENAI_API_KEY"],
+          do: refute(Denied.left_out?(name), name)
+    end
+
+    test "a placeholder is denied a name and a pattern, never a forge token or a model key" do
+      for name <- ["PATH", "path", "BUN_OPTIONS", "HTTP_PROXY", "QORY_TOKEN"],
+          do: assert(Denied.denied?(name), name)
+
+      for name <- ["GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "ANTHROPIC_API_KEY"],
+          do: refute(Denied.denied?(name), name)
+    end
+
+    test "QORY_* is on it and refused, whatever the case" do
       for name <- ["QORY_", "QORY_TOKEN", "qory_token", "Qory_Run_Id"] do
         assert Denied.refused?(name)
         assert Denied.denied?(name)
+        assert Denied.left_out?(name)
       end
 
       for name <- ["QORY", "QORYX", "MY_QORY_TOKEN", "_QORY_"] do
         refute Denied.refused?(name)
         refute Denied.denied?(name)
+        refute Denied.left_out?(name)
       end
+
+      # Any other name on the list is saved, and warned about.
+      refute Denied.refused?("PATH")
     end
 
     test "a pattern matches a whole name, * any run of characters, the empty one included" do

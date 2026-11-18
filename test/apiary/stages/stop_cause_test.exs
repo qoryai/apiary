@@ -107,6 +107,37 @@ defmodule Apiary.Stages.StopCauseTest do
                "Contact support with work item #12."
   end
 
+  test "variables over the count a run takes show the count, and who removes some, and where",
+       %{work_item: work_item, ws: ws} do
+    assert text(:variables_invalid, work_item, end_detail: "names_129") ==
+             "The run did not start: it has 129 variables, and a run takes at most 126.\n" <>
+               "Owners and admins of #{ws} remove variables on the Variables page of the workspace or its organisation, then start the run again."
+
+    # The run's two names count toward the contract's 128, so 127 variables are over it.
+    assert text(:variables_invalid, work_item, end_detail: "names_127") =~
+             "it has 127 variables, and a run takes at most 126."
+  end
+
+  test "variables over the size a run takes show it in whole KiB, rounded up",
+       %{work_item: work_item, ws: ws} do
+    assert text(:variables_invalid, work_item, end_detail: "bytes_70000") ==
+             "The run did not start: its variables take 69 KiB, and a run takes at most 64 KiB.\n" <>
+               "Owners and admins of #{ws} remove variables on the Variables page of the workspace or its organisation, then start the run again."
+
+    # One byte over the limit reads as more than it, never as the limit.
+    assert text(:variables_invalid, work_item, end_detail: "bytes_65537") =~
+             "its variables take 65 KiB, and"
+  end
+
+  test "a detail of a variables refusal that is no number reads as a rule broken",
+       %{work_item: work_item} do
+    for detail <- ["names_", "names_many", "bytes_0", "bytes_-5", "names_12x"] do
+      assert text(:variables_invalid, work_item, end_detail: detail) ==
+               "The run did not start, because one of its variables breaks its rule.\n" <>
+                 "Contact support with work item #12."
+    end
+  end
+
   test "a missing or removed model key links the set-up step Model", %{work_item: work_item} do
     run = %DispatchRun{state: :ended, end_cause: :run_refused, end_detail: "model_key_missing"}
     assert StopCause.set_up_step(run) == :model

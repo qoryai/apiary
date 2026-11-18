@@ -334,7 +334,10 @@ defmodule Apiary.WorkItemsFixtures do
           else: [state: state, end_cause: end_cause]
         )
       )
-      |> Ecto.Changeset.change(result_outcome: unformed_outcome(end_cause))
+      |> Ecto.Changeset.change(
+        result_outcome: unformed_outcome(end_cause),
+        end_detail: Keyword.get(opts, :end_detail)
+      )
       |> Repo.insert!()
 
     registered? =

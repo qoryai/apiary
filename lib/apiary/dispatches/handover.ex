@@ -65,8 +65,11 @@ defmodule Apiary.Dispatches.Handover do
   #      variables of the target, and of the further paths its runs also read where the
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
   #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #      `variables_invalid`; an explore run whose work item's ticket is no longer kept,
-  #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
+  #      `variables_invalid`, as do the variables of its workspace and target
+  #      (`Apiary.Variables.for_run/2`) when they are more than 126, or take more than
+  #      64 KiB, with the count or the size kept as `end_detail`; an explore run whose
+  #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
+  #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
   #      `inputs_invalid`; an explore run of the Qory harness or of the built-in one,
@@ -107,8 +110,10 @@ defmodule Apiary.Dispatches.Handover do
   # target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and
   # gives the run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`)
   # with its QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run,
-  # its work item, its run variables (`registration_variables`), none where the domain
-  # gives none, for a continuation of a paused run its `resume`
+  # its work item, its run variables (`registration_variables`: the domain's, and the
+  # variables of its workspace and target as they are at the claim,
+  # `Apiary.Variables.for_run/2`; none where there are none), for a continuation of a
+  # paused run its `resume`
   # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
   # the claim's body, with no heartbeat interval, no answer digest and no contract version
   # until its attach; with the gateway and a run code in place of a run key
@@ -208,7 +213,8 @@ defmodule Apiary.Dispatches.Handover do
     PublicId,
     Repo,
     Runs,
-    Targets
+    Targets,
+    Variables
   }
 
   alias Apiary.AccessKeys.AccessKey
@@ -1100,15 +1106,16 @@ defmodule Apiary.Dispatches.Handover do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
-    with {:variables, {:ok, variables}} <-
+    with {:variables, {:ok, own}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
+         {:resolved, {:ok, variables}} <- {:resolved, resolved(workspace, target, own)},
          {:inputs, {:ok, inputs}} <- {:inputs, inputs.(domain)} do
       about = about(dispatch_run, work_item)
       :ok = About.validate(about)
 
       {:ok,
        %{
-         labels: labels(workspace, target, variables),
+         labels: labels(workspace, target, own),
          about: about,
          variables: variables,
          workspace: workspace,
@@ -1126,9 +1133,39 @@ defmodule Apiary.Dispatches.Handover do
        }}
     else
       {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
+      {:resolved, {:error, refusal}} -> resolved_ended(dispatch_run, work_item, refusal)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # The run's variables: `own`, its two names (nil without a target or in a domain that
+  # sets none), and what its workspace and target resolve to (`Apiary.Variables.for_run/2`),
+  # read now and kept with the run, within the contract's limits.
+  defp resolved(workspace, target, own) do
+    row = target && target_row(workspace, target)
+    RunVariables.with_resolved(own, Variables.for_run(workspace, row))
+  end
+
+  # A run whose resolved variables are too many, too large, or break the contract's rule
+  # for a variable ends `variables_invalid`. Its `end_detail` is `names_<count>` or
+  # `bytes_<bytes>`, which the stop cause and the work item's words read; a broken rule
+  # has none, and the log names the variable, never its value.
+  defp resolved_ended(dispatch_run, work_item, refusal) do
+    {detail, found} =
+      case refusal do
+        {:too_many_names, count} -> {"names_#{count}", "names=#{count}"}
+        {:too_large, bytes} -> {"bytes_#{bytes}", "bytes=#{bytes}"}
+        {:invalid, name} -> {nil, "variable=#{name}"}
+      end
+
+    Logger.warning(
+      "a claim ended a run before it started, because its variables break a limit " <>
+        "end_cause=variables_invalid run_id=#{dispatch_run.run_id} " <>
+        "work_item=#{work_item && work_item.public_id} #{found}"
+    )
+
+    {:end, if(detail, do: {:variables_invalid, detail}, else: :variables_invalid)}
   end
 
   # A run whose run variables break a rule ends `variables_invalid`, with one line in the
@@ -1249,20 +1286,25 @@ defmodule Apiary.Dispatches.Handover do
   # where the workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
   defp further_repositories(_workspace, nil), do: []
 
-  defp further_repositories(
-         %Workspace{id: workspace_id, organisation_id: organisation_id} = workspace,
-         %{system: system, path: path}
-       ) do
-    found =
-      Repo.one(
-        from t in Target,
-          where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
-          where: t.system == ^system and t.path == ^path
-      )
+  defp further_repositories(workspace, %{system: _system, path: _path} = target) do
+    found = target_row(workspace, target)
 
     if found && Domain.paths_label(workspace),
       do: Targets.further_repositories(found),
       else: []
+  end
+
+  # The workspace's row of the run's target, nil where it has none yet: read without a
+  # lock.
+  defp target_row(
+         %Workspace{id: workspace_id, organisation_id: organisation_id},
+         %{system: system, path: path}
+       ) do
+    Repo.one(
+      from t in Target,
+        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
+        where: t.system == ^system and t.path == ^path
+    )
   end
 
   # A prebuild's collection's target, while the collection is live, assigned to the run's
@@ -1305,7 +1347,11 @@ defmodule Apiary.Dispatches.Handover do
   # write (`Apiary.Dispatches.Settle`). The workspaces whose queue or slots changed.
   # Inside the transaction that holds the run of the queue.
   @doc false
-  @spec end_claimed(DispatchRun.t(), atom | {:harness_unresolved, atom}, DateTime.t()) ::
+  @spec end_claimed(
+          DispatchRun.t(),
+          atom | {:harness_unresolved, atom} | {:variables_invalid, String.t()},
+          DateTime.t()
+        ) ::
           [Ecto.UUID.t()]
   def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now) do
     {cause, ended} =
@@ -1314,6 +1360,11 @@ defmodule Apiary.Dispatches.Handover do
         # end's detail, and the run gave an error.
         {:harness_unresolved, code} ->
           {:harness_unresolved, [end_detail: Atom.to_string(code), result_outcome: :error]}
+
+        # Variables of a run beyond a limit (`resolved_ended/3`): the count or the size is
+        # the end's detail.
+        {:variables_invalid, detail} ->
+          {:variables_invalid, [end_detail: detail] ++ gave(run, :variables_invalid)}
 
         cause ->
           {cause, gave(run, cause)}

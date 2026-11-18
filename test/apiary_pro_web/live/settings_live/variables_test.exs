@@ -24,7 +24,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   # The organisation's variables need `secrets`: they run only where both are on.
   @moduletag needs: :organisation_variables
 
-  @not_in_runs "A run receives only its security policy."
+  @not_in_runs "A run receives the variables that its workspace and target inherit from this organisation, as they are when it starts. A later change reaches the next run."
 
   setup :register_and_log_in_user
 
