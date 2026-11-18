@@ -130,6 +130,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its expected result, and the artifact row; for a pictures scenario, one picture per
   step, each with the step's title and expected result. A scenario whose name is withdrawn
   is left out, and so are the scenarios of an earlier take in.
+- On that tab, a **Watch** button under each film, and under each set of pictures above
+  its artifact row, opens that scenario's page. A film's button opens the page at the
+  time and the speed of the film on the tab, and does not start it.
+- The page of a scenario's film or pictures is a player page. Under the player it shows
+  the scenario's title and each step with its expected result, and the right column
+  starts with the work item's scenarios, “Scenarios 1 of 3”, in the order of the Verify
+  tab. Each scenario has a thumbnail, its title, and “Demo video · 0:10” or “3 pictures”;
+  a click opens that scenario's page, and the scenario you are on is marked. A film has
+  **Cinema**, which puts the player above both columns at the width of the page and stays
+  on from one page to the next, and **Full screen**, which shows the player alone until
+  you press **Esc** or **Leave full screen**. A scenario's pictures show one at a time,
+  with **Previous picture**, “Picture 2 of 3”, **Next picture**, then the step, its
+  expected result and the file name. No film starts by itself, and the next scenario does
+  not start when a film ends. A film or pictures that no scenario has show no queue, and
+  a set of pictures that no scenario has stays a stack of pictures.
 - On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
   Explainer, show the version and the artifact rows only, and a row names the artifact
   as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the

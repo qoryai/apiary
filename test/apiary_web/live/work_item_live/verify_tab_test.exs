@@ -18,6 +18,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.ArtifactLive.Markdown
   alias ApiaryWeb.WorkItemLive.VerifyTab
   alias ApiaryWeb.WorkflowFake
@@ -486,6 +487,52 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
              ]
     end
 
+    test "a Watch button under each film and under each set of pictures opens its page",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :pictures)
+        end)
+
+      view = tab(conn, scope, work_item)
+
+      [film, pictures] =
+        VerifyTab.queue(work_item, Artifacts.list(work_item), @verify, work_item.take_in)
+
+      path = &ArtifactComponents.version_path(scope, work_item.number, &1.version.public_id)
+
+      # A film: under the player, above its file name; its link carries the time and speed.
+      watch = "#work-item-tab-scenarios-scenario-1-watch"
+
+      assert has_element?(view, ~s(figure video + div #{watch}[href="#{path.(film)}"]), "Watch")
+      assert has_element?(view, "#{watch}[phx-hook=WatchHandoff]")
+      assert has_element?(view, ~s(#{watch}[data-version="#{film.version.public_id}"]))
+      assert has_element?(view, ~s(#{watch}[data-film="0"]))
+      assert has_element?(view, "#{watch} .hero-play-micro")
+      assert has_element?(view, "figure > video + div + figcaption", "scenario-1.mp4")
+
+      assert has_element?(
+               view,
+               ~s(#{watch}[title="Watch this scenario on its page, with the other scenarios beside it"])
+             )
+
+      # Pictures: under the row of pictures, above the artifact row; no film to read.
+      watch = "#work-item-tab-scenarios-scenario-2-watch"
+      assert has_element?(view, ~s(#{watch}[href="#{path.(pictures)}"]), "Watch")
+      refute has_element?(view, "#{watch}[phx-hook]")
+      assert has_element?(view, "#work-item-tab-scenarios-scenario-2-pictures + div #{watch}")
+
+      assert has_element?(
+               view,
+               "#work-item-tab-scenarios-scenario-2-pictures + div + #work-item-tab-scenarios-scenario-2-row"
+             )
+
+      # The film has no Speed row on the tab.
+      refute has_element?(view, "#work-item-tab-scenarios [phx-hook=VideoSpeed]")
+    end
+
     test "only the scenarios of the verified commit", %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
@@ -574,6 +621,67 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#work-item-tab-output-verification")
       refute has_element?(view, "#work-item-tab-output-demo-video")
+    end
+  end
+
+  describe "queue/4" do
+    test "is the scenarios the tab shows: in scenario order, of the verified commit",
+         %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 10, :film)
+          scenario!(run, work_item, 2, :pictures)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 3, :film, @older)
+        end)
+
+      queue = VerifyTab.queue(work_item, Artifacts.list(work_item), @verify, work_item.take_in)
+
+      assert Enum.map(queue, &{&1.key, &1.kind, &1.number}) == [
+               {"scenario-1", :film, 1},
+               {"scenario-2", :pictures, 2},
+               {"scenario-10", :film, 10}
+             ]
+
+      assert Enum.map(queue, & &1.version.artifact_id) ==
+               Enum.map(queue, & &1.artifact.id)
+    end
+
+    test "queue/5 returns what it read, and a call with it uses it instead of reading again",
+         %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      artifacts = Artifacts.list(work_item)
+
+      {[%{key: "scenario-1", title: "Title of scenario-1"}], reads} =
+        VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, %{})
+
+      assert [{:json, json_id}, {:verification, 1}] = reads |> Map.keys() |> Enum.sort()
+
+      # A value in `reads` that the store does not hold is what the call shows, so it read
+      # nothing for that version.
+      kept = Map.update!(reads, {:json, json_id}, &Map.put(&1, "title", "Kept"))
+
+      assert {[%{key: "scenario-1", title: "Kept"}], ^kept} =
+               VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, kept)
+    end
+
+    test "is empty for another stage and for another take in", %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      artifacts = Artifacts.list(work_item)
+
+      assert VerifyTab.queue(work_item, artifacts, @shape, work_item.take_in) == []
+      assert VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in + 1) == []
     end
   end
 
