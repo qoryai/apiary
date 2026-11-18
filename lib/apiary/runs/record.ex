@@ -30,7 +30,6 @@ defmodule Apiary.Runs.Record do
   @runtime_started "dev.qory.runtime.started"
   @runtime_text "dev.qory.runtime.text"
   @session_started "dev.qory.session.started"
-  @session_started "dev.qory.session.started"
   @session_exited ~w(dev.qory.session.exited)
   @session_end_types ~w(dev.qory.runtime.started dev.qory.runtime.result dev.qory.session.exited)
   @resized "dev.qory.run.resized"
