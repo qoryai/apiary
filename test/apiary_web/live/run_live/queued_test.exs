@@ -12,7 +12,10 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
-  import Apiary.ModelKeysFixtures, only: [cooling!: 2]
+
+  import Apiary.ModelKeysFixtures,
+    only: [cooling!: 2, key_value!: 2, login_paste: 1, login_tokens: 1]
+
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
   import Apiary.WorkItemsFixtures
@@ -314,6 +317,68 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
 
     # A provider of another organisation than the run's, left from when an operator
     # managed whole organisations.
+    @tag needs: [:factory, :secrets]
+    test "says why a run waits for a sign-in: a new one is needed, or a refresh runs",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          name: "Team sign-ins",
+          keys: [
+            %{
+              value_id: "main",
+              value: login_paste(tokens: login_tokens(tag: "queued", expires_in: 3600))
+            }
+          ]
+        })
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          runtime: "codex",
+          model: "gpt-6-sol"
+        })
+
+      value = key_value!(provider, "main")
+      {_work_item, queued} = queue!(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [model_provider_ids: [provider.id]]
+        )
+
+      login = from(l in Apiary.ModelKeys.Login, where: l.secret_value_id == ^value.id)
+
+      Repo.update_all(login,
+        set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
+      )
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+
+      assert has_element?(view, "#prepare-machine-why a", "main")
+
+      now = DateTime.utc_now()
+
+      Repo.update_all(login,
+        set: [
+          state: "signed_in",
+          sign_in_cause: nil,
+          signed_in_at: DateTime.add(now, -3600),
+          access_expires_at: DateTime.add(now, 600),
+          lease_id: Ecto.UUID.generate(),
+          lease_until: DateTime.add(now, 30)
+        ]
+      )
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: refreshing the ChatGPT sign-in of main."
+    end
+
     @tag needs: [:factory, :secrets]
     test "says a run waits for a model key, without the name of another organisation's provider",
          %{conn: conn, scope: scope} do

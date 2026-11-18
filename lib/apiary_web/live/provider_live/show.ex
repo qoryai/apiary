@@ -57,6 +57,8 @@ defmodule ApiaryWeb.ProviderLive.Show do
 
                login = ModelKeyComponents.login(Map.get(logins, key.id), provider)
                new_key = ModelKeyComponents.new_key(Map.get(rejections, key.id), provider)
+               # A sign-in rejected by the provider shows as a sign-in that needs a new one.
+               rejected = if(match?({:sign_in_needed, _, _}, new_key), do: new_key)
 
                %{
                  value_id: key.value_id,
@@ -64,7 +66,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
                  login:
                    if(ModelKeyComponents.sign_in_needed?(login),
                      do: login,
-                     else: new_key || login
+                     else: rejected || login
                    ),
                  new_key: if(match?({:new_key, _line}, new_key), do: new_key)
                }

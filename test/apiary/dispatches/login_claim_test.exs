@@ -11,13 +11,14 @@ defmodule Apiary.Dispatches.LoginClaimTest do
   import Apiary.DispatchedRunsFixtures
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.ModelKeys.{Login, LoginRefresh, LoginRefreshJob}
-  alias Apiary.Runs.{ProviderCredential, Run, Waiting}
+  alias Apiary.Runs.{ProviderCredential, Projector, Run, Waiting}
   alias Apiary.Secrets.Value
 
   @moduletag needs: [:factory, :secrets]
@@ -186,6 +187,56 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
       assert {:ok, %{registered: run}} = claim(ctx)
       assert value_ids(Repo.get!(Run, run.id)) == ["main"]
+    end
+  end
+
+  describe "a run whose only key loses its sign-in while it runs" do
+    test "pauses at the key's limit, and its continuation waits until a new sign-in", ctx do
+      provider = provider!(ctx, [{"main", []}])
+      queued = queued!(ctx)
+
+      %{run: run, dispatch_run: dispatch_run} =
+        handed_over(ctx.scope, ctx.key, queued, %{})
+
+      assert value_ids(Repo.get!(Run, run.id)) == ["main"]
+
+      # The provider rejects the sign-in for good while the run runs.
+      sign_in_needed!(provider, "main")
+
+      event_fixture(run, 9, "run.exited", %{
+        "state" => "paused",
+        "reason" => "model_key_limit",
+        "exit_code" => 143
+      })
+
+      assert {:ok, %Run{state: "paused"}} = Projector.project(run)
+
+      assert [{1, :ended}, {2, :waiting}] =
+               Repo.all(
+                 from d in DispatchRun,
+                   where: d.work_item_id == ^dispatch_run.work_item_id,
+                   order_by: d.attempt,
+                   select: {d.attempt, d.state}
+               )
+
+      # The continuation is passed by, with no end time and no call, and says why.
+      assert {:ok, :none} = claim(ctx)
+
+      continuation =
+        Repo.get_by!(DispatchRun, work_item_id: dispatch_run.work_item_id, attempt: 2)
+
+      assert {:sign_in, public_id, "main"} = Waiting.reason(continuation)
+      assert public_id == provider.public_id
+      assert requests() == []
+
+      {:ok, _provider} =
+        Connections.update_provider_key(ctx.scope, provider, "main", %{
+          value_id: "main",
+          value: login_paste(tokens: login_tokens(tag: "new"))
+        })
+
+      assert {:ok, %{registered: next}} = claim(ctx)
+      assert value_ids(Repo.get!(Run, next.id)) == ["main"]
     end
   end
 

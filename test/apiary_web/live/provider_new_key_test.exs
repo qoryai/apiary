@@ -1,0 +1,132 @@
+defmodule ApiaryWeb.ProviderNewKeyTest do
+  # A key the model provider returned 401 to (`Apiary.ModelKeys.reject/4`) on Organisation
+  # settings > Model providers: the provider's page shows Needs a new key in the key's row
+  # in place of its state, with who rejected it and when, and Edit key says under New value
+  # what to enter. A new value, saved on Edit key, takes the state away. The page shows no
+  # token.
+  use ApiaryWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+
+  alias Apiary.{Connections, ModelKeys, Repo}
+  alias Apiary.Secrets.Value
+
+  import Ecto.Query, only: [from: 2]
+
+  @moduletag needs: [:factory, :secrets]
+
+  setup :register_and_log_in_user
+
+  defp base(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
+
+  defp provider!(scope) do
+    keys = for id <- ~w(main spare), do: %{value_id: id, value: "sk-ant-fixture-#{id}-0123456789"}
+    {:ok, provider} = Connections.create_provider(scope, %{provider: "anthropic", keys: keys})
+    provider
+  end
+
+  defp reject!(provider, value_id, at) do
+    value =
+      Repo.one!(
+        from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+      )
+
+    key = %{
+      name: "model-1",
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      copy_set_at: value.value_set_at,
+      copy_kept: true
+    }
+
+    :ok =
+      ModelKeys.reject(
+        [key],
+        [%{credential: "model-1", at: at}],
+        provider,
+        DateTime.utc_now()
+      )
+  end
+
+  defp text(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
+  test "the provider's page shows Needs a new key for a rejected key, and the other key as it was",
+       %{conn: conn, scope: scope} do
+    provider = provider!(scope)
+    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+
+    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+    assert has_element?(lv, "#provider-key-main-new-key", "Needs a new key")
+
+    assert text(lv, "#provider-key-main-new-key") =~
+             ~r/\ANeeds a new keyAnthropic rejected it on .*2026.*\./
+
+    refute has_element?(lv, "#provider-key-main-state")
+    assert has_element?(lv, "#provider-key-spare-state")
+    refute has_element?(lv, "#provider-key-spare-new-key")
+    refute html =~ "sk-ant-fixture"
+  end
+
+  test "Edit key says what to enter, and a new value takes the state away",
+       %{conn: conn, scope: scope} do
+    provider = provider!(scope)
+    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+    path = "#{base(scope)}/#{provider.public_id}/keys/main/edit"
+
+    {:ok, lv, html} = live(conn, path)
+
+    assert has_element?(lv, "#key-new-key", "Needs a new key")
+    assert html =~ "Enter a new value: the stored one no longer works."
+
+    lv
+    |> form("#key-form", %{"key" => %{"key" => "sk-ant-fixture-main-9876543210"}})
+    |> render_submit()
+
+    assert ModelKeys.rejections(Repo.get!(Apiary.Connections.Connection, provider.id)) == %{}
+
+    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+    refute has_element?(lv, "#provider-key-main-new-key")
+    assert has_element?(lv, "#provider-key-main-state")
+    refute html =~ "sk-ant-fixture"
+  end
+
+  test "Edit key of a key that is not rejected has the usual hint", %{conn: conn, scope: scope} do
+    provider = provider!(scope)
+    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+
+    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}/keys/spare/edit")
+
+    refute has_element?(lv, "#key-new-key")
+    refute html =~ "Enter a new value: the stored one no longer works."
+  end
+
+  test "a sign-in the provider rejected shows Needs a new sign-in, with no token",
+       %{conn: conn, scope: scope} do
+    import Apiary.ModelKeysFixtures
+    tokens = login_tokens()
+
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "openai-subscription",
+        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+      })
+
+    # A sign-in made just now: no refresh can fix a 401 on it.
+    reject!(provider, "main", DateTime.utc_now())
+    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+    assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
+    refute has_element?(lv, "#provider-key-main-new-key")
+    refute html =~ tokens.access_token
+    refute html =~ tokens.refresh_token
+  end
+end
