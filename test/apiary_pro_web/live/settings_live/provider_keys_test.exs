@@ -464,7 +464,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
     test "refuses Add value before the sign-in, then stores the sign-in, showing no token",
          ctx do
       %{conn: conn, scope: scope, login_secret: secret, subscription: subscription} = ctx
-      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "pro"))
+      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "pro"), hold: true)
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
       lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
@@ -476,6 +476,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       lv |> element("#secret-sign-in-start") |> render_click()
       Stub.eventually(fn -> assert has_element?(lv, "#secret-sign-in-code") end)
       assert words(lv, "#secret-sign-in-code") == "7QKD-M4TPX"
+      Stub.approve()
       Stub.eventually(fn -> assert has_element?(lv, "#secret-sign-in-state", "Signed in.") end)
 
       refute_tokens(render(lv), tokens)

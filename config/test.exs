@@ -200,7 +200,7 @@ config :apiary, Apiary.ModelKeys.LoginRefresh,
 config :apiary, Apiary.ModelKeys.LoginDevice,
   req_options: [plug: {Req.Test, Apiary.ModelKeys.LoginDevice}]
 
-config :apiary, Apiary.ModelKeys.DeviceSignIn, test_seam: true, interval_ms: 20
+config :apiary, Apiary.ModelKeys.DeviceSignIn, test_seam: true, interval_ms: 100
 
 # The sweep of sign-ins goes on, in a node's next pass, where its last pass stopped
 # (`Apiary.ModelKeys.Login.sweep_due/1`). The position lives in the node, outside the

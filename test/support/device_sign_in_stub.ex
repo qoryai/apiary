@@ -41,6 +41,7 @@ defmodule Apiary.DeviceSignInStub do
     * `:poll`: the status of every poll when it is not a 403 or a 200, such as `500`;
     * `:exchange`: the status of the code exchange when it is not 200;
     * `:tokens`: the tokens of the exchange (`Apiary.ModelKeysFixtures.login_tokens/1`);
+    * `:hold`: when true, every poll answers 403 until the test calls `approve/0`;
     * `:interval`: what the first call sends as `interval`, `"5"`.
 
   The stub counts the calls it gets (`calls/1`) and sends the test process
@@ -52,7 +53,9 @@ defmodule Apiary.DeviceSignInStub do
     expires_at = Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 900))
     pending = Keyword.get(opts, :pending, 1)
     code = Keyword.get(opts, :code, "7QKD-M4TPX")
+    approved = :atomics.new(1, [])
     Process.put({__MODULE__, :counts}, counts)
+    Process.put({__MODULE__, :approved}, approved)
     test = self()
 
     Req.Test.stub(LoginDevice, fn conn ->
@@ -84,7 +87,10 @@ defmodule Apiary.DeviceSignInStub do
             Keyword.has_key?(opts, :poll) ->
               conn |> Plug.Conn.put_status(opts[:poll]) |> Req.Test.json(%{"error" => "nope"})
 
-            pending == :never or answered <= pending ->
+            Keyword.get(opts, :hold, false) and :atomics.get(approved, 1) == 0 ->
+              conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{"error" => "pending"})
+
+            pending == :never or (not Keyword.get(opts, :hold, false) and answered <= pending) ->
               conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{"error" => "pending"})
 
             true ->
@@ -115,6 +121,9 @@ defmodule Apiary.DeviceSignInStub do
 
     tokens
   end
+
+  @doc "Lets the polls of a script with `hold: true` get the approval."
+  def approve, do: :atomics.put(Process.get({__MODULE__, :approved}), 1, 1)
 
   @doc "How many calls the script got: `:code`, `:poll` or `:exchange`."
   def calls(which) do

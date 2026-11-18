@@ -135,7 +135,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
     test "shows the code, waits, then Signed in, and Save stores the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = Stub.put(pending: 2)
+      tokens = Stub.put(hold: true)
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
@@ -161,6 +161,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert has_element?(lv, "#key-save a", "Cancel")
       refute has_element?(lv, "#key-sign-in-start")
 
+      Stub.approve()
       signed_in!(lv, "key-sign-in")
       assert text(lv, "#key-sign-in-state") == "Signed in."
       assert render(lv) =~ @stored
@@ -667,7 +668,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
     test "signs in from the row and stores the sign-in at once", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = Stub.put(tokens: login_tokens(tag: "row"))
+      tokens = Stub.put(tokens: login_tokens(tag: "row"), hold: true)
       provider = subscription!(scope)
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
@@ -675,6 +676,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       sign_in!(lv, "provider-key-main-sign-in")
       assert text(lv, "#provider-key-main-sign-in-code") == "7QKD-M4TPX"
       assert has_element?(lv, "#provider-key-main-sign-in-cancel")
+      Stub.approve()
 
       eventually(fn -> assert text(lv, "#provider-key-main-login") =~ "Signed in." end)
 
@@ -728,7 +730,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
     test "has the button on Add value of a workspace's key, and Save stores the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = Stub.put(tokens: login_tokens(tag: "workspace"))
+      tokens = Stub.put(tokens: login_tokens(tag: "workspace"), hold: true)
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
 
@@ -742,6 +744,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       sign_in!(lv, "secret-sign-in")
       assert text(lv, "#secret-sign-in-code") == "7QKD-M4TPX"
       assert has_element?(lv, "#secret-save a", "Cancel")
+      Stub.approve()
       signed_in!(lv, "secret-sign-in")
 
       html = lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()

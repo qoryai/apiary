@@ -4402,7 +4402,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     test "refuses the step before the sign-in, and adds the provider after it, with no token",
          %{conn: conn} do
       %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "setup"))
+      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "setup"), hold: true)
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
       # The form's Runtime follows the provider chosen, as a person's choice changes it.
@@ -4422,6 +4422,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       eventually(fn -> assert has_element?(lv, "#set-up-model-sign-in-code") end)
       assert words(lv, "#set-up-model-sign-in-code") == "7QKD-M4TPX"
       assert has_element?(lv, "#set-up-model-sign-in-cancel", "Cancel")
+      Stub.approve()
 
       eventually(fn -> assert has_element?(lv, "#set-up-model-sign-in-state", "Signed in.") end)
 
