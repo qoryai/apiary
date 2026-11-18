@@ -2257,19 +2257,68 @@ defmodule Apiary.Runs.FoldTest do
   end
 
   describe "dev.qory.runtime.result" do
-    test "adds the cost the session reported to the run's, once per result" do
+    test "a session's cost is its last result line's, and a run's the sum over its sessions" do
+      # Each line's `cost_usd` is the launch's total so far: three lines of one session
+      # are one cost, 0.0129, and not their sum.
       events = [
-        event(4, "runtime.result", %{"outcome" => "success", "cost_usd" => 0.8412}),
-        event(9, "runtime.result", %{"outcome" => "error_max_turns", "cost_usd" => 1})
+        event(4, "runtime.result", %{"session" => 1, "outcome" => "success", "cost_usd" => 0.0043}),
+        event(5, "runtime.result", %{"session" => 1, "outcome" => "success", "cost_usd" => 0.0086}),
+        event(6, "runtime.result", %{"session" => 1, "outcome" => "success", "cost_usd" => 0.0129}),
+        event(9, "runtime.result", %{"session" => 2, "outcome" => "success", "cost_usd" => 0.005})
+      ]
+
+      %{run: run} = Fold.fold(@run, Enum.take(events, 3))
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+
+      %{run: run} = Fold.fold(@run, events)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0179"))
+
+      # A result with no session is of session 1.
+      %{run: run} =
+        Fold.fold(@run, [
+          event(4, "runtime.result", %{"outcome" => "success", "cost_usd" => 0.8412}),
+          event(9, "runtime.result", %{"outcome" => "error_max_turns", "cost_usd" => 1})
+        ])
+
+      assert Decimal.equal?(run.cost_usd, Decimal.new("1"))
+    end
+
+    test "the last line is the one with the highest line number, else the highest sequence" do
+      # The lines arrived out of their order: the cost at line 12 is the total of the launch.
+      events = [
+        event(4, "runtime.result", %{"session" => 1, "line" => 12, "cost_usd" => 0.03}),
+        event(5, "runtime.result", %{"session" => 1, "line" => 9, "cost_usd" => 0.02}),
+        event(6, "runtime.result", %{"session" => 1, "cost_usd" => 0.01})
       ]
 
       %{run: run} = Fold.fold(@run, events)
-      assert Decimal.equal?(run.cost_usd, Decimal.new("1.8412"))
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.01"))
 
-      # One pass or two, the sum is the same: an event is folded once.
-      %{run: run, latest: latest} = Fold.fold(@run, Enum.take(events, 1))
-      %{run: run} = Fold.fold(run, Enum.drop(events, 1), latest)
-      assert Decimal.equal?(run.cost_usd, Decimal.new("1.8412"))
+      %{run: run} = Fold.fold(@run, Enum.take(events, 2))
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.03"))
+    end
+
+    test "one pass or two, and the same after a rebuild, the cost is the same" do
+      events = [
+        event(4, "runtime.result", %{"session" => 1, "cost_usd" => 0.0043}),
+        event(5, "runtime.result", %{"session" => 1, "cost_usd" => 0.0129}),
+        event(9, "runtime.result", %{"session" => 2, "cost_usd" => 0.005})
+      ]
+
+      %{run: whole} = Fold.fold(@run, events)
+
+      # The second pass is given the results the first one projected, as the projector does.
+      %{run: first, latest: latest} = Fold.fold(@run, Enum.take(events, 1))
+
+      %{run: second} =
+        Fold.fold(first, Enum.drop(events, 1), latest, %{results: Enum.take(events, 1)})
+
+      assert Decimal.equal?(second.cost_usd, whole.cost_usd)
+      assert Decimal.equal?(second.cost_usd, Decimal.new("0.0179"))
+
+      # A pass with no result leaves the cost as it is.
+      %{run: third} = Fold.fold(second, [event(10, "run.heartbeat", %{})])
+      assert Decimal.equal?(third.cost_usd, whole.cost_usd)
     end
 
     test "a result without a cost, or with one that is not a number, leaves the run unrecorded" do

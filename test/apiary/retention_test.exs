@@ -8,7 +8,7 @@ defmodule Apiary.RetentionTest do
   alias Apiary.Organisations.Workspace
   alias Apiary.Retention
   alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run, Step}
-  alias Apiary.Runs.TargetWrite
+  alias Apiary.Runs.{SessionKeyWindow, SessionRecord, Sessions, TargetWrite}
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -186,6 +186,39 @@ defmodule Apiary.RetentionTest do
       assert count(LogChunk, young) == 2
       assert count(Event, young) == 15
       assert %Run{log_pruned_at: nil} = Repo.get!(Run, young.id)
+    end
+
+    test "past the events cut-off a run keeps its session records and their key windows", %{
+      scope: scope
+    } do
+      scope = retain(scope, events_retention_days: 90)
+      old = old_run(scope, 91)
+
+      :ok =
+        Sessions.record_windows(old, 1, [
+          %{
+            secret_value_id: Ecto.UUID.generate(),
+            window: "five_hour",
+            utilization: 11,
+            observed_at: days_ago(91)
+          }
+        ])
+
+      records = Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id)
+      windows = Repo.all(SessionKeyWindow)
+      assert [%SessionRecord{cost_usd: %Decimal{}}] = records
+      assert [%SessionKeyWindow{}] = windows
+      assert %Decimal{} = old.cost_usd
+
+      assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
+
+      assert count(Event, old) == 0
+
+      assert Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id) ==
+               records
+
+      assert Repo.all(SessionKeyWindow) == windows
+      assert Decimal.equal?(Repo.get!(Run, old.id).cost_usd, old.cost_usd)
     end
 
     test "past the events cut-off a run keeps its row, its counts and its connections", %{

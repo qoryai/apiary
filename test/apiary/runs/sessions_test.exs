@@ -1,0 +1,457 @@
+defmodule Apiary.Runs.SessionsTest do
+  # The record of each session of a run (`Apiary.Runs.Sessions`, `Apiary.Runs.SessionRecord`):
+  # what is read from the events of a run, and the rows the projector writes from them,
+  # kept when the run is projected again.
+  use Apiary.DataCase, async: true
+
+  import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, except: [at: 1]
+  import Apiary.RunListFixtures, only: [queue_run!: 3]
+
+  alias Apiary.Runs.{Projector, Run, SessionRecord, Sessions}
+  alias Apiary.Stages.Session
+
+  @t0 ~U[2026-11-18 09:00:00.000000Z]
+  @build "st_6ns22c4pav"
+
+  defp at(seconds), do: DateTime.add(@t0, seconds, :second)
+
+  defp event(sequence, type, data, seconds \\ nil),
+    do: %{
+      type: "dev.qory." <> type,
+      sequence: sequence,
+      time: at(seconds || sequence),
+      data: data
+    }
+
+  defp result(sequence, session, attrs),
+    do: event(sequence, "runtime.result", Map.merge(%{"session" => session}, Map.new(attrs)))
+
+  defp read(events), do: Sessions.read(events)
+
+  describe "read/1" do
+    test "takes the cost, the tokens and the time of a session from its last result line" do
+      events = [
+        event(1, "session.started", %{"session" => 1, "runtime" => "claude"}, 0),
+        event(2, "runtime.started", %{"session" => 1, "model" => "model-large"}),
+        result(3, 1, %{
+          "line" => 4,
+          "outcome" => "success",
+          "turns" => 2,
+          "duration_ms" => 9_501,
+          "cost_usd" => 0.0043,
+          "usage" => %{"input" => 14, "output" => 600, "cache_read" => 100, "cache_write" => 50}
+        }),
+        result(4, 1, %{
+          "line" => 9,
+          "outcome" => "success",
+          "turns" => 1,
+          "duration_ms" => 1_490,
+          "cost_usd" => 0.0086,
+          "usage" => %{
+            "input" => 14,
+            "output" => 656,
+            "cache_read" => 136_111,
+            "cache_write" => 68
+          }
+        }),
+        result(5, 1, %{
+          "line" => 11,
+          "outcome" => "success",
+          "turns" => 0,
+          "duration_ms" => 3,
+          "cost_usd" => 0.0129,
+          "usage" => %{
+            "input" => 14,
+            "output" => 656,
+            "cache_read" => 136_111,
+            "cache_write" => 68_908
+          }
+        }),
+        event(6, "session.exited", %{"session" => 1, "state" => "succeeded"}, 90)
+      ]
+
+      assert [session] = read(events)
+
+      assert %{
+               session_number: 1,
+               started_at: @t0,
+               ended_at: ended_at,
+               model: "model-large",
+               cost_usd: cost,
+               input_tokens: 14,
+               output_tokens: 656,
+               cache_read_tokens: 136_111,
+               cache_write_tokens: 68_908,
+               # The turns of each line are its own: they are summed.
+               turns: 3,
+               # The duration is the last line's.
+               duration_ms: 3,
+               error: false
+             } = session
+
+      assert ended_at == at(90)
+      assert Decimal.equal?(cost, Decimal.new("0.0129"))
+    end
+
+    test "a line that is an error marks the session, and the last line is by its line number" do
+      events = [
+        result(1, 1, %{"line" => 7, "cost_usd" => 0.02, "is_error" => true}),
+        result(2, 1, %{"line" => 3, "cost_usd" => 0.01, "is_error" => false})
+      ]
+
+      assert [%{error: true, cost_usd: cost}] = read(events)
+      # Line 7 is the later line of the output, though its event came first.
+      assert Decimal.equal?(cost, Decimal.new("0.02"))
+
+      # With no line numbers the sequence decides.
+      events = [
+        result(1, 1, %{"cost_usd" => 0.02}),
+        result(2, 1, %{"cost_usd" => 0.01})
+      ]
+
+      assert [%{cost_usd: cost}] = read(events)
+      assert Decimal.equal?(cost, Decimal.new("0.01"))
+    end
+
+    test "a value no result carries is unknown, never 0" do
+      assert [session] = read([result(1, 1, %{"outcome" => "success"})])
+
+      assert %{
+               cost_usd: nil,
+               turns: nil,
+               duration_ms: nil,
+               input_tokens: nil,
+               output_tokens: nil,
+               cache_read_tokens: nil,
+               cache_write_tokens: nil,
+               error: false,
+               model: nil,
+               started_at: nil,
+               ended_at: nil
+             } = session
+
+      # A value outside its bounds is absent too.
+      assert [%{cost_usd: nil, turns: nil, input_tokens: nil}] =
+               read([
+                 result(1, 1, %{
+                   "cost_usd" => -1,
+                   "turns" => -2,
+                   "usage" => %{"input" => -3, "output" => "many"}
+                 })
+               ])
+    end
+
+    test "a result with no session is of session 1, and a subagent's start is not the model" do
+      events = [
+        event(1, "runtime.started", %{"model" => "model-large"}),
+        event(2, "runtime.started", %{
+          "session" => 1,
+          "agent_id" => "a1",
+          "model" => "model-small"
+        }),
+        event(3, "runtime.result", %{"cost_usd" => 0.5})
+      ]
+
+      assert [%{session_number: 1, model: "model-large", cost_usd: cost}] = read(events)
+      assert Decimal.equal?(cost, Decimal.new("0.5"))
+    end
+
+    test "has a session that started, or that has a result, and not a bare one or a refused join" do
+      events = [
+        event(1, "session.started", %{"session" => 1, "bare" => true}),
+        event(2, "session.exited", %{"session" => 1, "state" => "succeeded"}),
+        # A refused join has an exit and no start.
+        event(3, "session.exited", %{"session" => 2, "state" => "failed", "reason" => "refused"}),
+        event(4, "session.started", %{"session" => 3, "runtime" => "claude"}),
+        event(5, "session.exited", %{"session" => 3, "state" => "failed"}),
+        result(6, 4, %{"cost_usd" => 1})
+      ]
+
+      assert read(events) |> Enum.map(& &1.session_number) == [3, 4]
+    end
+
+    test "costs a run once for each session's last line" do
+      results = [
+        result(4, 1, %{"cost_usd" => 0.0043}),
+        result(5, 1, %{"cost_usd" => 0.0086}),
+        result(6, 1, %{"cost_usd" => 0.0129}),
+        result(9, 2, %{"cost_usd" => 0.005}),
+        # No cost: the session keeps the cost of the line before it.
+        result(10, 2, %{"outcome" => "success"})
+      ]
+
+      assert Decimal.equal?(Sessions.cost(results), Decimal.new("0.0179"))
+      assert Sessions.cost([result(1, 1, %{"outcome" => "success"})]) == nil
+      assert Sessions.cost([]) == nil
+    end
+  end
+
+  describe "the projector" do
+    setup do
+      %{scope: scope_fixture()}
+    end
+
+    defp session_events(session, cost, extra \\ %{}) do
+      base = session * 100
+
+      [
+        {base + 1, "session.started", %{"session" => session, "runtime" => "claude"},
+         [time: at(base)]},
+        {base + 2, "runtime.started", %{"session" => session, "model" => "model-large"},
+         [time: at(base + 1)]},
+        {base + 3, "runtime.result", result_data(session, cost, extra), [time: at(base + 50)]},
+        {base + 4, "session.exited", %{"session" => session, "state" => "succeeded"},
+         [time: at(base + 60)]}
+      ]
+    end
+
+    defp records(run),
+      do:
+        Repo.all(from r in SessionRecord, where: r.run_id == ^run.id, order_by: r.session_number)
+
+    test "a run of one session, with no run of the queue, has one record", %{scope: scope} do
+      run = run_fixture(scope)
+      events_fixture(run, session_events(1, 0.0129))
+      {:ok, run} = Projector.project(run)
+
+      assert [record] = records(run)
+
+      assert %{
+               session_number: 1,
+               started_at: started_at,
+               ended_at: ended_at,
+               turns: 4,
+               duration_ms: 60_000,
+               input_tokens: 10,
+               output_tokens: 2_000,
+               cache_read_tokens: 3_000,
+               cache_write_tokens: 400,
+               model: "model-large",
+               error: false,
+               dispatch_run_id: nil,
+               work_item_id: nil,
+               attempt: nil,
+               stage_id: nil,
+               workflow: nil
+             } = record
+
+      assert started_at == at(100)
+      assert ended_at == at(160)
+      assert record.organisation_id == run.organisation_id
+      assert record.workspace_id == run.workspace_id
+      assert Decimal.equal?(record.cost_usd, Decimal.new("0.0129"))
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+    end
+
+    test "a launch with three result lines costs its last, for the record and for the run", %{
+      scope: scope
+    } do
+      run = run_fixture(scope)
+
+      events_fixture(run, [
+        {1, "session.started", %{"session" => 1, "runtime" => "claude"}},
+        {2, "runtime.result", %{"session" => 1, "line" => 3, "cost_usd" => 0.0043}},
+        {3, "runtime.result", %{"session" => 1, "line" => 5, "cost_usd" => 0.0086}},
+        {4, "runtime.result", %{"session" => 1, "line" => 8, "cost_usd" => 0.0129}}
+      ])
+
+      {:ok, run} = Projector.project(run)
+
+      assert [record] = records(run)
+      assert Decimal.equal?(record.cost_usd, Decimal.new("0.0129"))
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+      assert record.ended_at == nil
+    end
+
+    test "two sessions cost the sum of their last lines, in one pass or in two", %{scope: scope} do
+      first = [
+        {1, "runtime.result", %{"session" => 1, "cost_usd" => 0.0043}},
+        {2, "runtime.result", %{"session" => 1, "cost_usd" => 0.0129}}
+      ]
+
+      second = [{3, "runtime.result", %{"session" => 2, "cost_usd" => 0.005}}]
+
+      run = run_fixture(scope)
+      events_fixture(run, first)
+      {:ok, run} = Projector.project(run)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+
+      # The late line of session 1 is a higher total, and the next pass reads the lines
+      # of the one before.
+      events_fixture(
+        run,
+        second ++ [{4, "runtime.result", %{"session" => 1, "cost_usd" => 0.02}}]
+      )
+
+      {:ok, run} = Projector.project(run)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.025"))
+
+      assert [one, two] = records(run)
+      assert Decimal.equal?(one.cost_usd, Decimal.new("0.02"))
+      assert Decimal.equal?(two.cost_usd, Decimal.new("0.005"))
+
+      other = run_fixture(scope)
+      events_fixture(other, first ++ second)
+      {:ok, other} = Projector.project(other)
+      assert Decimal.equal?(other.cost_usd, Decimal.new("0.0179"))
+    end
+
+    # A run of the queue at a stage with `shared_run: true`, with a session row for each
+    # of the six workflows, the first five reported, as the stage runner leaves them.
+    defp shared_run!(scope, opts \\ []) do
+      run = run_fixture(scope)
+
+      queued =
+        queue_run!(
+          scope,
+          run,
+          Keyword.merge(
+            [queued: [stage_id: @build, workflow: "plan-the-build", round: 1, stage_entry: 0]],
+            opts
+          )
+        )
+
+      workflows =
+        ~w(plan-the-build write-acceptance-checks implement-changes review-changes
+           implement-changes review-changes)
+
+      rows =
+        for {workflow, index} <- Enum.with_index(workflows, 1) do
+          Repo.insert!(%Session{
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id,
+            dispatch_run_id: queued.id,
+            sequence: index,
+            # The last session is the one a report has not ended.
+            forager_session: if(index < 6, do: index),
+            stage_entry: index - 1,
+            round: 1,
+            workflow: workflow
+          })
+        end
+
+      {run, queued, rows}
+    end
+
+    test "a run of six sessions has six records with their fields", %{scope: scope} do
+      {run, queued, _rows} = shared_run!(scope)
+
+      events =
+        for session <- 1..6, event <- session_events(session, session / 100), do: event
+
+      events_fixture(run, events)
+      {:ok, run} = Projector.project(run)
+
+      records = records(run)
+      assert Enum.map(records, & &1.session_number) == [1, 2, 3, 4, 5, 6]
+
+      assert Enum.map(records, & &1.workflow) ==
+               ~w(plan-the-build write-acceptance-checks implement-changes review-changes
+                  implement-changes review-changes)
+
+      for record <- records do
+        assert %{
+                 dispatch_run_id: dispatch_run_id,
+                 work_item_id: work_item_id,
+                 stage_id: @build,
+                 attempt: 1,
+                 turns: 4,
+                 duration_ms: 60_000,
+                 output_tokens: 2_000,
+                 model: "model-large",
+                 error: false
+               } = record
+
+        assert dispatch_run_id == queued.id
+        assert work_item_id == queued.work_item_id
+        assert record.started_at == at(record.session_number * 100)
+        assert record.ended_at == at(record.session_number * 100 + 60)
+      end
+
+      # 0.01 + ... + 0.06
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.21"))
+    end
+
+    test "a session of a run the queue started takes its place from the run of the queue", %{
+      scope: scope
+    } do
+      run = run_fixture(scope)
+
+      queued =
+        queue_run!(scope, run, queued: [stage_id: @build, workflow: "plan-the-build", round: 2])
+
+      events_fixture(run, session_events(1, 1))
+      {:ok, run} = Projector.project(run)
+
+      assert [%{stage_id: @build, workflow: "plan-the-build", attempt: 1} = record] = records(run)
+      assert record.dispatch_run_id == queued.id
+    end
+
+    test "a continuation adds attempt 2 and the paused run keeps its attempt 1", %{scope: scope} do
+      work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+      paused = run_fixture(scope)
+      continued = run_fixture(scope)
+      queue_run!(scope, paused, work_item: work_item, attempt: 1, queued: [])
+      queue_run!(scope, continued, work_item: work_item, attempt: 2, queued: [])
+
+      events_fixture(paused, session_events(1, 0.01))
+      events_fixture(continued, session_events(1, 0.02))
+      {:ok, paused} = Projector.project(paused)
+      {:ok, continued} = Projector.project(continued)
+
+      assert [%{attempt: 1, session_number: 1}] = records(paused)
+      assert [%{attempt: 2, session_number: 1}] = records(continued)
+    end
+
+    test "projecting again writes the same rows, and a rebuild keeps the records", %{scope: scope} do
+      {run, _queued, _rows} = shared_run!(scope)
+      events = for session <- 1..6, event <- session_events(session, session / 100), do: event
+      events_fixture(run, events)
+      {:ok, run} = Projector.project(run)
+
+      before = records(run)
+      assert length(before) == 6
+
+      {:ok, rebuilt} = Projector.rebuild(run)
+      assert records(rebuilt) |> Enum.map(&comparable/1) == Enum.map(before, &comparable/1)
+      assert Enum.map(records(rebuilt), & &1.id) == Enum.map(before, & &1.id)
+      assert Decimal.equal?(rebuilt.cost_usd, Decimal.new("0.21"))
+    end
+
+    defp comparable(record), do: Map.drop(record, [:updated_at, :__meta__, :run, :key_windows])
+
+    test "a rerun's kept step has no session and so no record", %{scope: scope} do
+      # A step a rerun keeps is not run again: no session.started, no result.
+      run = run_fixture(scope)
+
+      events_fixture(run, [
+        {1, "run.started", %{"opened_by" => "run"}},
+        {2, "run.step_started", %{"step" => 1, "name" => "fetch", "kind" => "fetch"}},
+        {3, "run.step_exited", %{"step" => 1, "state" => "succeeded", "exit_code" => 0}}
+      ])
+
+      {:ok, run} = Projector.project(run)
+      assert records(run) == []
+      assert %Run{cost_usd: nil} = run
+    end
+  end
+
+  test "the changeset refuses a count below 0 and a session number below 1" do
+    changeset =
+      SessionRecord.changeset(%SessionRecord{}, %{
+        session_number: 0,
+        attempt: 0,
+        turns: -1,
+        input_tokens: -1,
+        cost_usd: -1
+      })
+
+    refute changeset.valid?
+
+    assert Map.keys(errors_on(changeset)) |> Enum.sort() ==
+             [:attempt, :cost_usd, :input_tokens, :session_number, :turns]
+
+    assert SessionRecord.changeset(%SessionRecord{}, %{session_number: 2}).valid?
+  end
+end

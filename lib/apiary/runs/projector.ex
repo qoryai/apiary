@@ -38,6 +38,13 @@ defmodule Apiary.Runs.Projector do
   which this server never receives. A step exit folded later sets the step's state
   as the exit says.
 
+  A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, in the pass that
+  folds one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
+  `dev.qory.runtime.started` or `dev.qory.runtime.result` events, from all the run's events
+  of those types (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
+  windows that hang on them come from the gateway's reports, not from the events, and the
+  records stay when retention deletes the events.
+
   A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
   its sequence, with the workspace's target of its system and path when the workspace has
   one: a write links to a target that exists, and creates none.
@@ -60,7 +67,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
-  alias Apiary.Runs.{Step, Target, TargetWrite, Transcript, TranscriptPath}
+  alias Apiary.Runs.{Sessions, Step, Target, TargetWrite, Transcript, TranscriptPath}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -348,7 +355,8 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
-      projected = projected(run, events)
+      session_events = session_events(run, events)
+      projected = run |> projected(events) |> put_results(session_events)
 
       fold =
         fold_module().fold(
@@ -371,6 +379,7 @@ defmodule Apiary.Runs.Projector do
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
       insert_target_writes(run, fold.target_writes)
+      if session_events, do: Sessions.write(run, session_events)
       if Enum.any?(events, &(&1.type in @ending)), do: end_open_steps(run)
       mark_projected(Enum.map(events, & &1.id))
 
@@ -491,6 +500,23 @@ defmodule Apiary.Runs.Projector do
     else
       %{beat: beat}
     end
+  end
+
+  # The run's session events, projected or not, for a pass that has one of them, else nil:
+  # the fold reads the results already projected (`Apiary.Runs.Fold`), and the records of
+  # the run's sessions are written from all of them (`Apiary.Runs.Sessions`).
+  defp session_events(%Run{id: id}, events) do
+    if Enum.any?(events, &(&1.type in Sessions.types())), do: Sessions.events(id)
+  end
+
+  defp put_results(projected, nil), do: projected
+
+  defp put_results(projected, session_events) do
+    results =
+      for %{type: "dev.qory.runtime.result", projected?: true} = event <- session_events,
+          do: event
+
+    Map.put(projected, :results, results)
   end
 
   defp projected_starts(%Run{id: id}) do
