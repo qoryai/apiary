@@ -81,6 +81,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert Jason.decode!(document)["credentials"] == [
                %{
                  "name" => name,
+                 "group" => ctx.provider.public_id,
                  "format" => "anthropic-messages",
                  "endpoint" => "https://api.anthropic.com",
                  "auth" => %{"scheme" => "header", "header" => "x-api-key"},
@@ -360,7 +361,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                ProviderCredential.for_run(run)
 
       assert Jason.encode!(entry) ==
-               ~s({"name":"model-1","format":"anthropic-messages",) <>
+               ~s({"name":"model-1","group":"#{litellm.public_id}",) <>
+                 ~s("format":"anthropic-messages",) <>
                  ~s("endpoint":"https://litellm.example.com","auth":{"scheme":"bearer"},) <>
                  ~s("pause_for_s":60})
     end
