@@ -48,6 +48,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
   **Claude Code**. A custom service's declaration may no longer use `OPENAI_API_KEY` as a
   placeholder name, as Codex reads its key from that variable (`placeholder_conflict`).
+- A workspace variable named `OPENAI_API_KEY` or `CODEX_API_KEY` is left out of every run,
+  as Forager's deny list names both as model keys. The save works, and the variable form
+  and list say “OPENAI_API_KEY is on Forager's deny list.”
 <!-- /feature -->
 <!-- feature: observability -->
 - On a run's page, a Codex session shows its session events and the version it started

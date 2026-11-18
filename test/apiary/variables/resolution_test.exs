@@ -116,6 +116,8 @@ defmodule Apiary.Variables.ResolutionTest do
       assert Denied.patterns() == ["*_PROXY", "QORY_*"]
       assert "GH_TOKEN" in Denied.forge_tokens()
       assert "ANTHROPIC_API_KEY" in Denied.model_keys()
+      assert "OPENAI_API_KEY" in Denied.model_keys()
+      assert "CODEX_API_KEY" in Denied.model_keys()
     end
 
     test "a name, a pattern, a forge token and a model key are left out of a run, whatever the case" do
@@ -127,11 +129,15 @@ defmodule Apiary.Variables.ResolutionTest do
             "gh_token",
             "GITHUB_TOKEN",
             "ANTHROPIC_API_KEY",
-            "anthropic_api_key"
+            "anthropic_api_key",
+            "OPENAI_API_KEY",
+            "openai_api_key",
+            "CODEX_API_KEY",
+            "codex_api_key"
           ],
           do: assert(Denied.left_out?(name), name)
 
-      for name <- ["NODE_ENV", "PATHS", "HTTP_PROXY_X", "MY_GH_TOKEN", "OPENAI_API_KEY"],
+      for name <- ["NODE_ENV", "PATHS", "HTTP_PROXY_X", "MY_GH_TOKEN", "MY_OPENAI_API_KEY"],
           do: refute(Denied.left_out?(name), name)
     end
 
