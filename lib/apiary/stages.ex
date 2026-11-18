@@ -2393,21 +2393,25 @@ defmodule Apiary.Stages do
   end
 
   @doc false
-  # full_suite_version/2 is the verdict version that belongs to the build report version
-  # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`): the
-  # newest version of the artifact `verdict`, name `main`, that the run which wrote the
-  # report wrote, and that no cancelled run wrote (`Artifacts.cancelled?/1`). nil where the
-  # report has no run (a person wrote it) or that run pushed no verdict. A verdict of
-  # another run or another stage is never the result of the work the report is about.
-  @spec full_suite_version([Artifacts.Artifact.t()], pos_integer) :: map | nil
-  def full_suite_version(artifacts, number) do
+  # full_suite_versions/2 is the verdict versions that belong to the build report version
+  # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`), newest
+  # first: the versions of the artifact `verdict`, name `main`, that the run which wrote the
+  # report wrote, that are no withdrawal and that no cancelled run wrote
+  # (`Artifacts.cancelled?/1`). [] where the report has no run (a person wrote it) or that run
+  # pushed no verdict. A verdict of another run or another stage is never the result of the
+  # work the report is about.
+  @spec full_suite_versions([Artifacts.Artifact.t()], pos_integer) :: [map]
+  def full_suite_versions(artifacts, number) do
     with %{run_id: run_id} when is_binary(run_id) <- report_version(artifacts, number) do
       artifacts
       |> Stream.filter(&(&1.type == "verdict" and &1.name == "main"))
       |> Stream.flat_map(& &1.versions)
-      |> Enum.find(&(&1.run_id == run_id and not Artifacts.cancelled?(&1)))
+      |> Enum.filter(
+        &(&1.run_id == run_id and not Map.get(&1, :withdrawn, false) and
+            not Artifacts.cancelled?(&1))
+      )
     else
-      _none -> nil
+      _none -> []
     end
   end
 
@@ -2420,39 +2424,67 @@ defmodule Apiary.Stages do
 
   @doc false
   # full_suite_read/1 is the full test suite result in the file of the verdict version
-  # `version` (`full_suite_version/2`), as `%{state:, passed:, failed:, skipped:, minutes:,
-  # reason:}`; nil for no version, a file with no `full_suite`, a file the store cannot
-  # read, and a result that is not whole. `state` is `:passed`, `:failed` or `:not_run`.
-  # `:passed` and `:failed` have the three counts, whole numbers (12.0 is 12), and `minutes`,
-  # a number, with `reason` nil. `:not_run` has `reason` and nil for the others: the reason
-  # with white space trimmed and one final full stop dropped, which is a line of text, so a
-  # reason of no text is no result. The version's file does not change, so the result may
-  # be kept by the version's public id.
+  # `version` (`full_suite_version/2`): `{:ok, result}` with `%{state:, passed:, failed:,
+  # skipped:, minutes:, reason:}`; `:none` for a file that has no result (no version, no
+  # `full_suite`, or a result that is not whole); `{:error, :store_unavailable}` where the
+  # store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`. `:passed` and
+  # `:failed` have the three counts, whole numbers (12.0 is 12), and `minutes`, a number,
+  # with `reason` nil. `:not_run` has `reason` and nil for the others: the reason with white
+  # space trimmed and one final full stop dropped, which is a line of text, so a reason of no
+  # text is no result. The version's file does not change, so `{:ok, _}` and `:none` may be
+  # kept by the version's public id; the error may not.
   @spec full_suite_read(map | nil) ::
-          %{
-            state: :passed | :failed | :not_run,
-            passed: non_neg_integer | nil,
-            failed: non_neg_integer | nil,
-            skipped: non_neg_integer | nil,
-            minutes: number | nil,
-            reason: String.t() | nil
-          }
-          | nil
-  def full_suite_read(nil), do: nil
+          {:ok,
+           %{
+             state: :passed | :failed | :not_run,
+             passed: non_neg_integer | nil,
+             failed: non_neg_integer | nil,
+             skipped: non_neg_integer | nil,
+             minutes: number | nil,
+             reason: String.t() | nil
+           }}
+          | :none
+          | {:error, :store_unavailable}
+  def full_suite_read(nil), do: :none
 
   def full_suite_read(version) do
     case Artifacts.stored_json(version) do
-      {:ok, %{"full_suite" => %{} = suite}} -> suite_result(suite)
-      _none -> nil
+      {:ok, %{"full_suite" => %{} = suite}} ->
+        case suite_result(suite) do
+          nil -> :none
+          result -> {:ok, result}
+        end
+
+      {:ok, _no_suite} ->
+        :none
+
+      {:error, :store_unavailable} = unavailable ->
+        unavailable
     end
   end
 
   @doc false
-  # full_suite/3 is `full_suite_read/1` of `full_suite_version/2` for the build report
-  # version `number` of `work_item`, from `artifacts` where the caller has read them.
-  @spec full_suite(WorkItem.t(), pos_integer, [Artifacts.Artifact.t()] | nil) :: map | nil
-  def full_suite(%WorkItem{} = work_item, number, artifacts \\ nil) do
-    (artifacts || Artifacts.list(work_item)) |> full_suite_version(number) |> full_suite_read()
+  # full_suite/3 is the result of the full test suite of the build report version `number`
+  # among `artifacts`: the result in the newest of the report's verdicts
+  # (`full_suite_versions/2`) that has one, so a later verdict of the run with no result does
+  # not hide an earlier one. Returns `{result, reads}`, `result` as in `{:ok, result}` of
+  # `full_suite_read/1` or nil for none. `reads` is the reads of verdict files kept by the
+  # version's public id, `%{id => {:ok, result} | :none}`: a version in it is not read again,
+  # and a file the store cannot read is not kept, so it is read again at the next call; it
+  # ends the search with no result.
+  @spec full_suite([Artifacts.Artifact.t()], pos_integer, map) :: {map | nil, map}
+  def full_suite(artifacts, number, reads \\ %{}) do
+    artifacts
+    |> full_suite_versions(number)
+    |> Enum.reduce_while({nil, reads}, fn version, {nil, reads} ->
+      read = Map.get_lazy(reads, version.public_id, fn -> full_suite_read(version) end)
+
+      case read do
+        {:ok, result} -> {:halt, {result, Map.put(reads, version.public_id, read)}}
+        :none -> {:cont, {nil, Map.put(reads, version.public_id, read)}}
+        {:error, :store_unavailable} -> {:halt, {nil, reads}}
+      end
+    end)
   end
 
   defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed) do

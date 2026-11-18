@@ -3610,6 +3610,41 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
     end
 
+    test "the page keeps what it read of a verdict file, a result and no result alike", %{
+      conn: conn,
+      scope: scope
+    } do
+      suite = %{"state" => "passed", "passed" => 4, "failed" => 0, "skipped" => 0, "minutes" => 2}
+      work_item = report_gate!(scope, suite)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+      assigns = :sys.get_state(view.pid).socket.assigns
+
+      [{id, {:ok, %{passed: 4}}}] = Map.to_list(assigns.suite_reads)
+
+      # The kept read is shown again when the frames are read again, whatever the file says.
+      kept = {:ok, %{state: :failed, passed: 1, failed: 1, skipped: 0, minutes: 3, reason: nil}}
+
+      :sys.replace_state(view.pid, fn state ->
+        update_in(state.socket.assigns, &%{&1 | suite_reads: %{id => kept}})
+      end)
+
+      send(view.pid, {:artifact_pushed, work_item.id, id})
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite failed: 1 passed, 1 failed, 0 skipped."
+             )
+    end
+
+    test "a verdict with no result is kept as none", %{conn: conn, scope: scope} do
+      work_item = report_gate!(scope, nil)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert [:none] = Map.values(:sys.get_state(view.pid).socket.assigns.suite_reads)
+    end
+
     test "a verdict with no full_suite has no line", %{conn: conn, scope: scope} do
       work_item = report_gate!(scope, nil)
 

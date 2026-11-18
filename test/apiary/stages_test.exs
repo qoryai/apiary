@@ -3507,7 +3507,12 @@ defmodule Apiary.StagesTest do
       )
     end
 
-    defp suite_of(suite), do: Stages.full_suite_read(stored_verdict(%{"full_suite" => suite}))
+    defp suite_of(suite) do
+      case Stages.full_suite_read(stored_verdict(%{"full_suite" => suite})) do
+        {:ok, result} -> result
+        :none -> nil
+      end
+    end
 
     defp artifact(type, versions), do: %{type: type, name: "main", versions: versions}
 
@@ -3585,37 +3590,117 @@ defmodule Apiary.StagesTest do
     end
 
     test "no verdict, or a verdict file with no full_suite, is no result" do
-      assert Stages.full_suite_read(nil) == nil
-      assert Stages.full_suite_read(stored_verdict(%{"verdict" => "passed"})) == nil
-      assert Stages.full_suite_read(%{files: []}) == nil
+      assert Stages.full_suite_read(nil) == :none
+      assert Stages.full_suite_read(stored_verdict(%{"verdict" => "passed"})) == :none
+      assert Stages.full_suite_read(%{files: []}) == :none
     end
 
-    test "the verdict of the run that wrote the shown report belongs to it" do
-      mine = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
+    test "a file the store cannot read is an error, not no result" do
+      version = stored_verdict(%{})
+      [file] = version.files
+      gone = %{version | files: [%{file | store_key: String.duplicate("0", 64)}]}
 
-      # Newer verdicts: another run's with a result, and another stage's with none.
+      assert Stages.full_suite_read(gone) == {:error, :store_unavailable}
+    end
+
+    test "a withdrawal is not the verdict of the report" do
+      withdrawal = stored_verdict(%{}, run_id: "run-a", number: 2, withdrawn: true)
+      kept = stored_verdict(%{}, run_id: "run-a", number: 1)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [withdrawal, kept])
+      ]
+
+      assert Stages.full_suite_versions(artifacts, 1) == [kept]
+    end
+
+    defp verdict_with(suite, fields), do: stored_verdict(%{"full_suite" => suite}, fields)
+
+    test "the verdicts of the run that wrote the shown report belong to it, newest first" do
+      mine = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
+      earlier = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 1)
+
+      # Newer verdicts: another run's, and another stage's.
       other_run = stored_verdict(%{"verdict" => "passed"}, run_id: "run-b", number: 4)
       other_stage = stored_verdict(%{"verdict" => "passed"}, run_id: "run-c", number: 3)
 
       artifacts = [
         artifact("build-report", [report(2, "run-a"), report(1, "run-z")]),
-        artifact("verdict", [other_run, other_stage, mine])
+        artifact("verdict", [other_run, other_stage, mine, earlier])
       ]
 
-      assert Stages.full_suite_version(artifacts, 2) == mine
-      assert Stages.full_suite_version(artifacts, 1) == nil
+      assert Stages.full_suite_versions(artifacts, 2) == [mine, earlier]
+      assert Stages.full_suite_versions(artifacts, 1) == []
     end
 
-    test "a newer verdict of the same run is the one that belongs to the report" do
-      older = stored_verdict(%{}, run_id: "run-a", number: 1)
-      newer = stored_verdict(%{}, run_id: "run-a", number: 2)
+    test "a later verdict of the run with no result does not hide an earlier one" do
+      earlier = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      later = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 2)
 
       artifacts = [
         artifact("build-report", [report(1, "run-a")]),
-        artifact("verdict", [newer, older])
+        artifact("verdict", [later, earlier])
       ]
 
-      assert Stages.full_suite_version(artifacts, 1) == newer
+      assert {%{state: :passed, passed: 120}, reads} = Stages.full_suite(artifacts, 1)
+
+      assert reads == %{
+               earlier.public_id => Stages.full_suite_read(earlier),
+               later.public_id => :none
+             }
+    end
+
+    test "a later verdict of the run with another result is the one shown" do
+      earlier = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      failed = %{@suite_passed | "state" => "failed", "failed" => 2}
+      later = verdict_with(failed, run_id: "run-a", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [later, earlier])
+      ]
+
+      assert {%{state: :failed, failed: 2}, reads} = Stages.full_suite(artifacts, 1)
+      # The earlier verdict is not read once the later one has a result.
+      assert Map.keys(reads) == [later.public_id]
+    end
+
+    test "a newer verdict of another run is ignored, with its result" do
+      mine = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      newer = verdict_with(%{@suite_passed | "passed" => 1}, run_id: "run-b", number: 2)
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [newer, mine])
+      ]
+
+      assert {%{passed: 120}, _reads} = Stages.full_suite(artifacts, 1)
+
+      # With no verdict of its own, the report has no result.
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [newer])]
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+    end
+
+    test "a version read before is not read again, and a file the store cannot read is" do
+      good = verdict_with(@suite_passed, run_id: "run-a", number: 1)
+      [file] = good.files
+      gone = %{good | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [good])]
+      {result, reads} = Stages.full_suite(artifacts, 1)
+
+      # The kept read is used: the file of the version is gone and the result stays.
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [%{gone | public_id: good.public_id}])
+      ]
+
+      assert {^result, ^reads} = Stages.full_suite(artifacts, 1, reads)
+
+      # A version that was never read, with a file the store cannot read, is read again.
+      artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [gone])]
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
     end
 
     test "a verdict of a run a member cancelled is skipped" do
@@ -3628,7 +3713,7 @@ defmodule Apiary.StagesTest do
         artifact("verdict", [dropped, kept])
       ]
 
-      assert Stages.full_suite_version(artifacts, 1) == kept
+      assert Stages.full_suite_versions(artifacts, 1) == [kept]
 
       # A report of a cancelled run is not shown as the work's result either.
       artifacts = [
@@ -3636,16 +3721,16 @@ defmodule Apiary.StagesTest do
         artifact("verdict", [kept])
       ]
 
-      assert Stages.full_suite_version(artifacts, 1) == nil
+      assert Stages.full_suite_versions(artifacts, 1) == []
     end
 
     test "a report a person wrote, or with no verdict, has no verdict" do
       person = %{number: 1, run_id: nil, writer: :person, run: nil}
       artifacts = [artifact("build-report", [person]), artifact("verdict", [stored_verdict(%{})])]
-      assert Stages.full_suite_version(artifacts, 1) == nil
+      assert Stages.full_suite_versions(artifacts, 1) == []
 
-      assert Stages.full_suite_version([artifact("build-report", [report(1, "run-a")])], 1) == nil
-      assert Stages.full_suite_version([], 1) == nil
+      assert Stages.full_suite_versions([artifact("build-report", [report(1, "run-a")])], 1) == []
+      assert Stages.full_suite_versions([], 1) == []
     end
 
     defp tracks_of(work_item), do: Enum.map(decisions(work_item), & &1.track)

@@ -12,13 +12,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
-- The work item page shows the result of the full test suite in one line under the build
-  report's frame at a stage that has one, from the `full_suite` member of the verdict
-  of the run that wrote that report: on the Standard track, "The full test suite passed on that
-  commit: 412 passed, 0 failed, 3 skipped, in 6 minutes." (or "failed"); on the Fast
-  track, the same without the commit and the minutes; for a suite that did not run, "The
-  full test suite did not run: <reason>." with the reason as the run sent it. A verdict
-  with no `full_suite` has no line.
+<!-- feature: workflow_model -->
+- The tab of a stage shows the result of the full test suite in one line under the build
+  report's frame. The line comes from the `full_suite` member of the newest verdict that has
+  one among the verdicts of the run that wrote that report. On the Standard track it reads
+  "The full test suite passed on that commit: 412 passed, 0 failed, 3 skipped, in 6
+  minutes." (or "failed", and "in 1 minute" for exactly 1). On the Fast track it reads the
+  same without "on that commit" and the minutes. For a suite that did not run it reads "The
+  full test suite did not run: <reason>.", where the reason is the one the run sent with
+  white space trimmed and one final full stop dropped, and the line ends in a full stop
+  unless the reason ends in "?" or "!". A verdict with no `full_suite` has no line.
+<!-- /feature -->
 - A run's verdict may have the optional member `full_suite`, the result of the full test
   suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the counts
   `passed`, `failed` and `skipped` and the number `minutes`; with `not_run`, a `reason` of

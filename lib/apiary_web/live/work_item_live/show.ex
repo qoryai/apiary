@@ -2221,25 +2221,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(socket), do: assign(socket, frames: [], suite: nil)
 
-  # The full test suite result under the build report's frame, from the verdict the run that
-  # wrote the shown report version wrote (`Stages.full_suite_version/2`), and only where the
-  # tab has that frame. Returns it and the reads kept so far (`suite_reads`, a verdict
-  # version's result by its public id, as `frame_texts` keeps a frame's text).
+  # The full test suite result under the build report's frame, from the newest verdict with a
+  # result of the run that wrote the shown report version (`Stages.full_suite/3`), and only
+  # where the tab has that frame. Returns it and the reads kept so far (`suite_reads`, a verdict
+  # version's read by its public id, as `frame_texts` keeps a frame's text).
   defp suite(assigns, frames) do
-    reads = assigns.suite_reads
-
     with %{version: number} <- Enum.find(frames, &(&1.type == "build-report")),
-         %{} = verdict <- Stages.full_suite_version(assigns.artifacts, number) do
-      suite = Map.get_lazy(reads, verdict.public_id, fn -> Stages.full_suite_read(verdict) end)
-
-      # Only a result is kept: a file the store could not read is read again.
-      if suite,
-        do:
-          {Map.put(suite, :fast, StageTab.fast_track?(assigns.flow)),
-           Map.put(reads, verdict.public_id, suite)},
-        else: {nil, reads}
+         {%{} = suite, reads} <- Stages.full_suite(assigns.artifacts, number, assigns.suite_reads) do
+      {Map.put(suite, :fast, StageTab.fast_track?(assigns.flow)), reads}
     else
-      _none -> {nil, reads}
+      {nil, reads} -> {nil, reads}
+      _no_report -> {nil, assigns.suite_reads}
     end
   end
 
