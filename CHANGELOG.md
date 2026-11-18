@@ -52,7 +52,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: observability -->
 - On a run's page, a Codex session shows its session events and the version it started
   with, and no note that it sends none. The note “Only Claude Code and Codex send session
-  events.” stays for a program that is no runtime of the catalogue.
+  events.” stays for a program that is no runtime of the catalogue, and names the runtimes
+  of the catalogue.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a

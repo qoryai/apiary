@@ -47,6 +47,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   alias Apiary.ExternalText
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Runs.Record.Timeline
   alias Apiary.Runs.RunApi
   alias ApiaryWeb.Format
@@ -310,12 +311,14 @@ defmodule ApiaryWeb.RunPageComponents do
       if @terminal,
         do:
           rich_gettext(
-            "Only Claude Code and Codex send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           ),
         else:
           rich_gettext(
-            "Only Claude Code and Codex send session events. This session ran %{runtime}: its connections are under Network access.",
+            "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access.",
+            runtimes: runtime_titles(),
             runtime: {:part, :runtime}
           )
     }>
@@ -2536,4 +2539,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp detail(value) when is_binary(value), do: {value, :text}
   defp detail(value), do: {Jason.encode!(value), :json}
+
+  # The titles of the runtimes of the catalogue, which all send session events, as a list
+  # in a sentence: "A", "A and B", "A, B, and C".
+  defp runtime_titles, do: Enum.map(Runtimes.list(), & &1.title) |> titles_list()
+
+  @doc false
+  def titles_list([title]), do: title
+  def titles_list([first, second]), do: first <> " and " <> second
+
+  def titles_list(titles),
+    do: Enum.join(Enum.drop(titles, -1), ", ") <> ", and " <> List.last(titles)
 end

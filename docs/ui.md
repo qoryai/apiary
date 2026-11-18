@@ -2250,7 +2250,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        (an exit code of -1 is no exit status and is left out); and Model, from the
        session's last `dev.qory.runtime.started`. A session whose runtime, the `runtime`
        of its `dev.qory.session.started`, is no runtime of the catalogue
-       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note:
+       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note, which lists the
+       runtimes of the catalogue, all of which send session events:
        "Only Claude Code and Codex send session events. This session ran qory: its output is
        under Terminal, and its connections under Network access." For a reader without
        the Terminal, the note ends "its connections are under Network access." A Codex

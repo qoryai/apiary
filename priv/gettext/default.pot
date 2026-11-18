@@ -15728,12 +15728,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code and Codex send session events. This session ran %{runtime}: its connections are under Network access."
+msgid "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code and Codex send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgid "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
 msgstr ""
 
 #: lib/apiary/policy.ex
