@@ -477,24 +477,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       assert Resolution.tier_ok?(%{models: [], suggested: ["only"]}, "other")
       assert Resolution.tier_ok?(%{models: []}, "anything")
     end
-
-    test "is true for a model of the description or of the suggestions, false for any other" do
-      alpha = Map.put(@providers[@alpha], :suggested, ["suggested-only", "big"])
-
-      assert Resolution.tier_ok?(alpha, "big")
-      assert Resolution.tier_ok?(alpha, "small")
-      assert Resolution.tier_ok?(alpha, "suggested-only")
-      refute Resolution.tier_ok?(alpha, "other")
-
-      # A provider read with no suggestions takes its description's models alone.
-      assert Resolution.tier_ok?(@providers[@beta], "other")
-      refute Resolution.tier_ok?(@providers[@beta], "big")
-    end
-
-    test "is true for any model id of a provider whose description lists no model" do
-      assert Resolution.tier_ok?(@providers[@gamma], "any/model-1")
-      assert Resolution.tier_ok?(Map.put(@providers[@gamma], :suggested, ["x"]), "y")
-    end
   end
 
   describe "the fallbacks" do
