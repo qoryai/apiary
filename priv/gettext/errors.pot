@@ -205,6 +205,11 @@ msgstr ""
 msgid "Remove the part before @ from the address. Enter the key among the provider's keys instead."
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables above %{limit}."
+msgstr ""
+
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Shorten the address to at most 2,048 characters."
@@ -743,11 +748,6 @@ msgstr ""
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "was not invited: %{organisation} sent as many invitations in the last 24 hours as it may. Try again later, or %{contact_support}."
-msgstr ""
-
-#: lib/apiary/variables.ex
-#, elixir-autogen, elixir-format
-msgid "would raise a target's variables above %{limit}"
 msgstr ""
 
 #: lib/apiary/variables.ex

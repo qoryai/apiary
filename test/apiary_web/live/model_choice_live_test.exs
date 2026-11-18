@@ -37,6 +37,9 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     )
   end
 
+  defp openai_key(kind),
+    do: %{provider: kind, keys: [%{value_id: "main", value: "sk-#{kind}-model-page-0123456789"}]}
+
   defp option(provider, model \\ nil),
     do: if(model, do: "#{provider.public_id}/#{model}", else: provider.public_id)
 
@@ -613,6 +616,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   describe "the runtime" do
     test "is hidden while the list has one runtime, and the choice names none", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
+      :ok = Runtimes.put_test_list([Enum.find(Runtimes.list(), &(&1.name == "claude"))])
       {:ok, lv, _html} = live(conn, path(scope))
 
       refute has_element?(lv, "#model_choice_runtime")
@@ -624,9 +628,56 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert %ModelChoice{runtime: nil, model_id: "claude-haiku-5-5"} = choice(scope)
     end
 
+    test "with the release's two runtimes, Codex lists the OpenAI providers with models and efforts",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      {:ok, openai} = Connections.create_provider(scope, openai_key("openai"))
+      {:ok, subscription} = Connections.create_provider(scope, openai_key("openai-subscription"))
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="claude"]}, "Claude Code")
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="codex"]}, "Codex")
+      refute has_element?(lv, ~s{#model_choice_provider option[value="#{openai.public_id}"]})
+
+      lv |> form("#model-form", model_choice: %{runtime: "codex"}) |> render_change()
+
+      for provider <- [openai, subscription] do
+        assert has_element?(lv, ~s{input[value="#{option(provider)}"]})
+      end
+
+      refute has_element?(lv, ~s{input[value="#{option(anthropic)}"]})
+
+      codex = Runtimes.list() |> Enum.find(&(&1.name == "codex"))
+
+      assert [
+               %{id: "gpt-6-astra", effort: ~w(low medium high xhigh max)},
+               %{id: "gpt-6-luna", effort: ~w(none low medium high xhigh max)} | _
+             ] = ModelChoices.suggestions(openai, codex)
+
+      assert [%{id: "gpt-6.1-sol", effort: ~w(low medium high xhigh max ultra)} | _] =
+               ModelChoices.suggestions(subscription, codex)
+
+      lv
+      |> form("#model-form",
+        model_choice: %{runtime: "codex", model: option(openai, "gpt-6-luna")}
+      )
+      |> render_change()
+
+      lv
+      |> form("#model-form",
+        model_choice: %{runtime: "codex", model: option(openai, "gpt-6-luna"), effort: "none"}
+      )
+      |> render_submit()
+
+      assert %ModelChoice{runtime: "codex", model_id: "gpt-6-luna", effort: "none"} =
+               choice(scope)
+    end
+
     test "with two, is a field; Model lists only the providers that serve the runtime", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
 
       unserved = %{
@@ -705,7 +756,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with one runtime, says to add a provider that serves it", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       :ok = Runtimes.put_test_list([unserved])
 
@@ -723,7 +774,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with two runtimes that no provider serves, says to add a provider", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       other = %{unserved | name: release.name <> "-other", title: release.title <> " other"}
       :ok = Runtimes.put_test_list([unserved, other])

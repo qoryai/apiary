@@ -1465,7 +1465,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}")
 
-      assert html =~ "Only Claude Code sends session events."
+      assert html =~ "Only Claude Code and Codex send session events."
       assert has_element?(lv, ".q-limits code.q-rule", "make")
       assert html =~ "Run started"
       assert html =~ "exit 2"

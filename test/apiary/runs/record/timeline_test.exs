@@ -22,6 +22,8 @@ defmodule Apiary.Runs.Record.TimelineTest do
         agent_id: data["agent_id"],
         agent_type: data["agent_type"],
         bare: data["bare"] == true,
+        runtime: if(String.ends_with?(event.type, "session.started"), do: data["runtime"]),
+        session: data["session"],
         host: data["host"],
         port: data["port"] && to_string(data["port"]),
         decision: data["decision"],
@@ -230,6 +232,32 @@ defmodule Apiary.Runs.Record.TimelineTest do
         ])
 
       assert [%{seq: 1, end_type: :denied}, %{seq: 2}] = index.items
+    end
+
+    test "the output events of a runtime without hooks are not hook events, by the session that wrote them" do
+      index =
+        index([
+          event(1, "session.started", %{"session" => 1, "runtime" => "codex"}),
+          event(2, "runtime.started", %{"session" => 1}),
+          event(3, "runtime.turn_finished", %{"session" => 1}),
+          event(4, "session.started", %{"session" => 2, "runtime" => "claude"}),
+          event(5, "runtime.prompt_submitted", %{"session" => 2}),
+          event(6, "runtime.turn_finished", %{"session" => 2})
+        ])
+
+      assert index.hook_events == 2
+      assert Timeline.hooks?("claude") and Timeline.hooks?(nil)
+      refute Timeline.hooks?("codex")
+    end
+
+    test "an event of a session whose start is not in the record takes the runtime of the last start" do
+      index =
+        index([
+          event(1, "session.started", %{"runtime" => "codex"}),
+          event(2, "runtime.started", %{})
+        ])
+
+      assert index.hook_events == 0
     end
 
     test "runtime.result is the session's but not a hook's" do

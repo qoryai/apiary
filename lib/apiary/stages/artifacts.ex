@@ -85,6 +85,23 @@ defmodule Apiary.Stages.Artifacts do
     )
   end
 
+  # version_of_run/4 is the version `number` of the artifact of `type` and `name`, which
+  # the run of the queue `run` pushed, with its files in the order of their names; nil for
+  # none.
+  @doc false
+  @spec version_of_run(DispatchRun.t(), String.t(), String.t(), pos_integer) ::
+          Version.t() | nil
+  def version_of_run(%DispatchRun{id: run_id, workspace_id: workspace_id}, type, name, number) do
+    Repo.one(
+      from v in Version,
+        join: a in Artifact,
+        on: a.id == v.artifact_id,
+        where: v.run_id == ^run_id and a.workspace_id == ^workspace_id,
+        where: a.type == ^type and a.name == ^name and v.number == ^number,
+        preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
+    )
+  end
+
   # read_json/1 is the decoded JSON of a version's first file, nil when it cannot be read
   # or decoded.
   @doc false

@@ -3,6 +3,7 @@
   "name": "litellm",
   "title": "LiteLLM",
   "description": "Runs use a LiteLLM proxy that you run, at the address you enter, with a key the proxy accepts. The proxy decides which models it serves.",
+  "vendor": "your LiteLLM proxy",
   "settings": {
     "type": "object",
     "properties": {

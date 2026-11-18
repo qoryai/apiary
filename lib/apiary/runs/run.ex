@@ -137,6 +137,10 @@ defmodule Apiary.Runs.Run do
     # until a session reported one.
     field :peak_memory_bytes, :integer
     field :cpu_time_ms, :integer
+    # The number of the session that paused at the limit of the run's model keys, from its
+    # `dev.qory.session.exited` (`Apiary.Runs.Fold`); null while no session paused. The run
+    # that continues a paused run resumes this session (`Apiary.Runs.Transcript`).
+    field :paused_session, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -522,6 +526,18 @@ defmodule Apiary.Runs.Run do
           not is_nil(r.cancel_requested_at),
       select: 1
   end
+
+  @doc """
+  The ids of the model providers whose keys the session number `session` of `run` runs
+  on: the run's provider (`provider_connection_id`), for every session, because a run
+  has one provider; none for a run with no provider. The end of a paused run, with
+  `session` the session that paused (`paused_session`, nil when it is not known), keeps
+  the earliest end of a cooldown among the keys of these providers alone as
+  `dispatch_runs.paused_until` of the run's run of the queue.
+  """
+  @spec session_provider_ids(t() | map(), pos_integer() | nil) :: [Ecto.UUID.t()]
+  def session_provider_ids(%{provider_connection_id: id}, _session) when is_binary(id), do: [id]
+  def session_provider_ids(_run, _session), do: []
 
   @doc "Whether the run paused (`paused_states/0`)."
   @spec paused?(t() | map()) :: boolean()

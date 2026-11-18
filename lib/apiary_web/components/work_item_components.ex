@@ -3028,6 +3028,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # input, its condition on a track, else what the record of the skip says.
   defp why_skipped(nil, condition), do: condition
   defp why_skipped(%{reason: "first_attempt_passed"} = skip, _condition), do: skip_words(skip)
+  defp why_skipped(%{reason: "feedback"} = skip, _condition), do: skip_words(skip)
   defp why_skipped(%{input: type} = skip, _condition) when is_binary(type), do: skip_words(skip)
   defp why_skipped(%{track: track} = skip, nil) when is_binary(track), do: skip_words(skip)
   defp why_skipped(_skip, condition), do: condition
@@ -6008,7 +6009,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :skip, :map,
     required: true,
     doc:
-      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`"
+      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`, `reason` `feedback` with `negated` for `{feedback: new}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -6026,6 +6027,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp skip_words(%{reason: "first_attempt_passed", cause_entry: entry}),
     do: gettext("Did not run, because %{entry} passed on its first attempt.", entry: entry)
+
+  defp skip_words(%{reason: "feedback", negated: true} = skip),
+    do:
+      gettext("%{workflow} did not run: a member wrote new feedback.",
+        workflow: skip.workflow
+      )
+
+  defp skip_words(%{reason: "feedback"} = skip),
+    do:
+      gettext("%{workflow} did not run: no member wrote new feedback.",
+        workflow: skip.workflow
+      )
 
   defp skip_words(%{track: track} = skip) when is_binary(track) do
     if skip.negated,
@@ -6413,6 +6426,24 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
+       )}
+
+  # A run whose variables are more than it takes, or take more than it takes: the claim
+  # kept which, as the end's detail (`Apiary.Dispatches.Handover`).
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "names_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace or its organisation, then start the run again. The run has more than %{limit} variables.",
+         limit: Apiary.Variables.Resolution.max_names()
+       )}
+
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "bytes_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than %{limit}.",
+         limit: "#{div(Apiary.Variables.Resolution.max_bytes(), 1024)} KiB"
        )}
 
   # A run of a stage with `shared_run: true` that ended after a session, as the input of
@@ -6830,7 +6861,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:variables_invalid),
     do:
       gettext(
-        "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+        "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."
       )
 
   defp unstarted_words(:ticket_gone),

@@ -1,15 +1,17 @@
 defmodule Apiary.Stages.Points do
   # Points are what an escalation asks of a person (`Apiary.Stages.Escalation`), each
-  # `%{"text", "action", "question"?, "fix"?}` as `verdict.schema.json` has them: `text` is
-  # one sentence on what is wrong, and `action` is `answer`, with the id of an open
-  # question in `question`, or `run_again`. The page adds the action's sentence. A
-  # `run_again` point may have `fix`, a line that the page shows in place of the action's
-  # sentence. A run writes points in its verdict. For the causes the stage runner sets
-  # itself (`round_limit`, `check_failed`, `run_stopped`, `return_limit`), this module
-  # writes `run_again` points in the default locale's words
+  # `%{"text", "action", "question"?, "fix"?}` as `verdict.schema.json` has them: `text`
+  # states what is wrong, and `action` is `answer`, with the id of an open question in
+  # `question`, or `run_again`. The page adds the action's sentence. A `run_again` point
+  # may have `fix`, a line that the page shows in place of the action's sentence. A run
+  # writes points in its verdict, each `text` one sentence of at most 500 characters. For
+  # the causes the stage runner sets itself (`round_limit`, `check_failed`, `run_stopped`,
+  # `return_limit`), this module writes `run_again` points in the default locale's words
   # (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's locale. A stopped
   # run's point has `fix`, the stop cause's fix line, where the cause has one, and the
-  # point of a return limit has `fix` with the count of returns.
+  # point of a return limit has `fix` with the count of returns. The text of a
+  # `round_limit` point with open findings is its sentence followed by the text of each
+  # finding, up to the verdict's 20 points, so it is longer than one sentence.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -21,10 +23,32 @@ defmodule Apiary.Stages.Points do
   # stopped:", as in "The run stopped: a read-only run needs a wall".
   @lowered ~w(The A An)
 
-  # round_limit/2 is the point of a loop that ran `ran` of its `rounds` rounds.
+  # round_limit/3 is the point of a loop that ran `ran` of its `rounds` rounds, with
+  # `findings`, the text of each review finding still open, in the verdict's order. The
+  # point's text has their number, then each text. Its `fix` is to read them and pick
+  # Accept as it is or Run another round. With no open finding, the point has the
+  # sentence alone and no `fix`.
   @doc false
-  @spec round_limit(pos_integer, pos_integer) :: [t]
-  def round_limit(ran, rounds) do
+  @spec round_limit(pos_integer, pos_integer, [String.t()]) :: [t]
+  def round_limit(ran, rounds, findings \\ [])
+
+  def round_limit(ran, rounds, [_ | _] = texts) do
+    count = length(texts)
+    sentence = default(fn -> open_findings(ran, rounds, count) end)
+
+    fix =
+      default(fn ->
+        ngettext(
+          "Read the open finding, then pick Accept as it is or Run another round.",
+          "Read the %{count} open findings, then pick Accept as it is or Run another round.",
+          count
+        )
+      end)
+
+    [Map.put(run_again(Enum.join([sentence | texts], " ")), "fix", fix)]
+  end
+
+  def round_limit(ran, rounds, _findings) do
     [
       run_again(
         default(fn ->
@@ -35,6 +59,28 @@ defmodule Apiary.Stages.Points do
       )
     ]
   end
+
+  # The sentence of the rounds that ran with `count` open findings. Its count is the
+  # findings', so the word for the rounds is chosen by `rounds` here.
+  defp open_findings(ran, 1, count),
+    do:
+      ngettext(
+        "%{ran} of %{limit} round ran, and 1 review finding is still open.",
+        "%{ran} of %{limit} round ran, and %{count} review findings are still open.",
+        count,
+        ran: ran,
+        limit: 1
+      )
+
+  defp open_findings(ran, rounds, count),
+    do:
+      ngettext(
+        "%{ran} of %{limit} rounds ran, and 1 review finding is still open.",
+        "%{ran} of %{limit} rounds ran, and %{count} review findings are still open.",
+        count,
+        ran: ran,
+        limit: rounds
+      )
 
   # check_failed/1 is one point for each output type whose Exists check failed.
   @doc false

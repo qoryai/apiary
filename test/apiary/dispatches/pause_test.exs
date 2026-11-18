@@ -861,4 +861,105 @@ defmodule Apiary.Dispatches.PauseTest do
       refute log =~ Base.encode64("hidden-zq9\n")
     end
   end
+
+  describe "the session that paused" do
+    # Each session of a run writes its transcript at a path of its session id.
+    @session_ids %{1 => "a1b2c3d4", 2 => "e5f6a7b8"}
+
+    defp session_path(session), do: "~/.claude/projects/-workspace/#{@session_ids[session]}.jsonl"
+
+    defp session_chunk(session, offset, bytes),
+      do: %{
+        "session" => session,
+        "session_id" => @session_ids[session],
+        "path" => session_path(session),
+        "offset" => offset,
+        "bytes" => Base.encode64(bytes)
+      }
+
+    defp session_exited(session, state, reason \\ nil),
+      do:
+        %{"session" => session, "state" => state, "exit_code" => 1}
+        |> Map.merge(if(reason, do: %{"reason" => reason}, else: %{}))
+
+    test "is resumed when chunks of an earlier session arrive after its chunks", ctx do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      # Session 2 pauses after session 1; a chunk of session 1 has a higher sequence than
+      # session 2's chunk.
+      event_fixture(run, 3, "session.transcript", session_chunk(1, 0, "{\"s\":1}\n"))
+      event_fixture(run, 4, "session.transcript", session_chunk(2, 0, "{\"s\":2}\n"))
+      event_fixture(run, 5, "session.transcript", session_chunk(1, 8, "{\"t\":1}\n"))
+      event_fixture(run, 6, "session.exited", session_exited(1, "succeeded"))
+      event_fixture(run, 7, "session.exited", session_exited(2, "paused", "model_key_limit"))
+      exit!(run, @paused)
+
+      assert %Run{paused_session: 2} = Repo.get!(Run, run.id)
+      assert Transcript.last(run.id) == %{session_id: @session_ids[1], path: session_path(1)}
+      assert Transcript.last(run.id, 2) == %{session_id: @session_ids[2], path: session_path(2)}
+
+      resume = %{
+        "run_id" => run.node_run_id,
+        "session_id" => @session_ids[2],
+        "path" => session_path(2),
+        "runs" => [run.node_run_id]
+      }
+
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert Transcript.resume_at_claim(queued) == resume
+
+      %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
+      assert continuation.resume == resume
+
+      # A rebuild clears a stale value and folds the same session again.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [paused_session: 5])
+
+      {:ok, rebuilt} = Projector.rebuild(Repo.get!(Run, run.id))
+      assert rebuilt.paused_session == 2
+    end
+
+    test "with no chunk is not resumed: the continuation starts it afresh", ctx do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      event_fixture(run, 3, "session.transcript", session_chunk(1, 0, "{\"s\":1}\n"))
+      event_fixture(run, 4, "session.exited", session_exited(1, "succeeded"))
+      event_fixture(run, 5, "session.exited", session_exited(2, "paused", "model_key_limit"))
+      exit!(run, @paused)
+
+      assert %Run{paused_session: 2} = Repo.get!(Run, run.id)
+      assert Transcript.last(run.id, 2) == nil
+
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert Transcript.resume_at_claim(queued) == nil
+
+      %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
+      assert continuation.resume == nil
+    end
+
+    test "decides the provider whose keys the paused run waits for", ctx do
+      soon = in_seconds(3_600)
+      key_state!(ctx.provider, "main", until: in_seconds(7_200))
+      key_state!(ctx.provider, "spare", until: soon)
+
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      event_fixture(run, 4, "session.exited", session_exited(1, "succeeded"))
+      event_fixture(run, 5, "session.exited", session_exited(2, "paused", "model_key_limit"))
+      exit!(run, @paused)
+
+      paused = Repo.get!(Run, run.id)
+
+      # Each session runs on the run's one provider, so the paused session's is that one.
+      assert Run.session_provider_ids(paused, paused.paused_session) == [ctx.provider.id]
+      assert Run.session_provider_ids(paused, nil) == [ctx.provider.id]
+      assert Run.session_provider_ids(%{paused | provider_connection_id: nil}, 2) == []
+
+      assert DateTime.compare(Repo.get!(DispatchRun, dispatch_run.id).paused_until, soon) ==
+               :eq
+    end
+  end
 end

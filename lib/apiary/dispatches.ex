@@ -390,7 +390,7 @@ defmodule Apiary.Dispatches do
   # (the moduledoc).
   @doc false
   @spec queue_next(WorkItem.t(), pos_integer, keyword) ::
-          {:ok, DispatchRun.t()}
+          {:ok, DispatchRun.t() | nil}
           | {:error, :no_run | :running | :used_up | Ecto.Changeset.t()}
   def queue_next(%WorkItem{id: id}, take_in, opts \\ [])
       when is_binary(id) and is_integer(take_in) do
@@ -422,8 +422,9 @@ defmodule Apiary.Dispatches do
   end
 
   # Hand-over: with the workflow model, the stage runner queues the next run of a work
-  # item it placed in a stage (`Apiary.Stages.next_run/2`), and counts its `of`; one it
-  # did not place gets the next run as before.
+  # item it placed in a stage (`Apiary.Stages.next_run/2`), and counts its `of`, or keeps
+  # a member's feedback while the stage waits for a workflow, `{:ok, nil}`; one it did not
+  # place gets the next run as before.
   defp next_run(work_item, take_in, attempt, of) do
     case Apiary.Stages.on?() && Apiary.Stages.next_run(work_item.id, take_in) do
       {:ok, _run} = queued -> queued

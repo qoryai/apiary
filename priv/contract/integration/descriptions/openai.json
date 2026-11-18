@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "openai",
+  "title": "OpenAI API key",
+  "description": "Runs use OpenAI's API with an API key from the OpenAI Platform. OpenAI bills the key's account.",
+  "vendor": "OpenAI",
+  "settings": {"type": "object", "properties": {}, "additionalProperties": false},
+  "egress_hosts": ["api.openai.com"],
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "openai-responses", "endpoint": "https://api.openai.com/v1", "auth": {"scheme": "bearer"}, "key_prefixes": ["sk-"]}
+      ],
+      "models": [
+        {"id": "gpt-6-astra", "title": "GPT-6 Astra", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "gpt-6.2-astra", "title": "GPT-6.2 Astra", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "gpt-6.2-sol", "title": "GPT-6.2 Sol", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "gpt-6.1-sol", "title": "GPT-6.1 Sol", "effort": ["low", "medium", "high", "xhigh", "max"]},
+        {"id": "gpt-6.1-terra", "title": "GPT-6.1 Terra", "effort": ["none", "low", "medium", "high", "xhigh", "max"]},
+        {"id": "gpt-6-luna", "title": "GPT-6 Luna", "effort": ["none", "low", "medium", "high", "xhigh", "max"]}
+      ]
+    }
+  }
+}

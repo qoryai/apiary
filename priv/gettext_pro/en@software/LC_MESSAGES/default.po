@@ -343,10 +343,14 @@ msgid "A purged organisation"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
-#: lib/apiary_pro_web/live/settings_live/variables.ex
 #, elixir-autogen, elixir-format
 msgid "A run receives only its security policy."
 msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/variables.ex
+#, elixir-autogen, elixir-format
+msgid "A run receives the variables that its workspace and target inherit from this organisation, as they are when it starts. A later change reaches the next run."
+msgstr "A run receives the variables that its workspace and repository inherit from this organisation, as they are when it starts. A later change reaches the next run."
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
