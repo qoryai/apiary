@@ -132,7 +132,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.ModelChoices.Resolution
   alias Apiary.ModelKeys.Order
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{ProviderCredential, Target}
+  alias Apiary.Runs.{ProviderCredential, Run, Target}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.WorkItems.WorkItem
 
@@ -219,6 +219,87 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   def choice_in_effect(%DispatchRun{}), do: nil
+
+  # session_model/2 is the model of a later session of the shared run of the queue
+  # `dispatch_run`, a session of `workflow`, for the answer to a next-session request:
+  # `model_choice`, the `model`, `effort`, `provider_models` and `tiers` that the choices
+  # for `workflow` resolve to in the order of the claim (`Apiary.ModelChoices.Resolution`),
+  # as a JSON map, and `model_credential`, the name of the run's start key. Both are nil
+  # where the run has no provider's key, where the choices resolve to another provider
+  # or another runtime than the run's, where the provider is gone or fails its integrity
+  # code, and where the choice no longer forms (`form/6`): the session then uses the
+  # run's model choice and key. Every session uses the runtime of the run's
+  # `run_settings`. Reads without a lock; writes nothing.
+  @doc false
+  @spec session_model(DispatchRun.t(), String.t()) :: %{
+          model_choice: map | nil,
+          model_credential: String.t() | nil
+        }
+  def session_model(%DispatchRun{} = dispatch_run, workflow) when is_binary(workflow) do
+    run = Repo.one(from r in Run, where: r.dispatch_run_id == ^dispatch_run.id)
+
+    with %Run{provider_connection_id: id, run_settings: %{"runtime" => name}} when is_binary(id) <-
+           run,
+         name_of_start when is_binary(name_of_start) <- start_name(run.model_keys),
+         {:ok, built} <- session_built(dispatch_run, workflow, id, name) do
+      %{model_choice: model_choice(built), model_credential: name_of_start}
+    else
+      _none -> %{model_choice: nil, model_credential: nil}
+    end
+  end
+
+  # The settings the choices for `workflow` form for the run's provider `id` and runtime
+  # `name`, else `:none`.
+  defp session_built(
+         %DispatchRun{workspace_id: workspace_id, work_item_id: work_item_id},
+         workflow,
+         id,
+         name
+       ) do
+    workspace = Repo.get!(Workspace, workspace_id)
+    organisation = Repo.get!(Organisation, workspace.organisation_id)
+    input = ModelChoices.choices_for(workspace, target(workspace, work_item_id), workflow)
+    input = %{input | choices: Repo.preload(input.choices, :fallbacks)}
+    providers = providers(%{organisation: organisation, input: input})
+
+    described =
+      Map.new(providers, fn {key, provider} -> {key, Connections.provider(provider)} end)
+
+    input =
+      Map.put(
+        input,
+        :providers,
+        Map.new(providers, fn {key, provider} ->
+          {key, ModelChoices.resolution_provider(provider, described[key])}
+        end)
+      )
+
+    with {:ok, %Resolution{connection_id: ^id} = resolution} <- Resolution.resolve(input),
+         {:ok, %Runtime{name: ^name} = runtime} <- runtime(resolution),
+         provider = Map.fetch!(providers, id),
+         :ok <- intact(provider),
+         {:ok, built} <- form(resolution, provider, described[id], runtime, workspace.id) do
+      {:ok, built}
+    else
+      _other_or_not_formed -> :none
+    end
+  end
+
+  # The run's start key's credential name: the key it keeps with `start`, else its first
+  # (`Apiary.Runs.ProviderCredential`); nil for none.
+  defp start_name([_ | _] = keys),
+    do: (Enum.find(keys, & &1["start"]) || hd(keys))["name"]
+
+  defp start_name(_none), do: nil
+
+  # The members of `built`'s `run_settings` but `runtime`, as a JSON map.
+  defp model_choice(%{wire: wire}) do
+    wire.values
+    |> Enum.reject(fn {member, _value} -> member == "runtime" end)
+    |> Jason.OrderedObject.new()
+    |> Jason.encode!()
+    |> Jason.decode!()
+  end
 
   # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
   # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,

@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
   import Apiary.SealedRunsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages}
+  alias Apiary.{Connections, ModelChoices, Processes, Repo, Stages}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Run
   alias Apiary.Sources.Comment
@@ -33,7 +33,13 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
     :ok = RunApiStubs.install()
     %{scope: scope} = sign_up_fixture()
     gateway_run = sealed_run_fixture(scope)
-    %{scope: scope, key: gateway_run.secrets_key, gateway_run: gateway_run.run}
+
+    %{
+      scope: scope,
+      key: gateway_run.secrets_key,
+      gateway_run: gateway_run.run,
+      provider: gateway_run.provider
+    }
   end
 
   # The vendored schemas by their URL under the contracts' base, and Forager's from its
@@ -166,6 +172,12 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
 
+  # The credential name of the run's start key, as its run configuration names it.
+  defp start_key(ctx) do
+    keys = Repo.get!(Run, ctx.gateway_run.id).model_keys
+    (Enum.find(keys, & &1["start"]) || hd(keys))["name"]
+  end
+
   defp comment!(work_item, n, body) do
     at = DateTime.add(DateTime.utc_now(:second), n, :second)
 
@@ -196,7 +208,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       ])
     end
 
-    test "returns session 2 for the end of session 1, without the members that are nil",
+    test "returns session 2 for the end of session 1, with the workspace's model and the run's start key",
          ctx do
       :ok = verdict!(ctx, "passed")
       conn = request(ctx, ended(1))
@@ -213,13 +225,55 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                "inputs" => %{"version" => 1, "work_item" => %{}, "run" => %{}}
              } = body
 
-      refute Map.has_key?(body, "model_choice")
-      refute Map.has_key?(body, "model_credential")
+      # The workspace's choice names no model: the provider's default model.
+      assert %{"model" => model, "provider_models" => [_ | _]} = body["model_choice"]
+      assert model == ctx.gateway_run.run_settings["model"]
+      assert body["model_credential"] == start_key(ctx)
 
       assert String.starts_with?(conn.resp_body, ~s({"next":"session","session":2,))
 
       assert [{1, 1, "plan-the-build", _}, {2, nil, "write-acceptance-checks", nil}] =
                sessions(ctx)
+    end
+
+    test "returns the model of the workflow's choice over the workspace's", ctx do
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: ctx.provider.public_id,
+          model: "claude-sonnet-5-5"
+        })
+
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      assert %{"workflow" => "write-acceptance-checks", "model_credential" => credential} = body
+
+      assert %{"model" => "claude-sonnet-5-5", "provider_models" => [_ | _]} =
+               body["model_choice"]
+
+      assert credential == start_key(ctx)
+      refute Map.has_key?(body["model_choice"], "runtime")
+    end
+
+    test "leaves out the model where the workflow's choice names another provider", ctx do
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Other",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id
+        })
+
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      assert %{"workflow" => "write-acceptance-checks"} = body
+      refute Map.has_key?(body, "model_choice")
+      refute Map.has_key?(body, "model_credential")
     end
 
     @tag :contract

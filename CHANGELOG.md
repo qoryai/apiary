@@ -1620,7 +1620,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   target, the target's choice, the workflow's choice at the workspace, the workspace's on
   **Workspace settings › Model**, and the organisation's default. With no choice,
   `run_settings` has the catalogue's default runtime alone, and the run uses the
-  gateway's key. A prebuild gets no `run_settings`.
+  gateway's key. A prebuild gets no `run_settings`. The answer to a next-session request
+  has `model_choice`, the model the choices for the session's workflow resolve to in the
+  same order, and `model_credential`, the run's start key. Both are left out where the
+  run has no provider's key, or where the choices resolve to another provider or runtime
+  than the run's; the session then uses the run's model choice and key.
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
   its work item's process version: the run API returns `422` `type_not_withdrawable`, with

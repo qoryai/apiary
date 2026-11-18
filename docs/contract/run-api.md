@@ -754,8 +754,18 @@ of the run contract. A next session of the same stage:
 - `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
   so a time limit saved after the claim changes nothing for the run.
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
-- `model_choice` and `model_credential` are left out: every session uses the run's model
-  choice and key.
+- `model_choice`: the model of the session's workflow, as `model`, `effort`,
+  `provider_models` and `tiers` of the documents' `run_settings`, with no `runtime`: every
+  session uses the runtime of `run_settings`. Qory Apiary resolves the model choices for
+  the session's workflow in the order of the claim: a locked choice of the workspace, the
+  workflow's choice at the run's target, the target's choice, the workflow's choice at the
+  workspace, the workspace's (Workspace settings › Model), and the organisation's default.
+  It reads the choices when the request arrives.
+- `model_credential`: the credential name of the run's start key,
+  `<provider's public id>-<n>`, sent with `model_choice`.
+- Both are left out, and the session uses the run's model choice and key, where the run
+  has no provider's key, where the choices resolve to another provider or another runtime
+  than the run's, or where the provider is gone or no longer forms the choice.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:

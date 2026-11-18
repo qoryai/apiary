@@ -533,8 +533,10 @@ defmodule Apiary.Stages do
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
   # claim kept them, `claim_sessions!/2`), `inputs` (the run's inputs,
-  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`,
-  # both nil: no model choice or key is resolved per session here.
+  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
+  # model the choices for the session's workflow resolve to and the run's start key
+  # (`Apiary.Dispatches.RunSettings.session_model/2`), both nil where the session uses
+  # the run's model choice and key.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
@@ -885,13 +887,14 @@ defmodule Apiary.Stages do
       if work_item.target_system,
         do: %{system: work_item.target_system, path: work_item.target_path}
 
+    model = Apiary.Dispatches.RunSettings.session_model(run, spec.workflow)
+
     stored = %{
       "next" => "session",
       "session" => pending.sequence + 1,
       "workflow" => spec.workflow,
-      # No model choice or key is resolved per session here: both are nil.
-      "model_choice" => nil,
-      "model_credential" => nil,
+      "model_choice" => model.model_choice,
+      "model_credential" => model.model_credential,
       "time_limit_minutes" => entry["time_limit_minutes"],
       "full_suite" => entry["full_suite"],
       "inputs" => %{}
