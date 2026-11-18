@@ -388,7 +388,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_in_assigns(lv, fresh)
 
       Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
-        set: [access_expires_at: DateTime.add(DateTime.utc_now(), 60)]
+        set: [
+          access_expires_at: DateTime.add(DateTime.utc_now(), 60),
+          refreshed_at: DateTime.add(DateTime.utc_now(), -120)
+        ]
       )
 
       Req.Test.stub(Apiary.ModelKeys.LoginRefresh, fn conn ->
