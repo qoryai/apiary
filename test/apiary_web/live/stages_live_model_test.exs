@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.StagesLive.ModelTest do
   @moduledoc """
   The model part of a workflow's fold on Workspace settings › Workflows
-  (`ApiaryWeb.StagesLive.ModelPart`): Key, "Use workspace default" or a key, the line of
-  what the workflow uses, the tiers of a key, Runtime and Save model choice, which writes the
-  workflow's model choice (level 4) or removes it; a refusal under its field; a draft
-  row; who may save; the feature `model_proxies`; and a run of the workflow that uses
-  the saved choice.
+  (`ApiaryWeb.StagesLive.ModelPart`): Provider, "Use workspace default" or a provider,
+  the line of what the workflow uses, the tiers of a provider, Runtime and Save model
+  choice, which writes the workflow's model choice (level 4) or removes it; a refusal
+  under its field; a provider that works with no runtime; a draft row; who may save; the
+  feature `model_proxies`; and a run of the workflow that uses the saved choice.
 
   Not async: each test sets the instance's features, which are the whole node's.
   """
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
   # Explore's first row, explore-a-ticket: its model part's ids.
   @workflow "explore-a-ticket"
   @form "#stage-entry-0-model-form"
-  @key "#stage-entry-0-model-key"
+  @provider "#stage-entry-0-model-provider"
   @line "#stage-entry-0-model-line"
   @tiers_id "#stage-entry-0-model-tiers"
   @save "#stage-entry-0-model-save"
@@ -80,7 +80,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
-        key: "anthropic-main",
         tiers: @default_tiers
       })
   end
@@ -89,7 +88,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
         provider: provider.public_id,
-        key: "openrouter-main",
         tiers: @override_tiers
       })
   end
@@ -104,20 +102,18 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     )
   end
 
-  defp key(provider, value_id), do: "#{provider.public_id}/#{value_id}"
-
   defp change_model(view, params),
     do: view |> element(@form) |> render_change(%{"model" => params})
 
   defp save_model(view, params),
     do: view |> element(@form) |> render_submit(%{"model" => params})
 
-  # The options of Key, in order: each value, its text, and whether it is selected.
-  defp key_options(view) do
+  # The options of Provider, in order: each value, its text, and whether it is selected.
+  defp provider_options(view) do
     view
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("select#{@key} option")
+    |> LazyHTML.query("select#{@provider} option")
     |> Enum.map(
       &{hd(LazyHTML.attribute(&1, "value")), String.trim(LazyHTML.text(&1)),
        LazyHTML.attribute(&1, "selected") != []}
@@ -148,33 +144,33 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     default!(scope, anthropic)
     {:ok, view, html} = live(conn, path)
 
-    assert has_element?(view, ~s{label[for="stage-entry-0-model-key"]}, "Key")
+    assert has_element?(view, ~s{label[for="stage-entry-0-model-provider"]}, "Provider")
 
-    # Key belongs to the row's separate form, not to the stage's form.
+    # Provider belongs to the row's separate form, not to the stage's form.
     assert has_element?(
              view,
-             ~s{select#{@key}[name="model[key]"][form="stage-entry-0-model-form"]}
+             ~s{select#{@provider}[name="model[provider]"][form="stage-entry-0-model-form"]}
            )
 
     refute has_element?(view, "#stage-form #{@form}")
 
-    assert key_options(view) == [
+    assert provider_options(view) == [
              {"", "Use workspace default", true},
-             {key(anthropic, "anthropic-main"), "#{anthropic.name} · anthropic-main", false},
-             {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", false}
+             {anthropic.public_id, anthropic.name, false},
+             {openrouter.public_id, openrouter.name, false}
            ]
 
     assert has_element?(
              view,
              @line,
-             "Uses the workspace default: #{anthropic.name} · anthropic-main."
+             "Uses the workspace default: #{anthropic.name}."
            )
 
     refute has_element?(view, @tiers_id)
     refute has_element?(view, @save)
 
     # After the time limit, before the Access line.
-    assert before?(html, ~s{id="stage-entry-0-time-limit"}, ~s{id="stage-entry-0-model-key"})
+    assert before?(html, ~s{id="stage-entry-0-time-limit"}, ~s{id="stage-entry-0-model-provider"})
   end
 
   test "the line names the organisation's default, else says to set one", %{
@@ -194,7 +190,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, :organisation, %{
         provider: anthropic.public_id,
-        key: "anthropic-main",
         tiers: @default_tiers
       })
 
@@ -203,22 +198,22 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(
              view,
              @line,
-             "Uses the default of #{scope.organisation.name}: #{anthropic.name} · anthropic-main."
+             "Uses the default of #{scope.organisation.name}: #{anthropic.name}."
            )
   end
 
-  test "a key shows its tiers; Save model choice waits for every tier, then writes level 4 with no fallbacks",
+  test "a provider shows its tiers; Save model choice waits for every tier, then writes level 4 with no fallbacks",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)
     versions = length(Processes.list_versions(scope.workspace))
     {:ok, view, _html} = live(conn, path)
 
-    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    change_model(view, %{"provider" => openrouter.public_id})
 
     assert has_element?(
              view,
              @line,
-             "This workflow uses this key and these models in place of the workspace's."
+             "This workflow uses this provider and these models in place of the workspace's."
            )
 
     assert has_element?(view, "#{@tiers_id}-h", "Model and effort per tier")
@@ -260,7 +255,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     assert %ModelChoice{fallbacks: []} = choice = override(scope)
     assert choice.connection_id == openrouter.id
-    assert choice.value_id == "openrouter-main"
     assert choice.tiers == @override_tiers
     assert length(Processes.list_versions(scope.workspace)) == versions
 
@@ -268,12 +262,10 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(view, "#{@save}[disabled]")
     assert has_element?(view, "#stages-save[disabled]")
 
-    # Opened again: the override's key and tiers, nothing to save.
+    # Opened again: the override's provider and tiers, nothing to save.
     {:ok, view, _html} = live(conn, path)
 
-    assert {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", true} in key_options(
-             view
-           )
+    assert {openrouter.public_id, openrouter.name, true} in provider_options(view)
 
     assert has_element?(
              view,
@@ -298,20 +290,20 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(view, @tiers_id)
     assert has_element?(view, "#{@save}[disabled]")
 
-    change_model(view, %{"key" => ""})
+    change_model(view, %{"provider" => ""})
 
     refute has_element?(view, @tiers_id)
 
     assert has_element?(
              view,
              @line,
-             "Uses the workspace default: #{anthropic.name} · anthropic-main."
+             "Uses the workspace default: #{anthropic.name}."
            )
 
     refute has_element?(view, "#{@save}[disabled]")
 
-    # Back to the override's key, its tiers come back.
-    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    # Back to the override's provider, its tiers come back.
+    change_model(view, %{"provider" => openrouter.public_id})
 
     assert has_element?(
              view,
@@ -320,8 +312,8 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     assert has_element?(view, "#{@save}[disabled]")
 
-    change_model(view, %{"key" => ""})
-    save_model(view, %{"key" => ""})
+    change_model(view, %{"provider" => ""})
+    save_model(view, %{"provider" => ""})
 
     assert override(scope) == nil
     assert has_element?(view, "#{@save}[disabled]")
@@ -330,7 +322,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(
              view,
              @line,
-             "Uses the workspace default: #{anthropic.name} · anthropic-main."
+             "Uses the workspace default: #{anthropic.name}."
            )
 
     # Opened again: no override, so no button.
@@ -338,41 +330,31 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     refute has_element?(view, @save)
   end
 
-  test "a refused save shows the refusal under Key, keeps Save enabled, and writes nothing",
+  test "a refused save shows the refusal under Provider, keeps Save enabled, and writes nothing",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)
     {:ok, view, _html} = live(conn, path)
 
-    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    change_model(view, %{"provider" => openrouter.public_id})
     change_model(view, %{"tiers" => @override_tiers})
 
-    # The key is renamed while the page is open: another key becomes the default first,
-    # as a default key keeps its name.
-    {:ok, openrouter} =
-      Connections.add_provider_key(scope, openrouter, %{
-        value_id: "openrouter-spare",
-        value: "sk-fold-model-spare-0123456789"
-      })
-
-    {:ok, openrouter} = Connections.put_default_key(scope, openrouter, "openrouter-spare")
-
-    {:ok, _provider} =
-      Connections.rename_provider_key(scope, openrouter, "openrouter-main", "openrouter-next")
+    # The provider is deleted while the page is open.
+    {:ok, _provider} = Connections.delete_provider(scope, openrouter)
 
     save_model(view, %{})
 
     assert has_element?(
              view,
-             "#stage-entry-0-model-key-error",
-             "Choose one of #{openrouter.name}'s keys: openrouter-main is not one of them."
+             "#stage-entry-0-model-provider-error",
+             "is invalid"
            )
 
-    assert has_element?(view, ~s{select#{@key}.select-error[aria-invalid="true"]})
+    assert has_element?(view, ~s{select#{@provider}.select-error[aria-invalid="true"]})
 
     assert has_element?(
              view,
              @line,
-             "This workflow uses this key and these models in place of the workspace's."
+             "This workflow uses this provider and these models in place of the workspace's."
            )
 
     refute has_element?(view, "#{@save}[disabled]")
@@ -380,27 +362,27 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert override(scope) == nil
   end
 
-  test "a key of another organisation, sent by hand, is refused on Key, and nothing is written",
+  test "a provider of another organisation, sent by hand, is refused on Provider, and nothing is written",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic} do
     default!(scope, anthropic)
     %{scope: other} = sign_up_fixture()
     foreign = provider!(other, "anthropic", "anthropic-main")
     {:ok, view, _html} = live(conn, path)
 
-    # A change keeps Key as it was.
-    change_model(view, %{"key" => key(foreign, "anthropic-main")})
-    assert {"", "Use workspace default", true} in key_options(view)
+    # A change keeps Provider as it was.
+    change_model(view, %{"provider" => foreign.public_id})
+    assert {"", "Use workspace default", true} in provider_options(view)
 
-    save_model(view, %{"key" => key(foreign, "anthropic-main"), "tiers" => @default_tiers})
+    save_model(view, %{"provider" => foreign.public_id, "tiers" => @default_tiers})
 
-    assert has_element?(view, "#stage-entry-0-model-key-error", "is invalid")
+    assert has_element?(view, "#stage-entry-0-model-provider-error", "is invalid")
     assert override(scope) == nil
 
     {:ok, choices} = ModelChoices.list_choices(other)
     assert choices == []
   end
 
-  test "a workflow of the draft alone has Key disabled, no button, and a line to save the stage first",
+  test "a workflow of the draft alone has Provider disabled, no button, and a line to save the stage first",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic} do
     default!(scope, anthropic)
     {:ok, view, _html} = live(conn, path)
@@ -409,8 +391,8 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     |> form("#stage-form")
     |> render_change(%{"stage" => %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}}})
 
-    assert has_element?(view, "#{@key}[disabled]")
-    assert {"", "Use workspace default", true} in key_options(view)
+    assert has_element?(view, "#{@provider}[disabled]")
+    assert {"", "Use workspace default", true} in provider_options(view)
 
     assert has_element?(
              view,
@@ -422,7 +404,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     refute has_element?(view, @save)
 
     # A save sent anyway writes nothing.
-    save_model(view, %{"key" => key(anthropic, "anthropic-main"), "tiers" => @default_tiers})
+    save_model(view, %{"provider" => anthropic.public_id, "tiers" => @default_tiers})
     assert override(scope, "write-a-brief") == nil
   end
 
@@ -434,7 +416,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, "write-a-brief"}, %{
         provider: openrouter.public_id,
-        key: "openrouter-main",
         tiers: @override_tiers
       })
 
@@ -444,7 +425,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     |> form("#stage-form")
     |> render_change(%{"stage" => %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}}})
 
-    assert {"", "Use workspace default", true} in key_options(view)
+    assert {"", "Use workspace default", true} in provider_options(view)
     refute has_element?(view, @tiers_id)
 
     assert has_element?(
@@ -458,11 +439,11 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert override(scope, "write-a-brief") == nil
 
     {:ok, view, _html} = live(conn, path)
-    assert {"", "Use workspace default", true} in key_options(view)
-    refute has_element?(view, "#{@key}[disabled]")
+    assert {"", "Use workspace default", true} in provider_options(view)
+    refute has_element?(view, "#{@provider}[disabled]")
   end
 
-  test "a save sends the runtime Runtime shows: the override's, kept by a change of Key",
+  test "a save sends the runtime Runtime shows: the override's, kept by a change of Provider",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     [release] = Runtimes.list()
     second = %{release | name: release.name <> "-second", title: release.title <> " second"}
@@ -472,7 +453,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
         provider: openrouter.public_id,
-        key: "openrouter-main",
         tiers: @override_tiers,
         runtime: second.name
       })
@@ -486,7 +466,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert {id, name} == {openrouter.id, second.name}
 
     # Another provider that serves the override's runtime too: Runtime keeps it (792).
-    change_model(view, %{"key" => key(anthropic, "anthropic-main")})
+    change_model(view, %{"provider" => anthropic.public_id})
 
     assert has_element?(
              view,
@@ -523,7 +503,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
         ]
       )
 
-    save_model(view, %{"key" => ""})
+    save_model(view, %{"provider" => ""})
     refute has_element?(view, @saved)
     assert override(scope) == nil
   end
@@ -535,15 +515,15 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     %{user: user, membership: membership} = member_fixture(scope, :admin)
     {:ok, view, _html} = live(log_in_user(build_conn(), user), path)
 
-    refute has_element?(view, "#{@key}[disabled]")
+    refute has_element?(view, "#{@provider}[disabled]")
     {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
 
-    save_model(view, %{"key" => ""})
+    save_model(view, %{"provider" => ""})
 
     assert has_element?(view, "#flash-error", "Only owners and admins change this.")
     assert override(scope).connection_id == openrouter.id
 
-    assert has_element?(view, "#{@key}[disabled]")
+    assert has_element?(view, "#{@provider}[disabled]")
     assert has_element?(view, "#stage-entry-0-model-tiers_thinking_model[disabled]")
     refute has_element?(view, @save)
   end
@@ -559,7 +539,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     {:ok, view, _html} =
       live(log_in_user(build_conn(), user), workspace_path(scope, "/settings/workflows"))
 
-    refute has_element?(view, @key)
+    refute has_element?(view, @provider)
 
     # The row's key as the page builds it, so only the member's rights stop the save.
     stage = Processes.current(scope.workspace).document["stages"] |> hd()
@@ -568,7 +548,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       "model" => %{
         "row" => Inspector.time_limit_key(stage["id"], "stage-entry-0"),
         "workflow" => @workflow,
-        "key" => key(openrouter, "openrouter-main"),
+        "provider" => openrouter.public_id,
         "tiers" => @override_tiers
       }
     })
@@ -620,7 +600,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       default!(scope, anthropic)
       {:ok, view, _html} = live(conn, path)
 
-      html = change_model(view, %{"key" => key(anthropic, "anthropic-main")})
+      html = change_model(view, %{"provider" => anthropic.public_id})
 
       assert before?(
                html,
@@ -656,7 +636,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       default!(scope, anthropic)
       {:ok, view, _html} = live(conn, path)
 
-      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+      change_model(view, %{"provider" => openrouter.public_id})
 
       assert has_element?(
                view,
@@ -685,7 +665,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert has_element?(view, "#{@save}[disabled]")
     end
 
-    test "Key lists every key; a new override starts from the default's runtime, which a change of Key keeps while the provider serves it",
+    test "Provider lists every provider; a new override starts from the default's runtime, which a change of Provider keeps while the provider serves it",
          %{
            conn: conn,
            path: path,
@@ -699,28 +679,27 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       {:ok, _choice} =
         ModelChoices.put_choice(scope, :workspace, %{
           provider: openrouter.public_id,
-          key: "openrouter-main",
           runtime: bearer.name,
           tiers: @override_tiers
         })
 
       {:ok, view, _html} = live(conn, path)
 
-      values = for {value, _text, _selected} <- key_options(view), do: value
-      assert key(anthropic, "anthropic-main") in values
-      assert key(openrouter, "openrouter-main") in values
+      values = for {value, _text, _selected} <- provider_options(view), do: value
+      assert anthropic.public_id in values
+      assert openrouter.public_id in values
 
       # OpenRouter serves the default's runtime: it is chosen.
-      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+      change_model(view, %{"provider" => openrouter.public_id})
       assert has_element?(view, ~s{#{@runtime} option[value="#{bearer.name}"][selected]})
 
       # Anthropic does not: Runtime moves to the one it serves.
-      change_model(view, %{"key" => key(anthropic, "anthropic-main"), "runtime" => bearer.name})
+      change_model(view, %{"provider" => anthropic.public_id, "runtime" => bearer.name})
       refute has_element?(view, @runtime)
       assert has_element?(view, "#{@runtime_part}-name", release.title)
 
       # Back to OpenRouter, which serves that one too: it stays.
-      change_model(view, %{"key" => key(openrouter, "openrouter-main"), "runtime" => release.name})
+      change_model(view, %{"provider" => openrouter.public_id, "runtime" => release.name})
 
       assert has_element?(view, ~s{#{@runtime} option[value="#{release.name}"][selected]})
     end
@@ -745,7 +724,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       default!(scope, anthropic)
       {:ok, view, _html} = live(conn, path)
 
-      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+      change_model(view, %{"provider" => openrouter.public_id})
       change_model(view, %{"tiers" => @override_tiers})
       change_model(view, %{"runtime" => narrow.name})
 
@@ -781,7 +760,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       {:ok, _choice} =
         ModelChoices.put_choice(scope, :workspace, %{
           provider: openrouter.public_id,
-          key: "openrouter-main",
           runtime: bearer.name,
           tiers: @override_tiers
         })
@@ -808,7 +786,6 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       {:ok, _choice} =
         ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
           provider: openrouter.public_id,
-          key: "openrouter-main",
           runtime: bearer.name,
           tiers: @override_tiers
         })
@@ -827,6 +804,49 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert %ModelChoice{runtime: nil} = override(scope)
       assert has_element?(view, "#{@save}[disabled]")
     end
+
+    test "a provider that works with no runtime is listed; chosen, a line under Provider, Save model choice disabled, and a save writes nothing",
+         %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+      default!(scope, anthropic)
+
+      # The catalogue has only a bearer runtime, which Anthropic (an `x-api-key` header)
+      # does not serve and OpenRouter does.
+      [release] = Apiary.Kinds.Runtimes.list()
+
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list([bearer])
+      {:ok, view, _html} = live(conn, path)
+
+      assert {anthropic.public_id, anthropic.name, false} in provider_options(view)
+
+      change_model(view, %{"provider" => anthropic.public_id})
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-model-provider-error",
+               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+             )
+
+      assert has_element?(view, ~s{select#{@provider}[aria-invalid="true"]})
+      refute has_element?(view, @runtime_part)
+      assert has_element?(view, "#{@save}[disabled]")
+
+      # A save sent all the same writes nothing.
+      save_model(view, %{"provider" => anthropic.public_id, "tiers" => @default_tiers})
+      assert override(scope) == nil
+      refute has_element?(view, @saved)
+
+      # OpenRouter serves the bearer runtime: the line goes.
+      change_model(view, %{"provider" => openrouter.public_id})
+      refute has_element?(view, "#stage-entry-0-model-provider-error")
+      assert has_element?(view, "#{@runtime_part}-name", bearer.title)
+    end
   end
 
   test "a row in a loop has ids and a form of its row, and a save updates every row of the workflow",
@@ -842,14 +862,14 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     assert has_element?(
              view,
-             ~s{select#stage-entry-1-0-model-key[name="model[key]"][form="stage-entry-1-0-model-form"]}
+             ~s{select#stage-entry-1-0-model-provider[name="model[provider]"][form="stage-entry-1-0-model-form"]}
            )
 
     assert has_element?(view, "#stage-entry-1-0-model-line", "Uses the workspace default")
 
     view
     |> element("#stage-entry-1-0-model-form")
-    |> render_change(%{"model" => %{"key" => key(openrouter, "openrouter-main")}})
+    |> render_change(%{"model" => %{"provider" => openrouter.public_id}})
 
     assert has_element?(
              view,
@@ -869,9 +889,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(view, "#stage-entry-1-0-model-saved", "Saved.")
 
     # The other row of the workflow shows the saved override, not marked as just saved.
-    assert {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", true} in key_options(
-             view
-           )
+    assert {openrouter.public_id, openrouter.name, true} in provider_options(view)
 
     assert has_element?(
              view,
@@ -881,34 +899,34 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     refute has_element?(view, @saved)
   end
 
-  test "a row whose workflow changes in the draft after an unsaved Key shows the new workflow's choice",
+  test "a row whose workflow changes in the draft after an unsaved Provider shows the new workflow's choice",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)
     explore_sequence!(scope, [%{"workflow" => @workflow}, %{"workflow" => "shape-a-ticket"}])
     {:ok, view, _html} = live(conn, path)
 
-    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    change_model(view, %{"provider" => openrouter.public_id})
     assert has_element?(view, @tiers_id)
 
     view
     |> form("#stage-form")
     |> render_change(%{"stage" => %{"sequence" => %{"0" => %{"workflow" => "shape-a-ticket"}}}})
 
-    assert {"", "Use workspace default", true} in key_options(view)
+    assert {"", "Use workspace default", true} in provider_options(view)
     refute has_element?(view, @tiers_id)
     refute has_element?(view, @save)
 
     assert has_element?(
              view,
              @line,
-             "Uses the workspace default: #{anthropic.name} · anthropic-main."
+             "Uses the workspace default: #{anthropic.name}."
            )
 
     assert override(scope) == nil
     assert override(scope, "shape-a-ticket") == nil
   end
 
-  test "an override whose provider can no longer be read keeps its key, and a save of the default removes it",
+  test "an override whose provider can no longer be read keeps its provider, and a save of the default removes it",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)
     override!(scope, openrouter)
@@ -925,14 +943,12 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     {:ok, view, _html} = live(conn, path)
 
-    assert {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", true} in key_options(
-             view
-           )
+    assert {openrouter.public_id, openrouter.name, true} in provider_options(view)
 
     assert has_element?(
              view,
              @line,
-             "This workflow uses this key and these models in place of the workspace's."
+             "This workflow uses this provider and these models in place of the workspace's."
            )
 
     # No runtime is read for the provider, and the override's efforts stay shown.
@@ -943,9 +959,9 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
              ~s{#stage-entry-0-model-tiers_thinking_effort option[value="high"][selected]}
            )
 
-    change_model(view, %{"key" => ""})
+    change_model(view, %{"provider" => ""})
     refute has_element?(view, "#{@save}[disabled]")
-    save_model(view, %{"key" => ""})
+    save_model(view, %{"provider" => ""})
 
     assert override(scope) == nil
     assert has_element?(view, @saved, "Saved.")
@@ -963,15 +979,15 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       %{litellm: litellm}
     end
 
-    test "off: Key leaves out LiteLLM", %{conn: conn, path: path, litellm: litellm} do
+    test "off: Provider leaves out LiteLLM", %{conn: conn, path: path, litellm: litellm} do
       {:ok, view, _html} = live(conn, path)
 
-      values = for {value, _text, _selected} <- key_options(view), do: value
-      refute key(litellm, "litellm-main") in values
+      values = for {value, _text, _selected} <- provider_options(view), do: value
+      refute litellm.public_id in values
       assert length(values) == 3
     end
 
-    test "off: a saved LiteLLM override shows its key and tiers, and a save keeps it", %{
+    test "off: a saved LiteLLM override shows its provider and tiers, and a save keeps it", %{
       conn: conn,
       path: path,
       scope: scope,
@@ -980,15 +996,12 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       {:ok, _choice} =
         Apiary.ModelChoicesFixtures.put_choice(scope, {:workspace, @workflow}, %{
           provider: litellm.public_id,
-          key: "litellm-main",
           tiers: @free_tiers
         })
 
       {:ok, view, _html} = live(conn, path)
 
-      assert {key(litellm, "litellm-main"), "#{litellm.name} · litellm-main", true} in key_options(
-               view
-             )
+      assert {litellm.public_id, litellm.name, true} in provider_options(view)
 
       assert has_element?(
                view,
@@ -1005,7 +1018,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     end
 
     @tag with_features: Apiary.Features.all()
-    test "on: Key offers LiteLLM, with a text field per tier, and a save writes them", %{
+    test "on: Provider offers LiteLLM, with a text field per tier, and a save writes them", %{
       conn: conn,
       path: path,
       scope: scope,
@@ -1013,7 +1026,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     } do
       {:ok, view, _html} = live(conn, path)
 
-      change_model(view, %{"key" => key(litellm, "litellm-main")})
+      change_model(view, %{"provider" => litellm.public_id})
 
       assert has_element?(view, "#{@tiers_id}-h", "Model per tier")
 
@@ -1053,7 +1066,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       )
 
     {:ok, view, _html} = live(conn, path)
-    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    change_model(view, %{"provider" => openrouter.public_id})
     change_model(view, %{"tiers" => @override_tiers})
     save_model(view, %{})
 
