@@ -88,11 +88,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     its fields): a Model and an Effort for each tier, from the models suggested for
   #     the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or a text field
   #     Model for a provider whose description lists no models. A change of Key or
-  #     Provider empties the tiers; the workspace's choice fills them while its provider
-  #     is chosen. Continue, enabled once every tier has a model, saves the workspace's
+  #     Provider empties the tiers; when the step opens, the workspace's choice fills
+  #     them. Continue, enabled once every tier has a model, saves the workspace's
   #     choice (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, the key
-  #     of the workspace's choice where it is that provider's, else the provider's default
-  #     key, the runtime and the tiers, the Thinking tier's model and effort as the
+  #     of the workspace's choice where it is still one of that provider's keys, else the
+  #     provider's default key, the runtime and the tiers, the Thinking tier's model and effort as the
   #     choice's (`ApiaryWeb.ModelTiers.attrs/2`); with the choice unchanged it saves
   #     nothing and goes on. The line under the form shows where to change the
   #     models and the key: Workspace settings for a key that is a secret of the workspace,
@@ -1019,7 +1019,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           ModelTiers.sent(key, before, old || ModelTiers.blank(), params["tiers"], stored)
 
         true ->
-          ModelTiers.params(socket.assigns.choice, key)
+          first_tiers(socket.assigns.stored, key)
       end
 
     kept =
@@ -1053,10 +1053,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
+  # The tiers when the step opens: those of the workspace's choice, `stored`
+  # (`ApiaryWeb.ModelTiers.stored/1`), while `key` is of its provider, also where the
+  # choice's key is gone; else none.
+  defp first_tiers(%{provider_id: id, tiers: tiers}, %{provider: %Connection{id: id}}), do: tiers
+  defp first_tiers(_stored, _key), do: ModelTiers.blank()
+
   # The key of the tiers (`ApiaryWeb.ModelTiers.entry/4`): for Add a key, the catalogue's
   # provider, with no key yet; for a provider to reuse, the key of `choice`, the
-  # workspace's choice, where it is that provider's, else the provider's default key.
-  # None while the provider has no description.
+  # workspace's choice, where it is one of that provider's keys, else the provider's
+  # default key. None while the provider has no description.
   defp model_key(_source, nil, _models, _choice), do: nil
 
   defp model_key(:add, chosen, models, _choice),
@@ -1066,7 +1072,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     value_id =
       case choice do
         %{connection_id: id, value_id: value_id} when id == provider.id and value_id != nil ->
-          value_id
+          if value_id in value_ids(provider), do: value_id, else: provider.default_value_id
 
         _other ->
           provider.default_value_id
@@ -1236,8 +1242,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
-  defp keys(_provider), do: 0
+  defp keys(provider), do: length(value_ids(provider))
+
+  defp value_ids(%{secret: %{values: values}}) when is_list(values),
+    do: Enum.map(values, & &1.value_id)
+
+  defp value_ids(_provider), do: []
 
   # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
   # a secret of the flow's workspace, which Name made before this step, and the provider
@@ -1649,13 +1659,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # Whether the form has the workspace's choice as it is: its provider and key, its
   # runtime, and its tiers. Add a key never has.
+  # A stored runtime the catalogue no longer has is a change, so Continue saves the
+  # runtime the form shows.
   defp unchanged?(%{choice: %ModelChoice{} = choice, key: %{provider: %Connection{}} = key} = a) do
-    {:ok, runtime} = ModelChoices.runtime(choice.runtime)
+    case ModelChoices.runtime(choice.runtime) do
+      {:ok, runtime} ->
+        choice.connection_id == key.provider.id and
+          (choice.value_id || key.provider.default_value_id) == key.value_id and
+          a.runtime != nil and runtime.name == a.runtime.name and
+          ModelTiers.stored(choice).tiers == a.tiers
 
-    choice.connection_id == key.provider.id and
-      (choice.value_id || key.provider.default_value_id) == key.value_id and
-      a.runtime != nil and runtime.name == a.runtime.name and
-      ModelTiers.stored(choice).tiers == a.tiers
+      :error ->
+        false
+    end
   end
 
   defp unchanged?(_assigns), do: false

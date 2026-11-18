@@ -4377,6 +4377,31 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{"Add a key", true}]
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert words(lv, "#set-up-model-tiers-h") == "Model and effort per tier"
+
+    # Each tier shows its name and the line under it (`ModelTiers.line/1`).
+    lines = %{
+      "thinking" => "Plans and reviews: the most capable model.",
+      "balanced" => "Writes and runs most steps.",
+      "light" => "Simple, scripted steps: the cheapest model."
+    }
+
+    for tier <- ModelTiers.shown() do
+      assert ModelTiers.line(tier) == lines[tier]
+      assert words(lv, "#set-up-model-tiers-#{tier}-line") == ModelTiers.line(tier)
+
+      assert has_element?(
+               lv,
+               ~s{#set-up-model-tiers-#{tier}[aria-describedby="set-up-model-tiers-#{tier}-line"]}
+             )
+    end
+
+    assert Enum.map(ModelTiers.shown(), &words(lv, "#set-up-model-tiers-#{&1} legend")) ==
+             [
+               "Thinking #{lines["thinking"]}",
+               "Balanced #{lines["balanced"]}",
+               "Light #{lines["light"]}"
+             ]
+
     assert has_element?(lv, "#set-up-model-form", "Runtime")
     # The edition shows the setting of where the provider applies; left off, the provider
     # reaches this workspace alone.
@@ -4745,6 +4770,64 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              Map.new(chosen, fn {tier, model} -> {tier, {model.id, List.last(model.effort)}} end)
 
     assert {choice.model_id, choice.effort} == {a.id, List.last(a.effort)}
+  end
+
+  test "a stored key that is gone: the tiers stay, and Continue saves the provider's default key",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+
+    {:ok, provider} =
+      Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [
+          %{value_id: "main", value: "sk-main-0123456789"},
+          %{value_id: "second", value: "sk-second-0123456789"}
+        ]
+      })
+
+    {:ok, stored} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        key: "second"
+      })
+
+    Repo.delete_all(
+      from v in Apiary.Secrets.Value,
+        where: v.secret_id == ^provider.secret_id and v.value_id == "second"
+    )
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    assert continue?(lv)
+
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+
+    assert {[choice], []} = choices(scope)
+    assert {choice.connection_id, choice.value_id} == {provider.id, "main"}
+    assert saved_tiers(choice) == saved_tiers(stored)
+  end
+
+  test "a stored runtime the catalogue no longer has: Continue saves the runtime the step shows",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+
+    {:ok, stored} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+    {1, _} =
+      Repo.update_all(from(c in Apiary.ModelChoices.ModelChoice, where: c.id == ^stored.id),
+        set: [runtime: "gone"]
+      )
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+
+    {:ok, runtime} = ModelChoices.runtime(nil)
+    assert {[choice], []} = choices(scope)
+    assert choice.runtime == runtime.name
+    assert saved_tiers(choice) == saved_tiers(stored)
   end
 
   test "Add a key with a catalogue provider: the tiers list its models, a change of Provider empties them, and Continue adds it",
