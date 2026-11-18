@@ -130,11 +130,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   feedback for the stage the work item returns to. A stage with no such entry runs as
   before. These rules hold in a stage with `shared_run: true` too, where
   `changes-requested` in a loop starts the loop's next round as the run's next session.
-  The confirmation of Request changes, a move, Run another round and answers shows the
-  workflow that starts: with a note or a comment, the first workflow of the stage that
-  the act starts; the line changes as the member types the note in the confirmation.
-  Entering a stage again keeps the records of entries passed over for a condition, for
-  `{feedback: new}` too.
+  The confirmation of Request changes, a move, a switch, Run another round and answers
+  shows the workflow that starts: with a note or a comment, the first workflow of the
+  stage that the act starts; the line changes as the member types the note in the
+  confirmation. Entering a stage again keeps the records of entries passed over for a
+  condition, for `{feedback: new}` too.
 - When a verdict `changes-requested` with points ends a loop's last round, the
   round-limit point's text is "3 of 3 rounds ran, and 2 review findings are still open."
   followed by the text of each of the verdict's points, and its fix is "Read the 2 open

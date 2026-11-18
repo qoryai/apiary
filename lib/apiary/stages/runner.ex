@@ -189,12 +189,12 @@ defmodule Apiary.Stages.Runner do
   `passed` or `changes-requested` (`Apiary.Stages`); `feedback_noted`, the same for
   feedback other than such a plain answer; `feedback_comment`, the same for a comment or a
   reply alone; `escalation_answer`, true for answers that resolve an open escalation; and
-  `feedback_note`, true for Request changes with a note. For the conditions `{input: T, changed: true}` of the stage's
-  workflow entries (`changed?/3`): `stored`, the versions of each such `T` as
-  `%{at:, by:}`, when each was stored and the entry key `{entry, loop_entry, workflow}` of
-  the run that stored it, nil for a version that no run of the stage stored; and `passed`,
-  the runs of those entries' workflows on the work item that ended `passed`, as
-  `%{entry:, loop_entry:, workflow:, queued_at:}`.
+  `feedback_note`, true for Request changes with a note. For the conditions
+  `{input: T, changed: true}` of the stage's workflow entries (`changed?/3`): `stored`,
+  the versions of each such `T` as `%{at:, by:}`, when each was stored and the entry key
+  `{entry, loop_entry, workflow}` of the run that stored it, nil for a version that no
+  run of the stage stored; and `passed`, the runs of those entries' workflows on the
+  work item that ended `passed`, as `%{entry:, loop_entry:, workflow:, queued_at:}`.
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],

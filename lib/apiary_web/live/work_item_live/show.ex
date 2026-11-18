@@ -1202,7 +1202,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 do: {Stages.starts(socket.assigns.row, act), {:run, workflow}},
                 else: {{:run, workflow}, Stages.starts(socket.assigns.row, act, true)}
 
-            [line: workflow_line(socket, plain), noted_line: workflow_line(socket, with_note)]
+            [line: run_or_none(socket, plain), noted_line: run_or_none(socket, with_note)]
           else
             [line: line]
           end
@@ -1214,12 +1214,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # The line of a run of `workflow`; for none, the next run of the work item's stage.
+  # The line of a run of `workflow`.
   defp workflow_line(socket, {:run, workflow}),
     do: SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
 
-  defp workflow_line(socket, :none),
-    do: SpendDialog.run_line({:stage, stage_now(socket.assigns.flow)}, scope(socket).workspace)
+  # The line of a run of `workflow`; nil where the act starts no run, so the dialog shows
+  # no line for it.
+  defp run_or_none(socket, {:run, _workflow} = run), do: workflow_line(socket, run)
+  defp run_or_none(_socket, :none), do: nil
 
   # What `act` starts, with a note or a comment for `noted` (`Apiary.Stages.starts/3`): a
   # run of its workflow where the stage runner finds it, else the next run of the work

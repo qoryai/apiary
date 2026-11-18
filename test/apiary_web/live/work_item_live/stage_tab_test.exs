@@ -3838,5 +3838,36 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert %{workflow: "build-it", stage_entry: 0} = newest_run(work_item)
     end
+
+    test "where the act with no note starts no run, the dialog shows no line for it", %{
+      conn: conn,
+      scope: scope
+    } do
+      process!(scope, %{
+        "sequence" => [%{"workflow" => "build-it", "when" => %{"feedback" => "new"}}],
+        "outputs" => []
+      })
+
+      # Shape passes build-it over and waits at its gate; Request changes with no note
+      # passes it over again and starts no run.
+      work_item = at_shape!(scope)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+      assert Stages.starts(work_item, :request_changes) == :none
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "build-it"}
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      view |> element("#work-item-stage-gate-ask-changes") |> render_click()
+
+      view
+      |> form("#work-item-stage-gate-changes", %{"note" => "Use the new format."})
+      |> render_submit()
+
+      assert has_element?(view, "#spend-dialog-line", "build-it")
+
+      view |> form("#spend-dialog-form") |> render_change(%{"note" => ""})
+      assert has_element?(view, "#spend-dialog")
+      refute has_element?(view, "#spend-dialog-line")
+      refute render(view) =~ "Starts the next run of"
+    end
   end
 end

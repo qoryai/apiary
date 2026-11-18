@@ -43,11 +43,12 @@ defmodule ApiaryWeb.SpendDialog do
 
   @typedoc """
   An open confirmation: the action's `event` and the `params` of its click, the dialog's
-  `title` and `action` (the confirm button's words), its `line`, rich text, the id of the
-  action's button (`return_to`), the action's note, or nil for none, and the box's
-  distance from the top of the page in px (`top`). `lines` is nil, or the line with no
-  note (`plain`) and the line with a note (`noted`), where the note changes what starts:
-  the dialog then shows the one for the note typed (`noted/2`).
+  `title` and `action` (the confirm button's words), its `line`, rich text, or nil where
+  the act starts no run, the id of the action's button (`return_to`), the action's note,
+  or nil for none, and the box's distance from the top of the page in px (`top`).
+  `lines` is nil, or the line with no note (`plain`) and the line with a note (`noted`),
+  where the note changes what starts: the dialog then shows the one for the note typed
+  (`noted/2`).
   """
   @type t :: %{
           event: String.t(),
@@ -66,7 +67,8 @@ defmodule ApiaryWeb.SpendDialog do
   # dialog then shows the note's field with `params["note"]`, and `optional` and `hint`
   # as set in `:note`; `:top` for a box at another distance from the top than 170 px;
   # `:noted_line`, with `:note`, for the line where the note is not blank, `:line` then
-  # being the line with no note.
+  # being the line with no note; either is nil where that act starts no run, and the
+  # dialog then shows no line.
   @doc false
   @spec ask(String.t(), map, keyword) :: t
   def ask(event, params, opts) do
@@ -84,10 +86,9 @@ defmodule ApiaryWeb.SpendDialog do
       end
 
     lines =
-      case {note, Keyword.get(opts, :noted_line)} do
-        {%{}, noted} when not is_nil(noted) -> %{plain: Keyword.fetch!(opts, :line), noted: noted}
-        _no_lines -> nil
-      end
+      if note && Keyword.has_key?(opts, :noted_line),
+        do: %{plain: Keyword.fetch!(opts, :line), noted: Keyword.fetch!(opts, :noted_line)},
+        else: nil
 
     noted(
       %{
@@ -232,11 +233,11 @@ defmodule ApiaryWeb.SpendDialog do
       title={@spend.title}
       action={@spend.action}
       return_to={@spend.return_to}
-      describedby={"#{@id}-line"}
+      describedby={@spend.line && "#{@id}-line"}
       top={@spend.top}
       change={@spend[:lines] && "spend_note"}
     >
-      <p id={"#{@id}-line"}><.rich text={@spend.line} /></p>
+      <p :if={@spend.line} id={"#{@id}-line"}><.rich text={@spend.line} /></p>
       <.input
         :if={@spend.note}
         id={"#{@id}-note"}
