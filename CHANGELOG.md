@@ -1627,8 +1627,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The answer to a next-session request has `model_choice`, the model of the session's
   workflow, resolved in the same order at the claim, and `model_credential`, the run's
   start key. The claim keeps both for each workflow of the stage, so a model choice saved
-  after the claim changes nothing for the run. `model_choice` is the run's model where
-  the choice's provider, key or model is no longer valid. Both are left out where the
+  after the claim changes nothing for the run. `model_choice` is the model of the
+  choice's fallback where the run's provider is that choice's fallback, as when the
+  claim took the fallback, and the run's model where the choice's provider, key or model
+  is no longer valid. Both are left out where the
   session's workflow resolves to no model choice at any level, or where the run has no
   provider's key: the session uses the gateway's key and the runtime's default model.
 <!-- /feature -->

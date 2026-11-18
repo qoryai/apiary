@@ -432,9 +432,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # of `model_choice` and `model_credential` for each workflow that has one. For a
   # workflow whose choices resolve to the run's provider and runtime: `model_choice`, the
   # `model`, `effort`, `provider_models` and `tiers` of that choice, and
-  # `model_credential`, the run's start key. For a workflow whose choice names the run's
-  # provider as a fallback, as when the claim took that fallback, the same of that
-  # fallback (`Apiary.ModelChoices.Resolution.fallback/3`). Where the
+  # `model_credential`, the run's start key. Where the run's provider is that choice's
+  # fallback, as when the claim took the fallback, the same of that fallback
+  # (`Apiary.ModelChoices.Resolution.fallback/3`). Where the
   # choice's provider, key or model is no longer valid (`form/6`), `model_choice` is the
   # run's: the members of its `run_settings` but `runtime`. A workflow whose choices
   # resolve to no choice at any level has no entry, and neither has any workflow of a run
@@ -627,10 +627,18 @@ defmodule Apiary.Dispatches.RunSettings do
     end)
   end
 
-  # The providers that the run's choices and the choices of its later sessions name, as a
-  # provider or a fallback, each once.
+  # The providers of the run's choices and their fallbacks, and the providers of the
+  # choices of its later sessions, each once. A provider that is only a later session's
+  # fallback is not read: a later session takes a fallback only where its provider is
+  # the run's, which is among the run's.
   defp all_provider_ids(input, sessions) do
-    Enum.uniq(provider_ids(input) ++ Enum.flat_map(Map.values(sessions), &provider_ids/1))
+    session_ids =
+      for {_workflow, session} <- sessions,
+          choice <- session.choices,
+          is_binary(choice.connection_id),
+          do: choice.connection_id
+
+    Enum.uniq(provider_ids(input) ++ session_ids)
   end
 
   # The providers the choices name, and their fallbacks', each once.

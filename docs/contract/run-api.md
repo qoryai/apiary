@@ -767,6 +767,8 @@ of the run contract. A next session of the same stage:
   the claim changes nothing for the run.
 - `model_credential`: the credential name of the run's start key,
   `<provider's public id>-<n>`, sent with `model_choice`.
+- `model_choice` is the model of the choice's fallback where the run's provider is that
+  choice's fallback, as when the claim took the fallback.
 - `model_choice` is the run's model, the members of `run_settings` but `runtime`, where
   the choice's provider, key or model is no longer valid.
 - Both are left out where the session's workflow resolves to no model choice at any

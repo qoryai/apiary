@@ -577,6 +577,32 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert body["model_credential"] == "#{fallback.public_id}-1"
     end
 
+    test "is the fallback's where the workflow's choice has another provider and the run's as its fallback",
+         ctx do
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Other keys",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      :ok = choose!(ctx, :workspace, %{model: "claude-opus-5-5"})
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id,
+          model: "claude-opus-5-5",
+          fallbacks: [
+            %{provider: ctx.provider.public_id, model: "claude-sonnet-5-5", effort: "high"}
+          ]
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
+      assert body["model_credential"] == "#{ctx.provider.public_id}-1"
+    end
+
     test "is absent where the run has no provider's key", ctx do
       # No choice for the run's first workflow: the run uses the gateway's key.
       {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
