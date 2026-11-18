@@ -3787,6 +3787,11 @@ msgstr ""
 msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{vendor}'s terms"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{version} has been in force since %{time}."
@@ -6119,11 +6124,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Anthropic's coding agent."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Anthropic's terms"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -11158,6 +11158,11 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Get the key from the provider first: create an API key in the OpenAI Platform."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
 msgstr ""
 
@@ -15728,13 +15733,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its connections are under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its connections are under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
-msgstr ""
+msgid "Only %{runtimes} sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgid_plural "Only %{runtimes} send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
@@ -16128,6 +16137,11 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open work item #%{number} in %{workspace}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI's coding agent."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex

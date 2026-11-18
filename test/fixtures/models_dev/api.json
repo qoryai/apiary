@@ -153,5 +153,35 @@
         "release_date": "2026-09-01"
       }
     }
+  },
+  "openai": {
+    "id": "openai",
+    "name": "OpenAI",
+    "npm": "@ai-sdk/openai",
+    "doc": "https://platform.openai.com/docs/models",
+    "models": {
+      "gpt-6-astra": {
+        "id": "gpt-6-astra",
+        "name": "GPT-6 Astra",
+        "family": "gpt",
+        "reasoning": true,
+        "release_date": "2026-06-10"
+      },
+      "gpt-6.2-sol": {
+        "id": "gpt-6.2-sol",
+        "name": "GPT-6.2 Sol",
+        "family": "gpt",
+        "reasoning": true,
+        "release_date": "2026-10-20"
+      },
+      "gpt-5-mini": {
+        "id": "gpt-5-mini",
+        "name": "GPT-5 mini",
+        "family": "gpt-mini",
+        "reasoning": true,
+        "status": "deprecated",
+        "release_date": "2025-08-07"
+      }
+    }
   }
 }
