@@ -621,7 +621,7 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "the tiers" do
-    test "are named Thinking, Balanced and Light, in the order the pages show them" do
+    test "are named Thinking, Balanced and Light, in the order the Model page design shows them" do
       assert Enum.map(Enum.reverse(Resolution.tiers()), &ModelChoices.tier_name/1) ==
                ~w(Thinking Balanced Light)
     end
@@ -637,8 +637,8 @@ defmodule Apiary.ModelChoicesTest do
 
     test "are all needed at levels 4, 5 and 6: the first missing one is refused", ctx do
       %{scope: scope, provider: provider} = ctx
-      # The pages show the tiers from the last of `Resolution.tiers/0` to the first, and
-      # the error names the first missing tier in that order, as the pages name it.
+      # The Model page design shows the tiers from the last of `Resolution.tiers/0` to the
+      # first, and the error names the first missing tier in that order, by its page name.
       [light, middle, thinking] = Resolution.tiers()
 
       for place <- [:organisation, :workspace, {:workspace, "hello"}] do
@@ -733,8 +733,8 @@ defmodule Apiary.ModelChoicesTest do
                  }
       end
 
-      # The first refused tier is named, in the order the pages show the tiers: `second`
-      # comes before `first`.
+      # The first refused tier's model is named, in the order the Model page design shows
+      # the tiers: `second` comes before `first`.
       both =
         Map.merge(every_tier(@model), %{first => "deepseek-flash", second => "acme-small"})
 
@@ -748,7 +748,8 @@ defmodule Apiary.ModelChoicesTest do
       assert Repo.aggregate(ModelChoice, :count) == 0
     end
 
-    test "name the first tier refused in the order the pages show them, thinking first", ctx do
+    test "name the first refused tier, or its model, in the Model page design's order",
+         ctx do
       %{scope: scope, provider: provider} = ctx
       [light, _middle, thinking] = Resolution.tiers()
 
