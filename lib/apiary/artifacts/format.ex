@@ -381,6 +381,11 @@ defmodule Apiary.Artifacts.Format do
     Enum.all?(content_types, &(&1 in taken))
   end
 
+  # video_types/0 is the content types of a video file: MP4 and WebM.
+  @doc false
+  @spec video_types() :: [String.t()]
+  def video_types, do: @videos
+
   # video?/1 is whether the content types of a version's files have an MP4 or WebM
   # video among them, as a version of a video type must.
   @doc false

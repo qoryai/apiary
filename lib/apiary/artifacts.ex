@@ -314,8 +314,33 @@ defmodule Apiary.Artifacts do
   # `member_types/0`.
   @doc false
   @spec person_types(Workspace.t()) :: [Type.t()]
-  def person_types(%Workspace{} = workspace),
-    do: Enum.reject(types(workspace), &(&1.name in @member_types))
+  def person_types(%Workspace{} = workspace) do
+    held = @member_types ++ submit_types(workspace)
+    Enum.reject(types(workspace), &(&1.name in held))
+  end
+
+  # submit_types/1 is the names of the types that the process of `workspace` sets as the
+  # result of a run (`submit.type` of the harness record, `Processes.harness_template/1`):
+  # those of its current version and of each version in use (`switch_type/4`). The harness
+  # sets their schemas: no one edits or deletes them, and a person adds no version of them.
+  @doc false
+  @spec submit_types(Workspace.t()) :: [String.t()]
+  def submit_types(%Workspace{id: workspace_id}) do
+    current =
+      from v in ProcessVersion, where: v.workspace_id == ^workspace_id and v.status == :current
+
+    in_use = versions_in_use(workspace_id)
+
+    (Repo.all(from v in current, select: v.id) ++ Repo.all(from v in in_use, select: v.id))
+    |> Enum.uniq()
+    |> Enum.flat_map(fn id ->
+      case Processes.harness_template(id) do
+        %{"submit" => %{"type" => type}} when is_binary(type) -> [type]
+        _none -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
 
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
@@ -410,14 +435,20 @@ defmodule Apiary.Artifacts do
     end
   end
 
-  # update_type/3 changes a custom type's size limit, most files and JSON Schema.
+  # update_type/3 changes a custom type's size limit, most files and JSON Schema. It and
+  # delete_type/2 hold the scope's places, the workspace `FOR NO KEY UPDATE` and the type's
+  # row, in that order, so a change of the process that makes the type one that its
+  # `submit` sets (`submit_types/1`) takes turns with them.
   @doc false
   @spec update_type(Scope.t(), Type.t(), map) ::
-          {:ok, Type.t()} | {:error, :not_found | :forbidden | Ecto.Changeset.t()}
+          {:ok, Type.t()}
+          | {:error, :not_found | :forbidden | :set_by_harness | Ecto.Changeset.t()}
   def update_type(%Scope{} = scope, %Type{standard: false} = type, attrs) do
     Repo.transact(fn ->
-      with :ok <- authorize(scope, @edit_types, type),
+      with {:ok, scope, _workspace} <- held_workspace(scope, %Workspace{id: type.workspace_id}),
+           :ok <- authorize(scope, @edit_types, type),
            %Type{} = held <- held_type(type),
+           :ok <- not_set_by_harness(held),
            {:ok, changeset} <-
              held |> Type.update_changeset(json_attrs(attrs)) |> checked_schema(),
            {:ok, updated} <- Repo.update(changeset),
@@ -436,11 +467,13 @@ defmodule Apiary.Artifacts do
   # `{:error, :in_use}`, or `{:error, :not_found | :forbidden}`.
   @doc false
   @spec delete_type(Scope.t(), Type.t()) ::
-          {:ok, Type.t()} | {:error, :not_found | :forbidden | :in_use}
+          {:ok, Type.t()} | {:error, :not_found | :forbidden | :in_use | :set_by_harness}
   def delete_type(%Scope{} = scope, %Type{standard: false} = type) do
     Repo.transact(fn ->
-      with :ok <- authorize(scope, @edit_types, type),
+      with {:ok, scope, _workspace} <- held_workspace(scope, %Workspace{id: type.workspace_id}),
+           :ok <- authorize(scope, @edit_types, type),
            %Type{} = held <- held_type(type),
+           :ok <- not_set_by_harness(held),
            false <- in_use?(held.workspace_id, held.name),
            {:ok, deleted} <- Repo.delete(held),
            {:ok, _entry} <- audit_type(scope, workspace_of(held), :delete, held) do
@@ -563,7 +596,10 @@ defmodule Apiary.Artifacts do
   # The documents of the workspace's trial versions, of the versions that its work items
   # that have not ended keep, and of the versions that its runs of the queue that have not
   # ended are on. An ended work item's version counts only through such a run.
-  defp documents_in_use(workspace_id) do
+  defp documents_in_use(workspace_id),
+    do: Repo.all(from v in versions_in_use(workspace_id), select: v.document)
+
+  defp versions_in_use(workspace_id) do
     kept =
       from w in WorkItem,
         where:
@@ -578,13 +614,10 @@ defmodule Apiary.Artifacts do
             not is_nil(r.process_version_id),
         select: r.process_version_id
 
-    Repo.all(
-      from v in ProcessVersion,
-        where:
-          v.workspace_id == ^workspace_id and
-            (v.status == :trial or v.id in subquery(kept) or v.id in subquery(running)),
-        select: v.document
-    )
+    from v in ProcessVersion,
+      where:
+        v.workspace_id == ^workspace_id and
+          (v.status == :trial or v.id in subquery(kept) or v.id in subquery(running))
   end
 
   # Whether a stage of `document` has the type among its inputs or outputs, the entries
@@ -605,6 +638,13 @@ defmodule Apiary.Artifacts do
         where: t.id == ^id and t.workspace_id == ^workspace_id,
         lock: "FOR UPDATE"
     )
+  end
+
+  # `{:error, :set_by_harness}` for a type that `submit_types/1` lists.
+  defp not_set_by_harness(%Type{name: name, workspace_id: workspace_id}) do
+    if name in submit_types(%Workspace{id: workspace_id}),
+      do: {:error, :set_by_harness},
+      else: :ok
   end
 
   defp in_use?(workspace_id, name) do
@@ -683,6 +723,7 @@ defmodule Apiary.Artifacts do
          {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
+         :ok <- person_type(writer, work_item, type),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
@@ -936,7 +977,7 @@ defmodule Apiary.Artifacts do
   defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item, _type_name)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
-      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil}},
+      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil, run: run}},
       else: {:error, :not_found}
   end
 
@@ -944,6 +985,19 @@ defmodule Apiary.Artifacts do
 
   defp member_action("review-comments"), do: :"work_item.review_comment"
   defp member_action(_type_name), do: :"work_item.answer"
+
+  # A person never pushes a type that `submit_types/1` lists: the harness sets its schema
+  # and a run stores it.
+  defp person_type(%{actor: :person}, %WorkItem{workspace_id: workspace_id}, %Type{
+         standard: false,
+         name: name
+       }) do
+    if name in submit_types(%Workspace{id: workspace_id}),
+      do: {:error, {:unknown_type, name}},
+      else: :ok
+  end
+
+  defp person_type(_writer, _work_item, _type), do: :ok
 
   # The types each actor writes: a person never the member types, a member action only
   # those, a run any.
@@ -1093,6 +1147,20 @@ defmodule Apiary.Artifacts do
     if Enum.any?(files, fn {_index, filename, _source} -> filename == Mockup.index_name() end),
       do: %Type{type | base_view: :mockup},
       else: type
+  end
+
+  # A run's version of its submit type is checked against the schema in the harness commit
+  # the run composes where `Processes.submit_schema/2` finds it, else against the
+  # workspace's type.
+  defp checked_type(
+         %{actor: :run, run: %DispatchRun{} = run},
+         %Type{standard: false, base_view: :structured} = type,
+         _files
+       ) do
+    case Processes.submit_schema(run, type.name) do
+      {:ok, schema} -> %Type{type | json_schema: schema}
+      :none -> type
+    end
   end
 
   defp checked_type(_writer, type, _files), do: type

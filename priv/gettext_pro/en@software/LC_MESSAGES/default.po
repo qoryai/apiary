@@ -2456,6 +2456,11 @@ msgstr ""
 msgid "This organisation's features can't be changed."
 msgstr ""
 
+#: lib/apiary_pro/workspace_operators.ex
+#, elixir-autogen, elixir-format
+msgid "To change the schema, ask the operator of this workspace."
+msgstr ""
+
 #: lib/apiary_pro_web/live/instance_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Transfer ownership"

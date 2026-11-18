@@ -12,7 +12,9 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # escalation (the build report, the commit and the ticket), the branch of a run that
   # writes, the wall of a run that writes (the checkout), what a person reads at a gate
   # whose stage started no run (the build report), what Shape's tab says of a Shape that
-  # did not run (the criterion), and the commit that a full test suite ran on.
+  # did not run (the criterion), the commit that a full test suite ran on, and the line
+  # under the Artifact types table for a type that the harness sets (the commit that each
+  # run uses).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "%{contact_support}. A run that writes needs a wall, and this machine has none.",
@@ -46,6 +48,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Reference",
     "Revisions",
     "Runs %{entry} again with your note. Use it when the run changed more than the work item asks.",
+    "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here.",
     "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",
