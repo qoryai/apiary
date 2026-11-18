@@ -1301,7 +1301,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           effort: nil,
           tiers: %{
             "light" => %{"model" => "claude-haiku-5-5"},
-            "fast" => %{"model" => "acme-small"},
+            "balanced" => %{"model" => "acme-small"},
             "thinking" => %{"model" => "acme-large"}
           }
       }

@@ -509,7 +509,7 @@ defmodule Apiary.ModelChoicesTest do
                )
     end
 
-    test "for a tier that is not light, fast or thinking (T15), or a tier effort its model has not",
+    test "for a tier that is not light, balanced or thinking (T15), or a tier effort its model has not",
          ctx do
       %{scope: scope, provider: provider} = ctx
       [_light, middle, _thinking] = Resolution.tiers()
@@ -521,7 +521,17 @@ defmodule Apiary.ModelChoicesTest do
                  attrs(provider, %{tiers: %{"huge" => @model}})
                )
              ) ==
-               %{tiers: ["Use light, fast or thinking: huge is not a tier."]}
+               %{tiers: ["Use light, balanced or thinking: huge is not a tier."]}
+
+      # `fast` is the earlier name of the tier `balanced`, and is no tier now.
+      assert errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{tiers: %{"fast" => @model}})
+               )
+             ) ==
+               %{tiers: ["Use light, balanced or thinking: fast is not a tier."]}
 
       assert errors(
                ModelChoices.put_choice(
@@ -572,10 +582,11 @@ defmodule Apiary.ModelChoicesTest do
             {%{model: String.duplicate("m", 201)}, :model, model_rule},
             {%{effort: "High"}, :effort, effort_rule},
             {%{effort: String.duplicate("e", 33)}, :effort, effort_rule},
-            {%{tiers: %{"fast" => "a b"}}, :tiers, model_rule},
-            {%{tiers: %{"fast" => %{"effort" => "low"}}}, :tiers, model_rule},
-            {%{tiers: %{"fast" => %{"model" => "m", "effort" => "High"}}}, :tiers, effort_rule},
-            {%{tiers: %{"fast" => %{"model" => "m", "other" => "x"}}}, :tiers, model_rule}
+            {%{tiers: %{"balanced" => "a b"}}, :tiers, model_rule},
+            {%{tiers: %{"balanced" => %{"effort" => "low"}}}, :tiers, model_rule},
+            {%{tiers: %{"balanced" => %{"model" => "m", "effort" => "High"}}}, :tiers,
+             effort_rule},
+            {%{tiers: %{"balanced" => %{"model" => "m", "other" => "x"}}}, :tiers, model_rule}
           ] do
         assert message in Map.fetch!(
                  errors(ModelChoices.put_choice(scope, :workspace, attrs(provider, more))),
@@ -1426,7 +1437,7 @@ defmodule Apiary.ModelChoicesTest do
       assert %{provider: ["can't be blank"]} =
                errors(
                  ModelChoices.put_choice(scope, :organisation, %{
-                   tiers: %{"fast" => @model},
+                   tiers: %{"balanced" => @model},
                    fallbacks: [fallback(subscription)]
                  })
                )

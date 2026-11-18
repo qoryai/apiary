@@ -258,7 +258,7 @@ msgstr ""
 
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
-msgid "Use light, fast or thinking: %{tier} is not a tier."
+msgid "Use light, balanced or thinking: %{tier} is not a tier."
 msgstr ""
 
 #: lib/apiary/stacks/document.ex

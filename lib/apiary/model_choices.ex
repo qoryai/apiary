@@ -978,7 +978,7 @@ defmodule Apiary.ModelChoices do
       tier not in Resolution.tiers() ->
         [
           tiers:
-            {dgettext_noop("errors", "Use light, fast or thinking: %{tier} is not a tier."),
+            {dgettext_noop("errors", "Use light, balanced or thinking: %{tier} is not a tier."),
              tier: to_string(tier)}
         ]
 

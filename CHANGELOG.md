@@ -18,7 +18,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   limit, the default. A change applies to prebuilds that start after it. A prebuild's run
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
-  the member. The run contract is vendored at integrations `dbc1ce5`.
+  the member. The run contract is vendored at integrations `dbc1ce5`, with the tier rename
+  of integrations `b22085a` applied on top.
 <!-- feature: factory -->
 - Providers whose description lists no models, such as LiteLLM, are hidden where a
   provider is offered, unless the feature `model_proxies` is on (off by default).
@@ -1430,6 +1431,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
+- The tier `fast` is now `balanced`.
+<!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
   `work-1`, with `purpose` `work` and read access, and `push-1`, with `purpose` `push` and
@@ -2342,6 +2346,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory, secrets -->
+- `model_choices` and `model_choice_fallbacks` (20261118120000): the function
+  `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
+  the tier `balanced` in place of `fast`. The migration deletes each model choice whose
+  tier map has `fast`, with its fallbacks, and moves no data. The delete scans
+  `model_choices`; the function change locks no table. The migration is short. Rolling
+  back restores the function with `fast` and deletes each model choice whose tier map
+  has `balanced`, with its fallbacks.
+<!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check
   scans the table, which has one row, as it is added, under a lock that blocks reads and
