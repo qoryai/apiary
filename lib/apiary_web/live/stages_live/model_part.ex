@@ -8,11 +8,14 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   # a save of the default removes the override.
   #
   # `load/1` reads what every row needs: the overrides by workflow, the default, the
-  # runtime, and the providers that apply to the workspace. A row's Key offers each key of
-  # a provider that serves the runtime and is offered (`Apiary.Kinds.Providers.offered?/1`),
-  # and the key of the row's override while its provider is not offered, so a save does
-  # not change it unseen. A row's state, by its row (`Inspector.time_limit_key/2`), is the
-  # Key's value, the tiers, the refusals of the last save, and whether it was just saved.
+  # default's runtime, and the providers that apply to the workspace. A row's Key offers
+  # each key of a provider that serves a runtime of the catalogue
+  # (`Apiary.Kinds.Providers.runtimes/1`) and is offered
+  # (`Apiary.Kinds.Providers.offered?/1`), and the key of the row's override while its
+  # provider is not offered, so a save does not change it unseen. With a key, Runtime
+  # follows the tiers: the runtimes the key's provider serves. A row's state, by its row
+  # (`Inspector.time_limit_key/2`), is the Key's value, the runtime, the tiers, the
+  # refusals of the last save, and whether it was just saved.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -22,7 +25,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   alias Apiary.{Connections, ModelChoices}
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.Connection
-  alias Apiary.Kinds.{Providers, Runtimes}
+  alias Apiary.Kinds.{Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
   alias ApiaryWeb.ModelTiers
 
@@ -30,9 +33,10 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   What the rows read of the model choices: `overrides`, the workspace's choice of each
   workflow by its name; `default`, `{:workspace, label}`, `{:organisation, name, label}`
   or `:none`, with the label "<Provider> · <key>"; `runtime`, the default's runtime, else
-  the catalogue's default; and `providers`, each a map of `provider`, `models`, `free`
-  and `offered`. nil where the scope may not read the choices, or the features `factory`
-  and `secrets` are not both shown to it.
+  the catalogue's default; and `providers`, each a map of `provider`, `runtimes` (the
+  runtimes it serves), `models_by` (its suggestions for each of them, by the runtime's
+  name), `free` and `offered`. nil where the scope may not read the choices, or the
+  features `factory` and `secrets` are not both shown to it.
   """
   @spec load(Scope.t()) :: map | nil
   def load(%Scope{workspace: %{id: workspace_id}} = scope) do
@@ -57,7 +61,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
         overrides: overrides,
         default: default(workspace, organisation, scope),
         runtime: runtime,
-        providers: entries(providers, workspace_id, runtime, overrides)
+        providers: entries(providers, workspace_id, overrides)
       }
     else
       _not_shown -> nil
@@ -91,20 +95,20 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   end
 
   # The providers that apply to the workspace, with their descriptions: each that serves
-  # `runtime` and is offered, and the provider of an override, whichever it is.
-  defp entries(providers, workspace_id, runtime, overrides) do
+  # a runtime and is offered, and the provider of an override, whichever it is.
+  defp entries(providers, workspace_id, overrides) do
     stored = for {_workflow, choice} <- overrides, into: MapSet.new(), do: choice.connection_id
 
     for provider <- providers,
         applies?(provider, workspace_id),
         {:ok, description} <- [Connections.provider(provider)],
-        offered <- [
-          Providers.offered?(description) and Providers.serve(description, runtime) == :ok
-        ],
+        runtimes = Providers.runtimes(description),
+        offered <- [Providers.offered?(description) and runtimes != []],
         offered or MapSet.member?(stored, provider.id),
         do: %{
           provider: provider,
-          models: ModelChoices.suggestions(provider, runtime),
+          runtimes: runtimes,
+          models_by: Map.new(runtimes, &{&1.name, ModelChoices.suggestions(provider, &1)}),
           free: Connections.provider_models(description) == [],
           offered: offered
         }
@@ -117,10 +121,37 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
   @doc """
   The keys the row of `workflow` offers (`ApiaryWeb.ModelTiers.keys/2`): those of the
-  offered providers, and the key of the workflow's override.
+  offered providers, and the key of the workflow's override; each with its provider's
+  models for the runtime named `name`, where the provider serves it, else for the first
+  runtime it serves.
   """
-  @spec keys(map, String.t()) :: [map]
-  def keys(model, workflow), do: ModelTiers.keys(model.providers, model.overrides[workflow])
+  @spec keys(map, String.t(), String.t() | nil) :: [map]
+  def keys(model, workflow, name) do
+    providers =
+      for entry <- model.providers do
+        runtime = ModelTiers.runtime(entry.runtimes, name)
+        Map.put(entry, :models, Map.get(entry.models_by, runtime && runtime.name, []))
+      end
+
+    ModelTiers.keys(providers, model.overrides[workflow])
+  end
+
+  @doc """
+  The runtimes the provider of `key` serves, and the one of them a row shows for the
+  runtime named `name` (`ApiaryWeb.ModelTiers.runtime/2`): `{[], nil}` for no key.
+  """
+  @spec runtimes(map, map | nil, String.t() | nil) :: {[Runtime.t()], Runtime.t() | nil}
+  def runtimes(_model, nil, _name), do: {[], nil}
+
+  def runtimes(model, key, name) do
+    runtimes =
+      case Enum.find(model.providers, &(&1.provider.id == key.provider.id)) do
+        %{runtimes: runtimes} -> runtimes
+        nil -> []
+      end
+
+    {runtimes, ModelTiers.runtime(runtimes, name)}
+  end
 
   @doc "The state of the row `row` of `workflow`: its state in `rows`, else the saved one."
   @spec state(map, map, String.t(), String.t()) :: map
@@ -131,15 +162,22 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     end
   end
 
-  @doc "The state of a row of `workflow` as its override, or none, has it."
+  @doc """
+  The state of a row of `workflow` as its override, or none, has it. The runtime is the
+  override's, or the default's where the override names none, while the key's provider
+  serves it; else the first runtime that provider serves.
+  """
   @spec saved(map, String.t()) :: map
   def saved(model, workflow) do
     stored = model.overrides[workflow]
-    key = ModelTiers.chosen(keys(model, workflow), stored)
+    name = (stored && stored.runtime) || model.runtime.name
+    key = ModelTiers.chosen(keys(model, workflow, name), stored)
+    {_runtimes, runtime} = runtimes(model, key, name)
 
     %{
       workflow: workflow,
       value: (key && key.value) || "",
+      runtime: runtime && runtime.name,
       tiers: ModelTiers.params(stored, key),
       errors: [],
       done: false,
@@ -148,15 +186,18 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   end
 
   @doc """
-  The state after a change the form sent: the Key's value, "" for the default, and the
-  tiers, fitted to the key (`ApiaryWeb.ModelTiers.sent/5`). A key the row does not offer
-  keeps the Key as it was. Back from the default to the override's key, the tiers are the
-  override's.
+  The state after a change the form sent: the Key's value, "" for the default; the
+  runtime sent while the key's provider serves it, else the first it serves, so a change
+  of Key keeps the runtime where it can; and the tiers, fitted to the key
+  (`ApiaryWeb.ModelTiers.sent/5`). A change of the runtime keeps the models, and an
+  effort the runtime does not accept goes back to Not set. A key the row does not offer
+  keeps the Key as it was. Back from the default to the override's key, the tiers are
+  the override's.
   """
   @spec change(map, map, map) :: map
   def change(model, state, params) do
     stored = model.overrides[state.workflow]
-    keys = keys(model, state.workflow)
+    keys = keys(model, state.workflow, state.runtime)
     before = ModelTiers.find(keys, state.value)
 
     value =
@@ -171,7 +212,13 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
           state.value
       end
 
-    key = ModelTiers.find(keys, value)
+    name =
+      if is_binary(params["runtime"]),
+        do: params["runtime"],
+        else: state.runtime || (stored && stored.runtime) || model.runtime.name
+
+    {_runtimes, runtime} = runtimes(model, ModelTiers.find(keys, value), name)
+    key = ModelTiers.find(keys(model, state.workflow, runtime && runtime.name), value)
 
     tiers =
       cond do
@@ -182,20 +229,36 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
           ModelTiers.params(stored, key)
 
         true ->
-          ModelTiers.sent(key, before, state.tiers, params["tiers"], ModelTiers.stored(stored))
+          stored = ModelTiers.stored(stored)
+          stored = if runtime, do: ModelTiers.accepted(stored, runtime), else: stored
+          ModelTiers.sent(key, before, state.tiers, params["tiers"], stored)
       end
 
-    same = state.done and value == state.value and tiers == state.tiers
-    %{state | value: value, tiers: tiers, errors: [], done: same, refused: false}
+    runtime = runtime && runtime.name
+
+    same =
+      state.done and value == state.value and runtime == state.runtime and tiers == state.tiers
+
+    %{
+      state
+      | value: value,
+        runtime: runtime,
+        tiers: tiers,
+        errors: [],
+        done: same,
+        refused: false
+    }
   end
 
   @doc """
-  Whether the row's Key or tiers differ from what is saved for its workflow.
+  Whether the row's Key, runtime or tiers differ from what is saved for its workflow.
   """
   @spec changed?(map, map) :: boolean
   def changed?(model, state) do
     saved = saved(model, state.workflow)
-    state.value != saved.value or (state.value != "" and state.tiers != saved.tiers)
+
+    state.value != saved.value or
+      (state.value != "" and (state.tiers != saved.tiers or state.runtime != saved.runtime))
   end
 
   @doc """
@@ -207,13 +270,19 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   @spec save(Scope.t(), map, map, map) :: :ok | {:refused, map} | {:error, term}
   def save(scope, model, state, params) do
     sent = params["key"]
-    keys = keys(model, state.workflow)
+    keys = keys(model, state.workflow, state.runtime)
 
     if is_binary(sent) and sent != "" and ModelTiers.find(keys, sent) == nil do
       {:refused, refused(state, key: {"is invalid", []})}
     else
       state = change(model, state, params)
-      write(scope, model, state, ModelTiers.find(keys, state.value))
+
+      write(
+        scope,
+        model,
+        state,
+        ModelTiers.find(keys(model, state.workflow, state.runtime), state.value)
+      )
     end
   end
 
@@ -225,13 +294,13 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     end
   end
 
-  defp write(scope, model, state, key) do
+  defp write(scope, _model, state, key) do
     attrs =
       key
       |> ModelTiers.attrs(state.tiers)
       |> Map.merge(%{
         fallbacks: [],
-        runtime: if(length(Runtimes.list()) > 1, do: model.runtime.name)
+        runtime: if(length(Runtimes.list()) > 1, do: state.runtime)
       })
 
     case ModelChoices.put_choice(scope, {:workspace, state.workflow}, attrs) do

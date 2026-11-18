@@ -2,7 +2,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
   @moduledoc """
   The model part of a workflow's fold on Workspace settings › Workflows
   (`ApiaryWeb.StagesLive.ModelPart`): Key, "Use workspace default" or a key, the line of
-  what the workflow uses, the tiers of a key and Save model choice, which writes the
+  what the workflow uses, the tiers of a key, Runtime and Save model choice, which writes the
   workflow's model choice (level 4) or removes it; a refusal under its field; a draft
   row; who may save; the feature `model_proxies`; and a run of the workflow that uses
   the saved choice.
@@ -447,6 +447,202 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     })
 
     assert override(scope) == nil
+  end
+
+  describe "Runtime" do
+    @runtime "#stage-entry-0-model-runtime"
+    @runtime_part "#stage-entry-0-model-runtime-part"
+
+    # The release's runtime, and a copy of it with another name that reads a key only
+    # from the bearer variable: Anthropic (an `x-api-key` header) serves the first alone,
+    # OpenRouter (bearer) serves both.
+    defp two_runtimes do
+      [release] = Apiary.Kinds.Runtimes.list()
+
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list([release, bearer])
+      {release, bearer}
+    end
+
+    test "is not shown with the workspace default", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      anthropic: anthropic
+    } do
+      default!(scope, anthropic)
+      {:ok, view, _html} = live(conn, path)
+
+      refute has_element?(view, @runtime_part)
+      refute has_element?(view, @runtime)
+    end
+
+    test "follows the tiers of an override, as text where one runtime fits", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      anthropic: anthropic
+    } do
+      [release] = Apiary.Kinds.Runtimes.list()
+      default!(scope, anthropic)
+      {:ok, view, _html} = live(conn, path)
+
+      html = change_model(view, %{"key" => key(anthropic, "anthropic-main")})
+
+      assert before?(
+               html,
+               ~s{id="stage-entry-0-model-tiers"},
+               ~s{id="stage-entry-0-model-runtime-part"}
+             )
+
+      assert before?(
+               html,
+               ~s{id="stage-entry-0-model-runtime-part"},
+               ~s{id="stage-entry-0-model-save"}
+             )
+
+      refute has_element?(view, @runtime)
+      assert has_element?(view, "#{@runtime_part}-name", release.title)
+
+      assert has_element?(
+               view,
+               "#{@runtime_part}-line",
+               "#{release.title} is the only runtime that works with #{anthropic.name}."
+             )
+
+      # The hidden field belongs to the row's form.
+      assert has_element?(
+               view,
+               ~s{#{@runtime_part} input[type=hidden][name="model[runtime]"][form="stage-entry-0-model-form"][value="#{release.name}"]}
+             )
+    end
+
+    test "several fit: a select, the first fitting one chosen; a save writes the one chosen",
+         %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+      {release, bearer} = two_runtimes()
+      default!(scope, anthropic)
+      {:ok, view, _html} = live(conn, path)
+
+      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+
+      assert has_element?(
+               view,
+               ~s{select#{@runtime}[form="stage-entry-0-model-form"] option[value="#{release.name}"][selected]}
+             )
+
+      assert has_element?(view, ~s{#{@runtime} option[value="#{bearer.name}"]})
+
+      assert has_element?(
+               view,
+               "#{@runtime_part}-line",
+               "These runtimes work with #{openrouter.name}."
+             )
+
+      change_model(view, %{"tiers" => @override_tiers})
+      change_model(view, %{"runtime" => bearer.name})
+      refute has_element?(view, "#{@save}[disabled]")
+      save_model(view, %{})
+
+      assert %ModelChoice{runtime: name} = override(scope)
+      assert name == bearer.name
+
+      # Opened again: the stored runtime is chosen.
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, ~s{#{@runtime} option[value="#{bearer.name}"][selected]})
+      assert has_element?(view, "#{@save}[disabled]")
+    end
+
+    test "Key lists every key, and a change of Key keeps or moves the runtime", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      anthropic: anthropic,
+      openrouter: openrouter
+    } do
+      {release, bearer} = two_runtimes()
+
+      # The workspace default runs the bearer runtime, which Anthropic does not serve.
+      {:ok, _choice} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: openrouter.public_id,
+          key: "openrouter-main",
+          runtime: bearer.name,
+          tiers: @override_tiers
+        })
+
+      {:ok, view, _html} = live(conn, path)
+
+      values = for {value, _text, _selected} <- key_options(view), do: value
+      assert key(anthropic, "anthropic-main") in values
+      assert key(openrouter, "openrouter-main") in values
+
+      # OpenRouter serves the default's runtime: it is chosen.
+      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+      assert has_element?(view, ~s{#{@runtime} option[value="#{bearer.name}"][selected]})
+
+      # Anthropic does not: Runtime moves to the one it serves.
+      change_model(view, %{"key" => key(anthropic, "anthropic-main"), "runtime" => bearer.name})
+      refute has_element?(view, @runtime)
+      assert has_element?(view, "#{@runtime_part}-name", release.title)
+
+      # Back to OpenRouter, which serves that one too: it stays.
+      change_model(view, %{"key" => key(openrouter, "openrouter-main"), "runtime" => release.name})
+
+      assert has_element?(view, ~s{#{@runtime} option[value="#{release.name}"][selected]})
+    end
+
+    test "a change of the runtime keeps the models and takes back an effort it refuses", %{
+      conn: conn,
+      path: path,
+      scope: scope,
+      anthropic: anthropic,
+      openrouter: openrouter
+    } do
+      [release] = Apiary.Kinds.Runtimes.list()
+
+      narrow = %{
+        release
+        | name: release.name <> "-narrow",
+          title: release.title <> " narrow",
+          effort_values: ~w(low medium)
+      }
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list([release, narrow])
+      default!(scope, anthropic)
+      {:ok, view, _html} = live(conn, path)
+
+      change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+      change_model(view, %{"tiers" => @override_tiers})
+      change_model(view, %{"runtime" => narrow.name})
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-model-tiers_thinking_model option[value="anthropic/claude-opus-5.5"][selected]}
+             )
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-model-tiers_thinking_effort option[value=""][selected]}
+             )
+
+      assert has_element?(
+               view,
+               ~s{#stage-entry-0-model-tiers_balanced_effort option[value="low"][selected]}
+             )
+
+      save_model(view, %{})
+
+      assert %ModelChoice{runtime: name, tiers: tiers} = override(scope)
+      assert name == narrow.name
+      assert tiers["thinking"] == %{"model" => "anthropic/claude-opus-5.5"}
+      assert tiers["balanced"] == %{"model" => "anthropic/claude-sonnet-5.5", "effort" => "low"}
+    end
   end
 
   describe "the feature model_proxies" do

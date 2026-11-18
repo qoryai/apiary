@@ -4803,6 +4803,138 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert saved_tiers(choice) == Map.new(ModelTiers.shown(), &{&1, {second, nil}})
   end
 
+  # The release's runtime, and a copy of it with another name that reads a key only from
+  # the bearer variable: Anthropic (an `x-api-key` header) serves the first alone,
+  # OpenRouter (bearer) serves both.
+  defp two_runtimes do
+    [release] = Apiary.Kinds.Runtimes.list()
+
+    bearer = %{
+      release
+      | name: release.name <> "-bearer",
+        title: release.title <> " bearer",
+        model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+    }
+
+    :ok = Apiary.Kinds.Runtimes.put_test_list([release, bearer])
+    {release, bearer}
+  end
+
+  test "Runtime follows the tiers: one runtime fits, its name as text and the line",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    {release, _bearer} = two_runtimes()
+    {:ok, lv, html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    {tiers_at, _} = :binary.match(html, ~s{id="set-up-model-tiers"})
+    {runtime_at, _} = :binary.match(html, ~s{id="set-up-model-runtime"})
+    {later_at, _} = :binary.match(html, ~s{id="set-up-model-later"})
+    assert tiers_at < runtime_at and runtime_at < later_at
+
+    refute has_element?(lv, "#model_runtime")
+    assert words(lv, "#set-up-model-runtime-name") == release.title
+
+    assert words(lv, "#set-up-model-runtime-line") ==
+             "#{release.title} is the only runtime that works with #{provider.name}."
+  end
+
+  test "Runtime with several that fit: a select; a change of Key keeps or moves it",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    openrouter = provider!(scope, "openrouter", "router")
+    {release, bearer} = two_runtimes()
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: openrouter.public_id,
+        runtime: bearer.name
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    # The stored runtime is chosen.
+    assert has_element?(lv, ~s{#model_runtime option[value="#{release.name}"]})
+    assert has_element?(lv, ~s{#model_runtime option[value="#{bearer.name}"][selected]})
+
+    assert words(lv, "#set-up-model-runtime-line") ==
+             "These runtimes work with #{openrouter.name}."
+
+    # Anthropic does not serve it: Runtime moves to the one it serves.
+    lv
+    |> form("#set-up-model-form", model: %{source: anthropic.public_id})
+    |> render_change()
+
+    refute has_element?(lv, "#model_runtime")
+    assert words(lv, "#set-up-model-runtime-name") == release.title
+
+    # Back to OpenRouter, which serves that one too: it stays.
+    lv
+    |> form("#set-up-model-form", model: %{source: openrouter.public_id})
+    |> render_change()
+
+    assert has_element?(lv, ~s{#model_runtime option[value="#{release.name}"][selected]})
+  end
+
+  test "a change of Runtime keeps the models and takes back an effort the runtime refuses",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    [release] = Apiary.Kinds.Runtimes.list()
+
+    narrow = %{
+      release
+      | name: release.name <> "-narrow",
+        title: release.title <> " narrow",
+        effort_values: ~w(low medium)
+    }
+
+    :ok = Apiary.Kinds.Runtimes.put_test_list([release, narrow])
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: %{
+          "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+          "balanced" => %{"model" => "claude-sonnet-5-5", "effort" => "medium"},
+          "light" => %{"model" => "claude-haiku-5-5", "effort" => "low"}
+        }
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][thinking][effort]"] option[value="high"][selected]}
+           )
+
+    lv |> form("#set-up-model-form", model: %{runtime: narrow.name}) |> render_change()
+
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][thinking][model]"] option[value="claude-opus-5-5"][selected]}
+           )
+
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][thinking][effort]"] option[value=""][selected]}
+           )
+
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][balanced][effort]"] option[value="medium"][selected]}
+           )
+
+    lv |> form("#set-up-model-form") |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+
+    assert {[choice], []} = choices(scope)
+    assert choice.runtime == narrow.name
+    assert saved_tiers(choice)["thinking"] == {"claude-opus-5-5", nil}
+    assert saved_tiers(choice)["balanced"] == {"claude-sonnet-5-5", "medium"}
+  end
+
   test "a runtime sent that the catalogue does not have: Continue saves the runtime the step shows",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

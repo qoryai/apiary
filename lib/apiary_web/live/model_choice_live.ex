@@ -3,27 +3,32 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # `factory` and `secrets`: the workspace's model choice (level 5, `Apiary.ModelChoices`),
   # under Default models.
   #
-  # Runtime, a select of the runtime catalogue (`Apiary.Kinds.Runtimes`), shown only while
-  # the catalogue has more than one; with one, the choice names none and its runs use that
-  # one (`Apiary.ModelChoices.default_runtime/0`). Key: each key of each model provider of
-  # the organisation that applies to the workspace, serves the chosen runtime
-  # (`Apiary.Kinds.Providers.serve/2`) and is offered (`Apiary.Kinds.Providers.offered?/1`),
-  # as "<Provider> · <key>"; the saved choice's key stays listed while it is not offered.
-  # With none, one line per cause says what to do instead (`unserved/3`). Then the tiers
-  # of the key's provider, Thinking, Balanced and Light, each a Model and an Effort, as
-  # `ApiaryWeb.ModelTiers` draws them. With no choice saved, the first key is chosen and
-  # the tiers are empty. Save is enabled once every tier has a model; it writes the key,
-  # the tiers and the fallbacks (`Apiary.ModelChoices.put_choice/4`), and each refusal
-  # shows its text under the field it is about.
+  # Key: each key of each model provider of the organisation that applies to the
+  # workspace, serves a runtime of the catalogue (`Apiary.Kinds.Providers.runtimes/1`) and
+  # is offered (`Apiary.Kinds.Providers.offered?/1`), as "<Provider> · <key>"; the saved
+  # choice's key stays listed while it is not offered. With none, one line per cause says
+  # what to do instead (`unserved/1`). Then the tiers of the key's provider, Thinking,
+  # Balanced and Light, each a Model and an Effort, as `ApiaryWeb.ModelTiers` draws them.
+  # Then Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`): the runtimes the key's provider
+  # serves, as text where it serves one, else a select, with a line of why. The runtime
+  # is the saved choice's while the key's provider serves it, else the first it serves;
+  # a change of Key keeps the runtime while the new provider serves it, else moves to its
+  # first. A change of the runtime keeps the models, and an effort the runtime does not
+  # accept goes back to Not set. With no choice saved, the first key is chosen and the
+  # tiers are empty. Save is enabled once every tier has a model; it writes the key, the
+  # tiers, the runtime and the fallbacks (`Apiary.ModelChoices.put_choice/4`), and each
+  # refusal shows its text under the field it is about.
   #
-  # Fallbacks, below the tiers: the providers runs use, in order, while every key of the
+  # Fallbacks, below Runtime: the providers runs use, in order, while every key of the
   # Key's provider is in cooldown, each a row of Provider, Model, Another model and Effort,
   # with Move up, Move down and Remove. Add fallback adds a row of the first provider
   # left: one that applies to the workspace, serves the chosen runtime and is offered, and
   # is neither the Key's provider nor in a row. A new row's model, and a row's model after
   # its provider changes, is the Thinking tier's where the provider has a model of the
-  # same id, else the provider's first. Save writes the rows with the choice; each refusal
-  # shows under its row's field.
+  # same id, else the provider's first. A row whose provider does not serve the chosen
+  # runtime, as after a change of Runtime or Key, stays with a line under its Provider,
+  # and Save is disabled until it is removed or given another provider. Save writes the
+  # rows with the choice; each refusal shows under its row's field.
   #
   # Every member reads it (`connection.read`); owners and admins change it
   # (`model_choice.write`), and anyone else sees the fields disabled, no Save, and one line
@@ -40,7 +45,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   alias Apiary.{Access, Connections, ModelChoices}
   alias Apiary.Connections.Connection
-  alias Apiary.Kinds.{Providers, Runtime, Runtimes}
+  alias Apiary.Kinds.{Providers, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
   alias ApiaryWeb.{ModelTiers, SettingsComponents, UserAuth}
 
@@ -64,105 +69,117 @@ defmodule ApiaryWeb.ModelChoiceLive do
     scope = socket.assigns.current_scope
     {:ok, providers} = Connections.list_providers(scope)
     choice = workspace_choice(scope)
-
-    runtime =
-      case ModelChoices.runtime(choice && choice.runtime) do
-        {:ok, runtime} -> runtime
-        :error -> ModelChoices.default_runtime()
-      end
-
     applicable = Enum.filter(providers, &applies?(&1, scope.workspace.id))
     stored = if choice, do: Enum.map(choice.fallbacks, & &1.connection), else: []
+
+    described =
+      for provider <- applicable, do: {provider, Connections.provider(provider)}
 
     socket
     |> assign(
       applicable: applicable,
+      described: described,
       known: Map.new(applicable ++ stored, &{&1.public_id, &1}),
-      runtimes: Runtimes.list(),
       choice: choice
     )
-    |> assign_runtime(runtime)
     |> assign_key(choice)
     |> then(&assign_fallbacks(&1, fallback_rows(choice, &1.assigns.providers), %{}))
   end
 
-  # The key of the saved choice and its tiers, or the first key with no tiers.
+  # The key of the saved choice and its tiers, or the first key with no tiers; the
+  # runtime of the saved choice while the key's provider serves it.
   defp assign_key(socket, choice) do
+    name = (choice && choice.runtime) || ModelChoices.default_runtime().name
+    socket = assign_providers(socket, name)
     keys = socket.assigns.keys
     key = ModelTiers.chosen(keys, choice) || List.first(keys)
+    socket = settle(socket, key, name)
+    key = key && ModelTiers.find(socket.assigns.keys, key.value)
 
     socket
     |> assign(key: key, tiers: ModelTiers.params(choice, key), stored: ModelTiers.stored(choice))
     |> assign_form(%{}, [])
   end
 
-  # The runtime the form has chosen, the providers that serve it and are offered
-  # (`Apiary.Kinds.Providers.offered?/1`), each with its suggestions and whether its
-  # description lists no models (`free`), and their keys (`ApiaryWeb.ModelTiers.keys/2`);
-  # `described` is each
-  # applicable provider with its description, or why it has none
+  # `providers`: the providers that serve a runtime of the catalogue
+  # (`Apiary.Kinds.Providers.runtimes/1`) and are offered
+  # (`Apiary.Kinds.Providers.offered?/1`), each with those `runtimes`, the one of them
+  # its key would run (`ApiaryWeb.ModelTiers.runtime/2` for `name`), its suggestions for
+  # that runtime, whether its description lists no models (`free`), and whether it serves
+  # the runtime named `name` (`serves`); and their keys (`ApiaryWeb.ModelTiers.keys/2`).
+  # `described` is each applicable provider with its description, or why it has none
   # (`Apiary.Connections.provider/1`). The provider of the saved choice stays listed while
   # it is not offered, so a save keeps it unless the person chooses another; a new
   # fallback row is not offered it (`left/2`).
-  defp assign_runtime(socket, %Runtime{} = runtime) do
-    described =
-      for provider <- socket.assigns.applicable, do: {provider, Connections.provider(provider)}
-
+  defp assign_providers(socket, name) do
     saved = socket.assigns.choice && socket.assigns.choice.connection_id
 
     providers =
-      for {provider, {:ok, description}} <- described,
-          Providers.serve(description, runtime) == :ok,
+      for {provider, {:ok, description}} <- socket.assigns.described,
+          runtimes = Providers.runtimes(description),
+          runtimes != [],
           offered <- [Providers.offered?(description)],
           offered or provider.id == saved,
+          runtime = ModelTiers.runtime(runtimes, name),
           do: %{
             provider: provider,
+            runtimes: runtimes,
+            runtime: runtime,
             models: ModelChoices.suggestions(provider, runtime),
             free: Connections.provider_models(description) == [],
-            offered: offered
+            offered: offered,
+            serves: runtime.name == name
           }
 
-    assign(socket,
-      runtime: runtime,
-      providers: providers,
-      described: described,
-      keys: ModelTiers.keys(providers, socket.assigns.choice)
-    )
+    assign(socket, providers: providers, keys: ModelTiers.keys(providers, socket.assigns.choice))
   end
 
-  # Why no provider serves the chosen runtime, as the lines the page shows: each provider
-  # whose settings no longer fit the catalogue's entry, `{:changed, provider}`, or whose
-  # kind the catalogue no longer has, `{:unknown, provider}` (`Connections.provider/1`);
-  # then, while a provider with its description is left, `:other_runtime` when another
-  # runtime of the catalogue has a provider that serves it, else `:none`. A provider whose
-  # settings check ran out of time or crashed has no line: it serves nothing on this
-  # read, and the next read checks it again. A described provider that is not offered
-  # (`Apiary.Kinds.Providers.offered?/1`) serves no runtime here, so where every described
-  # provider is one of these, the line is `:none`.
-  defp unserved(described, runtime, runtimes) do
-    descriptions = for {_provider, {:ok, description}} <- described, do: description
-    offered = Enum.filter(descriptions, &Providers.offered?/1)
+  # The runtime of the form for `key`: the one named `name` while the key's provider
+  # serves it, else the first it serves; with no key, the one named `name`, else the
+  # default. The providers are listed again for that runtime where it is another.
+  defp settle(socket, key, name) do
+    runtime =
+      case key && provider_entry(socket.assigns.providers, key.provider) do
+        %{runtime: runtime} ->
+          runtime
 
+        nil ->
+          case ModelChoices.runtime(name) do
+            {:ok, runtime} -> runtime
+            :error -> ModelChoices.default_runtime()
+          end
+      end
+
+    socket = if runtime.name == name, do: socket, else: assign_providers(socket, runtime.name)
+    assign(socket, runtime: runtime)
+  end
+
+  defp provider_entry(providers, %Connection{id: id}),
+    do: Enum.find(providers, &(&1.provider.id == id))
+
+  defp provider_entry(_providers, _provider), do: nil
+
+  # Why no provider serves a runtime of the catalogue, as the lines the page shows: each
+  # provider whose settings no longer fit the catalogue's entry, `{:changed, provider}`,
+  # or whose kind the catalogue no longer has, `{:unknown, provider}`
+  # (`Connections.provider/1`); then, while a provider with its description is left,
+  # `:none`. A provider whose settings check ran out of time or crashed has no line: it
+  # serves nothing on this read, and the next read checks it again. A described provider
+  # that is not offered (`Apiary.Kinds.Providers.offered?/1`) serves no runtime here.
+  defp unserved(described) do
     gone =
       for {provider, {:error, why}} <- described,
           why != :provider_unchecked,
           do: {if(why == :provider_changed, do: :changed, else: :unknown), provider}
 
-    served_elsewhere? =
-      Enum.any?(runtimes, fn other ->
-        other.name != runtime.name and
-          Enum.any?(offered, &(Providers.serve(&1, other) == :ok))
-      end)
-
-    cond do
-      descriptions == [] -> gone
-      served_elsewhere? -> gone ++ [:other_runtime]
-      true -> gone ++ [:none]
-    end
+    if Enum.any?(described, &match?({_provider, {:ok, _description}}, &1)),
+      do: gone ++ [:none],
+      else: gone
   end
 
-  # Whether the form shows Runtime: while the catalogue has more than one.
-  defp runtimes?(runtimes), do: length(runtimes) > 1
+  # Whether a save names the runtime: while the catalogue has more than one. With one,
+  # the choice names none, and its runs use that one.
+  defp runtimes?, do: length(Runtimes.list()) > 1
 
   defp applies?(%Connection{applies_to: "all"}, _workspace_id), do: true
 
@@ -209,12 +226,31 @@ defmodule ApiaryWeb.ModelChoiceLive do
     end
   end
 
+  # The models of `provider` for the chosen runtime: none where it does not serve it.
   defp models_of(providers, %Connection{id: id}) do
     case Enum.find(providers, &(&1.provider.id == id)) do
-      %{models: models} -> models
-      nil -> []
+      %{models: models, serves: true} -> models
+      _none -> []
     end
   end
+
+  # Whether the provider of `row` is one whose description the page read and which does
+  # not serve the chosen runtime: the row stays, with a line, and Save waits for it to be
+  # removed or given another provider. A run would pass that fallback over at its claim,
+  # and a save of it is refused (`Apiary.ModelChoices.put_choice/4`).
+  defp unfit?(assigns, row) do
+    sent = row["provider"]
+
+    Enum.any?(assigns.described, fn
+      {%Connection{public_id: id}, {:ok, description}} when id == sent ->
+        not Providers.serves?(description, assigns.runtime)
+
+      _other ->
+        false
+    end)
+  end
+
+  defp unfit_rows?(assigns), do: Enum.any?(assigns.fallbacks, &unfit?(assigns, &1))
 
   defp assign_fallbacks(socket, rows, errors),
     do: assign(socket, fallbacks: rows, fallback_errors: errors)
@@ -289,7 +325,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
     main = main_provider(assigns)
 
-    for %{provider: provider, offered: true} <- assigns.providers,
+    for %{provider: provider, offered: true, serves: true} <- assigns.providers,
         provider.public_id not in taken,
         main == nil or provider.id != main.id,
         do: provider
@@ -396,30 +432,34 @@ defmodule ApiaryWeb.ModelChoiceLive do
     )
   end
 
-  # The runtime, the key and the tiers as the form sent them. A key the page does not
-  # list keeps the key the page had; where the page no longer lists that key either, as
-  # after a change of the runtime, the first key, with empty tiers.
+  # The key, the runtime and the tiers as the form sent them. A key the page does not
+  # list keeps the key the page had, else the first key. The runtime is the one sent
+  # while the key's provider serves it, else the first it serves, so a change of Key keeps
+  # the runtime where the new provider serves it. A change of the runtime keeps the
+  # models, and an effort the new runtime does not accept goes back to Not set
+  # (`ApiaryWeb.ModelTiers.accepted/2`).
   defp take_sent(socket, params) do
-    socket =
-      with name when name != socket.assigns.runtime.name <- params["runtime"],
-           {:ok, runtime} <- Runtimes.fetch(name) do
-        assign_runtime(socket, runtime)
-      else
-        _same -> socket
-      end
-
     %{keys: keys, key: before, tiers: old, stored: stored} = socket.assigns
     sent = if is_binary(params["key"]), do: ModelTiers.find(keys, params["key"])
     before = before && ModelTiers.find(keys, before.value)
     key = sent || before || List.first(keys)
+
+    name =
+      if is_binary(params["runtime"]),
+        do: params["runtime"],
+        else: socket.assigns.runtime.name
+
+    socket = socket |> assign_providers(name) |> settle(key, name)
+    key = key && ModelTiers.find(socket.assigns.keys, key.value)
+    stored = ModelTiers.accepted(stored, socket.assigns.runtime)
     tiers = ModelTiers.sent(key, before, old, params["tiers"], stored)
 
     assign(socket, key: key, tiers: tiers)
   end
 
   @impl true
-  # A change of the runtime lists the providers that serve it and their keys, and keeps
-  # the chosen key while it is one of them.
+  # A change of Key fits the runtime to the key's provider; a change of the runtime
+  # fits the tiers' efforts to it (`take_sent/2`).
   def handle_event("choose", %{"model_choice" => params}, socket) do
     socket = socket |> take_sent(params) |> assign_form(params, [])
     {:noreply, assign_fallbacks(socket, sent_rows(socket, params), %{})}
@@ -474,16 +514,23 @@ defmodule ApiaryWeb.ModelChoiceLive do
     rows = sent_rows(socket, params)
     socket = assign_fallbacks(socket, rows, %{})
 
-    case socket.assigns.key do
-      nil ->
+    cond do
+      socket.assigns.key == nil ->
         {:noreply, assign_form(socket, params, key: {"is invalid", []})}
 
-      key ->
+      # Save is disabled while a fallback's provider does not serve the runtime: a save
+      # sent all the same writes nothing.
+      unfit_rows?(socket.assigns) ->
+        {:noreply, assign_form(socket, params, [])}
+
+      true ->
+        key = socket.assigns.key
+
         attrs =
           key
           |> ModelTiers.attrs(socket.assigns.tiers)
           |> Map.merge(%{
-            runtime: if(runtimes?(socket.assigns.runtimes), do: socket.assigns.runtime.name),
+            runtime: if(runtimes?(), do: socket.assigns.runtime.name),
             fallbacks: fallback_attrs(socket.assigns, rows)
           })
           |> default_key(socket.assigns.choice, key)
@@ -592,14 +639,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
         place: providers_link(scope)
       )
 
-  defp unserved_text(:other_runtime, scope, runtime),
-    do:
-      rich_gettext(
-        "Choose another runtime: no model provider of %{organisation} serves %{runtime}.",
-        organisation: scope.organisation.name,
-        runtime: runtime.title
-      )
-
   defp unserved_text(:none, scope, runtime),
     do:
       rich_gettext(
@@ -619,7 +658,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     do:
       Map.take(
         assigns,
-        ~w(writes fallbacks fallback_errors providers known key runtime current_scope)a
+        ~w(writes fallbacks fallback_errors providers described known key runtime current_scope)a
       )
 
   attr :page, :map, required: true, doc: "the page's assigns that `fallback_page/1` takes"
@@ -692,6 +731,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         number: index + 1,
         providers: row_providers(page, row, index),
         model: model,
+        unfit: unfit?(page, row),
         efforts: if(match?(%{effort: [_ | _]}, model), do: model.effort, else: []),
         options:
           case page.known[row["provider"]] do
@@ -710,13 +750,28 @@ defmodule ApiaryWeb.ModelChoiceLive do
     >
       <fieldset class="grid gap-3 sm:grid-cols-2 sm:items-start">
         <legend class="sr-only">{gettext("Fallback %{number}", number: @number)}</legend>
-        <.input
-          field={@form[:provider]}
-          type="select"
-          label={gettext("Provider")}
-          options={for provider <- @providers, do: {provider.name, provider.public_id}}
-          disabled={!@page.writes}
-        />
+        <div class="grid gap-1">
+          <.input
+            field={@form[:provider]}
+            type="select"
+            label={gettext("Provider")}
+            options={for provider <- @providers, do: {provider.name, provider.public_id}}
+            disabled={!@page.writes}
+            aria-describedby={@unfit && "model-fallback-#{@index}-unfit"}
+          />
+          <p
+            :if={@unfit}
+            id={"model-fallback-#{@index}-unfit"}
+            class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+          >
+            <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+            {gettext(
+              "Choose another provider or remove this fallback. %{provider} does not work with %{runtime}.",
+              provider: @page.known[@row["provider"]].name,
+              runtime: @page.runtime.title
+            )}
+          </p>
+        </div>
         <.input
           field={@form[:model]}
           type="choice"
@@ -830,17 +885,9 @@ defmodule ApiaryWeb.ModelChoiceLive do
               {gettext("Runs use this key and these models when their workflow sets none.")}
             </p>
           </div>
-          <.input
-            :if={runtimes?(@runtimes)}
-            field={@form[:runtime]}
-            type="select"
-            label={gettext("Runtime")}
-            options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
-            disabled={!@writes}
-          />
           <div :if={@providers == []} id="model-unserved" class="space-y-1">
             <p
-              :for={line <- unserved(@described, @runtime, @runtimes)}
+              :for={line <- unserved(@described)}
               id={line_id(line)}
               class="text-[13.5px]/5 text-muted"
             >
@@ -861,8 +908,19 @@ defmodule ApiaryWeb.ModelChoiceLive do
             name="model_choice[tiers]"
             key={@key}
             tiers={@tiers}
-            stored={@stored}
+            stored={ModelTiers.accepted(@stored, @runtime)}
             errors={@tier_errors}
+            disabled={!@writes}
+          />
+          <ModelTiers.runtime_part
+            :if={@key}
+            id="model-runtime"
+            select_id="model_choice_runtime"
+            name="model_choice[runtime]"
+            runtimes={provider_entry(@providers, @key.provider).runtimes}
+            runtime={@runtime}
+            provider={@key.provider.name}
+            errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
             disabled={!@writes}
           />
           <.fallbacks
@@ -876,7 +934,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
               id="model-submit"
               type="submit"
               variant="primary"
-              disabled={!ModelTiers.complete?(@key, @tiers)}
+              disabled={!ModelTiers.complete?(@key, @tiers) or unfit_rows?(assigns)}
               loading_text={gettext("Saving")}
             >
               {gettext("Save")}

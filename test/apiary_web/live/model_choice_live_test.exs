@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ModelChoiceLiveTest do
   # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`): Key, the tiers of the key's
-  # provider (`ApiaryWeb.ModelTiers`), Save once every tier has a model, each refusal
+  # provider (`ApiaryWeb.ModelTiers`), Runtime, Save once every tier has a model, each refusal
   # under its field, who may save, the fallbacks, and a saved choice that a run's settings
   # then use.
   use ApiaryWeb.ConnCase, async: true
@@ -917,69 +917,351 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   end
 
   describe "the runtime" do
-    test "is hidden while the list has one runtime, and the choice names none", ctx do
-      %{conn: conn, scope: scope} = ctx
+    # The release's runtime, and a copy of it with a name of its own that reads a key
+    # only from the bearer variable: Anthropic (an `x-api-key` header) serves the first
+    # alone, OpenRouter (bearer) serves both.
+    defp two_runtimes do
+      [release] = Runtimes.list()
+
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Runtimes.put_test_list([release, bearer])
+      {release, bearer}
+    end
+
+    defp openrouter(scope) do
+      {:ok, openrouter} =
+        Connections.create_provider(scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-model-page-0123456789"}]
+        })
+
+      openrouter
+    end
+
+    # OpenRouter's tiers: its first model with effort `high` on each tier.
+    defp openrouter_tiers(openrouter) do
+      model =
+        openrouter
+        |> ModelChoices.suggestions(ModelChoices.default_runtime())
+        |> Enum.find(&("high" in &1.effort))
+
+      Map.new(Map.keys(@tiers), &{&1, %{"model" => model.id, "effort" => "high"}})
+    end
+
+    defp choose_key(lv, value),
+      do: lv |> form("#model-form", model_choice: %{key: value}) |> render_change()
+
+    defp choose_runtime(lv, name),
+      do: lv |> form("#model-form", model_choice: %{runtime: name}) |> render_change()
+
+    test "with one runtime of the catalogue, is its name as text; the choice names none",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      [release] = Runtimes.list()
       {:ok, lv, _html} = live(conn, path(scope))
 
       refute has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, "#model-runtime-name", release.title)
+
+      assert has_element?(
+               lv,
+               "#model-runtime-line",
+               "#{release.title} is the only runtime that works with #{provider.name}."
+             )
 
       lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
       assert %ModelChoice{runtime: nil, model_id: "claude-opus-5-5"} = choice(scope)
     end
 
-    test "with two, is a field; Key lists only the providers that serve the runtime", ctx do
+    test "comes after the tiers and before the fallbacks", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {:ok, _lv, html} = live(conn, path(scope))
+
+      ids =
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#model_choice_key, #model-tiers, #model-runtime, #model-fallbacks")
+        |> Enum.flat_map(&LazyHTML.attribute(&1, "id"))
+
+      assert ids == ["model_choice_key", "model-tiers", "model-runtime", "model-fallbacks"]
+    end
+
+    test "one runtime fits the key's provider: its name as text, no select", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
-      [release] = Runtimes.list()
-      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
-
-      unserved = %{
-        release
-        | name: release.name <> "-unserved",
-          title: release.title <> " unserved",
-          model: %{release.model | "formats" => ["no-such-format"]}
-      }
-
-      :ok = Runtimes.put_test_list([release, second, unserved])
+      {release, _bearer} = two_runtimes()
       {:ok, lv, _html} = live(conn, path(scope))
 
-      assert has_element?(lv, "#model_choice_runtime")
-      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{second.name}"]})
-
-      lv
-      |> form("#model-form", model_choice: %{runtime: unserved.name})
-      |> render_change()
-
-      refute has_element?(lv, "#model_choice_key")
-      refute has_element?(lv, "#model-tiers")
-      refute has_element?(lv, "#model-submit")
+      refute has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, "#model-runtime-name", release.title)
 
       assert has_element?(
                lv,
-               "#model-other_runtime",
-               "Choose another runtime: no model provider of #{scope.organisation.name} serves #{unserved.title}."
-             )
-
-      refute has_element?(lv, "#model-none")
-
-      lv
-      |> form("#model-form", model_choice: %{runtime: second.name})
-      |> render_change()
-
-      assert has_element?(
-               lv,
-               ~s{#model_choice_key-options input[value="#{key(provider)}"][checked]}
-             )
-
-      assert has_element?(
-               lv,
-               ~s{#model_choice_tiers_thinking_model option[value="claude-opus-5-5"]}
+               "#model-runtime-line",
+               "#{release.title} is the only runtime that works with #{provider.name}."
              )
 
       lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
-      assert %ModelChoice{model_id: "claude-opus-5-5", runtime: name} = choice(scope)
-      assert name == second.name
+      assert %ModelChoice{runtime: name} = choice(scope)
+      assert name == release.name
+    end
+
+    test "several fit: a select, set to the stored runtime", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+
+      {:ok, _choice} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: openrouter.public_id,
+          runtime: bearer.name,
+          tiers: openrouter_tiers(openrouter)
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{release.name}"]})
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{bearer.name}"][selected]})
+      refute has_element?(lv, "#model-runtime-name")
+
+      assert has_element?(
+               lv,
+               "#model-runtime-line",
+               "These runtimes work with #{openrouter.name}."
+             )
+    end
+
+    test "Key lists every key, whichever runtime is chosen", ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {_release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+
+      {:ok, _choice} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: openrouter.public_id,
+          runtime: bearer.name,
+          tiers: openrouter_tiers(openrouter)
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(lv, ~s{#model_choice_key-options input[value="#{key(provider)}"]})
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_key-options input[value="#{key(openrouter, "main")}"][checked]}
+             )
+    end
+
+    test "a change of Key keeps the runtime the new provider serves, else takes its first",
+         ctx do
+      %{conn: conn, scope: scope, provider: provider} = ctx
+      {release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      # Anthropic serves the release's runtime alone.
+      assert has_element?(lv, "#model-runtime-name", release.title)
+
+      # OpenRouter serves it too: it stays, the first of the two in any case.
+      choose_key(lv, key(openrouter, "main"))
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{release.name}"][selected]})
+
+      # OpenRouter's second runtime, then back to Anthropic, which does not serve it.
+      choose_runtime(lv, bearer.name)
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{bearer.name}"][selected]})
+
+      choose_key(lv, key(provider))
+      refute has_element?(lv, "#model_choice_runtime")
+      assert has_element?(lv, "#model-runtime-name", release.title)
+
+      lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
+      assert %ModelChoice{runtime: name} = choice(scope)
+      assert name == release.name
+    end
+
+    test "a change of Key to a provider that serves the chosen runtime keeps it", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {_release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+
+      {:ok, second} =
+        Connections.create_provider(scope, %{
+          name: "OpenRouter team",
+          provider: "openrouter",
+          keys: [%{value_id: "team", value: "sk-or-model-page-team-0123456789"}]
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+      choose_key(lv, key(openrouter, "main"))
+      choose_runtime(lv, bearer.name)
+      choose_key(lv, key(second, "team"))
+
+      assert has_element?(lv, ~s{#model_choice_runtime option[value="#{bearer.name}"][selected]})
+    end
+
+    test "a change of the runtime keeps the models and takes back an effort it refuses", ctx do
+      %{conn: conn, scope: scope} = ctx
+      [release] = Runtimes.list()
+
+      narrow = %{
+        release
+        | name: release.name <> "-narrow",
+          title: release.title <> " narrow",
+          effort_values: ~w(low medium)
+      }
+
+      :ok = Runtimes.put_test_list([release, narrow])
+      {:ok, lv, _html} = live(conn, path(scope))
+      set_tiers(lv, @tiers)
+
+      choose_runtime(lv, narrow.name)
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_tiers_thinking_model option[value="claude-opus-5-5"][selected]}
+             )
+
+      refute has_element?(lv, ~s{#model_choice_tiers_thinking_effort option[value="high"]})
+      assert has_element?(lv, ~s{#model_choice_tiers_thinking_effort option[value=""][selected]})
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_tiers_balanced_effort option[value="medium"][selected]}
+             )
+
+      lv |> form("#model-form") |> render_submit()
+
+      assert %ModelChoice{runtime: name, tiers: tiers} = choice(scope)
+      assert name == narrow.name
+      assert tiers["thinking"] == %{"model" => "claude-opus-5-5"}
+      assert tiers["balanced"] == %{"model" => "claude-sonnet-5-5", "effort" => "medium"}
+    end
+
+    test "a stored effort the stored runtime no longer accepts goes when the runtime changes",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      [release] = Runtimes.list()
+      narrow = %{release | name: release.name <> "-narrow", effort_values: ~w(low medium)}
+
+      {:ok, _choice} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          tiers: @tiers
+        })
+
+      :ok = Runtimes.put_test_list([release, narrow])
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_tiers_thinking_effort option[value="high"][selected]}
+             )
+
+      choose_runtime(lv, narrow.name)
+      refute has_element?(lv, ~s{#model_choice_tiers_thinking_effort option[value="high"]})
+    end
+
+    test "a fallback whose provider does not serve a new runtime stays, with a line", ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      {release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      choose_key(lv, key(openrouter, "main"))
+      set_tiers(lv, openrouter_tiers(openrouter))
+      lv |> element("#model-fallback-add") |> render_click()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{anthropic.public_id}"][selected]}
+             )
+
+      lv
+      |> form("#model-form", model_choice: %{fallbacks: %{"0" => %{effort: "low"}}})
+      |> render_change()
+
+      lv |> form("#model-form") |> render_submit()
+      saved = choice(scope) |> Repo.preload(fallbacks: :connection)
+      assert saved.runtime == release.name
+
+      assert [%{connection_id: id, model_id: model_id, effort: "low"}] = saved.fallbacks
+      assert id == anthropic.id
+
+      # Anthropic does not serve the bearer runtime: its row stays, with a line under its
+      # Provider, and Save is disabled. Add fallback offers none.
+      choose_runtime(lv, bearer.name)
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-unfit",
+               "Choose another provider or remove this fallback. #{anthropic.name} does not work with #{bearer.title}."
+             )
+
+      assert has_element?(lv, "#model-submit[disabled]")
+      refute has_element?(lv, "#model-fallback-add")
+
+      # A save sent all the same writes nothing.
+      lv |> form("#model-form") |> render_submit()
+      again = choice(scope) |> Repo.preload(fallbacks: :connection)
+      assert again.runtime == release.name
+      assert again.updated_at == saved.updated_at
+      assert [%{connection_id: ^id, model_id: ^model_id, effort: "low"}] = again.fallbacks
+
+      # Back to the release's runtime: the line goes, Save is enabled, and the row is as
+      # it was.
+      choose_runtime(lv, release.name)
+      refute has_element?(lv, "#model-fallback-0-unfit")
+      refute has_element?(lv, "#model-submit[disabled]")
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{anthropic.public_id}"][selected]}
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_model-options input[value="#{option(anthropic, model_id)}"][checked]}
+             )
+
+      assert has_element?(lv, ~s{#model_choice_fallbacks_0_effort option[value="low"][selected]})
+    end
+
+    test "a fallback row that a change of Key leaves unserved shows the line too", ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      {_release, bearer} = two_runtimes()
+      openrouter = openrouter(scope)
+
+      {:ok, second} =
+        Connections.create_provider(scope, %{
+          name: "OpenRouter team",
+          provider: "openrouter",
+          keys: [%{value_id: "team", value: "sk-or-model-page-team-0123456789"}]
+        })
+
+      {:ok, lv, _html} = live(conn, path(scope))
+      choose_key(lv, key(openrouter, "main"))
+      lv |> element("#model-fallback-add") |> render_click()
+      lv |> element("#model-fallback-add") |> render_click()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_1_provider option[value="#{second.public_id}"][selected]}
+             )
+
+      choose_runtime(lv, bearer.name)
+      assert has_element?(lv, "#model-fallback-0-unfit", anthropic.name)
+      refute has_element?(lv, "#model-fallback-1-unfit")
+
+      lv |> element("#model-fallback-0-remove") |> render_click()
+      refute has_element?(lv, "#model-fallback-0-unfit")
     end
   end
 
@@ -1036,7 +1318,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       {:ok, lv, _html} = live(conn, path(scope))
 
-      assert has_element?(lv, "#model_choice_runtime")
+      refute has_element?(lv, "#model-runtime")
       refute has_element?(lv, "#model-other_runtime")
       assert has_element?(lv, "#model-none")
     end

@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.ModelTiers do
-  # One key and the three tiers of a model choice (`Apiary.ModelChoices`), as a form sets
-  # them: the state of the form, and `tiers/1`, the one component that draws the tiers.
+  # One key, the three tiers and the runtime of a model choice (`Apiary.ModelChoices`), as
+  # a form sets them: the state of the form, and `tiers/1` and `runtime_part/1`, the
+  # components that draw the tiers and Runtime.
   # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`), each workflow's fold on
   # the Workflows page (`ApiaryWeb.StagesLive.ModelPart`) and the Model step of a
   # workspace's set-up (`ApiaryWeb.WorkspaceSetupLive`) use both, and every other form
@@ -19,7 +20,11 @@ defmodule ApiaryWeb.ModelTiers do
   #     tiers of a stored choice, `sent/5` the tiers a form sent, fitted to the key;
   #   * `complete?/2` whether every tier has a model, as a save at levels 4, 5 and 6
   #     needs (`Apiary.ModelChoices.put_choice/4`), and `attrs/2` what a save sends;
-  #   * `field_errors/2` each refusal of a save on the field it is about.
+  #   * `field_errors/2` each refusal of a save on the field it is about;
+  #   * `runtime/2` the runtime a form shows for a key whose provider serves a list of
+  #     runtimes, `accepted/2` a stored choice's tiers without the efforts a runtime does
+  #     not accept, and `runtime_part/1`, Runtime under the tiers, with its line
+  #     (`runtime_line/2`).
   #
   # The tiers' values are a map of each tier of `Apiary.ModelChoices.Resolution.tiers/0`
   # to its `model` and `effort`, each "" for none.
@@ -32,7 +37,7 @@ defmodule ApiaryWeb.ModelTiers do
   alias Apiary.ModelChoices
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Connections.Connection
-  alias Apiary.Kinds.Provider
+  alias Apiary.Kinds.{Provider, Runtime}
 
   @doc "The tiers in the order a form shows them: the most capable first."
   @spec shown() :: [String.t()]
@@ -169,14 +174,50 @@ defmodule ApiaryWeb.ModelTiers do
   end
 
   @doc """
-  What `sent/5` reads of a stored choice: its provider's row id and its tiers' values;
-  nil for none.
+  What `sent/5` reads of a stored choice: its provider's row id, its tiers' values and
+  the name of its runtime, the default's for a choice that names none; nil for none.
   """
   @spec stored(ModelChoice.t() | nil) :: map | nil
   def stored(%ModelChoice{connection_id: id} = choice) when is_binary(id),
-    do: %{provider_id: id, tiers: tier_values(choice.tiers)}
+    do: %{
+      provider_id: id,
+      tiers: tier_values(choice.tiers),
+      runtime: choice.runtime || ModelChoices.default_runtime().name
+    }
 
   def stored(_choice), do: nil
+
+  @doc """
+  `stored`, as `stored/1` gives it, for a form whose runtime is `runtime`: as it is while
+  `runtime` is the stored choice's, so a stored effort the runtime no longer accepts stays
+  shown and a save refuses it; for another runtime, without each tier's effort that
+  `runtime` does not accept (its `effort_values`), so a change of the runtime takes such
+  an effort back to Not set. nil for nil.
+  """
+  @spec accepted(map | nil, Runtime.t()) :: map | nil
+  def accepted(%{runtime: name} = stored, %Runtime{name: name}), do: stored
+
+  def accepted(%{tiers: tiers} = stored, %Runtime{effort_values: values}) do
+    tiers =
+      Map.new(tiers, fn {tier, set} ->
+        if set["effort"] in values, do: {tier, set}, else: {tier, %{set | "effort" => ""}}
+      end)
+
+    %{stored | tiers: tiers}
+  end
+
+  def accepted(nil, _runtime), do: nil
+
+  ## Runtime
+
+  @doc """
+  The runtime a form shows for a key whose provider serves `runtimes`, in the catalogue's
+  order (`Apiary.Kinds.Providers.runtimes/1`): the one named `name` while it is among
+  them, else the first; nil for none.
+  """
+  @spec runtime([Runtime.t()], String.t() | nil) :: Runtime.t() | nil
+  def runtime(runtimes, name),
+    do: Enum.find(runtimes, &(&1.name == name)) || List.first(runtimes)
 
   @doc """
   The tiers' values a form sent, for the key `key`, after the key `before`, with `old`
@@ -530,6 +571,77 @@ defmodule ApiaryWeb.ModelTiers do
         </li>
       </ul>
     </section>
+    """
+  end
+
+  @doc """
+  The line under Runtime: why it lists these runtimes, as the provider `provider`, by its
+  name, serves them.
+  """
+  @spec runtime_line([Runtime.t()], String.t()) :: String.t()
+  def runtime_line([%Runtime{} = runtime], provider),
+    do:
+      gettext("%{runtime} is the only runtime that works with %{provider}.",
+        runtime: runtime.title,
+        provider: provider
+      )
+
+  def runtime_line(_runtimes, provider),
+    do: gettext("These runtimes work with %{provider}.", provider: provider)
+
+  attr :id, :string, required: true, doc: "the id of the part; its line's id is it with `-line`"
+  attr :select_id, :string, required: true, doc: "the id of the select, with several runtimes"
+  attr :name, :string, required: true, doc: "the name of the field"
+  attr :runtimes, :list, required: true, doc: "the runtimes the key's provider serves"
+  attr :runtime, Runtime, required: true, doc: "the runtime chosen, one of `runtimes`"
+  attr :provider, :string, required: true, doc: "the name of the key's provider"
+  attr :errors, :list, default: [], doc: "the refusals of Runtime, each a message"
+  attr :disabled, :boolean, default: false
+
+  attr :form, :string,
+    default: nil,
+    doc: "the id of the form the field belongs to, where it is not the form it is in"
+
+  @doc """
+  Runtime, under the tiers: the runtimes the key's provider serves, in the catalogue's
+  order (`Apiary.Kinds.Providers.runtimes/1`). With one, its name as text, and a hidden
+  field with it; with several, a select. Then the line of `runtime_line/2`, and each
+  refusal.
+  """
+  def runtime_part(assigns) do
+    assigns = assign(assigns, line: runtime_line(assigns.runtimes, assigns.provider))
+
+    ~H"""
+    <div :if={match?([_], @runtimes)} id={@id} class="grid gap-1">
+      <p class="text-[13px]/[18px] font-medium">{gettext("Runtime")}</p>
+      <p id={"#{@id}-name"} class="text-[13.5px]/5">{@runtime.title}</p>
+      <input type="hidden" name={@name} value={@runtime.name} form={@form} />
+      <.tier_error :for={{message, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>
+        {message}
+      </.tier_error>
+      <p id={"#{@id}-line"} class="text-[12.5px]/[18px] text-muted">{@line}</p>
+    </div>
+    <fieldset :if={match?([_, _ | _], @runtimes)} id={@id} class="fieldset">
+      <label for={@select_id} class="text-[13px]/[18px] font-medium">{gettext("Runtime")}</label>
+      <select
+        id={@select_id}
+        name={@name}
+        form={@form}
+        class={["select select-sm w-full", @errors != [] && "select-error"]}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={String.trim("#{error_ids(@id, @errors)} #{@id}-line")}
+        disabled={@disabled}
+      >
+        {Phoenix.HTML.Form.options_for_select(
+          for(runtime <- @runtimes, do: {runtime.title, runtime.name}),
+          @runtime.name
+        )}
+      </select>
+      <.tier_error :for={{message, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>
+        {message}
+      </.tier_error>
+      <p id={"#{@id}-line"} class="text-[12.5px]/[18px] text-muted">{@line}</p>
+    </fieldset>
     """
   end
 

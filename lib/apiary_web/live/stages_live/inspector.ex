@@ -798,8 +798,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
 
   # A workflow's model choice, under its time limit: Key, "Use workspace default" or a key
   # of a model provider, with a line under it of what the workflow uses. With a key, the
-  # key's tiers follow (`ApiaryWeb.ModelTiers`), then Save model choice, which stays
-  # disabled while there is nothing to save or a tier has no model. With the default and
+  # key's tiers follow (`ApiaryWeb.ModelTiers`), then Runtime, the runtimes the key's
+  # provider serves (`ApiaryWeb.ModelTiers.runtime_part/1`), then Save model choice,
+  # which stays disabled while there is nothing to save or a tier has no model. With the
+  # default, Runtime is not shown: the default's runtime applies. With the default and
   # no override saved, there is no button. A refusal shows under its field, and Saved.
   # under the button after a save. Where the person may not change it, the fields are
   # disabled with no button. A workflow the saved process does not have yet has Key
@@ -850,6 +852,17 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       errors={@field.tier_errors}
       disabled={not @field.editable}
       stacked
+    />
+    <ModelTiers.runtime_part
+      :if={@field.key && @field.runtime}
+      id={"#{@id}-runtime-part"}
+      select_id={"#{@id}-runtime"}
+      name="model[runtime]"
+      form={@field.form}
+      runtimes={@field.runtimes}
+      runtime={@field.runtime}
+      provider={@field.key.provider.name}
+      disabled={not @field.editable}
     />
     <div :if={@field.button or @field.done} class="grid justify-items-start gap-1.5">
       <.button
@@ -914,8 +927,9 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       workflow = entry["workflow"]
       draft_only = not MapSet.member?(model.workflows, workflow)
       state = ModelPart.state(model, model.rows, time_limit_key(stage_id, id), workflow)
-      keys = ModelPart.keys(model, workflow)
+      keys = ModelPart.keys(model, workflow, state.runtime)
       key = ModelTiers.find(keys, state.value)
+      {runtimes, runtime} = ModelPart.runtimes(model, key, state.runtime)
       stored = model.overrides[workflow]
       editable = model.editable and not draft_only
 
@@ -929,8 +943,10 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         ],
         value: state.value,
         key: key,
+        runtimes: runtimes,
+        runtime: runtime,
         tiers: state.tiers,
-        stored: ModelTiers.stored(stored),
+        stored: runtime && ModelTiers.accepted(ModelTiers.stored(stored), runtime),
         key_errors: for({_field, error} <- key_errors, do: translate_error(error)),
         tier_errors: tier_errors,
         done: state.done,

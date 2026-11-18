@@ -82,15 +82,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     setting, the providers to reuse that apply to every workspace come first in Key,
   #     under "Shared in <organisation>", each marked "every workspace"; with none, Key
   #     has no heading. With
-  #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
-  #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
-  #     Then the tiers (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above
-  #     its fields, under a heading `h2`): a Model and an Effort for each tier, from the
-  #     models suggested for the provider and runtime
-  #     (`Apiary.ModelChoices.suggestions/2`), or a text field Model for a provider whose
-  #     description lists no models; for a provider whose description cannot be read, a
-  #     line that says so in their place. A change of Key or Provider empties the tiers;
-  #     when the step opens, the workspace's choice fills them. A tier whose model id or
+  #     no provider to reuse, Add a key alone, open. Then the tiers
+  #     (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above its fields,
+  #     under a heading `h2`): a Model and an Effort for each tier, from the models
+  #     suggested for the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or
+  #     a text field Model for a provider whose description lists no models; for a
+  #     provider whose description cannot be read, a line that says so in their place.
+  #     Then Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`), the runtimes the provider
+  #     serves (`Apiary.Kinds.Providers.runtimes/1`), as text where there is one, else a
+  #     select, with a line of why. A change of Key keeps the runtime while the new
+  #     provider serves it, else moves to its first. A change of Key or Provider empties
+  #     the tiers; a change of the runtime keeps the models, and an effort the runtime
+  #     does not accept goes back to Not set. When the step opens, the workspace's choice
+  #     fills them. A tier whose model id or
   #     effort breaks the save's rules (`Apiary.ModelChoices.tier_errors/1`) shows the
   #     refusal on its field. Continue, enabled once every tier has a model and no tier
   #     is refused, saves the workspace's choice (level 5,
@@ -1002,10 +1006,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         provider -> described(provider)
       end
 
-    runtimes =
-      if chosen, do: Enum.filter(Runtimes.list(), &Providers.serves?(chosen, &1)), else: []
-
-    runtime = Enum.find(runtimes, &(&1.name == params["runtime"])) || List.first(runtimes)
+    runtimes = if chosen, do: Providers.runtimes(chosen), else: []
+    runtime = ModelTiers.runtime(runtimes, params["runtime"])
 
     models =
       cond do
@@ -1023,6 +1025,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
         is_map(params["tiers"]) ->
           %{key: before, tiers: old, stored: stored} = socket.assigns
+          stored = if runtime, do: ModelTiers.accepted(stored, runtime), else: stored
           ModelTiers.sent(key, before, old || ModelTiers.blank(), params["tiers"], stored)
 
         true ->
@@ -2370,28 +2373,26 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             }
           />
         </div>
-        <div :if={length(@runtimes) == 1} id="set-up-model-runtime" class="grid gap-1">
-          <p class="text-[13.5px]/5 font-medium">{gettext("Runtime")}</p>
-          <p class="text-[13.5px]/5">{hd(@runtimes).title}</p>
-          <input type="hidden" name="model[runtime]" value={hd(@runtimes).name} />
-        </div>
-        <.input
-          :if={length(@runtimes) > 1}
-          field={@form[:runtime]}
-          type="select"
-          label={gettext("Runtime")}
-          options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
-        />
         <ModelTiers.tiers
           :if={@key}
           id="set-up-model-tiers"
           name="model[tiers]"
           key={@key}
           tiers={@tiers}
-          stored={@stored}
+          stored={@runtime && ModelTiers.accepted(@stored, @runtime)}
           errors={@tier_errors}
           heading="h2"
           stacked
+        />
+        <ModelTiers.runtime_part
+          :if={@runtime}
+          id="set-up-model-runtime"
+          select_id="model_runtime"
+          name="model[runtime]"
+          runtimes={@runtimes}
+          runtime={@runtime}
+          provider={if @source == :add, do: @chosen.title, else: @source.name}
+          errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
         />
         <p
           :if={!@key and @source != :add}

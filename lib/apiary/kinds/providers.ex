@@ -7,8 +7,8 @@ defmodule Apiary.Kinds.Providers do
   `Apiary.Kinds.Provider.load!/1` when the application is compiled, so a description that
   fails stops the compile; a provider is added by a release.
 
-  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`, and
-  `api/2` picks the API of the provider that a run of that runtime uses. `offered/0` is
+  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`,
+  `runtimes/1` is every runtime a provider serves, and `api/2` picks the API of the provider that a run of that runtime uses. `offered/0` is
   the providers a person may choose where a provider is offered: those whose description
   lists no models only with the feature `model_proxies` (`offered?/1`).
 
@@ -110,6 +110,14 @@ defmodule Apiary.Kinds.Providers do
   @spec serves?(Provider.t(), Runtime.t()) :: boolean
   def serves?(%Provider{} = provider, %Runtime{} = runtime),
     do: serve(provider, runtime) == :ok
+
+  @doc """
+  runtimes/1 is the runtimes of the catalogue (`Apiary.Kinds.Runtimes.list/0`) that
+  `provider` serves (`serves?/2`), in the catalogue's order: the runtimes a model choice
+  of the provider may name. A key of the provider adds no condition.
+  """
+  @spec runtimes(Provider.t()) :: [Runtime.t()]
+  def runtimes(%Provider{} = provider), do: Enum.filter(Runtimes.list(), &serves?(provider, &1))
 
   @doc """
   api/2 is the API of `provider` that a run of `runtime` uses: the first in the
