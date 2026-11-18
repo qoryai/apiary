@@ -577,6 +577,62 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     end
   end
 
+  describe "queue/4" do
+    test "is the scenarios the tab shows: in scenario order, of the verified commit",
+         %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 10, :film)
+          scenario!(run, work_item, 2, :pictures)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 3, :film, @older)
+        end)
+
+      queue = VerifyTab.queue(work_item, Artifacts.list(work_item), @verify, work_item.take_in)
+
+      assert Enum.map(queue, &{&1.key, &1.kind, &1.number}) == [
+               {"scenario-1", :film, 1},
+               {"scenario-2", :pictures, 2},
+               {"scenario-10", :film, 10}
+             ]
+
+      assert Enum.map(queue, & &1.version.artifact_id) ==
+               Enum.map(queue, & &1.artifact.id)
+    end
+
+    test "queue/5 keeps what it read, so a second call reads nothing", %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      artifacts = Artifacts.list(work_item)
+
+      {[%{key: "scenario-1"}], reads} =
+        VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, %{})
+
+      assert [{:json, _id}, {:verification, 1}] = reads |> Map.keys() |> Enum.sort()
+
+      assert {[%{key: "scenario-1"}], ^reads} =
+               VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, reads)
+    end
+
+    test "is empty for another stage and for another take in", %{scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      artifacts = Artifacts.list(work_item)
+
+      assert VerifyTab.queue(work_item, artifacts, @shape, work_item.take_in) == []
+      assert VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in + 1) == []
+    end
+  end
+
   describe "a version a cancelled run wrote" do
     test "after an approval, it shows no newer version", %{conn: conn, scope: scope} do
       work_item = at_verify_gate!(scope, &verification!/2)

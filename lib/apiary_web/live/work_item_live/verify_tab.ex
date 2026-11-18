@@ -206,6 +206,96 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     end
   end
 
+  @doc false
+  # queue/4 is the scenarios of the stage `stage_id` of the take in `take_in` (`scenarios/5`)
+  # for `work_item`, whose `artifacts` are `Apiary.Artifacts.list/1`: the verified commit
+  # is that of the stage's verification, and each JSON document is read from the store. The
+  # tab and the artifact page of a scenario's film or pictures show the same list.
+  @spec queue(map, [map], String.t(), integer | nil) :: [map]
+  def queue(work_item, artifacts, stage_id, take_in) do
+    {queue, _reads} = queue(work_item, artifacts, stage_id, take_in, %{})
+    queue
+  end
+
+  @doc false
+  # queue/5 is `queue/4` and `reads`, what the page read from the store before, by version
+  # (`stored_json/3`, `verification_parts/3`): a version never changes, so each is read
+  # once. It returns the scenarios and `reads` with what it read.
+  @spec queue(map, [map], String.t(), integer | nil, map) :: {[map], map}
+  def queue(work_item, artifacts, stage_id, take_in, reads) do
+    {commit, reads} = verified_commit(work_item, artifacts, stage_id, take_in, reads)
+
+    reads =
+      artifacts
+      |> documents(stage_id, take_in)
+      |> Enum.reduce(reads, &stored_json(&2, &1.public_id, &1))
+
+    {scenarios(artifacts, stage_id, take_in, commit, &Map.get(reads, {:json, &1.public_id})),
+     reads}
+  end
+
+  # The commit that the stage's verification verified: that of the newest version of the
+  # verification `main` made at the stage that a run of the take in wrote and no member
+  # cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for none.
+  defp verified_commit(work_item, artifacts, stage_id, take_in, reads) do
+    newest =
+      for %{type: "verification", name: "main"} = artifact <-
+            StageTab.of_take_in(artifacts, take_in),
+          versions = Enum.filter(artifact.versions, &(&1.stage_id == stage_id)),
+          %{withdrawn: false, number: number} <- [Artifacts.newest_counted(%{versions: versions})],
+          do: number
+
+    with [number] <- newest,
+         {%{commit: commit}, reads} <- verification_parts(work_item, number, reads) do
+      {commit, reads}
+    else
+      {nil, reads} -> {nil, reads}
+      [] -> {nil, reads}
+    end
+  end
+
+  @doc false
+  # verification_parts/3 is the parts of version `number` of `work_item`'s verification
+  # `main` (`verification/1`), nil for a text with none, read and parsed once per version
+  # in `reads`; it returns the parts and `reads`.
+  @spec verification_parts(map, pos_integer, map) :: {map | nil, map}
+  def verification_parts(work_item, number, reads) do
+    key = {:verification, number}
+
+    case reads do
+      %{^key => parts} ->
+        {parts, reads}
+
+      _unread ->
+        parts =
+          case Apiary.WorkItems.ExploreView.output(work_item, "verification", number) do
+            %{message: text} -> verification(text)
+            _none -> nil
+          end
+
+        {parts, Map.put(reads, key, parts)}
+    end
+  end
+
+  @doc false
+  # stored_json/3 is `reads` with the JSON document of the version whose public id is `id`,
+  # read once. A read the store could not do is not kept, so the next read tries again.
+  @spec stored_json(map, String.t(), map) :: map
+  def stored_json(reads, id, version) do
+    key = {:json, id}
+
+    case reads do
+      %{^key => _read} ->
+        reads
+
+      _unread ->
+        case Apiary.Stages.Artifacts.stored_json(version) do
+          {:ok, decoded} -> Map.put(reads, key, decoded)
+          {:error, :store_unavailable} -> reads
+        end
+    end
+  end
+
   defp evidence(artifacts, stage_id) do
     for %{type: "demo-evidence"} = artifact <- artifacts,
         version = at_stage(artifact, stage_id),
