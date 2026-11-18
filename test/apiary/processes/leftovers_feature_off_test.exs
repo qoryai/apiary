@@ -93,12 +93,13 @@ defmodule Apiary.Processes.LeftoversFeatureOffTest do
       end)
 
     {:ok, _closed} = WorkItems.close(scope, Repo.reload!(work_item))
-    refute_enqueued(worker: LeftoversJob)
 
-    {:ok, _job} =
-      Oban.insert(LeftoversJob.for_workspace(scope.organisation.id, scope.workspace.id))
+    # The checks read this workspace's jobs alone: a test that races changes outside the
+    # sandbox commits the jobs of its closes, which every test then sees (`Apiary.Races`).
+    args = %{"organisation_id" => scope.organisation.id, "workspace_id" => scope.workspace.id}
+    refute_enqueued(worker: LeftoversJob, args: args)
 
-    assert %{success: 1, failure: 0} = Oban.drain_queue(queue: :default)
+    assert :ok = perform_job(LeftoversJob, args)
     assert %ModelChoice{} = choice(scope)
     assert %TimeLimit{minutes: 45} = time_limit(scope)
   end
