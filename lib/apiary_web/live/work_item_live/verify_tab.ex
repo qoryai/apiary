@@ -816,7 +816,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @doc false
   # scenario_title/1 is a scenario's heading: "Scenario 2: Voucher line on a phone", else
-  # its title as written, else its artifact's name.
+  # its title as written, else its artifact's name, the type's words for `main`.
   @spec scenario_title(map) :: String.t()
   def scenario_title(%{number: number, title: title})
       when is_integer(number) and is_binary(title),
