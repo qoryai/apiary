@@ -2912,7 +2912,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # Whether a runtime's session events come from hooks, which a wall inside a virtual
   # machine cuts off: Claude Code's, and a run's before its first session names a runtime.
-  defp hooks?(runtime), do: runtime in [nil, "claude"]
+  defp hooks?(runtime), do: Timeline.hooks?(runtime)
 
   defp older_than?(%DateTime{} = at, seconds), do: DateTime.diff(DateTime.utc_now(), at) > seconds
   defp older_than?(_at, _seconds), do: false
@@ -4211,7 +4211,7 @@ defmodule ApiaryWeb.RunLive.Show do
       %{runtime: runtime} ->
         cond do
           other_runtime?(runtime) -> [{:other_runtime, runtime}]
-          limit in [:vm_wall, :no_hooks] -> [{limit, nil}]
+          limit in [:vm_wall, :no_hooks] and hooks?(runtime) -> [{limit, nil}]
           reason = not hooks?(run.runtime) && claude_limit(run, index, runtime) -> [{reason, nil}]
           true -> []
         end
