@@ -1436,6 +1436,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 <!-- feature: factory, secrets -->
 - The tier `fast` is now `balanced`.
+- A model choice for the workspace or the organisation's default needs a provider and a
+  model for each tier: Thinking, Balanced and Light. A tier's model is one of the
+  provider's models or suggestions.
+- A run takes its tiers from the model choice in effect alone, and its model and effort from
+  the Thinking tier.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- A workflow's model choice needs a provider and a model for each tier, as the workspace's
+  does, and has no fallbacks. While every key of a workflow's choice is in cooldown, the
+  run uses the workspace's choice, then that choice's fallbacks.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
