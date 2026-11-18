@@ -780,14 +780,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page shows “Set up a workspace first, then add a model provider in its Model step.” in
   place of the form, and adds nothing. For a Claude subscription, **About model
   providers** shows `claude setup-token` on a separate line, with **Copy command**.
-  **Workspace settings › Model** sets the model of the workspace's runs. Its field
-  suggests each provider's models from the models.dev list in the release, which the
-  Mix task
-  `apiary.models.update` writes before a release; Qory Apiary downloads nothing while it
-  runs. **Another model** takes any model id, and a model provider keeps no list of
-  models. A model choice also has a runtime: the **Runtime** field shows only while the
-  runtime catalogue has more than one, and the catalogue of this release has one,
-  `claude`. When the gateway had no model key for a run, the work item page puts “Add a
+  **Workspace settings › Model** sets the default models of the workspace's runs under
+  **Default models**: **Key**, each key of a model provider as “Anthropic API key ·
+  main”, then **Model and effort per tier**, a **Model** and an **Effort** for each of
+  Thinking, Balanced and Light. **Model** suggests the key's provider's models from the
+  models.dev list in the release, which the Mix task `apiary.models.update` writes
+  before a release; Qory Apiary downloads nothing while it runs. With the feature
+  `model_proxies` on, a key of a provider whose description lists no models, such as
+  LiteLLM, shows **Model per tier**, with a text field per tier for any model id and no
+  **Effort**. **Save** is enabled once every tier has a model. A model choice also has a
+  runtime: the **Runtime** field shows only while the runtime catalogue has more than
+  one, and the catalogue of this release has one, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
   Explore's tab and the Thread, in place of “The run ended with an error.”
 - **Workspace settings › Secrets and variables** lists the key of each model provider
