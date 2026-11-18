@@ -2304,10 +2304,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp framed(socket),
     do: assign(socket, frames: [], suite: nil, submissions: nil, submit_type: nil)
 
-  # The Submissions list, in place of the frame of the submission type with name `main`, on the tab of a
-  # stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab and where the
-  # work item has no submission to list. The rows have the address of their run's page where
-  # the reader may read runs (`Apiary.Submissions.list/4`).
+  # The Submissions list, in place of the frame of the submission type with name `main`,
+  # on the tab of a stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab
+  # and where the work item has no submission to list. The rows have the address of their
+  # run's page where the reader may read runs (`Apiary.Submissions.list/4`).
   defp submissions(%{assigns: %{view: %{stage: stage}, row: row} = assigns} = socket, frames) do
     reads = assigns.submission_reads
 
@@ -2338,10 +2338,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # The full test suite result under the build report's frame, from the newest verdict with a
-  # result of the run that wrote the shown report version (`Stages.full_suite/3`), and only
-  # where the tab has that frame (name `main`). Returns it and the reads kept so far (`suite_reads`, a verdict
-  # version's read by its public id, as `frame_texts` keeps a frame's text).
+  # The full test suite result under the build report's frame, from the newest verdict
+  # with a result of the run that wrote the shown report version (`Stages.full_suite/3`),
+  # and only where the tab has that frame (name `main`). Returns it and the reads kept so
+  # far (`suite_reads`, a verdict version's read by its public id, as `frame_texts` keeps
+  # a frame's text).
   defp suite(assigns, frames) do
     with %{version: number} <-
            Enum.find(frames, &(&1.type == "build-report" and &1.name == "main")),

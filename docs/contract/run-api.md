@@ -274,8 +274,9 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
-For the type in `submit.type` of the work item's process version, it reads the newest
-version a run wrote, as a person's version of that type is not a change.
+For the type in `submit.type` of the work item's process version, `changed_after_approval`
+compares the newest version a run wrote in place of `newest_version`, as a person's
+version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
