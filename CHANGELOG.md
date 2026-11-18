@@ -838,7 +838,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   OpenRouter.”. **Key** lists every key, whichever runtime is chosen. A change of **Key**
   keeps the runtime while the new provider works with it, else takes the first that does.
   A change of **Runtime** keeps the models, and an effort the runtime does not accept goes
-  back to “Not set”. With no model provider, the page shows “Add a model provider in
+  back to “Not set”. A saved choice whose provider no longer serves a runtime, or whose
+  settings no longer fit, keeps its key in **Key**, with the line of why under it, such
+  as “Choose another provider for Codex. Anthropic API key serves no request format that
+  Codex sends.”; no other key is chosen in its place, and **Save** writes nothing until
+  another key is chosen. With no model provider, the page shows “Add a model provider in
   Organisation settings › Model providers.” to whoever may add one, and who adds one to
   anyone else. The catalogue of this release has one runtime, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,

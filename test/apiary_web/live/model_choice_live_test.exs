@@ -1344,6 +1344,106 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     end
   end
 
+  describe "a saved choice whose provider no longer fits" do
+    # A second provider, OpenRouter, that fits, so the page has another key it could
+    # have chosen in place of the saved one.
+    defp saved_anthropic(scope, provider) do
+      {:ok, openrouter} =
+        Connections.create_provider(scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-model-page-0123456789"}]
+        })
+
+      {:ok, choice} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          tiers: @tiers
+        })
+
+      {openrouter, choice}
+    end
+
+    test "keeps its key, with the refusal of its runtime under Key; Save writes nothing",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      {openrouter, choice} = saved_anthropic(scope, anthropic)
+
+      # The catalogue now has only a bearer runtime, which Anthropic does not serve.
+      [release] = Runtimes.list()
+
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Runtimes.put_test_list([bearer])
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_key-options input[value="#{key(anthropic)}"][checked]}
+             )
+
+      refute has_element?(
+               lv,
+               ~s{#model_choice_key-options input[value="#{key(openrouter, "main")}"][checked]}
+             )
+
+      assert has_element?(lv, "#model-key-unfit", "Choose another provider for #{bearer.title}.")
+      refute has_element?(lv, "#model-runtime")
+
+      lv |> form("#model-form") |> render_submit()
+      again = choice(scope)
+      assert again.connection_id == anthropic.id
+      assert again.updated_at == choice.updated_at
+      assert has_element?(lv, "#model-key-unfit")
+
+      # Another key picked: the line goes.
+      lv |> form("#model-form", model_choice: %{key: key(openrouter, "main")}) |> render_change()
+      refute has_element?(lv, "#model-key-unfit")
+    end
+
+    test "keeps its key when its settings no longer fit, with that line under Key; Save writes nothing",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      {openrouter, choice} = saved_anthropic(scope, anthropic)
+
+      # Coded again, as a save codes it, so the row passes its integrity code.
+      Connections.Connection
+      |> Repo.get!(anthropic.id)
+      |> Ecto.Changeset.change(settings: ~s({"region":"eu"}))
+      |> Apiary.Kinds.Coded.seal()
+      |> Repo.update!()
+
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_key-options input[value="#{key(anthropic)}"][checked]}
+             )
+
+      refute has_element?(
+               lv,
+               ~s{#model_choice_key-options input[value="#{key(openrouter, "main")}"][checked]}
+             )
+
+      assert has_element?(
+               lv,
+               "#model-key-unfit",
+               "Add #{anthropic.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
+             )
+
+      refute has_element?(lv, "#model-changed-#{anthropic.public_id}")
+
+      lv |> form("#model-form") |> render_submit()
+      again = choice(scope)
+      assert again.connection_id == anthropic.id
+      assert again.updated_at == choice.updated_at
+    end
+  end
+
   # With no provider that serves the runtime, each line names the cause it is true for,
   # and none asks for a runtime that cannot be chosen.
   describe "with no provider that serves the runtime" do

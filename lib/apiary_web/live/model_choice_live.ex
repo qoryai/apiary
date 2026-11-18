@@ -110,18 +110,30 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # `described` is each applicable provider with its description, or why it has none
   # (`Apiary.Connections.provider/1`). The provider of the saved choice stays listed while
   # it is not offered, so a save keeps it unless the person chooses another; a new
-  # fallback row is not offered it (`left/2`).
+  # fallback row is not offered it (`left/2`). It stays listed too while it serves no
+  # runtime or its description cannot be read, with no runtimes and why (`unfit`), so Key
+  # keeps the saved key with a line under it (`key_line/1`) and no other key in its place.
   defp assign_providers(socket, name) do
     saved = socket.assigns.choice && socket.assigns.choice.connection_id
 
     providers =
-      for {provider, {:ok, description}} <- socket.assigns.described,
-          runtimes = Providers.runtimes(description),
-          runtimes != [],
-          offered <- [Providers.offered?(description)],
-          offered or provider.id == saved,
-          runtime = ModelTiers.runtime(runtimes, name),
-          do: %{
+      for {provider, read} <- socket.assigns.described,
+          entry <- provider_entries(provider, read, provider.id == saved, name),
+          do: entry
+
+    assign(socket, providers: providers, keys: ModelTiers.keys(providers, socket.assigns.choice))
+  end
+
+  defp provider_entries(provider, {:ok, description}, saved?, name) do
+    runtimes = Providers.runtimes(description)
+    offered = Providers.offered?(description)
+
+    cond do
+      runtimes != [] and (offered or saved?) ->
+        runtime = ModelTiers.runtime(runtimes, name)
+
+        [
+          %{
             provider: provider,
             runtimes: runtimes,
             runtime: runtime,
@@ -129,11 +141,65 @@ defmodule ApiaryWeb.ModelChoiceLive do
             models: ModelChoices.suggestions(provider, runtime),
             free: Connections.provider_models(description) == [],
             offered: offered,
-            serves: runtime.name == name
+            serves: runtime.name == name,
+            unfit: nil
           }
+        ]
 
-    assign(socket, providers: providers, keys: ModelTiers.keys(providers, socket.assigns.choice))
+      saved? ->
+        [unfit_entry(provider, description.title, {:runtimes, description})]
+
+      true ->
+        []
+    end
   end
+
+  defp provider_entries(provider, {:error, why}, true, _name),
+    do: [unfit_entry(provider, provider.name, why)]
+
+  defp provider_entries(_provider, {:error, _why}, false, _name), do: []
+
+  defp unfit_entry(provider, title, why),
+    do: %{
+      provider: provider,
+      runtimes: [],
+      runtime: nil,
+      title: title,
+      models: [],
+      free: false,
+      offered: false,
+      serves: false,
+      unfit: why
+    }
+
+  # The line under Key while it is the saved choice's key and its provider serves no
+  # runtime, or its description cannot be read: the refusal a save would give it
+  # (`Apiary.ModelChoices.serves/3`), or the page's line of why the provider serves
+  # nothing (`unserved_text/2`); nil for any other key. A check that ran out of time or
+  # crashed has no line: the next read checks it again.
+  defp key_line(%{key: %{provider: provider}, providers: providers} = assigns) do
+    case provider_entry(providers, provider) do
+      %{unfit: {:runtimes, description}} ->
+        case ModelChoices.serves(description, assigns.runtime, provider.name) do
+          {:error, error} -> translate_error(error)
+          :ok -> nil
+        end
+
+      %{unfit: :provider_changed} ->
+        unserved_text({:changed, provider}, assigns.current_scope)
+
+      %{unfit: :provider_unchecked} ->
+        nil
+
+      %{unfit: why} when not is_nil(why) ->
+        unserved_text({:unknown, provider}, assigns.current_scope)
+
+      _fits ->
+        nil
+    end
+  end
+
+  defp key_line(_assigns), do: nil
 
   # The runtime of the form for `key`: the one named `name` while the key's provider
   # serves it, else the first it serves; with no key, the one named `name`, else the
@@ -141,10 +207,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp settle(socket, key, name) do
     runtime =
       case key && provider_entry(socket.assigns.providers, key.provider) do
-        %{runtime: runtime} ->
+        %{runtime: runtime} when not is_nil(runtime) ->
           runtime
 
-        nil ->
+        # No key, or the saved key whose provider serves no runtime: the runtime named.
+        _none ->
           case ModelChoices.runtime(name) do
             {:ok, runtime} -> runtime
             :error -> ModelChoices.default_runtime()
@@ -177,9 +244,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
       do: gone ++ [:none],
       else: gone
   end
-
-  # Whether a save names the runtime: while the catalogue has more than one. With one,
-  # the choice names none, and its runs use that one.
 
   defp applies?(%Connection{applies_to: "all"}, _workspace_id), do: true
 
@@ -518,6 +582,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
       socket.assigns.key == nil ->
         {:noreply, assign_form(socket, params, key: {"is invalid", []})}
 
+      # The saved key, kept while its provider serves no runtime: its line under Key says
+      # why, and nothing is written.
+      key_line(socket.assigns) != nil ->
+        {:noreply, assign_form(socket, params, [])}
+
       # Save is disabled while a fallback's provider does not serve the runtime: a save
       # sent all the same writes nothing.
       unfit_rows?(socket.assigns) ->
@@ -630,6 +699,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
             keep: true
           }
         ]
+
+  # Whether `line` is of the saved choice's provider, whose line shows under Key.
+  defp saved_line?({_cause, %Connection{id: id}}, %ModelChoice{connection_id: id}), do: true
+  defp saved_line?(_line, _choice), do: false
 
   defp line_id({cause, %Connection{public_id: id}}), do: "model-#{cause}-#{id}"
   defp line_id(cause), do: "model-#{cause}"
@@ -895,9 +968,13 @@ defmodule ApiaryWeb.ModelChoiceLive do
               {gettext("Runs use this key and these models when their workflow sets none.")}
             </p>
           </div>
-          <div :if={@providers == []} id="model-unserved" class="space-y-1">
+          <div
+            :if={not Enum.any?(@providers, &(&1.runtimes != []))}
+            id="model-unserved"
+            class="space-y-1"
+          >
             <p
-              :for={line <- unserved(@described)}
+              :for={line <- Enum.reject(unserved(@described), &saved_line?(&1, @choice))}
               id={line_id(line)}
               class="text-[13.5px]/5 text-muted"
             >
@@ -912,6 +989,14 @@ defmodule ApiaryWeb.ModelChoiceLive do
             options={ModelTiers.key_options(@keys)}
             disabled={!@writes}
           />
+          <p
+            :if={key_line(assigns)}
+            id="model-key-unfit"
+            class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+          >
+            <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+            <span><.rich text={key_line(assigns)} /></span>
+          </p>
           <ModelTiers.tiers
             :if={@key}
             id="model-tiers"
