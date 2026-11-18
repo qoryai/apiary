@@ -476,8 +476,8 @@ defmodule Apiary.Processes do
   defp shared_model_errors(document, models) do
     for {stage, index} <- Enum.with_index(document["stages"]),
         shared_run?(stage),
-        {:error, {kind, _detail} = detail} <- [shared_models(stage, models)],
-        do: %{path: "#/stages/#{index}", error: kind, detail: detail}
+        {:error, detail} <- [shared_models(stage, models)],
+        do: %{path: "#/stages/#{index}", error: elem(detail, 0), detail: detail}
   end
 
   @doc """

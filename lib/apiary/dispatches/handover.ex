@@ -955,7 +955,7 @@ defmodule Apiary.Dispatches.Handover do
   defp shared_models(dispatch_run) do
     case Apiary.Stages.shared_models(dispatch_run) do
       :ok -> :ok
-      {:error, %{detail: {cause, _detail}}} -> {:end, cause}
+      {:error, %{detail: detail}} -> {:end, elem(detail, 0)}
     end
   end
 
