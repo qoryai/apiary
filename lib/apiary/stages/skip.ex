@@ -1,9 +1,10 @@
 defmodule Apiary.Stages.Skip do
   # A workflow entry of a stage, or a whole stage, that the stage runner passed over, with
   # no run (`Apiary.Stages.Runner`). Either a condition held it back, `{input: T}` (`input`
-  # is the type) or `{track: ID}` (`track` is the id), or a first attempt before it passed
-  # (`reason` is `first_attempt_passed`, and `cause_entry` is the name of that entry, else
-  # its workflow). Exactly one of `input`, `track` and `reason` is set. `changed` is true
+  # is the type), `{track: ID}` (`track` is the id) or `{feedback: new}` (`reason` is
+  # `feedback`), or a first attempt before it passed (`reason` is `first_attempt_passed`,
+  # and `cause_entry` is the name of that entry, else its workflow). Exactly one of
+  # `input`, `track` and `reason` is set. `changed` is true
   # where a workflow entry's condition was `{input: T, changed: true}`, with `input` the
   # type `T`; it is false for every other row. `negated` is true
   # where the condition was an `unless` that was met; for a `when`, the condition was not

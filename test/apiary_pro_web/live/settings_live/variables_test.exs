@@ -11,6 +11,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   # suite's one instance organisation.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import ApiaryPro.OperatorsFixtures
@@ -24,7 +25,10 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   # The organisation's variables need `secrets`: they run only where both are on.
   @moduletag needs: :organisation_variables
 
-  @not_in_runs "A run receives only its security policy."
+  # The page's sentence in a software workspace, which says "repository" for the engine's
+  # "target", and in a workspace of another domain, which keeps the engine's word.
+  @not_in_runs "A run receives the variables that its workspace and repository inherit from this organisation, as they are when it starts. A later change reaches the next run."
+  @not_in_runs_engine "A run receives the variables that its workspace and target inherit from this organisation, as they are when it starts. A later change reaches the next run."
 
   setup :register_and_log_in_user
 
@@ -220,6 +224,24 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert has_element?(
                lv,
                "#variable-#{region.id}-delete[aria-label='Delete variable REGION']"
+             )
+    end
+
+    test "says the engine's word for a repository in a workspace of another domain", ctx do
+      Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.scope.workspace.id),
+        set: [domain: "example"]
+      )
+
+      {:ok, lv, _html} = live(ctx.conn, list_path(ctx.scope))
+
+      assert has_element?(lv, "#variables-not-in-runs", @not_in_runs_engine)
+      refute has_element?(lv, "#variables-not-in-runs", @not_in_runs)
+
+      assert has_element?(
+               lv,
+               "#variables-not-in-runs",
+               "Qory Apiary keeps the variables and works out what each workspace and target inherits."
              )
     end
 
@@ -469,7 +491,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
 
       Repo.insert_all(
         Variable,
-        for n <- 1..127 do
+        for n <- 1..125 do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: ctx.scope.organisation.id,
@@ -482,7 +504,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
         end
       )
 
-      # Main's own name, and the organisation's 127: one more is over in Main.
+      # Main's own name, and the organisation's 125: one more is over in Main.
       own!(ctx.scope.workspace, nil, "OWN", "x")
       {:ok, lv, _html} = live(ctx.conn, list_path(ctx.scope) <> "/new")
 
@@ -493,10 +515,12 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert has_element?(
                lv,
                "#variable-form",
-               "would raise a repository's variables in #{ctx.scope.workspace.name} above 128"
+               "Remove variables at any level until each repository has at most 126." <>
+                 " A run takes at most 126 variables, and this change would raise a repository's" <>
+                 " variables in #{ctx.scope.workspace.name} above 126."
              )
 
-      # And the organisation's own 128, with no workspace to blame.
+      # And the organisation's own 126, with no workspace to blame.
       Repo.delete_all(Variables.Variable)
       create!(ctx.scope, "ONE_MORE", "x")
       {:ok, lv, _html} = live(ctx.conn, list_path(ctx.scope) <> "/new")
@@ -505,7 +529,13 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       |> form("#variable-form", variable: %{name: "TWO_MORE", value: "x"})
       |> render_submit()
 
-      assert has_element?(lv, "#variable-form", "would raise a repository's variables above 128")
+      assert has_element?(
+               lv,
+               "#variable-form",
+               "Remove variables at any level until each repository has at most 126." <>
+                 " A run takes at most 126 variables, and this change would raise a repository's" <>
+                 " variables above 126."
+             )
     end
 
     test "the back end's refusal naming a workspace shows under its field", ctx do

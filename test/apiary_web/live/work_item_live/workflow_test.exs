@@ -1626,7 +1626,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       for {result, shows} <- [
             {understood_result(), "#work-item-explore-proposal"},
-            {questions_result(), "#work-item-explore-questions-line"},
+            {questions_result(), "#work-item-explore-questions-open"},
             {nil, "#work-item-explore-none"}
           ],
           {state, status} <- [handed_over: :running, queued: :queued] do
@@ -1899,9 +1899,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-answers")
       assert length(String.split(html, "Answer the questions")) == 2
 
+      # The link goes to the frame Open questions of Explore's tab.
       assert has_element?(
                view,
-               ~s|#work-item-step a[href$="/questions"]|,
+               ~s|#work-item-step a[href$="#work-item-explore-questions-open"]|,
                "Answer the questions"
              )
 
@@ -2140,16 +2141,21 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-needs textarea")
       refute has_element?(view, "#work-item-stage-escalation-another")
 
-      # The block, then the proposal of run 1, from an earlier round. The questions are on
-      # the Questions tab, as one line here.
-      [needs, proposal] =
-        for id <- ["work-item-needs", "work-item-explore-proposal"],
+      # The block, then the proposal of run 1, from an earlier round, then the frame Open
+      # questions with both questions, and no line that counts them.
+      [needs, proposal, open] =
+        for id <- [
+              "work-item-needs",
+              "work-item-explore-proposal",
+              "work-item-explore-questions-open"
+            ],
             do: :binary.match(html, ~s|id="#{id}"|) |> elem(0)
 
-      assert needs < proposal
+      assert needs < proposal and proposal < open
       assert html =~ "Version 1 · from an earlier round"
-      refute has_element?(view, "#work-item-explore-questions-question-1")
-      assert has_element?(view, "#work-item-explore-questions-line")
+      assert has_element?(view, "#work-item-explore-questions-question-1")
+      assert has_element?(view, "#work-item-explore-questions-question-2")
+      refute has_element?(view, "#work-item-explore-questions-line")
 
       {:ok, questions_view, _html} = live(conn, page(scope, work_item.number) <> "/questions")
       assert has_element?(questions_view, "#work-item-questions-question-1")

@@ -65,8 +65,12 @@ defmodule Apiary.Dispatches.Handover do
   #      variables of the target, and of the further paths its runs also read where the
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
   #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #      `variables_invalid`; an explore run whose work item's ticket is no longer kept,
-  #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
+  #      `variables_invalid`, as do the variables of a run that is not a prebuild, from its
+  #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
+  #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
+  #      prebuild gets none of them, and no refusal for them; an explore run whose
+  #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
+  #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
   #      `inputs_invalid`; a run of a stage whose workflows share one run, whose
@@ -110,8 +114,11 @@ defmodule Apiary.Dispatches.Handover do
   # target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and
   # gives the run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`)
   # with its QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run,
-  # its work item, its run variables (`registration_variables`), none where the domain
-  # gives none, for a continuation of a paused run its `resume`
+  # its work item, its run variables (`registration_variables`: the domain's, and for a
+  # run that is not a prebuild the variables of its workspace and target as they are at
+  # the claim, `Apiary.Variables.for_run/2`; none where there are none), for a
+  # continuation of a
+  # paused run its `resume`
   # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
   # the claim's body, with no heartbeat interval, no answer digest and no contract version
   # until its attach; with the gateway and a run code in place of a run key
@@ -166,9 +173,7 @@ defmodule Apiary.Dispatches.Handover do
   # records that commit.
   #
   # A run with a workflow, a target and write access, once lowered, whose process version
-  # has a submit step has `submit` in its documents, and `submit_module` too where the
-  # adapter of its forge declared one (`submitted/4`). A claim never ends a run because
-  # no adapter declared a submit_module.
+  # has a submit step has `submit` in its documents (`submitted/3`).
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
@@ -216,7 +221,8 @@ defmodule Apiary.Dispatches.Handover do
     PublicId,
     Repo,
     Runs,
-    Targets
+    Targets,
+    Variables
   }
 
   alias Apiary.AccessKeys.AccessKey
@@ -803,9 +809,9 @@ defmodule Apiary.Dispatches.Handover do
   # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
   # none, or the cause its run of the queue ends for. A run with access `write` has a push
   # entry beside it (`Apiary.Runs.RunCredentials.push_from/3`). An explore run's entry
-  # comes from the collection the claim read once (`work_collection/3`), from which
-  # `submitted/4` takes the submit_module, and which `with_collection/2` puts in the
-  # formed run; a prebuild's from the collection it builds, and reads.
+  # comes from the collection the claim read once (`work_collection/3`), which
+  # `with_collection/2` puts in the formed run; a prebuild's from the collection it builds,
+  # and reads.
   defp with_work({:ok, %{answer: answer} = formed}) do
     level = Map.get(answer, :access, :read)
 
@@ -870,8 +876,7 @@ defmodule Apiary.Dispatches.Handover do
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
-         harness =
-           harness |> with_level(level) |> submitted(dispatch_run, target, collection),
+         harness = harness |> with_level(level) |> submitted(dispatch_run, target),
          {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
       session = session_members(dispatch_run, held, level)
 
@@ -943,8 +948,8 @@ defmodule Apiary.Dispatches.Handover do
   defp with_cooling({:ok, formed}, cooling), do: {:ok, Map.put(formed, :cooling, cooling)}
   defp with_cooling(not_formed, _cooling), do: not_formed
 
-  # The collection the run's work entry comes from, as the claim read it once for the
-  # run's submit_module (`submitted/4`), so `with_work/1` forms the entry from it too.
+  # The collection the run's work entry comes from, as the claim read it once, so
+  # `with_work/1` forms the entry from it.
   defp with_collection({:ok, formed}, collection),
     do: {:ok, Map.put(formed, :work_collection, collection)}
 
@@ -1115,33 +1120,21 @@ defmodule Apiary.Dispatches.Handover do
 
   # The submit step of a run with a workflow, a target and the access level `write`, once
   # lowered (`with_level/2`): `submit`, `%{type:, send:}`, from the template record of
-  # the run's process version (`Apiary.Processes.harness_template/1`), where it has one;
-  # and `submit_module`, the harness module with the submit program that the latest
-  # start-up of the adapter of the run's forge declared, nil for none: the adapter of
-  # `collection`, the collection the run's work entry comes from
-  # (`Apiary.Runs.RunCredentials.submit_module/1`). A claim never ends a run for having
-  # no submit_module. Any other run, a run lowered to `read` and a run whose process
-  # version has no submit get neither.
-  defp submitted(
-         %{workflow: workflow, access: :write} = harness,
-         dispatch_run,
-         target,
-         collection
-       )
+  # the run's process version (`Apiary.Processes.harness_template/1`), where it has one.
+  # Any other run, a run lowered to `read` and a run whose process version has no submit
+  # get none.
+  defp submitted(%{workflow: workflow, access: :write} = harness, dispatch_run, target)
        when is_binary(workflow) and is_map(target) do
     case Processes.harness_template(dispatch_run.process_version_id) do
       %{"submit" => %{"type" => type, "send" => send}} ->
-        Map.merge(harness, %{
-          submit: %{type: type, send: send},
-          submit_module: RunCredentials.submit_module(collection)
-        })
+        Map.put(harness, :submit, %{type: type, send: send})
 
       _none ->
         harness
     end
   end
 
-  defp submitted(harness, _dispatch_run, _target, _collection), do: harness
+  defp submitted(harness, _dispatch_run, _target), do: harness
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain. `session` is the members of the
@@ -1150,15 +1143,17 @@ defmodule Apiary.Dispatches.Handover do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
-    with {:variables, {:ok, variables}} <-
+    with {:variables, {:ok, own}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
+         {:resolved, {:ok, variables}} <-
+           {:resolved, resolved(dispatch_run, workspace, target, own)},
          {:inputs, {:ok, inputs}} <- {:inputs, inputs.(domain)} do
       about = about(dispatch_run, work_item)
       :ok = About.validate(about)
 
       {:ok,
        %{
-         labels: labels(workspace, target, variables),
+         labels: labels(workspace, target, own),
          about: about,
          variables: variables,
          workspace: workspace,
@@ -1177,9 +1172,43 @@ defmodule Apiary.Dispatches.Handover do
        }}
     else
       {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
+      {:resolved, {:error, refusal}} -> resolved_ended(dispatch_run, work_item, refusal)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
       {:inputs, {:error, cause}} -> {:end, cause}
     end
+  end
+
+  # The run's variables: `own`, its two names (nil without a target or in a domain that
+  # sets none), and what its workspace and target resolve to (`Apiary.Variables.for_run/2`),
+  # read now and kept with the run, within the contract's limits. A prebuild has `own`
+  # only: its image is shared by the organisation's workspaces, so no workspace's value
+  # goes into it, and it is never refused for their count or size.
+  defp resolved(%DispatchRun{step: @prebuild}, _workspace, _target, own), do: {:ok, own}
+
+  defp resolved(_dispatch_run, workspace, target, own) do
+    row = target && target_row(workspace, target)
+    RunVariables.with_resolved(own, Variables.for_run(workspace, row))
+  end
+
+  # A run whose resolved variables are too many, too large, or break the contract's rule
+  # for a variable ends `variables_invalid`. Its `end_detail` is `names_<count>` or
+  # `bytes_<bytes>`, which the stop cause and the work item's words read; a broken rule
+  # has none, and the log names the variable, never its value.
+  defp resolved_ended(dispatch_run, work_item, refusal) do
+    {detail, found} =
+      case refusal do
+        {:too_many_names, count} -> {"names_#{count}", "names=#{count}"}
+        {:too_large, bytes} -> {"bytes_#{bytes}", "bytes=#{bytes}"}
+        {:invalid, name} -> {nil, "variable=#{name}"}
+      end
+
+    Logger.warning(
+      "a claim ended a run before it started, because its variables break a limit " <>
+        "end_cause=variables_invalid run_id=#{dispatch_run.run_id} " <>
+        "work_item=#{work_item && work_item.public_id} #{found}"
+    )
+
+    {:end, if(detail, do: {:variables_invalid, detail}, else: :variables_invalid)}
   end
 
   # A run whose run variables break a rule ends `variables_invalid`, with one line in the
@@ -1300,20 +1329,25 @@ defmodule Apiary.Dispatches.Handover do
   # where the workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
   defp further_repositories(_workspace, nil), do: []
 
-  defp further_repositories(
-         %Workspace{id: workspace_id, organisation_id: organisation_id} = workspace,
-         %{system: system, path: path}
-       ) do
-    found =
-      Repo.one(
-        from t in Target,
-          where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
-          where: t.system == ^system and t.path == ^path
-      )
+  defp further_repositories(workspace, %{system: _system, path: _path} = target) do
+    found = target_row(workspace, target)
 
     if found && Domain.paths_label(workspace),
       do: Targets.further_repositories(found),
       else: []
+  end
+
+  # The workspace's row of the run's target, nil where it has none yet: read without a
+  # lock.
+  defp target_row(
+         %Workspace{id: workspace_id, organisation_id: organisation_id},
+         %{system: system, path: path}
+       ) do
+    Repo.one(
+      from t in Target,
+        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
+        where: t.system == ^system and t.path == ^path
+    )
   end
 
   # A prebuild's collection's target, while the collection is live, assigned to the run's
@@ -1356,7 +1390,11 @@ defmodule Apiary.Dispatches.Handover do
   # write (`Apiary.Dispatches.Settle`). The workspaces whose queue or slots changed.
   # Inside the transaction that holds the run of the queue.
   @doc false
-  @spec end_claimed(DispatchRun.t(), atom | {:harness_unresolved, atom}, DateTime.t()) ::
+  @spec end_claimed(
+          DispatchRun.t(),
+          atom | {:harness_unresolved, atom} | {:variables_invalid, String.t()},
+          DateTime.t()
+        ) ::
           [Ecto.UUID.t()]
   def end_claimed(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now) do
     {cause, ended} =
@@ -1365,6 +1403,11 @@ defmodule Apiary.Dispatches.Handover do
         # end's detail, and the run gave an error.
         {:harness_unresolved, code} ->
           {:harness_unresolved, [end_detail: Atom.to_string(code), result_outcome: :error]}
+
+        # Variables of a run beyond a limit (`resolved_ended/3`): the count or the size is
+        # the end's detail.
+        {:variables_invalid, detail} ->
+          {:variables_invalid, [end_detail: detail] ++ gave(run, :variables_invalid)}
 
         cause ->
           {cause, gave(run, cause)}

@@ -398,8 +398,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   # Whether the current stage's tab has the questions open: some question is open, of any
-  # stage. The Questions tab then holds the decisions of the current stage in its form, so
-  # that tab's Decisions frame is empty.
+  # stage. The form of the Open questions frame, on this tab and on the Questions tab,
+  # then has the decisions of the current stage, so the tab's Decisions frame is empty.
   defp waiting?(flow, stage, questions),
     do: stage.id == flow.stage.id and Enum.any?(questions, &(&1.state == :open))
 
@@ -461,12 +461,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # `version` is the version's number; `writer`, for the frame's caption, is the short name
   # of the member who made it where a person did (`ApiaryWeb.People.short/1`), "Former
   # member" for an account that is gone, else nil. `kind` is `:output`. The review
-  # comments, the document a review comment is written to, have no frame, nor do the
-  # questions, which are on the Questions tab.
+  # comments, the document a review comment is written to, have no frame.
   @spec frames([map]) :: [map]
   def frames(recorded) do
     recorded
-    |> Enum.reject(&(&1.type in ["review-comments", "questions"]))
+    |> Enum.reject(&(&1.type == "review-comments"))
     |> Enum.with_index()
     |> Enum.map(fn {%{type: type, name: name, version: version}, place} ->
       %{
@@ -519,18 +518,14 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # `verification` output (`verify?/1`), in its order, with the newest version a run of the
   # take in pushed at the stage of each type (`newest`): `%{type:, name:, version:, open:,
   # writer:, kind:}`, `name` `main` and `writer` nil, every frame open. A type with no such
-  # version has no frame, nor do the review comments and the questions. The scenarios' films
-  # and pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind
-  # `:scenarios`, in the place of the first, with the highest of their versions; each output
-  # other than the verification is a frame of the kind `:row`, with its version and its
-  # artifact rows, and no text; the verification's frame is of the kind `:output`.
+  # version has no frame, nor do the review comments. The scenarios' films and pictures
+  # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind `:scenarios`,
+  # in the place of the first, with the highest of their versions; each output other than
+  # the verification is a frame of the kind `:row`, with its version and its artifact rows,
+  # and no text; the verification's frame is of the kind `:output`.
   @spec verify_frames(map, %{String.t() => pos_integer}) :: [map]
   def verify_frames(stage, newest) do
-    types =
-      Enum.filter(
-        stage.outputs,
-        &(Map.has_key?(newest, &1) and &1 not in ["review-comments", "questions"])
-      )
+    types = Enum.filter(stage.outputs, &(Map.has_key?(newest, &1) and &1 != "review-comments"))
 
     media = Enum.filter(types, &(&1 in VerifyTab.media()))
 

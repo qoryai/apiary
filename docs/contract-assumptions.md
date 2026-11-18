@@ -405,10 +405,13 @@ workspace, and a gateway that may not serve the run's workspace, are refused
 The claim registers the run, in the claim's transaction, with the run of the queue and
 its dispatch held, through the gateway the pool's choice resolves to: the run's `run_id`
 is the one the run of the queue was given, and so is its instance id; its labels and its
-run variables come from the target, the work item's or the prebuild's collection's, and
-what it is about from the step and the work item, never from the request; a prebuild's
-input is the `environment_ref` its run of the queue was queued for. The claim encodes
-the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
+run variables come from the target, the work item's or the prebuild's collection's, with
+the variables its workspace and target resolve to when the claim registers it
+(`Apiary.Variables.for_run/2`; a prebuild gets none of them, because its image is shared by
+the organisation's workspaces), and what it is about from the step and the work item,
+never from the request; a prebuild's input is the `environment_ref` its run of the queue
+was queued for. The claim encodes the run's documents once (the run contract's
+`documents.schema.json`: `step`, `domain`,
 `access` (`read`, `write-no-push` or `write`) and `target` together or neither,
 `work_item`, `run_settings`, `stack`, `workflow` and `harness_hidden` together or none,
 and `inputs`) and keeps the bytes on the registered run (`runs.run_documents`); every
@@ -452,7 +455,8 @@ run of the queue and its dispatch in the claim's transaction and claims the next
 that waits: a prebuild's collection ended, moved to another workspace, unassigned or
 left without a target (`collection_ended`), a prebuild of an `environment_ref` its
 collection no longer has (`superseded`), run variables that break their rules for the
-target (`variables_invalid`), a work item whose ticket is no longer kept
+target, or, for a run of a work item, more variables of its workspace and target than a run
+takes, 126 names or 64 KiB (`variables_invalid`), a work item whose ticket is no longer kept
 (`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
 item with no target in a domain that requires one (`inputs_invalid`).
 
@@ -933,10 +937,18 @@ the paused run's place in the queue, its `continues_id` the paused run. It queue
 a prebuild, for a work item no longer in Explore, at another take in or placed at another
 stage, when the work item's stage does not run, such as one that waits for a person, or
 while another run of the take in has not ended. The paused run keeps
-`paused_until`, the earliest end of a cooldown among its provider's keys, when every one
-of them is in cooldown then. The claim of the continuation stores its `resume`
-(`Apiary.Runs.Transcript.resume_at_claim/1`): the paused run's id, and `session_id` and
-`path` of the paused run's last `dev.qory.session.transcript` by sequence.
+`paused_until`, the earliest end of a cooldown among the keys of the provider of the
+session that paused (`Apiary.Runs.Run.session_provider_ids/2`), when every one of them is
+in cooldown then. The session that paused is the one whose `dev.qory.session.exited` is
+`paused` with `model_key_limit`, or `cancelled` with `model_key_limit` from a gateway of
+the earlier contract, which the projection folds into the run (`runs.paused_session`);
+Forager pauses only the last session of a run. The claim of the
+continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/1`): the paused
+run's id, and `session_id` and `path` of the last `dev.qory.session.transcript` by
+sequence of the session that paused, whatever chunks of other sessions arrived after it.
+If the session that paused sent no chunk, the continuation has no `resume` and starts a
+new session. A paused run with no such `dev.qory.session.exited` resumes its last chunk
+of any session.
 `resume.runs` contains every paused run the continuation continues, found through each
 run's `continues_id`, oldest first: the last is `run_id`, the continuation is not among
 them, and of a chain of more than 256 runs only the newest 256 are listed. The registration
@@ -1320,7 +1332,9 @@ else, in a run whose sessions are all bare, the one with the lowest sequence. So
 session such as a git step leaves the agent's values on the run, in any order of arrival.
 Its log chunks are projected as any session's, and its number is stored with the event. The
 projection reads the optional `peak_memory_bytes` and `cpu_time_ms` from each
-`dev.qory.session.exited` (`Apiary.Runs.Fold`). The run's `dev.qory.run.exited`, one per
+`dev.qory.session.exited` (`Apiary.Runs.Fold`), and the `session` of one that is `paused`
+with `model_key_limit`, or `cancelled` with `model_key_limit` from a gateway of the earlier
+contract: the session where the run paused. The run's `dev.qory.run.exited`, one per
 run, has `state` and `exit_code`. A session's
 `dev.qory.run.log`, `dev.qory.run.resized` and runtime events carry its number as
 `session`, which is stored with the event; the projection reads it on a resize alone, to

@@ -23,8 +23,9 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Processes
   alias Apiary.Processes.Version
   alias Apiary.Repo
-  alias Apiary.Runs.{ReadNeeds, Run, Target, WriteNeeds}
+  alias Apiary.Runs.{ReadNeeds, Run, RunVariables, Target, WriteNeeds}
   alias Apiary.Targets
+  alias Apiary.Variables.Resolution
   alias Apiary.WorkItems.WorkItem
 
   @prebuild "prebuild"
@@ -609,6 +610,12 @@ defmodule Apiary.Stages.StopCause do
 
   # A run variable that breaks its rule, found again from the work item's target as the
   # claim formed it (`Apiary.Dispatches.Handover`).
+  defp variables(%DispatchRun{end_detail: "names_" <> count}, n),
+    do: variables_over(count, n, &too_many_names/1)
+
+  defp variables(%DispatchRun{end_detail: "bytes_" <> bytes}, n),
+    do: variables_over(bytes, n, &too_large/1)
+
   defp variables(run, n) do
     case variable_rule(n) do
       :system_invalid ->
@@ -629,6 +636,29 @@ defmodule Apiary.Stages.StopCause do
          "Owners and admins of #{n.workspace} correct the targets its runs also read, on the page of target #{n.target}, under Targets."}
     end
   end
+
+  # The variables of the run's workspace and target that a run takes no more of: the
+  # claim kept their count, or their size in bytes, as the end's detail
+  # (`Apiary.Dispatches.Handover`); a detail that is no number reads as a rule broken.
+  defp variables_over(number, n, words) do
+    case Integer.parse(number) do
+      {number, ""} when number > 0 ->
+        {words.(number),
+         "Owners and admins of #{n.workspace} remove variables on the Variables page of the workspace or its organisation, then start the run again."}
+
+      _none ->
+        {"The run did not start, because one of its variables breaks its rule.", support(n)}
+    end
+  end
+
+  defp too_many_names(count),
+    do:
+      "The run did not start: it has #{count} variables, and a run takes at most #{RunVariables.max_resolved()}."
+
+  # The size in whole KiB, rounded up, so a size over the limit never reads as the limit.
+  defp too_large(bytes),
+    do:
+      "The run did not start: its variables take #{div(bytes + 1023, 1024)} KiB, and a run takes at most #{div(Resolution.max_bytes(), 1024)} KiB."
 
   defp variable_rule(%{work_item: %WorkItem{target_system: system, target_path: path}} = n)
        when is_binary(system) do

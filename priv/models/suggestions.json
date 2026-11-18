@@ -42,6 +42,26 @@
     {"id": "deepseek-v4-pro", "title": "DeepSeek V4 Pro"}
   ],
   "litellm": [],
+  "openai": [
+    {"id": "gpt-6-astra", "title": "GPT-6 Astra"},
+    {"id": "gpt-6-luna", "title": "GPT-6 Luna"},
+    {"id": "gpt-6.1-sol", "title": "GPT-6.1 Sol"},
+    {"id": "gpt-6.1-terra", "title": "GPT-6.1 Terra"},
+    {"id": "gpt-6.2-astra", "title": "GPT-6.2 Astra"},
+    {"id": "gpt-6.2-sol", "title": "GPT-6.2 Sol"}
+  ],
+  "openai-subscription": [
+    {"id": "gpt-5.6-luna", "title": "GPT-5.6 Luna"},
+    {"id": "gpt-5.6-sol", "title": "GPT-5.6 Sol"},
+    {"id": "gpt-5.6-terra", "title": "GPT-5.6 Terra"},
+    {"id": "gpt-6-astra", "title": "GPT-6 Astra"},
+    {"id": "gpt-6-luna", "title": "GPT-6 Luna"},
+    {"id": "gpt-6-sol", "title": "GPT-6 Sol"},
+    {"id": "gpt-6.1-sol", "title": "GPT-6.1 Sol"},
+    {"id": "gpt-6.1-terra", "title": "GPT-6.1 Terra"},
+    {"id": "gpt-6.2-astra", "title": "GPT-6.2 Astra"},
+    {"id": "gpt-6.2-sol", "title": "GPT-6.2 Sol"}
+  ],
   "openrouter": [
     {"id": "aion-labs/aion-2.0", "title": "Aion-2.0"},
     {"id": "aion-labs/aion-3.0", "title": "Aion-3.0"},

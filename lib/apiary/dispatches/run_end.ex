@@ -81,7 +81,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
   # `run_ended` as any exit ends it, and then, in the same transaction, the run that
   # continues it is queued (`Apiary.Dispatches.requeue_for_pause/2`), with the earliest
-  # end of a cooldown of its provider's keys kept on it when every one of them is in
+  # end of a cooldown of the keys of the provider of the session that paused
+  # (`Apiary.Runs.Run.session_provider_ids/2`) kept on it when every one of them is in
   # cooldown then (`Apiary.ModelKeys.cooling_until/2`). The stage runner then reads the
   # continuation as the stage's newest run, so the paused run's end moves no stage. Its
   # work item is held `FOR UPDATE` (`hold/1`), as for a missing image; an end that finds
@@ -447,7 +448,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
     if Run.paused?(run) and not Run.cancel_requested?(run) do
-      providers = if run.provider_connection_id, do: [run.provider_connection_id], else: []
+      providers = Run.session_provider_ids(run, run.paused_session)
 
       case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do
         {:ok, next} -> [next.workspace_id | Settle.told(next.work_item_id)]

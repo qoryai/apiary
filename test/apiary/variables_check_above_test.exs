@@ -90,18 +90,18 @@ defmodule Apiary.VariablesCheckAboveTest do
     for i <- 1..5, do: set!(scope, :workspace, "W#{i}", "")
     for i <- 1..5, do: set!(other, :workspace, "W#{i}", "")
     for i <- 1..3, do: set!(scope, site, "T#{i}", "")
-    set = for i <- 1..120, do: above("O#{i}", "")
+    set = for i <- 1..118, do: above("O#{i}", "")
 
-    # 125 names for each workspace, 128 for the repository: the limit.
+    # 123 names for each workspace, 126 for the repository: the limit.
     assert Variables.check_above([second, first], set) == :ok
 
     # One more takes the repository over, and neither workspace.
-    one_more = set ++ [above("O121", "")]
+    one_more = set ++ [above("O119", "")]
     assert {:error, {:too_many_names, ^first}} = Variables.check_above([second, first], one_more)
     assert Variables.check_above([second], one_more) == :ok
 
     # Four more take a workspace itself over.
-    more = set ++ for i <- 121..124, do: above("O#{i}", "")
+    more = set ++ for i <- 119..122, do: above("O#{i}", "")
     assert {:error, {:too_many_names, ^second}} = Variables.check_above([second, first], more)
   end
 

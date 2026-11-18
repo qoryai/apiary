@@ -77,6 +77,31 @@ defmodule Apiary.WorkItems.ProposalTest do
                %{question: "Stored before options?", options: []}
     end
 
+    test "question/1 keeps an option's proposal, and adds none to an option without one" do
+      assert %{options: [change, withdraw]} =
+               Proposal.question(%{
+                 "question" => "AC-3 can't be met as written",
+                 "criterion" => "ac-3",
+                 "options" => [
+                   %{
+                     "title" => "Change AC-3",
+                     "explanation" => "e",
+                     "proposal" => "AC-3 Demo: new."
+                   },
+                   %{"title" => "Withdraw AC-3", "explanation" => "e"}
+                 ]
+               })
+
+      assert change == %{
+               title: "Change AC-3",
+               explanation: "e",
+               recommended: false,
+               proposal: "AC-3 Demo: new."
+             }
+
+      assert withdraw == %{title: "Withdraw AC-3", explanation: "e", recommended: false}
+    end
+
     test "question/1 keeps an option's recommended: true only where the option has true" do
       option = %{"title" => "Full refund", "explanation" => "The policy covers it."}
 

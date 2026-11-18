@@ -24,7 +24,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   @subtitles "text/vtt; charset=utf-8"
   @images ~w(image/png image/jpeg image/gif image/webp)
 
-  @states %{"Met" => :met, "Not met" => :not_met, "Needs a person" => :needs_person}
+  @states %{"Met" => :met, "Not met" => :not_met}
 
   @doc false
   # media/0 is the types of a scenario's film or pictures.
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # verification/1 is the parts of a `verification.md` that the tab shows: `commit`, the
   # verified commit from `## Summary` ("Commit: <id>"), nil for none; `rows`, the rows of
   # the table of `## Matrix`, each `%{criterion:, state:, evidence:}`, `state` `:met`,
-  # `:not_met`, `:needs_person` or the cell as written; `not_verified`, the items of
+  # `:not_met` or the cell as written; `not_verified`, the items of
   # `## Not verified`, each `%{item:, reason:}`, the item's criterion and the reason
   # after it, or the line as written with no reason; and `families`, the lines of
   # `## Model families`. Nil for a text with no table of the columns Criterion, State and
@@ -547,9 +547,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   defp state_badge(%{state: :not_met} = assigns),
     do: ~H|<.badge color="error" dot>{gettext("Not met")}</.badge>|
-
-  defp state_badge(%{state: :needs_person} = assigns),
-    do: ~H|<.badge color="warning" dot>{gettext("Needs a person")}</.badge>|
 
   defp state_badge(assigns), do: ~H|<.badge>{@state}</.badge>|
 

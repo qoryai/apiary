@@ -42,13 +42,15 @@ defmodule Mix.Tasks.Apiary.Models.Update do
 
   # Each provider of the catalogue, by the name of its description, and the models.dev
   # provider whose ids its API takes. claude-subscription calls Anthropic's API with the
-  # same model ids; a LiteLLM proxy serves the models set up in that proxy, under names
-  # no list has.
+  # same model ids, and openai-subscription calls OpenAI's models by the ids of OpenAI's
+  # list; a LiteLLM proxy serves the models set up in that proxy, under names no list has.
   @sources %{
     "anthropic" => "anthropic",
     "claude-subscription" => "anthropic",
     "deepseek" => "deepseek",
     "litellm" => nil,
+    "openai" => "openai",
+    "openai-subscription" => "openai",
     "openrouter" => "openrouter"
   }
 

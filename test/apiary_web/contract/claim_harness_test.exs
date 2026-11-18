@@ -298,14 +298,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     @describetag needs: [:factory, :workflow_model]
 
     @submit %{"type" => "code-change", "send" => "end_of_run"}
-    @submit_module %{
-      "name" => "forge-submit",
-      "source" => %{
-        "git" => "https://modules.example.org/example-org/forge-module",
-        "ref" => "3f2a91c4d5e6f708192a3b4c5d6e7f8091a2b3c4",
-        "module" => "forge-submit"
-      }
-    }
 
     # The workspace's process: one stage whose sequence runs `explore-a-ticket`, with
     # `access` when given. Its version's template record has `submit`, none for nil. The
@@ -342,24 +334,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       version
     end
 
-    # A collection of the workspace that can change the target of `work_item`, as a
-    # forge's is, whose adapter's latest start-up declared `module`, none for nil.
-    defp forge!(ctx, work_item, module) do
-      collection =
-        collection_fixture(ctx.scope,
-          target_system: work_item.target_system,
-          target_path: work_item.target_path,
-          environment_ref: nil
-        )
-
-      {1, _rows} =
-        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-          set: [targets: true, submit_module: module]
-        )
-
-      collection
-    end
-
     # A work item's explore run whose walk resolved `access`, from the stacks' document.
     defp walked!(ctx, access) do
       explore!(ctx,
@@ -370,91 +344,39 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       )
     end
 
-    test "of a write run has submit, and the submit_module of the forge's adapter, after harness",
-         ctx do
+    test "of a write run has submit and no submit_module, after harness", ctx do
       process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       stored = stored(claim(ctx))
       documents = Jason.decode!(stored)
 
-      assert %{
-               "access" => "write",
-               "workflow" => "explore-a-ticket",
-               "submit" => @submit,
-               "submit_module" => @submit_module
-             } = documents
+      assert %{"access" => "write", "workflow" => "explore-a-ticket", "submit" => @submit} =
+               documents
+
+      refute Map.has_key?(documents, "submit_module")
 
       assert stored |> members() |> Enum.filter(&(&1 in ~w(harness submit_module submit inputs))) ==
-               ~w(harness submit_module submit inputs)
+               ~w(harness submit inputs)
 
       valid!(documents)
     end
 
-    test "puts the host of the submit_module's source in the run's stack_hosts", ctx do
+    test "of a write run on a target a forge's collection reaches has no submit_module", ctx do
       process!(ctx, @submit)
       work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
 
-      run =
-        ctx
-        |> claim()
-        |> registered()
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: work_item.target_system,
+          target_path: work_item.target_path,
+          environment_ref: nil
+        )
 
-      assert {:ok, members} = ComposedConfiguration.members(run)
-      assert members.stack_hosts == ["modules.example.org"]
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
 
-      # A run whose documents have no submit_module: no such host.
-      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
-        set: [run_documents: ~s({"step":"explore","inputs":{}})]
-      )
-
-      assert {:ok, without} = ComposedConfiguration.members(Repo.get!(Apiary.Runs.Run, run.id))
-      assert without == nil or without.stack_hosts == []
-    end
-
-    test "of a write run whose forge's adapter declared no submit_module is submit alone",
-         ctx do
-      process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, nil)
-      documents = documents(claim(ctx))
-
-      assert %{"access" => "write", "submit" => @submit} = documents
-      refute Map.has_key?(documents, "submit_module")
-    end
-
-    test "takes no submit_module from a tracker's adapter or another workspace's", ctx do
-      process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      target = [target_system: work_item.target_system, target_path: work_item.target_path]
-
-      # A tracker's collection on the run's target, whose adapter declares a module but
-      # did not say its collections have targets.
-      tracker = collection_fixture(ctx.scope, target ++ [environment_ref: nil])
-
-      # A forge's collection on the same target, in another workspace of the organisation.
-      other = workspace_fixture(ctx.scope.organisation)
-
-      elsewhere =
-        collection_fixture(ctx.scope, target ++ [environment_ref: nil, workspace_id: other.id])
-
-      for {collection, targets?} <- [{tracker, false}, {elsewhere, true}] do
-        {1, _rows} =
-          Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-            set: [targets: targets?, submit_module: @submit_module]
-          )
-      end
-
-      documents = documents(claim(ctx))
-
-      assert %{"access" => "write", "submit" => @submit} = documents
-      refute Map.has_key?(documents, "submit_module")
-    end
-
-    test "of a write run with no forge's collection for its target is submit alone", ctx do
-      process!(ctx, @submit)
-      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert %{"access" => "write", "submit" => @submit} = documents
@@ -463,8 +385,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent where the process version has no submit", ctx do
       process!(ctx, nil)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert documents["access"] == "write"
@@ -474,8 +395,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a read run", ctx do
       process!(ctx, @submit)
-      work_item = walked!(ctx, :read)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :read)
       documents = documents(claim(ctx))
 
       assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
@@ -485,8 +405,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a write run that a stage entry with read access lowers", ctx do
       process!(ctx, @submit, "read")
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
@@ -496,8 +415,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a run with no workflow", ctx do
       process!(ctx, @submit)
-      work_item = explore!(ctx, access_level: :write)
-      forge!(ctx, work_item, @submit_module)
+      explore!(ctx, access_level: :write)
       documents = documents(claim(ctx))
 
       assert Map.take(documents, @harness) == %{}
@@ -806,14 +724,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
 
-    test "has no submit and no submit_module, where its collection's adapter declares one",
+    test "has no submit and no submit_module, where its collection's adapter has targets",
          ctx do
       workflow!(ctx)
       collection = collection_fixture(ctx.scope)
 
       {1, _rows} =
         Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-          set: [targets: true, submit_module: @submit_module]
+          set: [targets: true]
         )
 
       documents = prebuild_documents(ctx, collection)
