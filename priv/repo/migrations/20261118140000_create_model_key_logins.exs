@@ -8,7 +8,8 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
   #
   #   * `account_id`: the account the sign-in is of, from the pasted login;
   #   * `access_expires_at`: when the access token expires, read from the token without
-  #     checking its signature, to time the refresh;
+  #     checking its signature, to time the refresh; nil for a token whose `exp` cannot be
+  #     read, which is then refreshed 8 days after the last refresh;
   #   * `signed_in_at`: when the login was pasted; `refreshed_at`: when it was last
   #     refreshed, nil until the first refresh;
   #   * `state`: `signed_in`, or `sign_in_needed` once the provider rejected the refresh
@@ -41,7 +42,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
           primary_key: true
 
       add :account_id, :text, null: false
-      add :access_expires_at, :utc_datetime_usec, null: false
+      add :access_expires_at, :utc_datetime_usec
       add :signed_in_at, :utc_datetime_usec, null: false
       add :refreshed_at, :utc_datetime_usec
       add :state, :text, null: false, default: "signed_in"

@@ -427,6 +427,16 @@ defmodule Apiary.Access do
       roles: @admins,
       asked_of: :organisation
     ),
+    # The sign-in of a model key whose provider has an `oauth_refresh`, refreshed when a run
+    # needs its access token or the sweep finds it old: one entry for each call to the
+    # provider, about the provider (`Apiary.ModelKeys.Login`).
+    Action.new(
+      :"model_key.refresh",
+      "refresh the sign-in of a model key, such as an OpenAI subscription's, at its provider: the instance, by itself, when a run needs the key's access token or the sweep finds the sign-in old (Apiary.ModelKeys.Login)",
+      feature: :secrets,
+      roles: [:instance],
+      asked_of: :organisation
+    ),
     # The model a run uses: the choices of the workspace and its targets, which need the
     # features `factory` and `secrets` both (`Apiary.ModelChoices`).
     Action.new(

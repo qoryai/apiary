@@ -17138,6 +17138,11 @@ msgstr ""
 msgid "Qory Apiary could not read the shared harness. Try again. If it repeats, %{contact_support}."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{cause}"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
@@ -17235,6 +17240,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary refreshed the sign-in of the key %{key} of %{provider}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

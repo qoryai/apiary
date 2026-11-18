@@ -151,8 +151,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
   @impl true
-  def offered?(_scope, action) when action in [:"provider.write", :"runtime.write"],
-    do: false
+  def offered?(_scope, action)
+      when action in [:"provider.write", :"runtime.write", :"model_key.refresh"],
+      do: false
 
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -327,6 +328,45 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def sentence(:"work_item.take_in", entry, names) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     gettext("Took in one of the Backlog's %{items} as a work item", items: items)
+  end
+
+  # The refresh of the sign-in of a model key (`Apiary.ModelKeys.Login`): the entry is the
+  # provider's, by the instance. The key is named by its value id and the provider by the
+  # name it had then, as the entry's details have them, and a call that did not end in a
+  # new sign-in says the cause as the details have it: one of a few fixed words, never a
+  # part of the provider's answer. The filter does not offer the action.
+  def sentence(
+        :"model_key.refresh",
+        %{details: %{"outcome" => "refreshed", "value_id" => key, "provider" => provider}},
+        _names
+      )
+      when is_binary(key) and is_binary(provider) do
+    gettext("Qory Apiary refreshed the sign-in of the key %{key} of %{provider}",
+      key: key,
+      provider: provider
+    )
+  end
+
+  def sentence(
+        :"model_key.refresh",
+        %{
+          details: %{
+            "outcome" => outcome,
+            "value_id" => key,
+            "provider" => provider,
+            "cause" => cause
+          }
+        },
+        _names
+      )
+      when outcome in ["sign_in_needed", "failed"] and is_binary(key) and is_binary(provider) and
+             is_binary(cause) do
+    gettext(
+      "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{cause}",
+      key: key,
+      provider: provider,
+      cause: cause
+    )
   end
 
   # A run's work credential, sent to its gateway or refused (`Apiary.Runs.WorkCredential`):

@@ -464,6 +464,12 @@ defmodule Apiary.Connections.LoginsTest do
           "refresh_token" => tokens.refresh_token
         })
 
+    # What a refresh starts from, as `Secrets.reveal_login_snapshot/2` returns it.
+    defp guard(value) do
+      row = Repo.get!(Value, value.id)
+      %{nonce: row.nonce, value_set_at: row.value_set_at}
+    end
+
     test "keeps the copies that runs hold of the value", %{scope: scope} do
       provider = subscription!(scope)
       plain = Repo.get!(Connection, provider.id)
@@ -488,7 +494,8 @@ defmodule Apiary.Connections.LoginsTest do
       :ok = ModelKeys.keep_copies(run.id, [{value.id, value.value_set_at}])
       next = login_tokens(tag: "copies")
 
-      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next)) == :ok
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), guard(value)) ==
+               :ok
 
       assert [%{copy_kept: true, copy_set_at: copy_set_at}] = ModelKeys.run_keys(run)
       assert copy_set_at == Repo.get!(Value, value.id).value_set_at
@@ -502,7 +509,8 @@ defmodule Apiary.Connections.LoginsTest do
       key_state!(provider, "main", until: in_seconds(3600))
       next = login_tokens(tag: "refreshed")
 
-      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next)) == :ok
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), guard(value)) ==
+               :ok
 
       after_write = Repo.get!(Value, value.id)
       assert after_write.value_set_at == value.value_set_at
@@ -515,7 +523,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert %Login{generation: 1} = row(provider, "main")
     end
 
-    test "encrypts under the value id the key has now", %{scope: scope} do
+    test "encrypts under the value id the key has", %{scope: scope} do
       provider = subscription!(scope)
 
       {:ok, provider} =
@@ -524,13 +532,68 @@ defmodule Apiary.Connections.LoginsTest do
           value: login_paste(tag: "s")
         })
 
-      value = key_value!(provider, "spare")
       {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
       plain = Repo.get!(Connection, provider.id)
+      value = key_value!(provider, "renamed")
       next = login_tokens(tag: "after-rename")
 
-      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next)) == :ok
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), guard(value)) == :ok
       assert stored(provider, "renamed").refresh_token == next.refresh_token
+    end
+
+    test "drops the result when the value changed since the refresh started", %{scope: scope} do
+      provider = subscription!(scope)
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{
+          value_id: "spare",
+          value: login_paste(tag: "s")
+        })
+
+      plain = Repo.get!(Connection, provider.id)
+      value = key_value!(provider, "spare")
+      started = guard(value)
+      next = login_tokens(tag: "dropped")
+
+      # A rename encrypts the value again under its new value id: another nonce.
+      {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
+      renamed = Repo.get!(Value, value.id)
+      assert renamed.nonce != started.nonce
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), started) ==
+               {:error, :changed}
+
+      assert Repo.get!(Value, value.id).ciphertext == renamed.ciphertext
+      assert stored(provider, "renamed").refresh_token == login_tokens(tag: "s").refresh_token
+
+      # A value pasted over the key changes the nonce and `value_set_at` too.
+      current = guard(value)
+
+      {:ok, _provider} =
+        Connections.update_provider_key(scope, provider, "renamed", %{
+          "value_id" => "renamed",
+          "value" => login_paste(tag: "new")
+        })
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), current) ==
+               {:error, :changed}
+
+      assert stored(provider, "renamed").refresh_token == login_tokens(tag: "new").refresh_token
+
+      # Only the right nonce with the wrong `value_set_at`, and the other way round.
+      now = guard(value)
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), %{
+               now
+               | value_set_at: DateTime.add(now.value_set_at, -1, :second)
+             }) == {:error, :changed}
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), %{
+               now
+               | nonce: :binary.copy(<<0>>, byte_size(now.nonce))
+             }) == {:error, :changed}
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), now) == :ok
     end
 
     test "refuses what is not a refreshed login", %{scope: scope} do
@@ -541,7 +604,9 @@ defmodule Apiary.Connections.LoginsTest do
       document = refreshed(login_tokens(tag: "next"))
 
       too_large = String.duplicate("x", Value.value_max() + 1)
-      assert Secrets.write_refreshed_key(plain, value.id, too_large) == {:error, :too_large}
+
+      assert Secrets.write_refreshed_key(plain, value.id, too_large, guard(value)) ==
+               {:error, :too_large}
 
       for text <- [
             "{}",
@@ -556,13 +621,15 @@ defmodule Apiary.Connections.LoginsTest do
             Jason.encode!(%{"version" => 1, "access_token" => "a", "refresh_token" => ""}),
             Jason.encode!(%{"version" => 1, "access_token" => "a", "refresh_token" => 7})
           ] do
-        assert Secrets.write_refreshed_key(plain, value.id, text) == {:error, :invalid}
+        assert Secrets.write_refreshed_key(plain, value.id, text, guard(value)) ==
+                 {:error, :invalid}
       end
 
-      assert Secrets.write_refreshed_key(plain, Ecto.UUID.generate(), document) ==
+      assert Secrets.write_refreshed_key(plain, Ecto.UUID.generate(), document, guard(value)) ==
                {:error, :not_found}
 
-      assert Secrets.write_refreshed_key(plain, "not-an-id", document) == {:error, :not_found}
+      assert Secrets.write_refreshed_key(plain, "not-an-id", document, guard(value)) ==
+               {:error, :not_found}
 
       {:ok, api} =
         Connections.create_provider(scope, %{
@@ -570,10 +637,13 @@ defmodule Apiary.Connections.LoginsTest do
           keys: [%{value_id: "main", value: "sk-proj-an-api-key"}]
         })
 
+      api_value = key_value!(api, "main")
+
       assert Secrets.write_refreshed_key(
                Repo.get!(Connection, api.id),
-               key_value!(api, "main").id,
-               document
+               api_value.id,
+               document,
+               guard(api_value)
              ) ==
                {:error, :not_found}
 
@@ -611,8 +681,12 @@ defmodule Apiary.Connections.LoginsTest do
       assert Secrets.reveal_login(plain, foreign_id) == {:error, :not_found}
       assert Login.tokens(plain, foreign_id) == {:error, :not_found}
 
-      assert Secrets.write_refreshed_key(plain, foreign_id, refreshed(login_tokens(tag: "x"))) ==
-               {:error, :not_found}
+      assert Secrets.write_refreshed_key(
+               plain,
+               foreign_id,
+               refreshed(login_tokens(tag: "x")),
+               %{nonce: before.nonce, value_set_at: before.value_set_at}
+             ) == {:error, :not_found}
 
       assert Secrets.reveal_key_for_sealing(plain, foreign_id) == {:error, :login}
       refute Map.has_key?(Login.by_key(plain), foreign_id)

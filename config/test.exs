@@ -188,6 +188,11 @@ config :apiary, Apiary.Adapters.Calls,
   resolver: Apiary.FetchStub,
   req_options: [plug: {Req.Test, Apiary.Adapters.Calls}]
 
+# The call that refreshes a model key's sign-in is never made over the network in a test:
+# it goes to the `Req.Test` stub of `Apiary.ModelKeys.LoginRefresh`, which a test sets.
+config :apiary, Apiary.ModelKeys.LoginRefresh,
+  req_options: [plug: {Req.Test, Apiary.ModelKeys.LoginRefresh}]
+
 # An adapter's read of its change feed answers at once when the feed holds nothing new;
 # the test of the hold sets the hold it needs.
 config :apiary, ApiaryWeb.Contract.ChangesController, hold: 0
