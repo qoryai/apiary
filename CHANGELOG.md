@@ -12,6 +12,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: factory, secrets -->
+- **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
+  runtime. Under **Organisation settings › Model providers › New model provider**, the
+  provider choice lists both, and the API key's help reads “Get the key from the provider
+  first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
+  **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
+  shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
+  field of that page and of the set-up's Model step is shown, with **Claude Code** first.
+  The link to a vendor's terms in a provider's help names that provider's vendor, such as
+  “Anthropic's terms”. On a run's page, a Codex session shows its session events, the
+  version it started with, and no note that it sends none; the note “Only Claude Code and
+  Codex send session events.” stays for a program that is no runtime of the catalogue.
+<!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
   question that is not a decision. The tab label shows the number of open questions. The
