@@ -168,6 +168,7 @@ defmodule Apiary.Stages do
           | {:already_on, String.t()}
           | :store_unavailable
           | {:invalid, :note}
+          | :note_missing
           | term
 
   @typedoc """
@@ -1659,7 +1660,8 @@ defmodule Apiary.Stages do
   # start, with the person's note, which may point at one artifact version of the work
   # item (`av_…`). At the gate of a stage with an entry that has a return key, the work
   # item enters that key's earlier stage at its first entry instead, and no return is
-  # counted (`Apiary.Stages.Runner`).
+  # counted (`Apiary.Stages.Runner`). A note that is missing or blank returns
+  # `{:error, :note_missing}` and changes nothing: the note is what the next run reads.
   @doc false
   @spec request_changes(Scope.t(), WorkItem.t(), String.t() | nil, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1672,6 +1674,7 @@ defmodule Apiary.Stages do
       ) do
     transact(fn ->
       with {:ok, note} <- note(note),
+           :ok <- if(is_nil(note), do: {:error, :note_missing}, else: :ok),
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            :ok <- at_gate(work_item, stage),
            :ok <- version_of(work_item, artifact_version_id),
@@ -1692,9 +1695,7 @@ defmodule Apiary.Stages do
                "artifact_version_id" => artifact_version_id
              }) do
         {work_item, _run} =
-          apply_event(work_item, version, stage, :request_changes, nil, %{
-            feedback_note: not is_nil(note)
-          })
+          apply_event(work_item, version, stage, :request_changes, nil, %{feedback_note: true})
 
         {:ok, work_item}
       end
@@ -1930,7 +1931,8 @@ defmodule Apiary.Stages do
   # (`ApiaryWeb.SpendDialog`). It reads no access: the act checks that. `act` is one of:
   #
   #   * `:approve` - the gate approved, at the gate: the next stage entered (`approve/4`);
-  #   * `:request_changes` - at the gate (`request_changes/5`);
+  #   * `:request_changes` - at the gate (`request_changes/5`), with `noted` true: with
+  #     no note, Request changes fails and starts nothing;
   #   * `:accept`, `:another_round` - the open escalation resolved so
   #     (`resolve_escalation/5`);
   #   * `{:move, stage_id}` - that stage of the version entered (`move/5`, and a move
@@ -1984,13 +1986,15 @@ defmodule Apiary.Stages do
     end
   end
 
-  # With a note, Request changes is feedback, for this stage and for the stage that a
-  # return enters.
-  defp would_start(work_item, version, stage, {:noted, :request_changes}),
-    do: request_changes_starts(work_item, version, stage, &noted(&1, %{feedback_note: true}))
+  # Request changes has a note (`request_changes/5`), which is feedback, for this stage
+  # and for the stage that a return enters. With no note it starts nothing.
+  defp would_start(work_item, version, stage, {:noted, :request_changes}) do
+    noted = &noted(&1, %{feedback_note: true})
 
-  defp would_start(work_item, version, stage, :request_changes),
-    do: request_changes_starts(work_item, version, stage, & &1)
+    if at_gate(work_item, stage) == :ok,
+      do: stepped(work_item, version, stage, :request_changes, noted, noted),
+      else: :none
+  end
 
   # With a note, Run another round, a move and a switch are feedback.
   defp would_start(work_item, version, stage, {:noted, act})
@@ -2061,12 +2065,6 @@ defmodule Apiary.Stages do
     do: next_run_starts(work_item, version, stage, %{})
 
   defp would_start(_work_item, _version, _stage, _act), do: :none
-
-  defp request_changes_starts(work_item, version, stage, adjust) do
-    if at_gate(work_item, stage) == :ok,
-      do: stepped(work_item, version, stage, :request_changes, adjust, adjust),
-      else: :none
-  end
 
   # What Accept as it is and Run another round of the open escalation, a move and a
   # switch start, on the facts as `adjust` changes them.

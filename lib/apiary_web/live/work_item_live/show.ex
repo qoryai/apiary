@@ -1598,6 +1598,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def refused({:invalid, :note}, _flow),
     do: gettext("Shorten the note to 4,000 characters or fewer.")
 
+  def refused(:note_missing, _flow), do: gettext("Add a note that says what to change.")
+
   def refused(_reason, _flow),
     do:
       gettext(

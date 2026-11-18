@@ -3869,5 +3869,24 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#spend-dialog-line")
       refute render(view) =~ "Starts the next run of"
     end
+
+    test "Request changes with no note or a blank one fails with its fix line", %{scope: scope} do
+      process!(scope, %{
+        "sequence" => [%{"workflow" => "build-it", "when" => %{"feedback" => "new"}}],
+        "outputs" => []
+      })
+
+      work_item = at_shape!(scope)
+
+      for note <- [nil, " "] do
+        assert {:error, :note_missing} =
+                 Stages.request_changes(scope, work_item, note, nil, expect_stage: @shape)
+
+        assert ApiaryWeb.WorkItemLive.Show.refused(:note_missing, nil) ==
+                 "Add a note that says what to change."
+      end
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+    end
   end
 end

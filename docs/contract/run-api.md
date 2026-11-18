@@ -169,7 +169,8 @@ Returns `200` with the work item snapshot:
   `ticket`.
 - `notes` contains what people wrote on the work item and the gaps of failed checks,
   oldest first. `kind` is `request_changes`, a request for changes at the gate of the
-  stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
+  stage `stage_id`, whose `note` is never empty, and which may point at one version in
+  `artifact_version_id`; `move`, a
   move of the work item out of the stage `stage_id`, not one that resolves an escalation
   (a move back or a switch of track), which the escalation's entry stands for;
   `escalation`, an escalation that a person resolved with a note; `answer`, an answer to a run's questions, a review comment

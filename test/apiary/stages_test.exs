@@ -3229,7 +3229,7 @@ defmodule Apiary.StagesTest do
 
       # Request changes runs the sequence again: capture-demos passed after Scenario 1 was
       # stored, so it does not run; no key and no new version.
-      assert Stages.starts(work_item, :request_changes) == {:run, "verify-a-ticket"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "verify-a-ticket"}
 
       {:ok, again} =
         Stages.request_changes(scope, work_item, "Look again.", nil, expect_stage: @verify)
@@ -3255,7 +3255,7 @@ defmodule Apiary.StagesTest do
       {:ok, _version} =
         Stages.add_version(scope, again, "demo-scenarios", scenarios("# Scenario 2"))
 
-      assert Stages.starts(again, :request_changes) == {:run, "capture-demos"}
+      assert Stages.starts(again, :request_changes, true) == {:run, "capture-demos"}
 
       {:ok, third} =
         Stages.request_changes(scope, again, "And again.", nil, expect_stage: @verify)
@@ -3293,7 +3293,7 @@ defmodule Apiary.StagesTest do
       assert Stages.inputs(work_item) == []
 
       assert_raise Stages.VerdictUnreadable, fn ->
-        Stages.starts(work_item, :request_changes)
+        Stages.starts(work_item, :request_changes, true)
       end
     end
 
@@ -3383,7 +3383,7 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
 
       # Scenario 1 is older than capture-demos' run, but the run did not pass.
-      assert Stages.starts(work_item, :request_changes) == {:run, "capture-demos"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "capture-demos"}
 
       {:ok, again} =
         Stages.request_changes(scope, work_item, "Look again.", nil, expect_stage: @verify)
@@ -3415,7 +3415,7 @@ defmodule Apiary.StagesTest do
       work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
 
-      assert Stages.starts(work_item, :request_changes) == {:run, "verify-a-ticket"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "verify-a-ticket"}
 
       # The process was edited, and another workflow now sits at entry 0.
       {1, _rows} =
@@ -3426,7 +3426,7 @@ defmodule Apiary.StagesTest do
           set: [workflow: "old-workflow"]
         )
 
-      assert Stages.starts(work_item, :request_changes) == {:run, "capture-demos"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "capture-demos"}
     end
 
     test "only the verdicts of the workflows with a changed condition are read", %{scope: scope} do
@@ -3454,7 +3454,7 @@ defmodule Apiary.StagesTest do
       on_exit(fn -> File.rename(path <> ".away", path) end)
 
       # The run of verify-a-ticket has no condition on it: its unreadable verdict is not read.
-      assert Stages.starts(work_item, :request_changes) == {:run, "verify-a-ticket"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "verify-a-ticket"}
     end
 
     test "an unless passes the entry over while the version is new", %{scope: scope} do
@@ -3859,10 +3859,20 @@ defmodule Apiary.StagesTest do
                newest_run(moved)
     end
 
-    test "Request changes with a note starts triage-review; with no note the first loop", %{
-      scope: scope
-    } do
+    test "Request changes with a note starts triage-review; with no note or a blank one it fails",
+         %{scope: scope} do
       work_item = at_build_gate!(scope)
+      run = newest_run(work_item)
+
+      # No note, and a note of spaces: nothing changes, and no run is queued.
+      for note <- [nil, "  \n "] do
+        assert Stages.request_changes(scope, work_item, note, nil, expect_stage: @build) ==
+                 {:error, :note_missing}
+
+        assert %WorkItem{stage_state: :at_gate} = reload(work_item)
+        assert newest_run(work_item).id == run.id
+        assert decisions(work_item) |> Enum.filter(&(&1.kind == :request_changes)) == []
+      end
 
       {:ok, changed} =
         Stages.request_changes(scope, work_item, "Sort the list by date.", nil,
@@ -3870,12 +3880,6 @@ defmodule Apiary.StagesTest do
         )
 
       assert %DispatchRun{workflow: "triage-review", stage_entry: 0, round: 1} =
-               newest_run(changed)
-
-      other = build_gate_item!(scope)
-      {:ok, changed} = Stages.request_changes(scope, other, nil, nil, expect_stage: @build)
-
-      assert %DispatchRun{workflow: "implement-changes", stage_entry: 3, loop_entry: 0, round: 1} =
                newest_run(changed)
     end
 
@@ -3959,7 +3963,7 @@ defmodule Apiary.StagesTest do
     } do
       # At Build's gate: Request changes and a move into Build.
       work_item = at_build_gate!(scope)
-      assert Stages.starts(work_item, :request_changes) == {:run, "implement-changes"}
+      assert Stages.starts(work_item, :request_changes) == :none
       assert Stages.starts(work_item, :request_changes, true) == {:run, "triage-review"}
       assert Stages.starts(work_item, {:move, @build}) == {:run, "implement-changes"}
       assert Stages.starts(work_item, {:move, @build}, true) == {:run, "triage-review"}
@@ -6806,7 +6810,7 @@ defmodule Apiary.StagesTest do
       work_item = end_run!(work_item, verdict("passed"))
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
 
-      assert Stages.starts(work_item, :request_changes) == {:run, "triage-review"}
+      assert Stages.starts(work_item, :request_changes, true) == {:run, "triage-review"}
 
       assert {:ok, %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 0}} =
                Stages.request_changes(scope, work_item, "Drop the CSV option.", nil,
