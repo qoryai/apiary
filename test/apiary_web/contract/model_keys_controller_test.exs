@@ -260,6 +260,24 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert Decimal.equal?(window.share, 0)
     end
 
+    test "a session number beyond the column is read as a report with no session", ctx do
+      item = state(ctx, observed_at: now_z(-1))
+
+      for session <- [2_147_483_648, 9_007_199_254_740_991] do
+        conn = post_report(ctx, report(ctx, [item], session: session))
+        assert conn.status == 200
+        assert signed_answer?(conn)
+      end
+
+      assert Repo.all(SessionRecord) == []
+      assert Repo.all(SessionKeyWindow) == []
+
+      # The largest number the column holds is a session like any other.
+      conn = post_report(ctx, report(ctx, [item], session: 2_147_483_647))
+      assert conn.status == 200
+      assert [%SessionRecord{session_number: 2_147_483_647}] = Repo.all(SessionRecord)
+    end
+
     test "a later report of the session moves its last utilization and its share", ctx do
       first =
         state(ctx,

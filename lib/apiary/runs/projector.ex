@@ -43,7 +43,9 @@ defmodule Apiary.Runs.Projector do
   `dev.qory.runtime.started` or `dev.qory.runtime.result` events, from all the run's events
   of those types (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
   windows that hang on them come from the gateway's reports, not from the events, and the
-  records stay when retention deletes the events.
+  records stay when retention deletes the events. A run whose events retention has deleted,
+  or is due to delete (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost:
+  a pass over it writes neither, because the results they come from are partly gone.
 
   A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
   its sequence, with the workspace's target of its system and path when the workspace has
@@ -355,7 +357,8 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
-      session_events = session_events(run, events)
+      kept? = session_pass?(events) and Apiary.Retention.due_or_pruned?(run)
+      session_events = if kept?, do: nil, else: session_events(run, events)
       projected = run |> projected(events) |> put_results(session_events)
 
       fold =
@@ -368,7 +371,7 @@ defmodule Apiary.Runs.Projector do
 
       run =
         run
-        |> Ecto.Changeset.change(Map.take(fold.run, @folded_fields))
+        |> Ecto.Changeset.change(folded(fold.run, kept?))
         |> Ecto.Changeset.change(denied_count: run.denied_count + denied(fold.connections))
         |> put_target(fold.run)
         |> Repo.update!(log: false)
@@ -506,8 +509,15 @@ defmodule Apiary.Runs.Projector do
   # the fold reads the results already projected (`Apiary.Runs.Fold`), and the records of
   # the run's sessions are written from all of them (`Apiary.Runs.Sessions`).
   defp session_events(%Run{id: id}, events) do
-    if Enum.any?(events, &(&1.type in Sessions.types())), do: Sessions.events(id)
+    if session_pass?(events), do: Sessions.events(id)
   end
+
+  defp session_pass?(events), do: Enum.any?(events, &(&1.type in Sessions.types()))
+
+  # What the fold sets on the run. A run whose events retention has deleted, or is deleting,
+  # keeps its cost: the results the fold would sum are partly gone (`Apiary.Retention`).
+  defp folded(fold_run, true), do: fold_run |> Map.take(@folded_fields) |> Map.delete(:cost_usd)
+  defp folded(fold_run, false), do: Map.take(fold_run, @folded_fields)
 
   defp put_results(projected, nil), do: projected
 
