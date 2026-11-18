@@ -975,7 +975,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert %Login{failing_since: nil, failures: 0, retry_at: nil} = row(provider)
       assert outcomes(provider) == [{"failed", "http_503"}]
 
-      # A failure of the new login opens a streak of its own.
+      # A failure of the new login opens a new streak.
       stub!({503, %{}})
       token(provider)
       assert outcomes(provider) == [{"failed", "http_503"}, {"failed", "http_503"}]

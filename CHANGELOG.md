@@ -86,8 +86,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   is not refreshed again within 60 seconds of a refresh. The refresh is one HTTPS call to
   the token address of the provider's catalogue entry,
   `https://auth.openai.com/oauth/token`, with the refresh token, the client id of the
-  entry and the reason (`proactive_expiry` or `scheduled`); the server needs outbound HTTPS to `auth.openai.com`. A refresh keeps the key's states
-  and the copies that runs hold. The call and the write of its result run in a task that
+  entry and the reason (`proactive_expiry` or `scheduled`); the server needs outbound
+  HTTPS to `auth.openai.com`. A refresh keeps the key's states and the copies that runs
+  hold. The call and the write of its result run in a task that
   no caller owns, so the new refresh token is stored even when the caller stops waiting;
   a caller that stops waiting gets the old access token while it is valid. A key renamed
   while a call is in flight keeps the result under its new name. A sign-in pasted, or a

@@ -422,7 +422,7 @@ defmodule Apiary.ModelKeys.Login do
     * `:not_found`: a key that is gone, or that is no login.
 
   `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
-  waits for a refresh, another's or its own call (10,000), and `poll:`, how often it looks
+  waits for a refresh, whether another caller's or the call it makes itself (10,000), and `poll:`, how often it looks
   (250). When the wait ends first, the caller gets the stored token while it is valid, else
   `{:error, :unavailable}`, and the call goes on and stores its result. `now:` fixes the
   time the due decision reads, for a test. The token is for the caller's one use: it goes
@@ -1039,7 +1039,7 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # The entry `model_key.refresh` of one call, by the instance, in the provider's
-  # organisation's trail, written in a transaction of its own after the outcome is stored:
+  # organisation's trail, written in a transaction after the outcome's, once that is stored:
   # an entry that cannot be written is logged by its kind and costs nothing else, as the
   # rotated token is stored already. Nil for a call with no organisation.
   defp record(_ctx, nil), do: :ok
