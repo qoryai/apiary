@@ -75,7 +75,7 @@ defmodule ApiaryPro.WorkspaceOperators do
   @doc """
   schema_change_line/1 is the step that the Artifact types page shows for a type that the
   harness sets (`c:Apiary.Edition.schema_change_line/1`): "To change the schema, ask the
-  operator of this workspace." while `ApiaryPro.Flags.operator_infrastructure?/0` is on,
+  operator of this workspace." while the operator infrastructure flag is on,
   the scope's workspace has an operator and the person does not act there through it
   (`ApiaryPro.Access.through_operator?/1`). Nil otherwise: with the flag off, and for the
   operator's people, the page shows the core's step. Translated when it is asked.
