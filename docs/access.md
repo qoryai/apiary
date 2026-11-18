@@ -654,7 +654,11 @@ an organisation whose deletion's grace period is over, and making the adapters i
 setting lists and giving them their one-time codes (`adapter.install`,
 `Apiary.Adapters.install/2`, `Apiary.AccessKeys.issue_installed_code/2`), and the same
 for the node pool and the gateway its settings declare (`node.install`,
-`Apiary.Nodes.Installed.install/2`), in the instance's organisation. A release command
+`Apiary.Nodes.Installed.install/2`), in the instance's organisation, and refreshing the
+sign-in of a model key whose provider has an `oauth_refresh`, such as an OpenAI
+subscription's, in any organisation with the `secrets` feature on
+(`model_key.refresh`, asked of the organisation by `Apiary.ModelKeys.Login` before it
+takes a login's lease: a refusal makes no call and writes no entry). A release command
 that makes a password link acts in that role too (`account.password_link`). Any other scope
 without a person may nothing, whatever it carries.
 
@@ -811,6 +815,14 @@ for each other and never on each other at once:
    secrets, and the row of the keys' secret `FOR UPDATE`, of the organisation or of a
    workspace, with no workspace row; to choose the default key, that row `FOR SHARE`. It
    reads what uses the keys without a lock (`Apiary.Secrets.Usage`).
+   The write of the outcome of a key's sign-in refresh (`Apiary.ModelKeys.Login`, the
+   instance's, with no person) takes the organisation `FOR SHARE`, then the keys'
+   secret's row `FOR UPDATE`, then the sign-in's row in `model_key_logins` `FOR UPDATE`,
+   the order of a change to the keys, so it waits for a paste, a rename or a deletion of
+   a key that came first and is seen by one that comes after. The lease and the call
+   hold no lock: the lease is one conditional `UPDATE` of the sign-in's row, and the call
+   runs with no transaction open. A new value of the key (a paste) takes the sign-in's
+   row after the secret's, as the write does.
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
    policy's order, then the provider's row `FOR SHARE`, then the rows of the fallbacks'
    providers `FOR SHARE`, then the choice's row `FOR UPDATE`. A write of the

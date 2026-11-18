@@ -39,8 +39,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
   **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
   shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
-  field of that page is shown, with **Claude Code** first. Signing in with an OpenAI
-  subscription to a run and limiting its paths are not built yet.
+  field of that page is shown, with **Claude Code** first. Sending the sign-in of an
+  OpenAI subscription to a run and limiting its paths are not built yet.
 - The link to a vendor's terms in a provider's help names that provider's vendor, such as
   “Anthropic's terms”.
 <!-- /feature -->
@@ -76,25 +76,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   line or an audit entry. A run that claims the key stops at the secrets request with
   `credential_unavailable`.
 - Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a
-  time for each key, in the way `codex` does: when the access token's `exp` is 5 minutes
-  away, or, for a token whose `exp` cannot be read, 8 days after the last refresh. A
-  separate job, every 6 hours, refreshes each sign-in that has not been refreshed for 7
-  days. The refresh is one HTTPS call to the token address of the provider's catalogue
-  entry, `https://auth.openai.com/oauth/token`, with the refresh token, the client id of
-  the entry and the reason (`proactive_expiry` or `scheduled`); the server needs outbound
-  HTTPS to `auth.openai.com`. A refresh keeps the key's states and the copies that runs
-  hold. When OpenAI rejects the refresh token for good (an expired, used or revoked
+  time for each key, in the way `codex` does: when the access token's `exp` is near, or,
+  for a token whose `exp` cannot be read, 8 days after the last refresh. A run's request
+  refreshes within 330 seconds of `exp`, and one that the schedule starts within 300
+  seconds, as `codex` does. The run's lead is 30 seconds longer because the gateway renews
+  a run's token 5 minutes before it expires, and a request a few seconds earlier would
+  get the same token and make the gateway ask again 30 seconds later. A separate job,
+  every 6 hours, refreshes each sign-in that has not been refreshed for 7 days. A sign-in is not refreshed again within
+  60 seconds of a refresh. The refresh is one HTTPS call to the token address of the
+  provider's catalogue entry, `https://auth.openai.com/oauth/token`, with the refresh
+  token, the client id of the entry and the reason (`proactive_expiry` or `scheduled`);
+  the server needs outbound HTTPS to `auth.openai.com`. A refresh keeps the key's states
+  and the copies that runs hold. The call and the write of its result run in a task that
+  no caller owns, so the new refresh token is stored even when the caller stops waiting;
+  a caller that stops waiting gets the old access token while it is valid. A key renamed
+  while a call is in flight keeps the result under its new name. A sign-in pasted, or a
+  key deleted, while a call is in flight keeps what the key has, and the result is
+  dropped. A new refresh token that the key cannot store, such as one past the size of a
+  value, makes the key show **Needs a new sign-in** at once, because the stored one is
+  spent. When OpenAI rejects the refresh token for good (an expired, used or revoked
   token, `invalid_grant`, or a 401), the key shows **Needs a new sign-in**, with the time
   of the rejection, and no further call is made until a new sign-in is pasted. When a call
   fails for a reason that may pass (a 5xx or 429 answer, a timeout, a network error or an
   answer that is no refresh), the next call waits 30 seconds, then twice as long for each
   failure in a row, up to 10 minutes, and the key keeps its access token while that token
-  is valid. A sign-in pasted, or a key deleted or renamed, while a call is in flight keeps
-  what the key has, and the call's result is dropped. Each call leaves a
-  `model_key.refresh` entry in the organisation's Activity, “Qory Apiary refreshed the
-  sign-in of the key … of …” or “Qory Apiary could not refresh the sign-in of the key … of
-  …: cause”, with the provider, the key, what started the call and its outcome; no token
-  and no part of OpenAI's answer. Nothing sends the access token to a run yet.
+  is valid. The organisation's Activity has one line when a key's refresh starts to fail
+  and one when it works again: “Qory Apiary refreshed the sign-in of the key … of …”. The
+  failure line says the cause in words and the code in brackets: “Sign in again on the key
+  … of …” for a refusal that stays, and, for a failure that may pass, the time of the next
+  call. The failed calls between the two leave no line. An organisation without the
+  `secrets` feature, or marked for deletion, makes no call. No Activity line holds a token
+  or a part of OpenAI's answer. Nothing sends the access token to a run yet.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
@@ -2659,10 +2671,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - `model_key_logins` (20261118140000): a new table with a row for each model key whose
   provider's API has `oauth_refresh`, by the value's row id, with the account, the time the
-  access token expires (empty for a token whose `exp` cannot be read), the sign-in's state, with a check that lists the 5 causes of a
-  needed sign-in, and the columns a refresh needs. It holds no token, and its rows go
-  with the key's value. Nothing exists to fill. Rolling back drops
-  the table.
+  access token expires (empty for a token whose `exp` cannot be read), the sign-in's state,
+  with a check that lists the 5 causes of a needed sign-in, the time of the first failure of
+  a streak (`failing_since`), and the columns a refresh needs. It holds no token, and its
+  rows go with the key's value. Nothing exists to fill. Rolling back drops the table.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
