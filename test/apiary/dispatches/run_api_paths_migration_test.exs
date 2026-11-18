@@ -99,7 +99,9 @@ defmodule Apiary.Dispatches.RunApiPathsMigrationTest do
   test "the paths are 1 to 32 strings that start with a slash", %{run_id: run_id} do
     assert set(run_id, @api) == :ok
 
-    for paths <- [@paths, ["/"], for(n <- 1..32, do: "/p#{n}"), ["/a/{}/b", "/repos/{}/pulls/{}"]] do
+    fits = [@paths, ["/"], for(n <- 1..32, do: "/p#{n}"), ["/a/{}/b", "/repos/{}/pulls/{}"]]
+
+    for paths <- fits do
       assert set(run_id, Map.put(@api, "paths", paths)) == :ok, inspect(paths)
     end
 

@@ -131,7 +131,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stored sign-in, and its refresh token never leaves the vault. A run's secrets request is
   answered the access token with the time it expires, and the gateway asks again 5 minutes
   before. A refresh that is due at the request is made first, and the request waits for it
-  until its 8-second deadline. When the provider returns 401 to the token, the
+  until 2 seconds before its 8-second deadline, which leaves that time for the seal and the
+  answer. When the provider returns 401 to the token, the
   gateway lists the key in `unauthorized` of its next request, and the request refreshes
   the token with the reason `unauthorized_recovery`, at most once in 5 minutes for each
   key; inside those 5 minutes the answer is `unavailable` (503) and the gateway asks again.
@@ -150,7 +151,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   again on the page of <key>.”, “Waiting for a model key: refreshing the ChatGPT sign-in of
   <key>.”, or, while the server stops, “Waiting for a model key: the server is restarting;
   the ChatGPT sign-in of <key> refreshes after it starts.”; the key's name links to the
-  key's page. A run that is already running and loses its only sign-in pauses as for any
+  key's page. A run that waits because every API key needs a new value says “Waiting for a
+  model key: enter a new value for <key>.”, with the key's name linked to its **Edit key**
+  page. When keys wait for a sign-in and for a new value, the line is that of the first of
+  them in the order the claim sends the keys, the model providers in the run's order. A run that is already running and loses its only sign-in pauses as for any
   key at its limit, and its continuation waits until the key has a new sign-in.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
@@ -165,7 +169,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   when OpenAI rejects its refresh, unless a refresh can still renew its token: the gateway
   lists such a key while its renewal is pending. The report's `unauthorized` list is checked
   as the contract has it: 1 to 6 entries with `credential` and `at`, each credential once;
-  an entry for a credential that is not one of the run's is ignored.
+  an entry for a credential that is not one of the run's is ignored, as is one whose `at` is
+  more than 5 minutes before the run was registered. A run's gateway can mark any key of its
+  run, and a key belongs to the whole organisation (or the provider), so one run marks the
+  key for every run that uses it.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a

@@ -4,8 +4,9 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
   # in place of its state, with who rejected it and when, and Edit key says under New value
   # what to enter. A new value, saved on Edit key, takes the state away. The page shows no
   # token.
-  use ApiaryWeb.ConnCase, async: true
+  use ApiaryWeb.ConnCase, async: false
 
+  import Apiary.DebugLog
   import Phoenix.LiveViewTest
 
   alias Apiary.{Connections, ModelKeys, Repo}
@@ -58,7 +59,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     |> Enum.join(" ")
   end
 
-  test "the provider's page shows Needs a new key for a rejected key, and the other key as it was",
+  test "the provider's page shows Needs a new key for a rejected key and the other as it was",
        %{conn: conn, scope: scope} do
     provider = provider!(scope)
     reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
@@ -122,11 +123,18 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
 
     # A sign-in made just now: no refresh can fix a 401 on it.
     reject!(provider, "main", DateTime.utc_now())
-    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+    {{lv, html}, log} =
+      with_debug_log(fn ->
+        {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+        {lv, html}
+      end)
 
     assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
     refute has_element?(lv, "#provider-key-main-new-key")
-    refute html =~ tokens.access_token
-    refute html =~ tokens.refresh_token
+
+    for text <- [html, log] do
+      refute_secrets(text, [tokens.access_token, tokens.refresh_token, tokens.account_id])
+    end
   end
 end

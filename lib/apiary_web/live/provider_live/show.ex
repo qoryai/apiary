@@ -7,8 +7,8 @@ defmodule ApiaryWeb.ProviderLive.Show do
   # key's Use up to percentage included. A key of a provider whose keys are logins
   # (`Apiary.ModelKeys.Login`) has its sign-in too (`ModelKeyComponents.login/2`): Signed
   # in, or Needs a new sign-in, which replaces its state. A key whose provider rejected
-  # its value has Needs a new key (`ModelKeyComponents.new_key/2`) in its place. Times are in the reader's time
-  # zone. A key is write-only: the page shows neither the key nor a part of
+  # its value has Needs a new key (`ModelKeyComponents.new_key/2`) in its place. Times are
+  # in the reader's time zone. A key is write-only: the page shows neither the key nor a part of
   # it. Every member reads it (`connection.read`); a provider the organisation does not
   # have is not found.
   #

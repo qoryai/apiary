@@ -1268,8 +1268,7 @@ defmodule ApiaryWeb.PreparationComponents do
         time: cooldown_time(until)
       )
 
-  # The key's name is a link to the key's page. No line for a key whose provider rejected
-  # its value: no text is approved for it.
+  # The key's name is a link to the key's edit page.
   defp waiting_words({:sign_in, key, path}),
     do:
       rich_gettext(
@@ -1291,7 +1290,12 @@ defmodule ApiaryWeb.PreparationComponents do
         key: key_link(path, key)
       )
 
-  defp waiting_words({:new_key, _key, _path}), do: nil
+  defp waiting_words({:new_key, key, path}),
+    do:
+      rich_gettext(
+        "Waiting for a model key: enter a new value for %{key}.",
+        key: key_link(path, key)
+      )
 
   defp waiting_words({:image, target, :queued}),
     do:
@@ -1336,10 +1340,10 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(_reason), do: nil
 
-  @doc false
   defp key_link(nil, key), do: {:m, key}
   defp key_link(path, key), do: {:link, path, {:m, ExternalText.line(key)}}
 
+  @doc false
   # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's
   # row on Model providers shows it (`ApiaryWeb.Format.week_time/2`): the time of day
   # alone on the reader's day, "14:00", the weekday on one of the six days after it,

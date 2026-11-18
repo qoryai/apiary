@@ -24631,6 +24631,11 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waiting for a model key: enter a new value for %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waiting for a model key: every key of %{provider} is in cooldown until %{time}."
 msgstr ""
 

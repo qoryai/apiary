@@ -380,6 +380,48 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
     end
 
     @tag needs: [:factory, :secrets]
+    test "says a run waits for a new value when every key was rejected, and links to the key",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-queued-page-main"}]
+        })
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+      value = key_value!(provider, "main")
+      {_work_item, queued} = queue!(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [model_provider_ids: [provider.id]]
+        )
+
+      key = %{
+        name: "model-1",
+        secret_value_id: value.id,
+        organisation_id: value.organisation_id,
+        copy_set_at: value.value_set_at,
+        copy_kept: true
+      }
+
+      now = DateTime.utc_now()
+      :ok = Apiary.ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: enter a new value for main."
+
+      edit =
+        ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}/keys/main/edit"
+
+      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, "main")
+    end
+
+    @tag needs: [:factory, :secrets]
     test "says a run waits for a model key, without the name of another organisation's provider",
          %{conn: conn, scope: scope} do
       %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()

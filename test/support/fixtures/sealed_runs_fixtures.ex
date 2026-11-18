@@ -38,10 +38,11 @@ defmodule Apiary.SealedRunsFixtures do
   a secret of that workspace (`Apiary.Connections.create_provider/3`).
 
   With `kind: kind`, the provider is of that catalogue kind, such as `"openai-subscription"`
-  (whose `keys` are logins and whose `choice` needs `runtime: "codex"`); with `keys: keys`, the provider has `keys`, maps of `value_id` and `value`, in place of
-  the one key; with `choice: attrs`, the workspace's model choice has `attrs` beside the
-  provider; and with `before_claim: fun`, `fun` is called with the provider before the
-  claim, to write the states of its keys, say.
+  (whose `keys` are logins and whose `choice` needs `runtime: "codex"`); with `keys: keys`,
+  the provider has `keys`, maps of `value_id` and `value`, in place of the one key; with
+  `choice: attrs`, the workspace's model choice has `attrs` beside the provider; and with
+  `before_claim: fun`, `fun` is called with the provider before the claim, to write the
+  states of its keys, say.
 
   With `attach: false`, the gateway does not attach the run: the map has `run` as the
   claim registered it, `run_key`, the run key its run code was redeemed for, and no
