@@ -42,15 +42,17 @@ defmodule ApiaryWeb.ModelTiers do
   ## Keys
 
   @doc """
-  The keys of `providers`, each a map of `provider`, `models` and `free` as a page lists
-  its providers, in their order, each provider's keys by value id; and the key of
-  `stored`, a stored choice, where its provider is among them and the list lacks the key,
-  so a save does not change it unseen.
+  The keys of `providers`, each a map of `provider`, `models`, `free` and `offered` as a
+  page lists its providers, in their order, each provider's keys by value id; and the
+  key of `stored`, a stored choice, where its provider is among them and the list lacks
+  the key, so a save does not change it unseen. A provider that is not offered
+  (`offered: false`, `Apiary.Kinds.Providers.offered?/1`) gives only that key.
   """
   @spec keys([map], ModelChoice.t() | nil) :: [map]
   def keys(providers, stored) do
     listed =
       for %{provider: provider} = entry <- providers,
+          Map.get(entry, :offered, true),
           value_id <- value_ids(provider),
           do: key_entry(provider, value_id, entry.models, entry.free)
 
@@ -263,8 +265,9 @@ defmodule ApiaryWeb.ModelTiers do
   Each refusal of a save, a changeset error, on the field it is about: `:key` for the
   provider, the key and any field the form does not have, `:runtime` for the runtime,
   `{tier, :model}` or `{tier, :effort}` for a tier's, and `:tiers` for a refusal of the
-  tiers that names neither a tier nor a model, which shows above them. `model` and `effort` are the `thinking` tier's (`attrs/2`), so their
-  refusals are its; a refusal of the tiers that repeats one of them is left out.
+  tiers that names neither a tier nor a model, which shows above them. `model` and
+  `effort` are the `thinking` tier's (`attrs/2`), so their refusals are its; a refusal
+  on the same field with the same text is shown once.
   """
   @spec field_errors(keyword, map) :: [{atom | {String.t(), atom}, {String.t(), keyword}}]
   def field_errors(errors, tiers) do
@@ -280,22 +283,19 @@ defmodule ApiaryWeb.ModelTiers do
         end
       end
 
-    thinking = for {{"thinking", _field}, {message, _opts}} <- placed, do: message
-
-    Enum.reject(placed, fn {field, {message, _opts}} ->
-      field == :tiers and message in thinking
-    end)
+    Enum.uniq_by(placed, fn {field, {message, _opts}} -> {field, message} end)
   end
 
-  # The field of a refusal of the tiers: the tier it names, the first tier with the model
-  # it names, else none.
+  # The field of a refusal of the tiers: the tier it names (`tier`) and the field it is
+  # about (`field`, Model where it names none); for a refusal with no tier, the first tier
+  # with the model it names; else none.
   defp tier_field(opts, tiers) do
     by_name = Enum.find(shown(), &(opts[:tier] == ModelChoices.tier_name(&1)))
     model = opts[:model]
 
     cond do
       by_name ->
-        {by_name, :model}
+        {by_name, if(opts[:field] == :effort, do: :effort, else: :model)}
 
       is_binary(model) and opts[:provider] ->
         with_model(tiers, model, :model, fn _set -> true end)
@@ -409,7 +409,7 @@ defmodule ApiaryWeb.ModelTiers do
                 class={["input input-sm w-full font-mono", row.model_errors != [] && "input-error"]}
                 autocomplete="off"
                 spellcheck="false"
-                phx-debounce="blur"
+                phx-debounce="300"
                 aria-invalid={row.model_errors != [] && "true"}
                 aria-describedby={error_ids("#{row.field_id}_model", row.model_errors)}
                 disabled={@disabled}
