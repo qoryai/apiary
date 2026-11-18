@@ -16,9 +16,11 @@ defmodule Apiary.ModelKeys.LoginRefresh do
 
   `call/3` returns `{:ok, tokens}` with the new access token and, when the provider sent
   one, the new refresh token, or a failure that is `{:permanent, cause}` for a refusal
-  that stays (the provider rejected the refresh token: the cause is one of
-  `Apiary.ModelKeys.Login.causes/0`) or `{:transient, cause}` for one that may pass:
-  `http_<status>`, `timeout`, `network`, `bad_response`, `bad_endpoint`. A cause is one of
+  that stays (the provider rejected the refresh token: the cause is one of the first five
+  of `Apiary.ModelKeys.Login.causes/0`; that module sets the sixth, `token_not_stored`,
+  when it cannot store a new sign-in) or `{:transient, cause}` for one that may pass:
+  `http_<status>`, `timeout`, `network`, `bad_response`, `bad_endpoint`, or `:shutdown` when
+  the supervisor stopped the call's task (a deploy), which counts as no failure. A cause is one of
   those fixed words, never a part of the provider's answer. Neither the answer's body, the
   request, nor an error of the HTTP client reaches a log, a return value or an exception
   message: the task's crash is caught inside it.
@@ -49,8 +51,13 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   @typedoc "What a refresh brings back: the refresh token is nil when the provider kept it."
   @type tokens :: %{access_token: String.t(), refresh_token: String.t() | nil}
 
+  @typedoc """
+  What `call/3` returns. `:shutdown` is a call that the supervisor stopped (a deploy): the
+  provider may or may not have received it, and it is not a failure of the provider or the
+  network.
+  """
   @type result ::
-          {:ok, tokens} | {:permanent, String.t()} | {:transient, String.t()}
+          {:ok, tokens} | {:permanent, String.t()} | {:transient, String.t()} | :shutdown
 
   @doc "The name of the supervisor that runs each call's task, for the application's children."
   @spec supervisor() :: atom
@@ -102,10 +109,15 @@ defmodule Apiary.ModelKeys.LoginRefresh do
 
     case Task.yield(task, total) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} -> result
-      {:exit, _reason} -> {:transient, "network"}
+      {:exit, reason} -> if shutdown?(reason), do: :shutdown, else: {:transient, "network"}
       nil -> {:transient, "timeout"}
     end
   end
+
+  # The supervisor stops the task with `:shutdown`, or kills it when it does not stop in
+  # time. The task catches its own failures, so these exits come from outside.
+  defp shutdown?(reason),
+    do: reason in [:shutdown, :killed] or match?({:shutdown, _detail}, reason)
 
   defp request(url, body) do
     options =

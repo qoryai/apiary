@@ -428,6 +428,37 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
   end
 
+  test "a shutdown that stops the HTTP call counts no failure, writes no entry, frees the lease",
+       ctx do
+    id = key_id(ctx.provider, "main")
+    old = tokens!(ctx.provider, id)
+    stub_held!(answer("lost"))
+
+    caller = start(fn -> refresh(ctx.provider, id) end)
+    assert_receive {:request, http}, 5_000
+
+    # The supervisor stops the task that holds the call, as it does when the application
+    # stops; the task that owns the refresh traps exits and goes on.
+    assert http in Task.Supervisor.children(LoginRefresh.supervisor())
+    assert :ok = Task.Supervisor.terminate_child(LoginRefresh.supervisor(), http)
+
+    assert Task.await(caller.task, 10_000) == {:error, :unavailable}
+
+    assert %Login{state: "signed_in", failures: 0, retry_at: nil, last_failure: nil} =
+             login = Repo.get!(Login, id)
+
+    assert login.lease_id == nil and login.lease_until == nil and login.failing_since == nil
+    assert tokens!(ctx.provider, id) == old
+    assert entries(ctx.provider) == []
+
+    # The next caller needs no wait for the lease to lapse, and gets the new token.
+    fresh = answer("after")
+    stub_answer!(fresh)
+    assert {:ok, access, _at} = refresh(ctx.provider, id)
+    assert access == fresh["access_token"]
+    assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
+  end
+
   # Waits, in the database, until a backend waits on a lock `holder` holds.
   defp waiting!(holder, left \\ 250) do
     %{rows: rows} =

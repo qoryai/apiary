@@ -94,8 +94,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   call is in flight keeps what the key has, and the result is dropped. A new refresh token
   that the key cannot store, such as one past the size of a value, is written once more at
   once; if that fails too, the key shows **Needs a new sign-in** with the cause
-  `token_not_stored`, because the stored token is spent. A deploy that stops the server
-  gives the write up to 5 seconds. When OpenAI rejects the refresh token for good (an
+  `token_not_stored` and the line “Qory Apiary could not save the new sign-in on <time>.
+  Sign in again.”, because the stored token is spent. A deploy that stops the server
+  gives the write up to 5 seconds. A deploy that stops a call before OpenAI answers counts
+  as no failure, writes no Activity line and leaves the key as it was. When OpenAI rejects the refresh token for good (an
   expired, used or revoked token, `invalid_grant`, or a 401), the key shows **Needs a new
   sign-in**, with the time of the rejection, and no further call is made until a new sign-in
   is pasted. When a call fails for a reason that may pass (a 5xx or 429 answer, a timeout, a

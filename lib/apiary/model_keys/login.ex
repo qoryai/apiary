@@ -93,7 +93,9 @@ defmodule Apiary.ModelKeys.Login do
   commits, the next refresh gets `refresh_token_reused` from the provider, and the login
   ends in that state. A shutdown of the task supervisor (a deploy) does not stop the task
   at once: it traps exits, so it writes what it holds within the supervisor's shutdown
-  time, 5 seconds.
+  time, 5 seconds. A shutdown that stops the call before the provider answers is no
+  failure: the task counts none, writes no entry, clears the lease and returns
+  `:unavailable`.
   """
 
   use Ecto.Schema
@@ -152,6 +154,8 @@ defmodule Apiary.ModelKeys.Login do
   @run_lead_seconds 330
   # The least time between a refresh and the next one (`decide/3`).
   @gap_seconds 60
+  # The pages of logins that one pass of the sweep reads at most (`sweep_due/2`).
+  @sweep_max_pages 20
   @age_days 8
   @sweep_age_days 7
   @day 86_400
@@ -187,7 +191,11 @@ defmodule Apiary.ModelKeys.Login do
   @spec states() :: [String.t()]
   def states, do: @states
 
-  @doc "The causes a provider's permanent refusal of a refresh has."
+  @doc """
+  The causes of a sign-in that needs a new one: the first five come from a permanent
+  refusal of the provider (`Apiary.ModelKeys.LoginRefresh.call/3`), and `token_not_stored`
+  is set by this module when a new sign-in could not be stored.
+  """
   @spec causes() :: [String.t()]
   def causes, do: @causes
 
@@ -420,8 +428,9 @@ defmodule Apiary.ModelKeys.Login do
   refreshed first when that is due (see the module's documentation): `{:ok, token,
   expires_at}`, or `{:error, reason}`:
 
-    * `:sign_in_needed`: the provider rejected the refresh for good, now or earlier, and no
-      call is made until a new login is pasted;
+    * `:sign_in_needed`: the key needs a new sign-in, now or earlier, because the provider
+      rejected the refresh for good or Qory Apiary could not store the new sign-in
+      (`token_not_stored`), and no call is made until a new login is pasted;
     * `:unavailable`: the access token has expired and could not be refreshed, because a
       call failed for a reason that may pass, another caller's refresh did not end in
       time, `Apiary.Access` refuses the refresh (`model_key.refresh`), or the key cannot be
@@ -429,10 +438,10 @@ defmodule Apiary.ModelKeys.Login do
     * `:not_found`: a key that is gone, or that is no login.
 
   `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
-  waits for a refresh, whether another caller's or the call it makes itself (10,000), and `poll:`, how often it looks
-  (250). When the wait ends first, the caller gets the stored token while it is valid, else
-  `{:error, :unavailable}`, and the call goes on and stores its result. `now:` fixes the
-  time the due decision reads, for a test. The token is for the caller's one use: it goes
+  waits for a refresh, whether another caller's or the call it makes itself (10,000), and
+  `poll:`, how often it looks (250). When the wait ends first, the caller gets the stored
+  token while it is valid, else `{:error, :unavailable}`, and the call goes on and stores
+  its result. `now:` fixes the time the due decision reads, for a test. The token is for the caller's one use: it goes
   to a run's secrets request and nowhere else.
   """
   @spec access_token(Connection.t(), Ecto.UUID.t(), keyword) ::
@@ -464,42 +473,74 @@ defmodule Apiary.ModelKeys.Login do
   refresh in (`model_key.refresh`: not marked for deletion, `secrets` on). The logins of
   an organisation that is refused are skipped and the next ones read, so they do not
   take the places of the others.
+
+  The logins are read `limit` at a time, each page after the last login of the one before
+  (its time of last refresh, then its key's id), so a login that changes between two pages
+  is neither skipped nor listed twice. A pass reads at most `max_pages` pages (20), so that
+  many logins of refused organisations cost 20 queries, not one for each `limit` of them;
+  the next pass goes on with the logins that are still due. `after_page:` is a function
+  that the pass calls with the number of each page after it is read, for a test.
   """
-  @spec sweep_due(pos_integer) :: [{Connection.t(), Ecto.UUID.t()}]
-  def sweep_due(limit) when is_integer(limit) and limit > 0 do
-    if Features.on?(:secrets), do: sweep_page(limit, 0, %{}, []), else: []
-  end
+  @spec sweep_due(pos_integer, keyword) :: [{Connection.t(), Ecto.UUID.t()}]
+  def sweep_due(limit, opts \\ []) when is_integer(limit) and limit > 0 do
+    if Features.on?(:secrets) do
+      pass = %{
+        limit: limit,
+        pages_left: Keyword.get(opts, :max_pages, @sweep_max_pages),
+        number: 0,
+        after_page: Keyword.get(opts, :after_page, fn _number -> :ok end)
+      }
 
-  # Reads `limit` logins at a time, from `offset`, and keeps those of the organisations that
-  # may be refreshed (`allowed` has the answers read so far), until `limit` are kept or no
-  # login is left.
-  defp sweep_page(limit, offset, allowed, kept) do
-    case sweep_candidates(limit, offset) do
-      [] ->
-        Enum.reverse(kept)
-
-      page ->
-        {kept, allowed} =
-          Enum.reduce_while(page, {kept, allowed}, fn {provider, _id} = candidate,
-                                                      {kept, allowed} ->
-            organisation_id = provider.organisation_id
-
-            allowed =
-              Map.put_new_lazy(allowed, organisation_id, fn ->
-                organisation_allowed?(organisation_id)
-              end)
-
-            kept = if allowed[organisation_id], do: [candidate | kept], else: kept
-            if length(kept) >= limit, do: {:halt, {kept, allowed}}, else: {:cont, {kept, allowed}}
-          end)
-
-        if length(kept) >= limit,
-          do: Enum.reverse(kept),
-          else: sweep_page(limit, offset + limit, allowed, kept)
+      sweep_page(pass, nil, %{}, [])
+    else
+      []
     end
   end
 
-  defp sweep_candidates(limit, offset) do
+  # Reads one page after `cursor` and keeps those logins of the organisations that may be
+  # refreshed (`allowed` has the answers read so far), until `limit` are kept, a page is
+  # short (no login is left), or `pages_left` pages were read.
+  defp sweep_page(%{pages_left: 0}, _cursor, _allowed, kept), do: Enum.reverse(kept)
+
+  defp sweep_page(pass, cursor, allowed, kept) do
+    page = sweep_candidates(pass.limit, cursor)
+    pass = %{pass | pages_left: pass.pages_left - 1, number: pass.number + 1}
+    pass.after_page.(pass.number)
+
+    {kept, allowed} =
+      Enum.reduce_while(page, {kept, allowed}, fn {{provider, id}, _at}, {kept, allowed} ->
+        organisation_id = provider.organisation_id
+
+        allowed =
+          Map.put_new_lazy(allowed, organisation_id, fn ->
+            organisation_allowed?(organisation_id)
+          end)
+
+        # A login that changed after its page was read can come up again, later.
+        keep? = allowed[organisation_id] and not List.keymember?(kept, id, 1)
+        kept = if keep?, do: [{provider, id} | kept], else: kept
+
+        if length(kept) >= pass.limit,
+          do: {:halt, {kept, allowed}},
+          else: {:cont, {kept, allowed}}
+      end)
+
+    cond do
+      length(kept) >= pass.limit -> Enum.reverse(kept)
+      length(page) < pass.limit -> Enum.reverse(kept)
+      true -> sweep_page(pass, page |> List.last() |> cursor(), allowed, kept)
+    end
+  end
+
+  defp cursor({{_provider, id}, at}), do: {at, id}
+
+  @doc false
+  # `limit` due logins after `cursor` (nil: from the start), as `{{provider, id}, at}`, `at`
+  # being the time the order reads: the last refresh, else the sign-in.
+  @spec sweep_candidates(pos_integer, {DateTime.t(), Ecto.UUID.t()} | nil) :: [
+          {{Connection.t(), Ecto.UUID.t()}, DateTime.t()}
+        ]
+  def sweep_candidates(limit, cursor) do
     oldest = DateTime.add(db_now(), -@sweep_age_days * @day)
 
     Repo.all(
@@ -516,10 +557,20 @@ defmodule Apiary.ModelKeys.Login do
             coalesce(l.refreshed_at, l.signed_in_at) < ^oldest and
             (is_nil(l.retry_at) or l.retry_at < fragment("clock_timestamp()")) and
             (is_nil(l.lease_until) or l.lease_until < fragment("clock_timestamp()")),
+        where: ^after_cursor(cursor),
         order_by: [asc: coalesce(l.refreshed_at, l.signed_in_at), asc: l.secret_value_id],
         limit: ^limit,
-        offset: ^offset,
-        select: {c, l.secret_value_id}
+        select: {{c, l.secret_value_id}, coalesce(l.refreshed_at, l.signed_in_at)}
+    )
+  end
+
+  defp after_cursor(nil), do: dynamic(true)
+
+  defp after_cursor({at, id}) do
+    dynamic(
+      [l],
+      coalesce(l.refreshed_at, l.signed_in_at) > ^at or
+        (coalesce(l.refreshed_at, l.signed_in_at) == ^at and l.secret_value_id > ^id)
     )
   end
 
@@ -812,15 +863,15 @@ defmodule Apiary.ModelKeys.Login do
   # The task's work. A failure of the write is caught here and logged by its kind alone: the
   # task's crash report would carry its arguments, which hold the tokens.
   defp call_and_commit(ctx, leased, reason) do
-    result = LoginRefresh.call(oauth_refresh(ctx.provider), leased.tokens.refresh_token, reason)
+    case LoginRefresh.call(oauth_refresh(ctx.provider), leased.tokens.refresh_token, reason) do
+      # A deploy stopped the call: no failure is counted and no entry is written. The lease
+      # is cleared, so that the next caller does not wait for it to lapse.
+      :shutdown ->
+        :ok = release(ctx, leased)
+        {:error, :unavailable}
 
-    case commit(ctx, leased, reason, result) do
-      {:refreshed, token, expires_at} -> {:ok, token, expires_at}
-      :sign_in_needed -> {:error, :sign_in_needed}
-      :failed -> while_valid(served(leased.tokens.access_token), db_now())
-      # What the key has now: the new login's token pasted since, or the old one while it
-      # is valid. No second call, whose refresh token the first used.
-      :dropped -> while_valid(serve(ctx), db_now())
+      result ->
+        finish(ctx, leased, reason, result)
     end
   rescue
     exception ->
@@ -830,6 +881,17 @@ defmodule Apiary.ModelKeys.Login do
     kind, _reason ->
       Logger.error("model key sign-in refresh failed: #{inspect(kind)}")
       {:error, :unavailable}
+  end
+
+  defp finish(ctx, leased, reason, result) do
+    case commit(ctx, leased, reason, result) do
+      {:refreshed, token, expires_at} -> {:ok, token, expires_at}
+      :sign_in_needed -> {:error, :sign_in_needed}
+      :failed -> while_valid(served(leased.tokens.access_token), db_now())
+      # What the key has now: the new login's token pasted since, or the old one while it
+      # is valid. No second call, whose refresh token the first used.
+      :dropped -> while_valid(serve(ctx), db_now())
+    end
   end
 
   defp remaining(%{deadline: deadline}),
@@ -1033,10 +1095,12 @@ defmodule Apiary.ModelKeys.Login do
       {:error, reason} when reason in [:changed, :not_found] ->
         dropped(write, row)
 
-      {:error, _not_stored} when rotated? ->
+      {:error, reason} when rotated? ->
+        log_not_stored(reason)
         {:store_failed, nil}
 
-      {:error, _not_stored} ->
+      {:error, reason} ->
+        log_not_stored(reason)
         failed(write, row, "not_stored", now)
     end
   end
@@ -1060,6 +1124,15 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   defp settle(write, row, {:transient, cause}, now), do: failed(write, row, cause, now)
+
+  # The reason of a refused write, so that the cause of a `token_not_stored` can be found:
+  # the reason's atom alone, never a token or a part of the answer.
+  defp log_not_stored(reason) do
+    Logger.warning(
+      "model key sign-in refresh: the new sign-in was not stored: " <>
+        if(is_atom(reason), do: inspect(reason), else: "other")
+    )
+  end
 
   # A failure that may pass: the next call waits 30 seconds, doubling for each failure in a
   # row, at most 10 minutes. The first failure of a streak (`failing_since` nil) leaves the

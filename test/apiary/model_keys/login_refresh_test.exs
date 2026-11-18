@@ -834,7 +834,16 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert token(provider, trigger: :schedule) == {:error, :sign_in_needed}
       assert requests() == []
 
-      for secret <- [big["refresh_token"], tokens.refresh_token], do: refute(log =~ secret)
+      # Each of the two writes logs why it was refused: the reason's atom, no token.
+      assert log |> String.split("the new sign-in was not stored: :too_large") |> length() == 3
+
+      for secret <- [
+            big["refresh_token"],
+            big["access_token"],
+            tokens.refresh_token,
+            tokens.access_token
+          ],
+          do: refute(log =~ secret)
     end
 
     test "is only a failure that may pass when the provider kept the refresh token",
@@ -842,8 +851,10 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {provider, tokens} = subscription!(scope, expires_in: 200)
       stub!(%{"access_token" => String.duplicate("a", 17_000)})
 
-      assert {:ok, access, _at} = token(provider)
+      log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
+      assert_received {:result, {:ok, access, _at}}
       assert access == tokens.access_token
+      assert log =~ "the new sign-in was not stored: :too_large"
 
       assert %Login{state: "signed_in", failures: 1, lease_id: nil} = login = row(provider)
       assert DateTime.diff(login.retry_at, DateTime.utc_now()) in 25..30
@@ -1564,6 +1575,120 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert [{swept, id}] = Login.sweep_due(50)
       assert swept.id == provider.id
       assert id == value(provider).id
+    end
+
+    # Two refused logins (the oldest, 20 and 19.5 days) and three of the allowed organisation
+    # (19, 18 and 17 days), so that a pass of 2 to 4 reads more than one page.
+    defp paged_logins!(scope) do
+      :ok = Apiary.Edition.put_test_stub(RefusesOrganisation)
+      %{scope: refused} = sign_up_fixture(%{organisation_name: "Refused Org"})
+
+      {:ok, refused_provider} =
+        Connections.create_provider(refused, %{
+          provider: "openai-subscription",
+          keys: for(n <- 1..2, do: %{value_id: "r#{n}", value: login_paste(tag: "r#{n}")})
+        })
+
+      {provider, _tokens} = subscription!(scope, expires_in: 3600)
+
+      {:ok, provider} =
+        Enum.reduce(~w(b c), {:ok, provider}, fn name, {:ok, p} ->
+          Connections.add_provider_key(scope, p, %{value_id: name, value: login_paste(tag: name)})
+        end)
+
+      set_login!(refused_provider, [signed_in_at: -20 * @day, refreshed_at: nil], "r1")
+      set_login!(refused_provider, [signed_in_at: -19 * @day - 43_200, refreshed_at: nil], "r2")
+      aged!(provider, 19, "main")
+      aged!(provider, 18, "b")
+      aged!(provider, 17, "c")
+      {refused_provider, provider}
+    end
+
+    test "a login that leaves the due ones between two pages does not make another skipped",
+         %{scope: scope} do
+      {refused_provider, provider} = paged_logins!(scope)
+
+      # Offset paging would read the second page from offset 2 of what is left, and skip `main`.
+      swept =
+        Login.sweep_due(2,
+          after_page: fn
+            1 -> set_login!(refused_provider, [refreshed_at: 0], "r1")
+            _page -> :ok
+          end
+        )
+
+      assert Enum.map(swept, &elem(&1, 1)) == [
+               value(provider, "main").id,
+               value(provider, "b").id
+             ]
+    end
+
+    test "a login that is listed and then moves later is listed once", %{scope: scope} do
+      {_refused_provider, provider} = paged_logins!(scope)
+
+      swept =
+        Login.sweep_due(4,
+          after_page: fn
+            1 -> set_login!(provider, [refreshed_at: -8 * @day], "main")
+            _page -> :ok
+          end
+        )
+
+      assert Enum.map(swept, &elem(&1, 1)) ==
+               Enum.map(~w(main b c), &value(provider, &1).id)
+    end
+
+    test "a pass reads at most the pages it is given, and 20 by default", %{scope: scope} do
+      {_refused_provider, provider} = paged_logins!(scope)
+      test = self()
+      count = fn page -> send(test, {:page, page}) end
+
+      assert Login.sweep_due(1, max_pages: 2, after_page: count) == []
+      assert_received {:page, 1}
+      assert_received {:page, 2}
+      refute_received {:page, 3}
+
+      assert [{_p, id}] = Login.sweep_due(1, max_pages: 3, after_page: count)
+      assert id == value(provider, "main").id
+
+      # 22 logins of a refused organisation that the allowed one's login follows.
+      :ok = Apiary.Edition.put_test_stub(RefusesOrganisation)
+      %{scope: refused} = sign_up_fixture(%{organisation_name: "Refused Org 2"})
+
+      for name <- ["One", "Two"] do
+        keys = for n <- 1..11, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
+
+        Connections.create_provider(refused, %{
+          provider: "openai-subscription",
+          name: name,
+          keys: keys
+        })
+      end
+
+      Repo.update_all(
+        from(l in Login, where: l.organisation_id == ^refused.organisation.id),
+        set: [signed_in_at: DateTime.add(DateTime.utc_now(), -30 * @day)]
+      )
+
+      flush_pages()
+      assert Login.sweep_due(1, after_page: count) == []
+      assert pages() == Enum.to_list(1..20)
+    end
+
+    defp flush_pages do
+      receive do
+        {:page, _page} -> flush_pages()
+      after
+        0 -> :ok
+      end
+    end
+
+    defp pages do
+      receive do
+        {:page, page} -> [page | pages()]
+      after
+        0 -> []
+      end
     end
 
     test "is in the crontab, every 6 hours" do
