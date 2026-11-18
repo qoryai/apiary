@@ -2436,7 +2436,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices`; the function change locks no table. The migration is short. Rolling
   back restores the function with `fast` and deletes each model choice whose tier map
   has `balanced`, with its fallbacks.
-- `model_choices` and `model_choice_fallbacks` (20261118190000): `model_choices` drops
+- `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops
   the column `value_id`, the key a choice chose, with its check; runs take the keys of
   the chosen provider. `model_choice_fallbacks` drops `model_id` and `effort`, with their
   checks, and gains `runtime` and `tiers`, both `NOT NULL`, with a check of each as

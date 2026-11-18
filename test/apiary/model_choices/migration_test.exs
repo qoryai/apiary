@@ -25,12 +25,12 @@ defmodule Apiary.ModelChoices.MigrationTest do
      "keep_the_fallbacks_of_a_model_choice"},
     {20_261_118_120_000, Apiary.Repo.Migrations.NameTheModelTierBalanced,
      "name_the_model_tier_balanced"},
-    {20_261_118_190_000, Apiary.Repo.Migrations.ChooseAProviderAndARuntimePerFallback,
+    {20_261_118_163_000, Apiary.Repo.Migrations.ChooseAProviderAndARuntimePerFallback,
      "choose_a_provider_and_a_runtime_per_fallback"}
   ]
 
   @balanced 20_261_118_120_000
-  @per_fallback 20_261_118_190_000
+  @per_fallback 20_261_118_163_000
 
   @options [log: false, migration_lock: false]
 
