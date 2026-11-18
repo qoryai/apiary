@@ -69,7 +69,9 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
       workflow!(ctx)
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
 
-      assert settings(claim!(ctx, place)) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      claimed = claim!(ctx, place)
+      assert settings(claimed) == %{"runtime" => @runtime}
+      assert %{"time_limit_minutes" => 180} = Map.new(claimed.session)
 
       choose!(ctx, :organisation, "claude-haiku-5-5")
 
@@ -118,9 +120,9 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
       assert %{"runtime" => @runtime, "model" => "claude-opus-5-5", "provider_models" => [_ | _]} =
                settings = wire(built)
 
-      refute Map.has_key?(settings, "time_limit_minutes")
       assert built.stored == settings
       assert built.columns == %{}
+      assert %{time_limit: nil, time_limits: %{}} = RunSettings.hold(queued)
     end
 
     test "the workflow's choice wins over the workspace's", ctx do

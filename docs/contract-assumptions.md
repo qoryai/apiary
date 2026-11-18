@@ -370,13 +370,16 @@ key. A pool claims a run only with the feature `factory` on (`dispatch.claim`), 
 `factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
 too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
 `provider_models` and `tiers` and no key, and checks neither the chosen key nor the
-provider's endpoint. An explore run's `run_settings` has `time_limit_minutes`, an integer
-from 15 to 1440, after its other members, for a run with a workflow and `factory` on
+provider's endpoint. An explore run's documents have `time_limit_minutes`, an integer from
+15 to 1440, after `run_settings`, for a run with a workflow and `factory` on
 (`Apiary.Stacks.workflow/2`, or, with the workflow model, the workflow of its stage
 entry): the limit set for that workflow at the run's target, else the one set at its
 workspace (`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent, and the run takes the default of the
-workflow's stack, which the machine applies. The claim registers the run, and the run
+workflow's stack, which the machine applies. After it come `shared_run`, `true` for a run
+of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access
+of an entry in a loop or with `first_attempt: true`, never for a run of Explore; each is
+absent where it would be `false`. The claim registers the run, and the run
 endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
 waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager

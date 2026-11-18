@@ -3538,6 +3538,13 @@ msgstr ""
 msgid "%{stage}'s reason: %{reason}"
 msgstr ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage}'s run asked for changes again after %{count} return to %{to}, the most that %{stage} allows."
+msgid_plural "%{stage}'s run asked for changes again after %{count} returns to %{to}, the most that %{stage} allows."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage}: a value is not valid. Check the stage, then save again."
@@ -3982,16 +3989,6 @@ msgstr ""
 msgid "%{workflow}, machine type %{machine}"
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/inspector.ex
-#, elixir-autogen, elixir-format
-msgid "%{workflow}, machine type %{machine}, time limit %{minutes} minutes"
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/inspector.ex
-#, elixir-autogen, elixir-format
-msgid "%{workflow}, machine type %{machine}, time limit %{minutes} minutes (default)"
-msgstr ""
-
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow}: a stage can run it"
@@ -4079,6 +4076,23 @@ msgstr[1] ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid ", done"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid ", returns to %{stage} at most %{count} time"
+msgid_plural ", returns to %{stage} at most %{count} times"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid ", time limit %{minutes} minutes"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid ", time limit %{minutes} minutes (default)"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
@@ -6290,6 +6304,11 @@ msgstr ""
 msgid "Ask the owner of %{source} to assign it to this organisation, then run Explore again. That harness source belongs to another owner, who has not assigned it here."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask whoever keeps the harness to give %{workflow} %{other} access, or to move it to a separate stage. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Asked as question %{number}"
@@ -6417,9 +6436,59 @@ msgstr ""
 msgid "At most 80 words, on the type's page. A blank line starts a new paragraph."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the eighth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the eleventh return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the fifth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the fourth return, Qory Apiary escalates to a member."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "At the gate"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the ninth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the second return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the seventh return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the sixth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the tenth return, Qory Apiary escalates to a member."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "At the third return, Qory Apiary escalates to a member."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -9246,6 +9315,11 @@ msgstr ""
 msgid "Dismiss"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Do not return"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Do these where %{name} runs. Only the secret can't be seen again."
@@ -9685,6 +9759,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "key"
 msgid "Enter"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Enter 1 to 10 returns."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -11065,6 +11144,16 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Give every track an id of at most 40 lower-case letters, digits and hyphens, such as small-change, and a name of 1 to 60 characters."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -13638,6 +13727,16 @@ msgstr ""
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
@@ -13672,6 +13771,11 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Move fallback %{number} up"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -15433,6 +15537,23 @@ msgstr ""
 msgid "On Forager's deny list"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "On changes requested, return to"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "On changes requested: do not return"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "On changes requested: return to %{stage}, at most %{count} return"
+msgid_plural "On changes requested: return to %{stage}, at most %{count} returns"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/instance_live/mail_form.ex
 #, elixir-autogen, elixir-format
 msgid "On port 465, TLS from the start, whatever this says."
@@ -16415,6 +16536,11 @@ msgstr ""
 msgid "Per version, 1 to %{number}."
 msgstr ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type for %{workflow}."
@@ -16423,6 +16549,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Pick a machine type: no type has the key %{key}."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Pick a stage before %{stage} to return to."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18121,6 +18252,18 @@ msgstr ""
 msgid "Retention saved."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/inspector.ex
+#, elixir-autogen, elixir-format
+msgid "Returns at most"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Returns to %{stage}, at most %{count} time"
+msgid_plural "Returns to %{stage}, at most %{count} times"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Review"
@@ -18586,6 +18729,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run the agent"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -22185,6 +22333,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run did not start."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run ended after session %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

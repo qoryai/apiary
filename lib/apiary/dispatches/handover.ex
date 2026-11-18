@@ -69,7 +69,10 @@ defmodule Apiary.Dispatches.Handover do
   #      `ticket_gone`; one whose input cannot be formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
-  #      `inputs_invalid`; an explore run of the Qory harness or of the built-in one,
+  #      `inputs_invalid`; a run of a stage whose workflows share one run, whose
+  #      workflows would run with different access levels with the levels their harness
+  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; an
+  #      explore run of the Qory harness or of the built-in one,
   #      whose read of the harness for the claim failed (`at_claim/4`),
   #      `harness_unresolved`; an explore run whose model choice cannot be formed
   #      (`Apiary.Dispatches.RunSettings`):
@@ -136,7 +139,12 @@ defmodule Apiary.Dispatches.Handover do
   # providers and each fallback whose settings check ran out of time or crashed
   # (`Apiary.Dispatches`). Where the check of the settings of the choice's provider ran
   # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
-  # `model_provider_ids` as they were, and the run waits again too. Its input is
+  # `model_provider_ids` as they were, and the run waits again too. After `run_settings`,
+  # its documents have the members about its first session (`session_members/3`):
+  # `time_limit_minutes`, its workflow's time limit, and `shared_run` and `full_suite`
+  # where true. For a run of a stage with `shared_run: true`, the claim keeps the settings
+  # of each entry of the stage on the run it registers and writes the run's first session
+  # (`Apiary.Stages.claim_sessions!/2`), which each later session reads. Its input is
   # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
   # run's target, or none for an explore run whose work item has none, and takes what the
   # rest of the run's documents leave of their limit: it leaves out its oldest comments
@@ -252,7 +260,12 @@ defmodule Apiary.Dispatches.Handover do
   # The causes a claimed run ends for when the claim cannot form what it is made from.
   @unformed [:variables_invalid, :ticket_gone, :inputs_invalid] ++
               RunSettings.causes() ++
-              [:secrets_not_allowed, :target_access_gone, :write_without_work_item]
+              [
+                :secrets_not_allowed,
+                :target_access_gone,
+                :write_without_work_item,
+                :shared_access_differs
+              ]
   # What the log says when an action's transaction fails.
   @failed %{
     "dispatch.dispatched": "a dispatched could not be recorded",
@@ -428,6 +441,7 @@ defmodule Apiary.Dispatches.Handover do
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
           if formed.push, do: RunCredentials.insert!(formed.push, run)
+          :ok = Apiary.Stages.claim_sessions!(locked.run, time_limits(locked))
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -828,7 +842,7 @@ defmodule Apiary.Dispatches.Handover do
     case collection(dispatch_run) do
       {:ok, target} ->
         dispatch_run
-        |> formed(workspace, target, nil, nil, nil, fn _domain ->
+        |> formed(workspace, target, nil, {nil, []}, nil, fn _domain ->
           {:ok, Inputs.prebuild(dispatch_run.environment_ref)}
         end)
         |> destinations(dispatch_run, target)
@@ -852,14 +866,17 @@ defmodule Apiary.Dispatches.Handover do
     target = target(work_item)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
+         :ok <- shared_access(dispatch_run),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
          harness =
            harness |> with_level(level) |> submitted(dispatch_run, target, collection),
          {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
+      session = session_members(dispatch_run, held, level)
+
       dispatch_run
-      |> formed(workspace, target, work_item, settings, harness, fn domain ->
+      |> formed(workspace, target, work_item, {settings, session}, harness, fn domain ->
         rest = %{
           dispatch_run: dispatch_run,
           documents_limit: locked.documents_limit,
@@ -867,6 +884,7 @@ defmodule Apiary.Dispatches.Handover do
           target: target,
           work_item: work_item,
           run_settings: settings && settings.wire,
+          session: session,
           harness: harness
         }
 
@@ -883,6 +901,37 @@ defmodule Apiary.Dispatches.Handover do
       {:unchecked, _provider} = unchecked -> unchecked
     end
   end
+
+  # A run of a stage whose workflows share one run, whose workflows would run with
+  # different access levels, ends `shared_access_differs` (`Apiary.Stages.shared_access/1`).
+  defp shared_access(dispatch_run) do
+    case Apiary.Stages.shared_access(dispatch_run) do
+      :ok -> :ok
+      {:error, _differs} -> {:end, :shared_access_differs}
+    end
+  end
+
+  # The members of an explore run's documents about its first session, after
+  # `run_settings`: `time_limit_minutes`, the time limit of the run's workflow as
+  # `RunSettings.hold/1` read it, where the run has a workflow and run settings; then
+  # `shared_run` and `full_suite`, each only where it is true, `full_suite` for the run's
+  # access level `level` (`Apiary.Stages.session_flags/2`). `{name, value}` members, in
+  # order.
+  defp session_members(dispatch_run, held, level) do
+    flags = Apiary.Stages.session_flags(dispatch_run, level)
+
+    [
+      {"time_limit_minutes", held && held.time_limit},
+      {"shared_run", flags.shared_run || nil},
+      {"full_suite", flags.full_suite || nil}
+    ]
+    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  # The time limits the claim read for the run's workflows (`RunSettings.hold/1`), none
+  # for a run with no run settings.
+  defp time_limits(%{held: %{time_limits: limits}}), do: limits
+  defp time_limits(_locked), do: %{}
 
   # The run settings, and the providers whose keys are all in cooldown, nil where the run
   # has keys: a run whose keys are all in cooldown is formed with the choice's settings,
@@ -1095,8 +1144,9 @@ defmodule Apiary.Dispatches.Handover do
   defp submitted(harness, _dispatch_run, _target, _collection), do: harness
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
-  # `inputs` is given the name of the workspace's domain.
-  defp formed(dispatch_run, workspace, target, work_item, settings, harness, inputs) do
+  # `inputs` is given the name of the workspace's domain. `session` is the members of the
+  # documents about the run's first session (`session_members/3`).
+  defp formed(dispatch_run, workspace, target, work_item, {settings, session}, harness, inputs) do
     picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
@@ -1120,6 +1170,7 @@ defmodule Apiary.Dispatches.Handover do
            target: target,
            work_item: work_item,
            run_settings: settings && settings.wire,
+           session: session,
            harness: harness,
            inputs: inputs
          }

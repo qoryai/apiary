@@ -287,7 +287,8 @@ defmodule Apiary.WorkItemsFixtures do
   (`push_decided!/3`). A run ended `run_ended` or `lost` is then settled as its end
   settles it (`Apiary.Dispatches.Settle.settle_locked/1`, unless `settle: false`). A run
   ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
-  `inputs_invalid`, `target_access_gone`, `write_without_work_item`) has the outcome `:error`, as the handover writes
+  `inputs_invalid`, `target_access_gone`, `write_without_work_item`,
+  `shared_access_differs`) has the outcome `:error`, as the handover writes
   it. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
@@ -586,6 +587,7 @@ defmodule Apiary.WorkItemsFixtures do
               :inputs_invalid,
               :target_access_gone,
               :write_without_work_item,
+              :shared_access_differs,
               :build_failed,
               :harness_unresolved
             ],

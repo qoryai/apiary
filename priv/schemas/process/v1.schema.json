@@ -56,6 +56,10 @@
           "items": {"$ref": "#/$defs/output"}
         },
         "gate": {"$ref": "#/$defs/gate"},
+        "shared_run": {
+          "description": "Optional, default false. With true, the workflow entries of the stage, those in a loop's body included, run one after the other as sessions of one run, on one machine. Every entry of such a stage has the same access level and machine type: a save fails when two entries differ.",
+          "type": "boolean"
+        },
         "when": {
           "description": "The stage runs only when its condition is met; otherwise the work item passes over it. Not on the first stage: no earlier stage exists to test.",
           "$ref": "#/$defs/condition"
@@ -101,6 +105,15 @@
           "description": "Lowers the access level the stack declares: read, or write-no-push, the level of a workflow that writes in its checkout and has no push credential. Left out, the run has the stack's level.",
           "enum": ["read", "write-no-push"]
         },
+        "return": {
+          "description": "Outside a loop only. When a run of the entry ends changes-requested, the work item enters the stage `stage`, an earlier stage, at its first entry. Qory Apiary counts these returns; the run after `limit` returns escalates to a member. Request changes at the gate of the entry's stage also enters `stage` at its first entry, and counts no return.",
+          "type": "object",
+          "required": ["stage"],
+          "properties": {
+            "stage": {"type": "string", "pattern": "^st_[0-9a-hjkmnp-tv-z]{10}$"},
+            "limit": {"description": "The most returns; 2 by default.", "type": "integer", "minimum": 1, "maximum": 10}
+          }
+        },
         "when": {
           "description": "The entry runs only when its condition is met; otherwise no run starts for it. A loop whose every entry is passed over is passed over too.",
           "$ref": "#/$defs/condition"
@@ -130,11 +143,14 @@
           "properties": {
             "rounds": {"type": "integer", "minimum": 1, "maximum": 10},
             "body": {
-              "description": "Workflow entries only: loops do not nest.",
+              "description": "Workflow entries only, with no return: loops do not nest.",
               "type": "array",
               "minItems": 1,
               "maxItems": 10,
-              "items": {"$ref": "#/$defs/workflow_entry", "properties": {"first_attempt": false}}
+              "items": {
+                "allOf": [{"$ref": "#/$defs/workflow_entry"}, {"not": {"required": ["return"]}}],
+                "properties": {"first_attempt": false}
+              }
             }
           }
         }

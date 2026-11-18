@@ -221,12 +221,12 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert {:ok, handed} = Task.await(second.task)
 
       assert Jason.encode!(handed.run_settings) ==
-               ~s({"runtime":"#{@runtime}","time_limit_minutes":180})
+               ~s({"runtime":"#{@runtime}"})
 
       assert %Run{provider_connection_id: nil, provider_api: nil, run_settings: settings} =
                run!(handed)
 
-      assert settings == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert settings == %{"runtime" => @runtime}
     end
   end
 

@@ -842,10 +842,11 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert %{"value" => @push_token, "apply" => ^pushing} = value(plaintext, "push-1")
       refute inspect(value(plaintext, "work-1")) =~ "push_ref"
 
-      # Two calls, in the run configuration's order, both for the work: the access differs,
-      # and neither has a branch.
+      # Two calls, both for the work: the access differs, and neither has a branch. The
+      # calls run in parallel, so they arrive in either order; sorted by access, read is
+      # first.
       assert [{"/calls/run-credential", read}, {"/calls/run-credential", write}] =
-               WorkCredentialStub.calls()
+               Enum.sort_by(WorkCredentialStub.calls(), fn {_path, body} -> body["access"] end)
 
       assert {read["access"], read["purpose"]} == {"read", "work"}
       assert {write["access"], write["purpose"]} == {"write", "work"}

@@ -82,6 +82,10 @@ defmodule Apiary.Dispatches.SchemaTest do
   # decisions: down first, up last.
   @move_stage_version 20_261_116_170_000
   @move_stage Apiary.Repo.Migrations.KeepTheStageAMoveEnters
+  # The later migration that keeps the sessions of a shared run, whose table links to the
+  # runs of the queue: down first, up last.
+  @sessions_version 20_261_118_130_000
+  @sessions Apiary.Repo.Migrations.KeepTheSessionsOfASharedRun
 
   # The later migrations that keep where a move went and the switch of an escalation, whose
   # key and check are on the gate decisions and the escalations: down first, newest first,
@@ -116,7 +120,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@move_went_version, @move_went, "keep_where_a_move_went_and_what_it_left"},
           {@move_valid_version, @move_valid, "validate_the_escalation_of_a_move"},
           {@switch_version, @switch, "keep_a_switch_as_a_resolution"},
-          {@switch_valid_version, @switch_valid, "validate_a_switch_as_a_resolution"}
+          {@switch_valid_version, @switch_valid, "validate_a_switch_as_a_resolution"},
+          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -295,7 +300,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
                      "'build_failed', 'harness_unresolved', 'target_access_gone', " <>
-                     "'write_without_work_item') " <>
+                     "'write_without_work_item', 'shared_access_differs') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
@@ -1097,6 +1102,8 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @sessions_version, @sessions, @options)
+
     assert :ok =
              Ecto.Migrator.down(Repo, @switch_valid_version, @switch_valid, @options)
 
@@ -1145,6 +1152,8 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @move_valid_version, @move_valid, @options)
     assert :ok = Ecto.Migrator.up(Repo, @switch_version, @switch, @options)
     assert :ok = Ecto.Migrator.up(Repo, @switch_valid_version, @switch_valid, @options)
+
+    assert :ok = Ecto.Migrator.up(Repo, @sessions_version, @sessions, @options)
 
     # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
     # left down, on every insert.

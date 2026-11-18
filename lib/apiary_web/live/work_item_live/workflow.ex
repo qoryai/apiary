@@ -51,7 +51,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     "round_limit" => :round_limit,
     "escalate" => :escalate,
     "check_failed" => :check_failed,
-    "run_stopped" => :run_stopped
+    "run_stopped" => :run_stopped,
+    "return_limit" => :return_limit
   }
 
   @doc false
@@ -516,7 +517,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
       # it pushed name (`ApiaryWeb.RunOutputs`).
       run_id: get(get(escalation, :run), :id),
-      harness_path: harness_path(scope, get(escalation, :set_up_step))
+      harness_path: harness_path(scope, get(escalation, :set_up_step)),
+      return_to: get(escalation, :return_to)
     }
   end
 

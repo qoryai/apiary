@@ -868,6 +868,143 @@ defmodule Apiary.ProcessesTest do
     assert Processes.stage(default(), nil) == nil
   end
 
+  describe "a stage with shared_run" do
+    # One stage whose workflows run as sessions of one run: two entries, then a loop of two.
+    defp shared(entries \\ %{}, document \\ %{}) do
+      at = fn key -> Map.get(entries, key, %{}) end
+
+      stage = %{
+        "id" => "st_b0000000r1",
+        "name" => "Build",
+        "shared_run" => true,
+        "sequence" => [
+          Map.merge(%{"workflow" => "plan-the-build"}, at.(0)),
+          Map.merge(%{"workflow" => "write-acceptance-checks"}, at.(1)),
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [
+                Map.merge(%{"workflow" => "implement-changes"}, at.(2)),
+                Map.merge(%{"workflow" => "review-changes"}, at.(3))
+              ]
+            }
+          }
+        ],
+        "gate" => %{"kind" => "none"}
+      }
+
+      Map.merge(%{"schema" => "qory.process/v1", "stages" => [stage]}, document)
+    end
+
+    defp shared_errors(document) do
+      assert {:error, errors} = Processes.validate(document)
+      Enum.map(errors, &{&1.path, &1.error, &1.detail})
+    end
+
+    test "is false by default, and a boolean" do
+      [stage] = shared()["stages"]
+      assert Processes.shared_run?(stage)
+      refute Processes.shared_run?(Map.delete(stage, "shared_run"))
+      refute Processes.shared_run?(%{stage | "shared_run" => false})
+
+      assert {"#/stages/0/shared_run", :schema} in errors(%{
+               shared()
+               | "stages" => [%{stage | "shared_run" => "yes"}]
+             })
+    end
+
+    test "accepts entries with one access level and machine type, loop included" do
+      same = %{"access" => "write-no-push", "machine" => "large"}
+
+      assert Processes.validate(shared()) == :ok
+      assert Processes.validate(shared(%{0 => same, 1 => same, 2 => same, 3 => same})) == :ok
+
+      # The document's machine type is the machine type of an entry that sets none.
+      assert Processes.validate(shared(%{1 => %{"machine" => "large"}}, %{"machine" => "large"})) ==
+               :ok
+    end
+
+    test "fails on entries that differ in access level, at the first that differs" do
+      assert shared_errors(shared(%{3 => %{"access" => "read"}})) ==
+               [{"#/stages/0/sequence/2/loop/body/1", :shared_run_differs, :access}]
+
+      assert shared_errors(shared(%{0 => %{"access" => "read"}})) ==
+               [{"#/stages/0/sequence/1", :shared_run_differs, :access}]
+    end
+
+    test "fails on entries that differ in machine type, the document's included" do
+      assert shared_errors(shared(%{2 => %{"machine" => "large"}})) ==
+               [{"#/stages/0/sequence/2/loop/body/0", :shared_run_differs, :machine}]
+
+      # `default` is the instance's default type, not the document's.
+      assert shared_errors(shared(%{1 => %{"machine" => "default"}}, %{"machine" => "large"})) ==
+               [{"#/stages/0/sequence/1", :shared_run_differs, :machine}]
+    end
+
+    test "compares each entry's access lowered by the level its harness declares" do
+      levels = %{
+        "plan-the-build" => :read,
+        "write-acceptance-checks" => :write,
+        "implement-changes" => :write,
+        "review-changes" => :write
+      }
+
+      # plan-the-build runs with read access, as its harness sets: the others write.
+      {:error, [error]} = Processes.validate(shared(), levels)
+
+      assert {error.path, error.detail} ==
+               {"#/stages/0/sequence/1", {:access, "plan-the-build", "read", "write"}}
+
+      assert ApiaryWeb.StagesLive.Words.refusal(error, shared()) ==
+               "Move plan-the-build to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. plan-the-build runs with read access, because its harness sets read."
+
+      # The entries' access lowers the others to read: every workflow reads.
+      read = %{"access" => "read"}
+      assert Processes.validate(shared(%{1 => read, 2 => read, 3 => read}), levels) == :ok
+
+      # A workflow whose harness sets write runs with its entry's lower access.
+      {:error, [error]} =
+        Processes.validate(shared(%{3 => %{"access" => "write-no-push"}}), %{})
+
+      assert error.detail == :access
+
+      # A level of no entry's workflow changes nothing.
+      assert Processes.validate(shared(), %{"explore-a-ticket" => :read}) == :ok
+    end
+
+    test "compares no other member of an entry, such as one the schema does not list" do
+      assert Processes.validate(shared(%{1 => %{"image" => "base"}})) == :ok
+    end
+
+    test "gives one error for each of the two, and a sentence with the fix first" do
+      differs = %{"access" => "read", "machine" => "large"}
+      document = shared(%{3 => differs})
+
+      assert shared_errors(document) == [
+               {"#/stages/0/sequence/2/loop/body/1", :shared_run_differs, :access},
+               {"#/stages/0/sequence/2/loop/body/1", :shared_run_differs, :machine}
+             ]
+
+      {:error, errors} = Processes.validate(document)
+
+      assert Enum.map(errors, &ApiaryWeb.StagesLive.Words.refusal(&1, document)) == [
+               "Give every workflow in Build the same access. The workflows of Build run one after the other on one machine.",
+               "Give every workflow in Build the same machine type. The workflows of Build run one after the other on one machine."
+             ]
+    end
+
+    test "accepts a stage without it whose entries differ" do
+      differs = %{"access" => "read", "machine" => "large"}
+      [stage] = shared(%{3 => differs})["stages"]
+
+      assert Processes.validate(%{shared() | "stages" => [Map.delete(stage, "shared_run")]}) ==
+               :ok
+
+      assert Processes.validate(%{shared() | "stages" => [%{stage | "shared_run" => false}]}) ==
+               :ok
+    end
+  end
+
   describe "diff/2" do
     test "lists every stage added before version 1, with its position" do
       assert [{:stage_added, @explore, %{name: "Explore", position: 0}} | _] =
@@ -1437,6 +1574,80 @@ defmodule Apiary.ProcessesTest do
                "number" => 2,
                "based_on" => 1
              }
+    end
+
+    test "a save of a stage with shared_run whose entries differ in access level fails", %{
+      scope: scope
+    } do
+      shared =
+        edit(fn
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{
+              "shared_run" => true,
+              "sequence" => [
+                %{"workflow" => "plan-the-build"},
+                %{"workflow" => "write-acceptance-checks", "access" => "read"}
+              ]
+            })
+
+          stage ->
+            stage
+        end)
+
+      assert {:error, [%{error: :shared_run_differs, detail: :access}]} =
+               Processes.save(scope, scope.workspace, shared)
+
+      assert Enum.map(Processes.list_versions(scope.workspace), & &1.number) == [1]
+    end
+
+    test "a save of a stage with shared_run whose harness levels differ fails", %{scope: scope} do
+      repository_harness!(scope, scope.workspace.id)
+
+      :ok =
+        Processes.record_declared(scope.workspace, %{
+          "plan-the-build" => :write,
+          "write-acceptance-checks" => :read
+        })
+
+      shared = fn second ->
+        edit(fn
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{
+              "shared_run" => true,
+              "sequence" => [%{"workflow" => "plan-the-build"}, second]
+            })
+
+          stage ->
+            stage
+        end)
+      end
+
+      assert {:error,
+              [
+                %{
+                  error: :shared_run_differs,
+                  detail: {:access, "write-acceptance-checks", "read", "write"}
+                }
+              ]} =
+               Processes.save(
+                 scope,
+                 scope.workspace,
+                 shared.(%{"workflow" => "write-acceptance-checks"})
+               )
+
+      assert Enum.map(Processes.list_versions(scope.workspace), & &1.number) == [1]
+
+      # The first entry's access lowers it to the second's level: both read.
+      document =
+        edit(shared.(%{"workflow" => "write-acceptance-checks"}), fn
+          %{"id" => @shape, "sequence" => [first, second]} = stage ->
+            %{stage | "sequence" => [Map.put(first, "access", "read"), second]}
+
+          stage ->
+            stage
+        end)
+
+      assert {:ok, _version} = Processes.save(scope, scope.workspace, document)
     end
 
     test "a save keeps the fields the schema does not list, and gives a new stage its id", %{

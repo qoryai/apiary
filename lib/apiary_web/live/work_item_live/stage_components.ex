@@ -628,7 +628,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns,
         :escalation,
         assigns.page.escalation ||
-          %{cause: :escalate, result: true, points: [], run: nil, harness_path: nil}
+          %{
+            cause: :escalate,
+            result: true,
+            points: [],
+            run: nil,
+            harness_path: nil,
+            return_to: nil
+          }
       )
       |> assign(:switch, Map.get(assigns.page, :switch) || [])
 
@@ -687,7 +694,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
-            <option :for={stage <- Enum.reverse(@page.earlier)} value={stage.id}>{stage.name}</option>
+            <option
+              :for={stage <- Enum.reverse(@page.earlier)}
+              value={stage.id}
+              selected={stage.id == Map.get(@escalation, :return_to)}
+            >
+              {stage.name}
+            </option>
           </select>
           <.button id={"#{@id}-move"} type="submit" name="how" value="move_back">
             {gettext("Move back")}
