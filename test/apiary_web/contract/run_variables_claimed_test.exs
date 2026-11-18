@@ -39,9 +39,11 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
     |> Map.merge(%{scope: scope, digest: digest, target: target})
   end
 
-  defp claim(ctx) do
+  # `earlier` seconds before the clock: two claims signed in one second carry the same body,
+  # so the same signature, and the second is refused as a replay (`401`).
+  defp claim(ctx, earlier) do
     :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
-    now = SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+    now = (SignedRequest.now() - earlier) |> DateTime.from_unix!() |> DateTime.to_iso8601()
 
     conn =
       signed_post(
@@ -86,11 +88,11 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
   end
 
   # A work item queued, claimed through the endpoint, and its run attached: the attach.
-  defp attached(ctx) do
+  defp attached(ctx, earlier \\ 0) do
     {:ok, queued} =
       Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
 
-    %{"run_code" => code} = claim(ctx)
+    %{"run_code" => code} = claim(ctx, earlier)
     run_key = redeemed_run_key!(code)
     {queued.run_id, gateway_attach(ctx, queued.run_id, run_key)}
   end
@@ -155,7 +157,7 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
     assert values(reload) == first
 
     # The next run has the edit, under another digest.
-    {_next_id, next} = attached(ctx)
+    {_next_id, next} = attached(ctx, 1)
     assert next.status == 200
     assert [next_digest] = get_resp_header(next, "x-qory-run-configuration")
     refute next_digest == digest
