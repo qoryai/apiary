@@ -25,6 +25,9 @@ import {GenerateKey} from "./hooks/generate_key"
 import {Mermaid} from "./hooks/mermaid"
 import {SpendDialog} from "./hooks/spend_dialog"
 import {VideoSpeed} from "./hooks/video_speed"
+import {ArtifactPlayer} from "./hooks/artifact_player"
+import {QueueMedia} from "./hooks/queue_media"
+import {WatchHandoff} from "./hooks/watch_handoff"
 
 export {autoDismiss}
 
@@ -56,4 +59,7 @@ export const hooks = {
   Mermaid,
   SpendDialog,
   VideoSpeed,
+  ArtifactPlayer,
+  QueueMedia,
+  WatchHandoff,
 }

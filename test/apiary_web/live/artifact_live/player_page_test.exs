@@ -20,7 +20,6 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
 
   @moduletag needs: [:factory, :workflow_model]
 
-  @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @verify "st_m1mqbeywdg"
 
@@ -322,6 +321,98 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       assert has_element?(view, ".q-art-main #artifact-files-part")
       assert has_element?(view, "aside #artifact-queue")
       refute has_element?(view, "aside #artifact-scenario")
+    end
+  end
+
+  describe "the player of a film" do
+    test "has Cinema and Full screen in the line of the Speed row, and no autoplay",
+         %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [first | _more] = queue(work_item)
+      view = page(conn, scope, work_item, first)
+
+      assert has_element?(view, "#artifact-player > video[controls][preload=metadata]")
+      refute has_element?(view, "#artifact-player video[autoplay]")
+      refute render(view) =~ "autoplay"
+
+      assert has_element?(view, "#artifact-player > .q-player-bar [phx-hook=VideoSpeed]")
+      assert has_element?(view, "#artifact-player > .q-player-bar [phx-hook=ArtifactPlayer]")
+      assert has_element?(view, "#artifact-player #artifact-cinema", "Cinema")
+      assert has_element?(view, "#artifact-player #artifact-full-screen", "Full screen")
+      assert has_element?(view, "#artifact-player > figcaption", "scenario-1.mp4")
+    end
+  end
+
+  describe "the player of a scenario's pictures" do
+    test "shows one picture, with its step and file name, and Cinema and Full screen",
+         %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [_first, second, _tenth] = queue(work_item)
+      view = page(conn, scope, work_item, second)
+
+      assert has_element?(view, "#artifact-view-title", "Image")
+      assert has_element?(view, "#artifact-picture-count", "Picture 1 of 3")
+      assert has_element?(view, "#artifact-player img[src$=\"/files/scenario-2-step-1.png\"]")
+      assert has_element?(view, "#artifact-player img.h-\\[70vh\\]")
+
+      assert texts(view, "#artifact-player figcaption span") == [
+               "Step 1: Open scenario-2",
+               "Expected: Result 1 of Open scenario-2.",
+               "scenario-2-step-1.png"
+             ]
+
+      assert has_element?(view, "#artifact-player #artifact-cinema")
+      assert has_element?(view, "#artifact-player #artifact-full-screen")
+      # The scenario's other pictures are not stacked under it.
+      assert render(view)
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("img[src*=\"step-\"]")
+             |> Enum.count() == 2
+    end
+
+    test "Next picture and Previous picture move through the pictures, and stop at the ends",
+         %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [_first, second, _tenth] = queue(work_item)
+      view = page(conn, scope, work_item, second)
+
+      assert has_element?(view, "#artifact-picture-prev[disabled]")
+      refute has_element?(view, "#artifact-picture-next[disabled]")
+
+      view |> element("#artifact-picture-next") |> render_click()
+      assert has_element?(view, "#artifact-picture-count", "Picture 2 of 3")
+      assert has_element?(view, ~s|#artifact-player img[src$="/files/scenario-2-step-2.png"]|)
+
+      assert texts(view, "#artifact-player figcaption span:first-child") == [
+               "Step 2: Reload scenario-2"
+             ]
+
+      refute has_element?(view, "#artifact-picture-prev[disabled]")
+
+      view |> element("#artifact-picture-next") |> render_click()
+      assert has_element?(view, "#artifact-picture-count", "Picture 3 of 3")
+      assert has_element?(view, "#artifact-picture-next[disabled]")
+
+      # A click past the end changes nothing.
+      render_click(view, "picture-next", %{})
+      assert has_element?(view, "#artifact-picture-count", "Picture 3 of 3")
+
+      view |> element("#artifact-picture-prev") |> render_click()
+      view |> element("#artifact-picture-prev") |> render_click()
+      assert has_element?(view, "#artifact-picture-count", "Picture 1 of 3")
+      render_click(view, "picture-prev", %{})
+      assert has_element?(view, "#artifact-picture-count", "Picture 1 of 3")
+    end
+
+    test "a reload shows the first picture again", %{conn: conn, scope: scope} do
+      work_item = three_scenarios!(scope)
+      [_first, second, _tenth] = queue(work_item)
+      view = page(conn, scope, work_item, second)
+      view |> element("#artifact-picture-next") |> render_click()
+      assert has_element?(view, "#artifact-picture-count", "Picture 2 of 3")
+
+      view = page(conn, scope, work_item, second)
+      assert has_element?(view, "#artifact-picture-count", "Picture 1 of 3")
     end
   end
 

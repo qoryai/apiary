@@ -104,6 +104,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
               shown={@shown}
               path={&ArtifactComponents.file_path(@current_scope, @number, @version.public_id, &1)}
               script={~p"/assets/js/mermaid.js"}
+              player={player(@view.base_view, @scenario, @pictures, @picture)}
             />
           </section>
 
@@ -374,12 +375,30 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   defp load_queue(socket) do
     {queue, scenario} = read_queue(socket.assigns.work_item, socket.assigns.version)
 
+    pictures =
+      if scenario && scenario.kind == :pictures, do: VerifyTab.pictures(scenario), else: []
+
+    picture = socket.assigns[:picture] || 1
+
     assign(socket,
       queue: queue,
       scenario: scenario,
-      place: scenario && Enum.find_index(queue, &(&1.version.id == scenario.version.id)) + 1
+      place: scenario && Enum.find_index(queue, &(&1.version.id == scenario.version.id)) + 1,
+      pictures: pictures,
+      picture: picture |> min(max(length(pictures), 1)) |> max(1)
     )
   end
+
+  # What `ArtifactComponents.view/1` takes as `player`: Cinema and Full screen for a
+  # film, whether or not it is in a scenario; the pictures of a scenario, one at a time;
+  # nothing for a page of another view, and for a set of pictures in no scenario, which
+  # stays the stack of pictures.
+  defp player(:video, _scenario, _pictures, _picture), do: %{}
+
+  defp player(:image, %{kind: :pictures}, [_first | _more] = pictures, picture),
+    do: %{pictures: pictures, picture: picture}
+
+  defp player(_base_view, _scenario, _pictures, _picture), do: nil
 
   defp read_queue(work_item, version) do
     with true <- version.artifact.type in VerifyTab.media(),
@@ -432,6 +451,14 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   def handle_event("show-document", _params, socket), do: {:noreply, socket}
+
+  # The picture of a scenario's pictures that the player shows: not in the address, so a
+  # reload shows the first. Previous at the first and Next at the last stay where they are.
+  def handle_event("picture-prev", _params, socket), do: {:noreply, move_picture(socket, -1)}
+  def handle_event("picture-next", _params, socket), do: {:noreply, move_picture(socket, 1)}
+
+  defp move_picture(%{assigns: %{picture: picture, pictures: pictures}} = socket, by),
+    do: assign(socket, :picture, picture |> Kernel.+(by) |> min(length(pictures)) |> max(1))
 
   @impl true
   def handle_info({:artifact_pushed, work_item_id, _version_id}, socket) do
