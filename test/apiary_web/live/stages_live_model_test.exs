@@ -223,6 +223,15 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     assert has_element?(view, "#{@tiers_id}-h", "Model and effort per tier")
 
+    # The line under each tier (ModelTiers.line/1).
+    for line <- [
+          "Plans and reviews: the most capable model.",
+          "Writes and runs most steps.",
+          "Simple, scripted steps: the cheapest model."
+        ] do
+      assert has_element?(view, @tiers_id, line)
+    end
+
     # The tiers' fields have ids of the row and belong to the row's form.
     assert has_element?(
              view,
