@@ -1597,21 +1597,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # The value of the new key: the sign-in of a provider whose keys are logins, nothing until
-  # the person has signed in, else the Key.
-  defp key_value(socket, params) do
-    if ProviderPage.login?(socket.assigns.chosen) do
-      case ModelKeyDevice.login(socket) do
-        {:ok, login} -> login
-        :error -> ""
-      end
-    else
-      params["key"] || ""
-    end
-  end
-
   defp save_model(socket, scope, source, params) do
-    case model_provider(source, scope, socket.assigns.flow, params, key_value(socket, params)) do
+    case model_provider(
+           source,
+           scope,
+           socket.assigns.flow,
+           params,
+           ModelKeyDevice.value(socket, ProviderPage.login?(socket.assigns.chosen), params["key"])
+         ) do
       {:ok, provider} ->
         # After a refusal of the choice, the form shows the provider as one to reuse.
         params = Map.put(params, "source", provider.public_id)
@@ -2204,7 +2197,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             :if={ProviderPage.login?(@chosen)}
             id="set-up-model-sign-in"
             device={@device}
-            errors={Enum.map(@form[:key].errors, &translate_error/1)}
+            errors={ModelKeyDevice.errors(@form[:key])}
           />
           <.input
             :if={!ProviderPage.login?(@chosen)}

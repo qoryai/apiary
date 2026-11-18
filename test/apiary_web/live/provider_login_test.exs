@@ -203,7 +203,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       # The device assign has the user code and nothing else of the sign-in.
       assert Map.keys(device_of(lv)) |> Enum.sort() ==
-               ~w(expires_at key kind pid ref state user_code verification_url)a
+               ~w(cause expires_at key kind pid ref state user_code verification_url)a
     end
 
     test "Cancel beside the code stops the sign-in and shows the button again", ctx do
@@ -272,7 +272,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert has_element?(lv, "#key-sign-in-start", "Sign in with ChatGPT")
     end
 
-    test "shows the fix of a code and nothing more when the sign-in fails otherwise", ctx do
+    test "shows the fix and the status of the response that failed the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put(usercode: 500)
       provider = subscription!(scope)
@@ -282,8 +282,49 @@ defmodule ApiaryWeb.ProviderLoginTest do
       eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
 
       assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
-      refute has_element?(lv, "#key-sign-in-cause")
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "Qory Apiary could not complete the sign-in with OpenAI (HTTP 500)."
+
       assert has_element?(lv, "#key-sign-in-start")
+    end
+
+    test "leaves the status out of the cause when the failure has none", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(code: "")
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "Qory Apiary could not complete the sign-in with OpenAI."
+    end
+
+    test "shows only the fix for tokens with no account id", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not.a.jwt"})
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
+      refute has_element?(lv, "#key-sign-in-cause")
+    end
+
+    test "copies the code as text, with no white space around it", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(hold: true)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      sign_in!(lv, "key-sign-in")
+      assert lv |> element("#key-sign-in-code") |> render() =~ ~r/>7QKD-M4TPX<\/code>\z/
+      assert lv |> element("#key-sign-in-copy") |> render() =~ ~s{data-copy="7QKD-M4TPX"}
+      refute lv |> element("#key-sign-in-copy") |> render() =~ "data-copy-target"
     end
 
     test "refuses a save before the sign-in, with the Name's errors", ctx do
@@ -346,6 +387,39 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert %Login{state: "signed_in", generation: 2, sign_in_cause: nil} =
                login_of(provider, "main")
+    end
+
+    test "keeps the reason of a key that needs a new sign-in after a failed attempt", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription!(scope)
+      value = key_value!(provider, "main")
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+        set: [
+          state: "sign_in_needed",
+          sign_in_cause: "refresh_token_reused",
+          last_failure: ~U[2026-11-18 10:04:00.000000Z]
+        ]
+      )
+
+      for {script, fix} <- [
+            {[usercode: 404], "Turn on"},
+            {[usercode: 500], "Click Sign in with ChatGPT for a new code."},
+            {[pending: :never, expires_at: DateTime.add(DateTime.utc_now(), 1)],
+             "Click Sign in with ChatGPT for a new code."}
+          ] do
+        Stub.put(script)
+        {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+        lv |> element("#key-sign-in-start") |> render_click()
+        eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+        assert text(lv, "#key-sign-in-fix") =~ fix
+
+        assert text(lv, "#key-sign-in-needed") =~
+                 ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
+
+        assert has_element?(lv, "#key-sign-in-start")
+      end
     end
 
     test "stores a new sign-in over the key's, and keeps the key when none is made", ctx do
@@ -690,6 +764,32 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert account == tokens.account_id
       refute_tokens(render(lv), tokens)
       refute_in_assigns(lv, tokens)
+    end
+
+    test "turns the other rows' buttons off while one row has a sign-in going on", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope)
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{
+          value_id: "spare",
+          value: device_login(tag: "s")
+        })
+
+      needs_sign_in!(provider, "main")
+      needs_sign_in!(provider, "spare")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      sign_in!(lv, "provider-key-main-sign-in")
+
+      assert has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      refute has_element?(lv, "#provider-key-main-sign-in-start")
+
+      lv |> element("#provider-key-main-sign-in-cancel") |> render_click()
+      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      assert has_element?(lv, "#provider-key-main-sign-in-start")
     end
 
     test "Cancel in a row stops the sign-in", ctx do

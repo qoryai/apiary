@@ -21,8 +21,8 @@ defmodule ApiaryWeb.ProviderLive.Key do
   #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
   # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
-  # save renders a new, empty field. The tokens of a sign-in are in the process of the sign-in, never
-  # in an assign.
+  # save renders a new, empty field. The tokens of a sign-in are in the process of the
+  # sign-in, never in an assign.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -142,9 +142,6 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   # The errors of the Key as the sign-in shows them: a provider whose keys are logins has no
   # field for them.
-  defp sign_in_errors(form),
-    do: Enum.map(form[:key].errors, &ApiaryWeb.CoreComponents.translate_error/1)
-
   defp provider_path(scope, provider),
     do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"
 
@@ -184,14 +181,20 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # The Name and the Key as `Apiary.Connections` checks them: the Key without the
   # whitespace at its ends. For a provider whose keys are logins, the key is the sign-in,
   # which exists once the person has signed in (`signed_in`).
-  defp input_errors(:new, params, login, signed_in) do
-    key =
-      if login,
-        do: if(signed_in, do: "signed in", else: ""),
-        else: Connections.trim_key(params["key"])
-
+  defp input_errors(:new, params, true = _login, signed_in) do
     %Value{}
-    |> Value.changeset(%{"value_id" => params["value_id"], "value" => key}, value_id: :required)
+    |> Ecto.Changeset.cast(%{"value_id" => params["value_id"]}, [:value_id])
+    |> Value.value_id_changeset(:required)
+    |> sign_in_missing(signed_in)
+    |> key_errors(nil)
+  end
+
+  defp input_errors(:new, params, _login, _signed_in) do
+    %Value{}
+    |> Value.changeset(
+      %{"value_id" => params["value_id"], "value" => Connections.trim_key(params["key"])},
+      value_id: :required
+    )
     |> key_errors(nil)
   end
 
@@ -205,6 +208,12 @@ defmodule ApiaryWeb.ProviderLive.Key do
       input_errors(:new, params, login, signed_in)
     end
   end
+
+  # The sign-in is the key's value: no value until the person has signed in.
+  defp sign_in_missing(changeset, true), do: changeset
+
+  defp sign_in_missing(changeset, false),
+    do: Ecto.Changeset.add_error(changeset, :value, "can't be blank", validation: :required)
 
   # A New value that is empty or only whitespace keeps the key's value; an event without
   # the field has none.
@@ -233,7 +242,11 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   defp add_key(socket, params, settings) do
     %{current_scope: scope, provider: provider} = socket.assigns
-    attrs = %{"value_id" => params["value_id"], "value" => key_value(socket, params)}
+
+    attrs = %{
+      "value_id" => params["value_id"],
+      "value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"])
+    }
 
     case Connections.add_provider_key(scope, provider, attrs, settings) do
       {:ok, _provider} ->
@@ -252,7 +265,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
     attrs = %{
       "value_id" => params["value_id"],
-      "value" => key_value(socket, params),
+      "value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"]),
       "settings" => settings
     }
 
@@ -267,16 +280,6 @@ defmodule ApiaryWeb.ProviderLive.Key do
         refused(socket, params, reason)
     end
   end
-
-  # The value to store: the sign-in of a provider whose keys are logins, else the Key.
-  defp key_value(%{assigns: %{login: true}} = socket, params) do
-    case ModelKeyDevice.login(socket) do
-      {:ok, login} -> login
-      :error -> params["key"]
-    end
-  end
-
-  defp key_value(_socket, params), do: params["key"]
 
   defp saved(socket, words) do
     %{current_scope: scope, provider: provider} = socket.assigns
@@ -389,7 +392,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
             id="key-sign-in"
             device={@device}
             login={@sign_in}
-            errors={sign_in_errors(@form)}
+            errors={ModelKeyDevice.errors(@form[:key])}
           />
           <.input
             :if={!@login}

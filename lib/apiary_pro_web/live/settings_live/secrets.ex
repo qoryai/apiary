@@ -677,7 +677,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
         :if={Apiary.ModelKeys.Login.provider?(@provider)}
         id="secret-sign-in"
         device={@device}
-        errors={Enum.map(@form[:value].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+        errors={ModelKeyDevice.errors(@form[:value])}
       />
       <.value_field :if={!Apiary.ModelKeys.Login.provider?(@provider)} form={@form} />
       <.page_form_foot id="secret-save" cancel={list_path(@current_scope, @query)} cancel_by="patch">
@@ -696,7 +696,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
         :if={Apiary.ModelKeys.Login.provider?(@provider)}
         id="secret-sign-in"
         device={@device}
-        errors={Enum.map(@form[:value].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+        errors={ModelKeyDevice.errors(@form[:value])}
       />
       <.value_field
         :if={!Apiary.ModelKeys.Login.provider?(@provider)}
@@ -1442,21 +1442,6 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
 
   defp device(socket), do: socket
 
-  # `params` with the sign-in of a provider whose keys are logins as its value: the form
-  # sends no value for it, and a value it sent is dropped.
-  defp sign_in(params, %{assigns: %{provider: %Connection{} = provider}} = socket) do
-    if Apiary.ModelKeys.Login.provider?(provider) do
-      case ModelKeyDevice.login(socket) do
-        {:ok, login} -> Map.put(params, "value", login)
-        :error -> Map.delete(params, "value")
-      end
-    else
-      params
-    end
-  end
-
-  defp sign_in(params, _socket), do: params
-
   defp handle("find", %{"q" => q}, socket) do
     query = %{socket.assigns.query | q: String.trim(q)}
 
@@ -1527,7 +1512,9 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, provider: provider} = socket.assigns
-    params = params |> Map.take(~w(value_id value first_value_id)) |> sign_in(socket)
+
+    params =
+      params |> Map.take(~w(value_id value first_value_id)) |> ModelKeyDevice.put_login(socket)
 
     added =
       if provider,
@@ -1560,7 +1547,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
-    params = sign_in(params, socket)
+    params = ModelKeyDevice.put_login(params, socket)
 
     set =
       if provider,

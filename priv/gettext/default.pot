@@ -17197,6 +17197,16 @@ msgstr ""
 msgid "Qory Apiary could not check the credential from the adapter"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI (HTTP %{status})."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not connect to OpenAI"

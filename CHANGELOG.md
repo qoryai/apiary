@@ -59,42 +59,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of the catalogue.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- A key of an **OpenAI subscription** is a sign-in that the person makes with a device
-  code, and pastes nothing. Every form that takes the key has the button **Sign in with
-  ChatGPT** where the key's field was: **Add key** and **Edit key** of the provider, **New
-  model provider**, the Model step of a workspace's set-up, and **Add value** and **Change
-  value** of its secret on **Secrets and variables**, in the core and on the Pro page. The
-  hint under the button reads “Qory Apiary signs in to ChatGPT for this key. You enter a code
-  on OpenAI's page, and you paste nothing.” A click requests a code from the provider. The form
-  then shows the page to open, the code with **Copy**, “The code works until” the time, a
-  spinner with “Waiting for you to approve the sign-in on OpenAI's page.” and **Cancel**.
-  Qory Apiary polls at the interval the provider sends, up to 30 minutes, until the person
-  approves, the code expires, the person cancels or the person leaves the form. It then
-  exchanges the approval for the tokens, and the form shows “Signed in.” and “Qory Apiary
-  stores the sign-in encrypted, and no page shows it.” **Save** stores the access and
-  refresh tokens encrypted, like any key, with the state signed in, no last refresh and the
-  account id and the expiry that the access token has; no other member of the answer is
-  stored, the ID token included. A form without the sign-in refuses **Save** with “can't be
-  blank”. An expired code shows “Click Sign in with ChatGPT for a new code.” and “The code
-  expired before the sign-in was approved.” When the provider returns no code (a 404), the
-  form shows “Turn on **Enable device code sign-in for Codex** in ChatGPT's security
-  settings, or ask your ChatGPT workspace admin to turn it on.” and “OpenAI returned no
-  code, because device code sign-in for Codex is off for this ChatGPT account.” Any other
-  failure shows the line for a new code alone. **Edit key** of a key that needs a new
-  sign-in shows **Needs a new sign-in** with its reason above the button, and a row on the
-  provider's page with that state has the button too and stores the sign-in at once. A key
-  of any other provider keeps its names and its hint. The addresses of the sign-in
-  (`usercode_url`, `poll_url`, `verification_url` and `redirect_uri`) come from the
-  catalogue entry's `oauth_device`, each checked as any address of an entry is, and the
-  client id from its `oauth_refresh`; an entry without `oauth_device` has no button, and
-  the vendored OpenAI description has none yet. The calls use no redirect, keep at most 64
-  KiB of an answer and end within 15 seconds; the server needs outbound HTTPS to the hosts
-  of those addresses. The provider's page shows “Signed in.” beside each such key. The
-  states “Signed in. Last refresh” with a time, and **Needs a new sign-in** with “OpenAI
-  rejected it on” the time, are set by the refresh, below. The second replaces the key's
-  state line. A new sign-in for the key clears the key's states, as a new value does for
-  any key. No token, code or device id appears in a page, a log line or an audit entry. A
-  run that claims the key stops at the secrets request with `credential_unavailable`.
+- A key of an **OpenAI subscription** is made with a device sign-in. Each key form
+  (**Add key**, **Edit key**, **New model provider**, the set-up's Model step, and a
+  secret's **Add value** and **Change value**) has the button **Sign in with ChatGPT**. The
+  form shows the page to open, the code with **Copy**, the time it works until, and
+  **Cancel**. Qory Apiary polls until the person approves, cancels or leaves, or the code
+  expires, and **Save** stores the tokens encrypted. An expired code, a provider with device
+  code sign-in off, and a failed sign-in each show a fix and a cause. A key that needs a new
+  sign-in has the button in **Edit key** and in its row. The
+  addresses come from `oauth_device` of the catalogue entry; an entry without it has no
+  button. No token or code appears in a page, a log line or an audit entry.
 - Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a time
   for each key, in the way `codex` does: when the access token's `exp` is near, or, for a
   token whose `exp` cannot be read, 8 days after the last refresh. A run's request refreshes

@@ -7,10 +7,10 @@ defmodule ApiaryWeb.ModelKeyDevice do
   # and `device_cancel` (Cancel next to the waiting line) and the messages of the sign-in.
   #
   # The `device` assign has the state and what the page shows of the sign-in (the code, the
-  # page's address and until when the code works), and the sign-in's process, which holds
-  # the tokens. The tokens are never in an assign: `login/1` reads them for a save. The
-  # sign-in's process ends when the LiveView ends, so a person who leaves the form stops the
-  # polling.
+  # page's address, until when the code works and, for a failed one, the cause), and the
+  # sign-in's process, which holds the tokens. The tokens are never in an assign: `login/1`
+  # reads them for a save. The sign-in's process ends when the LiveView ends, so a person
+  # who leaves the form stops the polling.
   @moduledoc false
 
   import Phoenix.Component, only: [assign: 3]
@@ -29,7 +29,8 @@ defmodule ApiaryWeb.ModelKeyDevice do
           key: String.t() | nil,
           user_code: String.t() | nil,
           verification_url: String.t() | nil,
-          expires_at: DateTime.t() | nil
+          expires_at: DateTime.t() | nil,
+          cause: pos_integer | :unknown | nil
         }
 
   @doc """
@@ -101,12 +102,55 @@ defmodule ApiaryWeb.ModelKeyDevice do
     case socket.assigns[:device] do
       %{kind: kind, key: key} = device ->
         stop(device)
-        assign(socket, :device, %{idle(kind) | state: :failed, key: key})
+        assign(socket, :device, %{idle(kind) | state: :failed, key: key, cause: nil})
 
       nil ->
         socket
     end
   end
+
+  @doc """
+  The value a form saves for a key: for `login?`, a provider whose keys are logins, the
+  sign-in once the person has made it, else "" (nothing); for any other provider, `key`,
+  the text of the Key field.
+  """
+  @spec value(Phoenix.LiveView.Socket.t(), boolean, String.t() | nil) ::
+          Apiary.ModelKeys.Login.parsed() | String.t()
+  def value(socket, true, _key) do
+    case login(socket) do
+      {:ok, login} -> login
+      :error -> ""
+    end
+  end
+
+  def value(_socket, false, key), do: key || ""
+
+  @doc """
+  `params` of a secret's value form with the sign-in of a provider whose keys are logins as
+  its `"value"`: the form sends no value for it, so a value it sent is dropped. The
+  provider is the LiveView's `provider` assign; any other `params` are returned as they are.
+  """
+  @spec put_login(map, Phoenix.LiveView.Socket.t()) :: map
+  def put_login(
+        params,
+        %{assigns: %{provider: %Apiary.Connections.Connection{} = provider}} = socket
+      ) do
+    if Apiary.ModelKeys.Login.provider?(provider) do
+      case login(socket) do
+        {:ok, login} -> Map.put(params, "value", login)
+        :error -> Map.delete(params, "value")
+      end
+    else
+      params
+    end
+  end
+
+  def put_login(params, _socket), do: params
+
+  @doc "The errors of a form `field` as sentences, for the component's `errors`."
+  @spec errors(Phoenix.HTML.FormField.t()) :: [String.t()]
+  def errors(%Phoenix.HTML.FormField{errors: errors}),
+    do: Enum.map(errors, &ApiaryWeb.CoreComponents.translate_error/1)
 
   @doc "The value id of the key the sign-in was started for, nil on a form."
   @spec key(Phoenix.LiveView.Socket.t()) :: String.t() | nil
@@ -133,7 +177,8 @@ defmodule ApiaryWeb.ModelKeyDevice do
         key: nil,
         user_code: nil,
         verification_url: nil,
-        expires_at: nil
+        expires_at: nil,
+        cause: nil
       }
     end
   end
@@ -200,10 +245,9 @@ defmodule ApiaryWeb.ModelKeyDevice do
   defp advance(device, :signed_in),
     do: %{device | state: :signed_in, user_code: nil, verification_url: nil, expires_at: nil}
 
-  defp advance(device, {:ended, reason}) when reason in [:expired, :off, :failed],
-    do: %{
-      idle(device.kind)
-      | state: reason,
-        key: device.key
-    }
+  defp advance(device, {:ended, reason}) when reason in [:expired, :off],
+    do: %{idle(device.kind) | state: reason, key: device.key}
+
+  defp advance(device, {:ended, :failed, cause}),
+    do: %{idle(device.kind) | state: :failed, key: device.key, cause: cause}
 end

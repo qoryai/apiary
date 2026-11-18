@@ -111,6 +111,13 @@ defmodule ApiaryWeb.ProviderLive.Show do
   defp row_device(%{key: key} = device, %{value_id: key}), do: device
   defp row_device(device, _key), do: %{device | state: :idle, key: nil}
 
+  # Whether the sign-in of another row has a code or is about to have one: the button of
+  # this row does nothing until it ends.
+  defp busy_elsewhere?(%{key: key, state: state}, %{value_id: value_id}),
+    do: key != value_id and state in [:starting, :code]
+
+  defp busy_elsewhere?(_device, _key), do: false
+
   # The provider's keys in its order: the default key first, then by when each was added.
   defp in_order(%{secret: %{values: values}, default_value_id: default}) when is_list(values),
     do:
@@ -171,6 +178,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
                 device={row_device(@device, key)}
                 key={key.value_id}
                 hint={false}
+                disabled={busy_elsewhere?(@device, key)}
               />
               <.link
                 :if={@writes}

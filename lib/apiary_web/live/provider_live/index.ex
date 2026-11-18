@@ -150,7 +150,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     attrs = %{
       "provider" => params["provider"],
-      "keys" => [%{"value_id" => @key_id, "value" => key_value(socket, params)}],
+      "keys" => [
+        %{
+          "value_id" => @key_id,
+          "value" => ModelKeyDevice.value(socket, login?(socket.assigns.chosen), params["key"])
+        }
+      ],
       "settings" => Map.new(address_names(params["provider"]), &{&1, params[&1] || ""})
     }
 
@@ -190,19 +195,6 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   def handle_event(event, _params, socket) when event in ~w(choose create),
     do: {:noreply, socket}
-
-  # The value of the key: the sign-in of a provider whose keys are logins, nothing until the
-  # person has signed in, else the Key.
-  defp key_value(socket, params) do
-    if login?(socket.assigns.chosen) do
-      case ModelKeyDevice.login(socket) do
-        {:ok, login} -> login
-        :error -> ""
-      end
-    else
-      params["key"] || ""
-    end
-  end
 
   @doc false
   # field_errors/1 is the errors of a refused provider, each on the field it is about: the
@@ -317,7 +309,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
             :if={login?(@chosen)}
             id="new-provider-sign-in"
             device={@device}
-            errors={Enum.map(@form[:key].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+            errors={ModelKeyDevice.errors(@form[:key])}
           />
           <.input
             :if={!login?(@chosen)}
