@@ -81,9 +81,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   separate stage. plan-the-build runs with read access, because its harness sets read."
   It saves nothing then. If that read of the levels fails, the update goes on without
   them. Keep the process at the latest, a change of a level in the harness alone, or a
-  failed read of the levels can still make the levels differ after the save, so the
-  claim compares the levels again and ends a run whose levels differ before it starts,
-  with the end cause `shared_access_differs` and the outcome error. Owners and admins see
+  failed read of the levels can still make the levels differ after a save. The claim
+  then compares the levels again and ends such a run before it starts, with the end
+  cause `shared_access_differs` and the outcome error. Owners and admins see
   an escalation with the save's fix and "then run the round again" after it.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with

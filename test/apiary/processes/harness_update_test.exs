@@ -328,6 +328,30 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert Enum.map(versions(ctx.workspace), & &1.number) == [1]
     end
 
+    test "from a harness repository reads the levels of the template's stack only", ctx do
+      # A second stack of the harness sets write-acceptance-checks to read; the template's
+      # stack, software, sets both workflows to write.
+      authoring =
+        "apiVersion: qory.dev/v1alpha1\nname: authoring\nmodules:\n  - name: core\n" <>
+          "workflows:\n  write-acceptance-checks: {access: read}\n"
+
+      files =
+        Map.put(shared_files("write", "write"), "stacks/authoring/qory-stack.yaml", authoring)
+
+      repository_choice!(ctx.workspace, files)
+
+      assert {:ok, %{refused: [], levels: levels} = update} =
+               HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert levels == %{
+               "explore-a-ticket" => :read,
+               "plan-the-build" => :write,
+               "write-acceptance-checks" => :write
+             }
+
+      assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+    end
+
     test "from a harness repository whose level read fails goes on with no levels, and saves",
          ctx do
       # The stack file of the template's stack does not parse: the template reads, the
