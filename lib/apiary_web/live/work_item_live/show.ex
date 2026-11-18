@@ -2416,28 +2416,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # page read from the store before (`stored_reads`), by version: a version never
   # changes, so each is read once. Each clause returns the read and `reads`.
   defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids, persons}, reads) do
-    {commit, reads} = verified_commit(assigns, stage_id, take_in, reads)
-
-    reads =
-      assigns.artifacts
-      |> VerifyTab.documents(stage_id, take_in)
-      |> Enum.reduce(reads, &stored_json(&2, &1.public_id, &1))
-
-    scenarios =
-      VerifyTab.scenarios(
-        assigns.artifacts,
-        stage_id,
-        take_in,
-        commit,
-        &Map.get(reads, {:json, &1.public_id}),
-        persons
-      )
+    {scenarios, reads} =
+      VerifyTab.queue(assigns.row, assigns.artifacts, stage_id, take_in, reads, persons)
 
     {{:scenarios, scenarios}, reads}
   end
 
   defp read_output(socket, {"verification", "main", number} = key, reads) do
-    case verification_parts(socket.assigns.row, number, reads) do
+    case VerifyTab.verification_parts(socket.assigns.row, number, reads) do
       {%{} = verification, reads} -> {{:verification, verification}, reads}
       {nil, reads} -> {shown_output(socket, key), reads}
     end
@@ -2448,71 +2434,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp shown_output(%{assigns: %{row: row, number: number}} = socket, {type, name, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version, name))
 
-  # The commit that the stage's verification verified: that of the newest version of the
-  # verification `main` made at the stage that a run of the take in wrote and no member
-  # cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for none.
-  defp verified_commit(assigns, stage_id, take_in, reads) do
-    newest =
-      for %{type: "verification", name: "main"} = artifact <-
-            StageTab.of_take_in(assigns.artifacts, take_in),
-          versions = Enum.filter(artifact.versions, &(&1.stage_id == stage_id)),
-          %{withdrawn: false, number: number} <- [Artifacts.newest_counted(%{versions: versions})],
-          do: number
-
-    with [number] <- newest,
-         {%{commit: commit}, reads} <- verification_parts(assigns.row, number, reads) do
-      {commit, reads}
-    else
-      {nil, reads} -> {nil, reads}
-      [] -> {nil, reads}
-    end
-  end
-
-  # The parts of version `number` of the verification `main` (`VerifyTab.verification/1`),
-  # nil for a text with none, read and parsed once per version.
-  defp verification_parts(row, number, reads) do
-    key = {:verification, number}
-
-    case reads do
-      %{^key => parts} ->
-        {parts, reads}
-
-      _unread ->
-        parts =
-          case ExploreView.output(row, "verification", number) do
-            %{message: text} -> VerifyTab.verification(text)
-            _none -> nil
-          end
-
-        {parts, Map.put(reads, key, parts)}
-    end
-  end
-
   # The flow with the drafts of the newest submission (`Submissions.repositories/1`), its JSON
-  # document read once per version (`stored_json/3`), and `reads`.
+  # document read once per version (`VerifyTab.stored_json/3`), and `reads`.
   defp with_drafts(%{submission: %{id: id} = version} = flow, reads) do
-    reads = stored_json(reads, id, version)
+    reads = VerifyTab.stored_json(reads, id, version)
     {%{flow | drafts: Submissions.repositories(reads[{:json, id}])}, reads}
   end
 
   defp with_drafts(flow, reads), do: {flow, reads}
-
-  # `reads` with the JSON document of the version whose public id is `id`, read once.
-  defp stored_json(reads, id, version) do
-    key = {:json, id}
-
-    case reads do
-      %{^key => _read} ->
-        reads
-
-      _unread ->
-        # A read the store could not do is not kept, so the next read tries again.
-        case Stages.Artifacts.stored_json(version) do
-          {:ok, decoded} -> Map.put(reads, key, decoded)
-          {:error, :store_unavailable} -> reads
-        end
-    end
-  end
 
   # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
   # where it has no scenario; a verification read as its parts with the model families and

@@ -20,7 +20,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   # The types whose versions are a scenario's film or pictures, in one Scenarios frame.
   @media ~w(demo-video screenshot)
-  @videos ~w(video/mp4 video/webm)
+  @videos Apiary.Artifacts.Format.video_types()
   @subtitles "text/vtt; charset=utf-8"
   @images ~w(image/png image/jpeg image/gif image/webp)
 
@@ -245,6 +245,106 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
       evidence ->
         for {_name, version} <- evidence, do: version
+    end
+  end
+
+  @doc false
+  # queue/4 is the scenarios of the stage `stage_id` of the take in `take_in` (`scenarios/6`)
+  # for `work_item`, whose `artifacts` are `Apiary.Artifacts.list/1`: the verified commit
+  # is that of the stage's verification, and each JSON document is read from the store. The
+  # tab and the artifact page of a scenario's film or pictures show the same list.
+  @spec queue(map, [map], String.t(), integer | nil) :: [map]
+  def queue(work_item, artifacts, stage_id, take_in) do
+    {queue, _reads} = queue(work_item, artifacts, stage_id, take_in, %{})
+    queue
+  end
+
+  @doc false
+  # queue/5 is `queue/4` and `reads`, what the page read from the store before, by version
+  # (`stored_json/3`, `verification_parts/3`): a version never changes, so each is read
+  # once. It returns the scenarios and `reads` with what it read. queue/6 adds the
+  # versions a person made that the tab shows (`persons` of `scenarios/6`).
+  @spec queue(map, [map], String.t(), integer | nil, map, [map]) :: {[map], map}
+  def queue(work_item, artifacts, stage_id, take_in, reads, persons \\ []) do
+    {commit, reads} = verified_commit(work_item, artifacts, stage_id, take_in, reads)
+
+    reads =
+      artifacts
+      |> documents(stage_id, take_in)
+      |> Enum.reduce(reads, &stored_json(&2, &1.public_id, &1))
+
+    scenarios =
+      scenarios(
+        artifacts,
+        stage_id,
+        take_in,
+        commit,
+        &Map.get(reads, {:json, &1.public_id}),
+        persons
+      )
+
+    {scenarios, reads}
+  end
+
+  # The commit that the stage's verification verified: that of the newest version of the
+  # verification `main` made at the stage that a run of the take in wrote and no member
+  # cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for none.
+  defp verified_commit(work_item, artifacts, stage_id, take_in, reads) do
+    newest =
+      for %{type: "verification", name: "main"} = artifact <-
+            StageTab.of_take_in(artifacts, take_in),
+          versions = Enum.filter(artifact.versions, &(&1.stage_id == stage_id)),
+          %{withdrawn: false, number: number} <- [Artifacts.newest_counted(%{versions: versions})],
+          do: number
+
+    with [number] <- newest,
+         {%{commit: commit}, reads} <- verification_parts(work_item, number, reads) do
+      {commit, reads}
+    else
+      {nil, reads} -> {nil, reads}
+      [] -> {nil, reads}
+    end
+  end
+
+  @doc false
+  # verification_parts/3 is the parts of version `number` of `work_item`'s verification
+  # `main` (`verification/1`), nil for a text with none, read and parsed once per version
+  # in `reads`; it returns the parts and `reads`.
+  @spec verification_parts(map, pos_integer, map) :: {map | nil, map}
+  def verification_parts(work_item, number, reads) do
+    key = {:verification, number}
+
+    case reads do
+      %{^key => parts} ->
+        {parts, reads}
+
+      _unread ->
+        parts =
+          case Apiary.WorkItems.ExploreView.output(work_item, "verification", number) do
+            %{message: text} -> verification(text)
+            _none -> nil
+          end
+
+        {parts, Map.put(reads, key, parts)}
+    end
+  end
+
+  @doc false
+  # stored_json/3 is `reads` with the JSON document of the version whose public id is `id`,
+  # read once. A read the store could not do is not kept, so the next read tries again.
+  @spec stored_json(map, String.t(), map) :: map
+  def stored_json(reads, id, version) do
+    key = {:json, id}
+
+    case reads do
+      %{^key => _read} ->
+        reads
+
+      _unread ->
+        case Apiary.Stages.Artifacts.stored_json(version) do
+          {:ok, decoded} -> Map.put(reads, key, decoded)
+          {:error, :store_unavailable} -> reads
+        end
     end
   end
 
@@ -549,7 +649,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       class="grid gap-3 border-b border-base-300 last:border-b-0 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)]"
     >
       <div class="grid content-start gap-2">
-        <figure :for={file <- @videos} class="grid content-start gap-2">
+        <figure :for={{file, n} <- Enum.with_index(@videos)} class="grid content-start gap-2">
           <video
             controls
             preload="metadata"
@@ -565,6 +665,15 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
               src={file_src(assigns, track)}
             />
           </video>
+          <div class="flex flex-wrap items-center gap-2">
+            <.watch
+              id={if n == 0, do: "#{@id}-watch", else: "#{@id}-watch-#{n}"}
+              scenario={@scenario}
+              scope={@scope}
+              number={@number}
+              film={n}
+            />
+          </div>
           <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
         </figure>
       </div>
@@ -625,6 +734,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           </figcaption>
         </figure>
       </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <.watch id={"#{@id}-watch"} scenario={@scenario} scope={@scope} number={@number} />
+      </div>
       <ArtifactComponents.list
         id={"#{@id}-row"}
         artifacts={[@scenario.artifact]}
@@ -650,14 +762,47 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
     """
   end
 
-  # A pictures scenario's pictures, `{file, step, number}`: for each step, the image whose
-  # name ends in `-step-<number>.<extension>`, else the image at the step's place; with no
-  # steps, each image in name order, with no step.
-  defp pictures(%{steps: [], version: version}) do
+  attr :id, :string, required: true
+  attr :scenario, :map, required: true
+  attr :scope, :any, required: true
+  attr :number, :integer, required: true
+
+  attr :film, :integer,
+    default: nil,
+    doc:
+      "the film's place among the scenario's films, from 0; its link carries the time and speed"
+
+  # The Watch button of a scenario: opens its version's page, the player page with the other
+  # scenarios beside it. On a film, the `WatchHandoff` hook leaves the film's time and speed
+  # for that page, which does not start it.
+  defp watch(assigns) do
+    ~H"""
+    <.button
+      id={@id}
+      navigate={ArtifactComponents.version_path(@scope, @number, @scenario.version.public_id)}
+      size="xs"
+      title={gettext("Watch this scenario on its page, with the other scenarios beside it")}
+      class={ArtifactComponents.size_class()}
+      phx-hook={@film && "WatchHandoff"}
+      data-version={@film && @scenario.version.public_id}
+      data-film={@film}
+    >
+      <.icon name="hero-play-micro" class="size-4 shrink-0" />
+      <span>{gettext("Watch")}</span>
+    </.button>
+    """
+  end
+
+  @doc false
+  # pictures/1 is a pictures scenario's pictures, `{file, step, number}`: for each step, the
+  # image whose name ends in `-step-<number>.<extension>`, else the image at the step's
+  # place; with no steps, each image in name order, with no step.
+  @spec pictures(map) :: [{map, map | nil, pos_integer}]
+  def pictures(%{steps: [], version: version}) do
     for {file, i} <- Enum.with_index(images(version), 1), do: {file, nil, i}
   end
 
-  defp pictures(%{steps: steps, version: version}) do
+  def pictures(%{steps: steps, version: version}) do
     images = images(version)
 
     for {step, i} <- Enum.with_index(steps, 1),
@@ -669,20 +814,27 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   defp images(version), do: Enum.filter(version.files, &(&1.content_type in @images))
 
-  defp scenario_title(%{number: number, title: title})
-       when is_integer(number) and is_binary(title),
-       do: gettext("Scenario %{number}: %{title}", number: number, title: title)
+  @doc false
+  # scenario_title/1 is a scenario's heading: "Scenario 2: Voucher line on a phone", else
+  # its title as written, else its artifact's name.
+  @spec scenario_title(map) :: String.t()
+  def scenario_title(%{number: number, title: title})
+      when is_integer(number) and is_binary(title),
+      do: gettext("Scenario %{number}: %{title}", number: number, title: title)
 
-  defp scenario_title(%{title: title}) when is_binary(title), do: title
+  def scenario_title(%{title: title}) when is_binary(title), do: title
   # A name `main` reads as the type, as an output frame's heading has it.
-  defp scenario_title(%{artifact: %{name: "main", type: type}}) do
+  def scenario_title(%{artifact: %{name: "main", type: type}}) do
     {first, rest} = type |> StageComponents.type_words() |> String.split_at(1)
     String.upcase(first) <> rest
   end
 
-  defp scenario_title(%{artifact: artifact}), do: artifact.name
+  def scenario_title(%{artifact: artifact}), do: artifact.name
 
-  defp step_title(i, %{title: title}),
+  @doc false
+  # step_title/2 is step `i` of a scenario in words: "Step 2: Reload the page".
+  @spec step_title(pos_integer, %{title: String.t()}) :: String.t()
+  def step_title(i, %{title: title}),
     do: gettext("Step %{number}: %{title}", number: i, title: title)
 
   defp file_src(%{scope: scope, number: number, scenario: %{version: version}}, file),

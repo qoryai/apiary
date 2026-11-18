@@ -13452,6 +13452,84 @@
       grid-template-columns: minmax(0, 1fr) 18rem;
     }
   }
+  /* A version's page with a player (`ArtifactComponents.view/1`, `player`): Cinema, whose button
+     the ArtifactPlayer hook presses (`aria-pressed="true"`; a patch of the page leaves an
+     ignored element's `aria-*` alone but removes its `data-*`), takes the player out of the left
+     column and puts it above both columns, as wide as the page. The left column and the
+     player's section become cells of the page's grid, so the film stays in the page and is
+     not loaded again; the queue and Details stay in the right column, now under the player.
+     The button is hidden under 1024 px, so the rule is too, and in a browser with no `:has()`. */
+  @supports selector(:has(*)) {
+    @media (min-width: 1024px) {
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > .q-art-main {
+        display: contents;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) #artifact-view-part {
+        grid-column: 1 / -1;
+        grid-row: 1;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-art-rest {
+        grid-column: 1;
+        grid-row: 2;
+        min-width: 0;
+        align-content: start;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > aside {
+        grid-column: 2;
+        grid-row: 2;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-player > video {
+        width: 100%;
+      }
+    }
+  }
+  /* A browser with no `:has()` cannot move the player, so it has no Cinema button. */
+  @supports not selector(:has(*)) {
+    [data-cinema-toggle] {
+      display: none !important;
+    }
+  }
+  /* The player's box in the browser's full screen: the film or the picture fills it, the line
+     under it (Speed, or Previous picture and Next picture, and Leave full screen) stays at the
+     foot, and the file name and Cinema are left out. */
+  .q-player:fullscreen {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: #000;
+    color: var(--color-neutral-content);
+  }
+  .q-player:fullscreen > video {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+  .q-player:fullscreen > .q-player-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: #000;
+  }
+  .q-player:fullscreen > .q-player-stage > img {
+    height: 100%;
+    max-height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .q-player:fullscreen > .q-player-bar {
+    padding: 12px 16px;
+  }
+  .q-player:fullscreen .text-muted {
+    color: var(--color-neutral-content);
+  }
+  .q-player:fullscreen > figcaption,
+  .q-player:fullscreen [data-cinema-toggle] {
+    display: none;
+  }
   /* A version's page: the text stays in its column, a wide table scrolls in a frame and a long
      word wraps, so neither runs under Details. The Explore tab's `.q-xp-md` has the same frame
      for a table, and wraps a long word outside a table with `overflow-wrap: anywhere`. */
